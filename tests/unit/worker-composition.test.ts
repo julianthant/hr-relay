@@ -8,7 +8,7 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protecte
 import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
-import { testRunService } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The Phase-1f worker composition (`src/server/worker/compose.ts`) and the
@@ -54,7 +54,7 @@ import {
   lineTaskLogger,
   parseWorkerArguments,
 } from "../../src/server/worker/compose.js";
-import { UUID_7, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "./fixtures/phase1c-contract-fixtures.js";
+import { UUID_7, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_WORKER_ID,
   happySessionHarness,
@@ -62,11 +62,11 @@ import {
   personLookupQueuedRun,
   sessionFactoryHarness,
   type SessionFactoryHarness,
-} from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+} from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { settingsSetOperations } from "./fixtures/settings-operation-fixtures.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,

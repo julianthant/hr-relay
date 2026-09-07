@@ -1,4 +1,4 @@
-import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
@@ -54,10 +54,10 @@ import {
   NOW,
   UUID_2,
   UUID_4,
-} from "../fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,

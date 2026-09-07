@@ -34,11 +34,11 @@ import {
   FINALIZATION_EID,
   FINALIZATION_OTHER_EID,
   FINALIZATION_RUN_INPUT,
-} from "./fixtures/kuali-finalization-fixtures.js";
-import { sessionFactoryHarness } from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
+} from "../helpers/kuali-finalization-fixtures.js";
+import { sessionFactoryHarness } from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
+import { testDataInputSource } from "./helpers/test-data-source.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -279,8 +279,8 @@ describe("dry-run scenario production composition boundary", () => {
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
     writeFileSync(
-      join(root, "config", "test-subjects.json"),
-      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+      join(root, "config", "test-data.json"),
+      readFileSync(join(process.cwd(), "config", "test-data.json"), "utf8"),
     );
     let runtimeFactories = 0;
 
@@ -931,7 +931,7 @@ describe("dry-run scenario target dispatch", () => {
         TEST_TARGET_REGISTRY,
         { ...TEST_MANIFEST, workflow: WorkflowIdSchema.parse("i9-lookup") },
         "finalization-canary",
-        protectedSecretSource(),
+        testDataInputSource(),
       ),
       /dry-run target resolution does not support workflow i9-lookup/,
     );
@@ -942,8 +942,8 @@ describe("dry-run scenario target dispatch", () => {
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
     writeFileSync(
-      join(root, "config", "test-subjects.json"),
-      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+      join(root, "config", "test-data.json"),
+      readFileSync(join(process.cwd(), "config", "test-data.json"), "utf8"),
     );
     let runtimeFactories = 0;
     const outcome = await composeDryRunScenarioCommand({
@@ -973,10 +973,14 @@ describe("dry-run scenario target dispatch", () => {
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
     writeFileSync(
-      join(root, "config", "test-subjects.json"),
-      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+      join(root, "config", "test-data.json"),
+      readFileSync(join(process.cwd(), "config", "test-data.json"), "utf8"),
     );
     let capturedCanonicalInput: unknown;
+    let capturedBindings: unknown;
+    const testInputs = testDataInputSource({
+      separationsKualiFinalizationCanaryDocumentNumber: "4999",
+    });
 
     await assert.rejects(
       composeDryRunScenarioCommand({
@@ -984,15 +988,14 @@ describe("dry-run scenario target dispatch", () => {
         args: ["separations", "--subject", "finalization-canary"],
         repoRoot: root,
         env: {},
-        protectedSecrets: protectedSecretSource({
-          separationsKualiFinalizationCanaryDocumentNumber: "4999",
-        }),
+        testInputs,
         clock: manualClock(new Date("2026-09-03T18:00:00.000Z")),
         ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
         loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
         createRuntime: () => ({
           start: (startInput) => {
             capturedCanonicalInput = startInput.canonicalInput;
+            capturedBindings = startInput.protectedBindings;
             return Promise.reject(new Error("stop the fixture runtime after capturing the ready dispatch"));
           },
           drain: () => Promise.reject(new Error("not reached")),
@@ -1006,6 +1009,15 @@ describe("dry-run scenario target dispatch", () => {
     assert.deepEqual(capturedCanonicalInput, {
       documentNumber: "4999",
     });
+    // D341 P5: the start record binds the private input by NAME and opaque source identity,
+    // never by value, so resume/rerun/archive compare identities the value can't leak through.
+    assert.deepEqual(capturedBindings, [{
+      kind: "test-data-local",
+      inputPath: "documentNumber",
+      name: "separationsKualiFinalizationCanaryDocumentNumber",
+      sourceId: testInputs.read("separationsKualiFinalizationCanaryDocumentNumber")?.valueId,
+    }]);
+    assert.equal(JSON.stringify(capturedBindings).includes("4999"), false);
   });
 
 });

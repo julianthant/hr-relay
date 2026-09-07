@@ -36,7 +36,7 @@ import {
   NOW,
   SUBJECT_PROOF,
   UNSCOPED_PROOF,
-} from "../fixtures/phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 import { FIXTURE_PARKED_WRITE } from "../../parity/helpers/fixture-day.js";
 import {
   makeWorld,

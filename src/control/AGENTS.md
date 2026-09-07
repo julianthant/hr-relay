@@ -1,11 +1,13 @@
 # Control registries
 
 These frozen registries admit work before runtime composition. They do not operate a browser.
-`workflow-registry.ts` owns registered workflows; `test-target-registry.ts` parses and freezes
-`config/test-subjects.json` in the current implementation. D341’s approved detour moves that
-registry into shared test configuration and separates private test inputs from application settings;
-read `ref guards-and-tests` §10.5 for completion status. Read the actual owners for current exports,
-labels, schema versions and availability; never cache those changing facts in instructions.
+`workflow-registry.ts` owns registered workflows; `test-target-registry.ts` parses and freezes the
+`subjects` member of `config/test-data.json`, loaded by `test-data.ts`, the ONE test-data reader
+(D341). Private test inputs come only from ignored `config/test-data.local.json` through the opaque
+`TestDataInputSource` (private half in `src/infra/config/test-data-local.ts`), never from Settings,
+credentials or `.env`. Read `ref guards-and-tests` §10.5 for the detour's acceptance status and the
+actual owners for current exports, labels, schema versions and availability; never cache those
+changing facts in instructions.
 
 ## Admission rules
 

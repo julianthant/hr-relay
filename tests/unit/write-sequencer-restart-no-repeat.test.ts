@@ -23,7 +23,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
-import { UUID_5, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { UUID_5, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   COMPOSITION_EID,
   COMPOSITION_OTHER_EID,
@@ -39,7 +39,7 @@ import {
   compositionPendingSet,
   compositionQueuedRun,
   type CompositionHarness,
-} from "./fixtures/separations-composition-fixtures.js";
+} from "../helpers/separations-composition-fixtures.js";
 
 const open: CompositionHarness[] = [];
 afterEach(() => {

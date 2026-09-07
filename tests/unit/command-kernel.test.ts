@@ -1,5 +1,5 @@
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
-import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "./fixtures/phase1c-contract-fixtures.js";
+import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../fixtures/phase1c-contract-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../src/core/run-record-service.js";
 /**
  * D113 command-kernel semantics (ref dashboard-surfaces §Phase-1f authority, §2.4).
@@ -68,13 +68,13 @@ import {
   UUID_7,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   appliedRunIds,
   seedSyntheticRuntimeConfig,
   singleAppliedRunId,
-} from "./fixtures/operator-command-fixtures.js";
+} from "../fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
@@ -83,7 +83,7 @@ import {
   UNWIRED_ARCHIVE_SNAPSHOTS,
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
-} from "./fixtures/archive-fixtures.js";
+} from "../fixtures/archive-fixtures.js";
 import { createExplorerEditService } from "../../src/server/dashboard/commands/explorer-edit-service.js";
 import { createExplorerOverrideStore } from "../../src/server/dashboard/commands/explorer-override-store.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";

@@ -10,7 +10,7 @@ import { hostConfigFacts } from "../../src/domain/config/host-display.js";
  * A live login is NOT exercised here (that is the live smoke's job); what IS
  * exercised is every arm that must fail loud before or around one.
  */
-import { fixtureDuoCeremonyGate, fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGate, fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +31,7 @@ import type { Config } from "../../src/domain/config/schema.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "./fixtures/phase1f-executor-harness.js";
+import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";
 import type { BrowserSystemBindings } from "../../src/infra/browser/system-bindings.js";
 import type {
   AuthenticatedApplicationEvidence,
@@ -40,7 +40,7 @@ import type {
   AuthenticationVerificationContext,
 } from "../../src/infra/browser/login-contract.js";
 import type { ProtectedSecretSource } from "../../src/domain/secrets.js";
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
+import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 
 const CLOCK = manualClock(new Date("2026-08-03T09:00:00.000Z"));
 const WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");

@@ -64,15 +64,20 @@ describe("secure environment bootstrap", () => {
     assert.deepEqual(events, ["assert-parent"]);
   });
 
-  it.each(["doctor", "backup", "upgrade", "restore"])("isolates storage %s from provider environment admission", async (operation) => {
+  it.each([
+    ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"], ["storage", "restore"],
+    // D341: `test-data check` and `test-data migrate` read the private file and
+    // the credential store only; neither may load provider `.env`.
+    ["test-data", "check"], ["test-data", "migrate"],
+  ])("isolates %s %s from provider environment admission", async (command, operation) => {
     const original = [...process.argv]; const events: string[] = [];
     try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", operation], {
-        assertEnvironment: () => { throw new Error("storage must not read parent provider environment"); },
-        admitEnvironmentFile: () => { throw new Error("storage must not open provider .env"); },
+      await runSecureEnvironmentBootstrap(["cli", command, operation], {
+        assertEnvironment: () => { throw new Error(`${command} must not read parent provider environment`); },
+        admitEnvironmentFile: () => { throw new Error(`${command} must not open provider .env`); },
         runCli: async () => { events.push(...process.argv.slice(2)); },
       });
-      assert.deepEqual(events, ["storage", operation]);
+      assert.deepEqual(events, [command, operation]);
     } finally { process.argv.splice(0, process.argv.length, ...original); }
   });
 

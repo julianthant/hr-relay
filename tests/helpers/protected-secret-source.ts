@@ -2,8 +2,8 @@ import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedStoreRecordSchema,
   type ProtectedSettingsName,
-} from "../../../src/domain/config/protected-settings.js";
-import type { ProtectedSecretSource } from "../../../src/domain/secrets.js";
+} from "../../src/domain/config/protected-settings.js";
+import type { ProtectedSecretSource } from "../../src/domain/secrets.js";
 
 const TEST_INSTANT = "2026-09-04T00:00:00.000Z";
 const TEST_COMMAND_ID = "00000000-0000-4000-8000-000000000001";

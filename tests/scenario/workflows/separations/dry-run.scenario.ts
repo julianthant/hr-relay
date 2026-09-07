@@ -15,9 +15,10 @@
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and none
  * may — and since D300 no document NUMBER does either: the label's value lives
- * outside git entirely. `config/test-subjects.json` commits only the closed
- * reference, and the number itself is read from `.env` through
- * `src/domain/secrets.ts` (§10.5), judged by the same 3-8 digit schema the
+ * outside git entirely. `config/test-data.json` (subjects) commits only the closed
+ * reference, and the number itself is read from ignored
+ * `config/test-data.local.json` through `src/control/test-data.ts` (D341,
+ * §10.5), judged by the same 3-8 digit schema the
  * start box applies. The EID is derived live from that document; none is
  * committed here. Since D284
  * (2026-08-28) the registry holds ONE subject,
@@ -215,8 +216,9 @@ const MANIFEST = {
   cases: [
     {
       caseId: "nothing-to-sweep",
-      // The value lives outside git: config/test-subjects.json names the
-      // closed reference and `.env` carries the number (D300); the ingress is
+      // The value lives outside git: config/test-data.json (subjects) names the
+      // closed reference and ignored `config/test-data.local.json` carries the
+      // number (D300/D341); the ingress is
       // ONE typed document number and every person fact is derived live from
       // it (D261).
       subjectLabel: "finalization-canary",

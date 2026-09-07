@@ -32,16 +32,17 @@ import {
   type SettingsApplyRefusal,
   type SettingsFileRecord,
 } from "../../src/domain/config/settings.js";
+// D341: the D331 producer writes the FROZEN legacy protected family (7 names), as it did historically.
 import {
-  PROTECTED_SETTINGS_SCHEMA_HASH,
-  ProtectedSettingsApplyInputSchema,
-  ProtectedSettingsLastAppliedSchema,
-  ProtectedStoreRecordSchema,
-  ProtectedSettingsNameSchema,
-  initialProtectedStoreRecord,
-  type ProtectedSettingsApplyInput,
-  type ProtectedStoreRecord,
-} from "../../src/domain/config/protected-settings.js";
+  LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH,
+  LegacyProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema,
+  LegacyProtectedSettingsLastAppliedSchema as ProtectedSettingsLastAppliedSchema,
+  LegacyProtectedStoreRecordSchema as ProtectedStoreRecordSchema,
+  LegacyProtectedSettingsNameSchema as ProtectedSettingsNameSchema,
+  initialLegacyProtectedStoreRecord as initialProtectedStoreRecord,
+  type LegacyProtectedSettingsApplyInput as ProtectedSettingsApplyInput,
+  type LegacyProtectedStoreRecord as ProtectedStoreRecord,
+} from "../../src/domain/config/protected-settings-legacy.js";
 import {
   SettingsDocumentTargetSchema,
   SettingsRootAuthoritySchema,

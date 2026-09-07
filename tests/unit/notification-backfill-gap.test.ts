@@ -19,8 +19,8 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { createDashboardStreamHub } from "../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createBackfillGapNotifier } from "../../src/services/notifications/backfill-gap.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
-import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   DAY,
   makeWorld as makeDashboardWorld,

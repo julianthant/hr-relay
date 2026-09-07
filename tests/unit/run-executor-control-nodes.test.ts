@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Generic node dispatch for the control kinds person-lookup does not use:
  * branch selection and exclusion, gate park/resume over the stored gate
@@ -28,8 +28,8 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { HASH_A, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -38,7 +38,7 @@ import {
   recordingLogger,
   sessionManagerFor,
   type AuthorityHarness,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

@@ -43,9 +43,9 @@ describe("source-bound repeat through planner, kernel, service and interpreter (
       const source = { ...sourceWithoutSession, envelope: { ...sourceWithoutSession.envelope,
         runId: "eeeeeeee-0001-4000-8000-000100000000" }, input: { ...completedSource.input,
         raw: { eid: "10812345", documentNumber }, parsed: { ...completedSource.input.parsed,
-          value: { eid: "10812345", documentNumber }, protectedBindings: [{ kind: "protected-store",
+          value: { eid: "10812345", documentNumber }, protectedBindings: [{ kind: "test-data-local",
             inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber",
-            valueId: "10000000-0000-4000-8000-000000000001" }] } } };
+            sourceId: "10000000-0000-4000-8000-000000000001" }] } } };
       assert.equal(h.database.authority.runs.enqueue({ ...source, lifecycle: { state: "queued" } }).state, "inserted");
       const claimed = h.database.authority.runs.claimNext({ workflow: source.envelope.workflow,
         workerId: "fixture-owner", now: h.clock.now().toISOString() });

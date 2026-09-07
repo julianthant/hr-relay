@@ -38,8 +38,8 @@ import { RunEnvelopeSchema } from "../../../src/domain/run/envelope.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { WorkerLeaseRecordSchema } from "../../../src/domain/run/worker.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
-import { QUEUED_RUN, RUN_ENVELOPE, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
-import { HASH_A, HASH_B, NOW, UUID_1, UUID_3 } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ENVELOPE, WORKER_ID, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_1, UUID_3 } from "../../fixtures/phase1c-contract-fixtures.js";
 
 const UUID_TEXT = UUID_1;
 const POSITIONAL_VALUES: readonly unknown[] = [0, 1, 42, "0", "1", "42", "-1", ""];

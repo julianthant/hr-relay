@@ -3,12 +3,16 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { deepFreeze } from "../domain/immutability.js";
 import {
-  optionalTestTargetEntry,
-  TestTargetDocumentNumberSecretReferenceSchema,
-  TestTargetEidSecretReferenceSchema,
-  type ProtectedSecretSource,
-  type TestTargetSecretReference,
-} from "../domain/secrets.js";
+  TEST_DATA_CONFIG_PATH,
+  TEST_DATA_LOCAL_CONFIG_PATH,
+  TestDataDocumentNumberReferenceSchema,
+  TestDataEidReferenceSchema,
+  TestDataLocalConfigError,
+  type TestDataInputName,
+  type TestDataInputReference,
+  type TestDataInputSource,
+  type TestDataLocalInputEntry,
+} from "../domain/test-data.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
 import { compileWorkflow } from "../base/workflow-definition.js";
 import {
@@ -22,7 +26,9 @@ import {
 } from "../workflows/separations/workflow.js";
 import { SeparationsKualiFinalizationInput } from "../workflows/separations/kuali-finalization/workflow.js";
 
-export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
+/** D341: the public subject registry is the `subjects` member of the shared test-data config. */
+export const TEST_TARGET_REGISTRY_PATH = TEST_DATA_CONFIG_PATH;
+export const TEST_TARGET_REGISTRY_MEMBER = "subjects";
 
 export const FINALIZATION_WORKFLOW = "separations-kuali-finalization";
 export const SEPARATIONS_WORKFLOW = "separations";
@@ -157,15 +163,15 @@ export const SeparationsKualiFinalizationArmSchema = z.strictObject({
 });
 
 /**
- * The canary is ONE Kuali document number selected in protected Settings
- * (D300): the registry commits the exact closed reference — the registered
- * secret name — never a number. A
- * literal here would let a commit choose the live subject; the reference makes
- * the protected store the only place that can. "No subject exists" is still
- * a real, recorded state, spelled out rather than left as a missing key.
+ * The canary is ONE Kuali document number selected in ignored
+ * `config/test-data.local.json` (D300/D341): the registry commits the exact
+ * closed reference — the registered input name — never a number. A literal
+ * here would let a commit choose the live subject; the reference makes the
+ * private file the only place that can. "No subject exists" is still a real,
+ * recorded state, spelled out rather than left as a missing key.
  */
 export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("configured"), reference: TestTargetDocumentNumberSecretReferenceSchema }),
+  z.strictObject({ state: z.literal("configured"), reference: TestDataDocumentNumberReferenceSchema }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
@@ -177,13 +183,13 @@ export const SeparationsChainArmSchema = z.strictObject({
 /**
  * D318 — what a person-lookup live-read subject is for: one Search by EID of
  * a current, access-visible person. The EID is a CLOSED reference (the
- * registered secret name and its exact env key), never a committed value;
- * `resolvePersonLookupTestTarget` reads it from ignored `.env`.
+ * registered input name), never a committed value; `resolvePersonLookupTestTarget`
+ * reads it from ignored `config/test-data.local.json` (D341).
  */
 export const PersonLookupSubjectKindSchema = z.enum(["search-by-eid"]);
 
 export const PersonLookupSubjectEidSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("configured"), reference: TestTargetEidSecretReferenceSchema }),
+  z.strictObject({ state: z.literal("configured"), reference: TestDataEidReferenceSchema }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
@@ -399,18 +405,28 @@ export function parseTestTargetRegistry(
   return deepFreeze(registry);
 }
 
+/** The `subjects` member of a shared test-data document, or a loud defect naming the file. */
+export function testTargetRegistryMember(document: unknown): unknown {
+  if (document === null || typeof document !== "object" || Array.isArray(document)
+    || !Object.hasOwn(document, TEST_TARGET_REGISTRY_MEMBER)) {
+    throw new TestTargetRegistryDefectError(`${TEST_TARGET_REGISTRY_PATH} has no ${TEST_TARGET_REGISTRY_MEMBER} member`);
+  }
+  return Reflect.get(document, TEST_TARGET_REGISTRY_MEMBER);
+}
+
+/** Read the registry of an EXACT checkout root; no CWD default and no search. */
 export function readTestTargetRegistry(
   repoRoot: string,
   manifests: readonly TestTargetManifestView[] = [],
 ): TestTargetRegistry {
-  const input: unknown = JSON.parse(readFileSync(`${repoRoot}/${TEST_TARGET_REGISTRY_PATH}`, "utf8"));
-  return parseTestTargetRegistry(input, manifests);
+  const document: unknown = JSON.parse(readFileSync(`${repoRoot}/${TEST_TARGET_REGISTRY_PATH}`, "utf8"));
+  return parseTestTargetRegistry(testTargetRegistryMember(document), manifests);
 }
 
-const committedRegistryInput: unknown = JSON.parse(readFileSync(
-  new URL("../../config/test-subjects.json", import.meta.url),
+const committedRegistryInput: unknown = testTargetRegistryMember(JSON.parse(readFileSync(
+  new URL(`../../${TEST_DATA_CONFIG_PATH}`, import.meta.url),
   "utf8",
-));
+)));
 
 /** The checked-in registry is parsed and recursively frozen at module load. */
 export const TEST_TARGET_REGISTRY: TestTargetRegistry = parseTestTargetRegistry(committedRegistryInput);
@@ -427,14 +443,15 @@ function registryDefect(
 }
 
 /**
- * The cause of a failed secret READ, for the defect detail. `SecretMissingError`
- * and `SecretSourceError` (src/domain/secrets.ts) name the secret's registered
- * NAME and its env-var key and never its value, so quoting them cannot leak a
- * credential — while dropping them makes "no such registry entry" and "the value
- * is malformed" the same sentence.
+ * The cause of a failed private-input READ, for the defect detail.
+ * `TestDataLocalConfigError` (src/domain/test-data.ts) names the private file
+ * and the offending KEY and never a value, so quoting it cannot leak an input —
+ * while dropping it makes "no such file" and "the value is malformed" the same
+ * sentence. Any other error is a programming defect and propagates as-is.
  */
-function secretFailureDetail(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : `non-Error thrown: ${String(error)}`;
+function inputFailureDetail(error: unknown): string {
+  if (error instanceof TestDataLocalConfigError) return `${error.name}: ${error.message}`;
+  throw error;
 }
 
 function blocked(label: string, reason: string): z.output<typeof TestTargetBlockedResolutionSchema> {
@@ -446,41 +463,25 @@ function unavailableReason(target: TestTargetRegistryEntry): string {
 }
 
 /**
- * Read the canary's configured document number through its closed reference.
- * `undefined` means the operator has not configured it — a truthful "not
- * ready", reported as `blocked` by key. A value that fails the document-number
- * schema is a DEFECT in local configuration, named by reference and key and
- * never by value.
+ * Read a subject's configured private input through its closed reference
+ * (D341). `undefined` means the operator has not configured it — a truthful
+ * "not ready", reported as `blocked` by key. A private file that is malformed,
+ * not private, or carries a value failing the input's own workflow schema is a
+ * DEFECT in local configuration, named by reference and key and never by value.
  */
-function resolveConfiguredDocumentNumber(
+function resolveConfiguredInput<Name extends TestDataInputName>(
   target: TestTargetRegistryEntry,
-  reference: TestTargetSecretReference,
-  source: ProtectedSecretSource,
-): ReturnType<typeof optionalTestTargetEntry> {
+  reference: TestDataInputReference & { name: Name },
+  source: TestDataInputSource,
+  field: string,
+): TestDataLocalInputEntry<Name> | undefined {
   try {
-    return optionalTestTargetEntry(reference.name, source);
+    return source.read(reference.name);
   } catch (error) {
     registryDefect(
       target,
-      `document-number reference ${reference.name} is invalid in protected Settings`,
-      secretFailureDetail(error),
-    );
-  }
-}
-
-/** The person-lookup twin: the EID reference, judged by the person-lookup ingress's own `EidSchema`. */
-function resolveConfiguredEid(
-  target: TestTargetRegistryEntry,
-  reference: TestTargetSecretReference,
-  source: ProtectedSecretSource,
-): ReturnType<typeof optionalTestTargetEntry> {
-  try {
-    return optionalTestTargetEntry(reference.name, source);
-  } catch (error) {
-    registryDefect(
-      target,
-      `employee-id reference ${reference.name} is invalid in protected Settings`,
-      secretFailureDetail(error),
+      `${field} reference ${reference.name} is invalid in ${TEST_DATA_LOCAL_CONFIG_PATH}`,
+      inputFailureDetail(error),
     );
   }
 }
@@ -540,15 +541,15 @@ export function resolveSeparationsKualiFinalizationTestTarget(
  * then applies the ingress defaults and canonical validation. Readiness never
  * manufactures a protected default or accepts a protected caller override.
  *
- * The number itself comes from protected Settings through the arm's
- * closed reference (D300) — the registry never commits it. Unset is `blocked`
+ * The number itself comes from ignored `config/test-data.local.json` through
+ * the arm's closed reference (D300/D341) — the registry never commits it. Unset is `blocked`
  * by key; malformed is a defect by key. No EID crosses this boundary at all: a
  * Kuali document number is not a person, and it is never copied into one.
  */
 export function resolveSeparationsTestTarget(
   registry: TestTargetRegistry,
   label: string,
-  source: ProtectedSecretSource,
+  source: TestDataInputSource,
 ): SeparationsTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
@@ -563,11 +564,11 @@ export function resolveSeparationsTestTarget(
     registryDefect(target, `no Kuali document exists to run: ${arm.publicInput.document.reason}`);
   }
   const { reference } = arm.publicInput.document;
-  const documentNumber = resolveConfiguredDocumentNumber(target, reference, source);
+  const documentNumber = resolveConfiguredInput(target, reference, source, "document-number");
   if (documentNumber === undefined) {
     return blocked(
       label,
-      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.name} in protected Settings (D300)`,
+      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.name} in ${TEST_DATA_LOCAL_CONFIG_PATH} (D341)`,
     );
   }
   const surface = compileWorkflow(separationsWorkflow).descriptor.surfaces?.inputRun;
@@ -583,7 +584,7 @@ export function resolveSeparationsTestTarget(
     state: "ready",
     label,
     canonicalInput: toRawSubmission(entry),
-    protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber", name: reference.name, valueId: documentNumber.valueId }],
+    protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber", name: reference.name, sourceId: documentNumber.valueId }],
   });
 }
 
@@ -595,14 +596,14 @@ export function resolveSeparationsTestTarget(
  * and canonical schemas, so `keepNonHdh` and `includeCrmDates` come from the
  * parser's declared constants, never from this resolver.
  *
- * The EID itself comes from protected Settings through the arm's
- * closed reference: unset is `blocked` by key; malformed is a defect by key.
+ * The EID itself comes from ignored `config/test-data.local.json` through the
+ * arm's closed reference (D341): unset is `blocked` by key; malformed is a defect by key.
  * No person value is committed, and none is echoed in a refusal.
  */
 export function resolvePersonLookupTestTarget(
   registry: TestTargetRegistry,
   label: string,
-  source: ProtectedSecretSource,
+  source: TestDataInputSource,
 ): PersonLookupTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
@@ -615,11 +616,11 @@ export function resolvePersonLookupTestTarget(
     registryDefect(target, `no person exists to search: ${arm.publicInput.subject.reason}`);
   }
   const { reference } = arm.publicInput.subject;
-  const emplId = resolveConfiguredEid(target, reference, source);
+  const emplId = resolveConfiguredInput(target, reference, source, "employee-id");
   if (emplId === undefined) {
     return blocked(
       label,
-      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.name} in protected Settings (D318)`,
+      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.name} in ${TEST_DATA_LOCAL_CONFIG_PATH} (D341)`,
     );
   }
   const surface = compileWorkflow(personLookupWorkflow).descriptor.surfaces?.inputRun;
@@ -651,6 +652,6 @@ export function resolvePersonLookupTestTarget(
     state: "ready",
     label,
     canonicalInput: canonical.data,
-    protectedBindings: [{ kind: "protected-store", inputPath: "emplId", name: reference.name, valueId: emplId.valueId }],
+    protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: reference.name, sourceId: emplId.valueId }],
   });
 }

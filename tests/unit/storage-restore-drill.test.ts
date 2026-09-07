@@ -73,8 +73,8 @@ import {
   NOTIFICATION,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });

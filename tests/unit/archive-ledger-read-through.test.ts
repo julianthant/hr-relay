@@ -27,7 +27,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { UcpathPendingSweepProofSchema } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
-import { HASH_A, HASH_B, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
 

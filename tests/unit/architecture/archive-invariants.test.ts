@@ -46,15 +46,15 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
-import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { NOW } from "../../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   ARCHIVED_RUN,
   ARCHIVED_RUN_WITH_SECTIONS,
   ARCHIVE_RELAUNCH,
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
-} from "../fixtures/archive-fixtures.js";
+} from "../../fixtures/archive-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];

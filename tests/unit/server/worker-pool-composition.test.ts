@@ -46,14 +46,14 @@ import type {
   SpawnedWorkerHandle,
   WorkerProcessSpawnRequest,
 } from "../../../src/server/dashboard/worker-supervisor.js";
-import { ManualScheduler } from "../fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   NO_INTAKE_PROJECTIONS,
   UNSTORED_CONFIG_IDENTITY,
   UNWIRED_INTAKE_PARSER,
 } from "../../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 
 const NOW = "2026-08-26T09:00:00.000Z";
 const WORKFLOW = WorkflowIdSchema.parse("person-lookup");

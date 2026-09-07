@@ -73,7 +73,7 @@ import {
   terminationPendingSet,
   terminationQueuedRun,
   type TerminationHarness,
-} from "../../../unit/fixtures/ucpath-termination-fixtures.js";
+} from "../../../helpers/ucpath-termination-fixtures.js";
 import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const taskCtx = Object.freeze({

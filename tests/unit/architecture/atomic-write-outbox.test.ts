@@ -27,7 +27,7 @@ import {
   UUID_8,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "../fixtures/phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const CLOCK = manualClock(new Date(NOW));

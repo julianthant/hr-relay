@@ -1,4 +1,4 @@
-import { testRunContinuation } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref guards-and-tests §3.3 — the write-safety contract guard (HOSTS ref write-safety's guard).
  *
@@ -33,8 +33,8 @@ import { probeVerdictSchema } from "../../../src/domain/write-safety.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
-import { ManualScheduler, recordingLogger } from "../fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { ManualScheduler, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
 import {
   registerActivityPersonPseudonymComposer,
@@ -6,13 +7,16 @@ import {
   registerExplainComposer,
   registerOcrComposer,
   registerStorageComposer,
+  registerTestDataComposer,
   registerWorkerComposer,
   startRebuildRuntime,
 } from "./core/runtime-composition.js";
 import { composeDashboardRuntime } from "./server/dashboard/compose.js";
 import { composeActivityPersonPseudonymBackfillCommand } from "./server/activity-person-pseudonym-backfill/compose.js";
 import { composeDryRunScenarioCommand } from "./server/dry-run-scenario/compose.js";
-import { loadDryRunScenarioManifest } from "./server/dry-run-scenario/manifests.js";
+import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./server/dry-run-scenario/manifests.js";
+import { parseDryRunScenarioManifest } from "./domain/trust/dry-run-scenario.js";
+import { composeTestDataCommand } from "./server/test-data/compose.js";
 import { createProductionDryRunScenarioRuntime } from "./server/dry-run-scenario/runtime.js";
 import { composeExplainRuntime } from "./server/explain/compose.js";
 import { composeOcrCommand } from "./server/ocr/compose.js";
@@ -25,6 +29,9 @@ import { composeWorkerRuntime } from "./server/worker/compose.js";
  * runtime's whole lifetime (it settles only after the composed runtime stopped),
  * so a shutdown failure reaches the entrypoint instead of vanishing.
  */
+/** The checkout that owns THIS cli module; never the caller's CWD (D341). */
+const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
+
 export async function runCli(): Promise<void> {
   registerDashboardComposer((runtimeIsolation, options) =>
     composeDashboardRuntime({ isolation: runtimeIsolation, frontend: options.frontend }));
@@ -40,6 +47,11 @@ export async function runCli(): Promise<void> {
     // that outlives its manifest, is red.
     loadManifest: loadDryRunScenarioManifest,
     createRuntime: createProductionDryRunScenarioRuntime,
+    repoRoot: REPOSITORY_ROOT,
+  }));
+  registerTestDataComposer((runtimeIsolation, args) => composeTestDataCommand(runtimeIsolation, args, REPOSITORY_ROOT, {
+    loadManifests: async () => Promise.all(listDryRunScenarioWorkflows().map(async (workflow) =>
+      parseDryRunScenarioManifest(await loadDryRunScenarioManifest(workflow)))),
   }));
   registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ isolation: runtimeIsolation, args }));
   registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ isolation: runtimeIsolation, args }));

@@ -26,7 +26,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presenta
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import type { RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail.js";
-import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   claimEventOf,
   instantOffsetOf,

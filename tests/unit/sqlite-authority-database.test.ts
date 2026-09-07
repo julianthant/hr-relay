@@ -53,7 +53,7 @@ import {
   UUID_8,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   RUN_ID,
@@ -62,19 +62,19 @@ import {
   WORKER_ID,
   WORKER_START_REQUEST,
   WORKFLOW_ID,
-} from "./fixtures/phase1f-run-fixtures.js";
+} from "../fixtures/phase1f-run-fixtures.js";
 import {
   ARCHIVE_RELAUNCH,
   ARCHIVED_RUN,
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
-} from "./fixtures/archive-fixtures.js";
+} from "../fixtures/archive-fixtures.js";
 import {
   ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
   seedTerminalSeparationsResult,
   TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
-import { compositionQueuedRun } from "./fixtures/separations-composition-fixtures.js";
+import { compositionQueuedRun } from "../helpers/separations-composition-fixtures.js";
 import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migration.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";

@@ -18,7 +18,7 @@ import { hostConfigFacts } from "../../src/domain/config/host-display.js";
  * EVERY return path, so the early "already authenticated" branch is pinned here
  * exactly as hard as the full login.
  */
-import { fixtureDuoCeremonyGate } from "./fixtures/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGate } from "../helpers/duo-ceremony-fixtures.js";
 import type { BrowserSystemId } from "../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

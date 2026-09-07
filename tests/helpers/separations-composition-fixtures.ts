@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * The chunk-6 COMPOSITION harness — one authority database, one write
  * sequencer, and BOTH deterministic browsers the composed graph's three
@@ -24,52 +24,52 @@ import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import { manualClock, type TestClock } from "../../../src/domain/clock.js";
-import type { WriteSequencerContext } from "../../../src/core/run-executor.js";
+import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
-} from "../../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
-import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
-import { ucpathPendingSweepIdempotencyKey } from "../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
+} from "../../src/core/write-sequencer.js";
+import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import { kualiFinalizationIdempotencyKey } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { ucpathPendingSweepIdempotencyKey } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import {
   EidSchema,
   FingerprintSchema,
   IsoInstantSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../../src/domain/ids.js";
-import type { RunRecord } from "../../../src/domain/run/record.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+} from "../../src/domain/ids.js";
+import type { RunRecord } from "../../src/domain/run/record.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
   buildFinalizationComments,
   separationInitials,
-} from "../../../src/domain/separations/separation-dates.js";
+} from "../../src/domain/separations/separation-dates.js";
 import {
   kualiFinalizationFields,
   type KualiFinalizationFields,
   type KualiFinalizationVariables,
   type KualiObservedFinalizationFields,
-} from "../../../src/domain/ui/kuali-separation-finalization.js";
-import type { UcpathTransactionRow } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { isUcpathTerminationInProgress } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
-import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+} from "../../src/domain/ui/kuali-separation-finalization.js";
+import type { UcpathTransactionRow } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { isUcpathTerminationInProgress } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
+import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,
   type KualiFakeWorld,
-} from "../../../src/stores/kuali/driver/fake.js";
+} from "../../src/stores/kuali/driver/fake.js";
 import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
   type UcpathSmartHrFakeWorld,
-} from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
-import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { SeparationsCanonicalInput, SeparationsInput } from "../../../src/workflows/separations/workflow.js";
-import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
+} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
+import { SeparationsCanonicalInput, SeparationsInput } from "../../src/workflows/separations/workflow.js";
+import { UUID_2, UUID_3, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -77,8 +77,8 @@ import {
   recordingLogger,
   sessionFactoryHarness,
 } from "./phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
-import { separationsDescriptor } from "../../helpers/registered-workflows.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { separationsDescriptor } from "./registered-workflows.js";
 
 export const COMPOSITION_WORKFLOW_ID = "separations";
 export const COMPOSITION_ACTION_ID = "0123456789abcdef01234567";

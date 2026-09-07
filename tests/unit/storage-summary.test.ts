@@ -21,7 +21,7 @@ import {
   AuthorityDatabase,
   summarizeBackupHealth,
 } from "../../src/infra/sqlite/index.js";
-import { NOW, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { NOW, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 
 const disposers: (() => void)[] = [];

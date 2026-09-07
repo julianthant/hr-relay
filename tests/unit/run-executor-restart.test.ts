@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D314 — Restart from start reruns every read and computation.
  *
@@ -13,8 +13,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { UUID_5, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID, WORKER_ID, WORKFLOW_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { UUID_5, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
+import { RUN_ID, WORKER_ID, WORKFLOW_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   ManualScheduler,
   healthyCrmDriver,
@@ -26,7 +26,7 @@ import {
   sessionFactoryHarness,
   sessionManagerFor,
   type AuthorityHarness,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];

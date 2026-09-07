@@ -53,9 +53,9 @@ import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/creat
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
 import { planStart } from "../../src/services/start/plan.js";
-import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "./fixtures/operator-command-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
 import { WriteFixtureCommit, WriteFixturePrepare } from "./fixtures/write-sequencer-fixtures.js";
 import {
   ARCHIVED_RUN,
@@ -63,7 +63,7 @@ import {
   VERSION_BUMP_APPLICATION,
   VERSION_BUMP_PLAN,
   VERSION_PLAN_ROW,
-} from "./fixtures/archive-fixtures.js";
+} from "../fixtures/archive-fixtures.js";
 import { ledgerCommitFixture } from "./fixtures/ledger-projection-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 

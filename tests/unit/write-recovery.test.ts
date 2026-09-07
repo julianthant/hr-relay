@@ -1,7 +1,7 @@
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { PositiveIntSchema } from "../../src/domain/ids.js";
-import { testRunContinuation } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunContinuation } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref write-safety §4 recovery matrix (D118) and the §4.1 typed operator resolutions
  * over the REAL authority database — probe-first routing, D64/D69-qualified
@@ -34,9 +34,9 @@ import {
   ManualScheduler,
   recordingLogger,
   type SessionFactoryHarness,
-} from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { UUID_5, UUID_6, UUID_7, UUID_8 } from "./fixtures/phase1c-contract-fixtures.js";
+} from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   absentProbeEvidence,
   ambiguousProbeVerdict,

@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref execution-and-sessions §5.5: tasks and transactions run under immutable, abortable
  * deadlines — a service or driver call that ignores its abort signal cannot
@@ -31,8 +31,8 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   sessionManagerFor,
-} from "../fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+} from "../../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];

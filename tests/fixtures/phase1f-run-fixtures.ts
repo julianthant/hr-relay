@@ -11,7 +11,7 @@ import {
   deriveCanonicalInputDigest,
   derivePlannedInputFingerprint,
   PlannedRunSchema,
-} from "../../../src/domain/run/start-plan.js";
+} from "../../src/domain/run/start-plan.js";
 
 /**
  * A deterministic id source. Services take an `IdFactory` for exactly this

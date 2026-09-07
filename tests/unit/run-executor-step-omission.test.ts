@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D307 — the executor under step omission.
  *
@@ -25,8 +25,8 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { StepOmissionDeclaration } from "../../src/domain/workflow/step-omission.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_A, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -34,7 +34,7 @@ import {
   recordingEmitter,
   recordingLogger,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

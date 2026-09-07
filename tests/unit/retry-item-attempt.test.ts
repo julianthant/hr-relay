@@ -1,6 +1,6 @@
-import { seedSyntheticRuntimeConfig } from "./fixtures/operator-command-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D221 — a RETRY of a failed item re-executes its `always-rerun` nodes without
  * colliding with the run it retries.
@@ -59,8 +59,8 @@ import { checkpointLookupKey } from "../../src/domain/workflow/checkpoint.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { HASH_A, NOW } from "./fixtures/phase1c-contract-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { HASH_A, NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import {
   NO_INTAKE_PROJECTIONS,
   UNSTORED_CONFIG_IDENTITY,
@@ -76,8 +76,8 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+} from "../helpers/phase1f-executor-harness.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

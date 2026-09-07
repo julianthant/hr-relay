@@ -17,7 +17,7 @@ import {
   CommandResultSchema,
   RunDisplayNameSchema,
 } from "../../src/domain/commands.js";
-import { COMMAND_FIXTURES, HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from "./fixtures/phase1c-contract-fixtures.js";
+import { COMMAND_FIXTURES, HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,

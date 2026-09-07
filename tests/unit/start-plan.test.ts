@@ -31,8 +31,8 @@ import {
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import { separationsUcpathTerminationDescriptor } from "../helpers/registered-workflows.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../src/workflows/person-lookup/workflow.js";
-import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   defineAuthoredDryRunDescriptor,
   WRITE_FIXTURE_NODE_ID,

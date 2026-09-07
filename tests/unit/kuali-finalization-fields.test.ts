@@ -344,11 +344,11 @@ describe("Kuali separation finalization — the probe verdict", () => {
   });
 
   it("keeps canary projection identity separate from permanent duplicate-write identity", () => {
-    const binding = { kind: "protected-store" as const, inputPath: "documentNumber" as const,
+    const binding = { kind: "test-data-local" as const, inputPath: "documentNumber" as const,
       name: "separationsKualiFinalizationCanaryDocumentNumber" as const,
-      valueId: "00000000-0000-4000-8000-000000000011" };
+      sourceId: "00000000-0000-4000-8000-000000000011" };
     const first = { ...TARGET, protectedBindings: [binding] };
-    const rotated = { ...first, protectedBindings: [{ ...binding, valueId: "00000000-0000-4000-8000-000000000012" }] };
+    const rotated = { ...first, protectedBindings: [{ ...binding, sourceId: "00000000-0000-4000-8000-000000000012" }] };
     assert.equal(kualiFinalizationIdempotencyKey(first), kualiFinalizationIdempotencyKey(rotated));
     assert.notEqual(kualiFinalizationQueryDigest(first), kualiFinalizationQueryDigest(rotated));
     const differentValue = { ...first, documentNumber: "4998" };

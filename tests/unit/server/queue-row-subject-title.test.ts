@@ -21,7 +21,7 @@ import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail
 import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import { resolveSubjectTitle } from "../../../src/server/dashboard/projectors/run-subject-title.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
-import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   DAY,
   makeWorld,

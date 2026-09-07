@@ -32,7 +32,7 @@ import {
   COMPOSITION_SEPARATION_DATE,
   COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
-} from "./fixtures/separations-composition-fixtures.js";
+} from "../helpers/separations-composition-fixtures.js";
 import {
   activityPersonPseudonymResultRecord,
   seedSeparationsRunAuthority,

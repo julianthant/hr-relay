@@ -1,4 +1,4 @@
-import type { ProtectedInputBinding } from "../../../src/domain/protected-input.js";
+import type { ProtectedInputBinding } from "../../src/domain/protected-input.js";
 /**
  * Shared Phase-1f interpreter harness: a real temp-file AuthorityDatabase, a
  * deterministic browser-session factory that serves the checked-in fake
@@ -13,41 +13,41 @@ import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BrowserDriver, TaskLogger } from "../../../src/base/task.js";
-import { manualClock } from "../../../src/domain/clock.js";
-import type { TestClock } from "../../../src/domain/clock.js";
+import type { BrowserDriver, TaskLogger } from "../../src/base/task.js";
+import { manualClock } from "../../src/domain/clock.js";
+import type { TestClock } from "../../src/domain/clock.js";
 import {
   BrowserSessionIdSchema,
   EidSchema,
   FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../../src/domain/ids.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+} from "../../src/domain/ids.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
-} from "../../../src/core/deadline-scheduler.js";
+} from "../../src/core/deadline-scheduler.js";
 import type {
   ExecutorSpanEvent,
   SpanEmitter,
-} from "../../../src/core/span-emitter.js";
+} from "../../src/core/span-emitter.js";
 import {
   WorkerSessionManager,
   type BrowserSessionCloseProof,
   type BrowserSessionCloseReason,
   type WorkerBrowserSessionFactory,
   type WorkerSessionEvent,
-} from "../../../src/core/worker-sessions.js";
-import { ReadOnboardingDatesOutputSchema } from "../../../src/domain/contracts/crm/read-onboarding-dates.js";
-import { ReadOnboardingRecordOutputSchema } from "../../../src/domain/contracts/crm/read-onboarding-record.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { createDeterministicCrmOnboardingDriver } from "../../../src/stores/crm/driver/fake.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../../src/stores/ucpath/driver/fake.js";
-import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
-import { QUEUED_RUN } from "./phase1f-run-fixtures.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+} from "../../src/core/worker-sessions.js";
+import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";
+import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-record.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
+import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { personLookupDescriptor } from "./registered-workflows.js";
 
 export const EXECUTOR_EID = EidSchema.parse("10873698");
 export const EXECUTOR_WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");

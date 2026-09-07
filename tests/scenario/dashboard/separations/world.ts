@@ -1,4 +1,4 @@
-import { protectedSecretSource } from "../../../unit/helpers/protected-secret-source.js";
+import { protectedSecretSource } from "../../../helpers/protected-secret-source.js";
 import { runQueuedSpanEvent } from "../../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/domain/ids.js";
 import { RunRecordService } from "../../../../src/core/run-record-service.js";
@@ -67,8 +67,8 @@ import { createReceiptService } from "../../../../src/server/trust/receipt-servi
 import { createNotificationInbox } from "../../../../src/services/notifications/inbox.js";
 import { archiveSnapshots } from "../../../fixtures/archive-seams.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../fixtures/intake-kernel-seams.js";
-import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../unit/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../../unit/fixtures/phase1f-run-fixtures.js";
+import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../../../fixtures/phase1f-run-fixtures.js";
 import { separationsDescriptor } from "../../../helpers/registered-workflows.js";
 
 export const APP_VERSION = "0.1.0";

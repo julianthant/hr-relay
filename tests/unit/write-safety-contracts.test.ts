@@ -23,7 +23,7 @@ import {
   UUID_1,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "./fixtures/phase1c-contract-fixtures.js";
+} from "../fixtures/phase1c-contract-fixtures.js";
 
 const POLICY = {
   kind: "stabilized",

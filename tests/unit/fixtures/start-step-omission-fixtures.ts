@@ -29,7 +29,7 @@ import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-inp
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import type { StepOmissionDeclaration, StepOmissionForm } from "../../../src/domain/workflow/step-omission.js";
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
-import { HASH_A } from "./phase1c-contract-fixtures.js";
+import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 
 const OmissionInput = z.strictObject({ eid: EidSchema });
 export const OmissionCanonicalInput = defineCanonicalInput(

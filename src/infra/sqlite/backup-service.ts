@@ -22,14 +22,20 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import {
   deriveSettingsCommandFingerprint,
-  markSettingsCommand,
   CommandAuditRecordSchema,
   MarkedProtectedSettingsCommandRequestSchema,
   SettingsCommandRequestSchema,
 } from "../../domain/commands.js";
 import {
+  deriveJournaledSettingsCommandFingerprint,
+  HistoricalProtectedSettingsAuditSchema,
+  HistoricalProtectedSettingsCommandSchema,
+  journaledSettingsCommand,
+} from "../../domain/commands-history.js";
+import {
   ProtectedSettingsNameSchema,
 } from "../../domain/config/protected-settings.js";
+import { LegacyProtectedSettingsNameSchema } from "../../domain/config/protected-settings-legacy.js";
 import {
   SettingsFileRecordSchema,
   type SettingsFileRecord,
@@ -156,7 +162,8 @@ function readHistoricalCommandAudit(database: DatabaseSync, commandId: string) {
   const row = rows[0];
   return row === undefined
     ? undefined
-    : CommandAuditRecordSchema.parse(JSON.parse(row.record_json));
+    // D341: a pre-D341 protected audit names retired entries in its marked request and readback.
+    : z.union([CommandAuditRecordSchema, HistoricalProtectedSettingsAuditSchema]).parse(JSON.parse(row.record_json));
 }
 
 function authenticateHistoricalOrdinarySettings(
@@ -248,11 +255,14 @@ function authenticateHistoricalProtectedPresence(
     database,
     "commands",
     current.commandId,
-    MarkedProtectedSettingsCommandRequestSchema,
+    z.union([MarkedProtectedSettingsCommandRequestSchema, HistoricalProtectedSettingsCommandSchema]),
   );
   const audit = readHistoricalCommandAudit(database, current.commandId);
   const target = { family: "protected-settings" as const, revision: presence.revision };
-  const entries = Object.fromEntries(ProtectedSettingsNameSchema.options.map((name) => {
+  // D341: a pre-D341 command's readback was recorded over the seven-name family; compare in that family.
+  const historical = command !== undefined && HistoricalProtectedSettingsCommandSchema.safeParse(command).success;
+  const readbackNames: readonly string[] = historical ? LegacyProtectedSettingsNameSchema.options : ProtectedSettingsNameSchema.options;
+  const entries = Object.fromEntries(readbackNames.map((name) => {
     const entry = presence.entries.find((candidate) => candidate.name === name);
     return [name, entry === undefined
       ? { present: false }
@@ -262,9 +272,9 @@ function authenticateHistoricalProtectedPresence(
     || command.family !== "settings"
     || command.type !== "apply-protected-settings"
     || command.target.expectedRevision !== presence.revision - 1
-    || deriveSettingsCommandFingerprint(command) !== current.commandFingerprint
+    || deriveJournaledSettingsCommandFingerprint(command) !== current.commandFingerprint
     || audit === undefined
-    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(journaledSettingsCommand(command))
     || audit.result.state !== "applied"
     || audit.result.commandId !== current.commandId
     || audit.result.restartRequired !== false

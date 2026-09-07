@@ -1,4 +1,4 @@
-import { PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
 import { CommandIdentityConflictError } from "../../domain/commands.js";
 import { createCredentialStore } from "../config/credential-store.js";
 import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
@@ -417,7 +417,7 @@ type CommandRepository = Readonly<{
   assertIdentity(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
-  getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | undefined;
+  getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
 }>;
 
@@ -431,7 +431,7 @@ type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
   get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
-  findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalSettingsAuditSchema> | undefined;
+  findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalSettingsAuditSchema> | z.infer<typeof HistoricalProtectedSettingsAuditSchema> | undefined;
 }>;
 
 type RunLifecycleJournalRepository = Readonly<{
@@ -4837,7 +4837,7 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
-        getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema])),
+        getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema, HistoricalProtectedSettingsCommandSchema])),
         findProtectedSettingsCommandIdByWriteId: (input: unknown) => {
           const { writeId, excludingCommandId } = ProtectedSettingsWriteIdLookupSchema.parse(input);
           const row = this.#database.prepare(`
@@ -4915,7 +4915,7 @@ export class AuthorityDatabase implements Disposable {
           const rows = this.#database.prepare("SELECT record_json FROM command_audits WHERE command_id=? ORDER BY record_key").all(commandId);
           if (rows.length > 1) throw new Error("historical settings command has ambiguous audits");
           const row = rows[0];
-          return row === undefined ? undefined : parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalSettingsAuditSchema]), JsonRowSchema.parse(row).record_json);
+          return row === undefined ? undefined : parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalSettingsAuditSchema, HistoricalProtectedSettingsAuditSchema]), JsonRowSchema.parse(row).record_json);
         },
         findByCommand: (commandId: string) => {
           const rows = this.#database.prepare(`

@@ -69,8 +69,9 @@ RUN needs a T3 pair as well, not just a T2.
 
 ## Fixtures a scenario may import
 
-`tests/fixtures/` is shared fixture DATA for any tier. Existing cross-tier imports from
-`tests/unit/fixtures/` are migrated by the approved D341 detour to shared ownership; consult §10.5
-for acceptance status. New shared data uses that common home/interface. Test-specific assertions,
-behavioral helpers and architecture violation fixtures remain at their owner. Offline scenarios
-never require private test configuration; file paths are named inputs, not developer-machine paths.
+`tests/fixtures/` is shared fixture DATA and `tests/helpers/` shared harnesses for any tier; the
+ownership map is `tests/fixtures/README.md`. The `test-data-ownership` guard refuses a cross-tier
+import of `tests/unit/fixtures/` or `tests/unit/helpers/` (D341). New shared data uses that common
+home/interface. Test-specific assertions, behavioral helpers and architecture violation fixtures
+remain at their owner. Offline scenarios never require private test configuration; file paths are
+named inputs (`config/test-data.json` `files`), not developer-machine paths.

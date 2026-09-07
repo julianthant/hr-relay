@@ -15,7 +15,7 @@ import {
   NoteWireSchema,
   projectNoteForOperator,
 } from "../../src/events/types.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const RAW = "ucpath:termination|10812345|2026-08-29";
 const NODE_ID = NodeIdSchema.parse("searching");

@@ -258,11 +258,11 @@ message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 Dry-run subjects resolve by label through the typed registry; workflow/kind must match the manifest.
 Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a
-browser; malformed available subjects fail by label/date. Current code uses `config/test-subjects.json`
-and independently stored credentials. D341’s approved pre-1.6.7 detour moves subjects/shared data to
-`config/test-data.json` and private identifiers/paths to ignored `config/test-data.local.json`; it is
-not implemented merely because the plan exists. Read `ref guards-and-tests` §10.5 and
-`ref clock-config-secrets` §D341 for the active transition and completion evidence. Never source a
+browser; malformed available subjects fail by label/date. Subjects and shared data live in
+`config/test-data.json`; private identifiers/paths live only in ignored `config/test-data.local.json`,
+read through `src/control/test-data.ts` (D341, pre-1.6.7 detour). `npm run cli -- test-data check
+--json` reports names/states only. Read `ref guards-and-tests` §10.5 and `ref clock-config-secrets`
+§D341 for the detour's acceptance evidence. Never source a
 canary from `.env`, expose its value, silently substitute another target, or infer current availability.
 
 ## Coding conventions

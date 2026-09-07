@@ -77,8 +77,6 @@ const CATALOG_ROWS = [
   {"key": "timekeeperName", "schema": "SECRET_SPECS", "defaultKind": "required", "editability": "operator", "sensitivity": "protected-identifier", "restartScope": "next-use", "sourceClass": "protected-store", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "requireSecret"}, {"module": "src/server/settings-runtime.ts", "purpose": "presence readback"}, {"module": "src/domain/runtime-dependencies.ts", "purpose": "blocking enqueue preflight"}], "currentSource": [{"kind": "document", "name": "settings.json"}, {"kind": "env", "name": "TIMEKEEPER_NAME"}], "targetSource": {"kind": "document", "name": "protected.json"}},
   {"key": "sharepointOnboardingRosterUrl", "schema": "SECRET_SPECS", "defaultKind": "required", "editability": "operator", "sensitivity": "protected-secret", "restartScope": "next-use", "sourceClass": "protected-store", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "requireSecret/optionalSecret"}, {"module": "src/server/settings-runtime.ts", "purpose": "presence readback"}, {"module": "src/domain/runtime-dependencies.ts", "purpose": "blocking enqueue preflight"}], "currentSource": [{"kind": "env", "name": "ONBOARDING_ROSTER_URL"}], "targetSource": {"kind": "document", "name": "protected.json"}},
   {"key": "activityPersonPseudonym", "schema": "requireActivityPersonPseudonymDomain", "defaultKind": "required", "editability": "operator", "sensitivity": "protected-secret", "restartScope": "next-use", "sourceClass": "protected-store", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "requireActivityPersonPseudonymDomain"}, {"module": "src/server/settings-runtime.ts", "purpose": "presence readback"}], "currentSource": [{"kind": "env", "name": "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY"}, {"kind": "env", "name": "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION"}], "targetSource": {"kind": "document", "name": "protected.json"}},
-  {"key": "separationsKualiFinalizationCanaryDocumentNumber", "schema": "KualiDocumentNumberSchema", "defaultKind": "none", "editability": "operator", "sensitivity": "protected-identifier", "restartScope": "next-start", "sourceClass": "protected-store", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "optionalTestTargetSecret"}, {"module": "src/server/dry-run-scenario/runtime.ts", "purpose": "retains the reference NAME only"}], "currentSource": [{"kind": "env", "name": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER"}], "targetSource": {"kind": "document", "name": "protected.json"}},
-  {"key": "personLookupCanaryEid", "schema": "EidSchema", "defaultKind": "none", "editability": "operator", "sensitivity": "protected-identifier", "restartScope": "next-start", "sourceClass": "protected-store", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "optionalTestTargetSecret"}, {"module": "src/server/dry-run-scenario/runtime.ts", "purpose": "retains the reference NAME only"}], "currentSource": [{"kind": "env", "name": "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID"}], "targetSource": {"kind": "document", "name": "protected.json"}},
   {"key": "geminiApiKeys", "schema": "SecretFamilySpecSchema", "defaultKind": "none", "editability": "operator", "sensitivity": "provider-key", "restartScope": "process", "sourceClass": "provider-env", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "requireSecretFamily/optionalSecretFamily"}, {"module": "src/server/settings-runtime.ts", "purpose": "inspectSecret-shaped availability"}], "currentSource": [{"kind": "env", "name": "GEMINI_API_KEY{,2..8}"}], "targetSource": {"kind": "document", "name": ".env"}},
   {"key": "groqApiKeys", "schema": "SecretFamilySpecSchema", "defaultKind": "none", "editability": "operator", "sensitivity": "provider-key", "restartScope": "process", "sourceClass": "provider-env", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "requireSecretFamily/optionalSecretFamily"}, {"module": "src/server/settings-runtime.ts", "purpose": "availability only"}], "currentSource": [{"kind": "env", "name": "GROQ_API_KEY{,2..8}"}], "targetSource": {"kind": "document", "name": ".env"}},
   {"key": "mistralApiKeys", "schema": "SecretFamilySpecSchema", "defaultKind": "none", "editability": "operator", "sensitivity": "provider-key", "restartScope": "process", "sourceClass": "provider-env", "consumers": [{"module": "src/domain/secrets.ts", "purpose": "requireSecretFamily/optionalSecretFamily"}, {"module": "src/server/settings-runtime.ts", "purpose": "availability only"}], "currentSource": [{"kind": "env", "name": "MISTRAL_API_KEY{,2..8}"}], "targetSource": {"kind": "document", "name": ".env"}},
@@ -134,7 +132,7 @@ export const SettingsCatalogRowSchema = z.strictObject({
   }
 });
 
-export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(88).superRefine((rows, context) => {
+export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(86).superRefine((rows, context) => {
   const keys = rows.map((row) => row.key);
   if (new Set(keys).size !== rows.length) {
     context.addIssue({ code: "custom", message: "settings catalog repeats a key" });
@@ -145,11 +143,21 @@ export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(88
 });
 
 export const SETTINGS_CATALOG = deepFreeze(SettingsCatalogSchema.parse(CATALOG_ROWS));
+/**
+ * D341: the two test-target canary environment names. Their catalog rows were
+ * retired with the canaries, so the refusal is pinned here by name instead of
+ * derived from a row: dropping the row must never re-admit the name.
+ */
+export const RETIRED_TEST_TARGET_ENVIRONMENT_KEYS = deepFreeze([
+  "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+  "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+] as const);
 /** The migration edges own these names, including the five retired singular model spellings. */
-export const MIGRATED_SETTINGS_ENVIRONMENT_KEYS = deepFreeze([...new Set(SETTINGS_CATALOG
+export const MIGRATED_SETTINGS_ENVIRONMENT_KEYS = deepFreeze([...new Set([...SETTINGS_CATALOG
   .filter((row) => row.sourceClass === "ordinary-settings" || row.sourceClass === "protected-store")
   .flatMap((row) => row.currentSource.filter((source) => source.kind === "env").map((source) => source.name))
-  .flatMap((name) => name.endsWith("_MODELS") ? [name, name.slice(0, -1)] : [name]))].sort());
+  .flatMap((name) => name.endsWith("_MODELS") ? [name, name.slice(0, -1)] : [name]),
+...RETIRED_TEST_TARGET_ENVIRONMENT_KEYS])].sort());
 export type SettingsCatalogRow = z.infer<typeof SettingsCatalogRowSchema>;
 export type SettingsCatalogKey = z.infer<typeof SettingsCatalogKeySchema>;
 

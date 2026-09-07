@@ -50,8 +50,8 @@ import {
   FIXTURE_DUO_LEASE_GRACE_MS,
   FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
   openDuoCeremonyLeaseDatabase,
-} from "./fixtures/duo-ceremony-fixtures.js";
-import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "./fixtures/phase1f-executor-harness.js";
+} from "../helpers/duo-ceremony-fixtures.js";
+import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";
 
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 const WORKER_A = WorkerIdSchema.parse("duo-proof-worker-a");

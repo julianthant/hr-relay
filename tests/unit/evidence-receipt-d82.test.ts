@@ -35,7 +35,7 @@ import {
   KUALI_RUN_ID,
   kualiReceiptEvidence,
   seedPersonLookupExitRun,
-} from "./fixtures/receipt-run-fixtures.js";
+} from "../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const roots: string[] = [];

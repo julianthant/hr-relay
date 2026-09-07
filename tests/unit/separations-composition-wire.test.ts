@@ -14,7 +14,7 @@ import { deriveCheckpointOutputDigest, deriveRunResultDigest } from "../../src/d
  * chunk added (the gate packet's write-plan block) reaches the wire an approver
  * reads, rather than living only in the graph.
  */
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
+import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,8 +40,8 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildRunSection, type RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { planStart } from "../../src/services/start/plan.js";
 import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { HASH_A, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_A, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   makeWorld,
   queuedEventOf,
@@ -153,8 +153,8 @@ describe("separations — start planning through the existing service", () => {
     const deps = { authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
       protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
     const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
-      protectedSubmissionBindings: [{ kind: "protected-store" as const, inputPath: "documentNumber" as const,
-        name: "separationsKualiFinalizationCanaryDocumentNumber" as const, valueId: uuidOf(88) }],
+      protectedSubmissionBindings: [{ kind: "test-data-local" as const, inputPath: "documentNumber" as const,
+        name: "separationsKualiFinalizationCanaryDocumentNumber" as const, sourceId: uuidOf(88) }],
       dryRun: true, priority: "bulk" as const, shape: "single" as const, configFingerprint: HASH_A,
       configSnapshotId: UUID_4, plannedBy: "local-operator" };
     const first = planStart(deps, request);
@@ -173,15 +173,15 @@ describe("separations — start planning through the existing service", () => {
 
   it("hides the protected canary document while keeping approval bound to its retained identity", () => {
     const base = MatchIdentityOutputSchema.parse(SeparationsMatchIdentity.example).packet;
-    const binding = { kind: "protected-store" as const, inputPath: "documentNumber" as const,
-      name: "separationsKualiFinalizationCanaryDocumentNumber" as const, valueId: uuidOf(88) };
+    const binding = { kind: "test-data-local" as const, inputPath: "documentNumber" as const,
+      name: "separationsKualiFinalizationCanaryDocumentNumber" as const, sourceId: uuidOf(88) };
     const first = protectIdentityEvidencePacket(base, [binding]);
     assert.equal(first.documentNumber, "protected document");
     assert.equal(JSON.stringify(first).includes(base.documentNumber), false);
     assert.equal(deriveIdentityEvidenceDigest(first), deriveIdentityEvidenceDigest(
       protectIdentityEvidencePacket({ ...base, documentNumber: "4999" }, [binding])));
     assert.notEqual(deriveIdentityEvidenceDigest(first), deriveIdentityEvidenceDigest(
-      protectIdentityEvidencePacket(base, [{ ...binding, valueId: uuidOf(89) }])));
+      protectIdentityEvidencePacket(base, [{ ...binding, sourceId: uuidOf(89) }])));
   });
 
   it("keeps protected names and signed comments out of checkpoint and result fingerprint preimages", () => {

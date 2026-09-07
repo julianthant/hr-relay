@@ -35,7 +35,7 @@ import {
   type WorkerLeaseBirthFact,
   type WorkerProcessSpawnRequest,
 } from "../../../src/server/dashboard/worker-supervisor.js";
-import { ManualScheduler } from "../fixtures/phase1f-executor-harness.js";
+import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
 
 const WORKFLOW = WorkflowIdSchema.parse("person-lookup");
 const NOW = "2026-08-26T09:00:00.000Z";

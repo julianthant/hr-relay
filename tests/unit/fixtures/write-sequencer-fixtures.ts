@@ -7,7 +7,7 @@ import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
  * AuthorityDatabase + WorkerSessionManager. Only the process edges (browser,
  * clock, ids, timers, span sink) are fakes.
  */
-import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../../helpers/duo-ceremony-fixtures.js";
 import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkerSessionProvider } from "../../../src/base/session.js";
@@ -42,7 +42,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presenta
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/core/write-sequencer.js";
-import { HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
+import { HASH_C, UUID_2, UUID_3, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -50,7 +50,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   type SessionFactoryHarness,
-} from "./phase1f-executor-harness.js";
+} from "../../helpers/phase1f-executor-harness.js";
 
 export const WRITE_FIXTURE_EID = "10812345";
 export const WRITE_FIXTURE_KEY = `${WRITE_FIXTURE_EID}|fixture-termination`;

@@ -27,12 +27,12 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/sqlite/index.js";
 import { planStart } from "../../src/services/start/plan.js";
-import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
-import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "./fixtures/operator-command-fixtures.js";
+import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor, FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];

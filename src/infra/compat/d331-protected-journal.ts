@@ -1,13 +1,27 @@
 // Frozen D331 contract from e314fb0d; permanent strict v1/v2 historical-backup reader.
+// D341: pinned to the LEGACY protected-settings family; the live family never reads D331 bytes.
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { ProtectedSettingsNameSchema, protectedSettingsReadback, type ProtectedStoreRecord } from "../../domain/config/protected-settings.js";
-import { deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest } from "../../domain/commands.js";
+import {
+  LegacyProtectedSettingsNameSchema as ProtectedSettingsNameSchema,
+  legacyProtectedSettingsReadback as protectedSettingsReadback,
+  type LegacyProtectedStoreRecord as ProtectedStoreRecord,
+} from "../../domain/config/protected-settings-legacy.js";
+import type { CommandRequest } from "../../domain/commands.js";
 import type { CommandAuditRecord } from "../../domain/commands.js";
+import {
+  deriveJournaledSettingsCommandFingerprint,
+  journaledSettingsCommand,
+  type HistoricalProtectedSettingsAudit,
+  type HistoricalProtectedSettingsCommand,
+} from "../../domain/commands-history.js";
 import type { ProtectedSettingsCurrentRecord } from "../../domain/authority.js";
 
+/** D341: pre-D341 rows name retired entries, so both readers admit the frozen historical arm. */
+export type JournaledProtectedCommand = CommandRequest | HistoricalProtectedSettingsCommand;
+export type JournaledProtectedAudit = CommandAuditRecord | HistoricalProtectedSettingsAudit;
 export interface LegacyProtectedJournal {
-  commands: { get(commandId: string): CommandRequest | undefined };
-  commandAudits: { findByCommand(commandId: string): CommandAuditRecord | undefined };
+  commands: { get(commandId: string): JournaledProtectedCommand | undefined };
+  commandAudits: { findByCommand(commandId: string): JournaledProtectedAudit | undefined };
   protectedSettingsCurrent: { get(): ProtectedSettingsCurrentRecord | undefined };
 }
 
@@ -21,7 +35,7 @@ function protectedCurrentEntries(record: ProtectedStoreRecord) {
 function requireMatchingProtectedCommand(
   record: ProtectedStoreRecord,
   applied: NonNullable<ProtectedStoreRecord["lastApplied"]>,
-  command: CommandRequest | undefined,
+  command: JournaledProtectedCommand | undefined,
 ) {
   if (command === undefined) {
     throw new Error(
@@ -35,7 +49,7 @@ function requireMatchingProtectedCommand(
       `protected settings revision ${String(record.revision)} names non-protected-settings command ${applied.commandId}`,
     );
   }
-  const commandFingerprint = deriveSettingsCommandFingerprint(command);
+  const commandFingerprint = deriveJournaledSettingsCommandFingerprint(command);
   if (commandFingerprint !== applied.commandFingerprint
     || command.target.expectedRevision !== applied.expectedRevision
     || command.payload.protectedSchemaHash !== applied.protectedSchemaHash
@@ -95,7 +109,7 @@ export function observeJournaledProtectedSettings(
     after: record.revision,
   }];
   const readback = protectedSettingsReadback(record);
-  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(markSettingsCommand(command))
+  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(journaledSettingsCommand(command))
     || audit.result.state !== "applied"
     || audit.result.commandId !== applied.commandId
     || audit.result.restartRequired !== false

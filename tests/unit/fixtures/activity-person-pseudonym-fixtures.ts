@@ -25,7 +25,7 @@ import {
   COMPOSITION_SEPARATION_DATE,
   COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
-} from "./separations-composition-fixtures.js";
+} from "../../helpers/separations-composition-fixtures.js";
 import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 export const ACTIVITY_PERSON_PSEUDONYM_KEY_HEX =

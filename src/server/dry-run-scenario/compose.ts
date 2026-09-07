@@ -1,9 +1,12 @@
-import { createCredentialStore } from "../../infra/config/credential-store.js";
 /**
  * CLI composition for one T1b dry-run case. Manifest loading and the ready
  * runtime are injected at the outer composition root: this server module never
  * imports `tests/**`, while the blocked path opens only v16 authority and the
  * checked-in target registry — no worker or browser service is constructed.
+ *
+ * D341: the subject's private input comes from ignored
+ * `config/test-data.local.json`, captured once per start; protected Settings
+ * (the credential store) are no longer opened here at all.
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -21,19 +24,19 @@ import {
   resolveSeparationsTestTarget,
   type TestTargetRegistry,
 } from "../../control/test-target-registry.js";
+import { createTestDataInputSource, testDataLocalPath } from "../../control/test-data.js";
+import type { TestDataInputSource } from "../../domain/test-data.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   assertNoMigratedEnvironmentKeys,
   hostAwareResolutionEnvironment,
-  type ProtectedSecretSource,
 } from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
 } from "../../domain/trust/dry-run-scenario.js";
-import { createCredentialSecretSource } from "../settings-runtime.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 
 /**
@@ -48,15 +51,15 @@ export function resolveDryRunScenarioTarget(
   registry: TestTargetRegistry,
   manifest: DryRunScenarioManifest,
   subjectLabel: string,
-  protectedSecrets: ProtectedSecretSource,
+  testInputs: TestDataInputSource,
 ): DryRunScenarioTargetResolution {
   switch (manifest.workflow) {
     case "separations-kuali-finalization":
       return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel);
     case "separations":
-      return resolveSeparationsTestTarget(registry, subjectLabel, protectedSecrets);
+      return resolveSeparationsTestTarget(registry, subjectLabel, testInputs);
     case "person-lookup":
-      return resolvePersonLookupTestTarget(registry, subjectLabel, protectedSecrets);
+      return resolvePersonLookupTestTarget(registry, subjectLabel, testInputs);
     default:
       throw new Error(`dry-run target resolution does not support workflow ${manifest.workflow}`);
   }
@@ -73,9 +76,11 @@ export interface DryRunScenarioComposeInput {
     clock: Clock;
     ids: IdFactory;
   }>) => DryRunScenarioRuntime;
-  readonly repoRoot?: string;
+  /** The exact checkout root whose `config/` owns the shared and private test data. */
+  readonly repoRoot: string;
   readonly env?: NodeJS.ProcessEnv;
-  readonly protectedSecrets?: ProtectedSecretSource;
+  /** Test-only override of the private input capture; production reads `config/test-data.local.json`. */
+  readonly testInputs?: TestDataInputSource;
   readonly clock?: Clock;
   readonly ids?: IdFactory;
 }
@@ -84,7 +89,7 @@ export async function composeDryRunScenarioCommand(
   input: DryRunScenarioComposeInput,
 ): Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }> {
   const args = parseDryRunScenarioArguments(input.args);
-  const repoRoot = input.repoRoot ?? process.cwd();
+  const repoRoot = input.repoRoot;
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
@@ -94,18 +99,18 @@ export async function composeDryRunScenarioCommand(
   const registry = readTestTargetRegistry(repoRoot, [manifestInput]);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
-  const protectedAuthority = createCredentialStore({ stateRoot });
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "dry-run-scenario" },
     clock,
   );
   try {
-    const protectedSecrets = input.protectedSecrets ?? createCredentialSecretSource(protectedAuthority);
+    // One capture per start: the same source instance answers every read of this composition.
+    const testInputs = input.testInputs ?? createTestDataInputSource(testDataLocalPath(repoRoot));
     const outcome = await runDryRunScenario({
       args,
       loadManifest: () => Promise.resolve(manifestInput),
       resolveTarget: (manifest, subjectLabel) =>
-        resolveDryRunScenarioTarget(registry, manifest, subjectLabel, protectedSecrets),
+        resolveDryRunScenarioTarget(registry, manifest, subjectLabel, testInputs),
       persistResult: (result) => {
         database.authority.dryRunScenarioResults.insert(result);
       },

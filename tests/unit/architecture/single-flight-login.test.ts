@@ -20,7 +20,7 @@ import {
   healthyUcpathDriver,
   sessionFactoryHarness,
   sessionManagerFor,
-} from "../fixtures/phase1f-executor-harness.js";
+} from "../../helpers/phase1f-executor-harness.js";
 
 describe("single-flight login", () => {
   it("keeps session login invocation inside the worker session manager", () => {

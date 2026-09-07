@@ -10,7 +10,7 @@ import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { FailureDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import type { RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
 import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
-import { kualiReceiptEvidence } from "./receipt-run-fixtures.js";
+import { kualiReceiptEvidence } from "../../fixtures/receipt-run-fixtures.js";
 
 export function receiptWireFixture(): RunEvidenceReceipt {
   const evidence = kualiReceiptEvidence();

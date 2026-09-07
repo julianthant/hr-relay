@@ -73,16 +73,16 @@ import {
   UUID_8,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "../fixtures/phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
   WORKER_START_REQUEST,
-} from "../fixtures/phase1f-run-fixtures.js";
+} from "../../fixtures/phase1f-run-fixtures.js";
 import {
   ARCHIVED_RUN,
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
-} from "../fixtures/archive-fixtures.js";
+} from "../../fixtures/archive-fixtures.js";
 import { failureDetailWireFixture } from "../fixtures/trust-wire-fixtures.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,

@@ -220,8 +220,6 @@ import {
   SecretFileSpecSchema,
   SecretAvailabilitySchema,
   SecretSpecSchema,
-  TEST_TARGET_SECRET_SPECS,
-  TestTargetSecretSpecSchema,
 } from "../../../src/domain/secrets.js";
 import {
   ActivityPersonPseudonymEvidenceSchema,
@@ -337,21 +335,21 @@ import {
   UNSCOPED_PROOF,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
-} from "../fixtures/phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   ARCHIVE_RELAUNCH,
   ARCHIVED_RUN,
   VERSION_BUMP_APPLICATION,
   VERSION_BUMP_PLAN,
   VERSION_PLAN_ROW,
-} from "../fixtures/archive-fixtures.js";
+} from "../../fixtures/archive-fixtures.js";
 import {
   ArchivedRunRecordSchema,
   ArchiveRelaunchRecordSchema,
   VersionBumpApplicationSchema,
   VersionBumpPlanSchema,
 } from "../../../src/domain/archive/model.js";
-import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { CURRENT_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 import {
@@ -1376,7 +1374,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
   { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "protected-store", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "ProtectedSecretSource", schema: ProtectedSecretSourceSchema, fixtures: [{ read: () => ({}) }] },
-  { name: "TestTargetSecretSpec", schema: TestTargetSecretSpecSchema, fixtures: [TEST_TARGET_SECRET_SPECS[0]] },
   { name: "TestTargetRegistry", schema: TestTargetRegistrySchema, fixtures: [TEST_TARGET_REGISTRY] },
   { name: "SeparationsKualiFinalizationTestTargetResolution", schema: SeparationsKualiFinalizationTestTargetResolutionSchema, fixtures: [{ state: "blocked", label: "finalization-canary", reason: "blocked: needs finalization-canary" }] },
   { name: "ScenarioManifest", schema: ScenarioManifestSchema, fixtures: [PREFLIGHT_SCENARIO_MANIFESTS[0]], openFixturePaths: ["input"] },
@@ -1573,6 +1570,13 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // A schema TYPE, like CanonicalJsonSchema above — it describes a validator,
   // not a value that crosses a boundary, so it cannot itself be schema-derived.
   "src/domain/workflow/canonical-input.ts:CanonicalInputSchema",
+  // D341 test-data inputs: `TestDataLocalInputEntry` is a generic projection of
+  // the schema-derived `TestDataLocalInputs` (one entry, keyed by input name),
+  // and `TestDataInputSource` is the in-process read port over the ignored
+  // private file — a port like the credential authority above. Its data schema
+  // (`TestDataLocalConfigSchema`) is proven at its owner, tests/unit/test-data-config.test.ts.
+  "src/domain/test-data.ts:TestDataLocalInputEntry",
+  "src/domain/test-data.ts:TestDataInputSource",
   "src/domain/workflow/graph.ts:ProofOf",
   "src/domain/workflow/graph.ts:WorkflowRef",
   "src/domain/workflow/graph.ts:AnyWorkflowRef",

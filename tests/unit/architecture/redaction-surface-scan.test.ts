@@ -72,19 +72,19 @@ import {
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { buildArchivedCaptureResource } from "../../../src/server/dashboard/queries/archive.js";
 import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../../src/server/dashboard/queries/artifact-bytes.js";
-import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
-import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
+import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../../fixtures/archive-fixtures.js";
+import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 import {
   LEDGER_OUTBOX_PAYLOAD,
   NOW,
   UUID_1,
   UUID_6,
-} from "../fixtures/phase1c-contract-fixtures.js";
+} from "../../fixtures/phase1c-contract-fixtures.js";
 import { MAXIMAL_FAILURE } from "../fixtures/advisory-fixtures.js";
 import {
   EXIT_RUN_ID,
   seedPersonLookupExitRun,
-} from "../fixtures/receipt-run-fixtures.js";
+} from "../../fixtures/receipt-run-fixtures.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
   ALL_CANARY_NAMES,

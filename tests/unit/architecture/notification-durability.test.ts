@@ -32,7 +32,7 @@ import {
   type NotificationInbox,
   type OsNotificationDelivery,
 } from "../../../src/services/notifications/inbox.js";
-import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 
 const NEXT = "2026-07-31T17:05:00.000Z";
 const disposers: (() => void)[] = [];

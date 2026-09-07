@@ -33,7 +33,7 @@ import {
   defineWorkflowRole,
 } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { HASH_A } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
 
 const FixtureInput = z.strictObject({ name: z.string().min(1) });
 const FixtureCanonicalInput = defineCanonicalInput(

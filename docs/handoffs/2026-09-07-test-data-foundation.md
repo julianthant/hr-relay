@@ -244,3 +244,60 @@ is claimed by this planning record. The final launch prompt supplies the verifie
 The assignment is ready for implementation once that committed content/base is reverified. Missing
 person-lookup input and retired-env cleanup remain Task-1.6.7 live prerequisites, not a reason to skip
 this detour’s offline proof or actual private-file conversion. Recheck volatile actual-target facts.
+
+## Execution record (supervisor, 2026-09-07)
+
+Worktree `/Users/julianhein/Projects/hr-worktree-test-data`, branch `codex/test-data-foundation`
+from `f68dc9a5b355336d3a755081d8d99ddd7ad9fed3`. Actual root rechecked before any effect (names and
+shape only): `.tracker/credentials/protected.json` is schemaVersion 1, revision 2, one history
+entry, an applied upgrade binding, five names including the Separations canary and no
+person-lookup EID; `.tracker/state.db` is schema 32 with zero commands/audits; no
+`config/test-data.local.json` exists. The paused foundation-close worktree was not touched.
+
+**TD4 ownership map.** Moved with `git mv` and importer rewrites (typecheck clean after the move):
+to `tests/fixtures/`: `phase1c-contract-fixtures`, `phase1f-run-fixtures`, `receipt-run-fixtures`,
+`run-lifecycle-fixtures`, `operator-command-fixtures`, `archive-fixtures`; to `tests/helpers/`:
+`phase1f-executor-harness`, `ucpath-termination-fixtures`, `separations-composition-fixtures`,
+`kuali-finalization-fixtures`, `duo-ceremony-fixtures`, `protected-secret-source`. Unit-only
+modules stay under `tests/unit/fixtures/` and `tests/unit/helpers/` (new: `test-data-source.ts`).
+The durable map is `tests/fixtures/README.md`, enforced by the `test-data-ownership` guard.
+
+**Proof matrix status.** P1–P8 proven offline (file map in `ref guards-and-tests` §10.5 completion
+record). P9 pending integration. Defects found by the proofs and fixed in the candidate: v2-only
+reader in the credential store's pre-rename check; identity-blind under-lock re-plan in the
+migration; historical seven-name protected readback rejected by the audit grammar.
+
+**Candidate frozen (2026-09-07), awaiting independent review.** Commits on `codex/test-data-foundation`
+above base `f68dc9a5b`: `d69cda56c`, `eec6a9c39`, `ec1a55432`, `e2e6027a0`, then this recording
+commit as the candidate tip. Gate evidence and the parity-refreeze classification are recorded in
+`ref guards-and-tests` §10.5 (candidate paragraph before the pending review line). Excluded from the
+candidate: the paused foundation-close worktree and its handoff, the unrelated stash on master, the
+operator root under `.tracker/`, `.env`, and the still-pending Task 1.6.7 live prerequisites
+(person-lookup EID input, retired-env cleanup). P9 stays open until the reviewed integration and the
+approved private conversion run from the primary checkout.
+
+**Review round 1 (2026-09-07): BLOCKED** on candidate `a97c8832a` — compaction-truncated coverage
+plus required findings F1 (pre-D341 protected journal rows unreadable through the live grammar) and
+F2 (architecture-helper importer accounting), advisories A1–A4. All fixed in `3a3fa427f`; the
+finding ledger and dispositions live in `ref guards-and-tests` §10.5. Round 2 is a fresh complete
+review of the whole candidate.
+
+**Candidate refrozen for round 2:** implementation head `3a3fa427f`, gates green (438 files / 5509 tests,
+parity 259, no reference change); this recording commit is the round-2 tip.
+
+**Review round 2 (2026-09-07): BLOCKED** on candidate `92bd0883c` — reviewer compaction; no required
+finding; P1–P8 recorded satisfied; advisories A5 (registry prose), A6 (unchanged-plan destination
+re-verification under the lock) and A7 (decoded duplicate keys) fixed in `63aa8cca6` with tests that
+fail against the pre-fix code. Ledger and carried limits live in `ref guards-and-tests` §10.5. Round 3
+is a fresh bounded assignment: the fix commit plus the six carried limits.
+
+**Candidate refrozen for round 3:** implementation head `63aa8cca6`, gates green (438 files / 5510 tests,
+parity 259, no reference change); this recording commit is the round-3 tip.
+
+**Review round 3 (2026-09-07): PASS (bounded)** on candidate `fff3be61f` — the fix commit and the six
+carried limits all inspected or independently rerun; no required finding; advisories A8 (vacuous
+never-by-value proofs) and A9 (key refusal wording) fixed in `1e5b4b7b4`. Ledger in
+`ref guards-and-tests` §10.5. Round 4 is a bounded fresh review of the A8/A9 delta only.
+
+**Candidate refrozen for round 4:** implementation head `1e5b4b7b4`, gates green (438 files / 5510 tests,
+parity 259, no reference change); this recording commit is the round-4 tip.

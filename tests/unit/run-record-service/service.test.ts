@@ -37,10 +37,10 @@ import {
 } from "../../../src/infra/sqlite/authority-database.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { doctorAuthorityStorage } from "../../../src/infra/sqlite/storage-doctor.js";
-import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
+import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
-import { QUEUED_RUN, RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
-import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
+import { QUEUED_RUN, RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../../fixtures/archive-fixtures.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -107,9 +107,9 @@ describe("protected canonical command fingerprints", () => {
       const request = { ...f.request, descriptorVersion: personLookupDescriptor.version,
         contractFingerprint: personLookupDescriptor.contractFingerprint,
         input: { ...f.request.input, raw: { emplId }, parsed: { ...f.request.input.parsed,
-          value: { emplId }, protectedBindings: [{ kind: "protected-store" as const,
+          value: { emplId }, protectedBindings: [{ kind: "test-data-local" as const,
             inputPath: "emplId" as const, name: "personLookupCanaryEid" as const,
-            valueId: "10000000-0000-4000-8000-000000000001" }] } } };
+            sourceId: "10000000-0000-4000-8000-000000000001" }] } } };
       const source = created(f.service, request);
       const terminal = requireLifecycleApplied(f.service.transition({ commandId: UUID_5,
         runId: source.envelope.runId, expectedVersion: source.version,
@@ -159,11 +159,11 @@ describe("protected canonical command fingerprints", () => {
   });
 
   it("binds protected input identity and safe facts across create and archive journals", () => {
-    const journals = (emplId: string, memo = "ordinary fact", valueId = "10000000-0000-4000-8000-000000000001") => {
+    const journals = (emplId: string, memo = "ordinary fact", sourceId = "10000000-0000-4000-8000-000000000001") => {
       const f = fixture();
       const request = { ...f.request, input: { ...f.request.input, raw: { emplId, memo },
         parsed: { ...f.request.input.parsed, value: { emplId, memo }, protectedBindings: [{
-          kind: "protected-store" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const, valueId }] } } };
+          kind: "test-data-local" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const, sourceId }] } } };
       const run = created(f.service, request);
       assert.deepEqual(run.input.raw, { emplId, memo });
       const generation = f.database.getMeta().authorityGeneration;

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "vitest";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   parseTestTargetRegistry,
@@ -14,8 +17,9 @@ import {
   PERSON_LOOKUP_WORKFLOW,
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
-import type { ProtectedSecretSource } from "../../src/domain/secrets.js";
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
+import type { TestDataInputSource } from "../../src/domain/test-data.js";
+import { createTestDataInputSource, testDataLocalPath } from "../../src/control/test-data.js";
+import { testDataInputSource } from "./helpers/test-data-source.js";
 
 type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
 type FinalizationArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations-kuali-finalization"]>;
@@ -23,21 +27,21 @@ type ChainArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations"
 
 /**
  * The ONE test-target value that crosses the closed secret boundary (D300): the
- * canary's Kuali document number, bound to its protected-store name. The
+ * canary's Kuali document number, bound to its test-data-local name. The
  * three person references D286 registered are retired, so no fixture in this
  * file can supply an EID or a display name through the registry at all.
  */
 const DOCUMENT_NUMBER_SECRET = {
   name: "separationsKualiFinalizationCanaryDocumentNumber",
 } as const;
-/** The fixture subject's number, configured in protected Settings. */
+/** The fixture subject's number, configured in ignored config/test-data.local.json (D341). */
 const FIXTURE_DOCUMENT_NUMBER = "4502";
-const FIXTURE_CONFIGURED_SOURCE = protectedSecretSource({
+const FIXTURE_CONFIGURED_SOURCE = testDataInputSource({
   separationsKualiFinalizationCanaryDocumentNumber: FIXTURE_DOCUMENT_NUMBER,
 });
 /** A private canary-shaped value, supplied only by the test protected store. */
 const COMMITTED_DOCUMENT_NUMBER = "4999";
-const COMMITTED_CONFIGURED_SOURCE = protectedSecretSource({
+const COMMITTED_CONFIGURED_SOURCE = testDataInputSource({
   separationsKualiFinalizationCanaryDocumentNumber: COMMITTED_DOCUMENT_NUMBER,
 });
 
@@ -146,18 +150,35 @@ function chainSubject(
   return { ...SUBJECT, workflows: { separations: CHAIN_ARM }, ...overrides };
 }
 
-/** A protected source whose every read is recorded. */
-function recordingProtectedSource(values: Parameters<typeof protectedSecretSource>[0]): {
-  readonly source: ProtectedSecretSource;
+/** A test-data input source whose every read is recorded by input name. */
+function recordingInputSource(values: Parameters<typeof testDataInputSource>[0]): {
+  readonly source: TestDataInputSource;
   readonly read: readonly string[];
 } {
   const read: string[] = [];
-  const delegate = protectedSecretSource(values);
-  const source = { read: () => {
-    read.push("protected-store");
-    return delegate.read();
+  const delegate = testDataInputSource(values);
+  const source: TestDataInputSource = { read: (name) => {
+    read.push(name);
+    return delegate.read(name);
   } };
   return { source, read };
+}
+
+/** A source whose private file is invalid: the loader already refused it by key, never by value. */
+const privateRoots: string[] = [];
+afterEach(() => { for (const root of privateRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+/** A REAL private file (0600) carrying one configured value, read through the production loader. */
+function privateFileSource(name: string, value: string): TestDataInputSource {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-test-target-private-"));
+  privateRoots.push(root);
+  mkdirSync(join(root, "config"));
+  const path = testDataLocalPath(root);
+  writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, inputs: {
+    [name]: { valueId: "10000000-0000-4000-8000-00000000000a", value, updatedAt: "2026-09-07T00:00:00.000Z" },
+  }, files: {} })}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
+  return createTestDataInputSource(path);
 }
 
 describe("the committed test target registry", () => {
@@ -197,7 +218,7 @@ describe("the committed test target registry", () => {
 
   it("commits the canary's document as a closed reference, never as a number", () => {
     // D300: a literal here would let a COMMIT choose the live subject. The
-    // reference makes protected Settings the only place that can.
+    // reference makes ignored config/test-data.local.json the only place that can.
     const chain = TEST_TARGET_REGISTRY.targets[0]?.workflows[SEPARATIONS_WORKFLOW];
     assert.deepEqual(chain?.publicInput.document, {
       state: "configured",
@@ -207,20 +228,20 @@ describe("the committed test target registry", () => {
   });
 
   it("resolves the available composed canary through its configured number", () => {
-    const { source, read } = recordingProtectedSource({
+    const { source, read } = recordingInputSource({
       separationsKualiFinalizationCanaryDocumentNumber: COMMITTED_DOCUMENT_NUMBER,
     });
     const resolution = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", source);
     assert.deepEqual(resolution, {
       state: "ready",
       label: "finalization-canary",
-      protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber",
-        valueId: "00000000-0000-4000-8000-000000000010" }],
+      protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber",
+        sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: COMMITTED_DOCUMENT_NUMBER,
       },
     });
-    assert.deepEqual(read, ["protected-store"]);
+    assert.deepEqual(read, ["separationsKualiFinalizationCanaryDocumentNumber"]);
   });
 
   it("blocks the standalone finalization arm on its declared pending leaves", () => {
@@ -699,53 +720,61 @@ describe("separations chain test target resolution", () => {
       state: "ready",
       label: "fixture-target",
       // The document number is the box's ONE varying value, and it arrives from
-      // protected Settings through the arm's closed reference;
+      // ignored config/test-data.local.json through the arm's closed reference;
       // The server planner admits the protected timekeeper and applies
       // ingress defaults once after this readiness check.
       // Nothing here is authored by the resolver.
-      protectedBindings: [{ kind: "protected-store", inputPath: "documentNumber",
-        name: "separationsKualiFinalizationCanaryDocumentNumber", valueId: "00000000-0000-4000-8000-000000000010" }],
+      protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+        name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: FIXTURE_DOCUMENT_NUMBER,
       },
     });
   });
 
-  it("reads the number once through the protected store", () => {
+  it("reads the number once through the test-data-local source", () => {
     const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
-    const { source, read } = recordingProtectedSource({
+    const { source, read } = recordingInputSource({
       separationsKualiFinalizationCanaryDocumentNumber: FIXTURE_DOCUMENT_NUMBER,
     });
     const result = resolveSeparationsTestTarget(parsed, "fixture-target", source);
     assert.equal(result.state, "ready");
-    assert.deepEqual(read, ["protected-store"]);
+    assert.deepEqual(read, ["separationsKualiFinalizationCanaryDocumentNumber"]);
   });
 
   it("blocks BY NAME when the operator has configured no number", () => {
     const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
-    assert.deepEqual(resolveSeparationsTestTarget(parsed, "fixture-target", protectedSecretSource()), {
+    assert.deepEqual(resolveSeparationsTestTarget(parsed, "fixture-target", testDataInputSource()), {
       state: "blocked",
       label: "fixture-target",
       reason: "blocked: needs fixture-target; its Kuali document number is not configured — "
-        + `set ${DOCUMENT_NUMBER_SECRET.name} in protected Settings (D300)`,
+        + `set ${DOCUMENT_NUMBER_SECRET.name} in config/test-data.local.json (D341)`,
     });
   });
 
   it("defects by reference and key — never by value — on a malformed configured number", () => {
     // The value is judged by the SAME `KualiDocumentNumberSchema` the start box
-    // applies (3-8 digits), so what the resolver accepts is exactly what an
-    // operator could have typed. A malformed one is a DEFECT in local
-    // configuration, and its message may name the reference and the key only.
+    // applies (3-8 digits) when the private file loads, so what the resolver
+    // accepts is exactly what an operator could have typed. Each malformed value
+    // below is written to a real 0600 private file and read through the
+    // production loader: a DEFECT in local configuration surfaces as a
+    // TestDataLocalConfigError, and the resolver's message may name the
+    // reference and the key only. Any other source failure propagates unchanged.
     const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
+    assert.throws(
+      () => resolveSeparationsTestTarget(parsed, "fixture-target", { read: () => { throw new TypeError("unexpected source failure"); } }),
+      (error: unknown) => error instanceof TypeError && (error).name !== "TestTargetRegistryDefectError",
+    );
     for (const malformed of ["abc", "1", "123456789", "CANARY_PRIVATE_DOCUMENT_NUMBER"]) {
       assert.throws(
-        () => resolveSeparationsTestTarget(parsed, "fixture-target", { read: () => ({ malformed }) }),
+        () => resolveSeparationsTestTarget(parsed, "fixture-target", privateFileSource(DOCUMENT_NUMBER_SECRET.name, malformed)),
         (error: unknown) => {
           assert.equal((error as Error).name, "TestTargetRegistryDefectError");
           const diagnostic = String(error);
           assert.match(diagnostic, /fixture-target marked available, last observed 2026-08-25/);
           assert.match(diagnostic, new RegExp(`document-number reference ${DOCUMENT_NUMBER_SECRET.name}`));
-          assert.match(diagnostic, /protected Settings/u);
+          assert.match(diagnostic, /config\/test-data\.local\.json/u);
+          assert.match(diagnostic, /TestDataLocalConfigError/u);
           assert.equal(diagnostic.includes(malformed), false, `defect retained ${malformed}`);
           return true;
         },
@@ -770,7 +799,7 @@ describe("separations chain test target resolution", () => {
         availability: { state, lastObserved: "2026-08-19", reason: `${state} fixture` },
       })]));
       // A perfectly valid number is configured: the dated availability claim
-      // must still win, so a decayed subject never reads protected Settings.
+      // must still win, so a decayed subject never reads the private file.
       return resolveSeparationsTestTarget(parsed, "fixture-target", FIXTURE_CONFIGURED_SOURCE);
     });
     assert.deepEqual(results, [
@@ -836,27 +865,27 @@ describe("the person-lookup live-read resolver (D318)", () => {
   });
 
   it("blocks by name when the EID is not configured and reads the store once", () => {
-    const { source, read } = recordingProtectedSource({});
+    const { source, read } = recordingInputSource({});
     const resolution = resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, PERSON_LOOKUP_LABEL, source);
     assert.deepEqual(resolution, {
       state: "blocked",
       label: PERSON_LOOKUP_LABEL,
-      reason: `blocked: needs ${PERSON_LOOKUP_LABEL}; its UCPath employee id is not configured — set ${EID_NAME} in protected Settings (D318)`,
+      reason: `blocked: needs ${PERSON_LOOKUP_LABEL}; its UCPath employee id is not configured — set ${EID_NAME} in config/test-data.local.json (D341)`,
     });
-    assert.deepEqual(read, ["protected-store"]);
+    assert.deepEqual(read, ["personLookupCanaryEid"]);
   });
 
   it("resolves the configured EID through the person-lookup start box into the exact canonical input", () => {
     const resolution = resolvePersonLookupTestTarget(
       TEST_TARGET_REGISTRY,
       PERSON_LOOKUP_LABEL,
-      protectedSecretSource({ personLookupCanaryEid: "10800000" }),
+      testDataInputSource({ personLookupCanaryEid: "10800000" }),
     );
     assert.deepEqual(resolution, {
       state: "ready",
       label: PERSON_LOOKUP_LABEL,
-      protectedBindings: [{ kind: "protected-store", inputPath: "emplId",
-        name: "personLookupCanaryEid", valueId: "00000000-0000-4000-8000-000000000010" }],
+      protectedBindings: [{ kind: "test-data-local", inputPath: "emplId",
+        name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: { emplId: "10800000", keepNonHdh: false, includeCrmDates: false },
     });
   });
@@ -866,17 +895,17 @@ describe("the person-lookup live-read resolver (D318)", () => {
       () => resolvePersonLookupTestTarget(
         TEST_TARGET_REGISTRY,
         PERSON_LOOKUP_LABEL,
-        { read: () => ({ invalid: "not-an-eid-99" }) },
+        privateFileSource("personLookupCanaryEid", "not-an-eid-99"),
       ),
       (error: unknown) => error instanceof Error
-        && /employee-id reference personLookupCanaryEid is invalid in protected Settings/u.test(error.message)
+        && /employee-id reference personLookupCanaryEid is invalid in config\/test-data\.local\.json/u.test(error.message)
         && !error.message.includes("not-an-eid-99"),
     );
   });
 
   it("refuses a label that declares no person-lookup arm by name", () => {
     assert.throws(
-      () => resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", protectedSecretSource()),
+      () => resolvePersonLookupTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", testDataInputSource()),
       /test target finalization-canary declares no person-lookup arm; it declares separations, separations-kuali-finalization/u,
     );
   });

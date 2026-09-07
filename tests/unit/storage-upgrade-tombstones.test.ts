@@ -11,7 +11,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js"
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const now = "2026-09-06T12:00:00.000Z";
 const clock = manualClock(new Date(now));

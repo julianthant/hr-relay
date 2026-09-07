@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D214 — a run ATTEMPT is not one execution of its graph, and the composed
  * separations graph is the proof: chunk 6b's run `00419600` read thirteen nodes
@@ -44,7 +44,7 @@ import type { TestClock } from "../../src/domain/clock.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
-import { HASH_A, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_EID,
   ManualScheduler,
@@ -53,8 +53,8 @@ import {
   recordingEmitter,
   recordingLogger,
   sessionManagerFor,
-} from "./fixtures/phase1f-executor-harness.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+} from "../helpers/phase1f-executor-harness.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

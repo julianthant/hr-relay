@@ -41,7 +41,7 @@ import {
   KUALI_IDEMPOTENCY_KEY,
   KUALI_RUN_ID,
   kualiReceiptEvidence,
-} from "./fixtures/receipt-run-fixtures.js";
+} from "../fixtures/receipt-run-fixtures.js";
 import frozenPreD309Receipts from "./fixtures/frozen-pre-d309-separations-receipts.json" with { type: "json" };
 
 function commitActionOfReceipt(receipt: RunEvidenceReceipt) {

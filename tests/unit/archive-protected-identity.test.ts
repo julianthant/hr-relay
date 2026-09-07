@@ -4,10 +4,10 @@ import { ArchivedRunContentSchema, archivedRunContentDigest, archivedRunReferenc
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
-import { ARCHIVED_RUN } from "./fixtures/archive-fixtures.js";
+import { ARCHIVED_RUN } from "../fixtures/archive-fixtures.js";
 
-const bindings = [{ kind: "protected-store", inputPath: "documentNumber",
-  name: "separationsKualiFinalizationCanaryDocumentNumber", valueId: "10000000-0000-4000-8000-000000000001" }] as const;
+const bindings = [{ kind: "test-data-local", inputPath: "documentNumber",
+  name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "10000000-0000-4000-8000-000000000001" }] as const;
 function content(documentNumber = "12345678", effectiveDate = "2026-09-01") {
   const { contentDigest: _digest, ...base } = ARCHIVED_RUN;
   return ArchivedRunContentSchema.parse({ ...base, workflowId: "separations",
@@ -23,7 +23,7 @@ describe("protected archive identities", () => {
     assert.notEqual(archivedRunContentDigest(original), archivedRunContentDigest(content("12345678", "2026-09-02")));
     assert.notEqual(archivedRunContentDigest(original), archivedRunContentDigest({ ...original,
       input: { ...original.input, parsed: { ...original.input.parsed,
-        protectedBindings: [{ ...bindings[0], valueId: "10000000-0000-4000-8000-000000000002" }] } } }));
+        protectedBindings: [{ ...bindings[0], sourceId: "10000000-0000-4000-8000-000000000002" }] } } }));
   });
   it("authenticates retained archives and binds safe content without publishing historical raw digests", () => {
     const original = content();

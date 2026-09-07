@@ -15,6 +15,7 @@
 import { z } from "zod";
 import type { RuntimeIsolation } from "../config/define-runtime-isolation.js";
 import { DRY_RUN_SCENARIO_USAGE } from "./dry-run-scenario-runner.js";
+import { TEST_DATA_USAGE } from "./test-data-usage.js";
 import type { WorkerLoopReport } from "./worker-loop.js";
 
 export interface RunningDashboard {
@@ -49,6 +50,8 @@ export interface RebuildRuntimeStart {
   readonly storage?: StorageComposer;
   /** Explicit seam override for tests; production registers via `registerDryRunScenarioComposer`. */
   readonly dryRunScenario?: DryRunScenarioComposer;
+  /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
+  readonly testData?: TestDataComposer;
   /** Explicit seam override for tests; production registers the reviewed D288 command. */
   readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
   /** Explicit seam override for tests; production subscribes to the real process signals. */
@@ -102,6 +105,11 @@ type StorageComposer = (
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: number }>;
 type DryRunScenarioComposer = (
+  isolation: RuntimeIsolation,
+  args: readonly string[],
+) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
+/** D341: `test-data check|migrate` — names, states and reasons only; never `.env`, never a value. */
+type TestDataComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
@@ -170,6 +178,15 @@ export function registerDryRunScenarioComposer(composer: DryRunScenarioComposer)
   registeredDryRunScenarioComposer = composer;
 }
 
+let registeredTestDataComposer: TestDataComposer | undefined;
+
+export function registerTestDataComposer(composer: TestDataComposer): void {
+  if (registeredTestDataComposer !== undefined) {
+    throw new Error("a test-data composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredTestDataComposer = composer;
+}
+
 let registeredActivityPersonPseudonymComposer: ActivityPersonPseudonymComposer | undefined;
 
 export function registerActivityPersonPseudonymComposer(
@@ -225,6 +242,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer (D322)",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
+    ...TEST_DATA_USAGE.map((line) => `  ${line}`),
   ].join("\n");
 }
 
@@ -374,6 +392,23 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         write(outcome.output);
         // A degraded store must not look healthy to a caller that only
         // checks the exit status.
+        if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
+      })
+      .catch((error: unknown) => {
+        throw error instanceof Error ? error : new Error(String(error));
+      });
+    return;
+  }
+  if (command === "test-data") {
+    const compose = input.testData ?? registeredTestDataComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the test-data command needs its composition seam; start it through src/cli.ts, which registers composeTestDataCommand",
+      );
+    }
+    compose(input.isolation, args.slice(1))
+      .then((outcome) => {
+        write(outcome.output);
         if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
       })
       .catch((error: unknown) => {

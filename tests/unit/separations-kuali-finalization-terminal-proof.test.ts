@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D144's current end-to-end proof.
  *
@@ -49,8 +49,8 @@ import {
   JOB_SUMMARY_NODE,
   NAME_SEARCH_NODE,
 } from "../../src/workflows/separations/workflow.js";
-import { ManualScheduler, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
-import { UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
+import { ManualScheduler, recordingLogger } from "../helpers/phase1f-executor-harness.js";
+import { UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   FINALIZATION_FIELDS,
   FINALIZATION_ITEM_ID,
@@ -66,7 +66,7 @@ import {
   finalizationHarness,
   finalizationQueuedRun,
   type FinalizationHarness,
-} from "./fixtures/kuali-finalization-fixtures.js";
+} from "../helpers/kuali-finalization-fixtures.js";
 
 const open: FinalizationHarness[] = [];
 const signal = new AbortController().signal;

@@ -18,9 +18,9 @@ import { createCredentialStore } from "../../../src/infra/config/credential-stor
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./archive-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 import { settingsSetOperations } from "./settings-operation-fixtures.js";
 
 export function selectedSettingsFixture(

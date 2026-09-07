@@ -11,10 +11,9 @@ import {
 import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "./config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./config/catalog.js";
 import {
   ProtectedStoreRecordSchema,
-  ProtectedValueSchemas,
   type ProtectedStoreRecord,
 } from "./config/protected-settings.js";
 import type { Config } from "./config/schema.js";
@@ -30,32 +29,23 @@ import {
   SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
-  TestTargetDocumentNumberSecretNameSchema,
-  TestTargetEidSecretNameSchema,
 } from "./secret-names.js";
 import type {
   SecretFamilyName,
   SecretFileName,
   SecretName,
-  TestTargetSecretName,
 } from "./secret-names.js";
 export {
   EnvironmentSecretNameSchema,
   SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
-  TestTargetDocumentNumberSecretNameSchema,
-  TestTargetEidSecretNameSchema,
-  TestTargetSecretNameSchema,
 } from "./secret-names.js";
 export type {
   EnvironmentSecretName,
   SecretFamilyName,
   SecretFileName,
   SecretName,
-  TestTargetDocumentNumberSecretName,
-  TestTargetEidSecretName,
-  TestTargetSecretName,
 } from "./secret-names.js";
 const SecretSourceSchema = z.literal("protected-store");
 const REGISTERED_SECRET_FILE_MAXIMUM_BYTES = 64_000;
@@ -81,33 +71,6 @@ export const SecretFileSpecSchema = z.strictObject({
   maximumBytes: z.number().int().positive(),
 });
 
-/**
- * The one registered test-target reference (D300): the canary's Kuali document
- * number, bound to its exact protected-store name. The strict literal is what
- * makes the reference CLOSED — config cannot name an arbitrary key, and the
- * three person-value references D286 registered (employee name, EID, timekeeper
- * name) are retired rather than re-pointed: a document number is not a person
- * and must never be copied into a name or EID field.
- */
-export const TestTargetDocumentNumberSecretReferenceSchema = z.strictObject({
-  name: TestTargetDocumentNumberSecretNameSchema,
-});
-/**
- * D318 — the person-lookup live-read canary: ONE UCPath employee id, bound to
- * its exact protected-store name. Like the document number it is a closed
- * reference in config and is judged by the same
- * `EidSchema` the person-lookup start box applies, and its refusals name the
- * reference and key, never the value.
- */
-export const TestTargetEidSecretReferenceSchema = z.strictObject({
-  name: TestTargetEidSecretNameSchema,
-});
-export const TestTargetSecretReferenceSchema = z.union([
-  TestTargetDocumentNumberSecretReferenceSchema,
-  TestTargetEidSecretReferenceSchema,
-]);
-export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
-
 export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
   name: z.literal("activityPersonPseudonym"),
 });
@@ -117,17 +80,6 @@ export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
     name: "activityPersonPseudonym",
   }),
 );
-
-export const TestTargetSecretSpecSchema = z.discriminatedUnion("valueKind", [
-  TestTargetDocumentNumberSecretReferenceSchema.extend({
-    valueKind: z.literal("kuali-document-number"),
-    classification: z.literal("direct-identifier"),
-  }),
-  TestTargetEidSecretReferenceSchema.extend({
-    valueKind: z.literal("ucpath-eid"),
-    classification: z.literal("direct-identifier"),
-  }),
-]);
 
 export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathUserId", source: "protected-store", requiredAtBoot: false, classification: "direct-identifier" },
@@ -145,19 +97,6 @@ export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().par
 export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
   { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
-export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.array().parse([
-  {
-    name: "separationsKualiFinalizationCanaryDocumentNumber",
-    valueKind: "kuali-document-number",
-    classification: "direct-identifier",
-  },
-  {
-    name: "personLookupCanaryEid",
-    valueKind: "ucpath-eid",
-    classification: "direct-identifier",
-  },
-]));
-
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
 interface LocalEnvironmentAdmissionAccess {
@@ -262,6 +201,9 @@ function isProviderEnvironmentKey(key: string): boolean {
 }
 
 function migratedEnvironmentRefusal(key: string): SecretSourceError {
+  if (RETIRED_TEST_TARGET_ENVIRONMENT_KEY_SET.has(key)) {
+    return new SecretSourceError(retiredTestTargetEnvironmentRefusal(key));
+  }
   return new SecretSourceError(
     `migrated environment key ${key} is refused; set it in Settings, then remove it`,
   );
@@ -482,39 +424,14 @@ export function admitLocalEnvironmentFile(
   }
 }
 
-function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
-  const spec = TEST_TARGET_SECRET_SPECS.find((candidate) => candidate.name === name);
-  if (spec === undefined) throw new SecretMissingError(`test-target secret registry has no entry for ${name}`);
-  return spec;
-}
-
 /**
- * Resolve a registered test-target value (D300/D318). The protected entry is
- * selected by the closed name schema; callers can never supply an arbitrary
- * key. The value is judged by the SAME schema the owning workflow's ingress
- * applies to a typed start-box entry — `KualiDocumentNumberSchema` for the
- * separations canary, `EidSchema` for the person-lookup canary — so what this
- * returns is exactly what an operator could have typed. Refusals name only
- * the public reference and value kind, never the value.
+ * D341: test-target inputs are no longer protected Settings. Their retired
+ * environment names are refused by name with a distinct reason so an operator
+ * is pointed at ignored `config/test-data.local.json`, never at Settings.
  */
-export function optionalTestTargetEntry(
-  name: TestTargetSecretName,
-  source: ProtectedSecretSource,
-): Readonly<{ value: string; valueId: string }> | undefined {
-  const spec = registeredTestTargetSecretSpec(name);
-  const record = readProtectedStore(name, source);
-  const stored = record.entries[name];
-  if (stored === undefined) return undefined;
-  const schema = spec.valueKind === "kuali-document-number"
-    ? ProtectedValueSchemas.separationsKualiFinalizationCanaryDocumentNumber
-    : ProtectedValueSchemas.personLookupCanaryEid;
-  const parsed = schema.safeParse(stored.value);
-  if (!parsed.success) throw new SecretSourceError(`test-target ${spec.valueKind} ${name} is invalid in protected-store`);
-  return { value: parsed.data, valueId: stored.valueId };
-}
-
-export function optionalTestTargetSecret(name: TestTargetSecretName, source: ProtectedSecretSource): string | undefined {
-  return optionalTestTargetEntry(name, source)?.value;
+const RETIRED_TEST_TARGET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(RETIRED_TEST_TARGET_ENVIRONMENT_KEYS);
+export function retiredTestTargetEnvironmentRefusal(key: string): string {
+  return `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json (D341), so remove it`;
 }
 
 function registeredSecretSpec(name: SecretName): SecretSpec {

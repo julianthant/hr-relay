@@ -19,17 +19,13 @@ import {
   inspectSecret,
   optionalSecret,
   optionalSecretFamily,
-  optionalTestTargetSecret,
   providerModelChain,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
-  SecretSourceError,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_SECRET_SPECS,
-  TestTargetSecretReferenceSchema,
-  TestTargetSecretSpecSchema,
+  retiredTestTargetEnvironmentRefusal,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
 import { TestTargetRegistryDefectError } from "../../src/control/test-target-registry.js";
@@ -44,7 +40,10 @@ import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { runTestTargetDocumentNumberSmoke } from "../../scripts/smoke-test-target-document-number.js";
-import { protectedSecretSource } from "./helpers/protected-secret-source.js";
+import { protectedSecretSource } from "../helpers/protected-secret-source.js";
+import { testDataInputSource } from "./helpers/test-data-source.js";
+import { RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../src/domain/config/catalog.js";
+import { TestDataLocalConfigError } from "../../src/domain/test-data.js";
 
 describe("closed secret access", () => {
   it("admits parsed local environment bytes without overriding an explicit parent value", () => {
@@ -369,17 +368,11 @@ describe("closed secret access", () => {
     assert.equal(SECRET_SPECS.every(({ source }) => source === "protected-store"), true);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ name }) => name)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ envPrefix }) => envPrefix)).size, SECRET_FAMILY_SPECS.length);
-    assert.equal(
-      new Set(TEST_TARGET_SECRET_SPECS.map(({ name }) => name)).size,
-      TEST_TARGET_SECRET_SPECS.length,
-    );
-    // D300: the canary's Kuali document number crosses the closed boundary; the
-    // three person references D286 registered are retired, not re-pointed.
-    // D318 adds exactly one more: the person-lookup live-read canary's EID.
-    assert.deepEqual(TEST_TARGET_SECRET_SPECS.map(({ name, valueKind }) => `${name}:${valueKind}`), [
-      "separationsKualiFinalizationCanaryDocumentNumber:kuali-document-number",
-      "personLookupCanaryEid:ucpath-eid",
-    ]);
+    // D341: the two test-target canaries are no longer secrets at all; the
+    // protected registry carries only credentials and the timekeeper name.
+    for (const retired of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) {
+      assert.equal(SECRET_SPECS.some(({ name }) => (name as string) === retired), false, retired);
+    }
   });
 
   it("reads provider model chains only from ordinary Config", () => {
@@ -390,47 +383,15 @@ describe("closed secret access", () => {
     assert.deepEqual(providerModelChain("groqApiKeys", config), []);
   });
 
-  it("reads the ONE registered test-target document number through its closed name", () => {
-    assert.equal(optionalTestTargetSecret(
-      "separationsKualiFinalizationCanaryDocumentNumber",
-      protectedSecretSource({ separationsKualiFinalizationCanaryDocumentNumber: "4537" }),
-    ), "4537");
-    // Unset is the operator's truthful "not configured", never a substitute.
-    assert.equal(optionalTestTargetSecret(
-      "separationsKualiFinalizationCanaryDocumentNumber",
-      protectedSecretSource(),
-    ), undefined);
-    for (const { name } of TEST_TARGET_SECRET_SPECS) {
-      assert.equal(optionalTestTargetSecret(name, protectedSecretSource()), undefined);
-    }
-  });
-
-  it("keeps the registered test-target spec a DOCUMENT NUMBER, never a person value", () => {
-    const [spec] = TEST_TARGET_SECRET_SPECS;
-    if (spec === undefined) throw new Error("the test-target secret registry has no spec");
-    assert.deepEqual({ ...spec }, {
-      name: "separationsKualiFinalizationCanaryDocumentNumber",
-      valueKind: "kuali-document-number",
-      classification: "direct-identifier",
-    });
-    assert.equal(TestTargetSecretSpecSchema.safeParse(spec).success, true);
-    // A person-shaped spec cannot be smuggled back in under the same name: the
-    // value kind is a literal, and a document number is not a person.
-    assert.equal(TestTargetSecretSpecSchema.safeParse({
-      ...spec,
-      valueKind: "employee-display-name",
-    }).success, false);
-  });
-
   it("admits the available committed canary without printing its document number", async () => {
     const privateValue = "8675309";
     const output: string[] = [];
     let reads = 0;
-    const source = protectedSecretSource({
+    const source = testDataInputSource({
       separationsKualiFinalizationCanaryDocumentNumber: privateValue,
     });
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: source,
+      testInputs: source,
       readDocumentNumber: (reference, candidateSource) => {
         reads += 1;
         assert.equal(reference.name, "separationsKualiFinalizationCanaryDocumentNumber");
@@ -444,7 +405,7 @@ describe("closed secret access", () => {
     assert.equal(reads, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=present",
+        + "source=test-data-local state=present",
       "workflow=separations label=finalization-canary resolution=ready",
     ]);
     assert.equal(output.some((line) => line.includes(privateValue)), false);
@@ -457,7 +418,7 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource({
+        testInputs: testDataInputSource({
           separationsKualiFinalizationCanaryDocumentNumber: privateValueCanary,
         }),
         loadCommittedReference: () => {
@@ -479,7 +440,7 @@ describe("closed secret access", () => {
   it("refuses an unconfigured synthetic document number and never attempts the subject", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: protectedSecretSource(),
+      testInputs: testDataInputSource(),
       resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
@@ -487,7 +448,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=refused",
+        + "source=test-data-local state=refused",
       "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
@@ -496,7 +457,7 @@ describe("closed secret access", () => {
     const malformed = "CANARY_PRIVATE_DOCUMENT_NUMBER";
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: { read: () => ({ malformed }) },
+      testInputs: { read: () => { throw new TestDataLocalConfigError("config/test-data.local.json is invalid: inputs.separationsKualiFinalizationCanaryDocumentNumber.value"); } },
       resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
@@ -505,7 +466,7 @@ describe("closed secret access", () => {
     assert.equal(output.some((line) => line.includes(malformed)), false);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=invalid",
+        + "source=test-data-local state=invalid",
       "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
@@ -516,7 +477,7 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource(),
+        testInputs: testDataInputSource(),
         resolveSubject: () => Promise.resolve("ready"),
         readDocumentNumber: () => {
           throw cause;
@@ -531,10 +492,10 @@ describe("closed secret access", () => {
   it("records a known malformed document-number source as invalid", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: protectedSecretSource(),
+      testInputs: testDataInputSource(),
       resolveSubject: () => Promise.resolve("ready"),
       readDocumentNumber: () => {
-        throw new SecretSourceError("registered document number is malformed");
+        throw new TestDataLocalConfigError("config/test-data.local.json is invalid: inputs.separationsKualiFinalizationCanaryDocumentNumber.value");
       },
       writeLine: (line) => output.push(line),
     });
@@ -542,7 +503,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=invalid",
+        + "source=test-data-local state=invalid",
       "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
@@ -553,7 +514,7 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource(),
+        testInputs: testDataInputSource(),
         resolveSubject: () => Promise.reject(cause),
         writeLine: (line) => output.push(line),
       }),
@@ -565,7 +526,7 @@ describe("closed secret access", () => {
   it("records a known registry defect as defect", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      protectedSecrets: protectedSecretSource(),
+      testInputs: testDataInputSource(),
       resolveSubject: () => Promise.reject(new TestTargetRegistryDefectError("known registry defect")),
       writeLine: (line) => output.push(line),
     });
@@ -573,7 +534,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=not-attempted",
+        + "source=test-data-local state=not-attempted",
       "workflow=separations label=finalization-canary resolution=defect",
     ]);
   });
@@ -585,7 +546,7 @@ describe("closed secret access", () => {
     for (const resolution of ["blocked", "defect"] as const) {
       const output: string[] = [];
       const exitCode = await runTestTargetDocumentNumberSmoke({
-        protectedSecrets: protectedSecretSource({
+        testInputs: testDataInputSource({
           separationsKualiFinalizationCanaryDocumentNumber: "4537",
         }),
         resolveSubject: () => Promise.resolve(resolution),
@@ -593,45 +554,32 @@ describe("closed secret access", () => {
       });
       assert.equal(exitCode, 1, resolution);
       assert.deepEqual(output[0], "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "source=protected-store state=not-attempted");
+        + "source=test-data-local state=not-attempted");
       assert.deepEqual(output[1], `workflow=separations label=finalization-canary resolution=${resolution}`);
     }
   });
 
-  it("keeps every invalid test-target document number out of its refusal", () => {
-    const name = "separationsKualiFinalizationCanaryDocumentNumber";
-    // The judge is `KualiDocumentNumberSchema` — the same 3-8 digit rule the
-    // separations start box applies — so what survives is exactly what an
-    // operator could have typed, and a person value never can be.
-    for (const value of ["abc", "1", "123456789", "CANARY_DIRECT_IDENTIFIER", "Person, Private"]) {
+  it("refuses the retired test-target environment keys by name, independently of the catalog (D341)", () => {
+    // The canary rows left the catalog; their old `.env` names must still be
+    // refused loudly so a stale `.env` cannot silently feed a run.
+    assert.deepEqual([...RETIRED_TEST_TARGET_ENVIRONMENT_KEYS], [
+      "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+      "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
+    ]);
+    for (const key of RETIRED_TEST_TARGET_ENVIRONMENT_KEYS) {
+      const value = "CANARY_RETIRED_ENV_VALUE";
       assert.throws(
-        () => optionalTestTargetSecret(name, { read: () => ({ [name]: value }) }),
+        () => assertNoMigratedEnvironmentKeys({ [key]: value }),
         (error: unknown) => {
-          assert.match(String(error), new RegExp(`${name}.*protected-store`));
-          assert.equal(String(error).includes(value), false);
+          const diagnostic = String(error);
+          assert.match(diagnostic, new RegExp(`retired test-target environment key ${key} is refused`, "u"));
+          assert.match(diagnostic, /config\/test-data\.local\.json \(D341\)/u);
+          assert.equal(diagnostic.includes(value), false);
           return true;
         },
-        value,
+        key,
       );
-    }
-  });
-
-  it("rejects arbitrary and legacy environment-bearing test-target references", () => {
-    assert.equal(TestTargetSecretReferenceSchema.safeParse({
-      name: "separationsKualiFinalizationCanaryDocumentNumber",
-      env: "HRAUTO_ARBITRARY_DOCUMENT_NUMBER",
-    }).success, false);
-    // The three retired person names are not merely unregistered specs: the
-    // closed name schema no longer admits them at all (D300).
-    for (const retired of [
-      "separationsKualiFinalizationCanaryEid",
-      "separationsKualiFinalizationCanaryEmployeeName",
-      "separationsKualiFinalizationCanaryTimekeeperName",
-    ]) {
-      assert.equal(TestTargetSecretReferenceSchema.safeParse({
-        name: retired,
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
-      }).success, false, retired);
+      assert.equal(retiredTestTargetEnvironmentRefusal(key).includes("D341"), true);
     }
   });
 

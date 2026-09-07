@@ -9,7 +9,7 @@ import { RerunPlanSchema } from "../../src/domain/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../src/domain/run/start-plan.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { RerunRefusedError } from "../../src/services/start/rerun.js";
-import { ARCHIVED_RUN, VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "./fixtures/archive-fixtures.js";
+import { ARCHIVED_RUN, VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../fixtures/archive-fixtures.js";
 import { sourceBoundHarness } from "./fixtures/source-bound-fixtures.js";
 import { sourceBoundReadDescriptor, sourceBoundReadStores } from "./fixtures/source-bound-read-fixtures.js";
 

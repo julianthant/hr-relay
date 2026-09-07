@@ -1956,9 +1956,9 @@ must be registered:
    derives from the new transaction node (`dry-run`, `subject-mismatch`, `committed`,
    `already-present`) — `scenario-coverage` is RED until every one is claimed and walked. ONE
    `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the subject LABEL this
-   workflow runs against — a label names a SUBJECT in `config/test-subjects.json`, the subject
-   declares an ARM for this workflow, and the manifest carries one case per arm (§10.5); the
-   subject's value stays outside git. If the migration also wires a dashboard surface, its T3
+   workflow runs against — a label names a SUBJECT in `config/test-data.json` (`subjects`), the
+   subject declares an ARM for this workflow, and the manifest carries one case per arm (§10.5); the
+   subject's private value stays in ignored `config/test-data.local.json` (D341). If the migration also wires a dashboard surface, its T3
    combined pair (§10.7).
 7. **Live proof.** `npm run cli -- dry-run-scenario badge-reissue --subject <label>` runs the
    manifest against the real systems with `dryRun=true` and asserts the durable rows over authority:
@@ -2190,11 +2190,18 @@ when its task evidence supports that verdict; it is not forced to the preview ar
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
-**D341, approved 2026-09-07; implementation pending.** The test-data foundation detour must finish
-before Task 1.6.7 resumes. Configuration ownership, privacy and conversion are defined in
+**D341, approved 2026-09-07; implemented by the test-data foundation detour (candidate on
+`codex/test-data-foundation`, awaiting independent review; see the completion record at the end of
+this section).** The detour must be accepted before Task 1.6.7 resumes. Configuration ownership,
+privacy and conversion are defined in
 [clock-config-secrets, D341](clock-config-secrets.md#d341--test-inputs-have-a-separate-owner).
-The current code still uses `config/test-subjects.json` and the independent credential store;
-`.env` is already a retired test-target source. Do not mistake this approved target for completed code.
+As built: `config/test-data.json` (tracked; `subjects` is the former `config/test-subjects.json`
+registry, plus named `files` and synthetic `samples`), ignored `config/test-data.local.json` with the
+tracked example `config/test-data.local.example.json`, schemas in `src/domain/test-data.ts`, the ONE
+reader `src/control/test-data.ts` (shared half) re-exporting the private half from
+`src/infra/config/test-data-local.ts`, and the credential conversion in
+`src/infra/config/credential-test-data-migration.ts`. `.env` and protected Settings are retired
+test-target sources, refused by name.
 
 **One public registry.** The target `config/test-data.json` incorporates subjects and their stable
 labels, purposes, one dated availability claim (`available`, `consumed`, `gone`, `unknown`), usage
@@ -2236,8 +2243,153 @@ conflicts, interrupted/repeated migration, accepted identity non-reuse, and veri
 conversion. Follow D191 full candidate/integration gates plus desktop parity and generated freshness.
 Task 1.6.7 owns live workflow acceptance; no live success is inferred from migration or input presence.
 The detour supervisor records accepted commits, review, gate and conversion evidence here and the
-Task-7 resume boundary before removing the temporary execution handoff. Implementation is not yet
-complete. No new roadmap phase/node or deferred consolidation remainder is authorized.
+Task-7 resume boundary before removing the temporary execution handoff. No new roadmap phase/node
+or deferred consolidation remainder is authorized.
+
+**Completion record (detour, 2026-09-07).** Proof matrix as built; every row is an offline test
+run through the repository runner (`npm test -- <files>`), none needs a private file:
+
+| Proof | Where it is proven |
+| --- | --- |
+| P1 clean checkout, isolated samples, synthetic PDF bytes | `tests/unit/test-data-config.test.ts` (copied checkout, child process from another CWD, frozen shared data, isolated `testDataSamples`) |
+| P2 duplicate/unknown keys, invalid values, missing/unreadable file, path escapes, no CWD/upward/other-checkout fallback | `tests/unit/test-data-config.test.ts` |
+| P3 label/workflow/kind admission before private read; malformed private config is a defect by key | `tests/unit/test-target-registry.test.ts`, `tests/unit/architecture/test-target-registry.test.ts`, `tests/unit/test-data-command.test.ts` (`test-data check` reports names/states only) |
+| P4 canaries absent from catalog (86 rows), Settings schemas, readback and secret registries; retired env names and retired Settings names refused by name | `tests/unit/architecture/settings-catalog.test.ts` (P33), `tests/unit/architecture/strict-boundary-schemas.test.ts`, `tests/unit/secrets-redaction.test.ts`, `tests/unit/storage-upgrade-environment.test.ts` (`retired-test-target-env { key }`), `tests/unit/storage-upgrade-d331.test.ts` (`retired-test-target { key }` reached through a genuine seven-name journal row), `tests/unit/protected-settings-history.test.ts` (frozen pre-D341 command/audit arm: live grammar refuses, historical readers parse, pinned legacy hash, no value) |
+| P5 `test-data-local` binding (name + opaque `sourceId`, never a value) through start, receipts, redaction, resume/rerun/archive | `tests/unit/dry-run-scenario-composition.test.ts` (binding captured at `runtime.start`), `tests/unit/source-bound-repeat.test.ts`, `tests/unit/rerun-protected-identity.test.ts`, `tests/unit/archive-protected-identity.test.ts`, `tests/unit/run-record-service/service.test.ts`, `tests/unit/write-sequencer.test.ts`, `tests/unit/run-executor.test.ts` |
+| P6 destination missing/equal/conflict/invalid, source change under lock, failure after staging before source retirement, lock held, retry idempotence | `tests/unit/config/credential-test-data-migration.test.ts` |
+| P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated; pre-D341 durable command/audit rows stay readable through `commands-history` | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts`, `tests/unit/protected-settings-history.test.ts`, `tests/unit/storage-upgrade-d331.test.ts` |
+| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, cross-tier imports of `tests/unit/architecture/helpers/` limited to the three recorded `descriptor-fixtures` importers, shared fixtures pure at import, tracked shared inputs, ignored private file and staging pattern, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
+| P9 actual reset-root preflight, reviewed private conversion, readback, value-safe credential comparison, doctor | recorded below after integration; not inferred from P6/P7 |
+
+Defects the proofs found and fixed in the candidate: the credential store's pre-rename live check
+read the source through the v2-only reader and would have refused every real conversion; the
+under-lock destination re-plan compared only action/count rather than entry identities; committed
+pre-D341 protected-settings audits (seven-name value-free readback) must still parse in historical
+databases, so the audit result grammar admits the legacy readback family beside the live one.
+Actual-root facts rechecked 2026-09-07 (names/shape only): credential document schemaVersion 1,
+revision 2, one history entry, applied upgrade binding, five names including the Separations
+canary and no person-lookup EID; database schema 32 with zero commands; no private file present.
+**Candidate frozen 2026-09-07 — awaiting independent review.** Base `f68dc9a5b355336d3a755081d8d99ddd7ad9fed3`;
+implementation commits `d69cda56c` (source, config, scripts, generated manifest), `eec6a9c39` (tests,
+fixture moves, `test-data-ownership` guard and inventory), `ec1a55432` (contracts, plans, skills,
+instruction twins), `e2e6027a0` (deliberate parity refreeze); this recording commit is the candidate
+tip. Gate evidence on the `e2e6027a0` tree: `npm run typecheck` clean; `npm run lint` clean at
+`--max-warnings 0`; `git diff --check` clean; `npm test -- --coverage` through the two-worker adapter
+(sha256 `1344b1c8…`, effective workers 2 at root and projects): 437 files / 5504 tests passed,
+coverage statements 85.85 %, branches 77.49 %, functions 89.85 %, lines 87.97 % (floors met, exit 0);
+`suite-size` unit 340 / scenario 17 / architecture 80, exit 0; `npm run test:parity` 259 passed after
+the refreeze; `build:manifest:check`, `stores:catalog:check`, `roadmap:check` current; docs audit PASS;
+instruction twins byte-identical. Parity drifted on 190 cases before the refreeze; every changed
+reference line was classified before refreshing: header/metadata `descriptorHash` and the on-page
+8-character descriptor fingerprint (the person-lookup contract fingerprint moved with the generated
+manifest closure), task `impl` fingerprints and the receipt trace prefix, and explorer-transaction
+totals `107 reads → 108 reads` because the `test-data-local` binding variant adds one `sourceId`
+output leaf to `KualiFinalizationTargetSchema.protectedBindings`. 49 screenshots moved by 7–21
+pixels each where that text renders, including dimmed rows behind modal variants; no layout, copy or
+tolerance change (`maxDiffPixels` stays 0). Two coverage-gate tests read parity references, so the
+coverage gate was rerun after the refreeze rather than reused.
+**Independent review, round 1 (2026-09-07, fresh `sup-review`, Opus, high, bound to candidate
+`a97c8832a` / implementation `e2e6027a0`): BLOCKED** — the reviewer's context compacted before its
+coverage accounting finished (it listed the unreviewed boundaries) and it confirmed one required
+finding. Dispositions, all fixed in `3a3fa427f`:
+
+- F1 (required, P4/P7) — the live command grammar refused every journaled protected-settings
+  command that named a retired canary, so the open-time record sweep, D331 journal authentication,
+  settings history and backup authentication failed with an opaque parse error before the D341
+  refusal by name; the candidate's own D331 guard had filtered retired names out of the journaled
+  command, proving a case that cannot occur. Fixed by the frozen `HistoricalProtectedSettingsCommand`
+  / audit arms in `src/domain/commands-history.ts` (seven-name marked patch, schema hash pinned to
+  the legacy family, never a value), unioned at `storage-records` (record registry), the
+  authority-database settings-history readers, `upgrade-sources`, `d331-protected-journal` and
+  `backup-service`; the D331 guard now journals a genuine seven-name row and asserts only the frozen
+  arm reads it; `tests/unit/protected-settings-history.test.ts` proves refusal by the live grammar,
+  the pinned hash, fingerprint parity and the durable readers.
+- F2 (required, P8) — the README row for `tests/unit/architecture/helpers/` named one cross-tier
+  importer while three exist and the guard did not cover that root. Fixed: the guard pins the exact
+  recorded importer set (a new or vanished importer fails) and the README names all three.
+- A1 — orphaned private staging file `config/.test-data.local.<uuid>.tmp` was not ignored; now
+  ignored and guarded. A2 — stale strict-boundary comment corrected. A3 — `.agents` hr-manage
+  wording aligned with the as-built text (platform files, not twins). A4 — finalization-canary
+  availability reason no longer says the number lives in protected Settings.
+- Not findings (reviewer-verified counterexamples, kept so they are not re-raised): `bindUpgrade`
+  cannot re-admit an import after conversion; identity reuse routes to refusal; availability
+  admission precedes the private read; the destination TOCTOU is closed by the live-vs-prior
+  comparison; conversion stages the destination before the source rewrite and reports names only.
+- Reviewer limits carried to round 2: `secrets-redaction`, `test-target-registry` (unit and
+  architecture), `storage-upgrade-environment` test diffs and ~150 import-path-only test rewrites
+  were not individually diffed; PNG pixels were classified, not independently verified; no gate was
+  independently rerun. Round 2 is a fresh complete assignment over the whole candidate.
+**Candidate refrozen for review round 2 (2026-09-07) — awaiting independent review.** Implementation
+head `3a3fa427f` (review fixes on top of `e2e6027a0`); this recording commit is the candidate tip.
+Gate evidence on the `3a3fa427f` tree: typecheck clean; lint clean at `--max-warnings 0`;
+`git diff --check` clean; full coverage through the same two-worker adapter: 438 files / 5509 tests
+passed, statements 85.86 %, branches 77.49 %, functions 89.86 %, lines 87.98 % (floors met, exit 0);
+`suite-size` unit 341 / scenario 17 / architecture 80, exit 0; `npm run test:parity` 259 passed with
+no reference change (generated manifest unchanged, so no fingerprint moved); generated-output checks
+current; docs audit PASS.
+**Review round 2 (2026-09-07): BLOCKED** on candidate `92bd0883c` (implementation head `3a3fa427f`) —
+the fresh reviewer's context compacted mid-review, so the verdict stops short of PASS by rule, not
+by defect. Inspected scope: every changed source, config, script and schema diff; proof rows P1–P8
+each recorded as satisfied (P9 open by design); F1/F2/A1/A3 verified fixed; round-1 non-findings
+independently re-confirmed (`bindUpgrade` re-admission); all nine instruction twins byte-identical;
+no legacy live state imported; availability admission precedes the private read. No required finding.
+Advisories, all fixed in `63aa8cca6`:
+- A5 — the registry `purpose` prose at `config/test-data.json` for the finalization canary and the
+  person-lookup canary still named protected Settings as the value owner; both now name the ignored
+  private file (D341). Description strings only; no loader reads them.
+- A6 — `stageDestination` re-planned under the credential lock against the pre-lock destination
+  snapshot; an equal ("unchanged") plan writes nothing, so the writer's live-vs-prior fence never ran
+  and the source could be retired against a destination replaced by a concurrent writer. Fixed: the
+  destination is re-read under the lock and compared to the planned snapshot before any decision, and
+  the write path takes the live read as its prior. Proven by a concurrent-writer case (refused by
+  the existing "changed while the migration was planned" reason, source untouched, the other writer's
+  file survives byte-for-byte) plus the equal-destination conversion that leaves the file unchanged;
+  the case fails against the pre-fix code.
+- A7 — the duplicate-key scanner compared raw key text, so two escapings of one key were not
+  duplicates while `JSON.parse` kept the last. Fixed: keys are decoded before comparison, and an
+  invalid key escape is refused by label. Proven with `\u0049`/`\u0022` escapes and a private
+  file whose escaped key repeats a real input name; the cases fail against the pre-fix code.
+- Reviewer limits carried to round 3 (bounded, fresh context): no gate log opened or rerun; the 49
+  PNG references classified by name and identical IHDR dimensions only; `dashboard-surfaces`,
+  `workflow-authoring` and the 1.6 README diffs unread; substantive test diffs unread for
+  `test-data-command`, `test-target-registry` (unit and architecture), `secure-env-bootstrap`,
+  `separations-composition-wire`, `kuali-finalization-fields`, `settings-file-service`,
+  `tests/fixtures/d331-settings-file.ts`, the three workflow `dry-run.scenario.ts` files and
+  `tests/unit/helpers/test-data-source.ts`; the `src/control/test-data.ts` →
+  `src/infra/config/test-data-local.ts` import not checked against the layering ratchet; round-1 A2
+  only partially inspected.
+**Candidate refrozen for review round 3 (2026-09-07) — awaiting independent review.** Implementation
+head `63aa8cca6`; this recording commit is the candidate tip. Gate evidence on the `63aa8cca6` tree:
+typecheck clean; lint clean at `--max-warnings 0`; `git diff --check` clean; full coverage through
+the two-worker adapter: 438 files / 5510 tests passed, statements 85.86 %, branches 77.49 %,
+functions 89.86 %, lines 87.98 % (floors met, exit 0); `suite-size` unit 341 / scenario 17 /
+architecture 80; `npm run test:parity` 259 passed with no reference change; generated-output checks
+current; docs audit PASS.
+**Review round 3 (2026-09-07): PASS (bounded scope)** on candidate `fff3be61f` (implementation head
+`63aa8cca6`). Fresh context; scope was the A5–A7 fix commit plus the six limits round 2 carried.
+Reviewer verified A5/A6/A7 fixed and red-capable; independently reran typecheck (exit 0), lint
+(exit 0) and `npm run test:parity` (259 passed, `tests/parity` unchanged, tolerance unchanged versus
+base); read the gate logs (438 files / 5510 tests, floors 85.86 / 77.49 / 89.86 / 87.98, exit 0;
+suite-size 341/17/80); read the three docs diffs against code; read every carried test diff; confirmed
+the control → infra import is a permitted downward edge with no ratchet change; confirmed the A2
+comment matches the code. No required finding. Whole-task acceptance rests on rounds 1–3 together
+(round 2 inspected every source/config/script diff and P1–P8; round 3 closed its limits).
+Advisories, fixed in `1e5b4b7b4`:
+- A8 — the "never by value" proofs for a malformed configured number and a malformed EID had become
+  vacuous: the mock source ignored the malformed value, so the absence assertion could not fail.
+  Fixed: each malformed value is written to a real 0600 private file and read through the production
+  loader, which refuses it by key; the unused mock helper is removed.
+- A9 — the duplicate-key scanner called every undecodable key an "invalid string escape", including
+  a raw control character. Fixed: "invalid key string", label only; the control-character case is
+  covered.
+- Unfixed residue reported by round 3: none.
+**Candidate refrozen for review round 4 (2026-09-07) — awaiting independent review** of the A8/A9
+delta only. Implementation head `1e5b4b7b4`; this recording commit is the candidate tip. Gate evidence
+on the `1e5b4b7b4` tree: typecheck clean; lint clean at `--max-warnings 0`; `git diff --check` clean;
+full coverage through the two-worker adapter: 438 files / 5510 tests passed, statements 85.86 %,
+branches 77.49 %, functions 89.86 %, lines 87.98 % (floors met, exit 0); `suite-size` unit 341 /
+scenario 17 / architecture 80; `npm run test:parity` 259 passed with no reference change.
+Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced
 with a fresh schema-32 database; only schema metadata/fresh-baseline marker remained. Doctor exited 0
@@ -2515,11 +2667,12 @@ can execute a second time.
    this workflow addresses — a case is a state a REAL subject can truthfully be in, never a state
    invented for coverage (D284); the negative branches belong to the structural file on synthetic
    subjects.
-4. **Register the subject** in `config/test-subjects.json` — a label per SUBJECT, an arm per
+4. **Register the subject** in `config/test-data.json` (`subjects`) — a label per SUBJECT, an arm per
    workflow, a case per arm: the arm's kind, the subject's ONE availability with today's date, the
    doc section that records what it is, and any canonical leaf a live read cannot yet supply declared
-   `pending` with its reason. Sensitive values go to `.env` and are read only through
-   `src/domain/secrets.ts`. A label the registry cannot resolve, or a declared-pending leaf, makes
+   `pending` with its reason. Private values go to ignored `config/test-data.local.json` under a
+   name in `TEST_DATA_INPUT_NAMES` and are read only through `src/control/test-data.ts` (D341);
+   never `.env` or Settings. A label the registry cannot resolve, or a declared-pending leaf, makes
    the case `blocked`, never `failed`.
 5. **Run it live:** `npm run cli -- dry-run-scenario <workflow> --subject <label>`, once per case.
    The manifest arm determines transaction preview versus transaction-free read; the command name

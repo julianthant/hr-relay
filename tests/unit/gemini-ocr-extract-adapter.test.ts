@@ -42,8 +42,8 @@ import { admitOcrExtraction } from "../../src/domain/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../src/domain/ocr/instruction.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 
 const API_KEY = "test-gemini-key-never-logged";
 const MODEL = "gemini-3-flash-preview";

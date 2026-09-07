@@ -2,7 +2,7 @@ import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
-import { testRunLifecycle, testRunService } from "./fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref write-safety §3 beats ①–⑦ over the REAL authority database, worker session
  * manager, and a sealed synthetic transaction corpus — only the process edges
@@ -46,9 +46,9 @@ import {
   SequencedWriteCommitStepSchema,
   type AuthorityWriteCommitHooks,
 } from "../../src/infra/sqlite/index.js";
-import { UUID_5, UUID_6, UUID_7, UUID_8 } from "./fixtures/phase1c-contract-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
+import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
   ambiguousProbeVerdict,
@@ -1421,8 +1421,8 @@ describe("service-backed shared settlement", () => {
     const settle = (documentNumber: string, transactionId = "T123456", protectedKey = false) => {
       const h = harness();
       const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
-      const protectedBindings = [{ kind: "protected-store", name: "separationsKualiFinalizationCanaryDocumentNumber",
-        inputPath: "documentNumber", valueId: "10000000-0000-4000-8000-000000000001" }];
+      const protectedBindings = [{ kind: "test-data-local", name: "separationsKualiFinalizationCanaryDocumentNumber",
+        inputPath: "documentNumber", sourceId: "10000000-0000-4000-8000-000000000001" }];
       const { run, claim } = claimRunning(h.database, h.clock, { ...queued,
         input: { ...queued.input, raw: { documentNumber }, parsed: { ...queued.input.parsed,
           value: { documentNumber }, protectedBindings } } });
