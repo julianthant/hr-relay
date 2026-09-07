@@ -9,9 +9,19 @@ export const ProtectedInputDeclarationSchema = z.strictObject({
 });
 const ProtectedInputPathSchema = z.enum(["timekeeperName", "documentNumber", "emplId"]);
 const ProtectedInputNameSchema = z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]);
+/**
+ * Where a protected input's VALUE came from. `protected-store` is a protected
+ * Setting (timekeeper). `test-data-local` (D341) is a private test input from
+ * ignored `config/test-data.local.json`, captured once at start with its
+ * opaque `sourceId`; a later file edit affects later starts only. `legacy-
+ * protected-input` marks historical rows that retained no source identity.
+ * No member ever carries a value or a value-derived surrogate.
+ */
 export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("protected-store"), inputPath: ProtectedInputPathSchema,
-    name: ProtectedInputNameSchema, valueId: z.uuid() }),
+  z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"),
+    name: z.literal("timekeeperName"), valueId: z.uuid() }),
+  z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
+    name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: z.uuid() }),
   z.strictObject({ kind: z.literal("legacy-protected-input"), inputPath: ProtectedInputPathSchema,
     name: ProtectedInputNameSchema }),
 ]).superRefine((binding, ctx) => {

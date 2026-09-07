@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "./config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "./config/host-display.js";
 import { deepFreeze } from "./immutability.js";
 import {
   WORKER_PROCESS_MECHANIC_KEYS,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_SECRET_SPECS,
 } from "./secrets.js";
 
 const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
@@ -161,12 +160,9 @@ const SECRET_ENVIRONMENT_SPECS = [
   { key: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION", classification: "non-secret-config" },
 ] as const;
 
-const TEST_TARGET_SECRET_ENVIRONMENT_KEYS = [
-  "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
-  "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
-] as const;
+/** D341: retired canary names stay refused by name; their home is `config/test-data.local.json`. */
 const TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
-  TEST_TARGET_SECRET_ENVIRONMENT_KEYS,
+  RETIRED_TEST_TARGET_ENVIRONMENT_KEYS,
 );
 
 const PROVIDER_MODEL_ENVIRONMENT_KEYS = [
@@ -251,7 +247,9 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
       ?? (key === "TIMEKEEPER_NAME" || TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
         ? "direct-identifier" : "non-secret-config"),
     disposition: "migrated-refused",
-    reason: "setting moved to the settings authority; set it in Settings, then remove it",
+    reason: TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
+      ? "test-target input moved to ignored config/test-data.local.json (D341); remove it"
+      : "setting moved to the settings authority; set it in Settings, then remove it",
     documented: false,
   })),
   ...TEST_ONLY_ENVIRONMENT_KEYS.map((key) => ({
@@ -503,8 +501,10 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
       violations.push(`secret ${secret.name} must use protected-store`);
     }
   }
-  if (TEST_TARGET_SECRET_SPECS.length !== 2) {
-    violations.push("test-target protected-secret inventory must retain exactly two named canaries");
+  for (const key of RETIRED_TEST_TARGET_ENVIRONMENT_KEYS) {
+    if (exact.get(key)?.disposition !== "migrated-refused") {
+      violations.push(`retired test-target environment ${key} is not explicitly refused`);
+    }
   }
   for (const family of SECRET_FAMILY_SPECS) {
     const spec = registry.families.find(({ prefix }) => prefix === family.envPrefix);

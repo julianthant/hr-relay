@@ -1,34 +1,32 @@
-import { createCredentialStore } from "../src/infra/config/credential-store.js";
-import {
-  assertNoMigratedEnvironmentKeys,
-  optionalTestTargetSecret,
-  SecretSourceError,
-  TestTargetSecretReferenceSchema,
-  type ProtectedSecretSource,
-  type TestTargetSecretReference,
-} from "../src/domain/secrets.js";
-import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
-import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
-import { createCredentialSecretSource } from "../src/server/settings-runtime.js";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
+import { createTestDataInputSource, testDataLocalPath } from "../src/control/test-data.js";
+import { assertNoMigratedEnvironmentKeys } from "../src/domain/secrets.js";
+import {
+  TestDataInputReferenceSchema,
+  TestDataLocalConfigError,
+  type TestDataInputReference,
+  type TestDataInputSource,
+} from "../src/domain/test-data.js";
 
 type DocumentNumberState = "present" | "refused" | "invalid" | "not-attempted";
 type ResolutionState = "ready" | "blocked" | "defect" | "not-attempted";
 
 export interface TestTargetDocumentNumberSmokeOptions {
-  readonly protectedSecrets?: ProtectedSecretSource;
-  readonly loadCommittedReference?: () => Promise<TestTargetSecretReference>;
-  readonly resolveSubject?: (source: ProtectedSecretSource) => Promise<ResolutionState>;
+  readonly testInputs?: TestDataInputSource;
+  readonly loadCommittedReference?: () => Promise<TestDataInputReference>;
+  readonly resolveSubject?: (source: TestDataInputSource) => Promise<ResolutionState>;
   readonly readDocumentNumber?: (
-    reference: TestTargetSecretReference,
-    source: ProtectedSecretSource,
+    reference: TestDataInputReference,
+    source: TestDataInputSource,
   ) => string | undefined;
   readonly writeLine?: (line: string) => void;
 }
 
 const CANARY_LABEL = "finalization-canary";
 
-async function committedReference(): Promise<TestTargetSecretReference> {
+async function committedReference(): Promise<TestDataInputReference> {
   const { SEPARATIONS_WORKFLOW, TEST_TARGET_REGISTRY } = await import(
     "../src/control/test-target-registry.js"
   );
@@ -38,21 +36,20 @@ async function committedReference(): Promise<TestTargetSecretReference> {
   if (document.state !== "configured") {
     throw new Error("the committed finalization-canary declares no configured document reference");
   }
-  return TestTargetSecretReferenceSchema.parse(document.reference);
+  return TestDataInputReferenceSchema.parse(document.reference);
 }
 
 /**
- * The same resolution the CLI's `dry-run-scenario separations` path performs
- * before any browser starts: the configured number through the descriptor's
- * own start-box parser, ingress and canonical schemas.
+ * The same private source the CLI's `dry-run-scenario separations` path reads
+ * before any browser starts: THIS checkout's ignored `config/test-data.local.json`,
+ * captured once (D341). Never the caller's CWD, never protected Settings.
  */
-function runtimeProtectedSecrets(): ProtectedSecretSource {
-  const stateRoot = resolve(process.cwd(), rebuildRuntimeIsolation.stateRoot);
-  const authority = createCredentialStore({ stateRoot });
-  return createCredentialSecretSource(authority);
+function checkoutTestInputs(): TestDataInputSource {
+  const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+  return createTestDataInputSource(testDataLocalPath(repoRoot));
 }
 
-async function resolveCommittedSubject(source: ProtectedSecretSource): Promise<ResolutionState> {
+async function resolveCommittedSubject(source: TestDataInputSource): Promise<ResolutionState> {
   const { resolveSeparationsTestTarget, TEST_TARGET_REGISTRY } = await import(
     "../src/control/test-target-registry.js"
   );
@@ -60,8 +57,8 @@ async function resolveCommittedSubject(source: ProtectedSecretSource): Promise<R
 }
 
 async function subjectResolution(
-  resolveSubject: (source: ProtectedSecretSource) => Promise<ResolutionState>,
-  source: ProtectedSecretSource,
+  resolveSubject: (source: TestDataInputSource) => Promise<ResolutionState>,
+  source: TestDataInputSource,
 ): Promise<ResolutionState> {
   try {
     return await resolveSubject(source);
@@ -73,52 +70,50 @@ async function subjectResolution(
   }
 }
 
-/**
- * The protected source is passed through untouched and read on each use.
- */
 function documentNumberState(
-  reference: TestTargetSecretReference,
-  source: ProtectedSecretSource,
-  readDocumentNumber: (reference: TestTargetSecretReference, source: ProtectedSecretSource) => string | undefined,
+  reference: TestDataInputReference,
+  source: TestDataInputSource,
+  readDocumentNumber: (reference: TestDataInputReference, source: TestDataInputSource) => string | undefined,
 ): DocumentNumberState {
   try {
     return readDocumentNumber(reference, source) === undefined ? "refused" : "present";
   } catch (error) {
-    if (!(error instanceof SecretSourceError)) throw error;
-    // The value is malformed for the document-number schema. Its message names
-    // only the reference and key, but this output is closed to state anyway.
+    if (!(error instanceof TestDataLocalConfigError)) throw error;
+    // The private file or its value is malformed. Its message names only the
+    // file and key, but this output is closed to state anyway.
     return "invalid";
   }
 }
 
 /**
- * Read-only pre-run admission for the ONE canary value (D300): is the
- * registered document-number key set, does it satisfy the Kuali document-number
- * schema, and does the composed `separations` subject resolve `ready` from it?
- * Output is closed to public metadata + state — the number is never printed,
- * so the transcript can be preserved as evidence without redaction.
+ * Read-only pre-run admission for the ONE canary value (D300/D341): is the
+ * registered document-number input set in the private test-data file, does it
+ * satisfy the Kuali document-number schema, and does the composed `separations`
+ * subject resolve `ready` from it? Output is closed to public metadata + state
+ * — the number is never printed, so the transcript can be preserved as
+ * evidence without redaction.
  */
 export async function runTestTargetDocumentNumberSmoke(
   options: TestTargetDocumentNumberSmokeOptions = {},
 ): Promise<number> {
   assertNoMigratedEnvironmentKeys();
   const writeLine = options.writeLine ?? ((line: string) => process.stdout.write(`${line}\n`));
-  let reference: TestTargetSecretReference;
+  let reference: TestDataInputReference;
   try {
-    reference = TestTargetSecretReferenceSchema.parse(await (options.loadCommittedReference ?? committedReference)());
+    reference = TestDataInputReferenceSchema.parse(await (options.loadCommittedReference ?? committedReference)());
   } catch {
     throw new Error("committed canary document-number registry unavailable");
   }
 
-  const protectedSecrets = options.protectedSecrets ?? runtimeProtectedSecrets();
-  const resolution = await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, protectedSecrets);
+  const testInputs = options.testInputs ?? checkoutTestInputs();
+  const resolution = await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, testInputs);
   const readDocumentNumber = options.readDocumentNumber ?? ((documentReference, source) =>
-    optionalTestTargetSecret(documentReference.name, source)
+    source.read(documentReference.name)?.value
   );
   const state = resolution === "ready"
-    ? documentNumberState(reference, protectedSecrets, readDocumentNumber)
+    ? documentNumberState(reference, testInputs, readDocumentNumber)
     : "not-attempted";
-  writeLine(`field=documentNumber reference=${reference.name} source=protected-store state=${state}`);
+  writeLine(`field=documentNumber reference=${reference.name} source=test-data-local state=${state}`);
 
   const reportedResolution: ResolutionState = resolution === "ready" && state !== "present"
     ? "not-attempted"

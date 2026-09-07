@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Private test inputs (D341): live subject values and private document paths.
+# The tracked example carries placeholders only.
+config/test-data.local.json
+
 # Node
 node_modules/
 

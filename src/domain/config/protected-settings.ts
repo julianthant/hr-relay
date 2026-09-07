@@ -1,10 +1,13 @@
 import { z } from "zod";
-import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../ids.js";
+import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
-import { KualiDocumentNumberSchema } from "../ui/kuali-document-identity.js";
 
-/** D331: these schemas are shared by the writer and the accessor. No coercion or trimming. */
+/**
+ * D331: these schemas are shared by the writer and the accessor. No coercion or trimming.
+ * D341: test-target inputs (the former canary entries) are NOT protected Settings; they live in
+ * ignored `config/test-data.local.json`. Their frozen pre-D341 shape is `protected-settings-legacy.ts`.
+ */
 export const ProtectedValueSchemas = Object.freeze({
   ucpathUserId: z.string().min(1).max(256),
   ucpathPassword: z.string().min(1).max(4096),
@@ -14,8 +17,6 @@ export const ProtectedValueSchemas = Object.freeze({
     keyHex: z.string().regex(/^[0-9a-f]{64}$/u),
     keyGeneration: z.string().regex(/^activity-person-[a-z0-9]+(?:-[a-z0-9]+)*$/u),
   }),
-  separationsKualiFinalizationCanaryDocumentNumber: KualiDocumentNumberSchema,
-  personLookupCanaryEid: EidSchema,
 });
 
 export const ProtectedSettingsNameSchema = z.strictObject(ProtectedValueSchemas).keyof();
@@ -32,8 +33,6 @@ export const ProtectedStoreEntriesSchema = z.strictObject({
   timekeeperName: entry(ProtectedValueSchemas.timekeeperName).optional(),
   sharepointOnboardingRosterUrl: entry(ProtectedValueSchemas.sharepointOnboardingRosterUrl).optional(),
   activityPersonPseudonym: entry(ProtectedValueSchemas.activityPersonPseudonym).optional(),
-  separationsKualiFinalizationCanaryDocumentNumber: entry(ProtectedValueSchemas.separationsKualiFinalizationCanaryDocumentNumber).optional(),
-  personLookupCanaryEid: entry(ProtectedValueSchemas.personLookupCanaryEid).optional(),
 });
 
 function operation<Value extends z.ZodType>(value: Value) {
@@ -46,8 +45,6 @@ export const ProtectedSettingsPatchSchema = z.strictObject({
   timekeeperName: operation(ProtectedValueSchemas.timekeeperName),
   sharepointOnboardingRosterUrl: operation(ProtectedValueSchemas.sharepointOnboardingRosterUrl),
   activityPersonPseudonym: operation(ProtectedValueSchemas.activityPersonPseudonym),
-  separationsKualiFinalizationCanaryDocumentNumber: operation(ProtectedValueSchemas.separationsKualiFinalizationCanaryDocumentNumber),
-  personLookupCanaryEid: operation(ProtectedValueSchemas.personLookupCanaryEid),
 });
 export const PROTECTED_SETTINGS_SCHEMA_HASH = deriveSchemaHash(ProtectedSettingsPatchSchema, "input");
 
@@ -71,8 +68,6 @@ export const MarkedProtectedSettingsPatchSchema = z.strictObject({
   timekeeperName: markedOperation(),
   sharepointOnboardingRosterUrl: markedOperation(),
   activityPersonPseudonym: markedOperation(),
-  separationsKualiFinalizationCanaryDocumentNumber: markedOperation(),
-  personLookupCanaryEid: markedOperation(),
 });
 export type MarkedProtectedSettingsPatch = z.infer<typeof MarkedProtectedSettingsPatchSchema>;
 

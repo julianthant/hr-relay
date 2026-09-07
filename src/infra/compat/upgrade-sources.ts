@@ -8,13 +8,20 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Clock } from "../../domain/clock.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
-import { SETTINGS_CATALOG, MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../domain/config/catalog.js";
+import { SETTINGS_CATALOG, MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../domain/config/catalog.js";
 import { isRegisteredEnvironmentKey } from "../../domain/runtime-environment.js";
 import { strictlyValidateLocalEnvironment } from "../../domain/secrets.js";
 import { EditableSettingsOverrideSchema } from "../../domain/config/schema.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { SettingsFileRecordSchema, initialSettingsFileRecord, mergeSettingsPatch, SettingsPatchSchema, type SettingsFileRecord } from "../../domain/config/settings.js";
-import { ProtectedSettingsPatchSchema, ProtectedStoreRecordSchema, initialProtectedStoreRecord, type ProtectedSettingsPatch, type ProtectedStoreRecord } from "../../domain/config/protected-settings.js";
+import { ProtectedSettingsPatchSchema, type ProtectedSettingsPatch } from "../../domain/config/protected-settings.js";
+// D341: D331 protected bytes are read with the FROZEN legacy family, never the live one.
+import {
+  LegacyProtectedStoreRecordSchema as ProtectedStoreRecordSchema,
+  RETIRED_TEST_TARGET_PROTECTED_NAMES,
+  initialLegacyProtectedStoreRecord as initialProtectedStoreRecord,
+  type LegacyProtectedStoreRecord as ProtectedStoreRecord,
+} from "../../domain/config/protected-settings-legacy.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentSchema } from "./d331-settings-current.js";
 import { SettingsRootAuthoritySchema } from "./d331-settings-root.js";
 import { CommandRequestSchema, CommandAuditRecordSchema } from "../../domain/commands.js";
@@ -220,6 +227,10 @@ export function readUpgradeSources(stateRoot: string, environmentFile: string, d
   } else if ([old, `${old}.prepare.json`, `${old}.rollback.json`, `${old}.lock`].some(existsSync)) throw new Error("authority-unjournaled { file: settings.json }");
   authenticateSource(ordinary, database);
   authenticateProtected(protectedRecord, database);
+  // D341: a retired test-target entry is refused BY NAME before any value is copied into a patch.
+  for (const name of RETIRED_TEST_TARGET_PROTECTED_NAMES) {
+    if (protectedRecord.entries[name] !== undefined) throw new Error(`retired-test-target { key: ${name} }; move it to config/test-data.local.json (D341), then re-run storage upgrade --plan`);
+  }
   const leaves = ordinaryLeaves(ordinary.settings);
   const protectedEntries: Record<string, unknown> = {};
   for (const [name, entry] of Object.entries(protectedRecord.entries)) protectedEntries[name] = { set: entry.value };
@@ -230,8 +241,11 @@ export function readUpgradeSources(stateRoot: string, environmentFile: string, d
     const bindings = new Map<string, string>();
     const names = strictlyValidateLocalEnvironment(readPrivateMigrationSource(environmentFile), (name, source) => bindings.set(name, source));
     const migrated = new Set<string>(MIGRATED_SETTINGS_ENVIRONMENT_KEYS);
+    const retiredTestTarget = new Set<string>(RETIRED_TEST_TARGET_ENVIRONMENT_KEYS);
     const decoded = new Map<string, string>();
     for (const name of names) {
+      // D341: retired canary names are refused by name before their value is decoded.
+      if (retiredTestTarget.has(name)) throw new Error(`retired-test-target-env { key: ${name} }; move it to config/test-data.local.json (D341) and remove it from .env`);
       if (CLEANUP_ONLY_ENVIRONMENT_KEYS.has(name)) {
         envKeysToRemove.push(name);
         continue;

@@ -1,6 +1,11 @@
 // Frozen D331 contract from e314fb0d; permanent strict v1/v2 historical-backup reader.
+// D341: pinned to the LEGACY protected-settings family; the live family never reads D331 bytes.
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { ProtectedSettingsNameSchema, protectedSettingsReadback, type ProtectedStoreRecord } from "../../domain/config/protected-settings.js";
+import {
+  LegacyProtectedSettingsNameSchema as ProtectedSettingsNameSchema,
+  legacyProtectedSettingsReadback as protectedSettingsReadback,
+  type LegacyProtectedStoreRecord as ProtectedStoreRecord,
+} from "../../domain/config/protected-settings-legacy.js";
 import { deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest } from "../../domain/commands.js";
 import type { CommandAuditRecord } from "../../domain/commands.js";
 import type { ProtectedSettingsCurrentRecord } from "../../domain/authority.js";

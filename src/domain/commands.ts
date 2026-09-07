@@ -8,6 +8,7 @@ import {
   ProtectedSettingsReadbackSchema,
   markProtectedSettingsPatch,
 } from "./config/protected-settings.js";
+import { LegacyProtectedSettingsReadbackSchema } from "./config/protected-settings-legacy.js";
 import { deepFreeze } from "./immutability.js";
 import {
   ActorIdSchema,
@@ -431,7 +432,10 @@ const CommandLandingResultSchema = z.strictObject({
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
   revision: PositiveIntSchema.optional(),
-  entries: ProtectedSettingsReadbackSchema.shape.entries.optional(),
+  // D341: live results carry the five-name readback; committed history from before
+  // D341 carries the legacy seven-name readback (value-free presence). Both parse;
+  // nothing in between does, so an audit is never reinterpreted as another family.
+  entries: z.union([ProtectedSettingsReadbackSchema.shape.entries, LegacyProtectedSettingsReadbackSchema.shape.entries]).optional(),
 }).superRefine((result, context) => {
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
   const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");

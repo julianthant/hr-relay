@@ -33,7 +33,9 @@ export async function runSecureEnvironmentBootstrap(
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  if (!(entrypoint === "cli" && entrypointArgs[0] === "storage")) {
+  // `storage` (D322) and `test-data` (D341) are the only entrypoints that never load `.env`:
+  // neither reads a credential, and test-data must not depend on the operator's environment.
+  if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
     const environmentFilePath = repositoryEnvironmentFilePath();
     (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(

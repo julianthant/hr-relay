@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "inputs": {
+    "separationsKualiFinalizationCanaryDocumentNumber": {
+      "valueId": "00000000-0000-4000-8000-000000000001",
+      "value": "<kuali-document-number>",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    "personLookupCanaryEid": {
+      "valueId": "00000000-0000-4000-8000-000000000002",
+      "value": "<ucpath-eid>",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  },
+  "files": {
+    "private-sample-pdf": "<absolute-path-to-a-private-pdf>"
+  }
+}
