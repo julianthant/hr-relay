@@ -721,3 +721,89 @@ diagnostic profiles `.auth/task7-auth-inspect-profile`, `.auth/task7-auth-inspec
 `.auth/task7-auth-cause-profile` until diagnosis and final owned cleanup conclude. The last actual-root
 doctor at `2026-09-07T22:38:26.555Z` was healthy schema32/g47, with zero pending counts and one
 retained stopped worker lease. Recheck this volatile state before any launch.
+
+### Step 4 repaired candidate: login accepted, CRM ambiguity retained (2026-09-07)
+
+Frozen executable `b69d9d92a82b437f36c707e4e74adb61bf63d216` ran only from the clean primary
+checkout, temporarily detached under the repaired-candidate route. Original master remains
+`f0b1cf92195897e56e4917384b512c45d7b4d41a`; `auth-live-primary-binding.json` records ancestry,
+cleanliness and unchanged dependency inputs. All 1908 `auth-gated-inputs.json` entries matched the
+primary. Runtime provider admission and parent retired-name absence passed, and the confirmed
+private source's identity/metadata remained unchanged. Both private inputs were valid and present.
+Pre-doctor `2026-09-07T22:55:06.584Z` was healthy on the same primary root with all pending counts
+zero and the retained stopped worker lease. No private source was copied or changed.
+
+Production login smoke session 87167 exited 0 in 24812 ms: `login=logged-in`, login plus neutral
+reset verified, every session closed with proof. `auth-repaired-login-smoke.json` retains only
+public hostnames and fixed success markers. This verifies the repaired login through the actual
+worker factory, without raising a timeout. The ordinary candidate BFF (session 19772) then activated
+runtime generation 2, settings revision 1; the exact production `runtimeConfig.requireActive` check
+passed (`auth-live-activation.json`).
+
+Person Lookup session 7100 returned failed result `0303c27a-4fbe-41dd-b825-4e73dbc3da43`, run
+`bedc3aed-be12-455e-93d8-fab1e70ea6cf`, trace `pl-155640-bedc`, attempt 2. Its UCPath search
+checkpoint passed; CRM cross-verification refused two exact displayed-EID records. The current
+CRM store contract and `chooseExactCrmRecord` require this refusal, covered by the duplicate-match
+unit cases. It is a deterministic subject/source ambiguity, not a transient login failure. The
+prior attempt remains failed. No record was selected arbitrarily, no source record changed and
+no further Person Lookup run was launched. The manifest remains pinned to spent attempt 2; any
+future recovery must establish the target's exact next-attempt and checkpoint-replay preconditions
+before freezing another live candidate. A replacement subject is an operator decision.
+
+The exact result, receipt, failure, manifest, assertion and timing identities are recorded in the
+Person Lookup migration log. `person-lookup-auth-repaired-command.json`,
+`person-lookup-auth-repaired-readback.json` and `person-lookup-auth-failure-classification.json`
+retain sanitized evidence in the existing scratch root. The result and independent run readback
+prove exact **0/0/0** write-intent/attempt/durable-outbox deltas and counts. No protected value or
+value-derived reference was copied into this evidence. Separations uses no CRM read, so its serial
+preview can proceed on the same verified candidate without treating this failed result as transient.
+
+Separations session 11070 returned failed result `05ec70d9-1286-4582-acd6-2378b487e112`, run
+`8e4d59c9-e04d-49d0-bfe0-adb8bd6863e8`, trace `sp-155816-8e4d`, attempt 1, `dryRun=true`.
+Nine checkpoints passed before `timecard-search` returned `EMPLOYEE_NOT_FOUND`. The task's
+closed `no-results` arm maps only New Kronos's rendered sentinel to this code; no-signal and
+nonmatching rows have different codes. It is non-transient and `not-attempted`, so no retry was
+launched. The earlier operator report of a manual New Kronos check does not explain this current
+refusal; reconcile the exact selected document's employee against the current operator-accessible
+search, or let the operator select a replacement. No subject value or source record was changed.
+The Separations migration log records every result/manifest/failure/receipt/checkpoint identity
+and timing. `separations-auth-repaired-command.json`, `separations-auth-repaired-readback.json`
+and `separations-auth-failure-classification.json` retain sanitized evidence. All eight assertions
+remain mandatory; this result met only nodes-excluded, gate-results and write-safety-deltas.
+
+Both scenarios and independent exact readbacks prove **0/0/0** run-scoped write deltas/counts.
+Post-doctor `auth-live-post-doctor.json` at `2026-09-07T23:00:50.683Z` exited 0, healthy v32/g172
+on primary identity `35ae66fbb575adebdc61b4018fb4d9153d53bbb8d0f38e0b45cba410c459f54a`.
+It reconciles three retained runs and reports zero pending commands, unresolved write intents,
+durable outbox, terminal outbox, provider reservations and artifact outbox. Two worker lease rows
+remain, both positively stopped: Person Lookup PID 28811 and Separations PID 29045. Do not delete
+them or claim zero lease rows. Whole-table counts are three tasks/results and **0/0/0** writes.
+
+The BFF session 19772 stopped with exit 0. Runtime-lock observation reports server and workers
+stopped; no owned runtime/browser PID or listener on 3938/5174 remains, and playwright-cli lists
+no browsers. Provider admission and confirmed private-source metadata still pass. Restored
+primary `master` to full original `f0b1cf92195897e56e4917384b512c45d7b4d41a`, clean and unchanged.
+`auth-live-final-counts-processes.json` records the final safe counts/process observation. The
+stopped repaired-login smoke profile under `.auth/hrauto-rebuild/task7-auth-repaired` is also
+owned; retain failure evidence and do not sweep pre-existing shared worker profiles.
+
+**Actual blockers:** Person Lookup's selected test subject has two exact CRM onboarding matches;
+Separations' current New Kronos employee search returns its no-results sentinel. Neither is
+authentication failure or a transaction outcome. Both mandatory `met` proofs remain absent.
+Steps 1–3 are accepted at b69d9d92; steps 4–6, final review, merge, integration gates and worktree/ref
+cleanup remain open. No push, downstream dispatch, production transaction or authority reset occurred.
+
+**Provisional delivery assessment:** the confirmed UCPath redirect race was a required-gate defect,
+repaired and proved through regression negatives, full gates and the live production login factory.
+The repaired workflows now expose separate source/subject refusals. Resolving them requires current
+operator facts or replacement test subjects; weakening identity or absence rules would change the
+contract and is not a Task-7 repair. Both spent attempts and partial checkpoints must survive.
+
+Blocked-evidence recording checks passed: target-registry architecture 16 tests (session 83358,
+`auth-blocked-record-bindings.log`) and the separately corrected exact roadmap-doc-binding selector
+23 tests (`auth-blocked-roadmap-bindings.log`). The first command's nonexistent roadmap selector
+collected only the registry file; its exit 0 was not accepted as roadmap coverage. Lint session 41919
+passed with zero warnings (`auth-blocked-record-lint.log`). Roadmap freshness, instruction-twin/size
+audit and diff checks passed. All 1908 `auth-gated-inputs.json` entries remain byte-identical, so
+D191 reuses b69d9d92's deterministic full gates for these three Markdown-only evidence additions.
+This reuse does not waive either failed live proof.

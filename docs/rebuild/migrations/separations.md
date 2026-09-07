@@ -7462,3 +7462,30 @@ claim. The whole primary write-intent/attempt/durable-outbox tables remained **0
 owner records the failed Person Lookup identities, safe diagnostic evidence, healthy post-doctor and
 restored primary branch. The selected subject's source facts were not disproved or silently changed;
 its required fresh `met` preview at `clear-pending` remains open.
+
+### 9.42 Task 1.6.7 repaired-login preview — New Kronos refusal (2026-09-07)
+
+Frozen candidate `b69d9d92a82b437f36c707e4e74adb61bf63d216` passed production UCPath login and
+neutral reset. The exact serial preview command on the verified primary root then produced result
+`05ec70d9-1286-4582-acd6-2378b487e112`, **failed**, run
+`8e4d59c9-e04d-49d0-bfe0-adb8bd6863e8` / trace `sp-155816-8e4d`, attempt 1, `dryRun=true`.
+Manifest `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978`; evaluator
+104395 ms / command 106413 ms. Nine attempt-1/claim-generation-1 checkpoints passed: resolve-action,
+document, plan, termination-type, name-search, subject, job-summary, employment and department-option.
+
+`timecard-search` returned typed `EMPLOYEE_NOT_FOUND`: New Kronos displayed its own no-results
+sentinel, distinct from a search timeout or rendered nonmatching rows. Failure
+`a8bf8136-f077-4f5f-b6ac-cde48496c45b` is non-transient, `not-attempted`, diagnostic bundle
+`bf86a07e-fc23-43ea-8959-4167876c2376`. Receipt
+`4a6d07b8-9be6-5d99-a5fb-0cd7f9dae252` is `failed` / `unknown`; three assertions met
+(nodes-excluded, gate-results, write-safety-deltas), five failed. No preview stop is claimed.
+Exact run-scoped write-intent/attempt/durable-outbox counts and deltas are **0/0/0**. No further
+rehearsal was launched. The observed search refusal needs reconciliation with the operator's
+manual New Kronos check or an operator-selected replacement; it is not treated as transient.
+
+Post-doctor `2026-09-07T23:00:50.683Z` was healthy schema32/g172 on the same primary root, with
+three retained failed runs/results, reconciled spans and zero pending command/write/outbox counts.
+Both retained worker leases are stopped. The BFF stopped with exit 0; no owned browser/runtime or
+3938/5174 listener remains. Original primary master was restored clean and unchanged. Private
+source metadata remained unchanged. The Task-7 owner binds the candidate, safe evidence and both
+remaining live blockers; no final review or merge has occurred.

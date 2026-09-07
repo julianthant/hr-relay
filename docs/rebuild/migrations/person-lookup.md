@@ -188,3 +188,20 @@ all-at-once cutover (D89/D93).
   on the same primary database identity, with one retained stopped worker lease and all pending
   write counts zero. Original primary master was restored clean. Full identities, diagnostic evidence
   and remaining recovery obligations are in the Task-7 owner; this does not replace the required `met` proof.
+
+- 2026-09-07 — Task 1.6.7 repaired the observed post-SSO UCPath navigation race and froze
+  `b69d9d92a82b437f36c707e4e74adb61bf63d216` after all deterministic gates. A production-factory
+  cold login plus neutral reset and session closure passed in 24812 ms. The new live-read
+  result `0303c27a-4fbe-41dd-b825-4e73dbc3da43` nevertheless **failed**: run
+  `bedc3aed-be12-455e-93d8-fab1e70ea6cf` / trace `pl-155640-bedc`, attempt 2, `dryRun=false`,
+  manifest `a4281efcf0726ed66456f17d6a80270eef2e71bcb12e722bf88e91f7e3dd3174`, evaluator
+  46551 ms / command 48580 ms. UCPath `searching` produced an attempt-2/claim-generation-1
+  checkpoint. CRM `cross-verify` then found **two exact displayed-EID records**, which the
+  existing identity contract correctly refuses. Failure `2b977fc1-91d3-4541-84cf-dfa33d8f0c7d`
+  is `UNHANDLED`, non-transient, `not-attempted`; diagnostic bundle
+  `1c1e7d1b-ccd5-48c4-a76f-d7f62c2249f4`. Receipt
+  `9388c8c6-c1ab-55c3-864d-9e32cc8f34f1` is `failed` / `unknown`. Nodes-excluded, gate-results
+  and write-safety-deltas met; the other four assertions failed. Exact run-scoped write counts
+  and deltas are **0/0/0**. Both failed attempts remain retained. This deterministic ambiguity
+  needs an operator-resolved subject/source fact; neither a blind rerun nor choosing one CRM
+  record is authorized. Separations does not use CRM and may be checked independently.
