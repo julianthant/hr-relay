@@ -798,3 +798,101 @@ The input map binds `024b34e12803120d57ee3f629ffdcb42bc8a34fd` before this evide
 unchanged code-gate results under D191, with scoped instruction/link, roadmap freshness and diff
 checks. Review task `01a07a45-50d7-7d01-bd47-672d3dfa1720` must independently accept the proof
 and final candidate before the authorized integration/operator sequence starts.
+
+
+#### Accepted candidate, first integration, and R10 fixture isolation
+
+The independent review task `01a07a45-50d7-7d01-bd47-672d3dfa1720` returned **PASS, no findings**
+on candidate `024b34e12803120d57ee3f629ffdcb42bc8a34fd` / evidence
+`94d540e4788845b2020293ecaf31c053426c19a5`. It closed the async P2, supported R1–R9 and every
+P1–P41/M1–M27 disposition across all 117 paths, and independently recomputed the 2,117-input map
+with zero mismatches. The supervisor verified clean branch/target identities and ancestry, then
+merged without conflicts as **`c69992ec2f6d4be8102c3ea1330905809505e080`**. Its tree exactly matches
+the accepted evidence HEAD. This is local integration only; no push or operator-root write occurred.
+
+Integration typecheck and lint passed. The full integration coverage run
+(`/tmp/hr-settings-r9-integration-coverage.log`, run-UWW2ni) failed solely in the existing real
+CLI lifecycle test: its bootstrap was anchored to the primary checkout's `.env`, whose migrated
+`UCPATH_USER_ID` correctly refuses normal startup. Candidate runs had a provider-only test `.env`,
+so this dependency appeared only at integration. This is **R10, a test-isolation defect**, not
+permission to change the operator's `.env`, bypass secure admission, or convert before gates.
+The integration root remains at c69992ec with v29 operator data; finalization stays open.
+
+The repair is on the existing dedicated task branch. `tests/unit/cli-dashboard-lifecycle.test.ts`
+copies the byte-identical production bootstrap and a mode-0600 provider-only `.env.example` into its
+disposable root, links the real source/dependencies, and invokes that copied bootstrap. Its fixed
+module-relative environment now belongs to the fixture. Source/dependency links are explicitly
+unlinked before recursive cleanup. Both Ctrl+C deliveries, bounded waiting, exit-zero, exact released
+process-lock and checkout-state assertions remain intact; no production, timeout or assertion change.
+
+The lifecycle/bootstrap/runtime neighbors pass 28 tests in three files
+(`/tmp/hr-settings-r10-lifecycle-green.log`). An additional disposable source-bound checkout carries
+synthetic `UCPATH_USER_ID` in its caller `.env`: the old test fails on the expected migrated-key
+refusal, while the repaired test passes the complete real-process lifecycle (one test, 2.21 seconds).
+Both runs preserve that synthetic caller file exactly. Logs are
+`/tmp/hr-settings-r10-migrated-env-red.log` and `/tmp/hr-settings-r10-migrated-env-green.log`;
+`/tmp/hr-settings-r10-env-proof.py` constructs/removes the isolated fixture without reading or copying
+the operator's environment. Required repair-candidate gates, renewed review, reintegration and all
+integration gates remain pending. Operator backup/plan/upgrade/doctor, completion and cleanup remain
+unstarted. Preserve both worktrees and the assigned branch; the primary merge must not be reset.
+
+
+#### R10 repair candidate gates — awaiting independent review
+
+The R10 candidate changes only the lifecycle fixture and this evidence owner. Production, contracts,
+dependencies, parity references and all other tests remain identical to the independently accepted
+024b34e1 / 94d540e4 state. No assertions, timeouts, membership, isolation settings or floors changed.
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Typecheck / lint | PASS, exit 0 each | `/tmp/hr-settings-r10-typecheck.log`, `/tmp/hr-settings-r10-lint.log` |
+| Full coverage and suite size | PASS: 5,456 tests / 433 files; 317.95 seconds; floors pass | `/tmp/hr-settings-r10-coverage.log` |
+| Standalone architecture | PASS: 827 tests / 79 files; 61.05 seconds | `/tmp/hr-settings-r10-architecture.log` |
+| Desktop parity | PASS: 259 cases; 59.1 seconds; no tracked reference changes | `/tmp/hr-settings-r10-parity.log` |
+| Manifest / catalog / roadmap freshness | PASS, exit 0 each | `/tmp/hr-settings-r10-{manifest,catalog,roadmap}.log` |
+| Instruction pairs / chains / owner links / diff | PASS: nine equal pairs; maximum 15,457 bytes; one valid relative link; clean diff check | supervisor scoped checks |
+
+Coverage used the unchanged verified effective-two-worker temporary adapter
+`/tmp/hr-settings-r9-two-workers.config.mts` (SHA-256
+`803dac79b5caed1c6934d2034c2f4c834f6b4a6a6794b807a6c8a067c27303ca`), with no compiler/linter
+contention. Architecture and parity ran sequentially. Coverage reports statements 85.79%, branches
+77.36% (report-only), functions 89.80%, lines 87.94%; the repository's configured floors and chained
+suite-size check passed. The full suite includes the unchanged upgrade/restore/doctor fixture proofs.
+The first typecheck/lint exit handles were unavailable after context recovery, so both were rerun
+to capture explicit exit-zero evidence before coverage; no duplicate gate remained active.
+
+The approved standalone Sol/high reviewer will reopen the fixture and neighboring bootstrap/runtime
+proof coverage on the new commit, independently verify unchanged production and prior accepted
+coverage, and issue a new commit-bound verdict. The prior PASS is not a verdict on R10. All completion
+checkboxes remain open until accepted review, new merged-code gates, operator conversion and cleanup.
+
+
+R10 implementation candidate: **`ad15bb982757a2e2342cf85f98df6eeca2a48050`**, base
+`e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`, original plan
+`9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The 2,117-path input map
+`/tmp/hr-settings-r10-inputs.json` binds that exact commit; aggregate SHA-256 is
+`413311868b752faeaee8e664f0a1f1b185fcf19ac887ea9c7feaad02ad0c448c`.
+Comparison with the prior accepted map differs only in this evidence owner and the lifecycle test.
+This recording append changes no gate inputs beyond task evidence; D191 reuses the candidate results
+above with scoped instruction/link, roadmap freshness and diff checks. Review remains assigned to
+`01a07a45-50d7-7d01-bd47-672d3dfa1720` under the operator-approved standalone continuation arrangement.
+
+
+#### R10 independent review and documentation correction
+
+Standalone review turn `01a07abb-23a3-70d0-9d19-86f2aac7ad86` returned **CHANGES REQUIRED**
+on implementation `ad15bb982757a2e2342cf85f98df6eeca2a48050` / evidence
+`e3294572cab2deda1b589081f0361cef8868ae91`: executable R10 accepted, no production findings,
+but one P3 correction to the active lifecycle fixture recipe in `src/server/LESSONS.md`.
+The reviewer covered 118 entries, verified every prior P/M/R disposition through unchanged inputs,
+and independently recomputed the 2,117-input map with zero mismatches. The recipe still prescribed
+only package files and a dependency symlink, which could recreate the demonstrated environment
+coupling. It now requires the unchanged copied bootstrap, private provider-only fixture environment,
+source link and explicit cleanup of both links. No executable input changes.
+
+The app returned completed review turns with no message items; the exact local review rollout's
+`task_complete.last_agent_message` supplied the verdict, subsequently restated in turn
+`01a07abf-0ef5-7bf2-99bd-3a455e2ed2db`. This is a retrieval issue, not missing independent work.
+The same approved reviewer will verify this documentation-only correction before integration.
+D191 reuses the unchanged R10 executable gates above, with scoped instruction/link, roadmap
+freshness and diff checks for this lesson/evidence commit. Completion remains open.
