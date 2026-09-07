@@ -175,7 +175,7 @@ acceptance. Parity may refresh generated provenance caused by the candidate, but
 non-generated body change is the 12 exact `settings`/`storage-settings` triples showing `Saved`; any
 other body, layout, control, accessibility, mobile or coarse-pointer change stops the task.
 
-### Task 1.6.6 implementation evidence — awaiting fresh complete review
+### Task 1.6.6 implementation evidence — blocked on complete-review sizing
 
 Approved plan: `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The requested branch
 `codex/phase-1-6-sqlite-settings` was created at that exact commit in
@@ -361,3 +361,51 @@ applying a credential. The full gate includes these cases and every retained pro
 This evidence-only recording changes no implementation, tests, configuration, dependencies or
 other gate inputs; D191 permits reuse of those exact repaired-candidate results. Roadmap freshness
 and diff checks run again. Task completion remains open and operator state remains untouched.
+
+
+#### Second independent review — BLOCKED; return to planning for review sizing
+
+Fresh native `/root/sup_review_sqlite_complete` reviewed the complete candidate base
+`e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`, implementation `4646ab6cede1fea82e38344cc26dad8c4a071533`,
+evidence `78c758f7209327659f83a3c4f430d496e80d754c`, approved plan
+`9969857a79ba06d07a88b71ba2f0d4d64dc9967e` and approved amendments. It also returned BLOCKED after
+automatic compaction. It cannot be reused. This attempt received bounded contract ranges, explicit
+avoidance of whole ledgers/full gate logs, rename-aware diff guidance and the complete prior-finding
+ledger. The native reviewer configuration was verified as 240,000 context / 220,000 auto-compaction;
+no limit or compaction setting was changed.
+
+The second reviewer inspected revision/branch/cleanliness/ancestry, requirements and instructions,
+and substantial production code across credentials, upgrade/source recovery, backup inspection/service,
+restore/doctor, migrations/SQLite, kernel/settings, consumers, CLI/bootstrap and Saved copy. It inspected
+R1's production ancestry checks and R2's private binding order, but could not finish their negative
+controls and call-path verification. **R1/R2 remain pending independent closure.** It ran no gates.
+
+Remaining independent coverage: every changed test and guard, guard inventory, remaining consumer/script
+hunks, renamed-fixture provenance, all remaining document/decision changes, evidence-only diffs,
+D332.7/D330 exact coverage, parity a11y/PNG inspection, and direct gate-log/fingerprint verification.
+No new actionable finding was finalized. Two unconfirmed suspicions remain explicit review questions:
+older credential replay after failed SQL audit followed by a newer credential write; and pending-upgrade
+comparison of model environment values represented only in cleanup names. Supervisor readback found
+existing tests deliberately enforce revision-conflict before historical write-ID reuse, while the five
+singular `_MODEL` names are declared cleanup-only and not imported. These observations are not an
+independent resolution of either question and do not constitute a PASS.
+
+The supervise independent-review rule now requires planning to bound the complete candidate rather
+than repeating an oversized review or combining partial verdicts. Preserve all task requirements,
+existing implementation, proof mappings and both prior-review ledgers when selecting reviewable units.
+The original one-candidate atomic consumer cutover remains the approved scope until the operator
+approves a revised binding. No new plan, third reviewer, local master merge or operator conversion
+has been started.
+
+**Resume boundary.** The task worktree remains
+`/Users/julianhein/Projects/hr-worktree-sqlite-settings`, branch `codex/phase-1-6-sqlite-settings`, with
+implementation `4646ab6cede1fea82e38344cc26dad8c4a071533` and passing repaired-candidate gates above.
+Only this evidence record changes after `78c758f7209327659f83a3c4f430d496e80d754c`; D191 code-gate reuse
+remains valid. Primary master is still `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6` and clean. Operator
+read-only inspection observed v29/generation91, zero pending commands/unresolved writes/pending outbox
+or provider reservations, one historical lease, server stopped generation3 and workers stopped
+generation2. Revalidate these volatile facts before effects. No operator backup, migration, credential
+import, `.env` edit or legacy change occurred. No push occurred. Both supporting worktrees/branches
+are removed; only the supervisor worktree remains, with its ignored environment template, build/test
+outputs, dependency symlink and parity-report lock. Private supporting-draft archives remain in `/tmp`
+as recorded above. All unique resume state lives in this owner; no duplicate handoff document is needed.
