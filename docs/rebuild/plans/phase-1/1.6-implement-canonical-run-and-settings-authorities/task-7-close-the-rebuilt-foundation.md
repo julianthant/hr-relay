@@ -635,3 +635,89 @@ D191 reuses the recorded full typecheck/coverage/architecture/parity gates for t
 Markdown-only evidence additions. Live failure is not waived by that reuse. The stopped diagnostic
 profile `.auth/hrauto-rebuild/task-1-6-7-login` and its stopped smoke lock remain retained on the
 primary checkout for unresolved diagnosis; do not sweep other profiles in the shared worker root.
+
+
+### Login diagnosis and required-gate repair in progress (2026-09-07)
+
+The operator confirmed normal-browser UCPath access and explicitly resumed execution. Reverified
+clean primary master `f0b1cf92`, owned branch `d5253fc1`, all 1908 gated inputs, unchanged private
+source metadata, admitted provider file, stopped runtime and healthy v32/g39 root. The diagnostic
+browser ran only from primary detached at executable candidate `331b7a84`; primary master was
+restored afterward. No workflow was retried and no private source was changed.
+
+An owned playwright-cli session, `task7-auth-inspect`, used full Chromium 1228 (the same binary as
+the runtime) and the production login recipe through a credential-reading page-init hook. The CLI's
+newer default Chromium revision was absent; the diagnostic was explicitly pointed at the existing
+runtime binary. Two harness admission errors were corrected before interpreting login observations:
+the credential source must expose only `read`, and the recipe/ceremony gate must share one module
+namespace. Neither harness refusal is live workflow evidence.
+
+Live observations then proved Duo `Success` / `Duo Autopilot approved`, followed by UCPath's
+`WEBLIB_IS_PB.ISCRIPT1.FieldFormula.IScript_BuildPage` redirect. Twice the login's explicit HR Tasks
+navigation was interrupted by that ongoing navigation; the final page then became HR Tasks and
+held a nonempty PS_TOKEN with no TritON or PeopleSoft sign-in form. The decisive sanitized nested
+error is in `auth-inspect-navigation-race.json`; `auth-inspect-returned-page.json` retains the first
+observation. Query values and credentials were excluded. This proves a redirect-ownership defect,
+not a need to raise a timeout or change the operator's MFA. The earlier acquisition timeout remains
+historical evidence; its unobserved page state is not retroactively relabeled.
+
+The Task-7 required-gate repair changes only the UCPath entry-navigation failure arm. When the
+reported interruption coincides with the observed BuildPage route on the configured origin and
+PeopleSoft realm, wait for the exact configured entry rather than issue another navigation. All
+other errors refuse. The existing final authentication proof (PS_TOKEN and both sign-in-form
+absences), the configured timeouts and outer session-acquisition deadline remain unchanged. No
+SSO replay, guessed selector, credential mutation or authority bypass is introduced.
+
+Regression `auth-redirect-red.log`, session 89171: one expected failure / 37 passes at the original
+login implementation, retained `/private/tmp/hrt-501/run-NAIF8l`. After the repair,
+`auth-redirect-green.log`, session 55620: three files / 73 tests passed (2.73 s), covering exact entry,
+missing cookie, remaining form, wrong route, unsettled redirect, foreign origin and unrelated error.
+Typecheck passed (`auth-typecheck.log`, session 28210). Initial lint found one test call-format error
+(`auth-lint.log`, session 66428); the format is repaired before full gates. No reference or generated
+manifest changed when `npm run build:manifest` was rerun for this session-only source repair.
+
+The retained failed Person Lookup run spent attempt 1. Its next rehearsal's T1b declaration now pins
+exact attempt 2; the evaluator/schema and all seven assertions are unchanged. This is an exact
+manifest precondition update, not accepting an arbitrary observed attempt, deleting history or
+waiving checkpoint identity. The real-runtime fixture first reproduces a failed acquisition with no
+checkpoint, then proves the new run owns attempt 2 while attempt 1 remains terminal failed. A
+negative control rejects attempt-1 checkpoint evidence. An initial fixture used a successful prior
+run and correctly exposed fresh-checkpoint reuse (`auth-attempt-fixture.log`, retained
+`/private/tmp/hrt-501/run-qsREsG`); it was corrected to the actual failed-acquisition precondition,
+not by changing replay policy. `auth-attempt-fixture-fixed.log`, session 72616, passed all five tests;
+the added wrong-attempt negative control will also run in the full candidate gate.
+
+Steps 3–6 remain open for this repaired input set: full deterministic gates, frozen-candidate primary
+login/live proofs, evidence, fresh complete review, integration and cleanup. Both passing live
+manifests remain mandatory; no acceptance is inferred from diagnostic login or focused tests.
+
+### Repaired Step 3 accepted (2026-09-07)
+
+The repaired input set passed typecheck, zero-warning lint, manifest/catalog/roadmap freshness,
+instruction-pair/size audit and diff checks. Serial gate session 48301 used the same checked
+two-worker adapter (SHA-256 `1da8cd8f34f538a00f96e5d92a7b422a53794b05b79789c5a24c880184e63936`,
+actual task vitest config `1f9122bf9bbcf1fcab9e01b5aec3428bcde7f9b10b47f0f91aab41775bdbf68f`).
+`auth-candidate-gate-results.json` records every command and exit 0:
+
+| Gate | Accepted evidence | Wall time |
+| --- | --- | --- |
+| Full coverage | 438 files / 5520 tests; statements 85.87%, branches 77.51%, functions 89.87%, lines 87.99%; floors met | 302321 ms |
+| Suite size | Passed without membership or floor changes | 203 ms |
+| Standalone architecture | 80 files / 833 tests | 59140 ms |
+| Assertion-mode desktop parity | 259 passed; no further reference changes | 60662 ms |
+
+The four logs are `auth-candidate-coverage-fixed.log`, `auth-candidate-suite-size-fixed.log`,
+`auth-candidate-architecture.log` and `auth-candidate-parity.log` in the existing owned scratch root.
+`auth-gated-inputs.json` captures all 1908 tracked gate-input hashes before this evidence-only
+addition. The exact source/test changes will be committed before primary execution. Step 4 still
+requires a successful production-factory login smoke and both mandatory T1b proofs. Review and
+integration remain open.
+
+The consumed `2026-09-07-task-1-6-7-ucpath-login.md` handoff's surviving Git, failed-run, private-source,
+restoration and retained-profile facts are now recorded above. Its pending normal-browser question
+is answered, and the observed navigation diagnosis supersedes its proposed next action. Removed
+only that temporary handoff. Retain the original failed smoke profile and the three stopped owned
+diagnostic profiles `.auth/task7-auth-inspect-profile`, `.auth/task7-auth-inspect-second-profile`,
+`.auth/task7-auth-cause-profile` until diagnosis and final owned cleanup conclude. The last actual-root
+doctor at `2026-09-07T22:38:26.555Z` was healthy schema32/g47, with zero pending counts and one
+retained stopped worker lease. Recheck this volatile state before any launch.

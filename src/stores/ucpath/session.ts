@@ -246,6 +246,21 @@ async function awaitLoginGate(
 }
 
 /**
+ * Live 2026-09-07: UCPath's post-SSO BuildPage navigation can supersede our
+ * entry goto, then redirect to that same entry. Only this observed same-realm
+ * interruption may be settled; other errors retain their ordinary refusal.
+ */
+function isEntryRedirectInterruption(error: unknown, observed: string, entry: string): boolean {
+  if (!(error instanceof Error)
+    || !error.message.includes(" is interrupted by another navigation to ")) return false;
+  const expected = new URL(entry);
+  const current = new URL(observed);
+  const realm = /^\/ps[cp]\/([^/]+)\/EMPLOYEE\/HRMS\//u.exec(expected.pathname)?.[1];
+  return realm !== undefined && current.origin === expected.origin
+    && current.pathname === `/psp/${realm}/EMPLOYEE/HRMS/s/WEBLIB_IS_PB.ISCRIPT1.FieldFormula.IScript_BuildPage`;
+}
+
+/**
  * Enters the authenticated APPLICATION.
  *
  * The SSO chain returns to the UCPath portal, which is not PeopleSoft — so a
@@ -260,7 +275,15 @@ async function enterAuthenticatedApplication(context: SystemLoginContext): Promi
   const entry = resolveSystemEntryUrl(config, SYSTEM, context.instance, context.label);
   try {
     await raceCancellation(
-      page.goto(entry, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+      page.goto(entry, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs })
+        .catch(async (error: unknown): Promise<void> => {
+          if (!isEntryRedirectInterruption(error, page.url(), entry)) throw error;
+          // Observe the existing navigation; never issue a second goto or
+          // replay SSO. The wrapper still requires PS_TOKEN and absent forms.
+          await page.waitForURL((url) => url.href === entry, {
+            waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs,
+          });
+        }),
       SYSTEM,
       "verify-landing",
       context,
