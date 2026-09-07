@@ -507,10 +507,11 @@ is wholly pending. Existing task worktree/branch and ignored owned artifacts rem
 recorded. The two supporting worktrees/branches remain removed. No app-task archival is applicable.
 This owner contains the complete resume state; there is no additional unique handoff artifact.
 
-#### Proposed smaller review allocation — awaiting operator approval
+#### Approved smaller review allocation
 
 The approved two-scope allocation still exceeded the effective context available to both reviewers.
-Do not send either unchanged scope to another reviewer. This proposal replaces RA/RB/RI with six
+The operator explicitly approved this replacement in the supervisor session on 2026-09-06.
+Do not send either unchanged scope to another reviewer. This allocation replaces RA/RB/RI with six
 smaller behavioral scopes and a separate fresh integration review, while keeping one implementation
 candidate, all acceptance requirements, every existing proof disposition and all gates unchanged.
 Prior partial reviews remain finding ledgers only. Every new reviewer independently covers its whole
@@ -541,4 +542,6 @@ fresh dispatch. Each assignment must finish in one context; a failed fit returns
 than silently adding reviewers. After fixes, affected scopes and neighbors require renewed review,
 followed by RI2; any unaffected carry-forward needs exact unchanged-input evidence independently
 verified by RI2. No merge, operator conversion or active-worktree removal until accepted review and
-required gates. This proposal is not yet permission to dispatch the replacement round.
+required gates. The replacement round is admitted. This approval-only record reuses implementation
+`466f1f8edd4251bf31f4e7dfc7abdd9c38f996b2` and its unchanged gate inputs under D191; roadmap and
+diff checks pass before committing the record.
