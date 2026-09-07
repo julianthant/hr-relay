@@ -747,3 +747,31 @@ counts, no independent credential file, and no listeners on 3938/5174. These are
 not byte-preservation evidence. Exact row/file preservation will be checked across merged-code
 backup/plan/upgrade/doctor after integration gates. The prepared operator verification script has
 not been executed; it retains source comparison bytes only in memory and emits names/counts/states.
+
+
+#### Renewed R9 review — async zero-effect proof
+
+The same independent Sol/high task returned **CHANGES REQUIRED** on implementation
+`c1fb29917935f33ca014f78a64cc121fa1550b4b` / evidence
+`8ab94c44cad7ca72c281dec68b07eea3c8b2ff83`. It verified the gates, resource override and input
+fingerprint and dispositioned all 117 changed paths (38 production, 43 unit/fixture, 25 parity,
+seven docs, three scripts, one repository reference). It corrected its interim R9 delta count to
+five production paths, five tests and the owner. The review resumed under the approved exception,
+caught an initial primary-checkout cwd before drawing conclusions, and rechecked the pinned worktree.
+P1–P41, M1–M27 and R1–R8 remained supported. The reviewer found no new production defect and
+supported R9's synchronous/lifecycle/cross-process/history/restore behavior, but required a P2 proof:
+exercise a retained credential ID through the asynchronous worker-pool kernel and prove refusal
+before its external process seam. A phase-C refusal alone could otherwise hide a prior effect.
+
+`tests/unit/sqlite-settings-authority.test.ts` now creates real credential history by committing
+privately and failing its SQL audit, then sends that ID through `executeWorkerPool` with a valid
+worker-count request and recording process seam. It requires typed command-divergent, zero effect
+calls, no journal/audit/pool/generation mutation, unchanged credential bytes/readback, and successful
+exact private retry. A fresh-ID positive control reaches the same process seam and applies, proving
+that valid setup can reach the effect. The focused file passed 15 tests in
+`/tmp/hr-settings-r9-async-green.log`. Temporarily removing only phase A's identity check produced
+the intended `1 !== 0` forbidden-effect failure while phase C still returned command-divergent
+(`/tmp/hr-settings-r9-async-negative-control.log`); exact production bytes were restored and verified
+against HEAD. This addition changes only the test and evidence, with no production fix or contract
+change. Required gates and renewed independent acceptance remain open; no integration or operator
+conversion has occurred.
