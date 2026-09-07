@@ -154,7 +154,13 @@ describe("D336 stopped SQLite upgrade", () => {
     const privateBytes = readFileSync(privatePath);
     const databaseBytes = readFileSync(f.path);
     assert.equal(databaseBytes.includes(Buffer.from("private-upgrade-original")), false);
+    assert.equal((await f.run(true)).state, "planned");
+    assert.deepEqual(readFileSync(privatePath), privateBytes);
+    assert.deepEqual(readFileSync(f.path), databaseBytes);
     writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=private-upgrade-changed\n", { mode: 0o600 });
+    await assert.rejects(f.run(true), /credential-import-refused/u);
+    assert.deepEqual(readFileSync(privatePath), privateBytes);
+    assert.deepEqual(readFileSync(f.path), databaseBytes);
     await assert.rejects(f.run(), /credential-import-refused/u);
     assert.deepEqual(readFileSync(privatePath), privateBytes);
     assert.deepEqual(readFileSync(f.path), databaseBytes);
@@ -163,6 +169,29 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal(store.read().revision, 2);
     assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(store)), "private-upgrade-original");
     assert.equal(readFileSync(f.path).includes(Buffer.from("private-upgrade-original")), false);
+  });
+
+  it.each([
+    { label: "removed protected input", changed: "" },
+    { label: "changed ordinary input", changed: "UCPATH_PASSWORD=private-upgrade-original\nHRAUTO_DEFAULT_WORKERS=3\n" },
+  ])("refuses $label in a pre-SQL retry during read-only planning", async ({ changed }) => {
+    const f = fixture(29);
+    const original = "UCPATH_PASSWORD=private-upgrade-original\n";
+    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
+    await f.backup();
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("injected-binding-boundary"); } } }, clock), /injected-binding-boundary/u);
+    const privatePath = join(f.root, "credentials", "protected.json");
+    const privateBytes = readFileSync(privatePath);
+    const databaseBytes = readFileSync(f.path);
+    writeFileSync(f.input.environmentFile, changed, { mode: 0o600 });
+    await assert.rejects(f.run(true), /credential-import-refused/u);
+    await assert.rejects(f.run(), /credential-import-refused/u);
+    assert.deepEqual(readFileSync(privatePath), privateBytes);
+    assert.deepEqual(readFileSync(f.path), databaseBytes);
+    assert.equal(readFileSync(f.input.environmentFile, "utf8"), changed);
+    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
+    assert.equal((await f.run(true)).state, "planned");
+    assert.equal((await f.run()).state, "converted");
   });
 
   it("refuses a missing private binding after SQLite commit instead of rebinding current source bytes", async () => {

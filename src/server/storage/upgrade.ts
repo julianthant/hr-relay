@@ -116,7 +116,10 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   if (from !== 32 && Object.keys(sources.protectedPatch).length > 0 && priorCredentials.revision !== 1) {
     throw new Error("credential-source-conflict: existing independent credentials must not be overwritten by legacy import");
   }
-  if (from !== 32) convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
+  if (from !== 32) {
+    const planned = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
+    store.verifyUpgradePreflight(planned.upgradeId, sources.protectedPatch);
+  }
   if (from === 32 && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
     store.verifyUpgradeBinding(pending.upgradeId, sources.protectedPatch);
   }

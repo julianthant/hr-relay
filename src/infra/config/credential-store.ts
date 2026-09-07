@@ -575,6 +575,8 @@ function removeTemporary(path: string): void {
 /** Private migration binding; never served as a command or public readback. */
 export interface CredentialUpgradeStore extends CredentialStore {
   bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void;
+  /** Pre-SQL preflight admits a first import, but authenticates any surviving binding. */
+  verifyUpgradePreflight(upgradeId: string, entries: ProtectedSettingsPatch): void;
   verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void;
 }
 
@@ -1190,6 +1192,12 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     },
     verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void {
       requireUpgradeBinding(observeCurrent().document, upgradeBinding(upgradeId, entries));
+    },
+    verifyUpgradePreflight(upgradeId: string, entries: ProtectedSettingsPatch): void {
+      const document = observeCurrent().document;
+      if (document.upgradeBinding !== undefined) {
+        requireUpgradeBinding(document, upgradeBinding(upgradeId, entries));
+      }
     },
     read(): ProtectedStoreRecord {
       return observeCurrent().document.record;
