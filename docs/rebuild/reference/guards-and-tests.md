@@ -2327,6 +2327,44 @@ passed, statements 85.86 %, branches 77.49 %, functions 89.86 %, lines 87.98 % (
 `suite-size` unit 341 / scenario 17 / architecture 80, exit 0; `npm run test:parity` 259 passed with
 no reference change (generated manifest unchanged, so no fingerprint moved); generated-output checks
 current; docs audit PASS.
+**Review round 2 (2026-09-07): BLOCKED** on candidate `92bd0883c` (implementation head `3a3fa427f`) —
+the fresh reviewer's context compacted mid-review, so the verdict stops short of PASS by rule, not
+by defect. Inspected scope: every changed source, config, script and schema diff; proof rows P1–P8
+each recorded as satisfied (P9 open by design); F1/F2/A1/A3 verified fixed; round-1 non-findings
+independently re-confirmed (`bindUpgrade` re-admission); all nine instruction twins byte-identical;
+no legacy live state imported; availability admission precedes the private read. No required finding.
+Advisories, all fixed in `63aa8cca6`:
+- A5 — the registry `purpose` prose at `config/test-data.json` for the finalization canary and the
+  person-lookup canary still named protected Settings as the value owner; both now name the ignored
+  private file (D341). Description strings only; no loader reads them.
+- A6 — `stageDestination` re-planned under the credential lock against the pre-lock destination
+  snapshot; an equal ("unchanged") plan writes nothing, so the writer's live-vs-prior fence never ran
+  and the source could be retired against a destination replaced by a concurrent writer. Fixed: the
+  destination is re-read under the lock and compared to the planned snapshot before any decision, and
+  the write path takes the live read as its prior. Proven by a concurrent-writer case (refused by
+  the existing "changed while the migration was planned" reason, source untouched, the other writer's
+  file survives byte-for-byte) plus the equal-destination conversion that leaves the file unchanged;
+  the case fails against the pre-fix code.
+- A7 — the duplicate-key scanner compared raw key text, so two escapings of one key were not
+  duplicates while `JSON.parse` kept the last. Fixed: keys are decoded before comparison, and an
+  invalid key escape is refused by label. Proven with `\u0049`/`\u0022` escapes and a private
+  file whose escaped key repeats a real input name; the cases fail against the pre-fix code.
+- Reviewer limits carried to round 3 (bounded, fresh context): no gate log opened or rerun; the 49
+  PNG references classified by name and identical IHDR dimensions only; `dashboard-surfaces`,
+  `workflow-authoring` and the 1.6 README diffs unread; substantive test diffs unread for
+  `test-data-command`, `test-target-registry` (unit and architecture), `secure-env-bootstrap`,
+  `separations-composition-wire`, `kuali-finalization-fields`, `settings-file-service`,
+  `tests/fixtures/d331-settings-file.ts`, the three workflow `dry-run.scenario.ts` files and
+  `tests/unit/helpers/test-data-source.ts`; the `src/control/test-data.ts` →
+  `src/infra/config/test-data-local.ts` import not checked against the layering ratchet; round-1 A2
+  only partially inspected.
+**Candidate refrozen for review round 3 (2026-09-07) — awaiting independent review.** Implementation
+head `63aa8cca6`; this recording commit is the candidate tip. Gate evidence on the `63aa8cca6` tree:
+typecheck clean; lint clean at `--max-warnings 0`; `git diff --check` clean; full coverage through
+the two-worker adapter: 438 files / 5510 tests passed, statements 85.86 %, branches 77.49 %,
+functions 89.86 %, lines 87.98 % (floors met, exit 0); `suite-size` unit 341 / scenario 17 /
+architecture 80; `npm run test:parity` 259 passed with no reference change; generated-output checks
+current; docs audit PASS.
 Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced

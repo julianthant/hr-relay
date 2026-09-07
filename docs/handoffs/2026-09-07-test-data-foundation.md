@@ -284,3 +284,12 @@ review of the whole candidate.
 
 **Candidate refrozen for round 2:** implementation head `3a3fa427f`, gates green (438 files / 5509 tests,
 parity 259, no reference change); this recording commit is the round-2 tip.
+
+**Review round 2 (2026-09-07): BLOCKED** on candidate `92bd0883c` — reviewer compaction; no required
+finding; P1–P8 recorded satisfied; advisories A5 (registry prose), A6 (unchanged-plan destination
+re-verification under the lock) and A7 (decoded duplicate keys) fixed in `63aa8cca6` with tests that
+fail against the pre-fix code. Ledger and carried limits live in `ref guards-and-tests` §10.5. Round 3
+is a fresh bounded assignment: the fix commit plus the six carried limits.
+
+**Candidate refrozen for round 3:** implementation head `63aa8cca6`, gates green (438 files / 5510 tests,
+parity 259, no reference change); this recording commit is the round-3 tip.
