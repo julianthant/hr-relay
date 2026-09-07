@@ -1026,3 +1026,13 @@ Operator conversion remains stopped. `/tmp/hr-settings-r11-operator-conversion.p
 unrun: it preserves the original failed-plan evidence, takes fresh exact SQL/file snapshots, reuses
 the verified original backup only after successful plan revalidation, and checks conversion,
 repeat/doctor and source/backup preservation. It requires the new exact clean gated integration SHA.
+
+
+R11 executable candidate: `5e42fe08d67bc18e05d472389f79c9be435d46e1`; accepted amendment base:
+`23e0c9ba169a321f03be268f92f7e2e284a59c43`. The 2,117-input map
+`/tmp/hr-settings-r11-inputs.json` binds the candidate with SHA-256
+`8f262430a36b3642347371245442c92c1e7724f31de04323c59d9d523443e06e`.
+Exactly the six amendment paths differ from `/tmp/hr-settings-r10-integration-inputs.json`;
+all other accepted inputs are identical. This evidence-only append reuses those executable gates
+under D191; scoped checks and roadmap freshness/diff pass. Fresh review must accept the complete
+amendment and verify this unchanged-baseline reconciliation before integration. Completion stays open.
