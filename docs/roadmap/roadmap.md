@@ -1,19 +1,19 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-06
-head: fbc23dc1
+asOf: 2026-09-07
+head: da85e5d1d
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
 source: `9993ab39^:docs/plans/2026-08-20-dashboard-architecture-audit.md` (historical Track D) · the phase docs win on any disagreement
 footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; plan, site and owning docs move together — notation: `docs/roadmap/notation.md`.
-> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. Historical Phases 0–2 remain evidenced, but the authority model is deliberately reopened at **0.3** before **1.6** implements it, **2.6** revalidates the tails, and **3.1** completes the dashboard journeys required by admitted workflows (D339 defers optional screens). **3.2** then finishes workflow authoring and freezes one audited candidate, **3.3** accepts Person Lookup and Separations against that exact candidate, and **3.4** finishes Codex/Claude cooperation. Phase 4 migrates the remaining workflows one part at a time. Phase 5 prepares and performs the all-at-once cutover. Phase 6 ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
+> The ground-up rebuild of UCSD's UCPath HR automation, as a tree. Historical Phases 0–2 remain evidenced, but the authority model is deliberately reopened at **0.3** before **1.6** implements it, **2.6** revalidates the tails, and **3.1** completes the dashboard journeys required by admitted workflows (D339 defers optional screens). **3.2** then finishes workflow authoring and freezes one audited candidate, **3.3** accepts Person Lookup and Separations against that exact candidate, **3.4** offers optional document tools and AI assistance, and **3.5** finishes Codex/Claude cooperation. Optional 3.4 never blocks the required sequence. Phase 4 migrates the remaining workflows one part at a time. Phase 5 prepares and performs the all-at-once cutover. Phase 6 ships the desktop application. Legacy stays the sole production authority until Phase 5's switch.
 
 tiles:
 - Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
 - Active | Phase 1.6 | implement D330/D331/D332 as amended by D336: SQLite runs/settings with independent credentials; Task 6 owns conversion after Task 5
 - Next | Phase 2.6 | revalidate the downstream read models, joins and operator services against the canonical authorities
-- Decisions | D1–D339 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D131 retired, never reused
+- Decisions | D1–D342 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | D329 holds every write behind 3.2's independent candidate audit and 3.3's exact-candidate admission. Historical 4589 remains inspection-only; the bounded authorization must name the candidate, fingerprints, disposable targets, disposition, and sequence, and expires on drift, failure, or UNKNOWN
 
@@ -737,7 +737,6 @@ log:
 - 2026-08-21 | docs-cohesion 02 | doc 02 §2h separates unwired-BY-DESIGN (the retention projection, D164) from unwired-by-omission (the saved-mapping store, an artifact-projection-declaring descriptor — both unowned and reported) and from waiting-on-an-admitted-workflow (the start-method kinds and Review surface → `{#migrations}`)
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
-
 #### 1 · Build canonical intake and Edit Data services {#p2c-intake}
 status: done
 doc: 2.3 §2.3 · Data and intake foundation · ref:data-intake-and-edit-data
@@ -1021,12 +1020,13 @@ chip: 3.1 reopened · waits for 2.6
 doc: 3 §Phase summary · 3.2 §Phase 3 chronology
 open: yes
 
-> Phase 3 finishes one shared platform through four ordered parts: **3.1 Shared dashboard**, **3.2 workflow authoring and candidate freeze**, **3.3 controlled acceptance**, and **3.4 Codex and Claude cooperation**. D329 puts every code-changing and read-only acceptance activity before the immutable-candidate write proof. It adds no third workflow.
+> Phase 3 finishes one shared platform through five parts, with 3.4 entirely optional: **3.1 Shared dashboard**, **3.2 workflow authoring and candidate freeze**, **3.3 controlled acceptance**, **3.4 optional document tools and AI assistance**, and **3.5 Codex and Claude cooperation**. D329 puts workflow authoring and read-only acceptance before the immutable-candidate write proof; D342 leaves optional document features outside that proof and off the required path. It adds no third workflow.
 
 needs:
 - p2f-close
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-09-04 | D329 chronology correction | 3.2 now finishes and freezes workflow authoring before 3.3 performs controlled acceptance; 03a/03b/03c/03d filenames and active 3c-A/3c-B labels are retired
 - 2026-09-03 | D326/D327 dashboard reset | 3.1 Tasks 1–7 keep their evidence but no longer close the part; focused Tasks 8 onward own every generic operator journey after 2.6. Parts 3.2–3.4 wait
 - 2026-09-03 | D326 decimal hierarchy | 3.1 → 3.2 → 3.3 → 3.4 is now the execution order; one coordinator owns each part, numbered cards are one supervisor session, and parallelism is recorded in the coordinator run plan · left: reopened 3.1, then 3.2–3.4
@@ -2013,25 +2013,254 @@ doc: 3.3 §Task 4 · Reconcile acceptance and close Phase 3.3 · ref:guards-and-
 
 builds:
 - [ ] PROOF unchanged candidate, all three controlled proofs, reconciled acceptance, and complete green integrated gates
-- [ ] DOCS every owning record updated; worktrees, branches, tasks, and coordinator lifecycle closed; 3.4 unlocked
+- [ ] DOCS every owning record updated; worktrees, branches, tasks, and coordinator lifecycle closed; optional 3.4 and required 3.5 unlocked
 
 needs:
 - separation-filing-finalization
 
+log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 
-### 3.4 · Codex and Claude cooperation {#claude-operator}
-status: planned
-date: R15 · 2026-08-21
+
+### 3.4 · Optional document tools and AI assistance {#optional-document-tools}
+status: proposed
+date: D342 · 2026-09-07
 size: L
-chip: not started
-doc: 3.4 §Track summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
+chip: all features optional
+doc: 3.4 §Phase summary
 
-> After 3.3 closes, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes truthful actor identity with full capability parity; Task 2 makes the existing API usable directly by agents (MCP optional); Tasks 3 and 4 add monitoring and actor-aware clients and may run in parallel under the coordinator plan; Task 5 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
+> An opt-in menu for local OCR, PDF tools, search and focused assistance. Every feature can be deferred or skipped; none blocks Phase 3.5, migrations or cutover. Existing mandatory intake obligations remain with their current owners.
 
 needs:
 - workflow-live-acceptance
 
 log:
+- 2026-09-07 | D342 optional documents | recorded optional scope; all implementation remains unselected and unbuilt
+
+#### 1 · Evaluate and serve local OCR {#optional-local-ocr}
+status: proposed
+chip: optional
+doc: 3.4 §Task 1 · Evaluate and serve local OCR
+
+> Compare pretrained local OCR against selected Gemini/Mistral readings on a representative, verified corpus; integrate a private authenticated PC endpoint only if useful.
+
+builds:
+- [?] BOTH Measure field accuracy, missed pages, handwriting errors, review time and latency on the operator's 7800X3D / RTX 5080 / 32 GB RAM PC; record software/model versions and hardware limits.
+- [?] PROOF Preserve the existing extraction admission and provenance; PC unavailability is explicit, with no silent cloud fallback. No model training or hardware purchase is required.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 2 · Upload and inspect PDF pages {#optional-pdf-viewer}
+status: proposed
+chip: optional
+doc: 3.4 §Task 2 · Upload and inspect PDF pages
+
+> Add a page-preserving PDF viewer and import path using existing embedded text where trustworthy and OCR for scanned pages.
+
+builds:
+- [?] BOTH Preserve original artifact identity, page numbers, text provenance and available word coordinates; show page previews and extraction progress.
+- [?] PROOF Distinguish unreadable, failed and unprocessed pages from successfully searched pages; no omitted page can appear as a successful empty result.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 3 · Find words and phrases in a PDF {#optional-page-search}
+status: proposed
+chip: optional
+doc: 3.4 §Task 3 · Find words and phrases in a PDF
+
+> Search extracted text locally and open the matching source page with snippets and highlights where coordinates exist.
+
+builds:
+- [?] BOTH Support names, words and phrases with explicit matching behavior; exact search needs no embedding model or hosted AI.
+- [?] PROOF Retain source-page links and visible coverage gaps; test multiple matches, empty results, OCR errors and missing coordinate data.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 4 · Export selected PDF pages {#optional-page-export}
+status: proposed
+chip: optional
+doc: 3.4 §Task 4 · Export selected PDF pages
+
+> Select pages manually or from search results and export them as a new PDF.
+
+builds:
+- [?] BOTH Preserve selected page order and content; keep source-to-output page mapping and original files intact.
+- [?] PROOF Use ordinary PDF processing; selection and export require no model or search-by-meaning feature.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 5 · Search across uploaded documents {#optional-document-library}
+status: proposed
+chip: optional
+doc: 3.4 §Task 5 · Search across uploaded documents
+
+> Index retained page text across selected files or a document library, with explicit scope controls.
+
+builds:
+- [?] BOTH Scope results to this PDF, selected documents or the authorized library; link every result to its file and page.
+- [?] PROOF Honor deletion, retention and permissions in text/index/cache artifacts; avoid duplicate OCR for unchanged documents.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 6 · Classify forms and group packets {#optional-document-classify}
+status: proposed
+chip: optional
+doc: 3.4 §Task 6 · Classify forms and group packets
+
+> Suggest form types and page groupings for mixed HR document stacks.
+
+builds:
+- [?] BOTH Recognize declared form types and show unknown, ambiguous, incomplete or mixed-person groups for review.
+- [?] PROOF Reuse the form registry and grouping contracts; model confidence never establishes employee identity or admits another workflow.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 7 · Review structured field extraction {#optional-document-extract}
+status: proposed
+chip: optional
+doc: 3.4 §Task 7 · Review structured field extraction
+
+> Display extracted HR fields beside their source pages and accept explicit corrections through the existing intake rules.
+
+builds:
+- [?] BOTH Preserve every declared field, typed blank/not-on-form/illegible outcomes, page provenance and ordinary validation.
+- [?] PROOF Treat model results as proposed readings; review and downstream workflow gates retain their existing authority.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 8 · Reread difficult fields and compare readings {#optional-document-reread}
+status: proposed
+chip: optional
+doc: 3.4 §Task 8 · Reread difficult fields and compare readings
+
+> Request a second reading of a selected page or field using an eligible local, Gemini or Mistral model.
+
+builds:
+- [?] BOTH Show each provider/model and the original source; preserve conflicting readings instead of silently choosing or repairing values.
+- [?] PROOF Use cloud only when explicitly configured for the data and operation; retain human correction as a provider-independent route.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 9 · Find pages by meaning {#optional-semantic-search}
+status: proposed
+chip: optional
+doc: 3.4 §Task 9 · Find pages by meaning
+
+> Retrieve passages for concept-based queries such as leaving employment even when the document says separation.
+
+builds:
+- [?] BOTH Evaluate a local embedding model and optional Cohere, Cloudflare or Voyage alternatives only against a measured search need.
+- [?] PROOF Bind each index and query to compatible versioned embeddings; changing models requires explicit compatible routing or re-indexing, not quota-driven vector mixing.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 10 · Rank search results by relevance {#optional-search-rerank}
+status: proposed
+chip: optional
+doc: 3.4 §Task 10 · Rank search results by relevance
+
+> Optionally rerank retrieved passages to put more useful pages first.
+
+builds:
+- [?] BOTH Compare relevance against the existing search baseline; local ranking, Cohere or another tested service are options, not required dependencies.
+- [?] PROOF Keep original matches and citations; reranker failure must not fabricate a result or conceal an incomplete search.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 11 · Ask document questions with page citations {#optional-document-questions}
+status: proposed
+chip: optional
+doc: 3.4 §Task 11 · Ask document questions with page citations
+
+> Answer questions from retrieved passages within the selected document scope.
+
+builds:
+- [?] BOTH Link substantive answer claims to supporting pages and say when the documents do not contain enough information; evaluate unsupported claims and missed evidence.
+- [?] PROOF An eligible local model, Gemini or a tested hosted text provider may compose answers; document text is untrusted content, never instructions granting tools or write authority.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 12 · Evaluate focused failure assistance {#optional-failure-assistance}
+status: proposed
+chip: optional
+doc: 3.4 §Task 12 · Evaluate focused failure assistance
+
+> Assess the existing on-demand failure advice and improve it only if it reduces operator effort.
+
+builds:
+- [?] BOTH Reuse redacted failure evidence and existing advisory boundaries; measure useful advice against the deterministic failure display.
+- [?] PROOF No autonomous dashboard agent, duplicate AI run summary, AI identity verdict or revived retired sanity-check surface is admitted.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 13 · Control optional providers and view usage {#optional-provider-controls}
+status: proposed
+chip: optional
+doc: 3.4 §Task 13 · Control optional providers and view usage
+
+> Make eligible OCR/search/advisory providers explicit and show observed usage and availability.
+
+builds:
+- [?] BOTH Local-first operation, per-capability enablement, server-side credentials, approved data handling, observed quota/reset information and provider/model attribution; unknown quota remains unknown.
+- [?] PROOF Honor actual project/account quotas, Retry-After and explicit cost ceilings; no paid spillover, account multiplication assumption or indiscriminate cross-provider document forwarding. All hosted providers can remain disabled.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 14 · Evaluate OCR fine-tuning from verified corrections {#optional-ocr-finetuning}
+status: proposed
+chip: optional
+doc: 3.4 §Task 14 · Evaluate OCR fine-tuning from verified corrections
+
+> Consider a small model adaptation only if a pretrained baseline has persistent, measurable form-reading errors.
+
+builds:
+- [?] BOTH Use verified image/answer pairs, synthetic or de-identified examples where suitable, and held-out people/document packets; raw PDFs or unchecked model output are not ground truth.
+- [?] PROOF Measure generalization and regressions; verify memory/license/data suitability before training. No automatic learning from corrections, mandatory training or training from scratch.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+#### 15 · Find public instructions with citations {#optional-public-instructions}
+status: proposed
+chip: optional
+doc: 3.4 §Task 15 · Find public instructions with citations
+
+> Optionally search approved public sources alongside the private document library.
+
+builds:
+- [?] BOTH Keep web and uploaded-document scopes distinct, label source dates and cite official instructions; Tavily is one candidate only if a public-web feature is selected.
+- [?] PROOF Never send employee identifiers or private document content as web queries; external instructions do not change workflow rules or approve actions.
+
+log:
+- 2026-09-07 | D342 optional documents | feature recorded as opt-in; focused assignment and implementation remain open
+
+### 3.5 · Codex and Claude cooperation {#claude-operator}
+status: planned
+date: R15 · 2026-08-21
+size: L
+chip: not started
+doc: 3.5 §Track summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
+
+> After 3.3 closes, without waiting for optional 3.4, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes truthful actor identity with full capability parity; Task 2 makes the existing API usable directly by agents (MCP optional); Tasks 3 and 4 add monitoring and actor-aware clients and may run in parallel under the coordinator plan; Task 5 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
+
+needs:
+- workflow-live-acceptance
+
+log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-09-04 | D329 chronology correction | 3.4 starts after controlled acceptance closes in 3.3; old 03d filename retired in favor of decimal doc 03.4
 - 2026-09-03 | D326 decimal hierarchy | 3.4 starts after closed 3.3; Tasks 3 and 4 are parallel-capable only through the coordinator plan, and Task 5 owns the T4 journey plus Phase 3 close · desktop attachment remains Phase 6
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
@@ -2040,7 +2269,7 @@ log:
 status: planned
 date: D338 · 2026-09-06
 size: M
-doc: 3.4 §Task 1 · Derive actor identity and preserve full capability parity · ref:frontend-backend-integration §4 · ref:write-safety §14
+doc: 3.5 §Task 1 · Derive actor identity and preserve full capability parity · ref:frontend-backend-integration §4 · ref:write-safety §14
 
 > D338: agents can perform every supported human action, including HR approvals, through the same API and safeguards. Identity records who acted; it creates no additional approval step.
 
@@ -2054,6 +2283,7 @@ needs:
 - workflow-live-acceptance
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 - 2026-09-06 | D338 operator correction | replaces two-actor pending-confirmation/schema work with full API capability parity and truthful attribution
 
@@ -2061,7 +2291,7 @@ log:
 status: planned
 date: D338 · 2026-09-06
 size: M
-doc: 3.4 §Task 2 · Make the existing API usable by agent clients · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.5 · ref:frontend-backend-integration §4
+doc: 3.5 §Task 2 · Make the existing API usable by agent clients · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.5 · ref:frontend-backend-integration §4
 
 > Use the existing loopback API directly. An MCP wrapper is optional client convenience, not a new server, permission layer or prerequisite.
 
@@ -2074,6 +2304,7 @@ needs:
 - claude-actor
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 - 2026-09-06 | D338 operator correction | direct HTTP is sufficient for agent operation and acceptance; MCP is optional, stable node id retained
 
@@ -2081,7 +2312,7 @@ log:
 status: planned
 date: parallel wave 3 · dedicated worktree
 size: M
-doc: 3.4 §Task 3 · Add cursor-based monitoring and the actor inbox · ref:operator-trust §6 · ref:frontend-backend-integration §3.5
+doc: 3.5 §Task 3 · Add cursor-based monitoring and the actor inbox · ref:operator-trust §6 · ref:frontend-backend-integration §3.5
 
 > The stream is already cursor-resumable and the projector is already fed by a disk tail, so a second reader is nearly free. The hole is per-actor: the inbox is read for ONE hardcoded id and rides the day wire with no route of its own. And a log of step names teaches an agent nothing — `{#observed-logs}` is what turns monitoring into something worth handing to a second watcher.
 
@@ -2098,13 +2329,14 @@ needs:
 - observed-logs
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
 #### 4 · Make existing clients actor-aware {#claude-clients}
 status: planned
 date: parallel wave 3 · dedicated worktree
 size: M
-doc: 3.4 §Task 4 · Make existing clients actor-aware · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
+doc: 3.5 §Task 4 · Make existing clients actor-aware · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
 
 > "What happens if the user has both open" was answered by D181 before anyone asked it: the `server` role lock is taken before the authority database opens, so there is never more than one BFF on the machine. The web dashboard, the desktop app and direct agent API clients share one port, one journal and one projection; an MCP wrapper is optional.
 
@@ -2119,13 +2351,14 @@ needs:
 - claude-mcp
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
 #### 5 · Prove attributed cooperation and close Phase 3 {#claude-proof}
 status: planned
 date: D338 · 2026-09-06
 size: M
-doc: 3.4 §Task 5 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10 · ref:write-safety §14
+doc: 3.5 §Task 5 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10 · ref:write-safety §14
 
 > Prove direct API operation with an agent-resolved dry-run gate and full caller capability parity. No second actor must confirm; no new live HR transaction is added to this phase proof.
 
@@ -2142,6 +2375,7 @@ needs:
 - claude-clients
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 - 2026-09-06 | D338 operator correction | agent approvals settle under the existing guardrails with no human confirmation; prove attribution and full parity
 
@@ -2156,7 +2390,7 @@ open: yes
 > Phase 4 is the workflow-migration program. Each approved workflow becomes one lettered part: **4A**, then **4B**, **4C**, and so on. The next letter is created only after that workflow's current behavior, proposed definition, proof target, and migration boundary are verified and approved.
 
 builds:
-- [ ] DOCS Phase 3 stops only after 3.4's attributed cooperation proof (D326)
+- [ ] DOCS Phase 3 stops only after 3.5's attributed cooperation proof (D326)
 - [ ] DOCS record the operator's selected candidate after Phase 3 closes
 - [ ] DOCS verify its complete admission packet with no guessed workflow boundary or hidden open choice
 - [ ] DOCS record the operator's approval of the exact workflow definition and scope
@@ -2168,6 +2402,7 @@ needs:
 note: **Legacy capability register at `b1b36349`:** 46 open · 19 replaced · 6 native · 7 retired. Those are real cutover obligations, but they do not make any candidate a Phase 3 task or pre-assign a future phase.
 
 log:
+- 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-09-02 | D319 | retired the assumed remaining-migration sequence as build authority; old rows remain evidence leads until Phase 3 close extracts or deletes them
 - 2026-09-02 | prior candidate intake | Person Lookup/I-9 evidence at `b1b36349` is preserved, but only Person Lookup is already admitted; I-9 remains an unnumbered candidate
 
@@ -2644,7 +2879,7 @@ The tree never invents scope: an unplanned feature is a finding for `docs/rebuil
 line. D326 makes the hierarchy uniform: numbered phases are the only spine nodes; Phases 0–3 use
 decimal parts; the operator coordinates each part; each immediate numbered task is one supervisor
 session; and checklist lines are that task's proof-bearing subtasks. The strict active order is
-0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → 3.4. D328 gives admitted parallel peers one shared ordinal
+0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → 3.5, with optional 3.4 available after 3.3 (D342). D328 gives admitted parallel peers one shared ordinal
 and consecutive numeric members (`N-1`, `N-2`, ...); a serial task remains `N`, and the hyphen is
 part of one task identity rather than another hierarchy level. Parallel execution begins only after
 each member receives its exact feature branch, absolute worktree, artifact scope, gate and
@@ -2652,6 +2887,26 @@ integration order in the supervising session's working record. D329 makes 3.2 th
 final task an independent exact-candidate freeze; 3.3 performs no development and may exercise
 controlled writes only against that unchanged candidate. Session work is recorded only where it happened in
 append-only per-node `log:` blocks, so history never competes with the plan on the spine.
+
+### D342 — Optional document features and cooperation renumbering (2026-09-07)
+
+The operator adds Phase 3.4 as an optional feature menu and renumbers Codex/Claude cooperation
+from 3.4 to 3.5. The stable `claude-*` node IDs, D338 capability parity and cooperation tasks
+remain unchanged. The visible Phase 3 order is 3.1, 3.2, 3.3, optional 3.4, 3.5; the required
+dependency chain goes directly from 3.3 to 3.5. No optional feature, provider activation, model
+training, or new document workflow is a prerequisite for 3.5, Phase 4 or cutover. Existing mandatory
+intake and workflow obligations keep their current owners and gates.
+
+[Phase 3.4](../rebuild/plans/phase-3/3.4-optional-document-tools/README.md) owns the feature scope,
+selection rules and per-feature evidence. Every task begins proposed and independently selectable;
+implementation requires a focused assignment. Selected work respects prerequisite capabilities
+without turning the whole menu into a mandatory sequence. Phase 3.3 still consumes its frozen
+candidate unchanged; later feature changes receive their own current-candidate gates and cannot
+inherit controlled-write proof for changed code. All optional features may remain unbuilt and disabled.
+
+This amends D326/D329's numbering and required-predecessor rule only at the optional 3.4 slot.
+It does not reopen retired AI summaries/sanity checks, authorize autonomous HR actions, alter
+D338's operator-directed agent permissions, or waive any existing safety/release requirement.
 
 ### Phase plan storage (operator amendment, 2026-09-06)
 
@@ -2791,7 +3046,7 @@ under `docs/rebuild/plans/`; the tree above is the same set of phases as nodes._
 _D326 (2026-09-03) fixes one visible hierarchy for Phases 0–3: numbered phases, decimal parts,
 numbered supervisor tasks, and checklist subtasks. D328 (2026-09-04) renders admitted parallel
 waves as consecutive numeric task members (`N-1`, `N-2`, ...). Their strict active order is 0.3 → 1.6 → 2.6 →
-3.1 → 3.2 → 3.3 → 3.4. D319 still requires verification and operator approval before a
+3.1 → 3.2 → 3.3 → 3.5, with optional 3.4 outside the required path (D342). D319 still requires verification and operator approval before a
 candidate receives its next Phase 4 letter._
 
 | Phase | Headline deliverable | Gate to exit | Size |
@@ -2799,7 +3054,7 @@ candidate receives its next Phase 4 letter._
 | **0** | 0.1 charter/safety · 0.2 governance · **0.3 canonical authority design** | 0.1–0.2 historical evidence retained; **0.3 active** until run/settings contracts, migration/recovery and 1.6 briefs close | **M** |
 | **1** | 1.1–1.5 historical spine · **1.6 canonical authority implementation** | historical live spine proof remains MET; 1.6 waits for 0.3, then stores/writers/core resolution and compatibility deletion must pass | **XL** |
 | **2** | 2.1–2.5 historical write/tails proof · **2.6 downstream revalidation** | D135 remains the controlled-write evidence; 2.6 waits for 1.6, then read models/joins/services must reconcile without rewriting evidence | **XL** |
-| **3** | 3.1 shared dashboard · 3.2 Separations · 3.3 workflow authoring and acceptance · 3.4 Codex/Claude cooperation | 3.1 waits for 2.6 and closes every generic journey; each later part closes/reconciles before the next; 3.4 closes Phase 3 | **XL** |
+| **3** | 3.1 shared dashboard · 3.2 authoring and freeze · 3.3 controlled acceptance · optional 3.4 document tools · 3.5 Codex/Claude cooperation | 3.1 waits for 2.6; 3.2 freezes the unchanged 3.3 candidate; 3.5 closes Phase 3 without requiring optional 3.4 | **XL** |
 | **4** | Remaining workflow migrations, one verified workflow per lettered part: 4A, 4B, 4C and onward | each candidate's current behavior and proposed workflow are verified; operator approves the D319 packet before implementation scope is assigned | **per workflow** |
 | **5** | 5A cutover readiness · 5B one all-at-once production authority switch (D89) | every admitted workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; launcher switches atomically; rollback verified | **L** |
 | **6** | Ship the rebuild as a Mac and Windows desktop application (`doc 06`) | installable on both systems; signed upgrade preserves state; installed-app live proof; credentials remain protected | **L** |

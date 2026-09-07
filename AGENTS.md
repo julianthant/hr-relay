@@ -42,7 +42,8 @@ For `/phase-plan`, use [the plans index](docs/rebuild/plans/README.md): one fold
 one folder per subphase; small plans live in `README.md`, large plans split into linked task files.
 Persist approved task plans and evidence at the single owner named by the roadmap binding.
 
-D326/D328/D329 order 0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → 3.4. Parts contain numbered supervisor
+D342 order 0.3 → 1.6 → 2.6 → 3.1 → 3.2 → 3.3 → optional 3.4 → 3.5; optional 3.4 never blocks 3.5.
+Parts contain numbered supervisor
 tasks; parallel peers use `N-1`, `N-2`, etc. with recorded isolation. Phase 3.2 freezes the candidate;
 3.3 consumes it unchanged. Defects/drift return to 3.2. Phase 4 requires D319 admission and operator
 approval; Phase 5 owns cutover. Never retry an UNKNOWN submit.

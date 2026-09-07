@@ -2178,3 +2178,9 @@ _phase: detour before 1.6.7; approved and completed 2026-09-07 — accepted revi
 | # | Decision | Owning doc |
 | --- | --- | --- |
 | **D341** | **TEST INPUTS HAVE THEIR OWN CONFIGURATION, OUTSIDE USER SETTINGS.** Complete shared-fixture consolidation now: tracked public/synthetic config plus ignored private values/paths, one typed reader, and verified one-time migration of current canaries out of credentials. Preserve privacy, availability, source-bound identities and operational credentials; remove the two test-only Settings rows. The operator reset the rebuild database and requires no old-run migration. The detour finishes before 1.6.7, and downstream phases consume it without another consolidation pass. | ref clock-config-secrets §D341 (configuration/conversion owner) · ref guards-and-tests §10.5 (fixture/proof/completion owner) · Task 1.6.7 (dependency/resume owner) |
+
+## Reconciliation round 146 (2026-09-07) — optional document tools
+
+| # | Decision | Owning doc |
+| --- | --- | --- |
+| **D342** | **PHASE 3.4 IS AN OPTIONAL DOCUMENT-FEATURE MENU; CODEX/CLAUDE COOPERATION MOVES TO 3.5.** Local OCR, PDF viewing/search/export, document classification/extraction, rereading, semantic search/reranking, cited questions, focused advice, provider controls, fine-tuning and public-instruction search are independently selectable proposals. None blocks 3.5, migrations or cutover. Stable cooperation IDs, D338 parity, mandatory intake obligations and the immutable 3.3 candidate remain unchanged. Historical 3.4 cooperation references resolve to 3.5. | [roadmap §D342](../../roadmap/roadmap.md#d342--optional-document-features-and-cooperation-renumbering-2026-09-07) (order/optionality owner) · [Phase 3.4](../plans/phase-3/3.4-optional-document-tools/README.md) (feature scope) · [Phase 3.5](../plans/phase-3/3.5-co-operate-with-claude/README.md) (cooperation) |

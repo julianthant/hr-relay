@@ -25,7 +25,9 @@ reverify, not current completion authority. The current source wins over every c
 - [x] 3.1 remains the prerequisite shared-dashboard part under D326/D328
 - [ ] 3.2 verifies every mutable workflow seam, completes read-only acceptance, and freezes one exact candidate
 - [ ] 3.3 exercises controlled write authority only against that frozen candidate
-- [ ] 3.4 proves attributed Codex/Claude cooperation and closes Phase 3
+- [?] 3.4 offers optional document tools; no feature blocks the required phase sequence
+- [ ] 3.5 proves attributed Codex/Claude cooperation and closes Phase 3
+> 2026-09-07 | D342 optional documents | optional 3.4 inserted; cooperation moves to 3.5; 3.2/3.3 freeze and proof rules unchanged
 > 2026-09-04 | D329 chronology correction | authoring and read-only acceptance now precede the frozen-candidate controlled proof; the old lettered filenames and active 3c-A/3c-B structure are retired
 <!-- /roadmap-status -->
 
@@ -186,7 +188,7 @@ superseded plans to the new authoritative task structure.
 | former 3.3 Tasks 2–3 | 3.2 Tasks 4-1–4-2 | runtime inheritance and clean-context guide proof |
 | former 3.3 Task 4 | 3.2 Task 5-1 | Person Lookup acceptance |
 | former 3.3 Task 5 | 3.2 Task 5-2 | compiled Separations acceptance |
-| former 3.3 Task 6 | 3.2 Tasks 1, 5-1, 5-2, 6, and 7; 3.3 Task 4; 3.4 Task 5 | shared test infrastructure and T1–T3 implementation in 3.2; candidate audit/freeze in 3.2 Task 7; final evidence/lifecycle close in 3.3; T4 remains with the cooperation proof |
+| former 3.3 Task 6 | 3.2 Tasks 1, 5-1, 5-2, 6, and 7; 3.3 Task 4; 3.5 Task 5 | shared test infrastructure and T1–T3 implementation in 3.2; candidate audit/freeze in 3.2 Task 7; final evidence/lifecycle close in 3.3; T4 remains with the cooperation proof |
 
 ## Exit criteria
 

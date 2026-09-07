@@ -950,7 +950,7 @@ No human-only restriction, second-actor confirmation, agent approval proposal, o
 `pending-confirmation` state is introduced. All callers satisfy the same command schemas, current
 revision/evidence checks, declared approval ceremony, duplicate-submit controls and unknown-outcome
 rules. Direct HTTP clients are supported; an MCP wrapper is optional convenience and never an
-additional admission layer or a release prerequisite. Phase 3.4 owns actor-aware API access and its
+additional admission layer or a release prerequisite. Phase 3.5 owns actor-aware API access and its
 parity proof. The write-safety consequence is owned by ref write-safety §D338.
 
 

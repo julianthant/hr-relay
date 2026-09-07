@@ -1,4 +1,4 @@
-# Phase 3.4 · Codex and Claude cooperation
+# Phase 3.5 · Codex and Claude cooperation
 
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
@@ -8,7 +8,8 @@ gates, authorize live runs, edit settings and invoke any other supported human a
 uses the same command protocol and guardrails. Actor identity makes the history truthful; it does
 not create a permission tier. Direct HTTP access is sufficient; an MCP wrapper is optional.
 
-**Execution order.** D326/D329's order is unchanged: begin after 3.3 closes; Task 1 → Task 2 →
+**Execution order.** D342 renumbers this part from 3.4 to 3.5; stable node IDs and D338 scope
+remain unchanged. Begin after 3.3 closes; optional Phase 3.4 does not block entry. Task 1 → Task 2 →
 Tasks 3/4 (parallel only with recorded independent ownership) → Task 5. This part closes Phase 3
 before Phase 4. Desktop attachment remains Phase 6. Existing D75 solo request admission is built;
 the agent capability and attribution changes below are not yet implemented.
@@ -17,6 +18,7 @@ the agent capability and attribution changes below are not yet implemented.
 <!-- roadmap: claude-operator -->
 
 <!-- roadmap-status: claude-operator -->
+> 2026-09-07 | D342 optional documents | cooperation moves to 3.5; optional 3.4 features are not prerequisites; implementation remains open
 - [ ] one local BFF and one shared API for the operator, Codex and Claude clients
 - [ ] actual caller identity derived at admission and recorded on every durable action
 - [ ] full action parity, including HR approvals and live-run authorization, with the same guardrails
