@@ -142,6 +142,43 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal(dbBytes.includes(Buffer.from("synthetic-upgrade-password")), false);
     assert.equal((await f.run()).state, "already-upgraded");
   });
+  it.each(["beforeCommit", "afterCommit"] as const)("binds private source bytes across a %s interruption before any credential application", async (boundary) => {
+    const f = fixture(29);
+    const original = "UCPATH_PASSWORD=private-upgrade-original\n";
+    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
+    await f.backup();
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { [boundary]: () => { throw new Error("injected-binding-boundary"); } } }, clock), /injected-binding-boundary/u);
+    const store = createCredentialStore({ stateRoot: f.root });
+    assert.equal(store.read().revision, 1);
+    const privatePath = join(f.root, "credentials", "protected.json");
+    const privateBytes = readFileSync(privatePath);
+    const databaseBytes = readFileSync(f.path);
+    assert.equal(databaseBytes.includes(Buffer.from("private-upgrade-original")), false);
+    writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=private-upgrade-changed\n", { mode: 0o600 });
+    await assert.rejects(f.run(), /credential-import-refused/u);
+    assert.deepEqual(readFileSync(privatePath), privateBytes);
+    assert.deepEqual(readFileSync(f.path), databaseBytes);
+    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
+    assert.equal((await f.run()).state, "converted");
+    assert.equal(store.read().revision, 2);
+    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(store)), "private-upgrade-original");
+    assert.equal(readFileSync(f.path).includes(Buffer.from("private-upgrade-original")), false);
+  });
+
+  it("refuses a missing private binding after SQLite commit instead of rebinding current source bytes", async () => {
+    const f = fixture(29);
+    writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=private-binding-required\n", { mode: 0o600 });
+    await f.backup();
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("injected-binding-boundary"); } } }, clock), /injected-binding-boundary/u);
+    const privatePath = join(f.root, "credentials", "protected.json");
+    rmSync(privatePath);
+    const bytes = readFileSync(f.path);
+    await assert.rejects(f.run(true), /credential-import-refused/u);
+    await assert.rejects(f.run(), /credential-import-refused/u);
+    assert.equal(existsSync(privatePath), false);
+    assert.deepEqual(readFileSync(f.path), bytes);
+  });
+
   it.each(["rename", "audit"] as const)("keeps the committed credential after %s interruption and settles only exact retry", async (boundary) => {
     const f = fixture(29);
     const value = "synthetic-upgrade-boundary-secret";

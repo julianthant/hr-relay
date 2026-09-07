@@ -26,6 +26,8 @@ import {
   ProtectedSettingsApplyInputSchema,
   ProtectedSettingsLastAppliedSchema,
   ProtectedSettingsNameSchema,
+  ProtectedSettingsPatchSchema,
+  type ProtectedSettingsPatch,
   ProtectedStoreRecordSchema,
   initialProtectedStoreRecord,
   type ProtectedSettingsApplyInput,
@@ -71,10 +73,16 @@ const CredentialHistoryEntrySchema = z.strictObject({
   setValueIds: SetValueIdsSchema,
 });
 
+const CredentialUpgradeBindingSchema = z.strictObject({
+  upgradeId: z.string().regex(/^[a-f0-9]{64}$/u),
+  entries: ProtectedSettingsPatchSchema,
+});
+
 const CredentialDocumentSchema = z.strictObject({
   schemaVersion: z.literal(1),
   record: ProtectedStoreRecordSchema,
   history: z.array(CredentialHistoryEntrySchema),
+  upgradeBinding: CredentialUpgradeBindingSchema.optional(),
 });
 
 const CredentialLockRecordSchema = z.strictObject({
@@ -205,27 +213,31 @@ function fsyncPath(path: string): void {
   }
 }
 
-/** Return false at the first missing component; reject every observed symlink in the ancestry. */
-function noSymlinkAncestry(path: string): boolean {
+/** Verify each component before descendants; retain identities across every operation. */
+function noSymlinkAncestry(path: string, identities: Map<string, DirectoryIdentity>): boolean {
   const absolute = resolve(path);
   const root = parse(absolute).root;
   const segments = absolute.slice(root.length).split(/[/\\]+/u).filter((segment) => segment !== "");
   let cursor = root;
-  for (const [index, segment] of segments.entries()) {
-    cursor = join(cursor, segment);
-    let status;
-    try {
-      status = lstatSync(cursor, { throwIfNoEntry: false });
-    } catch (error) {
-      throw new Error("directory-integrity: credential path ancestry is unavailable", { cause: error });
+  const paths = [root, ...segments.map((segment) => { cursor = join(cursor, segment); return cursor; })];
+  for (const component of paths) {
+    const status = lstatSync(component, { throwIfNoEntry: false });
+    const prior = identities.get(component);
+    if (status === undefined) {
+      if (prior !== undefined) throw new Error("directory-integrity: credential ancestor disappeared");
+      return false;
     }
-    if (status === undefined) return false;
-    if (status.isSymbolicLink()) {
-      throw new Error("directory-integrity: credential path ancestry contains a symbolic link");
+    if (status.isSymbolicLink()) throw new Error("directory-integrity: credential path ancestry contains a symbolic link");
+    if (!status.isDirectory()) throw new Error("directory-integrity: credential path ancestry contains a non-directory");
+    if (expectedUid === undefined || (status.uid !== expectedUid && status.uid !== 0)) {
+      throw new Error("directory-integrity: credential ancestor has an untrusted owner");
     }
-    if (index < segments.length - 1 && !status.isDirectory()) {
-      throw new Error("directory-integrity: credential path ancestry contains a non-directory");
+    if ((status.mode & 0o022) !== 0 && (status.mode & 0o1000) === 0) {
+      throw new Error("directory-integrity: credential ancestor is group/world-writable without sticky protection");
     }
+    const observed = { device: status.dev, inode: status.ino };
+    if (prior !== undefined && !sameDirectory(prior, observed)) throw new Error("directory-integrity: credential ancestor identity changed");
+    identities.set(component, observed);
   }
   return true;
 }
@@ -243,7 +255,7 @@ function statDirectory(path: string, label: string, exactMode?: number): Directo
   if (expectedUid !== undefined && status.uid !== expectedUid) {
     throw new Error(`directory-integrity: ${label} is owned by another user`);
   }
-  if (exactMode !== undefined && (status.mode & 0o777) !== exactMode) {
+  if (exactMode !== undefined && (status.mode & 0o7777) !== exactMode) {
     throw new Error(`directory-integrity: ${label} permissions must be 0700`);
   }
   return { device: status.dev, inode: status.ino };
@@ -416,7 +428,7 @@ function readPrivateDocument(path: string): ReadDocument | undefined {
   }
   try {
     const before = fstatSync(descriptor);
-    if (!before.isFile() || before.nlink !== 1 || (before.mode & 0o777) !== CREDENTIAL_FILE_MODE
+    if (!before.isFile() || before.nlink !== 1 || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
       || (expectedUid !== undefined && before.uid !== expectedUid)) {
       throw new Error("directory-integrity: protected.json permissions or identity are invalid");
     }
@@ -465,7 +477,7 @@ function readCredentialLock(
   }
   if (pathStatus === undefined) return undefined;
   if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
-    || (pathStatus.mode & 0o777) !== CREDENTIAL_FILE_MODE
+    || (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE
     || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
     throw new Error("directory-integrity: credential lock permissions or identity are invalid");
   }
@@ -482,7 +494,7 @@ function readCredentialLock(
   try {
     const before = fstatSync(descriptor);
     if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || before.size > 4_096
-      || (before.mode & 0o777) !== CREDENTIAL_FILE_MODE
+      || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
       || (expectedUid !== undefined && before.uid !== expectedUid)) {
       throw new Error("directory-integrity: credential lock permissions or identity are invalid");
     }
@@ -560,8 +572,16 @@ function removeTemporary(path: string): void {
  * Create D336's independent protected authority under
  * `<stateRoot>/credentials/protected.json`, where stateRoot is the `.tracker` root.
  */
-export function createCredentialStore(options: CredentialStoreOptions): CredentialStore {
-  const stateRoot = resolve(z.string().min(1).parse(options.stateRoot));
+/** Private migration binding; never served as a command or public readback. */
+export interface CredentialUpgradeStore extends CredentialStore {
+  bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void;
+  verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void;
+}
+
+export function createCredentialStore(options: CredentialStoreOptions): CredentialUpgradeStore {
+  const rawStateRoot = z.string().min(1).parse(options.stateRoot);
+  if (rawStateRoot.split(/[/\\]+/u).includes("..")) throw new Error("directory-integrity: raw credential path contains a '..' component");
+  const stateRoot = resolve(rawStateRoot);
   const credentialDirectory = join(stateRoot, "credentials");
   const protectedPath = join(credentialDirectory, CREDENTIAL_FILE_NAME);
   const lockPath = join(credentialDirectory, CREDENTIAL_LOCK_NAME);
@@ -571,10 +591,11 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   const hooks = options.hooks ?? {};
   const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
   let directoryIdentity: DirectoryIdentity | undefined;
+  const ancestorIdentities = new Map<string, DirectoryIdentity>();
   const ownTemporaryPaths = new Set<string>();
 
   function ensureDirectory(): void {
-    noSymlinkAncestry(dirname(stateRoot));
+    noSymlinkAncestry(dirname(stateRoot), ancestorIdentities);
     try {
       mkdirSync(stateRoot, { recursive: true, mode: CREDENTIAL_DIRECTORY_MODE });
     } catch (error) {
@@ -582,7 +603,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         throw new Error("directory-integrity: state root could not be created", { cause: error });
       }
     }
-    if (!noSymlinkAncestry(stateRoot)) {
+    if (!noSymlinkAncestry(stateRoot, ancestorIdentities)) {
       throw new Error("directory-integrity: state root disappeared after creation");
     }
     statDirectory(stateRoot, "state root");
@@ -602,6 +623,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       throw new Error("directory-integrity: credential directory identity changed");
     }
     directoryIdentity = observed;
+    noSymlinkAncestry(credentialDirectory, ancestorIdentities);
   }
 
   function assertDirectory(): void {
@@ -813,11 +835,18 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     const prior = current?.document ?? initialDocument();
     const stagedPrefix = staged.document.history.slice(0, -1);
     const stagedRequest = staged.document.history.at(-1)?.request;
-    if (staged.document.history.length !== prior.history.length + 1
-      || !(stagedPrefix.length === prior.history.length
-        && stagedPrefix.every((entry, index) => privateEqual(entry, prior.history[index])))
-      || stagedRequest?.expectedRevision !== prior.record.revision
-      || staged.document.record.revision !== prior.record.revision + 1) {
+    const sameHistory = (left: readonly CredentialHistoryEntry[], right: readonly CredentialHistoryEntry[]) =>
+      left.length === right.length && left.every((entry, index) => privateEqual(entry, right[index]));
+    const sameBinding = prior.upgradeBinding === undefined ? staged.document.upgradeBinding === undefined
+      : staged.document.upgradeBinding !== undefined && privateEqual(prior.upgradeBinding, staged.document.upgradeBinding);
+    const application = staged.document.history.length === prior.history.length + 1
+      && sameHistory(stagedPrefix, prior.history) && sameBinding
+      && stagedRequest?.expectedRevision === prior.record.revision
+      && staged.document.record.revision === prior.record.revision + 1;
+    const reservation = prior.upgradeBinding === undefined && staged.document.upgradeBinding !== undefined
+      && prior.record.revision === 1 && sameHistory(staged.document.history, prior.history)
+      && privateEqual(staged.document.record, prior.record);
+    if (!application && !reservation) {
       throw new Error("directory-integrity: dead credential writer staged document is not the next transition");
     }
     removeExactPath(
@@ -851,7 +880,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         }
         return {
           record,
-          release: () => releaseLock(lockPath, credentialDirectory, record),
+          release: () => { noSymlinkAncestry(credentialDirectory, ancestorIdentities); releaseLock(lockPath, credentialDirectory, record); },
         };
       }
 
@@ -890,7 +919,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         }
         throw new AggregateError(
           [error, releaseError],
-          "credential store operation failed and its lock could not be released",
+          "directory-integrity: credential operation failed and its lock could not be released",
           { cause: releaseError },
         );
       }
@@ -940,6 +969,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         throw new Error("credential store protected.json changed before replacement");
       }
       hooks.beforeRename?.();
+      assertDirectory();
       try {
         renameSync(temporaryPath, protectedPath);
         renamed = true;
@@ -957,6 +987,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         }
       }
       try {
+        assertDirectory();
         fsyncPath(credentialDirectory);
       } catch (error) {
         throw new CredentialStoreCommitUncertainError(
@@ -980,6 +1011,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       }
       throw error;
     } finally {
+      noSymlinkAncestry(credentialDirectory, ancestorIdentities);
       ownTemporaryPaths.delete(temporaryPath);
       removeTemporary(temporaryPath);
     }
@@ -994,9 +1026,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
 
   function observeCurrent(): CurrentDocument {
     const missing = (): CurrentDocument => ({ bytes: undefined, document: initialDocument() });
-    if (!noSymlinkAncestry(stateRoot)) return missing();
+    if (!noSymlinkAncestry(stateRoot, ancestorIdentities)) return missing();
     statDirectory(stateRoot, "state root");
-    if (!noSymlinkAncestry(credentialDirectory)) return missing();
+    if (!noSymlinkAncestry(credentialDirectory, ancestorIdentities)) return missing();
     const beforeIdentity = statDirectory(
       credentialDirectory,
       "credential directory",
@@ -1020,6 +1052,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       CREDENTIAL_DIRECTORY_MODE,
     );
     const second = readPrivateDocument(protectedPath);
+    noSymlinkAncestry(credentialDirectory, ancestorIdentities);
     if (!sameDirectory(beforeIdentity, afterIdentity)
       || canonicalJsonStringify(beforeNames) !== canonicalJsonStringify(afterNames)
       || (first === undefined) !== (second === undefined)
@@ -1085,6 +1118,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         lastApplied: lastApplied(request),
       },
       history: [...document.history, { request, setValueIds }],
+      ...(document.upgradeBinding === undefined ? {} : { upgradeBinding: document.upgradeBinding }),
     });
   }
 
@@ -1125,7 +1159,38 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
   }
 
+  function upgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch) {
+    const parsed = CredentialUpgradeBindingSchema.safeParse({ upgradeId, entries });
+    if (!parsed.success || encodePrivate(parsed.data).byteLength > MAX_PRIVATE_REQUEST_BYTES) {
+      throw new Error("credential-import-refused: invalid private upgrade binding");
+    }
+    return parsed.data;
+  }
+
+  function requireUpgradeBinding(document: CredentialDocument, binding: z.infer<typeof CredentialUpgradeBindingSchema>): void {
+    if (document.upgradeBinding === undefined || !privateEqual(document.upgradeBinding, binding)) {
+      throw new Error("credential-import-refused: private upgrade source binding is missing or divergent");
+    }
+  }
+
   return Object.freeze({
+    bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void {
+      const binding = upgradeBinding(upgradeId, entries);
+      withLock((writer) => {
+        const current = readCurrentUnderLock();
+        if (current.document.upgradeBinding !== undefined) {
+          requireUpgradeBinding(current.document, binding);
+          return { committed: false, result: undefined };
+        }
+        if (current.document.record.revision !== 1) throw new Error("credential-import-refused: private authority already has applied credentials");
+        const next = authenticateDocument({ ...current.document, upgradeBinding: binding });
+        writeDocument(next, current.bytes, false, writer);
+        return { committed: true, result: undefined };
+      });
+    },
+    verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void {
+      requireUpgradeBinding(observeCurrent().document, upgradeBinding(upgradeId, entries));
+    },
     read(): ProtectedStoreRecord {
       return observeCurrent().document.record;
     },

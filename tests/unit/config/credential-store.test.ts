@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
+import fs, {
   chmodSync,
   existsSync,
   linkSync,
@@ -17,9 +17,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsApplyInputSchema,
@@ -49,6 +50,8 @@ const NOW_2 = "2026-09-06T12:01:00.000Z";
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -444,6 +447,63 @@ describe("D336 independent credential store", () => {
     assert.equal(existsSync(join(physicalTracker, "credentials")), false);
   });
 
+  it("refuses writable non-sticky ancestors before creating credential authority", () => {
+    const f = fixture();
+    chmodSync(f.stateRoot, 0o777);
+    try {
+      assert.throws(() => f.store.read(), /group\/world-writable/u);
+      assert.throws(() => f.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
+        expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } })), /group\/world-writable/u);
+      assert.equal(existsSync(f.directory), false);
+    } finally { chmodSync(f.stateRoot, 0o700); }
+    chmodSync(f.stateRoot, 0o1777);
+    assert.equal(f.store.read().revision, 1, "trusted sticky ancestors are admitted");
+    assert.equal(existsSync(f.directory), false);
+  });
+
+  it("refuses foreign-owned ancestors and raw dot-dot aliases without changing files", () => {
+    const f = fixture();
+    const realLstat = fs.lstatSync;
+    vi.spyOn(fs, "lstatSync").mockImplementation((path, options) => {
+      const status = realLstat(path, options);
+      if (status !== undefined && path === f.stateRoot) status.uid = (process.getuid?.() ?? 1000) + 1;
+      return status;
+    });
+    syncBuiltinESMExports();
+    try { assert.throws(() => f.store.read(), /untrusted owner/u); }
+    finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
+    assert.throws(() => createCredentialStore({ stateRoot: `${f.stateRoot}/pivot/../.tracker` }), /raw credential path/u);
+    assert.equal(existsSync(f.directory), false);
+  });
+
+  it("pins ancestor identity across reads even when the credential directory itself is unchanged", () => {
+    const f = fixture();
+    applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
+    const bytes = readFileSync(f.path);
+    const moved = `${f.stateRoot}-moved`; roots.push(moved);
+    renameSync(f.stateRoot, moved); mkdirSync(f.stateRoot, { mode: 0o700 });
+    renameSync(join(moved, ".tracker"), f.tracker);
+    assert.throws(() => f.store.read(), /ancestor identity changed/u);
+    assert.deepEqual(readFileSync(f.path), bytes);
+  });
+
+  it("rechecks ancestors after staging and refuses a replacement before rename", () => {
+    let replace = false;
+    const f = fixture({ beforeRename() {
+      if (!replace) return;
+      const moved = `${f.stateRoot}-moved`; roots.push(moved);
+      renameSync(f.stateRoot, moved); mkdirSync(f.stateRoot, { mode: 0o700 });
+      renameSync(join(moved, ".tracker"), f.tracker);
+    } });
+    applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
+    const bytes = readFileSync(f.path); replace = true;
+    assert.throws(() => f.store.apply(request({ commandId: COMMAND_2, writeId: WRITE_2,
+      expectedRevision: 2, entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } } })), /directory-integrity/u);
+    assert.deepEqual(readFileSync(f.path), bytes);
+  });
+
   it("keeps a post-rename credential commit and settles its exact retry without rewriting", () => {
     let failAfterRename = true;
     const f = fixture({
@@ -510,6 +570,32 @@ describe("D336 independent credential store", () => {
     assert.equal(f.store.read().entries.ucpathPassword?.value, PRIVATE_VALUE_1);
     assert.equal(f.store.apply(first).state, "applied");
     assert.deepEqual(readFileSync(f.path), committedBytes);
+  });
+
+  it("recovers a SIGKILL during private upgrade binding without applying a credential", () => {
+    const f = fixture();
+    const upgradeId = "a".repeat(64);
+    const entries = { ucpathPassword: { set: PRIVATE_VALUE_1 } };
+    const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/credential-store.ts")).href;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval",
+      `import { createCredentialStore } from ${JSON.stringify(moduleUrl)};
+       createCredentialStore({ stateRoot: ${JSON.stringify(f.tracker)},
+         hooks: { beforeRename: () => process.kill(process.pid, "SIGKILL") }
+       }).bindUpgrade(${JSON.stringify(upgradeId)}, ${JSON.stringify(entries)});`], { encoding: "utf8" });
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    assert.equal(readdirSync(f.directory).filter((name) => name.endsWith(".tmp")).length, 1);
+    assert.throws(() => f.store.read(), /unsettled entries/u);
+    f.store.bindUpgrade(upgradeId, entries);
+    assert.equal(f.store.read().revision, 1);
+    assert.deepEqual(f.store.read().entries, {});
+    const bytes = readFileSync(f.path);
+    const reopened = createCredentialStore({ stateRoot: f.tracker });
+    reopened.verifyUpgradeBinding(upgradeId, entries);
+    reopened.bindUpgrade(upgradeId, entries);
+    assert.deepEqual(readFileSync(f.path), bytes);
+    assert.throws(() => reopened.bindUpgrade(upgradeId, { ucpathPassword: { set: PRIVATE_VALUE_2 } }), /credential-import-refused/u);
+    assert.deepEqual(readFileSync(f.path), bytes);
+    assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
   });
 
   it("recovers only the authenticated next document left by its dead pre-rename writer", () => {

@@ -117,18 +117,23 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
     throw new Error("credential-source-conflict: existing independent credentials must not be overwritten by legacy import");
   }
   if (from !== 32) convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
+  if (from === 32 && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
+    store.verifyUpgradeBinding(pending.upgradeId, sources.protectedPatch);
+  }
   if (input.plan) return report;
   mkdirSync(input.stateRoot, { recursive: true, mode: 0o700 });
   const admission = acquireRuntimeRestoreAdmission({ processLockRoot: input.processLockRoot, pid: process.pid }, clock);
   try {
     requireStopped(input, clock);
     if (from !== 32) {
-      pending = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure }, clock);
+      pending = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure,
+        bindCredentials: (upgradeId) => { if (Object.keys(sources.protectedPatch).length > 0) store.bindUpgrade(upgradeId, sources.protectedPatch); } }, clock);
     }
     if (pending === undefined || !("format" in pending)) throw new Error("upgrade-evidence-missing");
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 5000, migrationOwner: "storage-upgrade-audit" }, clock);
     try {
       if (Object.keys(sources.protectedPatch).length > 0) {
+        store.verifyUpgradeBinding(pending.upgradeId, sources.protectedPatch);
         const request = ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: pending.credentialCommandId,
           requestedAt: pending.recordedAt, requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "storage-upgrade", reason: pending.upgradeId,
           target: { expectedRevision: 1 }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: pending.credentialWriteId, entries: sources.protectedPatch } });

@@ -163,6 +163,7 @@ function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
 
 export function convertSettingsDatabase(args: Readonly<{
   verifyOnly?: boolean;
+  bindCredentials?: (upgradeId: string) => void;
   input: ConversionInput; path: string; existed: boolean; from: number;
   inspection: BackupCopyInspection | undefined;
   backupEvidence: Awaited<ReturnType<typeof verifyBackupManifestAtPath>> | undefined;
@@ -210,7 +211,10 @@ export function convertSettingsDatabase(args: Readonly<{
         appendUpgrade(database, pending);
         database.prepare("UPDATE authority_meta SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1").run(now);
         inspectConvertedAuthority(database);
-        if (args.verifyOnly !== true) input.hooks?.beforeCommit?.();
+        if (args.verifyOnly !== true) {
+          args.bindCredentials?.(upgradeId);
+          input.hooks?.beforeCommit?.();
+        }
         database.exec(args.verifyOnly === true ? "ROLLBACK" : "COMMIT");
       } catch (error) {
         if (database?.isTransaction) database.exec("ROLLBACK");

@@ -175,7 +175,7 @@ acceptance. Parity may refresh generated provenance caused by the candidate, but
 non-generated body change is the 12 exact `settings`/`storage-settings` triples showing `Saved`; any
 other body, layout, control, accessibility, mobile or coarse-pointer change stops the task.
 
-### Task 1.6.6 implementation evidence — awaiting independent review
+### Task 1.6.6 implementation evidence — correcting independent review findings
 
 Approved plan: `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The requested branch
 `codex/phase-1-6-sqlite-settings` was created at that exact commit in
@@ -314,3 +314,25 @@ unlinked. Ordinary `git worktree remove` and `git branch -d` succeeded; registra
 paths and both refs are absent. Native workers have no associated sidebar tasks. The supervisor
 worktree remains active. Fresh native role-policy check passed (three supporting roles plus one
 reviewer); a new independent `sup_review` is required for the entire committed candidate.
+
+
+#### First independent review — BLOCKED, findings retained
+
+Fresh native `/root/sup_review_sqlite_settings` reviewed base `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`,
+implementation `bd3d0f24816969032d664831b094f03d8fbd7ddc`, evidence `56de5f197379ba921dc6c3df5485ec0facf77e14`,
+and approved plan `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. It returned BLOCKED after automatic
+compaction, not PASS. It must not be reused. The reviewer inspected core authority, credentials,
+upgrade and substantial recovery code, but did not complete consumers, populated historical backup
+coverage, all doctor/restore paths, every guard/test change, documentation/parity/proof dispositions,
+or direct gate-log/fingerprint inspection. Its only rerun checks were read-only Git checks.
+
+| Finding | Required correction | Current disposition |
+| --- | --- | --- |
+| R1 HIGH — credential-store.ts:208–249,576–605 at reviewed head | Full ancestor ownership/permission verification, raw alias refusal and identity rechecks; P23 negative controls. | Supervisor confirmed. Repair and new writable/foreign-owner/raw-alias/replaced-ancestor tests pass in the focused run; full gates and fresh complete review remain required. |
+| R2 HIGH — settings-database-upgrade.ts:175–176,206–209 and storage/upgrade.ts:102–105,131–137 at reviewed head | A crash after SQLite commit but before first credential apply must not import changed protected source bytes with pending identities. | Supervisor confirmed. Private durable import binding precedes SQL commit; missing/divergent binding refuses. Before/after-SQL interruptions, exact retry and binding-loss tests pass; full gates and fresh complete review remain required. |
+
+The repair stays within D336's existing one-time import and independent-commit requirements.
+The private binding advances no current credential revision, leaks no comparator and is never
+rolled back by SQLite. A new full reviewer must independently inspect the complete changed candidate
+and reconcile R1/R2. The predecessor review's covered sections are not a substitute for complete
+review. No implementation has been merged and no operator conversion has occurred.

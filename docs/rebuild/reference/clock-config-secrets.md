@@ -546,6 +546,13 @@ authorize deleting the rebuild's state or touching legacy production. `storage u
 verified explicit backup, database migration/restore checks and preservation proofs remain; the old
 prepare/commit/file-settle boot matrix is replaced, not carried forward under new names.
 
+Task 6's import binding is private credential-store data: before committing the SQLite conversion,
+the store durably records the exact protected input and opaque upgrade identity without advancing
+its current credential revision. A stopped retry requires the same private binding; missing or
+changed input refuses before application. SQLite retains only value-free identities. SQL rollback
+never removes this binding, and neither SQLite restore nor normal credential readback exposes or
+rewrites it. This binds the one-time import without making either store's commit roll back the other.
+
 **Why.** The split file/SQLite design requires an application-level transaction and recovery protocol
 for an ordinary setting. SQLite already provides the required atomicity. Keeping all values, including
 plaintext credentials, in SQLite would simplify commits but violate the intentional secret-free backup
