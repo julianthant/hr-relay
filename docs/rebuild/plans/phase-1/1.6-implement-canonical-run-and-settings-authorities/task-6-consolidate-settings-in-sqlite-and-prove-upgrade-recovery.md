@@ -715,3 +715,35 @@ repository config and sets root and each project's worker count to two. It asser
 after removing precisely those overrides. This changes resource scheduling only and is not a
 repository/configuration edit or a relaxed acceptance gate. The full contained coverage runner and
 suite-size check are repeated with this effective override; their final result follows below.
+
+
+#### R9 candidate gates — awaiting renewed independent review
+
+Implementation **`c1fb29917935f33ca014f78a64cc121fa1550b4b`** contains the complete R9 repair. Base remains
+`e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`; the original approved plan is
+`9969857a79ba06d07a88b71ba2f0d4d64dc9967e`, with the recorded structure/decision/review amendments.
+The renewed reviewer must close R9 and reconfirm complete candidate acceptance; passing gates alone
+is not acceptance. All completion checkboxes remain open.
+
+| Gate | Evidence |
+| --- | --- |
+| Typecheck / lint | Both PASS on final repair inputs; `/tmp/hr-settings-r9-typecheck.log`, `/tmp/hr-settings-r9-lint.log`. |
+| Neighboring combinations | 275 tests / five files PASS, `/tmp/hr-settings-r9-combinations-iteration4.log`; the later restore-fixture correction and lifecycle guard passed 37 tests / three files in `/tmp/hr-settings-r9-recovery-guard.log`. Full coverage below includes the wider runtime-reader and single-command-owner neighbors. |
+| Full coverage and suite size | 5,455 tests / 433 files PASS, 359.88 seconds; statements 85.79%, branches 77.35% report-only, functions 89.81%, lines 87.94%; all configured floors and the chained suite-size check pass. `/tmp/hr-settings-r9-coverage-effective-two.log`. Command: `npm test -- --coverage --config /tmp/hr-settings-r9-two-workers.config.mts && node --import tsx scripts/suite-size.ts`. |
+| Standalone architecture | 827 tests / 79 files PASS, 69.00 seconds; `/tmp/hr-settings-r9-architecture.log`. Command: `npm run test:architecture -- --config /tmp/hr-settings-r9-two-workers.config.mts`. |
+| Desktop parity | All 259 PASS, 65.6 seconds; `/tmp/hr-settings-r9-parity.log`. No reference changes. Architecture completed before parity started. |
+| Freshness / scoped evidence | Manifest, store catalog and roadmap checks PASS in `/tmp/hr-settings-r9-manifest.log`, `/tmp/hr-settings-r9-catalog.log`, `/tmp/hr-settings-r9-roadmap.log`; nine instruction twins identical, maximum chain 15,457 bytes, one owner-relative link valid, diff check PASS. |
+| Resource override | Temporary config SHA256 `803dac79b5caed1c6934d2034c2f4c834f6b4a6a6794b807a6c8a067c27303ca`; imports the committed repository config and asserts that only root/per-project worker counts differ. Two actual workers observed. Full coverage had no compiler/linter contention; no gate setting besides concurrency changed. |
+| Input binding | 2,117 paths; fingerprint `5f29e14c958cee52b3df04f2f8a2f3d058f727cbdab60b9c8a581bda17e5a3d4`, `/tmp/hr-settings-r9-inputs.json` and `/tmp/hr-settings-r9-sha256.txt`. The R4–R8 fingerprint was recomputed exactly; only ten R9 production/test paths and the owner evidence differ. |
+
+This fingerprint covers implementation commit `c1fb29917935f33ca014f78a64cc121fa1550b4b` before this evidence-only append.
+D191 permits reuse of the unchanged implementation gates for the recording commit, with scoped
+instruction/link, generated-output and diff checks. No implementation, test, dependency, configuration,
+reference image or acceptance requirement changes in this append. The full independent reviewer
+remains task `01a07a45-50d7-7d01-bd47-672d3dfa1720` under the approved standalone exception.
+
+The operator root was rechecked read-only at v29 / generation 91 with unchanged nonempty-table
+counts, no independent credential file, and no listeners on 3938/5174. These are preflight facts,
+not byte-preservation evidence. Exact row/file preservation will be checked across merged-code
+backup/plan/upgrade/doctor after integration gates. The prepared operator verification script has
+not been executed; it retains source comparison bytes only in memory and emits names/counts/states.
