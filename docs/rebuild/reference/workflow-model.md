@@ -1217,7 +1217,7 @@ describe the analogy, not the model.
 <!-- roadmap: migrations -->
 
 <!-- roadmap-status: migrations -->
-- [ ] Phase 4 starts only after Phase 3.4 closes
+- [ ] Phase 4 starts only after Phase 3.5 closes; optional 3.4 features do not block it (D342)
 - [ ] one complete current-behavior and proposed-definition packet is verified at a time
 - [!] the operator approves the exact candidate boundary before a lettered part is created
 > 2026-09-04 | D329 authority move | future-workflow admission remains here; the former active 03c candidate-order narrative is superseded history

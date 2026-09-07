@@ -44,7 +44,7 @@ is unchanged. Node IDs, task labels, recorded statuses and append-only evidence 
 | [Phase 0](phase-0/README.md) | 0.1–0.3 |
 | [Phase 1](phase-1/README.md) | 1.1–1.6 |
 | [Phase 2](phase-2/README.md) | 2.1–2.6 |
-| [Phase 3](phase-3/README.md) | 3.1–3.4 |
+| [Phase 3](phase-3/README.md) | 3.1–3.5 |
 | [Phase 4](phase-4/README.md) | 4A (admission placeholder) |
 | [Phase 5](phase-5/README.md) | 5A–5B |
 | [Phase 6](phase-6/README.md) | 6A–6F |
@@ -63,7 +63,7 @@ commit, use the path as it existed at that commit.
 | `02-prove-writes-build-the-tails.md` | [phase-2](phase-2) |
 | `03.2-finish-workflow-authoring.md` | [phase-3/3.2-finish-workflow-authoring/](phase-3/3.2-finish-workflow-authoring/README.md) |
 | `03.1-finish-the-dashboard.md` | [phase-3/3.1-finish-the-dashboard/](phase-3/3.1-finish-the-dashboard/README.md) |
-| `03.4-co-operate-with-claude.md` | [phase-3/3.4-co-operate-with-claude/](phase-3/3.4-co-operate-with-claude/README.md) |
+| `03.4-co-operate-with-claude.md` | [phase-3/3.5-co-operate-with-claude/](phase-3/3.5-co-operate-with-claude/README.md) |
 | `03.3-accept-person-lookup-and-separations.md` | [phase-3/3.3-accept-person-lookup-and-separations/](phase-3/3.3-accept-person-lookup-and-separations/README.md) |
 | `04-close-the-deferrals.md` | [phase-5/5A-close-cutover-readiness-gaps/](phase-5/5A-close-cutover-readiness-gaps/README.md) |
 | `05-cut-over.md` | [phase-5/5B-switch-production-authority/](phase-5/5B-switch-production-authority/README.md) |
@@ -75,3 +75,7 @@ The intermediate `plans/phase-N/<subphase>.md` paths now resolve to
 `plans/phase-N/<subphase>/README.md`. For an extracted section, follow the overview link to its
 task/topic file. This mapping also applies to frozen and commit-pinned text; inspect a pinned
 commit using its original path.
+
+D342 (2026-09-07) moves `phase-3/3.4-co-operate-with-claude/README.md` to
+`phase-3/3.5-co-operate-with-claude/README.md`; historical 03.4 cooperation citations resolve there.
+Phase 3.4 now owns optional document tools, with distinct node IDs.

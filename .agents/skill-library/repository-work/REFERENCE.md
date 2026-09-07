@@ -22,12 +22,13 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   [The plans index](../../../docs/rebuild/plans/README.md) routes every existing subphase and former
   flat path. `/phase-plan` reads the subphase overview and writes the approved assignment into its
   single owner: the overview for a small plan, or a linked task file for a large one. No assignment
-  is duplicated. Decimal folders cover 0.1–3.4; lettered folders cover 4A, 5A–5B and 6A–6F.
+  is duplicated. Decimal folders cover 0.1–3.5; lettered folders cover 4A, 5A–5B and 6A–6F.
   D326 supersedes D323/D325's split phase grammar for
   Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
   and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
   implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 workflow authoring/read-only
-  acceptance/candidate freeze, 3.3 controlled acceptance, then 3.4 Codex/Claude cooperation. One coordinator owns each decimal part;
+  acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
+  Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. One coordinator owns each decimal part;
   each task is one supervisor session. D328 makes admitted parallel waves visible: peers share the
   ordinal and use consecutive numeric members (`3.1.9-1`, `3.1.9-2`, ...), while serial tasks keep
   `N`; the coordinator run plan still owns their exact worktree lifecycle.
