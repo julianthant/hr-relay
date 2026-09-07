@@ -411,11 +411,11 @@ outputs, dependency symlink and parity-report lock. Private supporting-draft arc
 as recorded above. All unique resume state lives in this owner; no duplicate handoff document is needed.
 
 
-#### Proposed review-allocation amendment — awaiting operator approval
+#### Approved review-allocation amendment
 
 The reloaded supervise independent-review skill now admits planned focused scopes followed by a
-separate integration reviewer. This is a concrete proposal, not an approved allocation or another
-implementation plan. Product scope, the one-candidate consumer cutover, all acceptance/proof rows,
+separate integration reviewer. The operator explicitly approved this allocation in the supervisor session on 2026-09-06.
+This admits only the review allocation below. Product scope, the one-candidate consumer cutover, all acceptance/proof rows,
 required gates, review independence, merged-code operator conversion and cleanup remain unchanged.
 The complete candidate continues to use base `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6` and implementation
 `4646ab6cede1fea82e38344cc26dad8c4a071533`; every reviewer receives the same current evidence head,
@@ -436,7 +436,8 @@ After fixes, re-review affected scopes and neighboring boundaries, then integrat
 scope reuse needs exact unchanged-input evidence and RI verification. RA/RB PASS is scoped; only
 the final RI PASS plus all scope PASS and required gates permits local master integration.
 
-On operator approval, mark only this review allocation admitted, record that approval here and
-execute it in the supervisor session. Until then do not dispatch this partitioned round, merge,
-convert the operator root or remove the active supervisor worktree. This proposal changes no code,
-tests, runtime configuration, dependencies or gate results; D191 evidence-only checks apply.
+Execute the admitted allocation in this supervisor session. Local integration and operator-root
+conversion remain gated on all required scope and integration verdicts. This approval record changes
+no code, tests, runtime configuration, dependencies or gate results; D191 evidence-only checks reuse
+the unchanged implementation `4646ab6cede1fea82e38344cc26dad8c4a071533` and its recorded candidate
+gates. Roadmap consistency and diff checks apply to this record.
