@@ -29,6 +29,16 @@ import {
  * `JSON.parse` resolves a repeated key last-wins. A private file that names
  * the same input twice is ambiguous, so it is refused before parsing.
  */
+function decodeKey(raw: string, label: string): string {
+  try {
+    const decoded: unknown = JSON.parse(`"${raw}"`);
+    if (typeof decoded !== "string") throw new Error("not a string");
+    return decoded;
+  } catch {
+    throw new TestDataConfigError(`${label} has an invalid string escape in a key`);
+  }
+}
+
 export function assertNoDuplicateKeys(text: string, label: string): void {
   const stack: Array<Set<string> | null> = [];
   let index = 0;
@@ -52,9 +62,11 @@ export function assertNoDuplicateKeys(text: string, label: string): void {
     if (char === "}" || char === "]") { stack.pop(); expectKey = false; index += 1; continue; }
     if (char === ",") { expectKey = stack[stack.length - 1] !== null && stack.length > 0; index += 1; continue; }
     if (char === '"') {
-      const value = readString();
+      const raw = readString();
       const scope = stack[stack.length - 1];
       if (expectKey && scope instanceof Set) {
+        // Compare decoded keys: "valueId" and "value\u0049d" are ONE key to JSON.parse.
+        const value = decodeKey(raw, label);
         if (scope.has(value)) throw new TestDataConfigError(`${label} repeats key ${value}`);
         scope.add(value);
         expectKey = false;

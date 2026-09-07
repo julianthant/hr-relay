@@ -152,12 +152,19 @@ export async function migrateTestDataFromCredentials(
       const sameEntries = entries.length === plannedEntries.length && entries.every((entry, index) =>
         entry.name === plannedEntries[index]?.name && entry.valueId === plannedEntries[index]?.valueId
         && entry.updatedAt === plannedEntries[index]?.updatedAt && privateEqual(entry.value, plannedEntries[index]?.value ?? ""));
-      const locked = planTestDataLocalMerge(priorDestination, entries);
-      if (!sameEntries || locked.action !== plan.action
+      // Re-read the destination under the lock as well: an equal ("unchanged") plan writes nothing,
+      // so the writer's own prior-state fence would never run; the source is retired only against
+      // a destination re-verified here.
+      const liveDestination = readTestDataLocalConfig(input.localPath);
+      const sameDestination = liveDestination.state === priorDestination.state
+        && (liveDestination.state !== "valid" || priorDestination.state !== "valid"
+          || privateEqual(liveDestination.config, priorDestination.config));
+      const locked = planTestDataLocalMerge(liveDestination, entries);
+      if (!sameEntries || !sameDestination || locked.action !== plan.action
         || locked.dispositions.some(({ disposition }) => disposition === "conflict")) {
         throw new TestDataLocalConfigError("credential source or destination changed while the migration was planned; re-run");
       }
-      if (locked.next !== undefined) writeTestDataLocalConfig(input.localPath, locked.next, priorDestination);
+      if (locked.next !== undefined) writeTestDataLocalConfig(input.localPath, locked.next, liveDestination);
     },
     });
   } catch (error) {

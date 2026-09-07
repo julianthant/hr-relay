@@ -314,6 +314,14 @@ describe("D341 private test-data file", () => {
     assert.throws(() => assertNoDuplicateKeys('{"a":1,"b":{"a":2,"a":3}}', "probe"), /probe repeats key a/u);
     assert.doesNotThrow(() => assertNoDuplicateKeys('{"a":{"x":1},"b":{"x":2},"c":[{"x":1},{"x":2}],"d":"x\\"x"}', "probe"));
     assert.throws(() => assertNoDuplicateKeys('{"a":"unterminated', "probe"), /unterminated string/u);
+    // Keys are compared decoded: distinct bytes that JSON.parse would fold into ONE key are duplicates.
+    assert.throws(() => assertNoDuplicateKeys('{"valueId":1,"value\\u0049d":2}', "probe"), /probe repeats key valueId/u);
+    assert.throws(() => assertNoDuplicateKeys('{"a\\"b":1,"a\\u0022b":2}', "probe"), /probe repeats key a"b/u);
+    assert.doesNotThrow(() => assertNoDuplicateKeys('{"a\\u0031":1,"a\\u0032":2}', "probe"));
+    assert.throws(() => assertNoDuplicateKeys('{"a\\x":1}', "probe"), /invalid string escape in a key/u);
+    const escapedRoot = scratch("hrauto-test-data-escaped-");
+    const escaped = writePrivate(escapedRoot, `{"schemaVersion":1,"inputs":{"personLookupCanaryEid":{"valueId":"${VALUE_ID_1}","value":"10000001","updatedAt":"${NOW}"},"personLookup\\u0043anaryEid":{"valueId":"${VALUE_ID_2}","value":"10000002","updatedAt":"${NOW}"}},"files":{}}\n`);
+    assert.throws(() => readTestDataLocalConfig(escaped), /repeats key personLookupCanaryEid/u);
 
     const cases: Array<[string, RegExp, string[]]> = [
       [localDocument({ unknownInput: { valueId: VALUE_ID_1, value: "1", updatedAt: NOW } }), /is invalid at inputs\.unknownInput/u, []],

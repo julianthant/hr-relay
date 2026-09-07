@@ -438,6 +438,50 @@ describe("D341 credential → test-data migration", () => {
     assert.equal(existsSync(changed.localPath), false);
   });
 
+  it("re-verifies an equal destination under the lock, so a concurrent private-file writer stops the conversion", async () => {
+    // The destination already carries equal entries: the plan is "unchanged" and would write nothing,
+    // so only the under-lock re-read can notice a writer that replaced the file after the plan.
+    const f = fixture(legacyDocument(CANARY_HISTORY));
+    const equalDestination = `${JSON.stringify({ schemaVersion: 1, inputs: {
+      separationsKualiFinalizationCanaryDocumentNumber: { valueId: VALUE_DOC, value: SYNTHETIC_DOCUMENT, updatedAt: NOW_1 },
+      personLookupCanaryEid: { valueId: VALUE_EID, value: SYNTHETIC_EID, updatedAt: NOW_1 },
+    }, files: {} })}\n`;
+    writeFileSync(f.localPath, equalDestination, { mode: 0o600 });
+    const planned = await f.migrate("plan");
+    assert.equal(planned.status, "planned");
+    assert.equal(planned.destination.action, "unchanged");
+    const legacyBytes = f.sourceBytes();
+    const real = f.store();
+    const replaced = `${JSON.stringify({ schemaVersion: 1, inputs: {
+      separationsKualiFinalizationCanaryDocumentNumber: { valueId: VALUE_DOC, value: SYNTHETIC_DOCUMENT, updatedAt: NOW_1 },
+      personLookupCanaryEid: { valueId: FRESH_ID, value: SYNTHETIC_EID_2, updatedAt: NOW_2 },
+    }, files: {} })}\n`;
+    const racing: CredentialUpgradeStore = Object.freeze({
+      ...real,
+      convertTestDataMigration: (input: Parameters<CredentialUpgradeStore["convertTestDataMigration"]>[0]) => {
+        const inspection = real.inspectTestDataMigration();
+        if (inspection.state !== "legacy") throw new Error("fixture expected a legacy source");
+        // Another writer replaces the private file after the apply's own plan and before the lock body runs.
+        writeFileSync(f.localPath, replaced, { mode: 0o600 });
+        input.stageDestination(inspection.retiredEntries);
+        throw new Error("the source must not be rewritten after a destination refusal");
+      },
+    });
+    const refused = await f.migrate("apply", { store: racing });
+    noValueLeaks(refused);
+    assert.equal(refused.status, "refused");
+    assert.match(refused.reason ?? "", /changed while the migration was planned/u);
+    assert.equal(f.sourceBytes(), legacyBytes, "the source is still the legacy document");
+    assert.equal(readFileSync(f.localPath, "utf8"), replaced, "the other writer's file survives untouched");
+
+    // The same equal destination without a concurrent writer converts and leaves the file byte-identical.
+    writeFileSync(f.localPath, equalDestination, { mode: 0o600 });
+    const converted = await f.migrate("apply");
+    assert.equal(converted.status, "converted");
+    assert.equal(converted.destination.action, "unchanged");
+    assert.equal(readFileSync(f.localPath, "utf8"), equalDestination);
+  });
+
   it("refuses while another writer holds the credential lock and never touches the destination", async () => {
     const f = fixture(legacyDocument(CANARY_HISTORY));
     const observation = observeProcessIdentity(process.pid);
