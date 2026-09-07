@@ -13,9 +13,9 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
 }
 
-/** The one production `.env`, anchored to this bootstrap rather than the caller's CWD. */
+/** The one production `.env.providers`, anchored to this bootstrap rather than the caller's CWD. */
 export function repositoryEnvironmentFilePath(): string {
-  return fileURLToPath(new URL("../.env", import.meta.url));
+  return fileURLToPath(new URL("../.env.providers", import.meta.url));
 }
 
 export function secureEnvironmentEntrypoint(
@@ -33,7 +33,7 @@ export async function runSecureEnvironmentBootstrap(
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  // `storage` (D322) and `test-data` (D341) are the only entrypoints that never load `.env`:
+  // `storage` (D322) and `test-data` (D341) are the only entrypoints that never load `.env.providers`:
   // neither reads a credential, and test-data must not depend on the operator's environment.
   if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();

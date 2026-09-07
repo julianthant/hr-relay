@@ -195,7 +195,7 @@ matrix and adapter roster A0–A8 (ref dashboard-surfaces §2.5 D332, its settin
 clock-config-secrets §D332, the deletion tests in ref guards-and-tests §5.2). Until 1.6 lands, the
 as-built authorities described above stay in force. Doc 01 §1.6 binds each 1.6 task to one seam, gate,
 integration order and deletion test; 2.6 revalidates downstream consumers, and 3.1 finishes the
-dashboard. Provider API keys remain the sole `.env` class; credentials and local canary inputs move
+dashboard. Provider API keys remain the sole `.env.providers` class; credentials and local canary inputs move
 under the protected settings root; D324's host display stays a derived default. The D321
 state-root/journal coupling, D308 terminal-only delete/tombstone semantics, and D322 explicit-only
 backup rule remain binding.
@@ -240,8 +240,10 @@ for porting provenance; never restore a live legacy dependency (D93/D150).
 
 ## Environment
 
-`.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
-`install -m 600 .env.example .env`, then fill only the required values. CLI and D300 document-number smoke startup
+`.env.providers` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
+`install -m 600 .env.example .env.providers`, then fill only supported provider pool cells.
+Keep an existing `.env` intact as operator reference; normal startup never opens it or falls back to it
+(D343). Never overwrite an existing runtime file as setup. CLI and D300 document-number smoke startup
 go through `scripts/secure-env-bootstrap.ts`: normal runtime startup refuses migrated environment
 names, opens the fixed provider-only path without following symlinks, validates that descriptor,
 and admits its exact bytes before importing the allowlisted entrypoint. Storage commands bypass

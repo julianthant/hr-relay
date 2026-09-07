@@ -183,7 +183,7 @@ function assertRegisteredSecretFileMetadata(
 
 function invalidLocalEnvironmentSyntax(line: number): never {
   throw new SecretSourceError(
-    `local environment file .env has invalid syntax at line ${String(line)}`,
+    `local environment file has invalid syntax at line ${String(line)}`,
   );
 }
 
@@ -221,7 +221,7 @@ function assertAdmittedEnvironmentKey(key: string): void {
   if (MIGRATED_ENVIRONMENT_KEY_SET.has(key)) throw migratedEnvironmentRefusal(key);
   if (!isProviderEnvironmentKey(key)) {
     throw new SecretSourceError(
-      `local environment file .env contains unsupported key ${key}; only registered provider key families are allowed`,
+      `local environment file .env.providers contains unsupported key ${key}; only registered provider key families are allowed`,
     );
   }
 }
@@ -346,7 +346,7 @@ export function strictlyValidateLocalEnvironment(
 }
 
 /**
- * Admit the fixed local `.env` source through one descriptor, then apply only
+ * Admit the fixed local `.env.providers` source through one descriptor, then apply only
  * bindings that the explicit parent environment did not already own.
  */
 export function admitLocalEnvironmentFile(
@@ -362,7 +362,7 @@ export function admitLocalEnvironmentFile(
       constants.O_RDONLY | constants.O_NOFOLLOW,
     );
   } catch {
-    throw new SecretSourceError("local environment file .env is unavailable");
+    throw new SecretSourceError("local environment file .env.providers is unavailable");
   }
 
   let parsed: NodeJS.Dict<string> | undefined;
@@ -371,12 +371,12 @@ export function admitLocalEnvironmentFile(
     const metadata = access.inspectDescriptor(descriptor);
     assertRegisteredSecretFileMetadata(
       metadata,
-      "local environment file .env",
+      "local environment file .env.providers",
       REGISTERED_SECRET_FILE_MAXIMUM_BYTES,
     );
     const bytes = access.readBytes(descriptor);
     if (bytes.byteLength > REGISTERED_SECRET_FILE_MAXIMUM_BYTES) {
-      throw new SecretSourceError("local environment file .env exceeds its registered size limit");
+      throw new SecretSourceError("local environment file .env.providers exceeds its registered size limit");
     }
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const keys = strictlyValidateLocalEnvironment(text);
@@ -387,38 +387,38 @@ export function admitLocalEnvironmentFile(
     if (parsedKeys.length !== validatedKeys.size
       || parsedKeys.some((key) => !validatedKeys.has(key))) {
       throw new SecretSourceError(
-        "local environment file .env parser did not preserve the validated binding sequence",
+        "local environment file .env.providers parser did not preserve the validated binding sequence",
       );
     }
   } catch (error) {
     admissionFailure = error instanceof SecretSourceError
       ? error
-      : new SecretSourceError("local environment file .env could not be read and parsed");
+      : new SecretSourceError("local environment file .env.providers could not be read and parsed");
   }
   let closeFailure: SecretSourceError | undefined;
   try {
     access.close(descriptor);
   } catch {
-    closeFailure = new SecretSourceError("local environment file .env descriptor could not be closed");
+    closeFailure = new SecretSourceError("local environment file .env.providers descriptor could not be closed");
   }
   if (admissionFailure !== undefined && closeFailure !== undefined) {
     throw new AggregateError(
       [admissionFailure, closeFailure],
-      "local environment file .env admission and descriptor close both failed",
+      "local environment file .env.providers admission and descriptor close both failed",
     );
   }
   if (admissionFailure !== undefined) throw admissionFailure;
   if (closeFailure !== undefined) throw closeFailure;
-  if (parsed === undefined) throw new SecretSourceError("local environment file .env produced no parsed bindings");
+  if (parsed === undefined) throw new SecretSourceError("local environment file .env.providers produced no parsed bindings");
 
   const explicitParentKeys = new Set(Object.keys(env));
   const bindings = Object.entries(parsed);
   if (bindings.some(([, value]) => value === undefined)) {
-    throw new SecretSourceError("local environment file .env produced an invalid parsed binding");
+    throw new SecretSourceError("local environment file .env.providers produced an invalid parsed binding");
   }
   for (const [key, value] of bindings) {
     if (value === undefined) {
-      throw new SecretSourceError("local environment file .env produced an invalid parsed binding");
+      throw new SecretSourceError("local environment file .env.providers produced an invalid parsed binding");
     }
     if (!explicitParentKeys.has(key)) env[key] = value;
   }
@@ -717,7 +717,7 @@ export function resolveSecretFileIdentity(
 
 /** Closed worker bootstrap: OS lookup/home/temp/locale mechanics plus D324's display channel.
  * NODE_OPTIONS and arbitrary parent bindings are deliberately not process mechanics here.
- * The child admits provider keys from its own fixed .env after launch.
+ * The child admits provider keys from its own fixed .env.providers after launch.
  */
 export const WORKER_PROCESS_MECHANIC_KEYS = Object.freeze(["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"] as const);
 

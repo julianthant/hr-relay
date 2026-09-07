@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import type { Readable } from "node:stream";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +39,7 @@ const BOOTSTRAP = join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts");
 /** `stdio: ["ignore", "pipe", "pipe"]` — no stdin, both output streams readable. */
 type DashboardChild = ChildProcessByStdio<null, Readable, Readable>;
 
+const REFERENCE_ENVIRONMENT = "CEREBRAS_API_KEY=reference-only-fixture\n";
 const LISTENING_MARKER = "dashboard BFF listening";
 const BOOT_TIMEOUT_MS = 120_000;
 const SHUTDOWN_TIMEOUT_MS = 60_000;
@@ -85,9 +86,9 @@ async function requireIsolatedPortFree(): Promise<void> {
   });
 }
 
-/** The bootstrap refuses any `.env` a group or other can read (D-secure-env). */
+/** The bootstrap refuses any `.env.providers` a group or other can read (D-secure-env). */
 function requirePrivateEnvironmentFile(root: string): void {
-  const path = join(root, ".env");
+  const path = join(root, ".env.providers");
   const mode = statSync(path).mode & 0o777;
   assert.equal(
     mode,
@@ -125,8 +126,9 @@ function createScratchRepoRoot(): string {
   symlinkSync(join(REPO_ROOT, "src"), join(root, "src"), "dir");
   mkdirSync(join(root, "scripts"));
   cpSync(BOOTSTRAP, join(root, "scripts", "secure-env-bootstrap.ts"));
-  cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env"));
-  chmodSync(join(root, ".env"), 0o600);
+  cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env.providers"));
+  chmodSync(join(root, ".env.providers"), 0o600);
+  writeFileSync(join(root, ".env"), REFERENCE_ENVIRONMENT, { mode: 0o600 });
   return root;
 }
 
@@ -283,6 +285,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         statSync(join(scratchRoot, rebuildRuntimeIsolation.stateRoot, "state.db")).size > 0,
         "the child must have opened its authority under the scratch root it was given",
       );
+      assert.equal(readFileSync(join(scratchRoot, ".env"), "utf8"), REFERENCE_ENVIRONMENT);
       const lock = readScratchLock(lockPath);
       // The pid binds this assertion to THIS run: an earlier run's released record
       // must never stand in for a shutdown that did not happen.

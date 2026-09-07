@@ -57,6 +57,30 @@ reset it, copy private files into it, or execute the obsolete preflight instruct
 actual root and environment/input prerequisites afresh. If that branch has acquired implementation
 changes, stop for reconciliation rather than treating it as the observed plan-only branch.
 
+### Provider reference-file amendment (operator-approved 2026-09-07)
+
+The operator explicitly requested that `.env` remain intact for later reference, that supported
+keys be copied to their runtime source, and that OCR/provider UI work remain deferred. D343 in
+`ref clock-config-secrets` owns this narrow source-path change. It supersedes the cleanup prerequisite
+above and below: normal startup admits only repository-anchored `.env.providers`, with the existing
+five-family allowlist and all existing secure admission checks. It never opens or falls back to
+`.env`. Retired names remain refused in the runtime file and parent environment. Existing operational
+credentials and D341 private test configuration retain their authorities; no values enter evidence.
+
+Task 7 owns bootstrap/source metadata, associated diagnostics, setup instructions and source-isolation
+tests. Copy supported bindings once into an absent ignored owner-only `.env.providers` on the primary
+checkout, validate it with the production reader, and verify `.env` bytes unchanged in memory without
+printing values or hashes. Do not copy unsupported families or private files to the worktree. This is
+not automatic migration at startup. Historical explicit storage-upgrade input semantics stay intact.
+Regenerate affected manifests and rerun candidate gates; earlier gates are historical evidence only
+for changed inputs. All six steps, live proofs, unchanged parity references, review and merge conditions
+remain required. OCR behavior, additional providers and Settings UI are outside this amendment.
+
+Resume consumed the environment-admission handoff. The owned branch incorporates the reviewed D342
+master `f0b1cf92195897e56e4917384b512c45d7b4d41a` via merge
+`45f36cc702677f8f9b10e5b87d8cf559221fc22f`; tracked state was clean, with only the owned handoff untracked.
+The earlier refused launch remains failed evidence and produced no run or result to retry.
+
 ### Assignment, checkout and integration
 
 One supervisor owns the complete close because the deterministic gates, the one upgraded operator
@@ -398,3 +422,68 @@ Compared this recording diff against `231a349486f17d278957fc8ea20e9d549b847235`:
 and the person-lookup migration log changed. Source, scripts, tests, configuration, dependencies and
 parity references are identical, so D191 permits reuse of the above passing typecheck, lint,
 coverage/suite-size and parity results. No live proof is reused or inferred.
+
+### D343 execution checkpoint — parity exception pending (2026-09-07)
+
+The operator requested preserving `.env`, copying supported keys to their runtime source, and
+postponing OCR/UI expansion. The task branch implements the fixed `.env.providers` bootstrap,
+updates the five provider catalog source paths, retains all admission mechanics, and updates
+sanitized diagnostics and setup guidance. The shared historical grammar validator uses a path-neutral
+syntax error; explicit historical storage-upgrade `.env` semantics remain unchanged. The generated
+manifest was regenerated from the changed source closure.
+
+One-time primary setup opened `.env` read-only/no-follow, checked regular-file/owner-only/size
+metadata, validated its complete grammar, selected only registered pool bindings, validated the
+prospective bytes through the production admission function, and created `.env.providers` with
+exclusive creation and mode 0600. Production admission of the written file passed: 29 bindings,
+only supported families. In-memory before/after source comparison plus file identity verified
+`.env` unchanged. No source value or derived source hash was printed or recorded. The runtime file
+is ignored; no private file was copied into the task worktree. Existing credentials/private inputs
+were not modified.
+
+All logs below are in the existing owned scratch directory
+`/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/task-1-6-7-dzgx4bwi`.
+The same two-worker adapter/imported Vitest configuration from the earlier evidence was used,
+unchanged; compiler/linter finished before coverage, and architecture/parity ran serially.
+
+| Gate / observation | Evidence and outcome |
+| --- | --- |
+| Source-isolation negative control | `provider-red.log`, session 38903: four failures against the old path; unsupported reference-file content and absent runtime file cannot masquerade as a valid runtime source. Retained `/private/tmp/hrt-501/run-N8mnuX`. |
+| Initial focused proof | `provider-focused.log`, session 67027: 2 files / 46 tests passed. |
+| First full coverage | `provider-coverage.log`, session 13337: 437 files / 5512 tests passed, one lifecycle fixture failed because it still created `.env`; 320.79 s. Retained `/private/tmp/hrt-501/run-vNXLYb`. No production retry or assertion weakening. |
+| Fixture repair | Real-child lifecycle fixture now creates `.env.providers` plus an unsupported `.env` reference and proves normal startup/shutdown and unchanged reference bytes. `provider-focused-fixed.log`, session 57367: 3 files / 47 tests passed, 3.40 s. |
+| Typecheck / lint | `provider-typecheck-fixed.log` session 68817 and `provider-lint-fixed.log` session 17596, both exit 0; lint zero warnings. |
+| Generated and instruction checks | `provider-freshness-fixed.log` / `provider-doc-audit-fixed.log`, session 5538: manifest, store catalog and roadmap current; existing instruction pairs equal and chains within cap; diff check clean. |
+| Repaired full coverage | `provider-coverage-fixed.log`, session 46571: 438 files / 5513 tests passed, 303.98 s Vitest / 305614 ms command. Statements 85.86%, branches 77.49%, functions 89.86%, lines 87.98%; configured floors met. |
+| Suite membership | `provider-suite-size-fixed.log`: unit 341 / architecture 80 / scenario 17; exit 0. |
+| Standalone architecture | `provider-architecture.log`, session 46571: 80 files / 833 tests passed, 60.80 s / 61423 ms command. |
+| Desktop parity | `provider-parity.log`, session 46571: exit 1, 190 failures / 69 passes, 136966 ms command. References remain unchanged. Failed runner `/private/tmp/hrt-501/run-uggmgy`; full failed output copied to `provider-parity-failed-output` before any future rerun. |
+| Drift classification | `provider-parity-drift-classification.json`: all 190 errors were a11y fingerprint drift; no truncated differences. 190 descriptor headers and matching metadata records need new hashes; 52 body lines in 52 cases change only displayed descriptor/implementation fingerprints. No other reported semantic change. Pixel assertions for failed a11y pairs did not run, so unchanged layout/pixels are not yet claimed. |
+| Concrete proposed refresh | `provider-fingerprint-only-proposal.patch` contains only the 190 header/metadata updates and 52 hash-text updates; it has not been applied. Screenshot differences still require generation, classification and review under an explicit exception. |
+| Fresh actual-root doctor | `provider-preflight-doctor.json`, checked 2026-09-07T19:17:37.724Z: exit 0, same source identity/content fingerprint, schema 32/generation 0, healthy/reconciled, zero runs/spans/pending counts, no backup. |
+| Current private targets | Person Lookup and workflow-qualified Separations checks report ready. Private source device/inode/mtime/mode match the prior operator-confirmed observation. The unqualified finalization label also reports its distinct standalone finalization workflow blocked; that is outside the assigned composed Separations proof. Both observations are retained in `provider-*-input.json`; no live attempt occurred. |
+
+`provider-gate-results.json` records exact serial commands/exits/wall times;
+`provider-gated-inputs.json` records only tracked code/test/template hashes for future reuse checks.
+`run-provider-gates.py` owns the serial gate invocation. `run-live.py` now reserves distinct
+`*-d343-command.json` output names so the earlier refused launch report cannot be overwritten.
+`preflight-provider.mjs` is a prepared value-free provider/input/lock observer; it has not launched
+anything. The old environment-admission handoff was consumed and is superseded by this checkpoint.
+
+**Actual blocker:** Step 3's explicit prohibition on parity reference-body changes conflicts with
+the generated fingerprints caused by the authorized source move. The supervisor requested a narrow
+fingerprint-only exception; no approval is assumed. Steps 4–6 remain open. Primary `master` remains
+clean at `f0b1cf92195897e56e4917384b512c45d7b4d41a`; it has not executed this candidate. No new live
+run, final review, integration, reference refreeze, production write or push occurred.
+
+**Provisional delivery assessment addendum:** preserving the operator reference file is new operator
+scope (D343), not a missed original implementation requirement. Its descriptor-closure change
+predictably changes parity provenance and displayed hashes; that dependency should be included in
+any future source-path amendment before full gates. One fixture-repair round was needed after the
+first full run exposed the real child bootstrap fixture. Mandatory reruns and the failed parity lane
+are reported separately; no completed-task assessment is claimed yet.
+
+Checkpoint recording checks: `provider-record-check.log` (session 93490), 2 files / 39 architecture
+binding/registry tests passed in 1.29 s; roadmap freshness and instruction audit passed; diff check
+clean. The tracked executable/test/template input map matches the successful coverage/typecheck/lint
+state byte-for-byte. Those gates are reused for this evidence-only addition, not claimed as rerun.

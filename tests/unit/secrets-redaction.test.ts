@@ -93,7 +93,7 @@ describe("closed secret access", () => {
           close: () => undefined,
         }),
         (error: unknown) => {
-          assert.match(String(error), /local environment file \.env has invalid syntax at line \d+/u, label);
+          assert.match(String(error), /local environment file has invalid syntax at line \d+/u, label);
           assert.equal(String(error).includes("private"), false, label);
           return true;
         },
@@ -204,7 +204,7 @@ describe("closed secret access", () => {
           closed = true;
         },
       }),
-      /local environment file \.env permissions must be 0600 or stricter/,
+      /local environment file \.env\.providers permissions must be 0600 or stricter/,
     );
     assert.equal(read, false);
     assert.equal(closed, true);
@@ -225,7 +225,7 @@ describe("closed secret access", () => {
           readBytes: (descriptor) => readFileSync(descriptor),
           close: closeSync,
         }),
-        /local environment file \.env is unavailable/,
+        /local environment file \.env\.providers is unavailable/,
       );
       assert.equal(env.HRAUTO_SYMLINK_CANARY, undefined);
     } finally {
@@ -247,7 +247,7 @@ describe("closed secret access", () => {
         },
       }),
       (error: unknown) => {
-        assert.match(String(error), /local environment file \.env permissions must be 0600 or stricter/);
+        assert.match(String(error), /local environment file \.env\.providers permissions must be 0600 or stricter/);
         assert.equal(String(error).includes(privatePathCanary), false);
         return true;
       },
@@ -263,7 +263,7 @@ describe("closed secret access", () => {
         readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
         close: () => undefined,
       }),
-      /local environment file \.env is not a regular file/,
+      /local environment file \.env\.providers is not a regular file/,
     );
   });
 
@@ -275,7 +275,7 @@ describe("closed secret access", () => {
         readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
         close: () => undefined,
       }),
-      /local environment file \.env exceeds its registered size limit/,
+      /local environment file \.env\.providers exceeds its registered size limit/,
     );
   });
 
@@ -292,7 +292,7 @@ describe("closed secret access", () => {
         close: () => undefined,
       }),
       (error: unknown) => {
-        assert.match(String(error), /local environment file \.env is unavailable/);
+        assert.match(String(error), /local environment file \.env\.providers is unavailable/);
         const cause = error instanceof Error ? String(error.cause) : "";
         assert.equal(`${String(error)} ${cause}`.includes(privateCauseCanary), false);
         return true;
@@ -316,8 +316,8 @@ describe("closed secret access", () => {
         assert.deepEqual(
           error.errors.map((failure: unknown) => String(failure)),
           [
-            "SecretSourceError: local environment file .env could not be read and parsed",
-            "SecretSourceError: local environment file .env descriptor could not be closed",
+            "SecretSourceError: local environment file .env.providers could not be read and parsed",
+            "SecretSourceError: local environment file .env.providers descriptor could not be closed",
           ],
         );
         return true;

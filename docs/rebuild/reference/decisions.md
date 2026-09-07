@@ -2184,3 +2184,9 @@ _phase: detour before 1.6.7; approved and completed 2026-09-07 — accepted revi
 | # | Decision | Owning doc |
 | --- | --- | --- |
 | **D342** | **PHASE 3.4 IS AN OPTIONAL DOCUMENT-FEATURE MENU; CODEX/CLAUDE COOPERATION MOVES TO 3.5.** Local OCR, PDF viewing/search/export, document classification/extraction, rereading, semantic search/reranking, cited questions, focused advice, provider controls, fine-tuning and public-instruction search are independently selectable proposals. None blocks 3.5, migrations or cutover. Stable cooperation IDs, D338 parity, mandatory intake obligations and the immutable 3.3 candidate remain unchanged. Historical 3.4 cooperation references resolve to 3.5. | [roadmap §D342](../../roadmap/roadmap.md#d342--optional-document-features-and-cooperation-renumbering-2026-09-07) (order/optionality owner) · [Phase 3.4](../plans/phase-3/3.4-optional-document-tools/README.md) (feature scope) · [Phase 3.5](../plans/phase-3/3.5-co-operate-with-claude/README.md) (cooperation) |
+
+## Reconciliation round 147 (2026-09-07) — preserve the operator reference environment
+
+| # | Decision | Owning doc |
+| --- | --- | --- |
+| **D343** | **NORMAL STARTUP READS ONLY `.env.providers`; `.env` REMAINS OPERATOR REFERENCE.** Copy the five supported provider families once without altering the reference file. Preserve secure admission and existing credential/test-data authorities. No fallback, new OCR provider or Settings UI work. | [clock-config-secrets §D343](clock-config-secrets.md#d343--preserve-the-reference-environment-isolate-runtime-provider-keys-2026-09-07) · [Task 1.6.7 amendment](../plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md#provider-reference-file-amendment-operator-approved-2026-09-07) |
