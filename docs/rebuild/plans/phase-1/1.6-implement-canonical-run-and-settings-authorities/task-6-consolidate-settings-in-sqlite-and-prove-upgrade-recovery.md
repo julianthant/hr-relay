@@ -775,3 +775,26 @@ the intended `1 !== 0` forbidden-effect failure while phase C still returned com
 against HEAD. This addition changes only the test and evidence, with no production fix or contract
 change. Required gates and renewed independent acceptance remain open; no integration or operator
 conversion has occurred.
+
+
+#### Async proof candidate gates — awaiting renewed independent review
+
+Candidate **`024b34e12803120d57ee3f629ffdcb42bc8a34fd`** adds only the async unit proof and its owner evidence to the prior
+reviewed tree. Production, contracts, guards, configuration and parity inputs remain byte-identical
+to `c1fb29917935f33ca014f78a64cc121fa1550b4b`. All 117 candidate paths remain in review scope;
+only the P2 async zero-effect proof is newly changed. No operator-root write or integration occurred.
+
+| Gate | Evidence |
+| --- | --- |
+| Typecheck / lint | PASS; `/tmp/hr-settings-r9-async-typecheck.log`, `/tmp/hr-settings-r9-async-lint.log`. |
+| Focused proof / negative control | 15 tests PASS in `/tmp/hr-settings-r9-async-green.log`; removing only phase-A admission yields exactly one forbidden effect in `/tmp/hr-settings-r9-async-negative-control.log`. Production bytes were restored exactly before subsequent gates. |
+| Full coverage / suite size | 5,456 tests / 433 files PASS, 331.74 seconds; statements 85.79%, branches 77.36% report-only, functions 89.80%, lines 87.94%; all configured floors and suite-size check PASS. `/tmp/hr-settings-r9-async-coverage.log`. Same contained coverage/suite-size commands and verified two-worker config as the prior candidate. |
+| Standalone architecture | 827 tests / 79 files PASS, 56.99 seconds; `/tmp/hr-settings-r9-async-architecture.log`. |
+| Desktop parity | All 259 PASS, 55.4 seconds; `/tmp/hr-settings-r9-async-parity.log`. No reference changes; architecture completed before parity began. |
+| Freshness / scoped checks | Manifest, catalog and roadmap checks PASS in the corresponding `/tmp/hr-settings-r9-async-{manifest,catalog,roadmap}.log` files; instruction twins, owner links and diff checks remain passing. |
+| Input binding | 2,117 paths; fingerprint `4adb96c0b598cd5517da7ec7aa72efb3cb1af3ef567bb28745cde124f9ac30cb`, `/tmp/hr-settings-r9-async-inputs.json` and `/tmp/hr-settings-r9-async-sha256.txt`. Compared with the verified R9 map, only the unit test and task owner differ. |
+
+The input map binds `024b34e12803120d57ee3f629ffdcb42bc8a34fd` before this evidence-only append. Its recording commit reuses
+unchanged code-gate results under D191, with scoped instruction/link, roadmap freshness and diff
+checks. Review task `01a07a45-50d7-7d01-bd47-672d3dfa1720` must independently accept the proof
+and final candidate before the authorized integration/operator sequence starts.
