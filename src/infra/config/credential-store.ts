@@ -439,6 +439,7 @@ function readPrivateDocument(path: string): ReadDocument | undefined {
     const after = fstatSync(descriptor);
     const live = lstatSync(path);
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+      || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
       || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
       || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size) {
       throw new Error("directory-integrity: protected.json moved while it was read");
@@ -502,6 +503,7 @@ function readCredentialLock(
     const after = fstatSync(descriptor);
     const live = lstatSync(path);
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+      || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
       || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
       || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size) {
       throw new Error("directory-integrity: credential lock moved while it was read");
@@ -1201,6 +1203,13 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     },
     read(): ProtectedStoreRecord {
       return observeCurrent().document.record;
+    },
+    acceptedAt(commandId: string): string | undefined {
+      const id = z.uuid().parse(commandId);
+      return withLock(() => {
+        const latest = readCurrentUnderLock().document.history.at(-1)?.request;
+        return { committed: false, result: latest?.commandId === id ? latest.updatedAt : undefined };
+      });
     },
     apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
       const request = admit(input);

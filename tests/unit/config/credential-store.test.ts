@@ -447,6 +447,49 @@ describe("D336 independent credential store", () => {
     assert.equal(existsSync(join(physicalTracker, "credentials")), false);
   });
 
+  it.each((["mode", "uid", "nlink"] as const).flatMap((field) => [{ field, lock: false }, { field, lock: true }]))("refuses changed post-read $field metadata (lock=$lock)", ({ field, lock }) => {
+    const f = fixture();
+    applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
+    const path = lock ? f.lockPath : f.path;
+    if (lock) writeFileSync(path, `${JSON.stringify(deadLockRecord("writer", "55555555-5555-4555-8555-555555555555"))}\n`, { mode: 0o600 });
+    const before = readFileSync(path);
+    const inode = lstatSync(path).ino;
+    const realFstat = fs.fstatSync;
+    let observations = 0;
+    vi.spyOn(fs, "fstatSync").mockImplementation((descriptor, options) => {
+      const status = realFstat(descriptor, options);
+      if (Number(status.ino) === inode && ++observations === 2) {
+        Object.defineProperty(status, field, { value: Number(status[field]) + 1 });
+      }
+      return status;
+    });
+    syncBuiltinESMExports();
+    const observe = () => lock
+      ? f.store.apply(request({ commandId: COMMAND_2, writeId: WRITE_2, expectedRevision: 2, entries: { ucpathPassword: { clear: true } } }))
+      : f.store.read();
+    try { assert.throws(observe, lock ? /credential lock moved while it was read/u : /protected.json moved while it was read/u); }
+    finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
+    assert.equal(observations, 2);
+    assert.deepEqual(readFileSync(path), before);
+  });
+
+  it.each(["before", "after"] as const)("resolves retry time after a SIGKILL %s credential rename", (boundary) => {
+    const f = fixture();
+    const input = request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } });
+    const child = boundary === "before" ? crashBeforeCredentialRename(f.tracker, input) : crashAfterCredentialRename(f.tracker, input);
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    assert.equal(f.store.acceptedAt(COMMAND_1), boundary === "before" ? undefined : NOW_1);
+    const retry = ProtectedSettingsApplyInputSchema.parse({ ...input, updatedAt: boundary === "before" ? NOW_2 : NOW_1 });
+    assert.equal(f.store.apply(retry).state, "applied");
+    const bytes = readFileSync(f.path);
+    assert.equal(f.store.acceptedAt(COMMAND_1), retry.updatedAt);
+    const refused = f.store.apply({ ...retry, entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } } });
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, "command-divergent");
+    assert.deepEqual(readFileSync(f.path), bytes);
+    assert.equal(f.store.acceptedAt(COMMAND_2), undefined);
+  });
+
   it("refuses writable non-sticky ancestors before creating credential authority", () => {
     const f = fixture();
     chmodSync(f.stateRoot, 0o777);

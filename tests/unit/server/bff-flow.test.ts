@@ -218,6 +218,7 @@ afterEach(() => {
 });
 
 function harness(options: {
+  readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
@@ -432,6 +433,7 @@ function harness(options: {
     },
   });
   const app = createDashboardApp({
+    protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
       id: "local-operator",
       label: "Local operator",
@@ -2746,6 +2748,83 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(journalReads, 0);
     assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each([
+    { label: "partial display set", seed: {}, patch: { "display.screenWidth": { set: 1600 } }, missing: ["display.screenHeight"] },
+    { label: "partial display clear", seed: { "display.screenWidth": { set: 1600 }, "display.screenHeight": { set: 900 } }, patch: { "display.screenHeight": { clear: true } }, missing: ["display.screenHeight"] },
+    { label: "partial annual dates set", seed: {}, patch: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" } }, missing: ["annualDates.FY2027.kronosDefaultEndDate", "annualDates.FY2027.kronosDefaultStartDate"] },
+    { label: "partial annual dates clear", seed: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultStartDate": { set: "07/01/2026" } }, patch: { "annualDates.FY2027.jobEndDate": { clear: true } }, missing: ["annualDates.FY2027.jobEndDate"] },
+  ])("returns cross-field-invalid for $label without durable effects", async ({ seed, patch, missing }) => {
+    const h = harness();
+    const send = (commandId: string, expectedRevision: number, changes: unknown) => h.app.request("/api/v1/commands", {
+      method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId, family: "settings", type: "apply-settings", target: { expectedRevision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: rawSettingsPatchFingerprint(changes), patch: changes } }),
+    });
+    const seeded = Object.keys(seed).length > 0;
+    if (seeded) assert.equal((await send("00000000-0000-4000-8000-000000000901", 1, seed)).status, 200);
+    const commandId = "00000000-0000-4000-8000-000000000902";
+    const before = settingsAuthoritySnapshot(h, commandId);
+    const response = await send(commandId, seeded ? 2 : 1, patch);
+    assert.equal(response.status, 422);
+    assert.deepEqual(await json(response), { state: "rejected", commandId, code: "cross-field-invalid",
+      message: `cross-field-invalid { keys: ${missing.join(", ")} }` });
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("refuses invalid or unauthorized requests before protected retry identity and journal reads", async () => {
+    let reads = 0;
+    const forbiddenRead = () => { reads += 1; throw new Error("forbidden request-only authority read"); };
+    const h = harness({ protectedCommandAcceptedAt: forbiddenRead, commandJournal: () => ({ get: forbiddenRead }) });
+    const commandId = "00000000-0000-4000-8000-000000000907";
+    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: 1 },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000908", entries: { ucpathPassword: { set: "synthetic-validation-only" } } } };
+    const before = settingsAuthoritySnapshot(h, commandId);
+    for (const { body, headers, status } of [
+      { body: { ...request, payload: { ...request.payload, protectedSchemaHash: "0".repeat(64) } }, headers: OPERATOR_JSON_HEADERS, status: 422 },
+      { body: { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: 42 } } } }, headers: OPERATOR_JSON_HEADERS, status: 422 },
+      { body: request, headers: { ...OPERATOR_JSON_HEADERS, origin: "https://foreign.invalid" }, status: 403 },
+    ]) {
+      const response = await h.app.request("/api/v1/commands", { method: "POST", headers, body: JSON.stringify(body) });
+      assert.equal(response.status, status);
+    }
+    assert.equal(reads, 0);
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each(["set", "clear"] as const)("settles an uncertain credential %s audit through HTTP after the server clock advances", async (operation) => {
+    const h = harness();
+    const commandId = "00000000-0000-4000-8000-000000000903";
+    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: operation === "clear" ? 2 : 1 },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000904",
+        entries: { ucpathPassword: operation === "clear" ? { clear: true } : { set: "synthetic-http-retry-private" } } } };
+    const send = (body: unknown = request) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body) });
+    if (operation === "clear") {
+      const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: 1 },
+        payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000906", entries: { ucpathPassword: { set: "synthetic-http-retry-private" } } } };
+      assert.equal((await send(seed)).status, 200);
+      h.clock.advanceWall(1000);
+    }
+    const acceptedAt = h.clock.now().toISOString();
+    vi.spyOn(h.database, "withAuthorityTransaction").mockImplementationOnce(() => { throw new Error("injected-http-audit-failure"); });
+    assert.equal((await send()).status, 500);
+    const privatePath = join(h.stateRoot, "credentials", "protected.json");
+    const bytes = readFileSync(privatePath);
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+    h.clock.advanceWall(1000);
+    const divergent = { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: "synthetic-http-retry-divergent" } } } };
+    const denied = await json(await send(divergent));
+    assert.equal(denied.code, "command-divergent");
+    h.clock.advanceWall(1000);
+    const retry = await send();
+    assert.equal(retry.status, 200);
+    assert.equal((await json(retry)).state, "applied");
+    assert.equal((await json(await send())).state, "already-applied");
+    assert.deepEqual(readFileSync(privatePath), bytes);
+    const audit = h.database.authority.commandAudits.findByCommand(commandId); assert.ok(audit);
+    assert.equal(audit.request.requestedAt, acceptedAt);
+    assert.equal(JSON.stringify(audit).includes("synthetic-http-retry-private"), false);
   });
 
   it("returns invalid-value for an ordinary settings leaf before authority access", async () => {

@@ -180,6 +180,7 @@ function fixture(options: {
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
     bootstrap: { clock },
     commandJournal: { get: () => undefined },
+    protectedCommandAcceptedAt: () => { throw new Error("forbidden credential command lookup"); },
     bulkCommandAcceptances: {
       withTransaction: () => { throw new Error("forbidden bulk command acceptance"); },
     },

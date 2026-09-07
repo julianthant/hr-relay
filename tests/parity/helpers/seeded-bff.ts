@@ -893,6 +893,7 @@ export async function startSeededServer(
     }),
     intake: UNWIRED_INTAKE_SERVICE,
     commandJournal: database.authority.commands,
+    protectedCommandAcceptedAt: () => { throw new Error("seeded BFF has no credential command authority"); },
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work(repositories.bulkCommandAcceptances)),

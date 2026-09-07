@@ -110,7 +110,18 @@ function settingsRequestRefusal(
 function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecision {
   const stamped = withOperatorProvenance(input, clock);
   const parsed = CommandRequestSchema.safeParse(stamped);
-  if (parsed.success) return Object.freeze({ state: "accepted", request: parsed.data });
+  if (parsed.success) {
+    const request = parsed.data;
+    if (request.family === "settings") {
+      if (request.type === "apply-settings") {
+        if (request.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) return settingsRequestRefusal(request.commandId, "schema-mismatch", "settings.json");
+        if (request.payload.patchFingerprint !== deriveRawSettingsPatchFingerprint(request.payload.patch)) return settingsRequestRefusal(request.commandId, "patch-fingerprint-mismatch", "settings.json");
+      } else if (request.payload.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
+        return settingsRequestRefusal(request.commandId, "schema-mismatch", "protected.json");
+      }
+    }
+    return Object.freeze({ state: "accepted", request });
+  }
 
   const ordinary = OrdinarySettingsIngressRequestSchema.safeParse(stamped);
   if (ordinary.success) {
@@ -169,12 +180,15 @@ export function stampOperatorCommand(
   input: unknown,
   clock: Clock,
   journal: CommandJournalRead,
+  protectedCommandAcceptedAt: (commandId: string) => string | undefined,
 ): CommandRequest {
   const intent = CommandRequestSchema.parse(withOperatorProvenance(input, clock));
   const accepted = journal.get(intent.commandId);
   return CommandRequestSchema.parse({
     ...intent,
-    requestedAt: accepted?.requestedAt ?? clock.now().toISOString(),
+    requestedAt: accepted?.requestedAt
+      ?? (intent.family === "settings" && intent.type === "apply-protected-settings" ? protectedCommandAcceptedAt(intent.commandId) : undefined)
+      ?? clock.now().toISOString(),
     requestedBy: LOCAL_OPERATOR_ACTOR_ID,
     source: "dashboard",
   });
@@ -251,6 +265,7 @@ export interface OperatorCommandIngress {
 export function createOperatorCommandIngress(input: Readonly<{
   clock: Clock;
   journal: CommandJournalRead;
+  protectedCommandAcceptedAt: (commandId: string) => string | undefined;
   bulkAcceptances: BulkCommandAcceptanceAuthority;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
@@ -278,7 +293,7 @@ export function createOperatorCommandIngress(input: Readonly<{
       const ingress = parseOperatorCommand(command, input.clock);
       if (ingress.state === "refused") return Promise.resolve(ingress.response);
       return serialize(`command:${ingress.request.commandId}`, () =>
-        execute(stampOperatorCommand(ingress.request, input.clock, input.journal)));
+        execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt)));
     },
     executeBulk(
       command: unknown,

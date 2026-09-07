@@ -10,6 +10,7 @@ import {
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readSettings } from "../../settings-runtime.js";
+import { z } from "zod";
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);
@@ -24,6 +25,16 @@ function protectedInput(command: SettingsCommand) {
   });
 }
 
+function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply-settings" }>) {
+  if (command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
+    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "schema-mismatch", message: "settings schema-mismatch" });
+  }
+  if (deriveSettingsPatchFingerprint(command.payload.patch) !== command.payload.patchFingerprint) {
+    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "patch-fingerprint-mismatch", message: "settings patch-fingerprint-mismatch" });
+  }
+  return undefined;
+}
+
 /** Ordinary values are staged purely and committed by the kernel's SQLite transaction. */
 export function createSettingsApplicationExecutor(
   validateCandidate: (settings: SettingsFileRecord["settings"]) => void,
@@ -31,7 +42,7 @@ export function createSettingsApplicationExecutor(
 ): SettingsApplicationExecutor {
   return Object.freeze({
     prepare(command: SettingsCommand) {
-      if (command.type !== "apply-protected-settings") return undefined;
+      if (command.type !== "apply-protected-settings") return ordinaryRequestRefusal(command);
       const outcome = credentials.apply(protectedInput(command));
       return outcome.state === "applied" ? undefined : outcome;
     },
@@ -41,38 +52,32 @@ export function createSettingsApplicationExecutor(
         if (outcome.state !== "applied") return outcome;
         return { state: "applied", readback: protectedSettingsReadback(outcome.record) };
       }
-      if (command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
-        return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "schema-mismatch", message: "settings schema-mismatch" });
-      }
-      if (deriveSettingsPatchFingerprint(command.payload.patch) !== command.payload.patchFingerprint) {
-        return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "patch-fingerprint-mismatch", message: "settings patch-fingerprint-mismatch" });
-      }
+      const refusal = ordinaryRequestRefusal(command);
+      if (refusal !== undefined) return refusal;
       const current = readSettings(repositories);
       if (current.revision !== command.target.expectedRevision) {
         return SettingsApplyRefusalSchema.parse({ state: "conflict", currentRevision: current.revision, message: "settings revision conflict" });
       }
-      const settings = mergeSettingsPatch(current.settings, command.payload.patch);
-      try { validateCandidate(settings); }
-      catch { return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "cross-field-invalid", message: "cross-field-invalid { keys: settings }" }); }
+      let settings: SettingsFileRecord["settings"];
+      try {
+        settings = mergeSettingsPatch(current.settings, command.payload.patch);
+        validateCandidate(settings);
+      } catch (error) {
+        const keys = error instanceof z.ZodError
+          ? [...new Set(error.issues.map((issue) => issue.path.map(String).join(".")))].sort()
+          : Object.keys(command.payload.patch).sort();
+        return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "cross-field-invalid", message: `cross-field-invalid { keys: ${keys.join(", ")} }` });
+      }
       if (Buffer.byteLength(canonicalJsonStringify(settings), "utf8") > 1_048_576) {
         return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "document-too-large", message: "ordinary settings document-too-large" });
       }
       return { state: "applied", revision: current.revision + 1, settings,
         settingsFingerprint: derivePersistedSettingsFingerprint(settings) };
     },
-    reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand) {
-      if (command.type === "apply-protected-settings") {
-        const outcome = credentials.verifyReplay(protectedInput(command));
-        if (outcome.state !== "applied") throw new Error("credential-replay-refused");
-        return protectedSettingsReadback(outcome.record);
-      }
-      const record = repositories.settingsCurrent.get();
-      if (record === undefined || record.revision !== command.target.expectedRevision + 1
-        || record.commandId !== command.commandId
-        || record.commandFingerprint !== deriveSettingsCommandFingerprint(command)) {
-        throw new Error(`settings replay ${command.commandId} does not match the current result`);
-      }
-      return { revision: record.revision, settingsFingerprint: record.settingsFingerprint };
+    reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {
+      const outcome = credentials.verifyReplay(protectedInput(command));
+      if (outcome.state !== "applied") throw new Error("credential-replay-refused");
+      return protectedSettingsReadback(outcome.record);
     },
   });
 }

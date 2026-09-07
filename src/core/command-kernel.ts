@@ -271,7 +271,7 @@ export interface SettingsApplicationExecutor {
     command: SettingsCommand,
   ): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
   apply(command: SettingsCommand, repositories: AuthorityRepositories): unknown;
-  reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand): unknown;
+  reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>): unknown;
 }
 
 const OrdinarySettingsReplayVerificationSchema = z.strictObject({
@@ -3221,12 +3221,16 @@ function replay(
         `settings/${request.type} replay reached a composition with no settings application executor`,
       );
     }
+    if (request.type === "apply-settings"
+      && deriveSettingsCommandFingerprint(audit.request) !== deriveSettingsCommandFingerprint(request)) {
+      throw new Error(`settings replay ${request.commandId} does not match its immutable result`);
+    }
     const verified = request.type === "apply-settings"
       ? OrdinarySettingsReplayVerificationSchema.parse(
-          dependencies.settings.reconcileReplay(repositories, request),
+          { revision: audit.result.settingsRevision, settingsFingerprint: audit.result.settingsFingerprint },
         )
       : ProtectedSettingsReplayVerificationSchema.parse(
-          dependencies.settings.reconcileReplay(repositories, request),
+          dependencies.settings.reconcileReplay(request),
         );
     const expectedRevision = request.target.expectedRevision + 1;
     if (verified.revision !== expectedRevision) {
@@ -3272,6 +3276,11 @@ export function executeSettingsCommand(
     return dependencies.authority.withAuthorityTransaction((repositories) => {
       const now = dependencies.clock.now().toISOString();
       const journalRequest = markSettingsCommand(request);
+      const existing = repositories.commands.get(request.commandId);
+      if (existing !== undefined && canonicalJsonStringify(existing) !== canonicalJsonStringify(journalRequest)) {
+        throw new CommandRefusal(CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+          code: "command-divergent", message: "settings command identity was reused with different content" }));
+      }
       const journal = repositories.commands.insert(journalRequest);
       if (journal.state === "existing") return replay(dependencies, repositories, request, now);
       const application = executeSettings(dependencies, repositories, request);

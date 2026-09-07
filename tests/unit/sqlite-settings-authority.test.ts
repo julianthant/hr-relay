@@ -16,6 +16,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js"
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { requireSecret } from "../../src/domain/secrets.js";
+import { FingerprintSchema } from "../../src/domain/ids.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -77,11 +78,36 @@ describe("D336 SQLite settings authority", () => {
     assert.equal(f.database.authority.settingsCurrent.get(), undefined);
     assert.equal(f.execute(request).state, "applied");
   });
+  it("replays an older ordinary result from its journal and refuses divergent identity reuse", () => {
+    const f = fixture(); const first = ordinary();
+    const applied = f.execute(first);
+    assert.equal(applied.state, "applied");
+    assert.equal(f.execute(ordinary(2)).state, "applied");
+    const current = f.database.authority.settingsCurrent.get();
+    const generation = f.database.getMeta().authorityGeneration;
+    assert.deepEqual(f.execute(first), { ...applied, state: "already-applied" });
+    const changed = structuredClone(first);
+    changed.payload.patch["concurrency.defaultWorkers"].set = 4;
+    changed.payload.patchFingerprint = deriveSettingsPatchFingerprint(changed.payload.patch);
+    const refused = f.execute(changed);
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, "command-divergent");
+    assert.deepEqual(f.database.authority.settingsCurrent.get(), current);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+  });
   it("refuses CAS conflicts without changing ordinary authority", () => {
     const f = fixture(); f.execute(ordinary()); const request = ordinary(); const before = f.database.getMeta().authorityGeneration;
     assert.equal(f.execute(request).state, "conflict");
     assert.equal(f.database.getMeta().authorityGeneration, before);
     assert.equal(f.database.authority.commands.get(request.commandId), undefined);
+  });
+  it.each(["schema", "fingerprint"] as const)("refuses an invalid ordinary %s before authority access", (field) => {
+    const f = fixture(); const command = ordinary();
+    if (field === "schema") command.payload.settingsSchemaHash = FingerprintSchema.parse("0".repeat(64));
+    else command.payload.patchFingerprint = "0".repeat(64);
+    const refused = f.execute(command, { withAuthorityTransaction: () => { throw new Error("forbidden authority access"); } });
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, field === "schema" ? "schema-mismatch" : "patch-fingerprint-mismatch");
   });
   it("retains credential commit after audit failure, verifies exact retry and rejects divergent values", () => {
     const f = fixture(); const request = protectedCommand();

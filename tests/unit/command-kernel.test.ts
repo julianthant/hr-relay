@@ -1680,7 +1680,7 @@ describe("apply-settings authority", () => {
       state: "rejected",
       commandId: command.commandId,
       code: "cross-field-invalid",
-      message: "cross-field-invalid { keys: settings }",
+      message: "cross-field-invalid { keys: browser.headless }",
     });
     assert.equal(JSON.stringify(result).includes("private candidate diagnostic"), false);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);

@@ -1275,6 +1275,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     archive: archiveDeps,
     commands,
     commandJournal: database.authority.commands,
+    protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work(repositories.bulkCommandAcceptances)),

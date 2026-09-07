@@ -16,6 +16,8 @@ export type CredentialStoreApplyOutcome = z.infer<typeof CredentialStoreApplyOut
 /** D336's independent, non-database authority for protected settings. */
 export interface CredentialStore {
   read(): ProtectedStoreRecord;
+  /** Authorized command-path lookup; recovers a stale writer before returning value-free retry time. */
+  acceptedAt(commandId: string): string | undefined;
   apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
   /** Verify the exact most-recent application without performing a write. */
   verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
