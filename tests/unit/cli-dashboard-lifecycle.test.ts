@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import type { Readable } from "node:stream";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,8 +86,8 @@ async function requireIsolatedPortFree(): Promise<void> {
 }
 
 /** The bootstrap refuses any `.env` a group or other can read (D-secure-env). */
-function requirePrivateEnvironmentFile(): void {
-  const path = join(REPO_ROOT, ".env");
+function requirePrivateEnvironmentFile(root: string): void {
+  const path = join(root, ".env");
   const mode = statSync(path).mode & 0o777;
   assert.equal(
     mode,
@@ -110,9 +110,11 @@ function requirePrivateEnvironmentFile(): void {
  *  - `node_modules` — a symlink, because Node resolves the bare `--import tsx`
  *    specifier against the CWD.
  *
- * `.tracker/**` and `config/**` are the composition's own to create,
- * and the bootstrap derives `.env` from its own module URL, so the checkout's
- * mode-600 file still applies to a child running anywhere.
+ * `.tracker/**` and `config/**` are the composition's own to create. Copy the
+ * unmodified production bootstrap into this root so its module-relative `.env`
+ * is the private provider-only fixture, never the operator's migration sources.
+ * Source and dependencies are linked read-only by convention; runtime state and
+ * admitted environment bytes belong to this disposable root.
  */
 function createScratchRepoRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "hr-dashboard-lifecycle-"));
@@ -120,16 +122,20 @@ function createScratchRepoRoot(): string {
     cpSync(join(REPO_ROOT, file), join(root, file));
   }
   symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
+  symlinkSync(join(REPO_ROOT, "src"), join(root, "src"), "dir");
+  mkdirSync(join(root, "scripts"));
+  cpSync(BOOTSTRAP, join(root, "scripts", "secure-env-bootstrap.ts"));
+  cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env"));
+  chmodSync(join(root, ".env"), 0o600);
   return root;
 }
 
 /**
- * Unlink the `node_modules` symlink FIRST and by itself. `fs.rm` does not follow
- * symlinks, but the checkout's real dependency tree is not something to trust to
- * that one behaviour inside a recursive delete.
+ * Unlink the source and dependency links explicitly before recursive cleanup;
+ * neither target belongs to this disposable fixture.
  */
 function removeScratchRepoRoot(root: string): void {
-  rmSync(join(root, "node_modules"), { force: true });
+  for (const directory of ["src", "node_modules"]) rmSync(join(root, directory), { force: true });
   rmSync(root, { recursive: true, force: true });
 }
 
@@ -216,10 +222,10 @@ function readScratchLock(lockPath: string): { name?: unknown; pid?: unknown; rel
 
 describe("the `dashboard` CLI command's shutdown lifecycle", () => {
   it("drains through a second Ctrl+C, exits 0, and releases its process lock", async () => {
-    requirePrivateEnvironmentFile();
     await requireIsolatedPortFree();
 
     const scratchRoot = createScratchRepoRoot();
+    requirePrivateEnvironmentFile(scratchRoot);
     const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const checkoutBefore = checkoutStateFingerprint();
     try {
@@ -229,7 +235,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       // process the signal must reach and the lock record must name.
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", BOOTSTRAP, "cli", "dashboard"],
+        ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
       );
       const pid = child.pid;
