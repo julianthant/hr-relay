@@ -252,7 +252,7 @@ describe("the committed test target registry", () => {
     assert.deepEqual(result, {
       state: "blocked",
       label: "finalization-canary",
-      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-03",
+      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-07",
     });
     // Since D300 this resolver cannot spend a credential because it cannot be
     // HANDED one: it takes the registry and the label, and nothing else.

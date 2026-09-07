@@ -7,12 +7,12 @@
         "label": "finalization-canary",
         "availability": {
           "state": "available",
-          "lastObserved": "2026-09-03",
-          "reason": "The operator selected the replacement on 2026-09-03 and live dry-run 5c9e0c34-f507-48fe-b59b-8c75b9c0051a verified the Kuali document and UCPath subject reads before New Kronos returned EMPLOYEE_NOT_FOUND; exact-run write intents, attempts and outbox were 0/0/0. The document number is a private input in ignored config/test-data.local.json (D341)."
+          "lastObserved": "2026-09-07",
+          "reason": "The operator selected a replacement and reported same-day Kuali and New Kronos read-only checks on 2026-09-07. After the D341 conversion, the operator confirmed setup complete; the Task-1.6.7 value-free check found the private configuration valid and this subject ready. Current automated live acceptance remains pending. Historical evidence for the prior selection remains result abe85e59-3e55-4ac0-99e8-ac1a1856ada1: EMPLOYEE_NOT_FOUND, with write intents/attempts/outbox 0/0/0; it does not establish the replacement\u2019s outcome."
         },
         "provenance": {
-          "document": "docs/rebuild/03.2-finish-workflow-authoring.md",
-          "section": "Task 6 \u2014 replacement selected 2026-09-03; live dry-run result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 remains historical evidence pending current-source acceptance"
+          "document": "docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "section": "Task 1.6.7 execution evidence \u2014 operator confirmation and current live acceptance"
         },
         "usagePolicy": "read-only",
         "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",

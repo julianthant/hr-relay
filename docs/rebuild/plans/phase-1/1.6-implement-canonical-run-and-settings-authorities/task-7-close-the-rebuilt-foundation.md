@@ -273,3 +273,79 @@ ownership; the old preflight handoff does not satisfy these conditions.
 - [ ] Pass targeted, full, generated, storage, live-dry-run and adversarial authority gates.
 - [ ] Record the migration in this section's `log:` and hand 2.6 only verified contracts, fixtures,
   residuals and exact commands.
+
+## Task 1.6.7 execution evidence
+
+Status: executing; no candidate acceptance or phase completion claimed.
+
+**Step 1 accepted (2026-09-07).** Verified accepted D341 completion and conversion at
+`da85e5d1d8b652dab36d78bd4addb794dad377f2`, including merge `bc6dc9b54` and the conversion
+review addendum in `ref guards-and-tests` §10.5. Advanced the clean, plan-only owned branch
+`codex/phase-1-6-foundation-close` by fast-forward from `3bb9abdb3` to that base. Both Task-6
+ancestors remain reachable. Primary `master` is clean; the task worktree contains only owned
+evidence/configuration changes and its temporary preflight handoff. Dependencies installed from
+the committed lockfile with `npm ci --ignore-scripts --no-audit --no-fund` (exit 0).
+
+Name-only `.env` inspection found none of the nine original retired names or the retired
+person-lookup name. Both exact `test-data check --json --subject <label> --workflow <workflow>`
+commands exited 0: shared/local configuration valid, both private inputs present, each subject ready.
+The operator's “its done” reply confirms application of the selected private inputs. This is setup
+confirmation, not live acceptance. The observed private source is the primary checkout's ignored
+`config/test-data.local.json`, mode 0600, regular/non-symlink, inode 252722454 and mtime
+1788802729144036248 ns; recheck it before live execution. No private value or value-derived digest
+is recorded. Public Separations provenance now describes the September 7 selection/checks.
+
+Primary read-only doctor exited 0 at `2026-09-07T17:39:55.854Z`: schema 32, generation 0,
+quick check ok, valid invariants, zero foreign-key violations, reconciled zero runs/spans and all
+pending counts zero. Backup missing, reported without creation. Database identity
+`35ae66fbb575adebdc61b4018fb4d9153d53bbb8d0f38e0b45cba410c459f54a` identifies the primary
+root only; it is not a canary fingerprint. The supported runtime-lock observer at
+`2026-09-07T17:40:28.202Z` reported server and workers stopped (runtime generation 3);
+no listeners on 3938/5174 or matching runtime processes were present. Historical locks were preserved.
+
+**Working gate record.** Scratch owner is this supervisor:
+`/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/task-1-6-7-dzgx4bwi`.
+`two-workers.config.mts` was extracted from the approved recipe above and bound to this worktree;
+SHA-256 `1da8cd8f34f538a00f96e5d92a7b422a53794b05b79789c5a24c880184e63936`;
+imported `vitest.config.ts` SHA-256
+`1f9122bf9bbcf1fcab9e01b5aec3428bcde7f9b10b47f0f91aab41775bdbf68f`.
+The executable assertions prove only root/project maxWorkers differ and every effective count is 2.
+The nine-file focused unit command above passed 139 tests, exit 0, 22.71 s, at base `da85e5d1d`;
+log `focused-unit.log`, completed process session 57832. Both named fixture cases passed.
+Focused guards completed in session 10948, log `focused-guards.log`: 5 files / 60 tests passed,
+18.58 s, exit 0, including injected SQL/mutator/reader and secrecy violations.
+
+**Step 2 accepted.** The Phase-2.6 overview now records the reproducible fixture pair, actual
+A0/A1 paths/expiry, A2/A3 same-commit deletion obligations, gate-record-only writer and #22/M23
+proofs, D183 disposition table, `migrated-refused`, and the post-D336 A8/P40 boundary. A separate
+read-only count confirmed one fresh baseline marker and zero task rows on the primary root.
+
+The metadata update exposed three old date expectations in the focused registry architecture
+gate (log `bindings.log`, exit 1; retained runner root `/private/tmp/hrt-501/run-OgfGx7`).
+Updated the explicit September-7 date expectations in the two registry tests while preserving
+the historical failed-result reason and every assertion. The rerun passed 38 architecture checks
+(`bindings-fixed.log`, 1.29 s) and 50 unit tests (`registry-unit.log`, 0.579 s), exit 0. No product
+behavior, manifest, parity reference, guard membership or coverage threshold changed.
+
+**Step 3 accepted; pre-live candidate ready to freeze.** Gates tested the current configuration
+and two test expectation edits against base `da85e5d1d`, with the unchanged approved adapter:
+
+| Gate | Result and evidence |
+| --- | --- |
+| `npm run typecheck` | Exit 0; `typecheck.log`, session 84395 |
+| `npm run lint` | Exit 0, zero warnings; `lint.log`, session 8454 |
+| Full coverage command above + `scripts/suite-size.ts` | Exit 0; 438 files / 5510 tests; 322.27 s Vitest / 323.481 s runner; statements 85.86%, branches 77.49%, functions 89.86%, lines 87.98%; floors met. `coverage.log`, `suite-size.log`, session 45456. Unit 341 / architecture 80 / scenario 17 files. |
+| Standalone architecture with the adapter | Exit 0; 80 files / 832 tests, 59.93 s; `architecture.log`, session 74238 |
+| `npm run test:parity` | Exit 0; 259 passed, 61.286 s runner; `parity.log`, session 41370. No reference changes. |
+| Manifest, store catalog, roadmap freshness | All current, exit 0; roadmap generation precedes checks |
+| Instruction audit and diff | Exit 0; 9 existing pairs equal; all discovered project chains below 32768 bytes; `git diff --check` clean |
+
+Live execution will use the approved repaired-candidate route because the metadata gate required
+two test-file edits. Freeze this tree first, record its commit, detach the clean primary checkout at
+that commit, and preserve `master` at `da85e5d1d8b652dab36d78bd4addb794dad377f2` until restoration.
+No application runtime code or dependency input differs from that base. All current source and
+configuration inputs must match the frozen candidate before either run. The exact original branch
+must be restored after the pair or after a blocked/failed proof. The old preflight handoff has been
+consumed; current requirements and resume state are now here. Steps 4–6 remain open: live proof,
+candidate evidence/review, integration gates and cleanup. No acceptance or merge is yet authorized
+by gate success alone.

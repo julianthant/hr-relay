@@ -115,7 +115,7 @@ function workflowsRegisteredByManifestRegistry(): ReadonlyMap<string, string> {
 
 /** The one separations subject D284 left; its number is private configuration (D300). */
 const SOLE_SUBJECT_LABEL = "finalization-canary";
-const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-03";
+const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-07";
 
 /**
  * The ONE test-target reference the registry may commit (D300). The chain arm
@@ -273,7 +273,7 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("pins the sole subject's current availability and submit-free failed rehearsal", () => {
+  it("pins the sole subject's current availability and retained historical failed rehearsal", () => {
     const canary = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === SOLE_SUBJECT_LABEL);
     assert.equal(canary?.availability.state, "available");
     assert.equal(canary?.availability.lastObserved, SOLE_SUBJECT_LAST_OBSERVED);
