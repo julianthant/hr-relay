@@ -7449,3 +7449,16 @@ asserted exact-run `write_intents` / `write_attempts` / `durable_outbox` deltas 
 The result is honest availability evidence but not D320's required fresh `met` T1b. Do not retry it
 as though a deterministic employee-not-found result were transient; either the New Kronos subject
 fact must be corrected with evidence or the operator must select another canary.
+
+
+### 9.41 Task 1.6.7 shared-login prerequisite blocked — 2026-09-07
+
+At frozen candidate `331b7a8454afb19671e48881d5d8cb3ed93b6001`, the selected Separations private
+input passed its workflow-qualified presence/admission check. The serial Person Lookup proof then
+failed UCPath session acquisition; an independent login-only diagnostic failed the same 60000 ms
+bound after returning from Duo to UCSD SSO. Separations was not launched through that unresolved
+shared dependency. There is no new Separations result, run, manifest verdict or run-scoped delta to
+claim. The whole primary write-intent/attempt/durable-outbox tables remained **0/0/0**. The Task-7
+owner records the failed Person Lookup identities, safe diagnostic evidence, healthy post-doctor and
+restored primary branch. The selected subject's source facts were not disproved or silently changed;
+its required fresh `met` preview at `clear-pending` remains open.

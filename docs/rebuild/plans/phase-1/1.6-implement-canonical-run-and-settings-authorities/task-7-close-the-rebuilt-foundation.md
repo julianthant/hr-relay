@@ -549,3 +549,89 @@ with subsequent evidence-only records. This recording also reconciles the roadma
 and the explicit D343 parity exception; completion remains open. Live proofs, independent review,
 integration and cleanup remain mandatory. Freeze the resulting commit before the primary checkout's
 candidate-detach route; record its full identity with the new live evidence.
+
+### Step 4 resumed — UCPath session acquisition blocked (2026-09-07)
+
+Frozen candidate `331b7a8454afb19671e48881d5d8cb3ed93b6001` contains the approved fingerprint
+refresh. The primary checkout was verified clean, dependency-compatible and byte-identical for all
+tracked executable/configuration/test/reference inputs, then detached at that candidate. Original
+`master` stayed `f0b1cf92195897e56e4917384b512c45d7b4d41a`. Both workflow-qualified private-input
+checks were ready; source metadata matched the operator-confirmed input. Provider-file admission and
+parent retired-name checks passed. Pre-doctor at `2026-09-07T20:18:20.312Z` was healthy v32/g0 on
+the previously recorded database identity, with zero tasks/results and exact whole-table 0/0/0 writes.
+
+The first new launch exited 1 in 1654 ms without a run/result. Raw process output was not retained;
+a subsequent isolated admission probe reproduced `runtime config has no dashboard-activated generation`.
+The actual `runtime_config` table was empty. Provider admission, CLI import and host-display probes
+passed. This is the documented activation prerequisite, not a transient workflow outcome. The
+supervisor had omitted BFF activation after the operator reset; no application-code repair was needed.
+The failed report remains `person-lookup-d343-command.json`; the exact isolated refusal is
+`d343-activation-refusal.json`, both in the existing owned scratch root.
+
+Started the candidate BFF through `npm run cli -- dashboard` (owned launcher PID 18160, process
+session 55688). Bootstrap returned HTTP 200, ordinary settings revision 1 activated as runtime
+generation 1, and the same exact `requireActive` admission check passed. Activated pre-doctor at
+`2026-09-07T20:21:43.469Z` was healthy schema 32/authority generation 1, same database identity,
+zero tasks/results and zero write tables. No authority row was edited manually.
+
+| Live proof | Exact authority evidence |
+| --- | --- |
+| Person Lookup command | `npm run cli -- dry-run-scenario person-lookup --subject person-lookup-canary`; process session 31160, exit 1, 62226 ms command / 60164 ms evaluator. |
+| Insert-only result | `df0e7125-3c46-45c5-9127-47bf94c9a3a1`, `failed`, `live-read`; recorded `2026-09-07T20:22:54.737Z`; manifest digest `c7f309fc8e1bdc49f30a2b3574391e8872f8761d9c862160acf0814e9b5299a4`. |
+| Run and trace | `6e42041a-cd1f-48c7-bc62-d945bd4b8950` / `pl-132154-6e42`; attempt 1, `dryRun=false`, terminal `failed`, zero checkpoints. |
+| Failure and receipt | Failure `45b18271-c3b5-459a-832b-93aef6c90c11`, code `UNHANDLED`, node `searching`, `transient=false`, `writeState=not-attempted`. Diagnostic bundle `474a0aa8-ff51-4f53-965f-90d34c2a0f48`; receipt `725c0e5e-b898-56e6-bafe-3aa5394855e3`, result `failed`, confidence `unknown`. |
+| Assertions | `nodes-excluded`, `gate-results`, `write-safety-deltas` met. `nodes-reached`, `checkpoints`, `receipt`, `terminal` failed. No passing live proof is claimed. |
+| Exact write readback | Run-scoped `write_intents` / `write_attempts` / `durable_outbox` counts and deltas **0 / 0 / 0**; whole-table counts also **0 / 0 / 0**. |
+| Separations | Not launched: it needs the same currently unverified UCPath login. This is a blocked prerequisite, not a scenario result or a claim about the selected subject. |
+
+The failure's known static diagnostic identifies UCPath browser-session acquisition (open + login)
+exceeding the unchanged 60000 ms `timeouts.sessionAcquireMs` bound. It carries no recorded Duo
+terminal-refusal marker. A separate login-only diagnostic used the existing production smoke script,
+`node --import tsx scripts/live-browser-login-smoke.ts ucpath --worker task-1-6-7-login`, on its own
+fresh profile. Session 69548 exited 1 in 61430 ms at the same bound. Its value-free navigation-host
+chain reached UCPath, the UC identity proxy, `a5.ucsd.edu`, Duo, then `a5.ucsd.edu` again; it never
+proved an authenticated UCPath application. This narrows the blocker to login acquisition but does
+not establish whether the remote service, returned SSO page or login recipe caused it. No timeout
+was raised, no credential replaced, no workflow retried, and no production transaction occurred.
+The next discriminating diagnosis is the exact post-Duo page state through an owned playwright-cli
+session; a blind workflow rerun cannot settle it. Preserve the failed attempt and the manifest's
+attempt-sensitive checkpoint assertions when deciding any future recovery.
+
+Post-doctor at `2026-09-07T20:25:31.694Z` exited 0: same root identity, healthy schema 32/g39,
+reconciled one run, zero pending commands/unresolved intents/durable outbox/terminal outbox/provider
+reservations/artifact outbox. Doctor counts one lease row; exact readback proves worker
+`person-lookup-worker-1` stopped (PID 18243 is gone), and the Duo ceremony lease is released. Do not
+misreport the retained lease-row count as zero or delete it. Server/workers are stopped, no listeners
+remain on 3938/5174, no matching owned runtime process remains, and playwright-cli reports no browsers.
+The BFF stopped with exit 0. Restored the original `master` branch and full HEAD with clean tracked
+and untracked state; private source files were not changed during live execution or diagnosis.
+
+Sanitized scratch records: `live-primary-binding.json`, `live-d343-*-input.json`,
+`live-d343-source-preflight.jsonl`, `live-d343-pre-doctor.json`, `live-d343-pre-counts.json`,
+`d343-activated-pre-counts.json`, `live-d343-activated-pre-doctor.json`,
+`person-lookup-d343-activated-command.json`, `person-lookup-d343-readback.json`,
+`person-lookup-d343-failure-classification.json`, `d343-login-diagnostic.json`,
+`live-d343-post-failed-doctor.json`, `live-d343-post-failed-source-locks.jsonl`, and
+`live-d343-final-counts.json`. The wrapper never persisted arbitrary process output, private inputs,
+credentials or value-derived hashes. Earlier failures and their scratch roots remain retained.
+
+**Actual blocker:** UCPath login acquisition has not succeeded, so Step 4 and full acceptance remain
+open. Steps 1–3 remain accepted at the frozen candidate. No final review or merge has occurred;
+steps 5–6 still require passing live evidence, final handoff reconciliation, one fresh complete
+`sup_review`, integration gates and owned cleanup. The worktree/ref and diagnostic artifacts remain
+owned and unmerged. Phase 2.6 and production work remain unauthorized.
+
+**Provisional delivery assessment:** the missed dashboard activation was a supervisor execution
+omission of an existing runtime prerequisite, resolved through ordinary BFF startup and a positive
+admission check. Add that admission observation to any resume preflight. The subsequent UCPath
+acquisition failure is a live prerequisite failure with cause still unresolved; neither external
+outage nor product defect is proved. No live retry or review repair round is claimed.
+
+Blocked-record checks: 2 architecture files / 39 roadmap-binding and target-registry tests passed
+in 1.54 s (`live-blocked-record-bindings.log`, session 20494). Lint passed with zero warnings
+(`live-blocked-record-lint.log`, session 32026); roadmap freshness, instruction-pair/size audit and
+diff checks passed. All 1908 entries in `refreshed-gated-inputs.json` matched byte-for-byte, so
+D191 reuses the recorded full typecheck/coverage/architecture/parity gates for these three
+Markdown-only evidence additions. Live failure is not waived by that reuse. The stopped diagnostic
+profile `.auth/hrauto-rebuild/task-1-6-7-login` and its stopped smoke lock remain retained on the
+primary checkout for unresolved diagnosis; do not sweep other profiles in the shared worker root.

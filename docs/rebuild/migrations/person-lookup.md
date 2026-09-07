@@ -171,3 +171,20 @@ all-at-once cutover (D89/D93).
   content and zero runs/spans/pending counts. The Task-7 owner records all unsupported key names
   and sanitized evidence. This is blocked launch evidence, not current live acceptance or a failed
   workflow result; no retry was made and the original primary `master` was restored unchanged.
+
+- 2026-09-07 — Task 1.6.7 resumed at frozen candidate `331b7a8454afb19671e48881d5d8cb3ed93b6001`.
+  An initial pre-start refusal exposed absent dashboard activation; the ordinary BFF boot established
+  it and exact admission passed. The subsequent live-read produced result
+  `df0e7125-3c46-45c5-9127-47bf94c9a3a1` (`failed`), run
+  `6e42041a-cd1f-48c7-bc62-d945bd4b8950` / trace `pl-132154-6e42`, attempt 1, `dryRun=false`.
+  Manifest digest `c7f309fc8e1bdc49f30a2b3574391e8872f8761d9c862160acf0814e9b5299a4`;
+  evaluator 60164 ms / command 62226 ms. `searching` failed with `UNHANDLED`, non-transient,
+  `not-attempted`, at the 60000 ms UCPath session-acquisition bound; zero checkpoints.
+  Receipt `725c0e5e-b898-56e6-bafe-3aa5394855e3` is `failed` / `unknown`. Three of seven assertions
+  met (`nodes-excluded`, `gate-results`, `write-safety-deltas`); the other four failed. Exact run-scoped
+  and whole-table write-intent/attempt/durable-outbox counts and deltas were **0/0/0**.
+  A separate fresh-profile login diagnostic reached Duo and returned to UCSD SSO but failed the
+  same bound; cause remains unresolved. No workflow retry occurred. Post-doctor was healthy v32/g39
+  on the same primary database identity, with one retained stopped worker lease and all pending
+  write counts zero. Original primary master was restored clean. Full identities, diagnostic evidence
+  and remaining recovery obligations are in the Task-7 owner; this does not replace the required `met` proof.
