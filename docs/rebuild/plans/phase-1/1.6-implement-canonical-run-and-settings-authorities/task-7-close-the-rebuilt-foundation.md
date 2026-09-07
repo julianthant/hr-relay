@@ -32,6 +32,12 @@ prerequisites remain; this amendment records no new live verification or complet
 
 Task 7 waits for accepted completion of the test-data foundation detour: configuration ownership
 is `ref clock-config-secrets` §D341 and completion evidence is `ref guards-and-tests` §10.5.
+**Detour completed 2026-09-07:** review accepted (rounds 2–4 plus conversion addendum), integrated into
+local `master` as `bc6dc9b54` (+ `4ef3b1eee`), and the actual private conversion performed on the
+primary checkout's operator root — credential document v2 revision 3 with the four live entries
+unchanged, `config/test-data.local.json` (0600) carrying the Separations document number, post
+doctor exit 0. Still open for this task: person-lookup EID input, retired-environment cleanup, and
+confirmation of the selected Separations replacement.
 The operator requested a temporary detour handoff, not a new phase/task number. The entire fixture
 consolidation and private canary migration finish there; Task 7 consumes them and retains its live
 acceptance, independent review, integration and cleanup obligations.

@@ -2172,7 +2172,8 @@ admission rules and completion evidence are unchanged.
 
 ## Reconciliation round 145 (2026-09-07) — dedicated test-data ownership
 
-_phase: detour before 1.6.7; approved, implementation pending_
+_phase: detour before 1.6.7; approved and completed 2026-09-07 — accepted review, `--no-ff` integration
+`bc6dc9b54`, actual private conversion; evidence in `ref guards-and-tests` §10.5_
 
 | # | Decision | Owning doc |
 | --- | --- | --- |

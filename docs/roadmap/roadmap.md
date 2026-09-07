@@ -595,7 +595,7 @@ log:
 status: planned
 doc: 1.6/task-7-close-the-rebuilt-foundation · 1.6 §1.6 · Implement canonical run and settings authorities · 2.6 §2.6 · 3.1 §Reopened completion tasks
 
-> D341 prerequisite: finish the approved test-data foundation detour before resuming this close; no new phase number. Use the fresh operator-reset root and shared synthetic recovery fixtures.
+> D341 prerequisite: the approved test-data foundation detour completed 2026-09-07 (accepted review, `--no-ff` integration `bc6dc9b54`, private conversion; `ref guards-and-tests` §10.5); no new phase number. Use the fresh operator-reset root and shared synthetic recovery fixtures.
 
 builds:
 - [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the fresh root after the D341 detour, and both workflows' T1b live manifests with exact zero write-authority deltas
@@ -606,6 +606,7 @@ needs:
 - p1f-migration-proof
 
 log:
+- 2026-09-07 | D341 detour complete | accepted review (rounds 2–4 + conversion addendum), `--no-ff` merge `bc6dc9b54`, integration gates green, private conversion performed (credentials v2 revision 3, private file 0600, doctor exit 0); person-lookup input and retired-env cleanup remain Task-7 prerequisites.
 - 2026-09-07 | D341 approved detour | test-only configuration and complete shared-fixture consolidation precede Task 7; operator database reset verified, credentials preserved; implementation remains pending and the paused Task-7 worktree must consume the new base.
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its gate and its 2.6 handoff list (doc 01 §1.6 Task 7) · left: implementation
 

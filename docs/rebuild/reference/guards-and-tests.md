@@ -2190,9 +2190,9 @@ when its task evidence supports that verdict; it is not forced to the preview ar
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
-**D341, approved 2026-09-07; implemented by the test-data foundation detour (candidate on
-`codex/test-data-foundation`, awaiting independent review; see the completion record at the end of
-this section).** The detour must be accepted before Task 1.6.7 resumes. Configuration ownership,
+**D341, approved 2026-09-07; implemented by the test-data foundation detour and accepted, integrated
+and converted on 2026-09-07 (local `master` merge `bc6dc9b54`; see the completion record at the end
+of this section).** Task 1.6.7 consumes that integration. Configuration ownership,
 privacy and conversion are defined in
 [clock-config-secrets, D341](clock-config-secrets.md#d341--test-inputs-have-a-separate-owner).
 As built: `config/test-data.json` (tracked; `subjects` is the former `config/test-subjects.json`
@@ -2389,7 +2389,102 @@ on the `1e5b4b7b4` tree: typecheck clean; lint clean at `--max-warnings 0`; `git
 full coverage through the two-worker adapter: 438 files / 5510 tests passed, statements 85.86 %,
 branches 77.49 %, functions 89.86 %, lines 87.98 % (floors met, exit 0); `suite-size` unit 341 /
 scenario 17 / architecture 80; `npm run test:parity` 259 passed with no reference change.
-Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
+**Review round 4 (2026-09-07): PASS (bounded, A8/A9 delta)** on candidate `51fcb938b` (implementation
+head `1e5b4b7b4`): the malformed values now reach the production loader through real 0600 files (non-vacuous,
+red-capable), cleanup and no-developer-file dependence confirmed, the removed mock has no user; A9 wording and
+decoded-key semantics confirmed; gate logs read; typecheck, lint and the focused suite independently rerun.
+No finding. Acceptance of the exact candidate `51fcb938b` rests on rounds 2–4 together: round 2 inspected
+every source/config/script/schema diff and P1–P8, round 3 closed round 2's six limits and verified A5–A7,
+round 4 verified A8/A9. Reviewer provenance: each round a fresh read-only `sup-review` subagent (Opus, high);
+the round-4 reviewer also assessed the conversion addendum below. Rounds 1 and 2 ended BLOCKED by reviewer
+context compaction, not by unresolved required findings.
+
+**Plan as executed (the temporary handoff, source-pinned at
+`4ef3b1eee:docs/handoffs/2026-09-07-test-data-foundation.md`, plan/base `f68dc9a5b`, removed at closure):** TD1 shared configuration and one typed reader (`config/test-data.json`,
+`src/control/test-data.ts`); TD2 test inputs separated from application configuration (86-row catalog,
+retired names refused by name, `test-data-local` binding with opaque `sourceId`); TD3 verified one-time
+private conversion (credential document v2 with value-free baseline, `cli test-data migrate
+--from-credentials [--plan] --json`, destination staged before source retirement); TD4 complete
+shared-fixture consolidation (`tests/fixtures` ownership, `test-data-ownership` guard); TD5 proofs P1–P9 and
+plan reconciliation (proof map above); TD6 independent review, `--no-ff` integration, actual conversion and
+cleanup (this record). The handoff's execution log (freeze, rounds 1–4) is duplicated by the round entries
+above.
+
+**Integration (2026-09-07):** primary checkout `/Users/julianhein/Projects/hr-automation-rebuild`, `master`
+at base `f68dc9a5b`, clean, unrelated `stash@{0}` untouched. `git merge --no-ff codex/test-data-foundation`
+→ `bc6dc9b54` (parents `f68dc9a5b`, `51fcb938b`); merge tree `764d1c88a` equals the candidate tree. Follow-up
+`4ef3b1eee` adds `.gitattributes` (`*.pdf binary`) because `git diff --check` against base flagged the new
+synthetic PDF's spec-mandated xref trailing spaces (the candidate rounds had checked only the working tree);
+no other change. Integration gates on `4ef3b1eee` (tree `be4d5cdc1`), coverage through a two-worker adapter
+bound to this checkout's `vitest.config.ts`: typecheck clean; lint clean at `--max-warnings 0`;
+`git diff --check f68dc9a5b HEAD` clean; coverage 438 files / 5510 tests, statements 85.86 %, branches
+77.49 %, functions 89.86 %, lines 87.98 %, exit 0; `suite-size` unit 341 / scenario 17 / architecture 80;
+`npm run test:parity` 259 passed, no reference change; `build:manifest:check`, `stores:catalog:check`,
+`roadmap:check` current; docs audit PASS.
+
+**Actual private conversion (P9, 2026-09-07, primary checkout, integrated CLI, no browser or live
+transaction):** fresh preflight — no listener on 3938/5174, no `hrauto-rebuild` tmux, `.tracker/credentials/`
+held only `protected.json` (0600, no lock); pre-conversion doctor: authority healthy (schema 32, zero
+foreign-key violations, valid invariants), span authority reconciled with zero runs, all pending counts zero,
+no new run data, backup missing (reported, not gated, D322), protected settings `unavailable` → exit 1. That
+unavailability is the expected pre-conversion state: the v1 document's ordinary read raises the
+migration-required error, which `src/infra/sqlite/storage-doctor.ts` reports as `authority-unavailable` and
+`src/server/storage/compose.ts` gates to exit 1. Pre document: schemaVersion 1, revision 2, one history
+entry, applied upgrade binding (so no pending retired name), four live names plus
+`separationsKualiFinalizationCanaryDocumentNumber`; `personLookupCanaryEid` not provisioned (Task 1.6.7
+prerequisite); no private file. `--plan`: planned, destination absent → create for the one retired name;
+nothing written. Apply: `converted`; source current revision 3 (the report's `historyLength: 1` is the
+pre-conversion source fact, not post state); post document schemaVersion 2, revision 3, exactly the four live
+names, value-free baseline (`retired` carries command/write/value identities, entries by name and valueId,
+the upgrade binding; no value), history folded (length 0); the four live values and valueIds unchanged
+(compared in memory by a driver that prints names and booleans only); private file `config/test-data.local.json`
+mode 0600, not a symlink, schemaVersion 1, one input equal in value and valueId to the retired source
+entry. Verification: `test-data check --json --subject finalization-canary --workflow separations` →
+local valid, document-number input present, `personLookupCanaryEid` absent, subject `ready`; re-plan →
+`already-converted`, destination unchanged, disposition `equal` (captured); post doctor exit 0 — authority
+healthy, span reconciled, protected settings available (four live names present, `activityPersonPseudonym`
+absent as before), counts zero, database identity and content fingerprint identical to the pre-conversion
+report. Residue checks: tree clean, private file ignored (`.gitignore`), no staging file, credentials
+directory unchanged in membership.
+
+**Conversion evidence addendum (2026-09-07): ACCEPTED** by the round-4 reviewer: evidence internally
+consistent and matched to code (destination staged before `writeDocument` under the lock; identities
+preserved; baseline value-free); no value or value-derived fingerprint in any evidence file (the two
+SHA-256 digests in the doctor reports are authority-database fingerprints, not credential-derived);
+`historyLength` reconciled as above. Advisory A10 (pre-existing `storage-doctor.ts` code, not in the
+candidate): the migration-required error is reported under the generic `authority-unavailable` cause; a
+distinct value-free `credential-migration-required` arm is a follow-up for whoever next owns the doctor
+surface — historical for this install.
+
+**Cleanup:** worktree `/Users/julianhein/Projects/hr-worktree-test-data` and branch
+`codex/test-data-foundation` removed after the merge; the temporary handoff removed in the closure commit;
+scratch gate adapters and sanitized evidence logs live only in the session scratchpad. Untouched: the paused
+foundation-close worktree at `3bb9abdb3` and its handoff; `stash@{0}`; `.env`; the operator root beyond the
+converted credential document and the new private file. Residue reported, not changed: stale Sep-3 locks
+under `.tracker/locks` (`parity-json-report.lock`, `server.lock.json`, `workers/307f70a2-…` with a dead
+pid) — none is a credential lock; `config/test-data.json` finalization-canary provenance still cites the
+pre-rename path `docs/rebuild/03.2-finish-workflow-authoring.md` (inherited from `test-subjects.json`);
+`tests/unit/secrets-redaction.test.ts` proves its no-disclosure claim through a mock at the smoke-command
+layer (non-vacuous: exact output lines pinned). Task 1.6.7 prerequisites stay open: person-lookup EID
+input, retired-environment cleanup, selected Separations replacement confirmation.
+
+**Delivery assessment (one detour; no comparison sample):** approved plan `f68dc9a5b`; sequential fresh
+`sup-review` rounds. Material events: (1) round-1 required findings F1 (historical protected journals
+unreadable through the live grammar) and F2 (importer accounting) — implementation defects; the plan
+named the pinned-old-schema obligation, the candidate's own guard proved an impossible case. One repair
+round. (2) Parity refreeze (469 references) — planning omission: adding a protected-binding union member
+moves the finalization descriptor fingerprint and the explorer read count (107 → 108), which the plan's
+"parity unchanged" expectation did not anticipate; cost one deliberate refreeze plus one mandatory coverage
+rerun (two coverage-gate tests read the references). (3) Reviewer context compaction in rounds 1 and 2 over
+the 697-entry candidate — assignment resizing; rounds 3 and 4 finished under bounded assignments with
+explicit read discipline. (4) Advisory-only repairs A5–A9 (two rounds) — implementation polish found by
+review, each with red-capable tests. (5) `.gitattributes` at integration — evidence-procedure gap
+(working-tree `diff --check` in candidate rounds). Mandatory reruns: coverage after each implementation
+commit (D191) and after the refreeze; integration coverage/parity. Supervisor context compacted twice with
+no lost state. Preventable rework: plan the parity refreeze explicitly when a wire/contract schema gains a
+member, and start with bounded or partitioned review assignments for candidates above a few hundred changed
+entries. Elapsed-time totals are not claimed; the session records do not separate waits from work.
+
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced
 with a fresh schema-32 database; only schema metadata/fresh-baseline marker remained. Doctor exited 0

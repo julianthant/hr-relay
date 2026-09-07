@@ -638,9 +638,9 @@ safeguards. Future migration/recovery tests use reproducible synthetic data. The
 source-bound run behavior, complete shared-fixture adoption, migration failures/retry and actual
 private-file conversion with no browser/provider/external write. Task 1.6.7 retains its two live
 workflow proofs and honest missing-input/selection prerequisites. Full testing/fixture requirements
-and implementation completion evidence belong to `ref guards-and-tests` §10.5. The temporary
-execution handoff is `docs/handoffs/2026-09-07-test-data-foundation.md`; after accepted completion its
-unique evidence moves to §10.5 and Task 7 before that handoff is removed.
+and implementation completion evidence belong to `ref guards-and-tests` §10.5, which also records the
+accepted review, `--no-ff` integration (`bc6dc9b54`) and actual private conversion of 2026-09-07; the
+temporary execution handoff was removed at that closure after its unique evidence moved to §10.5.
 
 ##### D331 — the settings catalog and protected root contract (0.3 Task 2, 2026-09-04)
 

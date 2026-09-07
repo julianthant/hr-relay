@@ -4,10 +4,10 @@ Read the [phase overview](../README.md) for shared context, decisions and phase-
 
 ## 1.6 · Implement canonical run and settings authorities
 
-**D341 detour (approved 2026-09-07; candidate implemented, awaiting independent review — see
-`ref guards-and-tests` §10.5 completion record).** Before Task 7 resumes, complete
-shared test configuration/fixture consolidation and verified migration of canaries out of application
-settings. See `ref clock-config-secrets` §D341 and `ref guards-and-tests` §10.5. The operator reset the
+**D341 detour (approved 2026-09-07; accepted, integrated into local `master` as `bc6dc9b54` and the
+private conversion performed the same day — see `ref guards-and-tests` §10.5 completion record).** It
+completed shared test configuration/fixture consolidation and verified migration of canaries out of
+application settings. See `ref clock-config-secrets` §D341 and `ref guards-and-tests` §10.5. The operator reset the
 actual rebuild database; Task 7 uses that fresh root and synthetic migration/recovery fixtures,
 not the deleted runs or backup. Task 6’s completed conversion remains historical evidence. No new
 phase number or change to the remaining phase order is introduced.
