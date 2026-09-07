@@ -163,3 +163,11 @@ all-at-once cutover (D89/D93).
   `tests/scenario/workflows/person-lookup/`. Match mode, T2/T3 and the capability close remained for the next acceptance run.
 - 2026-09-05 — D329 routing refresh: the 2026-09-02 run remains historical evidence; doc 03.2
   Task 5-1 owns current Search/Match acceptance and doc 03.3 Task 4 owns final capability closure.
+- 2026-09-07 — Task 1.6.7 attempted the exact `live-read` command from the primary checkout at
+  frozen candidate `231a349486f17d278957fc8ea20e9d549b847235`. Startup exited 1 in 387 ms:
+  provider-only `.env` admission refused unsupported `CEREBRAS_API_KEY`. No browser, run or T1b
+  result was created; exact task/result row counts remained zero. Both private input checks had
+  passed. Post-check doctor remained healthy at schema 32/generation 0 with unchanged database
+  content and zero runs/spans/pending counts. The Task-7 owner records all unsupported key names
+  and sanitized evidence. This is blocked launch evidence, not current live acceptance or a failed
+  workflow result; no retry was made and the original primary `master` was restored unchanged.

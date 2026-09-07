@@ -276,7 +276,8 @@ ownership; the old preflight handoff does not satisfy these conditions.
 
 ## Task 1.6.7 execution evidence
 
-Status: executing; no candidate acceptance or phase completion claimed.
+Status: **WAITING ON environment admission** at step 4; steps 1–3 accepted. No candidate
+acceptance or phase completion claimed.
 
 **Step 1 accepted (2026-09-07).** Verified accepted D341 completion and conversion at
 `da85e5d1d8b652dab36d78bd4addb794dad377f2`, including merge `bc6dc9b54` and the conversion
@@ -349,3 +350,51 @@ must be restored after the pair or after a blocked/failed proof. The old preflig
 consumed; current requirements and resume state are now here. Steps 4–6 remain open: live proof,
 candidate evidence/review, integration gates and cleanup. No acceptance or merge is yet authorized
 by gate success alone.
+
+**Step 4 blocked before runtime (2026-09-07).** Pre-live candidate
+`231a349486f17d278957fc8ea20e9d549b847235` contains the gated metadata/test-expectation changes
+and deterministic handoff. The primary checkout was clean, stopped and detached at that exact
+commit; original `master` remained `da85e5d1d8b652dab36d78bd4addb794dad377f2`. Both input
+status checks again returned ready. Pre-live doctor at `2026-09-07T17:54:10.233Z` was healthy
+at schema 32/generation 0 with zero runs/spans/pending counts.
+
+`npm run cli -- dry-run-scenario person-lookup --subject person-lookup-canary` exited 1 after
+387 ms, before creating any run/result or launching a browser. The exact isolated environment
+admission observer reproduced `SecretSourceError: local environment file .env contains unsupported
+key CEREBRAS_API_KEY; only registered provider key families are allowed`. A names-only inventory
+identified all unsupported entries: `CEREBRAS_API_KEY`, `CEREBRAS_API_KEY2`, `CEREBRAS_API_KEY3`,
+`CEREBRAS_API_KEY4`, `CEREBRAS_API_KEY5`, `CEREBRAS_API_KEY6`, `CEREBRAS_API_KEY7`,
+`COHERE_API_KEY`, and `OCRSPACE_API_KEY`. The five admitted families are Gemini, Groq, Mistral,
+OpenRouter and SambaNova as declared in `SECRET_FAMILY_SPECS`. The earlier nine retired names
+and person-lookup retired name were absent; this is a separate provider-only file-admission rule.
+No value was displayed or persisted and `.env` was not rewritten. Operator cleanup remains required.
+
+No deterministic outcome was retried; Separations was not launched through the same known refusal.
+Exact read-only counts confirmed zero task rows and zero `dry_run_scenario_results` rows. No T1b
+verdict or run-scoped delta is claimed. Post-blocked doctor at `2026-09-07T17:55:09.186Z` exited 0;
+database identity/content fingerprint equal the pre-live report, all pending counts zero, zero
+spans/runs. Lock observation again found server/workers stopped. Restored primary `master`, verified
+its original full HEAD and clean tracked state. No owned browser/process remains.
+
+Sanitized scratch evidence: `person-lookup-command.json`, `pre-live-doctor.json`,
+`post-blocked-doctor.json`; the live wrapper retained only command, exit, elapsed time and result
+identities (none), never arbitrary process output. `run-live.py` and `read-run.mjs` in the named
+scratch directory are owned helpers; the latter has not yet read a live result. Failed focused-test
+scratch `/private/tmp/hrt-501/run-OgfGx7` remains intentionally retained. The task worktree/ref remain
+owned and unmerged. Step 4 must resume after full environment admission passes, then both live
+proofs, step-5 evidence, complete fresh review, integration gates and final cleanup remain.
+
+**Provisional delivery assessment.** D341 was an approved external prerequisite change; accepted
+integration and input provisioning resolved the earlier blocker. Updating registry provenance
+required one expectation-repair round, with red/green evidence and no weakened assertion. The new
+launch blocker is an operator-file admission mismatch outside the original retired-name checklist;
+checking the complete provider-only admission boundary before the pre-live gate would expose it
+earlier. Mandatory gates passed and remain reusable only under the plan's exact-input rules.
+No independent review has been dispatched; repair/review/integration totals remain open.
+
+Blocked-evidence recording checks: 38 roadmap/registry architecture checks passed, 1.38 s,
+`blocked-record-check.log`; instruction audit, roadmap freshness and diff checks passed.
+Compared this recording diff against `231a349486f17d278957fc8ea20e9d549b847235`: only this owner
+and the person-lookup migration log changed. Source, scripts, tests, configuration, dependencies and
+parity references are identical, so D191 permits reuse of the above passing typecheck, lint,
+coverage/suite-size and parity results. No live proof is reused or inferred.
