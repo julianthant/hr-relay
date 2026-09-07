@@ -1,6 +1,10 @@
 # Task 6 · Consolidate settings in SQLite and prove upgrade/recovery
 <!-- roadmap: p1f-migration-proof -->
 
+**Status: complete (2026-09-07).** Steps 1.6.6.1–1.6.6.7 are accepted. Final local integration is
+`440013f193d7f3451828cbc740591248139db077`; operator conversion and owned cleanup are verified below.
+Task 7 remains separate and unstarted. No push.
+
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 **D340 verification scope (2026-09-06).** The immediate mobile-only dashboard proof and
@@ -151,17 +155,17 @@ The highest-risk seam is credential commit before SQLite audit. Inject failure a
 rename and before/during audit, then prove exact and divergent retry, SQLite restore, doctor/readback
 and the next credential use without exposing values.
 
-- [ ] Store ordinary settings values, revision and successful command/audit records atomically in
+- [x] Store ordinary settings values, revision and successful command/audit records atomically in
   SQLite and remove ordinary file authority plus its sidecars, locks and reconciliation protocol.
-- [ ] Keep protected values solely in the independent credential store; preserve truthful outcomes,
+- [x] Keep protected values solely in the independent credential store; preserve truthful outcomes,
   authorization, replay/CAS safety, missing-value refusal and complete value exclusion.
-- [ ] Implement planned and backed-up stopped upgrades across every admitted layout, with strict
+- [x] Implement planned and backed-up stopped upgrades across every admitted layout, with strict
   preflight, separate credential settlement, no runtime fallback and no source mutation.
-- [ ] Preserve run identities/evidence/unknown-write fences and historical backup readability; prove
+- [x] Preserve run identities/evidence/unknown-write fences and historical backup readability; prove
   failure, interruption, replay, restore and credential independence.
-- [ ] Land the mapped proof/guard changes and the exact desktop `Saved` parity update without layout,
+- [x] Land the mapped proof/guard changes and the exact desktop `Saved` parity update without layout,
   accessibility or unrelated reference drift.
-- [ ] Convert the operator rebuild root only after accepted review and merged-code gates, preserving
+- [x] Convert the operator rebuild root only after accepted review and merged-code gates, preserving
   `.env`, legacy production and existing local data.
 
 **Gate and evidence schedule.** During iteration, run the narrow owner tests for the changed schema,
@@ -175,7 +179,7 @@ acceptance. Parity may refresh generated provenance caused by the candidate, but
 non-generated body change is the 12 exact `settings`/`storage-settings` triples showing `Saved`; any
 other body, layout, control, accessibility, mobile or coarse-pointer change stops the task.
 
-### Task 1.6.6 implementation evidence — blocked on complete-review sizing
+### Task 1.6.6 implementation and review history
 
 Approved plan: `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The requested branch
 `codex/phase-1-6-sqlite-settings` was created at that exact commit in
@@ -1036,3 +1040,120 @@ Exactly the six amendment paths differ from `/tmp/hr-settings-r10-integration-in
 all other accepted inputs are identical. This evidence-only append reuses those executable gates
 under D191; scoped checks and roadmap freshness/diff pass. Fresh review must accept the complete
 amendment and verify this unchanged-baseline reconciliation before integration. Completion stays open.
+
+
+### Final acceptance, operator readback and cleanup — 2026-09-07
+
+The original complete candidate was independently accepted by standalone Sol/high review on
+`ad15bb982757a2e2342cf85f98df6eeca2a48050` / `cfd880dd973b3b491a1623f78d0eca82144b22b6`.
+Fresh native **`/root/sup_review_sqlite_cleanup`**, role `sup_review` (Sol/high), returned **PASS,
+no findings** for the complete R11 amendment: accepted base `23e0c9ba169a321f03be268f92f7e2e284a59c43`,
+implementation `5e42fe08d67bc18e05d472389f79c9be435d46e1`, evidence
+`d9dff2d886dd7064c43abcf16f45da2aad5d4ba6`. All six amendment paths and affected source-validation,
+runtime, command, SQL, credential, backup and retry boundaries were accepted; the other 2,111 inputs
+were independently verified byte-identical to the accepted baseline. The reviewer reran read-only
+identity, inventory, hash and diff checks and inspected the supplied gates; it did not rerun gates.
+The original 119-path verdict and fresh amendment verdict together close the approved task and R1–R11.
+
+The inventory helper required an ancestry base: accepted merge 23e0c9ba is not a task-branch ancestor,
+but its tree exactly equals cfd880dd (`4ea301f7956fb572be1151a11f9e51816386c93b`). The reviewer used
+that verified equivalent ancestor for the helper and independently confirmed the same six paths with
+the direct 23e0c9ba diff. There was no scope omission or inferred acceptance from commit counts.
+
+The supervisor merged without conflicts as **`440013f193d7f3451828cbc740591248139db077`** and
+verified exact tree equality with reviewed d9dff2d8. All required integration gates passed:
+
+| Gate | Final merged result | Evidence |
+| --- | --- | --- |
+| Typecheck / lint | PASS, exit 0 each | `/tmp/hr-settings-r11-integration-{typecheck,lint}.log` |
+| Full coverage / suite size | PASS: 5,461 tests / 433 files; 301.13 seconds; all configured floors and chained size check pass | `/tmp/hr-settings-r11-integration-coverage.log` |
+| Standalone architecture | PASS: 827 tests / 79 files; 57.92 seconds | `/tmp/hr-settings-r11-integration-architecture.log` |
+| Desktop parity | PASS: 259 cases; 56.3 seconds; no amendment reference changes | `/tmp/hr-settings-r11-integration-parity.log` |
+| Manifest / catalog / roadmap freshness | PASS, exit 0 each | `/tmp/hr-settings-r11-integration-{manifest,catalog,roadmap}.log` |
+| Exact reviewed tree / clean status / diff | PASS | supervisor git checks |
+
+Coverage used the verified effective-two-worker primary adapter without compiler/linter contention;
+architecture and parity were sequential. Statements 85.80%, branches 77.37% report-only, functions
+89.81%, lines 87.94%. Final merged map `/tmp/hr-settings-r11-integration-inputs.json` contains
+2,117 inputs with aggregate `3ad47cbe2a101d4614ae852afb27035663ce43f61d6e3a60daa474d8c458372f`.
+The full suite covers the required fresh/historical/refusal/interruption/replay/restore/doctor proofs;
+the task's only approved visual change remains the 12 Saved PNG/a11y pairs accepted earlier.
+
+#### Merged-code operator conversion
+
+After all gates, the guarded controller `/tmp/hr-settings-r11-operator-conversion.py` required exact
+clean master 440013f1 and reverified the stopped v29/g91 baseline. The successful read-only plan
+revalidated the original verified v3/g91 database-only backup's generation and authority fingerprint.
+No replacement backup was invented, and the original failed-plan evidence remains separate.
+`storage upgrade --plan --json`, `storage upgrade --json`, the settled repeat and
+`storage doctor --json` each exited **0**. Sanitized evidence: `/tmp/hr-settings-r11-operator.json`.
+
+| Operator fact | Verified result |
+| --- | --- |
+| Authority | Schema 29 / generation 91 → **schema 32 / generation 94** |
+| Ordinary settings | Empty revision 1 baseline; no ordinary file reader/runtime authority |
+| Independent credentials | Revision 2; five imported keys; directory 0700, file 0600 |
+| Existing data | All **25 prior SQL rows** retained exactly in their original columns, apart from the expected authority-meta transition; original run, two snapshots, nine checkpoints and evidence remain intact |
+| Files and sources | All five pre-existing non-database state/evidence files, original backup bytes and `.env` bytes preserved exactly |
+| Settled repeat | `already-upgraded`; exact SQL snapshots and durable file bytes unchanged |
+| Doctor | Read-only; authority **healthy**, spans **reconciled**, tombstone findings empty; no durable changes |
+| Ordinals / gates / write fences | Zero tombstones/backfill/missing ordinals; zero orphan gate removals; write-intent/write-attempt/outbox rows remain zero |
+| Backup | Original v29/g91 rollback backup retained and reverified; doctor correctly calls it **stale** relative to g94. D322 does not create a new backup automatically. |
+
+Imported credential keys, without values: `separationsKualiFinalizationCanaryDocumentNumber`,
+`sharepointOnboardingRosterUrl`, `timekeeperName`, `ucpathPassword`, `ucpathUserId`. The four approved
+historical cleanup-only names were not imported. Existing immutable snapshots retain their evidenced
+`operator.timekeeperName` historical exposure; they were not rewritten or scrubbed.
+
+**Environment cleanup report.** The source-preservation requirement is satisfied: `.env` is unchanged.
+The plan reports these nine names for operator removal before normal runtime startup:
+`HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER`, `I9_PASSWORD`,
+`I9_USER_ID`, `ONBOARDING_ROSTER_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TIMEKEEPER_NAME`,
+`UCPATH_PASSWORD`, `UCPATH_USER_ID`. The five imported settings now live in the independent
+credential authority as named above; the four historical names are cleanup-only. Normal environment
+admission still refuses these names. This task did not edit `.env`, restart the dashboard, perform
+an application write transaction, access/change legacy production, or authorize cutover. Task 7's live
+close must honor this reported environment prerequisite; it is not started by this completion.
+
+#### Cleanup and delivery assessment
+
+The final task branch was fully incorporated (zero commits ahead). From the primary checkout, the
+supervisor verified and removed the task's provider-template `.env`, parity-only `.tracker`, coverage,
+dist, parity output, and dependency symlink; the primary dependency target was retained. Ordinary
+`git worktree remove` and `git branch -d` removed
+`/Users/julianhein/Projects/hr-worktree-sqlite-settings` and `codex/phase-1-6-sqlite-settings`.
+Registration, physical path and exact ref are absent; only the primary worktree remains registered.
+
+Exact log-linked ownership, UID/mode/inode/UUID and dead-process-group checks admitted **27** retained
+task test roots for removal. All 27 were removed; re-audit found zero remaining owned roots and zero
+live/unknown groups. Evidence: `/tmp/hr-settings-r10-cleanup-result.json` and
+`/tmp/hr-settings-r9-cleanup-audit.json`. No broad reap/clean/reset/stash or force-removal was used.
+The consumed handoff is absent. Supporting worktrees/branches had already been removed; their private
+historical draft archives and diagnostic/gate logs are deliberately retained. Primary runtime artifacts,
+verified backup and credentials remain. The exact completed standalone review task
+`01a07a45-50d7-7d01-bd47-672d3dfa1720` was archived after repository cleanup and gates succeeded;
+the fresh native reviewer has no separate sidebar task. No push occurred.
+
+| Delivery event | Assessment and supported count |
+| --- | --- |
+| Tombstone ordinal feasibility and operator input inventory | Two documented planning/preflight corrections: recover only evidenced itemId/attempt with explicit missing runNumber, and inventory the four undeclared environment names before conversion. The latter required the approved cleanup-only exception, not a silent fallback. |
+| Implementation/proof corrections | Seven identifiable correction batches after initial review: R1/R2; R3; R4–R8; R9; R9 async proof; R10 integration fixture; R10 lesson recipe. Requirements already covered these invariants. These are correction batches, not seven complete review assignments. Earlier iteration totals are not inferred. |
+| R11 | A separately approved source-admission exception resolving the observed operator input condition; current refusal had followed the existing contract. It is not counted as another implementation defect. |
+| Review sizing | Six native attempts returned BLOCKED after compaction; none supplied acceptance credit. Three recorded allocation changes culminated in the approved standalone complete review. The final bounded R11 amendment received a fresh native review and finished in one context. |
+| External/prerequisite changes and gate resources | User plan-folder restructure was incorporated through e314fb0d. Four-worker timeout evidence required a verified two-worker temporary adapter; assertions, deadlines, membership and floors were preserved. Mandatory boundary reruns remain separate from diagnostic retries. |
+| Prevention and limits | Inventory operator environment names without values before source-admission planning; size complete review against proof breadth before dispatch; keep process fixtures independent of operator sources and their active lesson recipes synchronized. Overall elapsed work/wait cost and earlier iteration totals are not measured here; no estimated savings or quality score is claimed. |
+
+This completion changes only the task owner and roadmap/derived output. D191 reuses unchanged accepted
+implementation and merged-code gates above, with targeted roadmap-binding, lint, instruction/link,
+roadmap generation/freshness and diff checks for the recording. All seven Task-6 steps are complete;
+Phase 1.6 and Task 7 remain open. The final recording commit does not reopen or replace either
+independent verdict, and does not claim a new executable candidate.
+
+
+Final recording checks passed: 22 roadmap-binding tests (`/tmp/hr-settings-final-doc-binding.log`),
+lint (`/tmp/hr-settings-final-lint.log`), generated roadmap freshness, nine identical instruction pairs,
+15,457-byte maximum instruction chain, owner link and diff checks. Comparison with the 2,117-path
+merged input map changes only this owner, `docs/roadmap/roadmap.md` and generated
+`docs/roadmap/index.html`; every executable, test, contract and dependency input is unchanged.
+D191 therefore reuses the exact accepted implementation/integration gate evidence above. Final cleanup
+re-audit reports zero retained owned test roots, and the standalone review task archive is confirmed.

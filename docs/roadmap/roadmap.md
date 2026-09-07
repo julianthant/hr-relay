@@ -570,17 +570,17 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate/deletion test (doc 01 §1.6 Task 5); serial after Task 4 (shares the composition roots with Task 3) · left: implementation
 
 #### 6 · Consolidate settings in SQLite and prove upgrade/recovery {#p1f-migration-proof}
-status: planned
+status: done
 doc: 1.6/task-6-consolidate-settings-in-sqlite-and-prove-upgrade-recovery · 1.6 §1.6 · Implement canonical run and settings authorities · ref:clock-config-secrets §3 · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
-> D336 replaces the ordinary-settings file/SQLite transaction with one database authority. Credentials stay independent. The approved architecture now needs a focused Task-6 plan over the integrated Task-5 code.
+> D336 is implemented: ordinary settings share SQLite authority; credentials are independent. The operator rebuild root is upgraded to v32; source-preserving environment cleanup is reported in the task evidence.
 
 builds:
-- [ ] BE persist ordinary settings values, revision and command/audit in one SQLite transaction; cut readers/writers over together and remove file authority, sidecars and cross-store recovery
-- [ ] BE keep credential updates and readback independent of SQLite transactions/restores, with sole-reader access, authorization, truthful outcomes and no protected values in ordinary state, backups or child env
-- [ ] BE retain explicit verified backup and `storage upgrade [--plan] [--json]`; convert verified pre-floor and D331 input formats once, refuse conflicts, preserve data and make credential import separate
-- [ ] PROOF preserve run/evidence/snapshot identities; prove transaction rollback, interruption, replay, restore, missing credentials and rejection of old sources; map affected P/M proofs and adapters before evidenced guard retirement
-- [ ] BE after fixture gates, convert the operator's rebuild root and report key-only cleanup requirements; legacy production remains untouched
+- [x] BE persist ordinary settings values, revision and command/audit in one SQLite transaction; cut readers/writers over together and remove file authority, sidecars and cross-store recovery
+- [x] BE keep credential updates and readback independent of SQLite transactions/restores, with sole-reader access, authorization, truthful outcomes and no protected values in ordinary state, backups or child env
+- [x] BE retain explicit verified backup and `storage upgrade [--plan] [--json]`; convert verified pre-floor and D331 input formats once, refuse conflicts, preserve data and make credential import separate
+- [x] PROOF preserve run/evidence/snapshot identities; prove transaction rollback, interruption, replay, restore, missing credentials and rejection of old sources; map affected P/M proofs and adapters before evidenced guard retirement
+- [x] BE after fixture gates, convert the operator's rebuild root and report key-only cleanup requirements; legacy production remains untouched
 
 needs:
 - p1f-run-commands
@@ -589,6 +589,7 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its seam/gate; the deletion checkbox restated — nothing is deleted in 1.6 Task 6, every adapter's deletion task is named (doc 01 §1.6 Task 6) · left: implementation
 - 2026-09-06 | D336 operator-approved simplification | one SQLite authority for runs and ordinary settings, independent credentials; Task 6 owns conversion after Task 5, completed work stays evidenced · left: focused plan, implementation, review and gates
+- 2026-09-07 | direct supervisor close | Steps 1.6.6.1–1.6.6.7 complete. Original complete standalone Sol/high PASS plus fresh sup_review R11 PASS; final integration 440013f193d7f3451828cbc740591248139db077. Candidate/integration typecheck, lint, 5,461 coverage tests, 827 architecture tests, 259 desktop parity cases and freshness gates pass. Merged-code backup/plan/upgrade/repeat/doctor converted operator v29/g91 to v32/g94, preserving prior rows, evidence, backup and .env; nine cleanup names reported, no runtime startup. Assigned worktree/ref and 27 dead owned test roots removed; exact review task archived. No push, legacy change, cutover or next-task dispatch.
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
 status: planned
