@@ -175,16 +175,17 @@ acceptance. Parity may refresh generated provenance caused by the candidate, but
 non-generated body change is the 12 exact `settings`/`storage-settings` triples showing `Saved`; any
 other body, layout, control, accessibility, mobile or coarse-pointer change stops the task.
 
-### Task 1.6.6 implementation evidence — in progress
+### Task 1.6.6 implementation evidence — awaiting independent review
 
 Approved plan: `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The requested branch
 `codex/phase-1-6-sqlite-settings` was created at that exact commit in
 `/Users/julianhein/Projects/hr-worktree-sqlite-settings`. The operator's subsequent plan-folder
 restructure was incorporated through `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`; the original
 plan commit remains an ancestor and the four existing implementation files were hash-verified
-unchanged during that integration. Implementation remains uncommitted; this is not a candidate
-or completion record. Local master integration requires fresh native `sup_review` PASS on the
-committed candidate plus every required gate. No push is authorized.
+unchanged during that integration. Implementation candidate: `bd3d0f24816969032d664831b094f03d8fbd7ddc`,
+base `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`. Status: **awaiting independent review**.
+Local master integration requires fresh native `sup_review` PASS on this exact candidate plus every
+required gate. No push is authorized.
 
 **Approved amendment.** On 2026-09-06 the operator answered: “Recover known fields; record missing
 runNumber.” Released queued roots have no runNumber. D332 §D332.7 and the D332 decision pointer
@@ -197,9 +198,9 @@ checks, typecheck and lint pass. Step 1.6.6.2 is verified by SQLite atomicity, r
 uncertain-audit proof in that same run. Step 1.6.6.4 is verified by all 116 upgrade/source/recovery checks in
 `/tmp/hr-settings-recovery-closure.log`. Step 1.6.6.5 is verified by the 33 guard checks in `/tmp/hr-settings-guard-closure.log`,
 rebound consumer tests and the inspected 12-scene Saved copy update. Steps 1.6.6.1–1.6.6.5
-remain subject to complete candidate gates and independent review; the task checkboxes stay open. Step 1.6.6.6 still requires the final complete gates, candidate
-commit and independent review. Step 1.6.6.7 has not begun: no operator backup or conversion,
-master merge or cleanup has occurred.
+remain subject to complete candidate gates and independent review; the task checkboxes stay open. Step 1.6.6.6 has complete candidate gates and a committed implementation; independent review remains
+pending. Step 1.6.6.7 has not begun: no operator backup, conversion or master merge has occurred.
+Supporting worker worktrees and branches have been cleaned up as recorded below.
 
 The independent store owns its private history and exact replay. SQLite restore does not alter
 it. Historical readers under `infra/compat` are permanent where required for backups; only the four
@@ -226,7 +227,7 @@ not candidate acceptance. Replacement rows implement the approved D336 dispositi
 | P23–P25 | `config/credential-store.test.ts` replaces the runtime shared-file protocol with private ancestry/mode/inode/lock/dead-owner/rename/replay checks. `storage-upgrade-sources.test.ts` and `storage-upgrade-d331.test.ts` retain A0/A1 historical interruption admission at the real upgrade boundary. |
 | P28–P31 | `sqlite-settings-authority.test.ts`, `config/credential-store.test.ts`, `command-kernel.test.ts`: request validation, CAS, clear, missing/unknown, direct replay, ordinary rollback and independent uncertain credential settlement. |
 | P32–P39 | Existing catalog/environment/snapshot/target guards and `config.test.ts`, `secure-env-bootstrap.test.ts`, `dry-run-scenario-composition.test.ts`, `worker-composition.test.ts`, `server/compose-real-port.test.ts`; source and reader fixtures deliberately rebound. |
-| P40/A8 | Exactly 12 settings/storage-settings desktop scenes: intended red, scoped reference update and visual inspection completed; full parity remains required. Full Settings expansion remains Phase 3.1. |
+| P40/A8 | Exactly 12 settings/storage-settings desktop scenes: intended red, scoped reference update and visual inspection completed; full parity passed 259 cases. Full Settings expansion remains Phase 3.1. |
 | P41 | `architecture/redaction-surface-scan.test.ts` and strict schemas; new migration/doctor facts are counts, closed missing-field/exposure literals, run UUIDs, controlled key names and basenames. No protected values or comparators are served. |
 
 | D332 rows | Current oracle / negative control |
@@ -244,8 +245,8 @@ not candidate acceptance. Replacement rows implement the approved D336 dispositi
 
 #### Iteration evidence and remaining gates
 
-All logs below are local `/tmp/` files from the uncommitted worktree; final candidate results must
-replace this provisional provenance with the tested commit/tree.
+The following local `/tmp/` logs record iteration history. The final candidate provenance below
+supersedes their provisional state without treating a failed iteration as acceptance.
 
 - `/tmp/hr-settings-coverage-iteration.log`: 5,391 pass / 5 failures across four suites. Stale
   fixture outputs, missing worktree `.env`, and one architecture timeout were investigated;
@@ -262,8 +263,54 @@ replace this provisional provenance with the tested commit/tree.
 - Parity: `/tmp/hr-settings-parity-red.log` captures intended failure;
   `/tmp/hr-settings-parity-update.log` refreshed only the 12 selected PNG/a11y bodies, all visually
   inspected. The filtered wrapper exited 1 because full-suite annotation membership was absent;
-  this is not a full parity pass. Full candidate parity is outstanding.
+  this is not a full parity pass. The subsequent full candidate lane passed 259 cases.
 
-Fresh native independent review, candidate and integration full gates, merged-code operator-root
-backup/plan/conversion/doctor, final evidence and owned supporting-worktree cleanup remain open.
+Fresh native independent review, integration full gates, merged-code operator-root
+backup/plan/conversion/doctor, final evidence and supervisor-worktree cleanup remain open.
 No operator `.env` or legacy production file has been changed.
+
+
+#### Candidate gates and supporting cleanup (2026-09-06)
+
+Candidate `bd3d0f24816969032d664831b094f03d8fbd7ddc` combines adjacent steps whose schema,
+runtime and recovery proofs are indivisible. Its final tested working-tree fingerprint is
+`6a5a858e69283028c04d907077a5f7be50c13f19fc7c59a67e5f352c7496414c` (2,117 tracked/nonignored paths;
+sorted path, NUL, binary SHA-256 of contents or `<deleted>`, NUL). Per-path evidence is retained at
+`/tmp/hr-settings-final-candidate-inputs.json`. This recording changes only this task owner;
+implementation, tests, configuration, dependencies and generated inputs remain unchanged.
+
+| Required gate | Result and local evidence |
+| --- | --- |
+| `npm run typecheck` / `npm run lint` | PASS, exit 0; `/tmp/hr-settings-final-candidate-typecheck.log`, `-lint.log`. |
+| `npm run test:coverage` | PASS, exit 0; 5,423 tests / 433 files; statements 85.76%, branches 77.30% (report-only), functions 89.78%, lines 87.89%; all configured floors and suite-size check pass. `/tmp/hr-settings-final-candidate-coverage.log`; four workers, no compiler/linter contention. |
+| `npm run test:architecture` | PASS, 827 tests / 79 files, exit 0; `/tmp/hr-settings-final-candidate-architecture.log`. |
+| Manifest / catalog / roadmap freshness | PASS, exit 0; `/tmp/hr-settings-final-candidate-manifest.log`, `-catalog.log`, `-roadmap.log`; generation previously completed without generated-output drift. |
+| `npm run test:parity` | PASS, 259 desktop cases, exit 0; `/tmp/hr-settings-candidate-parity.log`. Exactly 12 PNGs and 12 corresponding a11y bodies differ, solely the approved Saved copy. No metadata, unrelated body, layout or control drift. |
+| Fixture upgrade / restore / doctor | Included in the passing full coverage gate; proof-row mappings above identify real-entry combinations and negative controls. |
+| Diff / documentation | Staged diff check PASS; nine existing instruction pairs byte-identical, project chains below 32,768 bytes and all eight relative links in changed documents resolve. |
+
+Parity ran on the working tree captured as provisional `7dac31da3ae35ba66e812085a0c1f4bc3cf6a554`
+(fingerprint `025f3140c54cc9154da568576d80f1b71f7c08e5feab1e1e9f1aebe465092597`). Staging exposed
+a trailing blank line in a newly added file that the earlier unstaged diff check had not inspected;
+the shell continued to the provisional commit. That provisional candidate was never submitted for
+review or integration. It was amended after removing the blank line, updating stale operating
+guidance, and rerunning typecheck, lint, coverage, architecture and freshness checks. The sole
+post-parity code difference is that terminal blank line in `infra/compat/pre-floor-settings.ts`;
+all browser source, tests, references, configuration and generated inputs are unchanged, so D191
+permits reuse of the complete parity result. No failed check is claimed as passed.
+
+Supporting native workers `/root/sup_sol_credentials` and `/root/sup_sol_recovery` returned drafts
+on branches `codex/sqlite-credentials` and `codex/sqlite-recovery`, both based on `e314fb0d` with no
+unique commits. Their owned contributions were inspected, incorporated and corrected by the
+supervisor, then covered by the candidate gates. The credential worker reported a compaction;
+its late guard contribution was accepted only after direct supervisor inspection and rerun, with
+no new assignment to that worker. The prior scout was research-only and is not the reviewer.
+
+The two inactive worktrees were classified dirty (65 and 61 task paths). Every draft file was
+archived and SHA-256 verified in private `/tmp/hr-settings-supporting-drafts-7dac31da/` before exact
+owned paths were restored/removed. Historical helper relocations and supervisor corrections were
+accounted for; no unpreserved draft was discarded. Only the inspected node_modules symlinks were
+unlinked. Ordinary `git worktree remove` and `git branch -d` succeeded; registrations, physical
+paths and both refs are absent. Native workers have no associated sidebar tasks. The supervisor
+worktree remains active. Fresh native role-policy check passed (three supporting roles plus one
+reviewer); a new independent `sup_review` is required for the entire committed candidate.
