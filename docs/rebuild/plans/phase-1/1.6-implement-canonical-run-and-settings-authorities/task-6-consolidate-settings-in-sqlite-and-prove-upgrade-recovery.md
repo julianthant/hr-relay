@@ -441,3 +441,104 @@ conversion remain gated on all required scope and integration verdicts. This app
 no code, tests, runtime configuration, dependencies or gate results; D191 evidence-only checks reuse
 the unchanged implementation `4646ab6cede1fea82e38344cc26dad8c4a071533` and its recorded candidate
 gates. Roadmap consistency and diff checks apply to this record.
+
+#### Focused round RA/RB — BLOCKED on the frozen 403a3278 candidate
+
+The operator approved RA/RB/RI at evidence HEAD `403a32789cf73132048ac61be4b4473f4f0c277e`.
+Fresh native reviewers `/root/sup_review_sqlite_ra` and `/root/sup_review_sqlite_rb` independently
+started their complete approved scopes against implementation `4646ab6cede1fea82e38344cc26dad8c4a071533`
+and base `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`. Both unexpectedly compacted and returned
+BLOCKED. Neither may resume substantive review or supply scoped PASS credit. RI was not dispatched.
+
+RA inspected current schemas, SQLite/kernel paths, credential storage/ancestry, ingress/runtime and
+principal consumers. Its remaining scope was complete P1–P41 reconciliation, related tests/guards,
+shared R2/restore combinations, remaining contract/instruction hunks, all parity pairs, direct gates
+and fingerprint inspection. R1 production and negative controls supported the repair, but no complete
+acceptance resulted. Historical credential retry after a newer revision appeared deliberately CAS
+conflicted; its kernel/public consequences remained unresolved. R2 remained open for independent closure.
+
+RB inspected source admission/recovery, stopped upgrade, conversion/migrations, historical backup,
+restore and tombstone/uncertain-write paths. Remaining scope was the complete interruption/source/restore
+matrix, historical-producer provenance, recovery tails, guards/inventory/Phase-2.6 docs, M1–M27 mapping
+and direct gates/fingerprint. Its source-model suspicion was disproved: singular `_MODEL` variables
+are explicitly cleanup-only (50 cleanup names, 45 admitted inputs, 44 imported keys). R2's production
+ordering was inspected but complete combination-proof closure remained open.
+
+**R3 (MEDIUM, RB): pre-SQL interrupted retry plan could approve divergent private input.** After
+binding credentials and interrupting before SQL COMMIT, SQLite remained pre-v32 while the binding
+survived. Changing protected bytes then running `--plan` returned `planned`; apply later refused.
+`src/server/storage/upgrade.ts` only verified the binding on the pending-v32 arm. The supervisor
+reproduced this with `npm test -- tests/unit/storage-upgrade.test.ts`: one failure, 15 passes,
+`Missing expected rejection` at the plan assertion (`/tmp/hr-settings-r3-red.log`).
+
+The repair adds read-only `verifyUpgradePreflight` to the concrete private store and checks the
+in-memory conversion's exact upgrade identity before pre-v32 plan/apply proceeds. A first import
+with no binding remains admissible without creating a store. A surviving binding must match even
+if all protected inputs were removed or ordinary inputs changed. Post-SQL missing-binding refusal
+remains strict; the existing binding-under-lock check remains before SQL COMMIT. Tests cover plan
+and apply after both pre/post-COMMIT interruption, exact retry, changed protected bytes, removed
+protected input, changed ordinary input, and unchanged database/private/source bytes. One expanded
+fixture initially used an undeclared environment name and was corrected to the declared
+`HRAUTO_DEFAULT_WORKERS`; that fixture failure was not counted as regression proof.
+
+#### Repaired candidate 466f1f8e — gates passed, independent review still open
+
+Implementation HEAD is `466f1f8edd4251bf31f4e7dfc7abdd9c38f996b2`, based on approved evidence
+`403a32789cf73132048ac61be4b4473f4f0c277e`. R3 changes exactly the private credential backend,
+storage upgrade coordinator and upgrade tests (three files, 41 insertions/one deletion). R1/R2/R3
+remain subject to fresh independent closure; no partial reviewer report is converted into acceptance.
+
+| Gate | Verified result on the repaired implementation |
+| --- | --- |
+| Focused combined recovery | 81 tests / six files PASS, exit 0, `/tmp/hr-settings-r3-combinations.log`; credential backend, upgrade, D331 input, environment, restore and doctor together. |
+| Typecheck and lint | Both exit 0, `/tmp/hr-settings-r3-typecheck.log` and `/tmp/hr-settings-r3-lint.log`. |
+| Full coverage | 5,433 tests / 433 files PASS, exit 0, `/tmp/hr-settings-r3-coverage.log`; statements 85.78%, branches 77.33% report-only, functions 89.80%, lines 87.92%; all configured floors and suite-size checks pass. Four workers; no compiler/linter contention; 190.6 seconds. |
+| Architecture | 827 tests / 79 files PASS, exit 0, `/tmp/hr-settings-r3-architecture-exclusive.log`, 36.2 seconds. An earlier concurrent parity/architecture run timed out the `no-lifecycle-sql-outside-the-adapter` injected-violation case at its unchanged 30-second limit (826 passed/one failed, `/tmp/hr-settings-r3-architecture.log`). Rerunning alone with unchanged inputs, workers, assertions and timeout passed. Serialize architecture and parity for subsequent gates because this resource conflict is now evidenced. |
+| Desktop parity | All 259 cases PASS, exit 0, `/tmp/hr-settings-r3-parity.log`; no reference changes. |
+| Manifest/catalog/roadmap | Generation left the build manifest unchanged. All three freshness checks and diff check pass, exit 0, `/tmp/hr-settings-r3-freshness.log`. |
+| Input/evidence binding | 2,117 paths; fingerprint `f850e29d4959b54392b5b7e79c3d6594a19a3c7e8ce2e163b99c923320269fb0`, `/tmp/hr-settings-r3-inputs.json` and `/tmp/hr-settings-r3-sha256.txt`. Relative to R2 only these three implementation files and the task-owner evidence differ. R2's recorded fingerprint was independently recomputed exactly. |
+
+The fingerprint covers the implementation commit before this evidence-only append. This append
+changes only the task owner: D191 reuses the above unchanged implementation/gate inputs; roadmap,
+relative-link, existing instruction-pair/size and diff checks apply to the recording commit.
+Primary master remains clean at `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`. No operator backup,
+conversion, credential import, `.env` edit, legacy access/change, merge or push occurred. Step .7
+is wholly pending. Existing task worktree/branch and ignored owned artifacts remain as previously
+recorded. The two supporting worktrees/branches remain removed. No app-task archival is applicable.
+This owner contains the complete resume state; there is no additional unique handoff artifact.
+
+#### Proposed smaller review allocation — awaiting operator approval
+
+The approved two-scope allocation still exceeded the effective context available to both reviewers.
+Do not send either unchanged scope to another reviewer. This proposal replaces RA/RB/RI with six
+smaller behavioral scopes and a separate fresh integration review, while keeping one implementation
+candidate, all acceptance requirements, every existing proof disposition and all gates unchanged.
+Prior partial reviews remain finding ledgers only. Every new reviewer independently covers its whole
+scope; none is assigned an exhausted reviewer's unreviewed tail.
+
+| Review ID | Complete behavior and acceptance ownership | Production, proof and overlap boundaries |
+| --- | --- | --- |
+| 1.6.6.RA1 — ordinary SQLite authority | D336 ordinary transaction; D331 P1–P6, P8–P11 ordinary arm, P26/P28–P30 ordinary arms, P33 ordinary generation, P36–P38; M14 snapshot model. | Current settings/domain contracts, current settings row and migration, ordinary command-kernel/service paths, resolver/fingerprint/snapshots; corresponding unit/schema/catalog/SQLite-authority guards and removed-proof dispositions. Overlap RA2 at the common settings executor and generation isolation; RA3 at runtime activation; RB2 at v32 conversion and historical/current schema separation. |
+| 1.6.6.RA2 — credential authority and command settlement | D336 independent private authority, authorization/CAS/history/replay/uncertain audit; D331 P7, P11 protected arm, P21–P31 protected/private arms; R1 and older-audit-retry closure. | Entire credential backend/domain contract, protected command-kernel/service path, sole reader and related credential/kernel/secrecy tests. Verify entry authorization before reads, private protocol, historical identity reuse, clear/missing behavior, independent audit outcomes. Overlap RA3 at ingress/readback/next-use/environment exclusion; RB2 at R2/R3 binding/retry order; RB3 at restore and doctor independence. |
+| 1.6.6.RA3 — runtime consumers, environment and Settings UI | D331 P12–P14, P17–P20, P32, P34/P35/P40; P33 runtime/claim arm; M3 boot refusal and M25 activation. | Settings runtime, dashboard/worker/dry-run/activity/bootstrap/smoke compositions and all changed nearest consumer tests, ingress/readback contracts and guards. Inspect all 12 PNG/a11y pairs against the exact Saved-only change and full desktop parity result. Overlap RA1/RA2 at current reads/authorization/next-use; RB1 at migration-only environment admission; RB2 at post-upgrade activation; RB3 at public storage readback. |
+| 1.6.6.RB1 — migration sources and historical grammars | D332 M4 source-preflight arm, M6, M20, M21 source/lineage arm, M24, M27 source-private arm; A0/A1 isolation and expiry. | Upgrade source readers, old-file reconciliation, immutable settings/command grammars and D331 compatibility modules; source/environment/D331/admission tests, all remaining changed historical-producer tests and rename provenance. Own adapter guard/inventory/Phase-2.6 deletion changes. Overlap RA3 at no runtime fallback; RB2 at full source admission and protected binding; RB3 at permanent historical backup readers. Reconcile the disproved cleanup-only model suspicion from primary evidence. |
+| 1.6.6.RB2 — stopped conversion and interrupted settlement | D332 M1/M2, M4 ordering, M5 upgrade prerequisite, M7/M8/M10–M13/M15/M16/M19/M21 conversion/M23/M25; R2 and R3 closure. | Full SQL conversion/coordinator/upgrade CLI, v30–v32 migrations, tombstone and orphan recovery; complete upgrade interruption/source-change/retry matrix, lifecycle/evidence preservation and related guards. Independently inspect binding before COMMIT, pre-SQL plan validation, post-SQL strict binding, audit/settlement, and no forbidden writes. Overlap RA1 at atomic ordinary state, RA2 at private credential operations, RA3 at boot activation, RB1 at source/private admission, RB3 at backup identity/restore/doctor. |
+| 1.6.6.RB3 — backup, restore and doctor | D331 P15/P16 and restore parts of P23/P27; D332 M3 read-only storage arm, M5 backup verification, M9, M14 retained history, M17/M18/M22/M26 storage output. | Historical backup inspector, backup writer/manifests, offline restore, doctor and recovery contracts plus all changed recovery tests/guards. Verify v1/v2 readers/v3 writer, admitted/refused versions, no credential copy or rollback, read-only observation and tombstone/unknown-write truthfulness. Overlap RA2 at private independence, RA3 at public outputs, RB1 at frozen grammars, RB2 at upgrade backup identity and source/restore combinations. |
+| 1.6.6.RI2 — final independent integration decision | Complete task acceptance, all D331/D332 dispositions and changed-boundary coverage; starts only after all six scopes PASS on the final candidate. | Independently inspect cross-boundary transactions/order, identity/data propagation, real-entry proofs, shared binding/source/credential/SQL recovery, runtime wiring, value exclusion and tombstone/unknown-write fences. Reconcile every focused verdict and R1–R3/suspicion ledger with code. Verify complete path/proof ownership, all gate summaries/fingerprints, evidence-only diffs, exact candidate and integration conditions. Do not repeat module-internal review, and do not accept reports without checking integration code. |
+
+P39 (proof preservation), P41 (D183 wire disposition), M26 (new public leaves), changed instruction/
+contract hunks and relevant gate evidence belong to every scope whose behavior they affect. Shared
+proof rows are intentionally checked at both sides and by RI2. Unchanged baseline guards may be
+reused as evidence only after the reviewer verifies applicability; no required proof disappears.
+Historical contract sections superseded by D336 are read only for admitted input grammar or retained
+invariants. Reviewers start with the task's existing proof map and exact changed hunks, expand relevant
+callers as necessary, and avoid wholesale ledger/test/log dumps. This changes input routing, not depth
+or acceptance. Every uncovered requirement or boundary keeps acceptance open.
+
+Total: seven fresh native `sup_review` assignments; no nested agents. At most two focused reviewers
+concurrently, on the same pinned candidate; RI2 afterwards alone. Native capacity shortages serialize
+fresh dispatch. Each assignment must finish in one context; a failed fit returns to planning rather
+than silently adding reviewers. After fixes, affected scopes and neighbors require renewed review,
+followed by RI2; any unaffected carry-forward needs exact unchanged-input evidence independently
+verified by RI2. No merge, operator conversion or active-worktree removal until accepted review and
+required gates. This proposal is not yet permission to dispatch the replacement round.
