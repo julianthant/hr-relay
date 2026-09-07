@@ -1,7 +1,5 @@
-import { inspectProtectedSettingsFilesReadOnly } from "../config/settings-file.js";
-import { requireJournaledProtectedSettings } from "../config/protected-settings-journal.js";
 import { ProtectedSettingsNameSchema } from "../../domain/config/protected-settings.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
+import { createCredentialStore } from "../config/credential-store.js";
 import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
 import {
@@ -40,6 +38,7 @@ import {
   type AuthorityCopyInspection,
   type RestoreCandidate,
   type SpanAuthorityRunRoot,
+  type SpanAuthorityReadSnapshot,
   type StorageDoctorReport,
 } from "./recovery-contracts.js";
 
@@ -222,6 +221,7 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
 type MutableSpanAuthorityRoot = {
   readonly queued: RunQueuedWire;
   finalAttempt: number;
+  possibleExternalWrite: boolean;
   readonly streamIssues: string[];
   lastTimestampMs: number;
   terminal: boolean;
@@ -273,6 +273,7 @@ function validateRunEventAgainstRoot(
   lastAttemptByItem: Map<string, number>,
 ): void {
   if (!("runId" in event)) return;
+  if (event.t === "transaction.fenced") root.possibleExternalWrite = true;
   const location = `${spanFileLabel(fileName)}:${String(lineNumber)}`;
   if (root.terminal) addStreamIssue(root, `${event.t} at ${location} appears after its terminal run span`);
   const timestampMs = Date.parse(event.ts);
@@ -365,6 +366,7 @@ function validateRunEventAgainstRoot(
 function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot {
   const queued = root.queued;
   return SpanAuthorityRunRootSchema.parse({
+    ...(root.possibleExternalWrite ? { possibleExternalWrite: true } : {}),
     runId: queued.runId,
     workflow: queued.workflow,
     itemId: queued.itemId,
@@ -381,6 +383,7 @@ function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot
     configFingerprint: queued.configFingerprint,
     configSnapshotId: queued.configSnapshotId,
     queuedAt: queued.ts,
+    reconstructed: queued.repair?.kind === "authority-reconstruction",
     initialAttempt: queued.attempt,
     finalAttempt: root.finalAttempt,
     streamIssues: root.streamIssues,
@@ -503,6 +506,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
               const root: MutableSpanAuthorityRoot = {
                 queued: event,
                 finalAttempt: event.attempt,
+                possibleExternalWrite: false,
                 streamIssues: [],
                 lastTimestampMs: Date.parse(event.ts),
                 terminal: false,
@@ -642,6 +646,14 @@ function spanAuthorityCorpus(stateRootTrustAnchor: string, stateRoot: string): S
   }
 }
 
+/** Migration-only reuse of the doctor's bounded, no-follow span-root scan. */
+export function inspectSpanAuthorityCorpusReadOnly(
+  stateRootTrustAnchor: string,
+  stateRoot: string,
+): SpanAuthorityCorpus {
+  return spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
+}
+
 function reconcileSpanAuthority(
   stateRootTrustAnchor: string,
   stateRoot: string,
@@ -649,6 +661,7 @@ function reconcileSpanAuthority(
   busyTimeoutMs: number,
 ): Readonly<{
   reconciliation: z.infer<typeof SpanAuthorityReconciliationSchema>;
+  tombstoneOrdinalFindings?: SpanAuthorityReadSnapshot["tombstoneOrdinalFindings"];
   authorityIdentity?: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
 }> {
   let corpus: SpanAuthorityCorpus;
@@ -733,6 +746,7 @@ function reconcileSpanAuthority(
         ...snapshot.missingSpanRunIds.map((runId) => ({ state: "missing-span" as const, runId })),
       ];
   return {
+    tombstoneOrdinalFindings: snapshot.tombstoneOrdinalFindings,
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
       ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted }
       : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted, problems }),
@@ -953,21 +967,21 @@ async function inspectCandidates(
   return candidates.sort((left, right) => right.modifiedMs - left.modifiedMs);
 }
 
-/** No repair, lock, migration, or value-bearing error may escape this observer. */
-function inspectProtectedSettings(stateRoot: string, authorityPath: string, busyTimeoutMs: number) {
+/** No credential value or value-bearing error may escape this presence observer. */
+function inspectCredentialPresence(stateRoot: string) {
   try {
-    const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs, migrationOwner: "storage-doctor", openMode: "storage-doctor-read-only-no-migrate" });
-    const reader = database;
-    try {
-      return reader.withAuthorityReadSnapshot(() => inspectProtectedSettingsFilesReadOnly(stateRoot, (record) => {
-      requireJournaledProtectedSettings(record, reader.authority);
-      return ProtectedSettingsInspectionSchema.parse({ state: "available", entries:
-        ProtectedSettingsNameSchema.options.map((name) => ({ name, present: record.entries[name] !== undefined })) });
-      }));
-    } finally { database.close(); }
+    const record = createCredentialStore({ stateRoot }).read();
+    return ProtectedSettingsInspectionSchema.parse({
+      state: "available",
+      entries: ProtectedSettingsNameSchema.options.map((name) => ({
+        name,
+        present: record.entries[name] !== undefined,
+      })),
+    });
   } catch {
     return ProtectedSettingsInspectionSchema.parse({ state: "unavailable", cause: {
-      code: "authority-unavailable", summary: `protected settings in ${basename(settingsRootPaths(stateRoot).root)} could not be verified read-only`,
+      code: "authority-unavailable",
+      summary: `credentials in ${basename(join(stateRoot, "credentials"))} could not be verified read-only`,
     } });
   }
 }
@@ -1053,7 +1067,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
-  const protectedSettings = inspectProtectedSettings(stateRoot, authorityPath, options.busyTimeoutMs);
+  const protectedSettings = inspectCredentialPresence(stateRoot);
   const finalAuthorityRead = inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs);
   if (initialAuthorityRead.state !== finalAuthorityRead.state) {
     throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
@@ -1075,6 +1089,9 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   }
   return StorageDoctorReportSchema.parse({
     kind: "authority-storage-doctor",
+    tombstoneOrdinals: spanAuthorityRead.tombstoneOrdinalFindings === undefined
+      ? { state: "unavailable", cause: { code: "authority-unavailable", summary: "tombstone ordinals could not be verified in the span authority snapshot" } }
+      : { state: "available", findings: spanAuthorityRead.tombstoneOrdinalFindings },
     protectedSettings,
     mode: "read-only",
     checkedAt: clock.now().toISOString(),

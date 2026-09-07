@@ -1,3 +1,4 @@
+// Frozen D331 producer/schema from e314fb0d; historical fixtures/upgrade readers only. Phase 2.6 owns removal.
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   closeSync,
@@ -17,7 +18,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import {
   SETTINGS_SCHEMA_HASH,
   SettingsApplyInputSchema,
@@ -30,7 +31,7 @@ import {
   type SettingsApplyInput,
   type SettingsApplyRefusal,
   type SettingsFileRecord,
-} from "../../domain/config/settings.js";
+} from "../../src/domain/config/settings.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsApplyInputSchema,
@@ -40,7 +41,7 @@ import {
   initialProtectedStoreRecord,
   type ProtectedSettingsApplyInput,
   type ProtectedStoreRecord,
-} from "../../domain/config/protected-settings.js";
+} from "../../src/domain/config/protected-settings.js";
 import {
   SettingsDocumentTargetSchema,
   SettingsRootAuthoritySchema,
@@ -49,14 +50,14 @@ import {
   settingsRootPaths,
   type SettingsDocumentTarget,
   type SettingsRootAuthority,
-} from "../../domain/config/settings-root.js";
-import { deepFreeze } from "../../domain/immutability.js";
-import { FingerprintSchema, PositiveIntSchema } from "../../domain/ids.js";
-import { sha256Hex } from "../../domain/sha256.js";
+} from "../../src/infra/compat/d331-settings-root.js";
+import { deepFreeze } from "../../src/domain/immutability.js";
+import { FingerprintSchema, PositiveIntSchema } from "../../src/domain/ids.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 import {
   ProcessStartIdentitySchema,
   observeProcessIdentity,
-} from "../sqlite/runtime-process-locks.js";
+} from "../../src/infra/sqlite/runtime-process-locks.js";
 
 export interface SettingsFileOperations {
   readonly writeExclusive?: (path: string, bytes: Uint8Array) => void;

@@ -151,7 +151,7 @@ function createHarness(): Harness {
     writeResolution: requeueingWriteResolution(),
     workerRuntime: acceptingWorkerRuntime(),
     settings: {
-      reconcilePending: () => undefined,
+      prepare: () => undefined,
       reconcileReplay: () => { throw new Error("this harness composes no settings replay authority"); },
       apply: (): never => { throw new Error("this harness composes no settings apply authority"); },
     },

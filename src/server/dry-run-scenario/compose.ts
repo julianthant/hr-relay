@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../../infra/config/credential-store.js";
 /**
  * CLI composition for one T1b dry-run case. Manifest loading and the ready
  * runtime are injected at the outer composition root: this server module never
@@ -27,15 +28,13 @@ import {
   hostAwareResolutionEnvironment,
   type ProtectedSecretSource,
 } from "../../domain/secrets.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
 import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
 } from "../../domain/trust/dry-run-scenario.js";
-import { createJournaledProtectedSecretSource } from "../settings-runtime.js";
+import { createCredentialSecretSource } from "../settings-runtime.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { createProtectedSettingsFileAuthority } from "../../infra/config/settings-file.js";
 
 /**
  * One workflow, one resolver. The runner itself is workflow-generic — it reads
@@ -95,16 +94,13 @@ export async function composeDryRunScenarioCommand(
   const registry = readTestTargetRegistry(repoRoot, [manifestInput]);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
-  const protectedAuthority = createProtectedSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
+  const protectedAuthority = createCredentialStore({ stateRoot });
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "dry-run-scenario" },
     clock,
   );
   try {
-    const protectedSecrets = input.protectedSecrets ?? createJournaledProtectedSecretSource({ file: protectedAuthority, database });
+    const protectedSecrets = input.protectedSecrets ?? createCredentialSecretSource(protectedAuthority);
     const outcome = await runDryRunScenario({
       args,
       loadManifest: () => Promise.resolve(manifestInput),

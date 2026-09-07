@@ -1,3 +1,4 @@
+import { PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { z } from "zod";
 import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
@@ -6,7 +7,6 @@ import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
 import {
   AuthorityUpgradeRecordSchema,
-  ProtectedSettingsCurrentRecordSchema,
   type AuthorityTableName,
 } from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
@@ -260,8 +260,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   leases: WorkerLeaseRecordSchema,
   dependencies: DependencyRecordSchema,
   delegation_manifests: DelegationManifestSchema,
-  commands: AuthorityCommandRecordSchema,
-  command_audits: AuthorityCommandAuditRecordSchema,
+  commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema]),
+  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema]),
   bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
@@ -295,7 +295,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   run_sessions: RunSessionRecordSchema,
   /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
   deleted_runs: DeletedRunRecordSchema,
-  protected_settings_current: ProtectedSettingsCurrentRecordSchema,
   authority_upgrades: AuthorityUpgradeRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 

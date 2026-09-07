@@ -16,7 +16,9 @@ import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
+import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import {
   verifyBackupBytesAtPath,
   verifyBackupManifestAtPath,
@@ -282,8 +284,9 @@ export class OfflineAuthorityRestoreService {
             verified.manifest,
             `staged restore ${basename(stagedPath)}`,
           );
-          const beforeProjection = AuthorityDatabase.inspectExistingReadOnly(
+          const beforeProjection = inspectAuthorityBackupReadOnly(
             stagedPath,
+            verified.manifest.schemaVersion,
             this.#busyTimeoutMs,
           );
           if (beforeProjection.authorityContentFingerprint
@@ -294,11 +297,17 @@ export class OfflineAuthorityRestoreService {
             );
           }
 
-          await this.#projectionRebuild(stagedPath);
-          const afterProjection = AuthorityDatabase.inspectExistingReadOnly(
-            stagedPath,
-            this.#busyTimeoutMs,
-          );
+          let projectionRebuilt = false;
+          let afterProjection = beforeProjection;
+          if (verified.manifest.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+            await this.#projectionRebuild(stagedPath);
+            afterProjection = inspectAuthorityBackupReadOnly(
+              stagedPath,
+              verified.manifest.schemaVersion,
+              this.#busyTimeoutMs,
+            );
+            projectionRebuilt = true;
+          }
           if (afterProjection.authorityContentFingerprint
             !== beforeProjection.authorityContentFingerprint
             || afterProjection.authorityGeneration !== beforeProjection.authorityGeneration) {
@@ -421,8 +430,9 @@ export class OfflineAuthorityRestoreService {
             backupFileName: verified.manifest.backupFileName,
             suspectFileName,
             sourceDatabaseIdentity,
+            schemaVersion: afterProjection.schemaVersion,
             authorityGeneration: afterProjection.authorityGeneration,
-            projectionRebuilt: true,
+            projectionRebuilt,
             authorityPreservedAcrossProjectionRebuild: true,
           });
         } catch (error) {

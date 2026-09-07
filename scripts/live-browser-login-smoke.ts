@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../src/infra/config/credential-store.js";
 import { hostConfigFacts } from "../src/domain/config/host-display.js";
 /**
  * Live login smoke for the worker browser-session factory.
@@ -55,7 +56,6 @@ import { WorkerSessionManager } from "../src/core/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../src/domain/config/resolve.js";
 import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
-import { settingsRootPaths } from "../src/domain/config/settings-root.js";
 import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment } from "../src/domain/secrets.js";
 import {
   BrowserSystemIdSchema,
@@ -68,9 +68,8 @@ import {
   workerProfileDirectory,
 } from "../src/infra/browser/browser-session-factory.js";
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
-import { createJournaledProtectedSecretSource, readJournaledSettings } from "../src/server/settings-runtime.js";
+import { createCredentialSecretSource, readSettings } from "../src/server/settings-runtime.js";
 import { probePrimaryDisplay } from "../src/infra/host/primary-display.js";
-import { createSettingsFileAuthority, createProtectedSettingsFileAuthority } from "../src/infra/config/settings-file.js";
 import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
 import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
@@ -129,11 +128,7 @@ async function main(): Promise<void> {
   );
   try {
   const hostFacts = hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay));
-  const settingsAuthority = createSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostFacts, systemClock); },
-  });
-  const record = database.withAuthorityTransaction((repositories) => readJournaledSettings(settingsAuthority, repositories));
+  const record = database.withAuthorityTransaction((repositories) => readSettings(repositories));
   const config = resolveConfigWithProvenance(record.settings, hostFacts, systemClock).config;
   const workflowId = WorkflowIdSchema.parse("person-lookup");
   const instance = RuntimeInstanceSchema.parse("prod");
@@ -173,13 +168,10 @@ async function main(): Promise<void> {
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
-  const protectedAuthority = createProtectedSettingsFileAuthority({
-    path: settingsRootPaths(stateRoot).ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
+  const protectedAuthority = createCredentialStore({ stateRoot });
   const factory = new PlaywrightWorkerSessionFactory({
     config: { ...config, browser: { ...config.browser, headless: !headed } },
-    protectedSecrets: createJournaledProtectedSecretSource({ file: protectedAuthority, database }),
+    protectedSecrets: createCredentialSecretSource(protectedAuthority),
     isolation: rebuildRuntimeIsolation,
     clock: systemClock,
     scheduler: realScheduler,

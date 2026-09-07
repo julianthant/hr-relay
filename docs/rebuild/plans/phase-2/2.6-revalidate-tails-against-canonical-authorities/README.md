@@ -94,6 +94,18 @@ closed. This is scheduling under D328, not authority redesign.
 > redesign.
 
 ### Task 2 · Run the non-mutating migration and recovery proof
+
+**Task 1.6.6 deletion handoff.** Delete the migration-only
+`src/infra/compat/{upgrade-sources,pre-floor-settings,settings-source-recovery,settings-database-upgrade}.ts`
+modules and their stopped upgrade entry after the required recovery proof. Activate
+`authority-upgrade-adapters-retired` with module-absence and named legacy-input refusal tests.
+`sqlite-settings-authority` remains active; `authority-upgrade-adapters-isolated` retires when its
+subjects are deleted. Preserve the strict v1/v2 historical-backup readers
+`backup-inspection.ts`, `d331-settings-current.ts`, `d331-settings-root.ts`, and
+`d331-protected-journal.ts`, plus permanent immutable journal schemas
+`src/domain/commands-history.ts` and `src/domain/config/settings-v29-schema.ts`.
+These historical readers never reintroduce runtime settings-file authority.
+
 <!-- roadmap: p2f-proof -->
 
 > **D336 (2026-09-06):** consume Task 1.6.6's verified SQLite-settings format, database restore

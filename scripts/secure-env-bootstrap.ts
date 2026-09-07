@@ -33,11 +33,13 @@ export async function runSecureEnvironmentBootstrap(
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
-  const environmentFilePath = repositoryEnvironmentFilePath();
-  (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(
-    environmentFilePath,
-  );
+  if (!(entrypoint === "cli" && entrypointArgs[0] === "storage")) {
+    (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
+    const environmentFilePath = repositoryEnvironmentFilePath();
+    (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(
+      environmentFilePath,
+    );
+  }
 
   if (entrypoint === "cli") {
     process.argv.splice(

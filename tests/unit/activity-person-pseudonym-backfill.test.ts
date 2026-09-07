@@ -11,12 +11,11 @@ import { deriveRunResultDigest, deriveTerminalDependencyDigest, RunResultRecordS
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
-import { settingsRootPaths } from "../../src/domain/config/settings-root.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { createActivityPersonPseudonymBackfillService } from "../../src/server/activity-person-pseudonym-backfill/service.js";
 import { composeActivityPersonPseudonymBackfillCommand } from "../../src/server/activity-person-pseudonym-backfill/compose.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { createProtectedSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import { createCredentialStore } from "../../src/infra/config/credential-store.js";
 import { SeparationsResultSchema } from "../../src/workflows/separations/workflow.js";
 import {
   COMPOSITION_ACTION_ID,
@@ -600,10 +599,7 @@ describe("reviewed activity person pseudonym backfill", () => {
       { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-command-test" },
       manualClock(new Date(COMPOSITION_NOW)),
     );
-    const protectedStore = createProtectedSettingsFileAuthority({
-      path: settingsRootPaths(join(root, stateRoot)).ordinary,
-      assertWriteIdAvailable: () => undefined,
-    });
+    const protectedStore = createCredentialStore({ stateRoot: join(root, stateRoot) });
     journalProtectedSettings(database, protectedStore, {
       activityPersonPseudonym: { set: { keyHex: KEY_HEX, keyGeneration: "activity-person-g1" } },
     }, COMPOSITION_NOW);
@@ -616,7 +612,7 @@ describe("reviewed activity person pseudonym backfill", () => {
       assert.doesNotMatch(productionComposition, /pseudonyms\?:/u);
       assert.match(
         productionComposition,
-        /createActivityPersonPseudonymBackfillWriteCapability\(\s*requireActivityPersonPseudonymDomain\(createJournaledProtectedSecretSource\(\{ file: protectedAuthority, database \}\)\)/u,
+        /createActivityPersonPseudonymBackfillWriteCapability\(\s*requireActivityPersonPseudonymDomain\(createCredentialSecretSource\(protectedAuthority\)\)/u,
       );
       const outcome = composeActivityPersonPseudonymBackfillCommand({
         isolation,

@@ -5,6 +5,15 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT } from "./architecture/helpers/guard-files.js";
 
+// Private adapter modules have no raw connection in the public SQLite entrypoint.
+// D336 historical backup readers remain; stopped conversion adapters expire in 2.6.
+const PRIVATE_SQLITE_ADAPTERS = [
+  "src/infra/compat/backup-inspection.ts",
+  "src/infra/compat/settings-database-upgrade.ts",
+  "src/infra/compat/upgrade-sources.ts",
+  "src/infra/sqlite/authority-database.ts",
+  "src/infra/sqlite/backup-service.ts",
+];
 const ADAPTER_PATH = "src/infra/sqlite/authority-database.ts";
 
 function isPrivateMember(member: ts.ClassElement): boolean {
@@ -24,8 +33,8 @@ describe("SQLite authority boundary", () => {
       if (/from\s+["']node:sqlite["']/.test(source)) nodeSqliteImports.push(path);
       if (/\bDatabaseSync\b/.test(source)) databaseSyncIdentifiers.push(path);
     }
-    assert.deepEqual(nodeSqliteImports, [ADAPTER_PATH]);
-    assert.deepEqual(databaseSyncIdentifiers, [ADAPTER_PATH]);
+    assert.deepEqual(nodeSqliteImports, PRIVATE_SQLITE_ADAPTERS);
+    assert.deepEqual(databaseSyncIdentifiers, PRIVATE_SQLITE_ADAPTERS);
   });
 
   it("exports repositories and inspections without a raw connection or SQL escape hatch", () => {

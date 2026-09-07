@@ -1,3 +1,6 @@
+import { CredentialStoreApplyOutcomeSchema } from "../../../src/domain/config/credential-store.js";
+import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
+import { SettingsRecordSchema, initialSettingsFileRecord } from "../../../src/domain/config/settings.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -777,7 +780,7 @@ const BACKUP_VERIFICATION = {
 };
 const BACKUP_MANIFEST = {
   kind: "hrauto-authority-backup",
-  manifestVersion: 1,
+  manifestVersion: 3,
   backupFileName: "authority-g4.sqlite",
   sourceDatabaseIdentity: HASH_B,
   applicationId: 1_217_249_861,
@@ -823,6 +826,7 @@ const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
   },
 };
 const STORAGE_DOCTOR_REPORT = {
+  tombstoneOrdinals: { state: "available", findings: [{ code: "tombstone-ordinal-unknown", runId: UUID_1, missingFields: ["runNumber"] }] },
   protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "protected settings fixture is unavailable" } },
   kind: "authority-storage-doctor",
   mode: "read-only",
@@ -946,6 +950,8 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityInvariantResult", schema: AuthorityInvariantResultSchema, fixtures: [{ state: "valid", violations: [] }] },
   { name: "AuthorityCopyInspection", schema: AuthorityCopyInspectionSchema, fixtures: [AUTHORITY_COPY_INSPECTION] },
   { name: "BackupVerification", schema: BackupVerificationSchema, fixtures: [BACKUP_VERIFICATION] },
+  { name: "CredentialStoreApplyOutcome", schema: CredentialStoreApplyOutcomeSchema, fixtures: [{ state: "applied", record: initialProtectedStoreRecord() }] },
+  { name: "SettingsRecord", schema: SettingsRecordSchema, fixtures: [initialSettingsFileRecord()] },
   { name: "AuthorityBackupManifest", schema: AuthorityBackupManifestSchema, fixtures: [BACKUP_MANIFEST] },
   { name: "AuthorityBackupRequest", schema: AuthorityBackupRequestSchema, fixtures: [{ trigger: "operator", requiredGeneration: 4 }] },
   { name: "AuthorityBackupRunReport", schema: AuthorityBackupRunReportSchema, fixtures: [{ state: "verified", requestedGeneration: 4, finalGeneration: 4, coalescedRequests: 1, followUpPerformed: false, manifests: [BACKUP_MANIFEST] }] },
@@ -967,11 +973,11 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   ] },
   { name: "StorageDoctorReport", schema: StorageDoctorReportSchema, fixtures: [
     STORAGE_DOCTOR_REPORT,
-    { ...STORAGE_DOCTOR_REPORT, authority: { state: "degraded", cause: HEALTH_CAUSE }, counts: { state: "unavailable", cause: HEALTH_CAUSE }, backup: { state: "missing", cause: { code: "backup-missing", summary: "no backup exists" } }, restoreCandidates: [] },
+    { ...STORAGE_DOCTOR_REPORT, tombstoneOrdinals: { state: "unavailable", cause: HEALTH_CAUSE }, authority: { state: "degraded", cause: HEALTH_CAUSE }, counts: { state: "unavailable", cause: HEALTH_CAUSE }, backup: { state: "missing", cause: { code: "backup-missing", summary: "no backup exists" } }, restoreCandidates: [] },
   ] },
   { name: "StoppedSystemProof", schema: StoppedSystemProofSchema, fixtures: [STOPPED_SYSTEM_PROOF] },
   { name: "OfflineRestoreRequest", schema: OfflineRestoreRequestSchema, fixtures: [{ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: STOPPED_SYSTEM_PROOF }] },
-  { name: "OfflineRestoreReport", schema: OfflineRestoreReportSchema, fixtures: [{ state: "restored", restoredAt: NOW, manifestFileName: "authority-g4.sqlite.manifest.json", backupFileName: "authority-g4.sqlite", suspectFileName: "suspect-state.sqlite", sourceDatabaseIdentity: HASH_B, authorityGeneration: 4, projectionRebuilt: true, authorityPreservedAcrossProjectionRebuild: true }] },
+  { name: "OfflineRestoreReport", schema: OfflineRestoreReportSchema, fixtures: [{ state: "restored", schemaVersion: 32, restoredAt: NOW, manifestFileName: "authority-g4.sqlite.manifest.json", backupFileName: "authority-g4.sqlite", suspectFileName: "suspect-state.sqlite", sourceDatabaseIdentity: HASH_B, authorityGeneration: 4, projectionRebuilt: true, authorityPreservedAcrossProjectionRebuild: true }] },
   { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
   { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker/artifacts"] },
   { name: "ContentAddressedArtifactRef", schema: ArtifactRefSchema, fixtures: [{ id: UUID_1, sha256: HASH_A, bytes: 7, mediaType: "text/plain" }] },
@@ -1484,6 +1490,8 @@ function pathText(path: readonly Segment[]): string {
 }
 
 const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
+  // In-process credential authority port: methods consume and return schema-derived data.
+  "src/domain/config/credential-store.ts:CredentialStore",
   "src/core/runtime-composition.ts:RebuildRuntimeStart",
   // The dashboard composition seam handed to the CLI (1g): a process-lifetime
   // handle (port + stop), operational like RebuildRuntimeStart, not wire data.

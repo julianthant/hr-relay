@@ -3,11 +3,11 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 30;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 31;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 31;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 32;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
-  return schemaVersion > 0 && schemaVersion < UPGRADE_FLOOR_SCHEMA_VERSION;
+  return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
 }
 
 /**
@@ -21,7 +21,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = TableName | RetiredPhoneCaptureTable;
+type MigrationTableName = TableName | RetiredPhoneCaptureTable | "protected_settings_current";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -708,7 +708,7 @@ const POST_V1_TABLE_ORDER = [
   "deleted_runs",
   "protected_settings_current",
   "authority_upgrades",
-] as const satisfies readonly TableName[];
+] as const satisfies readonly MigrationTableName[];
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly MigrationTableName[];
 
@@ -1756,13 +1756,38 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         END`,
     ],
   },
+  {
+    // D336: ordinary values share the current command/audit transaction. An
+    // existing row must be enriched by the stopped upgrade before this step;
+    // silently importing empty defaults would lose settings authority.
+    version: 32,
+    statements: [
+      "DROP TRIGGER settings_current_never_deleted",
+      "DROP TRIGGER settings_current_revision_advances",
+      "ALTER TABLE settings_current RENAME TO settings_current_v31",
+      SQLITE_TABLE_DDL.settings_current.replace(
+        "CHECK (json_valid(record_json))",
+        "CHECK (json_valid(record_json) AND json_type(record_json, '$.settings') IS 'object')",
+      ),
+      "INSERT INTO settings_current SELECT * FROM settings_current_v31",
+      "DROP TABLE settings_current_v31",
+      `CREATE TRIGGER settings_current_never_deleted
+        BEFORE DELETE ON settings_current
+        BEGIN SELECT RAISE(ABORT, 'settings current authority is never deleted'); END`,
+      `CREATE TRIGGER settings_current_revision_advances
+        BEFORE UPDATE ON settings_current
+        WHEN NEW.revision <> OLD.revision + 1
+        BEGIN SELECT RAISE(ABORT, 'settings current revision must advance exactly once'); END`,
+      "DROP TABLE protected_settings_current",
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
   const ddlNames = Object.keys(SQLITE_TABLE_DDL);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = RETIRED_PHONE_CAPTURE_TABLES;
+  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {

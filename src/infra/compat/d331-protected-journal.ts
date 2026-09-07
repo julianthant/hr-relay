@@ -1,7 +1,15 @@
+// Frozen D331 contract from e314fb0d; permanent strict v1/v2 historical-backup reader.
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { ProtectedSettingsNameSchema, protectedSettingsReadback, type ProtectedStoreRecord } from "../../domain/config/protected-settings.js";
 import { deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest } from "../../domain/commands.js";
-import type { AuthorityRepositories } from "../sqlite/authority-database.js";
+import type { CommandAuditRecord } from "../../domain/commands.js";
+import type { ProtectedSettingsCurrentRecord } from "../../domain/authority.js";
+
+export interface LegacyProtectedJournal {
+  commands: { get(commandId: string): CommandRequest | undefined };
+  commandAudits: { findByCommand(commandId: string): CommandAuditRecord | undefined };
+  protectedSettingsCurrent: { get(): ProtectedSettingsCurrentRecord | undefined };
+}
 
 function protectedCurrentEntries(record: ProtectedStoreRecord) {
   return ProtectedSettingsNameSchema.options.flatMap((name) => {
@@ -47,7 +55,7 @@ type ProtectedJournalAdmission = Readonly<
 
 export function observeJournaledProtectedSettings(
   record: ProtectedStoreRecord,
-  repositories: AuthorityRepositories,
+  repositories: LegacyProtectedJournal,
   admission: ProtectedJournalAdmission,
 ): "authenticated" | "absent-for-command" {
   const applied = record.lastApplied;
@@ -118,7 +126,7 @@ export function observeJournaledProtectedSettings(
 /** Prove the protected bytes against their value-free command, audit and singleton identities. */
 export function requireJournaledProtectedSettings(
   record: ProtectedStoreRecord,
-  repositories: AuthorityRepositories,
+  repositories: LegacyProtectedJournal,
 ): void {
   const current = repositories.protectedSettingsCurrent.get();
   if (record.revision === 1) {

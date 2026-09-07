@@ -1,410 +1,138 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock, type Clock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import {
-  SETTINGS_SCHEMA_HASH,
-  deriveSettingsPatchFingerprint,
-  settingsRuntimeIdentity,
-  type SettingsFileRecord,
-} from "../../../src/domain/config/settings.js";
-import {
-  PROTECTED_SETTINGS_SCHEMA_HASH,
-  ProtectedSettingsReadbackSchema,
-  protectedSettingsReadback,
-  type ProtectedStoreRecord,
-} from "../../../src/domain/config/protected-settings.js";
-import { settingsRootPaths } from "../../../src/domain/config/settings-root.js";
-import {
-  ProtectedSettingsCommandRequestSchema,
-  SettingsCommandRequestSchema,
-  deriveSettingsCommandFingerprint,
-  markSettingsCommand,
-} from "../../../src/domain/commands.js";
-import {
-  createProtectedSettingsFileAuthority,
-  createSettingsFileAuthority,
-} from "../../../src/infra/config/settings-file.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, settingsRuntimeIdentity, type SettingsFileRecord } from "../../../src/domain/config/settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsReadbackSchema } from "../../../src/domain/config/protected-settings.js";
+import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../src/domain/commands.js";
+import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { executeSettingsCommand, type CommandAuthority } from "../../../src/core/command-kernel.js";
 import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import {
-  createJournaledProtectedSecretSource,
-  createProtectedSettingsRuntimeReader,
-  createSettingsRuntimeReader,
-} from "../../../src/server/settings-runtime.js";
+import { createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../src/server/settings-runtime.js";
+import { requireSecret } from "../../../src/domain/secrets.js";
 
 const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-});
-
-function activate(
-  database: AuthorityDatabase,
-  record: SettingsFileRecord,
-  clock: Clock,
-  configSnapshotId: string,
-) {
+afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+function activate(database: AuthorityDatabase, record: SettingsFileRecord, clock: Clock) {
   const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
   database.withAuthorityTransaction((repositories) => {
-    repositories.configSnapshots.insert({
-      configSnapshotId,
-      revision: 1,
-      fingerprint: resolved.fingerprint,
-      capturedAt: clock.now().toISOString(),
-      capturedBy: "local-operator",
-      config: resolved.config,
-      provenance: resolved.provenance,
-    });
-    repositories.runtimeConfig.activate({
-      settingsRevision: record.revision,
-      settingsFingerprint: record.settingsFingerprint,
-      configSnapshotId,
-      configFingerprint: resolved.fingerprint,
-      activatedAt: clock.now().toISOString(),
-    });
+    const configSnapshotId = randomUUID();
+    repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
+      capturedAt: clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
+    repositories.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
+      configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: clock.now().toISOString() });
   });
   return settingsRuntimeIdentity(record, resolved.fingerprint);
 }
-
-function fixture(afterLockLinked: () => void = () => undefined) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-settings-reader-"));
-  cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+function fixture(probe: () => void = () => {}) {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-settings-reader-")); cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
   const databasePath = join(root, "state.db");
-  const database = AuthorityDatabase.open({
-    path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test",
-  }, clock);
-  cleanups.push(() => database.close());
-  let lockAcquisitions = 0;
-  const path = join(root, "settings", "settings.json");
-  const file = createSettingsFileAuthority({
-    path,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); },
-    hooks: { afterLockLinked: () => { lockAcquisitions += 1; afterLockLinked(); } },
-  });
-  const initial = file.read();
-  const active = activate(database, initial, clock, "11111111-1111-4111-8111-111111111111");
-  const reader = createSettingsRuntimeReader({ file, database, hostFacts: hostConfigFacts({}), clock, active });
-  return { database, databasePath, file, path, clock, initial, active, reader, locks: () => lockAcquisitions };
-}
-
-function protectedFixture() {
-  const ordinary = fixture();
-  const paths = settingsRootPaths(dirname(dirname(ordinary.path)));
-  const file = createProtectedSettingsFileAuthority({
-    path: paths.ordinary,
-    assertWriteIdAvailable: () => undefined,
-  });
-  const initial = file.read();
-  const reader = createProtectedSettingsRuntimeReader({ file, database: ordinary.database });
-  return { ...ordinary, protectedFile: file, protectedInitial: initial, protectedReader: reader };
-}
-
-function persistProtected(
-  f: ReturnType<typeof protectedFixture>,
-  value: string,
-  journal: boolean,
-): Readonly<{
-  command: ReturnType<typeof ProtectedSettingsCommandRequestSchema.parse>;
-  record: ProtectedStoreRecord;
-}> {
-  const command = ProtectedSettingsCommandRequestSchema.parse({
-    commandId: "55555555-5555-4555-8555-555555555555",
-    requestedAt: f.clock.now().toISOString(),
-    requestedBy: "local-operator",
-    source: "settings-surface",
-    family: "settings",
-    type: "apply-protected-settings",
-    target: { expectedRevision: 1 },
-    payload: {
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      writeId: "66666666-6666-4666-8666-666666666666",
-      entries: { ucpathPassword: { set: value } },
-    },
-  });
-  const commandFingerprint = deriveSettingsCommandFingerprint(command);
-  const outcome = f.protectedFile.apply({
-    commandId: command.commandId,
-    commandFingerprint,
-    expectedRevision: command.target.expectedRevision,
-    protectedSchemaHash: command.payload.protectedSchemaHash,
-    writeId: command.payload.writeId,
-    entries: command.payload.entries,
-    updatedAt: command.requestedAt,
-  });
-  if (outcome.state !== "applied") assert.fail(`fixture protected settings apply refused: ${outcome.message}`);
-  const readback = protectedSettingsReadback(outcome.record);
-  if (journal) f.database.withAuthorityTransaction((repositories) => {
-    const marked = markSettingsCommand(command);
-    repositories.commands.insert(marked);
-    const target = { family: "protected-settings" as const, revision: 2 };
-    const auditId = "77777777-7777-4777-8777-777777777777";
-    repositories.commandAudits.insert({
-      auditId,
-      request: marked,
-      result: {
-        state: "applied",
-        commandId: command.commandId,
-        affectedTargets: [target],
-        restartRequired: false,
-        revision: 2,
-        entries: readback.entries,
-      },
-      completedAt: command.requestedAt,
-      versionChanges: [{ target, before: 1, after: 2 }],
-      affectedDependencyIds: [],
-    });
-    repositories.protectedSettingsCurrent.advanceInTransaction({
-      revision: 2,
-      commandId: command.commandId,
-      commandFingerprint,
-      auditId,
-      committedAt: command.requestedAt,
-      entries: [{
-        name: "ucpathPassword",
-        valueId: outcome.record.entries.ucpathPassword?.valueId,
-        updatedAt: command.requestedAt,
-      }],
-    });
-  });
-  outcome.commit();
-  return { command, record: outcome.record };
-}
-
-function persistSettings(f: ReturnType<typeof fixture>, journal: boolean): SettingsFileRecord {
-  const patch = {
-    "display.screenWidth": { set: 1980 },
-    "display.screenHeight": { set: 1080 },
+  const database = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock); cleanups.push(() => database.close());
+  const store = createCredentialStore({ stateRoot: root });
+  const initial = readSettings(database.authority); const active = activate(database, initial, clock);
+  let reads = 0;
+  const authority: CommandAuthority = { withAuthorityTransaction: (work) => database.withAuthorityTransaction((repositories) => work({ ...repositories,
+    settingsCurrent: { ...repositories.settingsCurrent, get: () => { reads += 1; probe(); return repositories.settingsCurrent.get(); } },
+  })) };
+  const reader = createSettingsRuntimeReader({ database: authority, hostFacts: hostConfigFacts({}), clock, active });
+  const settings = createSettingsApplicationExecutor((value) => { resolveConfigWithProvenance(value, hostConfigFacts({}), clock); }, store);
+  const execute = (command: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, command);
+  const apply = () => {
+    const patch = { "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 } };
+    const result = execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+      target: { expectedRevision: readSettings(database.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+    assert.equal(result.state, "applied"); return readSettings(database.authority);
   };
-  const command = SettingsCommandRequestSchema.parse({
-    commandId: "33333333-3333-4333-8333-333333333333",
-    requestedAt: f.clock.now().toISOString(),
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "settings",
-    type: "apply-settings",
-    target: { expectedRevision: 1 },
-    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
-  });
-  const commandFingerprint = deriveSettingsCommandFingerprint(command);
-  const outcome = f.file.apply({
-    commandId: command.commandId, commandFingerprint, expectedRevision: 1, ...command.payload,
-  });
-  if (outcome.state !== "applied") assert.fail(`fixture settings apply refused: ${outcome.message}`);
-  if (journal) f.database.withAuthorityTransaction((repositories) => {
-    repositories.commands.insert(command);
-    const target = { family: "settings" as const, revision: 2 };
-    const auditId = "44444444-4444-4444-8444-444444444444";
-    repositories.commandAudits.insert({
-      auditId, request: command,
-      result: {
-        state: "applied", commandId: command.commandId, affectedTargets: [target], restartRequired: true,
-        settingsRevision: 2, settingsFingerprint: outcome.record.settingsFingerprint,
-      },
-      completedAt: command.requestedAt,
-      versionChanges: [{ target, before: 1, after: 2 }], affectedDependencyIds: [],
-    });
-    repositories.settingsCurrent.advance({
-      revision: 2, settingsFingerprint: outcome.record.settingsFingerprint,
-      commandId: command.commandId, commandFingerprint, auditId, committedAt: command.requestedAt,
-    });
-  });
-  outcome.commit();
-  return outcome.record;
+  const protectedCommand = (value: string) => ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+    target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: value } } } });
+  return { root, database, databasePath, clock, store, initial, active, reader, execute, apply, protectedCommand, reads: () => reads,
+    protectedReader: createProtectedSettingsRuntimeReader(store) };
 }
 
-describe("verified Settings reader snapshot", () => {
-  it("builds a current editor readback with one real Settings lock acquisition", () => {
+describe("SQLite Settings reader snapshot", () => {
+  it("builds a current editor with exactly one authoritative read and no file authority", () => {
     const f = fixture();
-    for (let read = 0; read < 2; read += 1) {
-      const before = f.locks();
-
-      const editor = buildSettingsEditor({ settings: f.reader, environment: {}, clock: f.clock });
-
-      assert.equal(f.locks() - before, 1, "one editor read must acquire the Settings lock exactly once");
-      assert.equal(editor.revision, 1);
+    for (let count = 0; count < 2; count += 1) {
+      const before = f.reads(); const editor = buildSettingsEditor({ settings: f.reader, environment: {}, clock: f.clock });
+      assert.equal(f.reads() - before, 1); assert.equal(editor.revision, 1);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
-      assert.equal(editor.activeConfigFingerprint, f.active.configFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
       assert.equal(editor.sections.flatMap((section) => section.leaves).length, 8);
     }
+    assert.equal(existsSync(join(f.root, "settings")), false);
   });
-
-  it("pairs the new record and restart-required status without caching a prior read", () => {
-    const f = fixture();
-    assert.deepEqual(f.reader.read(), {
-      record: f.initial, runtimeStatus: { state: "current", identity: f.active },
-    });
-    const record = persistSettings(f, true);
+  it("pairs fresh values and restart-required status without caching a previous read", () => {
+    const f = fixture(); f.reader.read(); const record = f.apply();
     const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance(record.settings, hostConfigFacts({}), f.clock).fingerprint);
     const expectedStatus = { state: "restart-required", active: f.active, persisted };
-    const before = f.locks();
-
-    const snapshot = f.reader.read();
-
-    assert.equal(f.locks() - before, 1);
-    assert.deepEqual(snapshot, { record, runtimeStatus: expectedStatus });
-    const beforeEditor = f.locks();
+    assert.deepEqual(f.reader.read(), { record, runtimeStatus: expectedStatus });
     const editor = buildSettingsEditor({ settings: f.reader, environment: {}, clock: f.clock });
-    assert.equal(f.locks() - beforeEditor, 1);
-    assert.equal(editor.revision, 2);
-    assert.equal(editor.settingsFingerprint, record.settingsFingerprint);
-    assert.equal(editor.activeConfigFingerprint, f.active.configFingerprint);
     assert.deepEqual(editor.runtimeStatus, expectedStatus);
     const width = editor.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
-    assert.equal(width?.effectiveValue, 1980);
-    assert.equal(width?.settingsValue, 1980);
-    assert.equal(width?.source, "settings");
+    assert.equal(width?.effectiveValue, 1980); assert.equal(width?.settingsValue, 1980); assert.equal(width?.source, "settings");
   });
-
-  it("refuses a stale THIS-process identity before file access after another activation", () => {
-    const f = fixture();
-    const record = persistSettings(f, true);
-    const active = activate(f.database, record, f.clock, "22222222-2222-4222-8222-222222222222");
-    const before = f.locks();
-    const bytes = readFileSync(f.path);
-    const runtimeBefore = f.database.authority.runtimeConfig.get();
-
-    assert.throws(() => f.reader.read(), /are not dashboard-active; restart activation is required/u);
-
-    assert.equal(f.locks(), before, "stale process identity must refuse before taking a Settings lock");
-    assert.deepEqual(readFileSync(f.path), bytes);
-    assert.deepEqual(f.database.authority.runtimeConfig.get(), runtimeBefore);
-    const currentReader = createSettingsRuntimeReader({
-      file: f.file, database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active,
-    });
-    assert.deepEqual(currentReader.read(), { record, runtimeStatus: { state: "current", identity: active } });
-    assert.equal(f.locks() - before, 1);
+  it("refuses a stale process identity before reading settings after another activation", () => {
+    const f = fixture(); const record = f.apply(); const active = activate(f.database, record, f.clock); const before = f.reads();
+    assert.throws(() => f.reader.read(), /are not dashboard-active; restart activation is required/u); assert.equal(f.reads(), before);
+    const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active });
+    assert.deepEqual(reader.read(), { record, runtimeStatus: { state: "current", identity: active } });
   });
-
-  it("refuses an unjournaled file instead of projecting it as restart-required", () => {
-    const f = fixture();
-    persistSettings(f, false);
-    const before = f.locks();
-    const bytes = readFileSync(f.path);
-    const meta = f.database.getMeta();
-
-    assert.throws(() => f.reader.read(), /settings revision 2 has no durable command journal/u);
-
-    assert.equal(f.locks() - before, 1);
-    assert.deepEqual(readFileSync(f.path), bytes);
-    assert.deepEqual(f.database.getMeta(), meta);
-    assert.equal(existsSync(join(f.path, "..", "prepare.json")), false);
+  it("cannot project a corrupt retired file as ordinary authority", () => {
+    const f = fixture(); mkdirSync(join(f.root, "settings")); const path = join(f.root, "settings", "settings.json");
+    writeFileSync(path, "malformed former authority", { mode: 0o600 }); const before = readFileSync(path);
+    assert.equal(f.reader.read().record.revision, 1); const record = f.apply();
+    assert.deepEqual(f.reader.read().record, record); assert.deepEqual(readFileSync(path), before);
   });
-
-  it("holds real SQLite writer exclusion while acquiring the Settings file lock", () => {
-    let probeWriter: () => void = () => undefined;
-    const f = fixture(() => probeWriter());
-    const contender = AuthorityDatabase.open({
-      path: f.databasePath, busyTimeoutMs: 1, migrationOwner: "unit-test",
-    }, f.clock);
-    cleanups.push(() => contender.close());
-    probeWriter = () => {
-      assert.throws(() => contender.withAuthorityTransaction(() => undefined), /database is locked/u);
-    };
-    const before = f.locks();
-
-    const snapshot = f.reader.read();
-
-    assert.equal(f.locks() - before, 1);
-    assert.deepEqual(snapshot, { record: f.initial, runtimeStatus: { state: "current", identity: f.active } });
+  it("holds real SQLite writer exclusion during its settings snapshot", () => {
+    let probe = () => {}; const f = fixture(() => probe());
+    const contender = AuthorityDatabase.open({ path: f.databasePath, busyTimeoutMs: 1, migrationOwner: "contender" }, f.clock); cleanups.push(() => contender.close());
+    probe = () => { assert.throws(() => contender.withAuthorityTransaction(() => {}), /database is locked/u); };
+    assert.deepEqual(f.reader.read(), { record: f.initial, runtimeStatus: { state: "current", identity: f.active } });
   });
 });
 
-describe("verified protected Settings reader snapshot", () => {
+describe("independent protected Settings reader", () => {
   it("P12 serves only schema identity, revision, and presence/write identity", () => {
-    const f = protectedFixture();
-    const protectedValue = "never-serve-this-password";
-    const { record } = persistProtected(f, protectedValue, true);
-
-    const snapshot = f.protectedReader.read();
-
-    assert.equal(snapshot.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
-    assert.deepEqual(snapshot.readback, protectedSettingsReadback(record));
-    assert.equal(JSON.stringify(snapshot).includes(protectedValue), false);
-    assert.equal(snapshot.readback.entries.ucpathPassword.present, true);
-    assert.equal(ProtectedSettingsReadbackSchema.safeParse({
-      ...snapshot.readback,
-      entries: {
-        ...snapshot.readback.entries,
-        ucpathPassword: { ...snapshot.readback.entries.ucpathPassword, effectiveValue: protectedValue },
-      },
-    }).success, false);
+    const f = fixture(); f.execute(f.protectedCommand("synthetic-protected-readback"));
+    const snapshot = f.protectedReader.read(); assert.equal(snapshot.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
+    ProtectedSettingsReadbackSchema.parse(snapshot.readback); assert.equal(snapshot.readback.revision, 2);
+    assert.equal(JSON.stringify(snapshot).includes("synthetic-protected-readback"), false);
+    assert.equal(JSON.stringify(snapshot).includes('"value"'), false);
   });
-
-  it("P21 authenticates marked replay but detects value divergence inside the protected authority", () => {
-    const f = protectedFixture();
-    const protectedValue = "original-private-value";
-    const { command, record } = persistProtected(f, protectedValue, true);
-    const executor = createSettingsApplicationExecutor(f.file, f.protectedFile);
-
-    assert.deepEqual(
-      f.protectedReader.read().readback,
-      protectedSettingsReadback(record),
-      "restart authentication compares the durable marked SET envelope, never the raw protected value",
-    );
-
-    const exact = f.database.withAuthorityTransaction((repositories) =>
-      executor.reconcileReplay(repositories, command));
-    assert.deepEqual(exact, protectedSettingsReadback(record));
-    assert.equal(
-      deriveSettingsCommandFingerprint(command),
-      deriveSettingsCommandFingerprint({
-        ...command,
-        payload: {
-          ...command.payload,
-          entries: { ucpathPassword: { set: "different-private-value" } },
-        },
-      }),
-    );
-    assert.throws(
-      () => f.database.withAuthorityTransaction((repositories) => executor.reconcileReplay(
-        repositories,
-        {
-          ...command,
-          payload: {
-            ...command.payload,
-            entries: { ucpathPassword: { set: "different-private-value" } },
-          },
-        },
-      )),
-      /command-divergent/u,
-    );
+  it("P21 verifies exact retry and refuses value-divergent reuse", () => {
+    const f = fixture(); const command = f.protectedCommand("synthetic-first-value"); f.execute(command);
+    assert.equal(f.execute(command).state, "already-applied");
+    const divergent = structuredClone(command); divergent.payload.entries.ucpathPassword = { set: "synthetic-different-value" };
+    assert.equal(f.execute(divergent).state, "rejected");
+    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-first-value");
   });
-
-  it("P27 refuses an unjournaled protected document by document name", () => {
-    const f = protectedFixture();
-    persistProtected(f, "private-but-unjournaled", false);
-
-    assert.throws(
-      () => f.protectedReader.read(),
-      /protected settings revision 2 has no durable command journal for protected\.json/u,
-    );
+  it("D336 replaces P27: independent committed credentials remain available without a SQLite audit", () => {
+    const f = fixture(); const command = f.protectedCommand("synthetic-before-audit");
+    const result = f.store.apply(ProtectedSettingsApplyInputSchema.parse({ ...command.payload, commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: command.target.expectedRevision, updatedAt: command.requestedAt }));
+    assert.equal(result.state, "applied"); assert.equal(f.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(f.protectedReader.read().readback.revision, 2);
   });
-});
-
-
-describe("journal-authenticated next-use protected source", () => {
-  it("observes an applied value at next use without changing ordinary runtime identity", () => {
-    const f = protectedFixture();
-    const source = createJournaledProtectedSecretSource({ file: f.protectedFile, database: f.database });
-    const before = f.database.authority.runtimeConfig.get();
-    assert.equal(source.read().entries.ucpathPassword, undefined);
-    persistProtected(f, "synthetic-next-use-password", true);
-    assert.equal(source.read().entries.ucpathPassword?.value, "synthetic-next-use-password");
-    assert.deepEqual(f.database.authority.runtimeConfig.get(), before);
-    assert.equal(f.reader.read().runtimeStatus.state, "current");
+  it("observes each credential at next use without changing ordinary runtime identity", () => {
+    const f = fixture(); const before = f.reader.read(); const source = createCredentialSecretSource(f.store);
+    assert.throws(() => requireSecret("ucpathPassword", source), /ucpathPassword is missing/u);
+    f.execute(f.protectedCommand("synthetic-next-use-one")); assert.equal(requireSecret("ucpathPassword", source), "synthetic-next-use-one");
+    f.execute(f.protectedCommand("synthetic-next-use-two")); assert.equal(requireSecret("ucpathPassword", source), "synthetic-next-use-two");
+    assert.deepEqual(f.reader.read(), before);
   });
-
-  it("refuses file-only publication even when the protected file is otherwise valid", () => {
-    const f = protectedFixture();
-    const source = createJournaledProtectedSecretSource({ file: f.protectedFile, database: f.database });
-    persistProtected(f, "synthetic-unjournaled-password", false);
-    assert.throws(() => source.read(), /has no durable command journal for protected\.json/u);
+  it("authenticates its own history even when SQLite is unavailable", () => {
+    const f = fixture(); f.execute(f.protectedCommand("synthetic-owned-value")); f.database.close();
+    assert.equal(f.protectedReader.read().readback.revision, 2);
+    const path = join(f.root, "credentials", "protected.json");
+    writeFileSync(path, readFileSync(path, "utf8").replace("synthetic-owned-value", "synthetic-altered-value"));
+    assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
   });
 });

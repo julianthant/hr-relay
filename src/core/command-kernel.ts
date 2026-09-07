@@ -81,6 +81,7 @@ import {
   ItemIdSchema,
   WorkerIdSchema,
 } from "../domain/ids.js";
+import { EditableSettingsOverrideSchema } from "../domain/config/schema.js";
 import { SettingsApplyRefusalSchema } from "../domain/config/settings.js";
 import {
   IntakeParseSchema,
@@ -252,8 +253,7 @@ export const OrdinarySettingsApplicationOutcomeSchema = z.union([
     state: z.literal("applied"),
     revision: z.number().int().positive(),
     settingsFingerprint: FingerprintSchema,
-    rollback: z.custom<() => void>((value) => typeof value === "function"),
-    commit: z.custom<() => void>((value) => typeof value === "function"),
+    settings: EditableSettingsOverrideSchema,
   }),
   ...SettingsApplicationRefusalSchemas,
 ]);
@@ -262,15 +262,12 @@ export const ProtectedSettingsApplicationOutcomeSchema = z.union([
   z.strictObject({
     state: z.literal("applied"),
     readback: ProtectedSettingsReadbackSchema,
-    rollback: z.custom<() => void>((value) => typeof value === "function"),
-    commit: z.custom<() => void>((value) => typeof value === "function"),
   }),
   ...SettingsApplicationRefusalSchemas,
 ]);
 
 export interface SettingsApplicationExecutor {
-  reconcilePending(
-    repositories: AuthorityRepositories,
+  prepare(
     command: SettingsCommand,
   ): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
   apply(command: SettingsCommand, repositories: AuthorityRepositories): unknown;
@@ -510,11 +507,7 @@ interface CommandApplication {
     revision: number;
     settingsFingerprint: string;
     commandFingerprint: string;
-  }>;
-  readonly protectedSettingsCurrent?: Readonly<{
-    revision: number;
-    commandFingerprint: string;
-    entries: readonly Readonly<{ name: string; valueId: string; updatedAt: string }>[];
+    settings: z.infer<typeof EditableSettingsOverrideSchema>;
   }>;
   readonly finalizeAfterCommit?: () => void;
 }
@@ -3018,7 +3011,7 @@ function executeVersionArchive(
 }
 
 function executeSettings(
-  dependencies: CommandKernelDependencies,
+  dependencies: Pick<CommandKernelDependencies, "settings">,
   repositories: AuthorityRepositories,
   request: SettingsCommand,
 ): CommandApplication {
@@ -3027,26 +3020,10 @@ function executeSettings(
       `settings/${request.type} reached a composition with no settings application executor`,
     );
   }
-  const requireExpectedRevision = (
-    outcomeRevision: number,
-    rollback: () => void,
-  ): void => {
-    const expectedNextRevision = request.target.expectedRevision + 1;
-    if (outcomeRevision === expectedNextRevision) return;
-    const primary = new Error(
-      `settings executor advanced revision ${String(request.target.expectedRevision)} to ${String(outcomeRevision)}; `
-      + `exactly ${String(expectedNextRevision)} was required`,
-    );
-    try {
-      rollback();
-    } catch (rollbackError) {
-      throw new AggregateError(
-        [primary, rollbackError],
-        `settings command ${request.commandId} returned an invalid revision and rollback also failed`,
-        { cause: rollbackError },
-      );
+  const requireExpectedRevision = (revision: number): void => {
+    if (revision !== request.target.expectedRevision + 1) {
+      throw new Error("settings executor did not advance exactly one revision");
     }
-    throw primary;
   };
   if (request.type === "apply-settings") {
     const outcome = OrdinarySettingsApplicationOutcomeSchema.parse(
@@ -3054,15 +3031,15 @@ function executeSettings(
     );
     if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
     if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
-    requireExpectedRevision(outcome.revision, outcome.rollback);
+    requireExpectedRevision(outcome.revision);
     const target = { family: "settings" as const, revision: outcome.revision };
     const application = applied(
       request,
       [target],
       [{ target, before: request.target.expectedRevision, after: outcome.revision }],
       [],
-      outcome.rollback,
-      outcome.commit,
+      undefined,
+      undefined,
       { kind: "ordinary", revision: outcome.revision, settingsFingerprint: outcome.settingsFingerprint },
     );
     return Object.freeze({
@@ -3070,6 +3047,7 @@ function executeSettings(
       settingsCurrent: Object.freeze({
         revision: outcome.revision,
         settingsFingerprint: outcome.settingsFingerprint,
+        settings: outcome.settings,
         commandFingerprint: deriveSettingsCommandFingerprint(request),
       }),
     });
@@ -3079,26 +3057,18 @@ function executeSettings(
   );
   if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
   if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
-  requireExpectedRevision(outcome.readback.revision, outcome.rollback);
+  requireExpectedRevision(outcome.readback.revision);
   const target = { family: "protected-settings" as const, revision: outcome.readback.revision };
   const application = applied(
     request,
     [target],
     [{ target, before: request.target.expectedRevision, after: outcome.readback.revision }],
     [],
-    outcome.rollback,
-    outcome.commit,
+    undefined,
+    undefined,
     { kind: "protected", readback: outcome.readback },
   );
-  return Object.freeze({
-    ...application,
-    protectedSettingsCurrent: Object.freeze({
-      revision: outcome.readback.revision,
-      commandFingerprint: deriveSettingsCommandFingerprint(request),
-      entries: Object.entries(outcome.readback.entries).flatMap(([name, entry]) =>
-        entry.present ? [{ name, valueId: entry.valueId, updatedAt: entry.updatedAt }] : []),
-    }),
-  });
+  return application;
 }
 
 function executeExplorerEdit(
@@ -3204,7 +3174,7 @@ function dispatchActive(
 }
 
 function replay(
-  dependencies: CommandKernelDependencies,
+  dependencies: Pick<CommandKernelDependencies, "settings">,
   repositories: AuthorityRepositories,
   request: CommandRequest,
   now: string,
@@ -3285,6 +3255,43 @@ function replay(
   });
 }
 
+/** The same settings command path is used by the BFF and stopped migration. */
+export function executeSettingsCommand(
+  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings">,
+  input: unknown,
+): CommandResult {
+  const request = CommandRequestSchema.parse(input);
+  if (request.family !== "settings") throw new Error("settings command required");
+  const executor = dependencies.settings;
+  if (executor === undefined) throw new Error("settings executor unavailable");
+  const refusal = executor.prepare(request);
+  if (refusal !== undefined) return CommandResultSchema.parse(refusal.state === "conflict"
+    ? { state: "conflict", commandId: request.commandId, currentVersion: refusal.currentRevision, message: refusal.message }
+    : { ...refusal, commandId: request.commandId });
+  try {
+    return dependencies.authority.withAuthorityTransaction((repositories) => {
+      const now = dependencies.clock.now().toISOString();
+      const journalRequest = markSettingsCommand(request);
+      const journal = repositories.commands.insert(journalRequest);
+      if (journal.state === "existing") return replay(dependencies, repositories, request, now);
+      const application = executeSettings(dependencies, repositories, request);
+      const auditId = dependencies.ids.uuid();
+      repositories.commandAudits.insert({ auditId, request: journalRequest, result: application.result,
+        completedAt: now, versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
+      if (application.settingsCurrent !== undefined) repositories.settingsCurrent.advance({
+        ...application.settingsCurrent, commandId: request.commandId, auditId, committedAt: now,
+      });
+      return application.result;
+    });
+  } catch (error) {
+    if (request.type === "apply-protected-settings") {
+      throw new Error("credential-audit-uncertain: credentials committed; retry the exact command to verify its audit", { cause: error });
+    }
+    if (error instanceof CommandRefusal) return error.result;
+    throw error;
+  }
+}
+
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   // Validated ONCE at composition: a dependency satisfying both seams is a
   // wiring ambiguity, refused before any command can reach it.
@@ -3325,6 +3332,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     }
   };
   const executeSync = (request: CommandRequest): CommandResult => {
+      if (request.family === "settings") return executeSettingsCommand(dependencies, request);
       if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
         // Computed purely: no journal row, no audit row, no generation advance.
         return CommandResultSchema.parse({
@@ -3351,22 +3359,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
               createExplorerCommandJournal(repositories).findOutcome,
             );
           }
-          if (request.family === "settings") {
-            const executor = dependencies.settings;
-            if (executor === undefined) {
-              throw new Error(
-                `settings/${request.type} reached a composition with no settings application executor`,
-              );
-            }
-            const refusal = executor.reconcilePending(repositories, request);
-            if (refusal !== undefined) {
-              return CommandResultSchema.parse({
-                ...SettingsApplyRefusalSchema.parse(refusal),
-                commandId: request.commandId,
-              });
-            }
-          }
-          const journalRequest = request.family === "settings" ? markSettingsCommand(request) : request;
+          const journalRequest = request;
           const journal = repositories.commands.insert(journalRequest);
           if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
@@ -3389,14 +3382,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
               committedAt: now,
             });
           }
-          if (application.protectedSettingsCurrent !== undefined) {
-            repositories.protectedSettingsCurrent.advanceInTransaction({
-              ...application.protectedSettingsCurrent,
-              commandId: request.commandId,
-              auditId,
-              committedAt: now,
-            });
-          }
           finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
@@ -3407,30 +3392,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         finalizeAfterCommit?.();
         return result;
       } catch (error) {
-        if (rollback !== undefined && request.family === "settings") {
-          // A transaction wrapper may report an error after durable COMMIT.
-          // Only proved journal absence permits compensation; an uncertain
-          // inspection leaves file exclusion/evidence intact for reconciliation.
-          let committed: CommandResult | undefined;
-          try {
-            committed = dependencies.authority.withAuthorityTransaction((repositories) => {
-              const journaled = repositories.commands.get(request.commandId);
-              if (journaled === undefined) return undefined;
-              const journalRequest = markSettingsCommand(request);
-              if (canonicalJsonStringify(journaled) !== canonicalJsonStringify(journalRequest)) {
-                throw new Error(`settings command ${request.commandId} has a different durable envelope`);
-              }
-              return replay(dependencies, repositories, request, dependencies.clock.now().toISOString());
-            });
-          } catch (reconciliationError) {
-            throw new AggregateError(
-              [error, reconciliationError],
-              `settings command ${request.commandId} failed and its durable outcome could not be reconciled; rollback refused`,
-              { cause: reconciliationError },
-            );
-          }
-          if (committed !== undefined) return committed;
-        }
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown

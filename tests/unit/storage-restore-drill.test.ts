@@ -27,19 +27,36 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
+  PROTECTED_SETTINGS_SCHEMA_HASH,
+  ProtectedSettingsApplyInputSchema,
+} from "../../src/domain/config/protected-settings.js";
+import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import {
+  inspectAuthorityBackupReadOnly,
+  openAuthorityBackupSourceReadOnly,
+} from "../../src/infra/compat/backup-inspection.js";
+import {
   AuthorityBackupService,
   AuthorityDatabase,
+  OfflineAuthorityRestoreService,
   OfflineRestoreFailure,
+  RecoveryStopProofStore,
 } from "../../src/infra/sqlite/index.js";
+import {
+  AUTHORITY_APPLICATION_ID,
+  SQLITE_MIGRATIONS,
+} from "../../src/infra/sqlite/migrations.js";
 import {
   acquireRuntimeProcessLock,
   acquireRuntimeRestoreAdmission,
@@ -58,7 +75,6 @@ import {
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
-import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
@@ -100,6 +116,38 @@ function open(paths: DrillPaths): AuthorityDatabase {
   );
 }
 
+function createHistoricalAuthority(path: string, schemaVersion: number): void {
+  const database = new DatabaseSync(path, {
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("BEGIN IMMEDIATE");
+    for (const migration of SQLITE_MIGRATIONS) {
+      if (migration.version > schemaVersion) break;
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    database.prepare(`
+      INSERT INTO authority_meta
+        (singleton_id, schema_version, authority_generation, updated_at,
+         migration_owner, migration_started_at)
+      VALUES (1, ?, 7, ?, NULL, NULL)
+    `).run(schemaVersion, NOW);
+    database.exec(`PRAGMA application_id = ${String(AUTHORITY_APPLICATION_ID)}`);
+    database.exec(`PRAGMA user_version = ${String(schemaVersion)}`);
+    database.exec("COMMIT");
+  } finally {
+    database.close();
+  }
+}
+
 /** `COMMAND_FIXTURES` is a `readonly unknown[]`, so its id is read by schema. */
 function seededCommandId(): string {
   return CommandIdentitySchema.parse(COMMAND_FIXTURES[0]).commandId;
@@ -132,7 +180,6 @@ function seedRealShapedAuthority(database: AuthorityDatabase): Readonly<{
 }
 
 async function takeBackup(database: AuthorityDatabase, paths: DrillPaths): Promise<string> {
-  initializeSyntheticSettingsBackupRoot(paths.stateRoot);
   const service = new AuthorityBackupService(database, { directory: paths.backupDirectory }, CLOCK);
   const report = await service.request({
     trigger: "operator",
@@ -190,6 +237,22 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
 
   it("names the corruption read-only, restores the named backup, and keeps every authority family", async () => {
     const paths = drillPaths();
+    const credentialDirectory = join(paths.stateRoot, "credentials");
+    const credentialPath = join(credentialDirectory, "protected.json");
+    const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
+      ProtectedSettingsApplyInputSchema.parse({
+        commandId: "11111111-1111-4111-8111-111111111111",
+        commandFingerprint: "1".repeat(64),
+        expectedRevision: 1,
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        entries: { ucpathPassword: { set: "restore-independent-credential-canary" } },
+        updatedAt: NOW,
+      }),
+    );
+    assert.equal(credentialOutcome.state, "applied");
+    const credentialBytes = readFileSync(credentialPath);
+    const credentialStats = statSync(credentialPath);
     const database = open(paths);
     const seeded = seedRealShapedAuthority(database);
     const generation = database.getMeta().authorityGeneration;
@@ -276,6 +339,101 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     const healthyReport: unknown = JSON.parse(healthy.output);
     const healthyAuthority = Reflect.get(healthyReport as object, "authority") as Record<string, unknown>;
     assert.equal(healthyAuthority["state"], "healthy");
+    assert.equal(readFileSync(credentialPath).equals(credentialBytes), true);
+    const afterCredentialStats = statSync(credentialPath);
+    assert.deepEqual({
+      mode: afterCredentialStats.mode,
+      uid: afterCredentialStats.uid,
+      ino: afterCredentialStats.ino,
+      size: afterCredentialStats.size,
+      mtimeMs: afterCredentialStats.mtimeMs,
+      ctimeMs: afterCredentialStats.ctimeMs,
+    }, {
+      mode: credentialStats.mode,
+      uid: credentialStats.uid,
+      ino: credentialStats.ino,
+      size: credentialStats.size,
+      mtimeMs: credentialStats.mtimeMs,
+      ctimeMs: credentialStats.ctimeMs,
+    });
+  });
+
+  it("restores exact historical SQLite bytes without projection rebuild or credential changes", async () => {
+    const paths = drillPaths();
+    const credentialPath = join(paths.stateRoot, "credentials", "protected.json");
+    const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
+      ProtectedSettingsApplyInputSchema.parse({
+        commandId: "11111111-1111-4111-8111-111111111111",
+        commandFingerprint: "1".repeat(64),
+        expectedRevision: 1,
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        entries: { ucpathPassword: { set: "historical-restore-credential-canary" } },
+        updatedAt: NOW,
+      }),
+    );
+    assert.equal(credentialOutcome.state, "applied");
+    const credentialBytes = readFileSync(credentialPath);
+
+    const live = open(paths);
+    live.close();
+    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(paths.authorityPath);
+    const historicalPath = join(paths.stateRoot, "historical-v30.sqlite");
+    createHistoricalAuthority(historicalPath, 30);
+    const rawSource = openAuthorityBackupSourceReadOnly(historicalPath);
+    let manifestPath: string;
+    try {
+      const source = {
+        getMeta: () => rawSource.getMeta(),
+        getSourceDatabaseIdentity: () => sourceDatabaseIdentity,
+        onlineBackupTo: (destinationPath: string) => rawSource.onlineBackupTo(destinationPath),
+      };
+      const report = await new AuthorityBackupService(
+        source,
+        { directory: paths.backupDirectory },
+        CLOCK,
+      ).request({ trigger: "schema-migration", requiredGeneration: 7 });
+      const manifest = report.manifests[0];
+      assert.ok(manifest !== undefined);
+      manifestPath = join(
+        paths.backupDirectory,
+        `${manifest.backupFileName}.manifest.json`,
+      );
+    } finally {
+      rawSource.close();
+    }
+
+    const proofStore = new RecoveryStopProofStore({
+      processLockRoot: paths.processLockRoot,
+      maxProofAgeMs: 60_000,
+    }, CLOCK);
+    proofStore.recordRuntimeState(observeRuntimeLockSnapshot({
+      processLockRoot: paths.processLockRoot,
+      sourceDatabaseIdentity,
+    }, CLOCK));
+    const stoppedSystemProof = proofStore.issue({
+      observedBy: "local-operator",
+      sourceDatabaseIdentity,
+    });
+    let projectionRebuildCalls = 0;
+    const restore = new OfflineAuthorityRestoreService({
+      authorityPath: paths.authorityPath,
+      suspectDirectory: join(paths.stateRoot, "suspects"),
+      busyTimeoutMs: 100,
+      processLockRoot: paths.processLockRoot,
+      stoppedProofMaxAgeMs: 60_000,
+    }, async () => {
+      projectionRebuildCalls += 1;
+      throw new Error("historical restore must not invoke the current projection builder");
+    }, CLOCK);
+
+    const report = await restore.restore({ manifestPath, stoppedSystemProof });
+
+    assert.equal(report.schemaVersion, 30);
+    assert.equal(report.projectionRebuilt, false);
+    assert.equal(projectionRebuildCalls, 0);
+    assert.equal(readFileSync(credentialPath).equals(credentialBytes), true);
+    assert.equal(inspectAuthorityBackupReadOnly(paths.authorityPath, 30).schemaVersion, 30);
   });
 
   it("refuses while a live process holds a runtime lock, and touches nothing", async () => {

@@ -37,7 +37,6 @@ import type { ArtifactRef } from "../../../src/domain/artifacts.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
-  SettingsFileRecordSchema,
   initialSettingsFileRecord,
   settingsRuntimeIdentity,
   deriveSettingsPatchFingerprint,
@@ -67,7 +66,8 @@ import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
+import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
+import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/infra/sqlite/index.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -338,16 +338,13 @@ function harness(options: {
   };
 
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
-  const settingsAuthority = createSettingsFileAuthority({
-    path: settingsPath,
-    validateCandidate: (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); },
-  });
+  const credentials = createCredentialStore({ stateRoot });
   const settingsFile = {
     read: () => {
       // Applying a revision does not mutate the running process. This test
       // harness therefore models the same persisted/active split as the real
       // runtime instead of serving a stale identity as a false "current".
-      const record = settingsAuthority.read();
+      const record = readSettings(database.authority);
       const persisted = settingsRuntimeIdentity(record, HASH_B);
       if (
         persisted.settingsRevision === activeSettingsIdentity.settingsRevision
@@ -387,7 +384,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsApplicationExecutor(settingsAuthority),
+    settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); }, credentials),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -542,13 +539,12 @@ function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   const settingsRoot = dirname(h.settingsPath);
   return {
     settingsBytes: optionalFileBytes(h.settingsPath),
-    protectedBytes: optionalFileBytes(join(settingsRoot, "protected.json")),
+    protectedBytes: optionalFileBytes(join(dirname(settingsRoot), "credentials", "protected.json")),
     initializationBytes: optionalFileBytes(join(settingsRoot, "authority.json")),
     lockBytes: optionalFileBytes(join(settingsRoot, "settings.lock")),
     prepareBytes: optionalFileBytes(join(settingsRoot, "prepare.json")),
     rollbackBytes: optionalFileBytes(join(settingsRoot, "rollback.json")),
     current: h.database.authority.settingsCurrent.get(),
-    protectedCurrent: h.database.authority.protectedSettingsCurrent.get(),
     journal: h.database.authority.commands.get(commandId),
     audit: h.database.authority.commandAudits.findByCommand(commandId),
     runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
@@ -3015,11 +3011,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     };
     assert.deepEqual(h.database.authority.commands.get(commandId), expectedCommand);
     assert.deepEqual(h.database.authority.commandAudits.findByCommand(commandId)?.request, expectedCommand);
-    const persisted = SettingsFileRecordSchema.parse(
-      JSON.parse(readFileSync(h.settingsPath, "utf8")),
-    );
     assert.equal(
-      persisted.lastApplied?.commandFingerprint,
+      h.database.authority.settingsCurrent.get()?.commandFingerprint,
       createHash("sha256")
         .update("hrauto:settings-command:v1\0")
         .update(canonicalJsonStringify(expectedCommand))

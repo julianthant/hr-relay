@@ -9,8 +9,7 @@
  * reconciliation are healthy AND a verified current backup exists; 1
  * otherwise, with the reasons printed.
  *
- * `restore` (D181) is the other half, and it is deliberately the ONLY writing
- * arm of this command family. It never picks a backup: the operator names the
+ * `restore` (D181) replaces SQLite; `backup` and stopped `upgrade` have separate writing arms. It never picks a backup: the operator names the
  * exact manifest with `--from`, because "restore the newest" is a decision
  * about which minutes of real HR work to discard and no default is right. It
  * observes the runtime's process locks, records that observation, issues the
@@ -23,6 +22,10 @@
  * and is served on its Settings surface / doctor route; this process cannot
  * see it and does not pretend to.
  */
+import { SETTINGS_CATALOG } from "../../domain/config/catalog.js";
+import { createCredentialStore } from "../../infra/config/credential-store.js";
+import { protectedSettingsReadback } from "../../domain/config/protected-settings.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
@@ -32,7 +35,6 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import {
-  AuthorityBackupService,
   AuthorityDatabase,
   OfflineAuthorityRestoreService,
   OfflineRestoreFailure,
@@ -105,6 +107,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]",
+  "       storage upgrade [--plan] [--json]",
   "       storage restore --from <manifest.json> [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
@@ -160,7 +163,7 @@ function formatReport(report: StorageDoctorReport): string {
   } else if (report.spanAuthority.state === "degraded") {
     const problemSummary = report.spanAuthority.problems.map((problem) => {
       switch (problem.state) {
-        case "missing": return `${problem.runId} missing authority`;
+        case "missing": return `${problem.runId} missing authority${problem.possibleExternalWrite === true ? "; possibleExternalWrite=true" : ""}`;
         case "missing-span": return `${problem.runId} missing span root`;
         case "malformed": return `${problem.runId} malformed in ${problem.table}`;
         case "malformed-authority": return `${problem.recordKey} malformed in ${problem.source} authority`;
@@ -171,6 +174,13 @@ function formatReport(report: StorageDoctorReport): string {
     lines.push(
       `span authority: unavailable — ${report.spanAuthority.cause.code}: ${report.spanAuthority.cause.summary}`,
     );
+  }
+  if (report.tombstoneOrdinals.state === "available") {
+    for (const finding of report.tombstoneOrdinals.findings) {
+      lines.push(`tombstone-ordinal-unknown: ${finding.runId} missing ${finding.missingFields.join(", ")}`);
+    }
+  } else {
+    lines.push("tombstone ordinals: unavailable");
   }
   if (report.backup.state === "current") {
     const latest = report.backup.latest;
@@ -228,6 +238,7 @@ function formatRestoreReport(report: OfflineRestoreReport): string {
     `from manifest: ${report.manifestFileName}`,
     `from backup:   ${report.backupFileName} (generation ${String(report.authorityGeneration)})`,
     `suspect kept:  ${report.suspectFileName}`,
+    `schema: v${String(report.schemaVersion)}${report.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION ? "; storage upgrade required before runtime boot" : ""}`,
     `projections rebuilt: ${String(report.projectionRebuilt)} · `
     + `authority preserved across rebuild: ${String(report.authorityPreservedAcrossProjectionRebuild)}`,
   ].join("\n");
@@ -366,8 +377,17 @@ async function restoreCommand(
       manifestPath: resolve(manifestArgument),
       stoppedSystemProof,
     });
+    // Observe credentials only AFTER successful SQLite replacement. Their failure
+    // neither authorizes a rollback nor changes the reported restore outcome.
+    const credentials = (() => {
+      try { return { state: "available" as const, ...protectedSettingsReadback(createCredentialStore({ stateRoot }).read()) }; }
+      catch { return { state: "unavailable" as const, code: "credential-store-unavailable" as const }; }
+    })();
+    const availability = credentials.state === "available"
+      ? `credentials: revision ${String(credentials.revision)}; ${Object.entries(credentials.entries).map(([name, entry]) => `${name}=${entry.present ? "present" : "absent"}`).join(" · ")}`
+      : "credentials: unavailable — credential-store-unavailable";
     return {
-      output: json ? JSON.stringify(report, null, 2) : formatRestoreReport(report),
+      output: json ? JSON.stringify({ ...report, credentials }, null, 2) : `${formatRestoreReport(report)}\n${availability}`,
       exitCode: 0,
     };
   } catch (error) {
@@ -486,20 +506,8 @@ async function backupCommand(
       exitCode: 1,
     };
   }
-  const database = AuthorityDatabase.open(
-    { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "storage-backup" },
-    clock,
-  );
-  try {
-    const service = new AuthorityBackupService(
-      database,
-      { directory: join(stateRoot, "backups", "authority") },
-      clock,
-    );
-    const report = await service.request({
-      trigger: "operator",
-      requiredGeneration: database.getMeta().authorityGeneration,
-    });
+  const { backupStoppedAuthority } = await import("./upgrade.js");
+  const report = await backupStoppedAuthority(stateRoot, clock);
     const manifest = report.manifests.at(-1);
     if (manifest === undefined) {
       throw new Error("verified backup run reported no manifest");
@@ -514,9 +522,7 @@ async function backupCommand(
           ].join("\n"),
       exitCode: 0,
     };
-  } finally {
-    database.close();
-  }
+
 }
 
 export async function composeStorageCommand(
@@ -526,6 +532,33 @@ export async function composeStorageCommand(
   repoRoot: string = process.cwd(),
 ): Promise<StorageCommandOutcome> {
   const [subcommand, ...rest] = args;
+  if (subcommand === "upgrade") {
+    const unsupported = rest.find((arg) => arg !== "--plan" && arg !== "--json");
+    if (unsupported !== undefined) return { output: `unsupported storage upgrade argument: ${unsupported}\n${STORAGE_USAGE}`, exitCode: 2 };
+    const { upgradeStorage } = await import("./upgrade.js");
+    try {
+      const report = await upgradeStorage({ stateRoot: join(repoRoot, isolation.stateRoot),
+        processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan") }, clock);
+      return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
+        `storage upgrade: ${report.state} (v${String(report.fromSchemaVersion)} → v${String(report.toSchemaVersion)})`,
+        `imported keys: ${report.importedKeys.join(", ")}`,
+        `sources: ${report.sourceFiles.join(", ")}`,
+        `retained historical exposure: ${report.historicalExposure.join(", ")}`,
+        `tombstone backfill: roots ${String(report.tombstoneBackfill.fromRoots)}, reconstructed ${String(report.tombstoneBackfill.fromReconstructedRoots)}, unknown ${String(report.tombstoneBackfill.unknown)}, missing runNumber ${String(report.tombstoneBackfill.missingRunNumber)}`,
+        `orphan gate records removed: ${String(report.orphanGateRecordsRemoved)}`,
+        report.credentials === "verified" ? "credentials: verified" : report.credentials === "pending" ? "credentials: pending" : "credentials: empty",
+        `cleanup required in .env: ${report.envKeysToRemove.join(", ")}`,
+      ].join("\n"), exitCode: 0 };
+    } catch (error) {
+      // Unvalidated parser/OS error text can contain input. Emit only a named outcome.
+      const code = error instanceof Error ? /^([a-z]+(?:-[a-z]+)+)(?:[: {]|$)/u.exec(error.message)?.[1] : undefined;
+      const candidateKey = error instanceof Error ? /\{ key: ([A-Za-z0-9.*_-]+) \}/u.exec(error.message)?.[1] : undefined;
+      const key = candidateKey !== undefined && SETTINGS_CATALOG.some((row) => row.key === candidateKey
+        || (row.key.startsWith("urls.") && candidateKey.startsWith(`${row.key}.`))) ? candidateKey : undefined;
+      const report = { state: "refused-or-incomplete", code: code ?? "upgrade-validation-failed", ...(key === undefined ? {} : { key }) };
+      return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: ${report.code}${key === undefined ? "" : ` { key: ${key} }`}; inspect state before retrying`, exitCode: 1 };
+    }
+  }
   if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot);
   if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot);
   if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot);

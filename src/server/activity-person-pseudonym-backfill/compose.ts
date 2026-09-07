@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -5,7 +6,6 @@ import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js"
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { RunIdSchema } from "../../domain/ids.js";
 import { assertNoMigratedEnvironmentKeys, requireActivityPersonPseudonymDomain } from "../../domain/secrets.js";
-import { settingsRootPaths } from "../../domain/config/settings-root.js";
 import {
   ActivityPersonPseudonymRunSetSchema,
 } from "../../domain/trust/activity-person-pseudonym.js";
@@ -14,8 +14,7 @@ import {
   type ActivityPersonPseudonymBackfillReport,
 } from "../../domain/trust/activity-person-pseudonym-backfill.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { createProtectedSettingsFileAuthority } from "../../infra/config/settings-file.js";
-import { createJournaledProtectedSecretSource } from "../settings-runtime.js";
+import { createCredentialSecretSource } from "../settings-runtime.js";
 import { createActivityPersonPseudonymBackfillService } from "./service.js";
 
 export const ACTIVITY_PERSON_PSEUDONYM_BACKFILL_USAGE =
@@ -111,12 +110,9 @@ export function composeActivityPersonPseudonymBackfillCommand(input: Readonly<{
     input.clock ?? systemClock,
   );
   try {
-    const protectedAuthority = createProtectedSettingsFileAuthority({
-      path: settingsRootPaths(stateRoot).ordinary,
-      assertWriteIdAvailable: () => undefined,
-    });
+    const protectedAuthority = createCredentialStore({ stateRoot });
     const writeCapability = database.createActivityPersonPseudonymBackfillWriteCapability(
-      requireActivityPersonPseudonymDomain(createJournaledProtectedSecretSource({ file: protectedAuthority, database })),
+      requireActivityPersonPseudonymDomain(createCredentialSecretSource(protectedAuthority)),
     );
     const service = createActivityPersonPseudonymBackfillService({
       authority: database.authority,

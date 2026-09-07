@@ -174,3 +174,96 @@ its check. The exact candidate and any materially changed integration tree addit
 acceptance. Parity may refresh generated provenance caused by the candidate, but the only permitted
 non-generated body change is the 12 exact `settings`/`storage-settings` triples showing `Saved`; any
 other body, layout, control, accessibility, mobile or coarse-pointer change stops the task.
+
+### Task 1.6.6 implementation evidence — in progress
+
+Approved plan: `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The requested branch
+`codex/phase-1-6-sqlite-settings` was created at that exact commit in
+`/Users/julianhein/Projects/hr-worktree-sqlite-settings`. The operator's subsequent plan-folder
+restructure was incorporated through `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`; the original
+plan commit remains an ancestor and the four existing implementation files were hash-verified
+unchanged during that integration. Implementation remains uncommitted; this is not a candidate
+or completion record. Local master integration requires fresh native `sup_review` PASS on the
+committed candidate plus every required gate. No push is authorized.
+
+**Approved amendment.** On 2026-09-06 the operator answered: “Recover known fields; record missing
+runNumber.” Released queued roots have no runNumber. D332 §D332.7 and the D332 decision pointer
+now record partial recovery, final evidenced attempt, NULL runNumber, and explicit doctor findings.
+Zero-root counts remain distinct from missing-runNumber counts. No guessed ordinal is admitted.
+
+**Implementation checkpoints.** Step 1.6.6.1 is verified: schema/admission/recovery focused
+checks, typecheck and lint pass. Step 1.6.6.2 is verified by SQLite atomicity, rollback, CAS and replay checks in
+`/tmp/hr-settings-settings-closure.log`. Step 1.6.6.3 is verified by all 16 private-store checks and the combined real-restore
+uncertain-audit proof in that same run. Step 1.6.6.4 is verified by all 116 upgrade/source/recovery checks in
+`/tmp/hr-settings-recovery-closure.log`. Step 1.6.6.5 is verified by the 33 guard checks in `/tmp/hr-settings-guard-closure.log`,
+rebound consumer tests and the inspected 12-scene Saved copy update. Steps 1.6.6.1–1.6.6.5
+remain subject to complete candidate gates and independent review; the task checkboxes stay open. Step 1.6.6.6 still requires the final complete gates, candidate
+commit and independent review. Step 1.6.6.7 has not begun: no operator backup or conversion,
+master merge or cleanup has occurred.
+
+The independent store owns its private history and exact replay. SQLite restore does not alter
+it. Historical readers under `infra/compat` are permanent where required for backups; only the four
+A0/A1 adapters enumerated in guards §5.2 expire in Phase 2.6. The frozen D331 file writer now lives
+only in `tests/fixtures/d331-settings-file.ts`; its historical producer tests are not evidence of
+the new runtime protocol. Runtime ordinary settings use SQLite exclusively.
+
+#### Proof mapping
+
+Paths below are relative to `tests/unit/` unless otherwise stated. Retained tests are checked
+again by final full coverage/architecture gates; focused passes below describe iteration evidence,
+not candidate acceptance. Replacement rows implement the approved D336 disposition above.
+
+| D331 rows | Current oracle / negative control |
+| --- | --- |
+| P1–P6 | `architecture/settings-catalog.test.ts`, `architecture/runtime-environment-coverage.test.ts`, `config.test.ts`: missing/extra catalog leaves, illegal ownership, hostile environment and fingerprint/provenance exclusion. |
+| P7, P21–P22 | `sqlite-settings-authority.test.ts`, `config/credential-store.test.ts`, `server/settings-runtime-reader.test.ts`: marked SQL audit, exact/divergent private replay, retained identity history, no value-derived public comparator. |
+| P8–P10 | `config.test.ts`, `architecture/settings-catalog.test.ts`, `config-snapshot-generations.test.ts`: protected paths cannot enter ordinary settings/config; historical reads do not admit new writes. |
+| P11, P26–P27 | `sqlite-authority-database.test.ts`, `sqlite-settings-authority.test.ts`, `server/settings-runtime-reader.test.ts`: protected singleton absent; SQLite current values atomic; independent credentials survive missing/restored SQL and revision-one paths create nothing. |
+| P12–P14 | `server/settings-runtime-reader.test.ts`, `server/bff-flow.test.ts`, `architecture/strict-boundary-schemas.test.ts`: exhaustive presence-only readback, unchanged facts/schema identities, injected unknown leaves refused. |
+| P15 | `storage-backup.test.ts`, `storage-backup-command.test.ts`, `sqlite-settings-authority.test.ts`: v3 database-only sets; strict v1/v2 readers; real restore leaves credentials untouched; secret canaries absent. |
+| P16 | `protected-settings-doctor.test.ts`, `storage-upgrade.test.ts`, `sqlite-settings-authority.test.ts`: direct independent presence, read-only observations and uncertain-audit/restore readback. |
+| P17–P20 | Existing diagnostic/export tests and `architecture/no-secret-values-in-logs.test.ts`, `architecture/secrets-single-source.test.ts`, `worker-composition.test.ts`: unchanged sinks and forbidden environment publication. |
+| P23–P25 | `config/credential-store.test.ts` replaces the runtime shared-file protocol with private ancestry/mode/inode/lock/dead-owner/rename/replay checks. `storage-upgrade-sources.test.ts` and `storage-upgrade-d331.test.ts` retain A0/A1 historical interruption admission at the real upgrade boundary. |
+| P28–P31 | `sqlite-settings-authority.test.ts`, `config/credential-store.test.ts`, `command-kernel.test.ts`: request validation, CAS, clear, missing/unknown, direct replay, ordinary rollback and independent uncertain credential settlement. |
+| P32–P39 | Existing catalog/environment/snapshot/target guards and `config.test.ts`, `secure-env-bootstrap.test.ts`, `dry-run-scenario-composition.test.ts`, `worker-composition.test.ts`, `server/compose-real-port.test.ts`; source and reader fixtures deliberately rebound. |
+| P40/A8 | Exactly 12 settings/storage-settings desktop scenes: intended red, scoped reference update and visual inspection completed; full parity remains required. Full Settings expansion remains Phase 3.1. |
+| P41 | `architecture/redaction-surface-scan.test.ts` and strict schemas; new migration/doctor facts are counts, closed missing-field/exposure literals, run UUIDs, controlled key names and basenames. No protected values or comparators are served. |
+
+| D332 rows | Current oracle / negative control |
+| --- | --- |
+| M1, M3–M5, M9, M19, M21–M22 | `storage-upgrade-admission.test.ts`, `sqlite-authority-database.test.ts`, `server/compose-real-port.test.ts`, `storage-backup.test.ts`, `storage-restore-drill.test.ts`, `storage-backup-command.test.ts`: all 23 admitted schemas; gap/ahead/divergent/live/stale/corrupt rejection, actual downgrade refusal and strict historical restore; unsupported flags refused before state access. |
+| M2, M13–M14 | `storage-upgrade.test.ts`, `storage-upgrade-tombstones.test.ts`, existing snapshot-generation tests: stale claimed row and historical snapshot bytes preserved; retained exposure named without its value; span bytes unchanged; undeclared retirement still refuses. |
+| M6 | `storage-upgrade-sources.test.ts`: all three constructible numeric overlaps test equal/unequal/invalid inputs; leaf-disjoint historical CRM routes are preserved beside the imported entry. Historical protected-name/URL overlaps excluded by the old strict grammar are not fabricated as accepted records. |
+| M7–M8, M10, M15–M17, M24, M27 | Replaced by `storage-upgrade.test.ts`, `storage-upgrade-admission.test.ts`, `storage-upgrade-d331.test.ts`, `storage-upgrade-sources.test.ts`, `config/credential-store.test.ts`, `sqlite-settings-authority.test.ts`: SQL rollback and post-commit retry; independent rename/audit uncertainty; real SQLite restore and exact/divergent replay; private A0/A1 source authentication; no source rewrite or runtime file matrix. |
+| M11–M12 | `storage-upgrade-tombstones.test.ts`: normal/reconstructed/absent/duplicate/mismatched roots; approved partial backfill; attempt watermark; NULL runNumber; doctor findings; rollback; restored trigger refuses every ordinal and identity edit. |
+| M18 | `storage-backup-command.test.ts`: real restore drops authority while retaining a fenced stream; doctor marks possibleExternalWrite; service reads absent across repeated opens; only a new run UUID can be enqueued. Registered person-lookup currently contains no transaction node; no new write node is invented. `write-sequencer.test.ts` executes unseen-key probes using each of the three registered separations transaction policies; a changed policy or omitted initial probe is red. Person-lookup’s zero-transaction graph is asserted, not assumed. |
+| M20 | `storage-upgrade-environment.test.ts`: all 45 migration inputs and all 50 cleanup names, five retired model names, provider exclusion, source-byte preservation and invalid/duplicate/pseudonym-pair refusals; runtime migrated-name refusal remains in bootstrap/secret tests. |
+| M23 | `storage-upgrade.test.ts`: remove exactly one tombstoned gate prefix; retain other gate bytes and the settled tally; journal the removal count and retain delete protection. |
+| M25 | `storage-upgrade.test.ts` plus existing real-port/kernel/run-authority tests: actual dashboard activation after conversion; ordinary revision and values match; stale runtime claims/pool starts refuse. |
+| M26 | Strict migration/doctor report schemas; possibleExternalWrite is an optional positive closed literal derived only from fenced spans; tombstone finding code/field names and historicalExposure are closed literals, UUIDs are identifier-free. Redaction and strict-boundary guards remain required. |
+
+#### Iteration evidence and remaining gates
+
+All logs below are local `/tmp/` files from the uncommitted worktree; final candidate results must
+replace this provisional provenance with the tested commit/tree.
+
+- `/tmp/hr-settings-coverage-iteration.log`: 5,391 pass / 5 failures across four suites. Stale
+  fixture outputs, missing worktree `.env`, and one architecture timeout were investigated;
+  `/tmp/hr-settings-backfill-iteration.log` subsequently passed all 67 targeted checks.
+- `/tmp/hr-settings-tombstones-proof2.log`: 73 pass across backfill, admission and span reconciliation.
+- `/tmp/hr-settings-combination-proof.log`: 44 pass, including uncertain audit → real CLI restore →
+  divergent refusal → exact retry → doctor/next-use without credential or backup mutation.
+- `/tmp/hr-settings-environment-proof2.log`: six complete-environment/refusal checks pass.
+- `/tmp/hr-settings-doctor-guard-fixes.log`: 161 doctor, recovery, strict-schema and redaction checks pass.
+- `/tmp/hr-settings-historical-invariants.log`: 66 historical backup/restore/admission checks pass.
+- `/tmp/hr-settings-closure-focused.log`: 88 schema, preservation, activation and CLI restore checks pass.
+- `/tmp/hr-settings-m18-proof.log`: 59 restore/probe checks pass, including all three registered separations policies and person-lookup’s zero-transaction assertion.
+- `/tmp/hr-settings-settings-closure.log`: 133 settings/credential/kernel/reader/real-port checks pass.
+- Parity: `/tmp/hr-settings-parity-red.log` captures intended failure;
+  `/tmp/hr-settings-parity-update.log` refreshed only the 12 selected PNG/a11y bodies, all visually
+  inspected. The filtered wrapper exited 1 because full-suite annotation membership was absent;
+  this is not a full parity pass. Full candidate parity is outstanding.
+
+Fresh native independent review, candidate and integration full gates, merged-code operator-root
+backup/plan/conversion/doctor, final evidence and owned supporting-worktree cleanup remain open.
+No operator `.env` or legacy production file has been changed.

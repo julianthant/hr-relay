@@ -31,7 +31,7 @@ import {
 import {
   SettingsRootAuthoritySchema,
   settingsRootPaths,
-} from "../../src/domain/config/settings-root.js";
+} from "../../src/infra/compat/d331-settings-root.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import {
@@ -44,7 +44,7 @@ import {
   createSettingsFileAuthority,
   createProtectedSettingsFileAuthority,
   type SettingsFileOperations,
-} from "../../src/infra/config/settings-file.js";
+} from "../fixtures/d331-settings-file.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { settingsSetOperations } from "./fixtures/settings-operation-fixtures.js";
 
@@ -764,7 +764,7 @@ describe("D331 process-loss recovery for both document targets", () => {
     occurrence?: number;
     action: "read" | "apply" | "rollback";
   }>) {
-    const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/settings-file.ts")).href;
+    const moduleUrl = pathToFileURL(join(process.cwd(), "tests/fixtures/d331-settings-file.ts")).href;
     const factory = options.target === "ordinary" ? "createSettingsFileAuthority" : "createProtectedSettingsFileAuthority";
     return spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
       import { writeFileSync } from "node:fs";
@@ -902,7 +902,7 @@ describe("D331 process-loss recovery for both document targets", () => {
         const fileName = target === "ordinary" ? "settings.json" : "protected.json";
         const documentBefore = readFileSync(join(dirname(path), fileName));
         const killDestination = crashStage === "document" ? fileName : crashStage;
-        const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/settings-file.ts")).href;
+        const moduleUrl = pathToFileURL(join(process.cwd(), "tests/fixtures/d331-settings-file.ts")).href;
         const factory = target === "ordinary" ? "createSettingsFileAuthority" : "createProtectedSettingsFileAuthority";
         const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
           import { renameSync } from "node:fs";

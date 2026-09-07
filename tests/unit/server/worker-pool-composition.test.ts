@@ -32,6 +32,7 @@ import { poolWorkerId } from "../../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  derivePersistedSettingsFingerprint,
   deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
@@ -213,16 +214,15 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     // plus the test-only alias-breaking clock advance around the seam.
     workerRuntime: { pool },
     settings: {
-      reconcilePending: () => undefined,
+      prepare: () => undefined,
       reconcileReplay: () => {
         throw new Error("worker-pool fixture has no persisted settings replay authority");
       },
       apply: (command) => ({
         state: "applied",
         revision: command.target.expectedRevision + 1,
-        settingsFingerprint: "a".repeat(64),
-        rollback: () => undefined,
-        commit: () => undefined,
+        settingsFingerprint: derivePersistedSettingsFingerprint({}),
+        settings: {},
       }),
     },
   });
