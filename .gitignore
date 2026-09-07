@@ -6,6 +6,8 @@
 # Private test inputs (D341): live subject values and private document paths.
 # The tracked example carries placeholders only.
 config/test-data.local.json
+# Staging file of an interrupted private write (same directory, mode 0600).
+config/.test-data.local.*.tmp
 
 # Node
 node_modules/

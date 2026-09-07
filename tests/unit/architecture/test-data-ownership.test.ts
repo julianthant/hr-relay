@@ -18,6 +18,17 @@ import { TEST_DATA_CONFIG_PATH, TEST_DATA_LOCAL_CONFIG_PATH, TEST_DATA_LOCAL_EXA
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const UNIT_ONLY_ROOTS = ["tests/unit/fixtures/", "tests/unit/helpers/"];
+const ARCHITECTURE_HELPERS_ROOT = "tests/unit/architecture/helpers/";
+/**
+ * The cross-tier importers of architecture helpers that tests/fixtures/README.md records. They
+ * predate D341 and stay until `descriptor-fixtures` moves with its owner; any other importer,
+ * or a recorded one that disappears, fails here so the README never understates the consumers.
+ */
+const RECORDED_ARCHITECTURE_HELPER_IMPORTS: readonly { importer: string; module: string }[] = [
+  { importer: "tests/fixtures/intake-workflow-fixture.ts", module: "tests/unit/architecture/helpers/descriptor-fixtures" },
+  { importer: "tests/scenario/fixture-graph.scenario.test.ts", module: "tests/unit/architecture/helpers/descriptor-fixtures" },
+  { importer: "tests/scenario/operator-lifecycle.walk.test.ts", module: "tests/unit/architecture/helpers/descriptor-fixtures" },
+];
 const SHARED_ROOTS = ["tests/fixtures", "tests/helpers"];
 const CROSS_TIER_ROOTS = ["tests/scenario", "tests/integration", "tests/parity", "tests/fixtures", "tests/helpers", "scripts", "src"];
 /** Seams a shared fixture may never touch at import time. */
@@ -67,6 +78,22 @@ describe("D341 test-data ownership", () => {
     assert.deepEqual(violations, [], "move the fixture to tests/fixtures or tests/helpers and record it in tests/fixtures/README.md");
   });
 
+  it("cross-tier imports of architecture helpers are exactly the recorded set", () => {
+    const observed: { importer: string; module: string }[] = [];
+    for (const path of sourceFiles(CROSS_TIER_ROOTS)) {
+      for (const { resolved } of importsOf(path)) {
+        if (resolved.startsWith(ARCHITECTURE_HELPERS_ROOT)) observed.push({ importer: path, module: resolved.replace(/\.js$/u, "") });
+      }
+    }
+    const key = (entry: { importer: string; module: string }) => `${entry.importer} -> ${entry.module}`;
+    assert.deepEqual(observed.map(key).toSorted(), RECORDED_ARCHITECTURE_HELPER_IMPORTS.map(key).toSorted(),
+      "record the importer in tests/fixtures/README.md and RECORDED_ARCHITECTURE_HELPER_IMPORTS, or drop the stale record");
+    const readme = readFileSync(join(REPO_ROOT, "tests/fixtures/README.md"), "utf8");
+    for (const entry of RECORDED_ARCHITECTURE_HELPER_IMPORTS) {
+      assert.ok(readme.includes(entry.importer), `tests/fixtures/README.md must name ${entry.importer}`);
+    }
+  });
+
   it("shared fixtures and helpers stay pure at import", () => {
     const files = sourceFiles(SHARED_ROOTS);
     assert.ok(files.length > 10, "shared fixtures exist");
@@ -87,6 +114,7 @@ describe("D341 test-data ownership", () => {
     assert.ok(visible.has(TEST_DATA_LOCAL_EXAMPLE_PATH), `${TEST_DATA_LOCAL_EXAMPLE_PATH} must be visible to git`);
     assert.equal(visible.has(TEST_DATA_LOCAL_CONFIG_PATH), false, `${TEST_DATA_LOCAL_CONFIG_PATH} must never be visible to git`);
     assert.equal(isIgnored(TEST_DATA_LOCAL_CONFIG_PATH), true, `${TEST_DATA_LOCAL_CONFIG_PATH} must be gitignored`);
+    assert.equal(isIgnored(`${dirname(TEST_DATA_LOCAL_CONFIG_PATH)}/.test-data.local.00000000-0000-4000-8000-000000000000.tmp`), true, "an orphaned private staging file must be gitignored");
     assert.equal(isIgnored(TEST_DATA_CONFIG_PATH), false);
     assert.equal(isIgnored(TEST_DATA_LOCAL_EXAMPLE_PATH), false);
 

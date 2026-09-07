@@ -3,6 +3,7 @@ import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, Positi
 import { deepFreeze } from "../immutability.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { KualiDocumentNumberSchema } from "../ui/kuali-document-identity.js";
+import { PROTECTED_SETTINGS_SET_MARKER } from "./protected-settings.js";
 
 /**
  * D341 — the FROZEN protected-settings schema family that existed while the two
@@ -65,6 +66,42 @@ export const LegacyProtectedSettingsPatchSchema = z.strictObject({
   personLookupCanaryEid: operation(LegacyProtectedValueSchemas.personLookupCanaryEid),
 });
 export type LegacyProtectedSettingsPatch = z.infer<typeof LegacyProtectedSettingsPatchSchema>;
+
+function markedOperation() {
+  return z.union([
+    z.strictObject({ set: z.literal(PROTECTED_SETTINGS_SET_MARKER) }),
+    z.strictObject({ clear: z.literal(true) }),
+  ]).optional();
+}
+
+/**
+ * The journal-safe form every pre-D341 protected command was written in. Durable
+ * `commands` / `command_audits` rows and D331 journals carry THIS shape when they
+ * name a retired entry; the live `MarkedProtectedSettingsPatchSchema` refuses those
+ * rows, so historical readers parse them here (`commands-history.ts`).
+ */
+export const LegacyMarkedProtectedSettingsPatchSchema = z.strictObject({
+  ucpathUserId: markedOperation(),
+  ucpathPassword: markedOperation(),
+  timekeeperName: markedOperation(),
+  sharepointOnboardingRosterUrl: markedOperation(),
+  activityPersonPseudonym: markedOperation(),
+  separationsKualiFinalizationCanaryDocumentNumber: markedOperation(),
+  personLookupCanaryEid: markedOperation(),
+});
+export type LegacyMarkedProtectedSettingsPatch = z.infer<typeof LegacyMarkedProtectedSettingsPatchSchema>;
+
+/** Test-only replay of the pre-D341 marking step; never emits a value. */
+export function legacyMarkProtectedSettingsPatch(input: unknown): LegacyMarkedProtectedSettingsPatch {
+  const entries = LegacyProtectedSettingsPatchSchema.parse(input);
+  return deepFreeze(LegacyMarkedProtectedSettingsPatchSchema.parse(Object.fromEntries(
+    LegacyProtectedSettingsNameSchema.options.flatMap((name) => {
+      const entry = entries[name];
+      if (entry === undefined) return [];
+      return [[name, "set" in entry ? { set: PROTECTED_SETTINGS_SET_MARKER } : { clear: true }]];
+    }),
+  )));
+}
 
 /**
  * The exact hash every pre-D341 `protected.json`, D331 journal and credential

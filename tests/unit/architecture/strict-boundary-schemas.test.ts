@@ -1573,8 +1573,8 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // D341 test-data inputs: `TestDataLocalInputEntry` is a generic projection of
   // the schema-derived `TestDataLocalInputs` (one entry, keyed by input name),
   // and `TestDataInputSource` is the in-process read port over the ignored
-  // private file — a port like the credential authority above, whose data
-  // (`TestDataLocalConfigSchema`) is catalogued.
+  // private file — a port like the credential authority above. Its data schema
+  // (`TestDataLocalConfigSchema`) is proven at its owner, tests/unit/test-data-config.test.ts.
   "src/domain/test-data.ts:TestDataLocalInputEntry",
   "src/domain/test-data.ts:TestDataInputSource",
   "src/domain/workflow/graph.ts:ProofOf",

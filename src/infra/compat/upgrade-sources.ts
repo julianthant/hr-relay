@@ -28,7 +28,7 @@ import { CommandRequestSchema, CommandAuditRecordSchema } from "../../domain/com
 import { ProtectedSettingsCurrentRecordSchema } from "../../domain/authority.js";
 import { requireJournaledProtectedSettings } from "./d331-protected-journal.js";
 import { recoverSettingsSources } from "./settings-source-recovery.js";
-import { PreFloorSettingsCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorSettingsCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { SettingsFileRecordSchema as PreFloorRecordSchema, SETTINGS_SCHEMA_HASH as PRE_FLOOR_SCHEMA_HASH } from "./pre-floor-settings.js";
 
 /** D336 operator-approved historical names: report cleanup, never decode/import values. */
@@ -163,8 +163,9 @@ function legacyJson(database: DatabaseSync | undefined, table: "commands" | "com
 }
 function authenticateProtected(record: ProtectedStoreRecord, database: DatabaseSync | undefined): void {
   requireJournaledProtectedSettings(record, {
-    commands: { get: (id) => { const row = legacyJson(database, "commands", id); return row === undefined ? undefined : CommandRequestSchema.parse(row); } },
-    commandAudits: { findByCommand: (id) => { const row = legacyJson(database, "command_audits", id); return row === undefined ? undefined : CommandAuditRecordSchema.parse(row); } },
+    // D341: a pre-D341 journal names retired entries; read it through the frozen arm, then refuse by name below.
+    commands: { get: (id) => { const row = legacyJson(database, "commands", id); return row === undefined ? undefined : z.union([CommandRequestSchema, HistoricalProtectedSettingsCommandSchema]).parse(row); } },
+    commandAudits: { findByCommand: (id) => { const row = legacyJson(database, "command_audits", id); return row === undefined ? undefined : z.union([CommandAuditRecordSchema, HistoricalProtectedSettingsAuditSchema]).parse(row); } },
     protectedSettingsCurrent: { get: () => { const row = legacyJson(database, "protected_settings_current", "current"); return row === undefined ? undefined : ProtectedSettingsCurrentRecordSchema.parse(row); } },
   });
 }

@@ -8,10 +8,11 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
-import { SettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema, markSettingsCommand, deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
+import { CommandRequestSchema, SettingsCommandRequestSchema } from "../../src/domain/commands.js";
+import { HistoricalProtectedSettingsCommandSchema, deriveJournaledSettingsCommandFingerprint, journaledSettingsCommand } from "../../src/domain/commands-history.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
 // D341: D331 sources belong to the LEGACY protected family; the fixture writes what the pinned reader accepts.
-import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, RETIRED_TEST_TARGET_PROTECTED_NAMES, legacyProtectedSettingsReadback } from "../../src/domain/config/protected-settings-legacy.js";
+import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, RETIRED_TEST_TARGET_PROTECTED_NAMES, legacyMarkProtectedSettingsPatch, legacyProtectedSettingsReadback } from "../../src/domain/config/protected-settings-legacy.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { createCredentialStore } from "../../src/infra/config/credential-store.js";
@@ -31,10 +32,11 @@ function fixture(target: Target, committed: boolean, protectedEntries: Record<st
   const envelope = { commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "settings-surface", family: "settings", target: { expectedRevision: 1 } };
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
   const request = target === "ordinary" ? SettingsCommandRequestSchema.parse({ ...envelope, type: "apply-settings", payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } })
-    : ProtectedSettingsCommandRequestSchema.parse({ ...envelope, type: "apply-protected-settings", payload: { protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(),
-      // The live command grammar no longer names retired entries; the D331 file itself (below) still may.
-      entries: Object.fromEntries(Object.entries(protectedEntries).filter(([name]) => !(RETIRED_TEST_TARGET_PROTECTED_NAMES as readonly string[]).includes(name))) } });
-  const commandFingerprint = deriveSettingsCommandFingerprint(request);
+    // D341: a pre-D341 journal wrote the protected command in its marked seven-name form, so the
+    // journaled command and the D331 file agree on every name, retired ones included.
+    : HistoricalProtectedSettingsCommandSchema.parse({ ...envelope, type: "apply-protected-settings", payload: { protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(),
+      entries: legacyMarkProtectedSettingsPatch(protectedEntries) } });
+  const commandFingerprint = deriveJournaledSettingsCommandFingerprint(request);
   const publication = request.type === "apply-settings"
     ? createSettingsFileAuthority({ path: ordinaryPath, validateCandidate: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload })
     : createProtectedSettingsFileAuthority({ path: ordinaryPath, assertWriteIdAvailable: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload, entries: protectedEntries, updatedAt: now });
@@ -50,7 +52,7 @@ function fixture(target: Target, committed: boolean, protectedEntries: Record<st
     db.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,30,7,?)").run(now);
     db.exec(`PRAGMA user_version=30; PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
     if (committed) {
-      const marked = markSettingsCommand(request); const auditId = randomUUID();
+      const marked = journaledSettingsCommand(request); const auditId = randomUUID();
       const affected = { family: target === "ordinary" ? "settings" : "protected-settings", revision: 2 };
       const result = "settingsFingerprint" in record
         ? { state: "applied", commandId: request.commandId, affectedTargets: [affected], restartRequired: true, settingsRevision: 2, settingsFingerprint: record.settingsFingerprint }
@@ -73,6 +75,15 @@ describe("D341 retired test-target entries in D331 sources", () => {
     const value = name === "personLookupCanaryEid" ? "10000001" : "4000001";
     const f = fixture("protected", true, { ucpathPassword: { set: "synthetic-d331-private-value" }, [name]: { set: value } });
     const before = f.snapshot(); const databaseBytes = readFileSync(f.path);
+    // The journaled row really is a pre-D341 row: only the frozen historical arm reads it.
+    const db = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      const row = z.object({ record_json: z.string() }).parse(db.prepare("SELECT record_json FROM commands").get());
+      const journaled: unknown = JSON.parse(row.record_json);
+      assert.equal(CommandRequestSchema.safeParse(journaled).success, false, "the live grammar refuses the seven-name row");
+      assert.equal(HistoricalProtectedSettingsCommandSchema.safeParse(journaled).success, true, "the frozen arm reads it");
+      assert.equal(row.record_json.includes(value), false, "the journal never held the value");
+    } finally { db.close(); }
     await backupStoppedAuthority(f.root, clock);
     for (const plan of [true, false]) {
       await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), (error: unknown) => {

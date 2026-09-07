@@ -1,4 +1,4 @@
-import { PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { z } from "zod";
 import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
@@ -260,8 +260,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   leases: WorkerLeaseRecordSchema,
   dependencies: DependencyRecordSchema,
   delegation_manifests: DelegationManifestSchema,
-  commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema]),
-  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema]),
+  // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
+  commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
+  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
   bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
