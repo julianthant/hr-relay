@@ -175,7 +175,7 @@ acceptance. Parity may refresh generated provenance caused by the candidate, but
 non-generated body change is the 12 exact `settings`/`storage-settings` triples showing `Saved`; any
 other body, layout, control, accessibility, mobile or coarse-pointer change stops the task.
 
-### Task 1.6.6 implementation evidence — correcting independent review findings
+### Task 1.6.6 implementation evidence — awaiting fresh complete review
 
 Approved plan: `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`. The requested branch
 `codex/phase-1-6-sqlite-settings` was created at that exact commit in
@@ -336,3 +336,28 @@ The private binding advances no current credential revision, leaks no comparator
 rolled back by SQLite. A new full reviewer must independently inspect the complete changed candidate
 and reconcile R1/R2. The predecessor review's covered sections are not a substitute for complete
 review. No implementation has been merged and no operator conversion has occurred.
+
+
+#### Repaired candidate — awaiting fresh complete review
+
+Current implementation head: `4646ab6cede1fea82e38344cc26dad8c4a071533`; complete candidate base remains
+`e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`, approved plan remains `9969857a79ba06d07a88b71ba2f0d4d64dc9967e`.
+Both first-review findings remain pending independent verification. A new complete review is required
+because the predecessor compacted and the repair changes import replay/order across private storage
+and SQLite. It must independently cover the whole candidate, not approve only this correction.
+
+All repaired-candidate gates passed on unchanged input fingerprint
+`a156262bdde94dc67015f475ca11a18b6a48d45f0be93335f153a1e599553740`; exact per-path hashes are retained in
+`/tmp/hr-settings-r2-inputs.json`. Logs `/tmp/hr-settings-r2-{typecheck,lint,coverage,architecture,manifest,catalog,roadmap,parity}.log`
+all report exit 0. Coverage: 5,431 tests / 433 files, statements 85.78%, branches 77.32% (report-only),
+functions 89.79%, lines 87.92%, every configured floor and suite-size check pass. Coverage used four
+workers without compiler/linter contention. Standalone architecture: 827 / 79. Full parity was rerun:
+259 desktop cases, still only the 12 approved PNG/a11y pairs changed against the candidate base.
+Generation/freshness, staged diff, nine instruction pairs, project chain sizes and eight relative
+links passed. `/tmp/hr-settings-review-fixes-combinations.log` passes 75 focused tests, including
+real SIGKILL recovery of a staged private binding, its exact replay and divergent refusal without
+applying a credential. The full gate includes these cases and every retained proof.
+
+This evidence-only recording changes no implementation, tests, configuration, dependencies or
+other gate inputs; D191 permits reuse of those exact repaired-candidate results. Roadmap freshness
+and diff checks run again. Task completion remains open and operator state remains untouched.
