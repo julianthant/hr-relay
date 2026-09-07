@@ -293,3 +293,11 @@ is a fresh bounded assignment: the fix commit plus the six carried limits.
 
 **Candidate refrozen for round 3:** implementation head `63aa8cca6`, gates green (438 files / 5510 tests,
 parity 259, no reference change); this recording commit is the round-3 tip.
+
+**Review round 3 (2026-09-07): PASS (bounded)** on candidate `fff3be61f` — the fix commit and the six
+carried limits all inspected or independently rerun; no required finding; advisories A8 (vacuous
+never-by-value proofs) and A9 (key refusal wording) fixed in `1e5b4b7b4`. Ledger in
+`ref guards-and-tests` §10.5. Round 4 is a bounded fresh review of the A8/A9 delta only.
+
+**Candidate refrozen for round 4:** implementation head `1e5b4b7b4`, gates green (438 files / 5510 tests,
+parity 259, no reference change); this recording commit is the round-4 tip.

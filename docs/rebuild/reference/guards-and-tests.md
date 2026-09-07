@@ -2365,6 +2365,30 @@ the two-worker adapter: 438 files / 5510 tests passed, statements 85.86 %, branc
 functions 89.86 %, lines 87.98 % (floors met, exit 0); `suite-size` unit 341 / scenario 17 /
 architecture 80; `npm run test:parity` 259 passed with no reference change; generated-output checks
 current; docs audit PASS.
+**Review round 3 (2026-09-07): PASS (bounded scope)** on candidate `fff3be61f` (implementation head
+`63aa8cca6`). Fresh context; scope was the A5–A7 fix commit plus the six limits round 2 carried.
+Reviewer verified A5/A6/A7 fixed and red-capable; independently reran typecheck (exit 0), lint
+(exit 0) and `npm run test:parity` (259 passed, `tests/parity` unchanged, tolerance unchanged versus
+base); read the gate logs (438 files / 5510 tests, floors 85.86 / 77.49 / 89.86 / 87.98, exit 0;
+suite-size 341/17/80); read the three docs diffs against code; read every carried test diff; confirmed
+the control → infra import is a permitted downward edge with no ratchet change; confirmed the A2
+comment matches the code. No required finding. Whole-task acceptance rests on rounds 1–3 together
+(round 2 inspected every source/config/script diff and P1–P8; round 3 closed its limits).
+Advisories, fixed in `1e5b4b7b4`:
+- A8 — the "never by value" proofs for a malformed configured number and a malformed EID had become
+  vacuous: the mock source ignored the malformed value, so the absence assertion could not fail.
+  Fixed: each malformed value is written to a real 0600 private file and read through the production
+  loader, which refuses it by key; the unused mock helper is removed.
+- A9 — the duplicate-key scanner called every undecodable key an "invalid string escape", including
+  a raw control character. Fixed: "invalid key string", label only; the control-character case is
+  covered.
+- Unfixed residue reported by round 3: none.
+**Candidate refrozen for review round 4 (2026-09-07) — awaiting independent review** of the A8/A9
+delta only. Implementation head `1e5b4b7b4`; this recording commit is the candidate tip. Gate evidence
+on the `1e5b4b7b4` tree: typecheck clean; lint clean at `--max-warnings 0`; `git diff --check` clean;
+full coverage through the two-worker adapter: 438 files / 5510 tests passed, statements 85.86 %,
+branches 77.49 %, functions 89.86 %, lines 87.98 % (floors met, exit 0); `suite-size` unit 341 /
+scenario 17 / architecture 80; `npm run test:parity` 259 passed with no reference change.
 Review, integration, conversion and cleanup evidence: _pending_ (recorded here when accepted).
 
 **Reset evidence (2026-09-07).** At the operator's explicit request the rebuild database was replaced
