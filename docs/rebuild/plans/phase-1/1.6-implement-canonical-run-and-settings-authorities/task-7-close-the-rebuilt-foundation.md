@@ -23,6 +23,11 @@ identifier remains only in protected settings: no committed registry, plan, migr
 command evidence or review output may contain it. Task 7 records only the stable public label,
 observation date, systems checked, read-only purpose and protected-setting reference.
 
+The operator approved the following handoff refinements in the subsequent skill/plan review session
+on 2026-09-07: the repaired-candidate live route below, secret-free confirmation of private-setting
+application, and reproducible gate commands/configuration. The original scope and pending runtime
+prerequisites remain; this amendment records no new live verification or completed implementation.
+
 ### Assignment, checkout and integration
 
 One supervisor owns the complete close because the deterministic gates, the one upgraded operator
@@ -39,7 +44,23 @@ only after it is verified clean, still at the approved implementation/plan linea
 to the task worktree for every executable, manifest and operational registry field. The task branch
 may differ at that point only in planning or evidence text and in the selected registry entry's
 dated reason/provenance fields; its public label, availability state, workflow kind and protected
-reference must remain identical. Any other difference stops the live lane.
+reference must remain identical. Any other difference stops that equivalence-based live route.
+
+**Repaired-candidate route.** If an admitted repair changes executable/configuration inputs, finish
+its deterministic candidate gates and commit/freeze the exact task candidate first. With exclusive
+use of the clean primary checkout, record its original branch and full HEAD, verify stopped owned and
+foreign runtime processes/locks, and use `git switch --detach <frozen-candidate-sha>` there. The original
+`master` ref must remain unchanged; no merge is performed. Verify candidate HEAD, installed dependency
+compatibility, executable/config/manifest equivalence and the same primary operator-root identity
+before the live pair. Keep the candidate and target exclusive through both runs. Do not copy the
+operator root, rewrite private settings, force checkout, stash another session's files or reset refs.
+After stopping owned runtime and preserving sanitized evidence, restore the recorded original branch
+with `git switch <recorded-branch>` and verify its original HEAD, clean tracked state and unchanged
+ref before normal review/integration. Restore after a failed proof too when safe; a dirty checkout,
+foreign process, ref change or restore failure blocks further work and is reported without force.
+Bind every live result to the frozen candidate, target and observed private-setting state. Subsequent
+behavioral changes invalidate affected proof. The single final reviewer still reviews the complete
+Task-7 candidate and live evidence before merge; temporary candidate execution is not acceptance.
 
 ### Feasibility and actual-target preflight
 
@@ -47,7 +68,7 @@ reference must remain identical. Any other difference stops the live lane.
 | --- | --- | --- |
 | Healthy upgraded authority | Read-only `storage doctor --json` executed during planning at `2026-09-07T09:06:19.861Z`: schema 32, generation 94, `quick_check=ok`, zero invariant or foreign-key violations, reconciled spans, zero pending commands, unresolved write intents and outboxes. The verified generation-91 backup is stale by three generations, which is expected because D322 forbids automatic replacement. | Recheck identity, schema, health, reconciliation, stopped locks/processes and relevant counts before and after the live pair. Do not create a backup merely to make it current. A different schema, unhealthy/unknown state, active foreign process or changed target identity stops the lane. |
 | Runtime environment admission | Planning inspected names only and found all nine Task-6 `migrated-refused` names still in `.env`; normal bootstrap must refuse them before secret or browser access. | Operator removes those names without Task 7 reading, printing, sourcing or rewriting `.env`. Supervisor verifies name absence only before any normal runtime command. Missing cleanup remains `WAITING ON`, never a bypass. |
-| Protected test targets | Planning doctor showed the Separations canary reference present and `personLookupCanaryEid` absent. The operator selected and manually checked a replacement Separations subject; the committed registry still carries only closed references. | Operator applies the selected Separations value if needed and provisions `personLookupCanaryEid` through the existing protected-settings operation, outside agent-visible input/output. Supervisor verifies presence-only readback and then lets each real scenario validate its own subject. Missing/malformed/unavailable input blocks before browser start and is not a failed proof. |
+| Protected test targets | Planning doctor showed the Separations canary reference present and `personLookupCanaryEid` absent. The operator selected and manually checked a replacement Separations subject; the committed registry still carries only closed references. | Operator applies the selected Separations value if needed and provisions `personLookupCanaryEid` through the existing protected-settings operation, outside agent-visible input/output. Supervisor requires a secret-free apply receipt or explicit operator confirmation that the selected change was applied, with observation time and protected-store revision when available; selection or manual testing alone is not confirmation of application. Combine it with presence-only readback and recheck intervening changes before the real scenario. Preserve confirmation while valid; if identity is uncertain, resolve application status without disclosing the value. Missing/malformed/unavailable input blocks before browser start and is not a failed proof. |
 | T1b result and zero-effect proof | `cli dry-run-scenario` selects the one manifest case, runs the production runtime, persists an insert-only `dry_run_scenario_results` row, and compares exact per-run deltas for `write_intents`, `write_attempts` and `durable_outbox`. Person Lookup is the transaction-free `live-read` arm; Separations is the transaction-bearing `dry-run-preview` arm. | Run the two registered labels serially. Require exit 0, verdict `met`, the expected arm/terminal/receipt/checkpoint assertions and exact `0/0/0` deltas in each persisted result. Read back by returned result/run identity through the supported authority repository or an equivalent read-only exact query. A blocked/failed row is evidence, not permission to retry. |
 | Migrated fixture pair | `tests/unit/storage-upgrade.test.ts` owns reproducible temporary-root constructors for a fresh root and a v29 root converted to v32; the wider upgrade/restore suites own preservation and refusal cases. No checked-in operator database is needed. | Re-run and name the exact fresh-root and v29-to-v32 cases, expected schema/generation behavior and commands in the 2.6 handoff. Hand the reproducible fixture recipe and proof locations, never copied operator bytes or a disposable `/tmp` pathname. |
 | Single authorities and secrecy | `no-lifecycle-sql-outside-the-adapter`, `no-secret-values-in-logs`, `redaction-surface-scan`, `sqlite-settings-authority` and `authority-upgrade-adapters-isolated` are active. Their violating fixtures make the principal negative controls red-capable. | Run the focused guards and full architecture lane; reviewer inspects the production closure, guard implementations and injected violations. No grep-only or self-attested audit substitutes for the guards. |
@@ -63,7 +84,8 @@ branch and worktree path absent. These facts are volatile and must be rechecked 
    create the proposed dedicated worktree/branch from the verified approved-plan commit, verify all
    ancestry and plan contents, inventory dirty paths and owned resources, and recheck the primary
    operator root without changing it. Record `WAITING ON` until the nine migrated environment names
-   are absent and both protected canary references are presence-true. Never inspect or echo a value.
+   are absent, both protected canary references are presence-true and application of the selected
+   replacement is confirmed as above. Never inspect or echo a value.
 2. **1.6.7.2 — deterministic authority and handoff proof.** Run the fresh-root and v29-to-v32 fixture
    pair plus the affected upgrade/restore/doctor checks. Run the focused lifecycle SQL, secrecy,
    redaction, SQLite-settings and adapter-isolation guards, including their violating fixtures. Inspect
@@ -72,18 +94,20 @@ branch and worktree path absent. These facts are volatile and must be rechecked 
 3. **1.6.7.3 — pre-live base gate.** With the selected public registry metadata recorded but no
    identifier committed, run typecheck, lint, full coverage/suite size, manifest, store-catalog and
    roadmap freshness, standalone architecture, unchanged desktop parity and diff checks. Coverage
-   runs without compiler/linter contention through an owned temporary config that imports the real
-   worktree `vitest.config.ts` and changes only effective `maxWorkers` to 2, matching Task 6's proven
-   host-safe adapter. Architecture and parity run serially because Task 6 evidenced their contention.
+   runs without compiler/linter contention through the reproducible two-worker config below, which
+   imports the actual checkout config and changes only root/per-project worker counts. Architecture
+   and parity run serially because Task 6 evidenced their contention.
    Any parity reference body change is out of scope.
-4. **1.6.7.4 — actual-root live pair.** Reverify primary checkout/code/config equivalence, stopped
-   processes, exact operator-root identity, environment-name absence and presence-only canary state.
+4. **1.6.7.4 — actual-root live pair.** Select the equivalence-based or repaired-candidate route above.
+   Reverify exact executable identity, stopped processes, operator-root identity, environment-name
+   absence, presence-only canary state and still-valid confirmation of the selected application.
    Run `npm run cli -- storage doctor --json`, then
    `npm run cli -- dry-run-scenario person-lookup --subject person-lookup-canary`, then
    `npm run cli -- dry-run-scenario separations --subject finalization-canary`, one at a time from the
    primary checkout. After each, resolve its returned result id and inspect the insert-only result and
    exact run-scoped write-safety rows read-only. Finish with another JSON doctor and close every owned
-   browser/session/process. Preserve a blocked or failed result and diagnose before any proposed retry;
+   browser/session/process; restore and verify the original primary branch when using the repaired
+   candidate. Preserve a blocked or failed result and diagnose before any proposed retry;
    never retry a deterministic or unknown outcome as though transient.
 5. **1.6.7.5 — candidate evidence and downstream handoff.** Record sanitized result/run identities,
    manifest digests, arm/verdict/assertion summary, exact `0/0/0` deltas, doctor identity and wall time
@@ -109,15 +133,75 @@ branch and worktree path absent. These facts are volatile and must be rechecked 
 The focused deterministic set includes the fresh/v29 upgrade and restore cases and the architecture
 files for `no-lifecycle-sql-outside-the-adapter`, `no-secret-values-in-logs`,
 `redaction-surface-scan`, `sqlite-settings-authority` and
-`authority-upgrade-adapters-isolated`. Exact filenames and successful test titles are recorded rather
-than hidden behind a filtered exit code. The full candidate and integration sets are:
+`authority-upgrade-adapters-isolated`. Use the reproducible commands below and record successful
+test titles and real exit status.
+The full candidate and integration sets are:
 
 - `npm run typecheck` and `npm run lint`;
-- full coverage plus `scripts/suite-size.ts` through the verified effective-two-worker adapter;
+- `npm test -- --coverage --config "$task_gate_config" && node --import tsx scripts/suite-size.ts`;
 - `npm run build:manifest:check`, `npm run stores:catalog:check` and `npm run roadmap:check`, after
   any corresponding generation has completed;
-- `npm run test:architecture` and then `npm run test:parity`, serialized;
+- `npm run test:architecture -- --config "$task_gate_config"` and then `npm run test:parity`, serialized;
 - the applicable roadmap-binding, registry/document/link/instruction checks and `git diff --check`.
+
+**Recreate the resource-only adapter.** In an owned temporary directory, create `two-workers.config.mts`
+from this body, replacing `ABSOLUTE_CHECKOUT` with the verified checkout being tested. Set
+`task_gate_config` to its absolute pathname. Recreate/rebind it for integration; do not depend on
+Task 6's scratch file or import another checkout. This is temporary gate setup, not a tracked
+config change. Record its hash, imported config identity and two effective workers from resolved
+configuration or observed workers before accepting the run.
+
+```ts
+import { deepStrictEqual, strictEqual } from "node:assert";
+import base from "ABSOLUTE_CHECKOUT/vitest.config.ts";
+
+const projects = base.test!.projects!;
+for (const project of projects) {
+  if (typeof project !== "object" || project === null || !("test" in project)) {
+    throw new Error("UNSUPPORTED_GATE_PROJECT_SHAPE");
+  }
+}
+const adjusted = {
+  ...base,
+  test: {
+    ...base.test,
+    maxWorkers: 2,
+    projects: projects.map((project: any) => ({
+      ...project, test: { ...project.test, maxWorkers: 2 },
+    })),
+  },
+};
+function withoutWorkers(config: any) {
+  const { maxWorkers: _root, projects: entries, ...test } = config.test;
+  return { ...config, test: { ...test, projects: entries.map((project: any) => {
+    const { maxWorkers: _project, ...projectTest } = project.test;
+    return { ...project, test: projectTest };
+  }) } };
+}
+deepStrictEqual(withoutWorkers(adjusted), withoutWorkers(base));
+strictEqual(adjusted.test.maxWorkers, 2);
+for (const project of adjusted.test.projects) strictEqual(project.test.maxWorkers, 2);
+export default adjusted;
+```
+
+**Focused commands** (from the verified task checkout, with that adapter):
+
+```sh
+npm test -- --config "$task_gate_config" --project unit tests/unit/storage-upgrade.test.ts tests/unit/storage-upgrade-admission.test.ts tests/unit/storage-upgrade-d331.test.ts tests/unit/storage-upgrade-environment.test.ts tests/unit/storage-upgrade-sources.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/dashboard/settings-storage-doctor.test.ts tests/unit/sqlite-settings-authority.test.ts
+npm run test:architecture -- --config "$task_gate_config" tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts tests/unit/architecture/no-secret-values-in-logs.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/sqlite-settings-authority.test.ts tests/unit/architecture/authority-upgrade-adapters-isolated.test.ts
+npm run test:architecture -- --config "$task_gate_config" tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/test-target-registry.test.ts
+npm test -- --config "$task_gate_config" --project unit tests/unit/test-target-registry.test.ts
+```
+
+The fixture pair is in `tests/unit/storage-upgrade.test.ts`: “plans a fresh root without files,
+creates v32 directly, and reruns without writes” and “preserves an applied empty v29 revision and
+authenticates its immutable historical journal after conversion.” Record their actual assertions and
+results for the handoff; the surrounding file/suites remain required. Do not narrow full gates to
+these selectors. From the tested checkout, run
+`python3 ~/.agents/skills/docs/scripts/audit.py "$PWD" --check` (Claude uses `~/.claude/skills/docs/scripts/audit.py`)
+for existing instruction twins/size, then inspect changed documents' links. Preserve the command,
+process/session handle, exit result, config identity and log path in the working checkpoint; after
+compaction recover an uncertain result before starting another run.
 
 Typecheck, lint and read-only freshness checks may share a concurrent group only while no generator
 or writer is active. Coverage is exclusive from compiler/linter work. Architecture and parity are
@@ -151,8 +235,9 @@ Task-6 review as Task-7 review credit.
 
 **Launch readiness at approval:** `WAITING ON`. The committed plan and Task-6 prerequisite can be
 made available immediately, but normal runtime remains blocked until the operator removes the nine
-migrated `.env` names, applies the selected Separations canary if needed, and provisions the absent
-`personLookupCanaryEid`. The supervisor prompt must retain these as named start prerequisites and may
+migrated `.env` names, confirms application of the selected Separations canary (not merely its
+presence or earlier manual test), and provisions the absent `personLookupCanaryEid`. The supervisor
+prompt must retain these as named start prerequisites and may
 be issued only after plan persistence verification; live work stays gated on their presence/name-only
 rechecks.
 
