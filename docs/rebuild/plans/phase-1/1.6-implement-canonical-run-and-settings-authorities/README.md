@@ -4,6 +4,12 @@ Read the [phase overview](../README.md) for shared context, decisions and phase-
 
 ## 1.6 · Implement canonical run and settings authorities
 
+**Task 7 source amendment (D343, approved 2026-09-07).** Preserve `.env` as operator reference;
+normal startup uses only `.env.providers` for the existing five provider families. The operator also
+approved only the resulting generated-fingerprint parity refresh, including displayed hash pixels,
+with all other semantics/layout and zero tolerance preserved. Task 7's owner records the classified
+refresh and candidate gates; live proof, review and integration remain open.
+
 **D341 detour (approved 2026-09-07; accepted, integrated into local `master` as `bc6dc9b54` and the
 private conversion performed the same day — see `ref guards-and-tests` §10.5 completion record).** It
 completed shared test configuration/fixture consolidation and verified migration of canaries out of

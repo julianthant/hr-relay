@@ -54,6 +54,11 @@ remain in D341 private test configuration. Runtime diagnostics identify `.env.pr
 continues to expose only provider availability. Additional OCR providers and provider-editing UI remain
 deferred. The existing `.env.example` is a value-free template for `.env.providers`.
 
+The operator subsequently approved refreshing only generated descriptor/implementation identifiers
+and their screenshot pixels in Task 7's parity references. The source-path change moves generated
+fingerprints; all other semantics/layout and the existing zero-pixel tolerance remain fixed. Require
+classified changes, assertion-mode parity and full candidate gates; this is no general UI refreeze.
+
 ## 0. Ownership header (D1)
 
 | Concept | Owner |

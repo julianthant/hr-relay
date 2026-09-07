@@ -81,6 +81,17 @@ master `f0b1cf92195897e56e4917384b512c45d7b4d41a` via merge
 `45f36cc702677f8f9b10e5b87d8cf559221fc22f`; tracked state was clean, with only the owned handoff untracked.
 The earlier refused launch remains failed evidence and produced no run or result to retry.
 
+### Fingerprint-only parity exception (operator-approved 2026-09-07)
+
+After inspecting the failed gate and the proposed narrow exception, the operator replied `approve`.
+Task 7 may refresh generated descriptor/implementation fingerprint provenance and displayed identifier
+text, including their corresponding screenshot pixels. This supersedes only the reference-body
+prohibition for those exact generated identifiers. Preserve every other semantic field, copy, layout,
+assertion, viewport and zero-pixel tolerance. Classify all changed a11y/metadata lines and image pixels;
+any unrelated change remains outside scope. Run full assertion-mode parity and all required candidate
+gates after the refresh, then resume steps 4–6. Existing failed evidence stays retained. No OCR feature
+or Settings UI expansion is authorized. D343 records this consequence at the source contract.
+
 ### Assignment, checkout and integration
 
 One supervisor owns the complete close because the deterministic gates, the one upgraded operator
@@ -487,3 +498,54 @@ Checkpoint recording checks: `provider-record-check.log` (session 93490), 2 file
 binding/registry tests passed in 1.29 s; roadmap freshness and instruction audit passed; diff check
 clean. The tracked executable/test/template input map matches the successful coverage/typecheck/lint
 state byte-for-byte. Those gates are reused for this evidence-only addition, not claimed as rerun.
+
+### Approved fingerprint refresh — classified before candidate gates (2026-09-07)
+
+The operator explicitly approved the requested fingerprint-only exception. Consumed the provider-parity
+handoff against checkpoint `9316abc6cf772212acef0541f26b903ac6e1db11`, clean tracked task state and
+unchanged clean primary `master` at `f0b1cf92195897e56e4917384b512c45d7b4d41a`. The approval is
+persisted in the plan and D343; earlier pending-decision text is historical evidence.
+
+`npm run test:parity:update` (session 84116, `provider-parity-update.log`) passed all 259 tests in
+63.227 s runner time. The complete update changed 210 a11y files, 210 corresponding metadata files
+and 43 PNGs. Twenty additional capture pairs became reachable after the first failing capture in
+multi-capture tests was repaired. Every text change matches the exact generated-fingerprint mappings
+verified from the failed run; no other text or metadata field changed. The initial 190-case proposal
+remains retained rather than silently rewritten to imply it covered those later captures.
+
+`classify-provider-parity.py` and `provider-parity-classified.json` in the owned scratch root bind all
+changed references to checkpoint `9316abc6`. Six before/after contact sheets were visually inspected,
+covering every changed PNG. The installed Playwright `utils.getComparator('image/png')` then compared
+all 43 pairs using the existing threshold 0.2 and maxDiffPixels 0: 7–81 counted pixels per image,
+all within the displayed descriptor-hash glyphs (including dimmed background text behind dialogs).
+Dimensions are unchanged; no counted differences exist elsewhere. Some raw antialiasing pixels
+outside those regions differ but are ignored by the unchanged production comparator. No screenshot
+was hand-edited and no assertion, tolerance, layout or UI code changed. Detailed counted diff images
+are retained under `provider-counted-pixel-diffs` for independent review.
+
+Full assertion-mode parity and candidate gates follow this classification; update-mode success alone
+does not discharge Step 3. Private `.env`, `.env.providers`, credentials and test configuration were
+not modified during this refresh. Steps 4–6 remain open.
+
+### Step 3 reaccepted after the approved refresh (2026-09-07)
+
+The candidate consists of source checkpoint `9316abc6` plus the classified fingerprint-reference
+refresh and its approval/evidence records. No product/test/config source changed after that checkpoint.
+The full required gate was rerun after references changed, using the unchanged two-worker adapter.
+
+| Command | Result and evidence in the owned scratch root |
+| --- | --- |
+| `npm run typecheck` | Exit 0, session 8916, `refreshed-typecheck.log`. |
+| `npm run lint` | Exit 0, zero warnings, session 19078, `refreshed-lint.log`. |
+| Manifest / catalog / roadmap freshness; instruction audit | Exit 0, session 60986, `refreshed-freshness.log` / `refreshed-doc-audit.log`; diff check clean. |
+| Full coverage through the approved adapter | 438 files / 5513 tests passed; statements 85.86%, branches 77.49%, functions 89.86%, lines 87.98%; 319.76 s Vitest / 321434 ms command. Session 8509, `refreshed-coverage-fixed.log`. |
+| Suite-size | Unit 341 / architecture 80 / scenario 17, exit 0; `refreshed-suite-size-fixed.log`. |
+| Standalone architecture through the same adapter | 80 files / 833 tests passed, 60.15 s Vitest / 60730 ms command; `refreshed-architecture.log`. |
+| `npm run test:parity` (assertion mode) | All 259 passed, 59.1 s Playwright / 60021 ms command, no reference writes; `refreshed-parity.log`. |
+
+`refreshed-gate-results.json` preserves exact commands/results/times. `refreshed-gated-inputs.json`
+records all tracked executable, test, configuration, dependency and reference inputs for comparison
+with subsequent evidence-only records. This recording also reconciles the roadmap's active status
+and the explicit D343 parity exception; completion remains open. Live proofs, independent review,
+integration and cleanup remain mandatory. Freeze the resulting commit before the primary checkout's
+candidate-detach route; record its full identity with the new live evidence.
