@@ -18,6 +18,8 @@ export interface CredentialStore {
   read(): ProtectedStoreRecord;
   /** Authorized command-path lookup; recovers a stale writer before returning value-free retry time. */
   acceptedAt(commandId: string): string | undefined;
+  /** Value-free, read-only ownership retained across failed audits and SQLite restore. */
+  ownsCommandId(this: void, commandId: string): boolean;
   apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
   /** Verify the exact most-recent application without performing a write. */
   verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;

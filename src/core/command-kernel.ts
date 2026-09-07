@@ -7,15 +7,16 @@ import { retainedRawSubmission } from "../services/start/protected-input.js";
  * authority through exactly this dispatcher. It is exhaustive over the closed
  * family/action registry: Phase-1f activates start-run, the worker/browser arms,
  * run retry/cancel/bump/rename plus typed write resolution, gate resolution,
- * and the revision-bound settings-file authority. Every deferred arm stays schema-recognized and returns
+ * and the revision-bound SQLite settings authority. Every deferred arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side
  * effects — no journal row, no audit row, no generation advance.
  *
  * **Atomicity model.** An active command runs in ONE outer authority
  * transaction: journal insert, arm effects, and the audit record commit
- * together or not at all. The settings arm additionally writes a durable
- * prepare record before replacing its file and reconciles that record against
- * the exact journal outcome after commit or process loss.
+ * together or not at all. Protected settings commit in their independent private
+ * authority after global command identity admission under the SQLite writer lock.
+ * A failed audit leaves that private history durable; exact retry settles the audit
+ * and foreign commands cannot reuse its retained identity, including after restore.
  * A typed refusal (`rejected`/`conflict`) is raised as
  * a `CommandRefusal`, which unwinds the whole transaction — ref dashboard-surfaces's Phase-1f
  * ratification is explicit that drift, expiry, a spent plan, target lookup
@@ -64,6 +65,7 @@ import type { ArtifactRef } from "../domain/artifacts.js";
 import type { Clock } from "../domain/clock.js";
 import {
   COMMAND_FAMILY_REGISTRY,
+  CommandIdentityConflictError,
   CommandRequestSchema,
   CommandResultSchema,
   deriveSettingsCommandFingerprint,
@@ -106,6 +108,7 @@ import {
   type ExplorerEditApplyResult,
 } from "../domain/dashboard/explorer.js";
 import {
+  PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsReadbackSchema,
   type ProtectedSettingsReadback,
 } from "../domain/config/protected-settings.js";
@@ -2484,6 +2487,7 @@ async function executeWorkerPoolCommand(
   request: WorkerBrowserCommand,
 ): Promise<CommandResult> {
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
+    repositories.commands.assertIdentity(request);
     const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
     if (repositories.commands.get(request.commandId) !== undefined) {
       return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
@@ -2505,6 +2509,7 @@ async function executeWorkerPoolCommand(
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
   const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
   return dependencies.authority.withAuthorityTransaction((repositories) => {
+    repositories.commands.assertIdentity(request);
     if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
       repositories.runtimeConfig.requireSettingsCurrent();
     }
@@ -3268,18 +3273,32 @@ export function executeSettingsCommand(
   if (request.family !== "settings") throw new Error("settings command required");
   const executor = dependencies.settings;
   if (executor === undefined) throw new Error("settings executor unavailable");
-  const refusal = executor.prepare(request);
+  // Request-only validation precedes every database/private-store read.
+  if (request.type === "apply-protected-settings" && request.payload.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
+    return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+      code: "schema-mismatch", message: "credential schema does not match the current catalog" });
+  }
+  const refusal = request.type === "apply-settings" ? executor.prepare(request) : undefined;
   if (refusal !== undefined) return CommandResultSchema.parse(refusal.state === "conflict"
     ? { state: "conflict", commandId: request.commandId, currentVersion: refusal.currentRevision, message: refusal.message }
     : { ...refusal, commandId: request.commandId });
+  let credentialsCommitted = false;
   try {
     return dependencies.authority.withAuthorityTransaction((repositories) => {
       const now = dependencies.clock.now().toISOString();
       const journalRequest = markSettingsCommand(request);
-      const existing = repositories.commands.get(request.commandId);
-      if (existing !== undefined && canonicalJsonStringify(existing) !== canonicalJsonStringify(journalRequest)) {
-        throw new CommandRefusal(CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
-          code: "command-divergent", message: "settings command identity was reused with different content" }));
+      repositories.commands.assertIdentity(journalRequest);
+      if (request.type === "apply-protected-settings") {
+        // BEGIN IMMEDIATE excludes another command writer across identity admission,
+        // the independent private commit and its audit. SQL rollback never undoes
+        // the private history, which also prevents foreign reuse after restore.
+        const protectedRefusal = executor.prepare(request);
+        if (protectedRefusal !== undefined) {
+          throw new CommandRefusal(CommandResultSchema.parse(protectedRefusal.state === "conflict"
+            ? { state: "conflict", commandId: request.commandId, currentVersion: protectedRefusal.currentRevision, message: protectedRefusal.message }
+            : { ...protectedRefusal, commandId: request.commandId }));
+        }
+        credentialsCommitted = true;
       }
       const journal = repositories.commands.insert(journalRequest);
       if (journal.state === "existing") return replay(dependencies, repositories, request, now);
@@ -3293,9 +3312,12 @@ export function executeSettingsCommand(
       return application.result;
     });
   } catch (error) {
-    if (request.type === "apply-protected-settings") {
+    if (credentialsCommitted) {
       throw new Error("credential-audit-uncertain: credentials committed; retry the exact command to verify its audit", { cause: error });
     }
+    if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
+    });
     if (error instanceof CommandRefusal) return error.result;
     throw error;
   }
@@ -3357,6 +3379,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       let finalizeAfterCommit: (() => void) | undefined;
       try {
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+          repositories.commands.assertIdentity(request);
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           if (request.family === "explorer") {
             const executor = dependencies.explorerEdits;
@@ -3416,6 +3439,9 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             );
           }
         }
+        if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
+          state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
+        });
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }
@@ -3442,6 +3468,9 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         // a thrown effect (phase B) stays a thrown structured error — the
         // kernel never converts an unproved process effect into a plausible
         // typed outcome.
+        if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
+          state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
+        });
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }

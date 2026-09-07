@@ -241,7 +241,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     const credentialPath = join(credentialDirectory, "protected.json");
     const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
       ProtectedSettingsApplyInputSchema.parse({
-        commandId: "11111111-1111-4111-8111-111111111111",
+        commandId: "a7111111-1111-4111-8111-111111111111",
         commandFingerprint: "1".repeat(64),
         expectedRevision: 1,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,

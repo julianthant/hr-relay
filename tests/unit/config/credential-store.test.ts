@@ -161,6 +161,7 @@ describe("D336 independent credential store", () => {
     const baseline = f.store.read();
 
     assert.equal(baseline.revision, 1);
+    assert.equal(f.store.ownsCommandId(COMMAND_1), false);
     assert.deepEqual(baseline.entries, {});
     assert.equal(lstatSync(f.tracker).mode & 0o777, 0o755);
     assert.equal(existsSync(f.directory), false);
@@ -257,6 +258,11 @@ describe("D336 independent credential store", () => {
       updatedAt: NOW_2,
     }));
 
+    const historyBytes = readFileSync(f.path);
+    assert.equal(f.store.ownsCommandId(COMMAND_1), true);
+    assert.equal(f.store.ownsCommandId(COMMAND_2), true);
+    assert.equal(f.store.ownsCommandId(COMMAND_3), false);
+    assert.deepEqual(readFileSync(f.path), historyBytes);
     assert.equal(f.store.apply(first).state, "conflict");
     const staleDivergent = f.store.apply(request({
       commandId: COMMAND_1,

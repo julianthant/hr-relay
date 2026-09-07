@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { canonicalJsonStringify } from "./canonical-json.js";
 import { SettingsPatchSchema } from "./config/settings.js";
 import {
@@ -36,6 +37,14 @@ import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { sha256Hex } from "./sha256.js";
 import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
+
+/** A durable command identity cannot be reused by another command or authority. */
+export class CommandIdentityConflictError extends Error {
+  constructor() {
+    super("command-divergent: command identity belongs to a different command");
+    this.name = "CommandIdentityConflictError";
+  }
+}
 
 export const CommandFamilySchema = z.enum([
   "start",

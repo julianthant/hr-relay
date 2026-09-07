@@ -6,11 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { CommandIdentityConflictError } from "../../src/domain/commands.js";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { executeSettingsCommand, type CommandAuthority } from "../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { createCredentialStore, type CredentialStoreHooks } from "../../src/infra/config/credential-store.js";
 import { readSettings, createCredentialSecretSource } from "../../src/server/settings-runtime.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
@@ -21,14 +24,14 @@ import { FingerprintSchema } from "../../src/domain/ids.js";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture() {
+function fixture(hooks?: CredentialStoreHooks) {
   const repoRoot = mkdtempSync(join(tmpdir(), "sqlite-settings-")); roots.push(repoRoot);
   const root = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(root);
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "credential-restore-proof", version: "0.1.0" }));
   const clock = manualClock(new Date("2026-09-06T12:00:00Z"));
   const path = join(root, "state.db");
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "settings-test" }, clock); databases.push(database);
-  const store = createCredentialStore({ stateRoot: root });
+  const store = createCredentialStore({ stateRoot: root, ...(hooks === undefined ? {} : { hooks }) });
   const settings = createSettingsApplicationExecutor(() => {}, store);
   const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
   return { repoRoot, root, path, database, store, execute, clock };
@@ -95,6 +98,101 @@ describe("D336 SQLite settings authority", () => {
     assert.deepEqual(f.database.authority.settingsCurrent.get(), current);
     assert.equal(f.database.getMeta().authorityGeneration, generation);
   });
+  it("refuses a foreign journal identity before committing credentials", () => {
+    const f = fixture(); const existing = ordinary();
+    f.execute(existing);
+    const generation = f.database.getMeta().authorityGeneration;
+    const audit = f.database.authority.commandAudits.findByCommand(existing.commandId);
+    const before = f.store.read();
+    const result = f.execute({ ...protectedCommand(), commandId: existing.commandId });
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "command-divergent");
+    assert.deepEqual(f.store.read(), before);
+    assert.equal(existsSync(join(f.root, "credentials", "protected.json")), false);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(f.database.authority.commandAudits.findByCommand(existing.commandId), audit);
+    assert.deepEqual(f.database.authority.commands.get(existing.commandId), existing);
+  });
+  it("retains global ownership after credential commit and failed audit", () => {
+    const f = fixture(); const pending = protectedCommand();
+    assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
+    const path = join(f.root, "credentials", "protected.json"); const bytes = readFileSync(path);
+    const before = f.store.read(); const generation = f.database.getMeta().authorityGeneration;
+    const foreign = f.execute({ ...ordinary(), commandId: pending.commandId });
+    assert.equal(foreign.state, "rejected");
+    if (foreign.state === "rejected") assert.equal(foreign.code, "command-divergent");
+    assert.deepEqual(f.store.read(), before);
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.equal(f.database.authority.settingsCurrent.get(), undefined);
+    assert.equal(f.database.authority.commands.get(pending.commandId), undefined);
+    assert.equal(f.database.authority.commandAudits.findByCommand(pending.commandId), undefined);
+    assert.equal(f.execute(pending).state, "applied");
+    assert.equal(f.execute(pending).state, "already-applied");
+    assert.deepEqual(readFileSync(path), bytes);
+  });
+  it("fences a competing process during private commit and refuses its reuse after SQL rollback", () => {
+    const pending = protectedCommand();
+    let contenderRan = false;
+    const f = fixture({ afterRename: () => {
+      const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+        import assert from 'node:assert/strict';
+        import { DatabaseSync } from 'node:sqlite';
+        const db = new DatabaseSync(${JSON.stringify(f.path)});
+        db.exec('PRAGMA busy_timeout = 50');
+        try { assert.throws(() => db.exec('BEGIN IMMEDIATE'), /database is locked/); }
+        finally { db.close(); }
+      `], { encoding: "utf8" });
+      assert.equal(child.status, 0, child.stderr);
+      contenderRan = true;
+    } });
+    const generation = f.database.getMeta().authorityGeneration;
+    assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
+    assert.equal(contenderRan, true);
+    const path = join(f.root, "credentials", "protected.json");
+    const bytes = readFileSync(path);
+    const foreign = { ...ordinary(), commandId: pending.commandId };
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      import { randomUUID } from 'node:crypto';
+      import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
+      import { manualClock } from './src/domain/clock.ts';
+      import { executeSettingsCommand } from './src/core/command-kernel.ts';
+      import { createCredentialStore } from './src/infra/config/credential-store.ts';
+      import { createSettingsApplicationExecutor } from './src/server/dashboard/commands/settings-service.ts';
+      const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
+      const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
+      try {
+        const settings = createSettingsApplicationExecutor(() => {}, createCredentialStore({ stateRoot: ${JSON.stringify(f.root)} }));
+        const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
+        assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
+      } finally { db.close(); }
+    `], { cwd: fileURLToPath(new URL("../../", import.meta.url)), encoding: "utf8" });
+    assert.equal(child.status, 0, child.stderr);
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.equal(f.database.authority.commands.get(pending.commandId), undefined);
+    assert.equal(f.database.authority.commandAudits.findByCommand(pending.commandId), undefined);
+    assert.equal(f.database.authority.settingsCurrent.get(), undefined);
+    assert.equal(f.execute(pending).state, "applied");
+    assert.deepEqual(readFileSync(path), bytes);
+  });
+  it("protects a retained credential identity from internal lifecycle journal writers", () => {
+    const f = fixture(); const pending = protectedCommand();
+    assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
+    const generation = f.database.getMeta().authorityGeneration;
+    const path = join(f.root, "credentials", "protected.json");
+    const bytes = readFileSync(path);
+    assert.throws(() => f.database.withAuthorityTransaction((repositories) => repositories.lifecycleJournal.insertCommand({
+      kind: "run-lifecycle", commandId: pending.commandId, operation: "create",
+      requestFingerprint: "0".repeat(64), fence: { kind: "none" }, recordedAt: pending.requestedAt,
+    })), CommandIdentityConflictError);
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.equal(f.database.authority.commands.get(pending.commandId), undefined);
+    assert.equal(f.database.authority.commandAudits.findByCommand(pending.commandId), undefined);
+    assert.equal(f.execute(pending).state, "applied");
+  });
   it("refuses CAS conflicts without changing ordinary authority", () => {
     const f = fixture(); f.execute(ordinary()); const request = ordinary(); const before = f.database.getMeta().authorityGeneration;
     assert.equal(f.execute(request).state, "conflict");
@@ -144,6 +242,12 @@ describe("D336 SQLite settings authority", () => {
     const restored = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock); databases.push(restored);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     const generation = restored.getMeta().authorityGeneration;
+    const foreign = f.execute({ ...ordinary(), commandId: request.commandId }, restored);
+    assert.equal(foreign.state, "rejected");
+    if (foreign.state === "rejected") assert.equal(foreign.code, "command-divergent");
+    assert.equal(restored.authority.commands.get(request.commandId), undefined);
+    assert.equal(restored.authority.commandAudits.findByCommand(request.commandId), undefined);
+    assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     const divergent = structuredClone(request); divergent.payload.entries.ucpathPassword.set = "divergent-after-restore";
     assert.equal(f.execute(divergent, restored).state, "rejected");
     assert.equal(restored.getMeta().authorityGeneration, generation);

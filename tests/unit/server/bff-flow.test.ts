@@ -246,11 +246,12 @@ function harness(options: {
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker");
+  mkdirSync(stateRoot, { mode: 0o700 });
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
 
@@ -503,8 +504,7 @@ function harness(options: {
       doctorOptions: {
         stateRootTrustAnchor: root,
         stateRoot,
-        // The harness database lives at the temp ROOT, not under stateRoot.
-        authorityPath: join(root, "state.db"),
+        authorityPath: join(stateRoot, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
@@ -630,7 +630,7 @@ function seedCurrentSeparationsRun(
     ...CURRENT_SEPARATIONS_RESULT,
     approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
   });
-  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "..", "state.db"), run, result);
+  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "state.db"), run, result);
 }
 
 function persistCurrentSeparationsEvidence(
@@ -997,7 +997,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         enqueuedAt: "2026-08-28T15:00:00.000Z",
       });
       const corrupted = corpusCase.mutate(run);
-      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
       try {
         raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
           .run(
@@ -1035,7 +1035,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       correctedAt: run.createdAt,
       reason: "corrupt fixture",
     };
-    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
     try {
       raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
         .run(JSON.stringify({
@@ -2807,11 +2807,20 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       h.clock.advanceWall(1000);
     }
     const acceptedAt = h.clock.now().toISOString();
-    vi.spyOn(h.database, "withAuthorityTransaction").mockImplementationOnce(() => { throw new Error("injected-http-audit-failure"); });
+    const transaction = h.database.withAuthorityTransaction.bind(h.database);
+    vi.spyOn(h.database, "withAuthorityTransaction").mockImplementationOnce((work) => transaction((repositories) => {
+      work(repositories);
+      throw new Error("injected-http-audit-failure");
+    }));
     assert.equal((await send()).status, 500);
     const privatePath = join(h.stateRoot, "credentials", "protected.json");
     const bytes = readFileSync(privatePath);
     assert.equal(h.database.authority.commands.get(commandId), undefined);
+    const beforeForeign = settingsAuthoritySnapshot(h, commandId);
+    const foreign = await send({ commandId, family: "run", type: "cancel", target: { runId: UUID_4, expectedVersion: 1 } });
+    assert.equal(foreign.status, 422);
+    assert.equal((await json(foreign)).code, "command-divergent");
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), beforeForeign);
     h.clock.advanceWall(1000);
     const divergent = { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: "synthetic-http-retry-divergent" } } } };
     const denied = await json(await send(divergent));
@@ -3402,7 +3411,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(h.database.getMeta().authorityGeneration, generationBefore);
     const artifactRoot = join(h.stateRoot, "artifacts");
     assert.deepEqual(existsSync(artifactRoot) ? readdirSync(artifactRoot) : [], []);
-    const inspection = new DatabaseSync(join(h.stateRoot, "..", "state.db"), { readOnly: true });
+    const inspection = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
     try {
       const row = inspection.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
       assert.equal(Reflect.get(row ?? {}, "count"), 0);
@@ -3426,11 +3435,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
     assert.deepEqual(report.spanAuthority, {
-      state: "unavailable",
-      cause: {
-        code: "span-stream-invalid",
-        summary: "span corpus parent .tracker could not be inspected (ENOENT)",
-      },
+      state: "reconciled",
+      liveRunCount: 0,
+      streamRunCount: 0,
+      archived: [],
+      deleted: [],
     });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {

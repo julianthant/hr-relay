@@ -1,10 +1,12 @@
 import { PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
+import { CommandIdentityConflictError } from "../../domain/commands.js";
+import { createCredentialStore } from "../config/credential-store.js";
 import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
 import { archivedRunContentDigest } from "../../domain/archive/model.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
@@ -412,6 +414,7 @@ type ReadRepository<RecordValue> = Readonly<{
 }>;
 
 type CommandRepository = Readonly<{
+  assertIdentity(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | undefined;
@@ -2599,6 +2602,7 @@ export class AuthorityDatabase implements Disposable {
   #clock: Clock;
   #path: string;
   #busyTimeoutMs: number;
+  #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
   #transactionDepth = 0;
   #savepointSequence = 0;
@@ -2635,6 +2639,9 @@ export class AuthorityDatabase implements Disposable {
     this.#terminalizationHooks = terminalizationHooks;
     this.#lifecycleHooks = lifecycleHooks;
     this.#path = options.path;
+    this.#credentialCommandIds = options.path === ":memory:"
+      ? () => { throw new Error("command identity admission requires a durable authority root"); }
+      : createCredentialStore({ stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(options.path, {
       readOnly: readOnlyNoMigrate,
@@ -2761,6 +2768,19 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
     return this.#withTransaction("authority", () => work(this.authority));
+  }
+
+  #assertCommandIdentity(record: z.infer<typeof AuthorityCommandRecordSchema>): void {
+    if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
+      throw new Error("command identity admission requires an authority transaction");
+    }
+    const protectedCommand = "family" in record && record.family === "settings" && record.type === "apply-protected-settings";
+    if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
+    const row = this.#database.prepare("SELECT record_json FROM commands WHERE record_key = ?").get(record.commandId);
+    if (row !== undefined && canonicalJsonStringify(JSON.parse(JsonRowSchema.parse(row).record_json) as unknown) !== canonicalJsonStringify(record)) {
+      if ("family" in record && record.family === "settings") throw new CommandIdentityConflictError();
+      throw new Error(`command id ${record.commandId} was reused with different content`);
+    }
   }
 
   /** D330: queue-root publication belongs after the outermost authority commit. */
@@ -4799,10 +4819,12 @@ export class AuthorityDatabase implements Disposable {
       workerPools: this.#buildWorkerPoolRepository(),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
+        assertIdentity: (input: unknown) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input)),
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("commands", () => {
+            this.#assertCommandIdentity(record);
             const existing = this.#readRecord("commands", record.commandId, CommandRequestSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command id ${record.commandId} was reused with different content`);
@@ -4912,6 +4934,7 @@ export class AuthorityDatabase implements Disposable {
           const record = RunLifecycleCommandRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("commands", () => {
+            this.#assertCommandIdentity(record);
             const existing = this.#readRecord("commands", record.commandId, AuthorityCommandRecordSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {

@@ -647,3 +647,71 @@ Failed test-run scratch recorded by the logs is retained for diagnosis and must 
 cleanup; do not sweep unrelated runs. Completed native reviewers are closed to further assignments.
 No app-task archival applies yet. This owner contains the complete durable continuation state, so no
 separate handoff file is needed.
+
+
+#### Complete standalone review and R9 repair
+
+The approved standalone reviewer is **Review Task 1.6.6 SQLite settings**, task
+`01a07a45-50d7-7d01-bd47-672d3dfa1720`, host `local`, GPT-5.6 Sol/high. Its complete review
+of base `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`, implementation
+`1a9484ad3e52fef7452ce781fc2e86470b2bbbf7` and evidence HEAD
+`0a9f901cc1c8a07401bacb01d6d1a5a967fc8b44` returned **CHANGES REQUIRED**. It dispositioned all
+116 changed paths (37 production, 43 unit/fixture, 25 parity, seven docs, three scripts and one
+repository reference), all D331 P1–P41 and D332 M1–M27, supported R1–R8 independently, and verified
+the recorded gates and input fingerprint. All 12 PNG pairs had zero changed rendered pixels;
+a11y changes were limited to Saved copy. P28–P31 remained open solely for R9.
+
+**R9 — HIGH, global command identity across independent credential settlement.** Protected prepare
+could commit credentials before discovering that another command already owned the SQLite ID.
+The inverse history also failed: after a private commit and failed SQLite audit, a foreign command
+could acquire the ID and permanently strand exact retry. The reviewer explicitly confirmed that
+ownership must survive this window, including concurrent writers; no contract requires immediate
+operator retry. This is an implementation defect, not new scope or an amended credential contract.
+The two isolated reproductions are recorded in `/tmp/hr-settings-r9-collision.log` and
+`/tmp/hr-settings-r9-history.log`; the tracked regression run
+`/tmp/hr-settings-r9-red.log` produced two failures before repair.
+
+The repair admits global identity under the existing SQLite BEGIN IMMEDIATE writer transaction
+before protected prepare. Credential settlement remains independent: SQL rollback never undoes
+private history. The sole credential backend exposes a value-free history-membership check, and
+the shared SQLite command journal refuses foreign IDs retained there, including its internal
+lifecycle writers. Request/schema validation still precedes authority access. Existing private
+history also protects IDs after DB-only restore. Only a successful private prepare can produce
+credential-audit-uncertain; a pre-commit identity refusal is typed command-divergent.
+
+Focused proofs now cover existing foreign ownership with zero credential/SQL effects, foreign
+reuse after audit rollback, a competing process blocked during the private commit, rejection by a
+second process after rollback, internal lifecycle insertion, real HTTP set/clear retries and foreign
+run commands, and restore followed by foreign refusal and exact settlement. BFF fixtures now place
+the database beside credentials under their actual state root; their SQL inspection paths and
+empty-root doctor expectation follow that layout. Audit-failure injections occur inside the SQL
+transaction after the callback, preserving the actual private-commit/SQL-rollback boundary.
+`/tmp/hr-settings-r9-combinations-iteration4.log` passed 275 tests in five files (14.32 seconds).
+The wider final gates and renewed independent review remain pending; no R9 acceptance is claimed.
+
+Primary master remains unmerged. No operator-root conversion, .env edit, legacy access or push has
+occurred. Steps .1–.5 remain implemented subject to final acceptance; .6 R9 gates/review and all of
+.7 remain open. The standalone reviewer may receive the repaired committed candidate under the
+already approved exception. Preserve the task worktree and branch until finalization.
+
+
+The first R9 full gate (`/tmp/hr-settings-r9-coverage.log`, run-p8Fyxy) failed after 225 seconds:
+two unchanged lifecycle-guard scans exceeded their 30-second limits under four workers, and the
+restore drill seeded an ordinary command with the same fixture ID as its independently applied
+credential. The latter fixture now uses distinct command IDs; all restore assertions remain intact.
+The retry uses the same contained Vitest coverage runner and suite-size check with an explicit
+two-worker CLI limit. No suite membership, assertion, timeout, isolation rule or coverage floor is
+changed. Failed scratch is retained for the final exact-owned cleanup audit.
+
+
+The focused restore/identity/lifecycle check passed 37 tests in three files, including unchanged
+lifecycle scans at 10.1 and 9.3 seconds (`/tmp/hr-settings-r9-recovery-guard.log`). The second full
+attempt (`/tmp/hr-settings-r9-coverage-two-workers.log`, run-WTLubT) passed 5,453 tests but retained
+the two 30-second guard timeouts. Inspection of the installed Vitest resolver confirmed that
+inherited per-project `maxWorkers: 4` takes precedence over the root CLI override; observed child
+processes were still four. Thus that attempt did not demonstrate reduced concurrency.
+The corrected gate-only config `/tmp/hr-settings-r9-two-workers.config.mts` imports the unchanged
+repository config and sets root and each project's worker count to two. It asserts deep equality
+after removing precisely those overrides. This changes resource scheduling only and is not a
+repository/configuration edit or a relaxed acceptance gate. The full contained coverage runner and
+suite-size check are repeated with this effective override; their final result follows below.

@@ -1204,6 +1204,10 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     read(): ProtectedStoreRecord {
       return observeCurrent().document.record;
     },
+    ownsCommandId(commandId: string): boolean {
+      const id = z.uuid().parse(commandId);
+      return observeCurrent().document.history.some(({ request }) => request.commandId === id);
+    },
     acceptedAt(commandId: string): string | undefined {
       const id = z.uuid().parse(commandId);
       return withLock(() => {

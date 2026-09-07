@@ -214,8 +214,15 @@ describe("D336 stopped SQLite upgrade", () => {
     const environment = `UCPATH_PASSWORD=${value}\n`;
     writeFileSync(f.input.environmentFile, environment, { mode: 0o600 });
     await f.backup();
+    // Retain the original before spying; call below supplies the actual database receiver.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const transaction = AuthorityDatabase.prototype.withAuthorityTransaction;
     const hooks = boundary === "rename" ? { afterCredentialRename: () => { throw new Error("injected-after-rename"); } }
-      : { afterCommit: () => { vi.spyOn(AuthorityDatabase.prototype, "withAuthorityTransaction").mockImplementationOnce(() => { throw new Error("injected-audit-failure"); }); } };
+      : { afterCommit: () => {
+        vi.spyOn(AuthorityDatabase.prototype, "withAuthorityTransaction").mockImplementationOnce(function (this: AuthorityDatabase, work) {
+          return transaction.call(this, (repositories) => { work(repositories); throw new Error("injected-audit-failure"); });
+        });
+      } };
     try {
       await assert.rejects(upgradeStorage({ ...f.input, hooks }, clock), /credential-(?:commit|audit)-uncertain/u);
     } finally { vi.restoreAllMocks(); }
