@@ -545,3 +545,103 @@ verified by RI2. No merge, operator conversion or active-worktree removal until 
 required gates. The replacement round is admitted. This approval-only record reuses implementation
 `466f1f8edd4251bf31f4e7dfc7abdd9c38f996b2` and its unchanged gate inputs under D191; roadmap and
 diff checks pass before committing the record.
+
+#### RA1/RA2 stop boundary and repaired candidate 1a9484ad
+
+Both dispatched scopes in the approved smaller round returned **BLOCKED** after automatic
+compaction, on implementation `466f1f8edd4251bf31f4e7dfc7abdd9c38f996b2` and evidence
+`dcc55729edea7c46689bba61402a1a20b8380ec5`, against base
+`e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`. Neither result provides scoped or whole-task acceptance.
+The supervisor preserved the findings and repaired them before requesting another process decision.
+
+| Reviewer | Observed findings and uncovered scope |
+| --- | --- |
+| `/root/sup_review_sqlite_ra1`, native `sup_review` | MEDIUM R4: grouped settings merge throws before typed cross-field classification. MEDIUM R5, initially unresolved: delayed ordinary replay depends on the overwritten singleton, and divergent journal identity escapes as a generic error. Unreviewed: remaining strict-boundary hunks, inventory dispositions, full P36 negative control, affected migration/history tests, removed-proof reconciliation, gate logs/fingerprint and final RA1 coverage mapping. |
+| `/root/sup_review_sqlite_ra2`, native `sup_review` | HIGH R6: after credential commit and failed SQLite audit, HTTP retry receives a new server timestamp and cannot authenticate its original private request. Unconfirmed R7: second fstat omits mode/UID/link-count equality. Unreviewed: R1–R3 closure, older uncertain-audit retry after a newer credential write, complete R7 challenge, remaining guards/docs, gate-log/fingerprint verification and final identity check. |
+
+RA3, RB1, RB2, RB3 and RI2 were not dispatched. No compacted reviewer was resumed. The approved
+allocation's own stop rule returns failed sizing to planning; another unchanged RA1/RA2 assignment
+would repeat the demonstrated failure. Earlier R1–R3 and the two recorded suspicions remain in their
+existing ledger, pending independent reconciliation. The newer-code repairs below are supervisor
+verification, not independent closure of any finding.
+
+Implementation `1a9484ad3e52fef7452ce781fc2e86470b2bbbf7` changes seven production and six test
+files (223 insertions, 30 deletions), adding 18 regression cases. No guard or threshold was relaxed.
+
+| ID | Repair and deciding proof |
+| --- | --- |
+| R4 | Merge and resolver validation share typed cross-field classification, preserving sorted issue paths. Four real BFF cases cover incomplete display/annual-date set and clear, exact 422 refusal and unchanged settings, credentials, journal, audit and generation. |
+| R5 | The command kernel authenticates the immutable ordinary audit request/result and returns the original revision/fingerprint after a later command advances current settings. Divergent journal content produces `command-divergent`. The A/B/retry test checks the original result, typed divergence and unchanged B/current generation. The initial repair read the audit from the service; full coverage caught the existing single-command-owner guard. Audit access was moved into the kernel, and the service replay interface now covers credentials only. The guard remains unchanged. |
+| R6 | Authorized, validated protected ingress recovers the original value-free acceptance time from the private store when SQLite has no journal. It retains complete private request/value equality. Real HTTP set/clear tests inject post-credential audit failure, advance the clock, refuse divergent values, then settle and replay the exact request without rewriting private bytes or leaking values into the audit. Real SIGKILL tests cover both sides of rename: authenticated uncommitted staging is discarded, while a committed request retains its original time. The command lookup uses the existing owned lock/reaper; read-only credential observation and doctor remain read-only. |
+| R7 | Both private-document and lock readers compare second-fstat mode, UID and link count, in addition to existing inode/size/time checks. Six negative controls independently change one post-read field while leaving times and bytes unchanged, requiring a named integrity refusal and unchanged evidence. Three private-document controls failed before the repair. Lock controls deliberately enter through apply, since read-only observation does not read lock contents. |
+| R8 — neighboring validation order | Ordinary schema/fingerprint validation runs before authority access, and ingress validates ordinary/protected schema identity before journal or private retry lookup. Two kernel controls fail if authority is reached; a real BFF case proves invalid schema/value and foreign Origin cause zero journal/private lookup calls and no durable changes. Both kernel controls reproduced forbidden authority access before the repair. |
+
+Red evidence: `/tmp/hr-settings-r4-r6-red.log` (six failures/152 passes: four grouped patches,
+delayed ordinary replay and advancing-clock HTTP retry), `/tmp/hr-settings-r7-red.log` (three
+failures/21 passes), and `/tmp/hr-settings-r4-r8-iteration.log` (two failures/182 passes).
+The divergent ordinary assertion was not reached in its initial red test; it is covered in green.
+Iteration also corrected test-only fixture mistakes: branded hash/time construction, using apply
+to observe lock reads, the pre-rename discard expectation, and lowercase `origin` header override.
+Those fixture failures are not claimed as production defects. The first full run is preserved at
+`/tmp/hr-settings-r4-r8-coverage-audit-owner-failure.log`: one guard failure/5,450 passes, 433 files.
+The final implementation keeps that guard's audit-owner boundary intact.
+
+| Gate on implementation 1a9484ad | Result and evidence |
+| --- | --- |
+| Combined repairs and neighboring boundaries | 290 tests/seven files PASS, exit 0, `/tmp/hr-settings-r4-r8-combinations-final.log`, 15.2 seconds. Includes real SQLite settings, BFF, credential store, kernel, upgrade, runtime reader and command-owner guard. |
+| Typecheck / lint | Both PASS, exit 0, `/tmp/hr-settings-r4-r8-typecheck.log` and `/tmp/hr-settings-r4-r8-lint.log`; rerun after the audit-owner repair. |
+| Full coverage | 5,451 tests/433 files PASS, exit 0, `/tmp/hr-settings-r4-r8-coverage.log`, 178.9 seconds. Statements 85.79%, branches 77.35% report-only, functions 89.80%, lines 87.94%; configured floors and suite-size check pass. Four workers, no compiler/linter contention. Full run includes the fixture upgrade, restore and doctor suites. |
+| Standalone architecture | 827 tests/79 files PASS, exit 0, `/tmp/hr-settings-r4-r8-architecture.log`, 32.3 seconds, run exclusively after coverage. |
+| Desktop parity | 259 PASS, exit 0, `/tmp/hr-settings-r4-r8-parity.log`, 56.9 seconds, run after architecture. No reference or generated-provenance changes. |
+| Freshness / diff | `build:manifest:check`, `stores:catalog:check`, `roadmap:check` and `git diff --check` PASS. Manifest and catalog reported current in captured command output; `/tmp/hr-settings-r4-r8-roadmap.log` records the roadmap check. Earlier generation is recorded at `/tmp/hr-settings-r4-r8-generate.log`; final checks were rerun after the audit-owner repair. |
+| Input binding | 2,117 paths; fingerprint `d892751aec04c46f4e9796a7c7ebd18032925994b2d95b6957912c7c946fd842`, `/tmp/hr-settings-r4-r8-inputs.json` and `/tmp/hr-settings-r4-r8-sha256.txt`. Relative to R3 only the 13 repair paths and this task owner's prior approval evidence differ. R3's fingerprint was independently recomputed exactly. |
+
+The input manifest binds the implementation before this evidence append. This recording changes
+only the task owner; D191 reuses unchanged code gates, with roadmap, relative-link, existing twin/
+instruction-size and diff checks for the evidence commit. Nine instruction pairs remain identical;
+the maximum project instruction chain is 15,457 bytes, below 32,768. No implementation is accepted
+merely because these gates pass. Status remains **awaiting independent review**.
+
+#### Proposed standalone review exception — awaiting explicit approval
+
+The latest operator approval admitted the six focused scopes plus RI2. It did not authorize the
+exception below. All six prior blocked review attempts remain findings/evidence only; none supplies
+PASS credit. No new review task has been created and no role configuration has been changed.
+
+Replace the six-scope/RI2 allocation and native `sup_review` dispatch requirement for Task 1.6.6
+only with **one fresh, independent standalone `/review` task using GPT-5.6 Sol at high reasoning**.
+Create it in the saved rebuild project directly, with a read-only assignment to the existing frozen
+task checkout above. It receives the exact approved requirements/amendments, base and final candidate
+SHA, the proof map and separate prior-finding ledger, and gate/input evidence; no implementation
+conversation. It must inspect the complete candidate, relevant callers, all D331/D332 dispositions,
+changed tests/guards/contracts, cross-boundary recovery, all 12 Saved PNG/a11y pairs and gate evidence.
+Every changed path and required proof row must have a recorded disposition. Prior summaries are
+navigation aids, never acceptance evidence. Nothing in the product scope or gate requirements changes.
+
+For this standalone review only, explicitly permit continuation across automatic compaction.
+Keep a complete coverage/finding checklist in that task's visible progress, reopen primary code and
+evidence after a resume where necessary, verify the frozen candidate and full checklist before the
+final verdict, and never infer PASS from a compacted summary or omit unfinished scope. The task stays
+read-only: no edits, commits, write-producing gates, external effects or delegation. Necessary gates
+return to this supervisor. No context cap is increased and compaction is not disabled. This is an
+explicit exception to the one-uncompacted-context review rule, not a claim that the failed native
+reviewers completed. Native reviewers cannot use it because their role instructions require stopping.
+
+The standalone review's exact-candidate PASS, complete coverage and closure of all required findings
+would replace focused/RI2 acceptance. CHANGES REQUIRED or BLOCKED keeps finalization closed; the
+supervisor owns repairs, appropriate gates and renewed independent review. Local integration,
+merged-code gates, operator-root backup/plan/upgrade/doctor, completion evidence and cleanup remain
+unchanged and authorized only after accepted review. No push. If this exception is not approved,
+review remains blocked on sizing; do not launch another unchanged allocation or self-approve.
+
+**Resume boundary and residue.** Candidate `1a9484ad3e52fef7452ce781fc2e86470b2bbbf7`; primary
+master remains clean at `e314fb0d3c155bc2823a6f0bf2648a7f9521fbc6`. Steps .1–.5 are implemented
+and gated, subject to independent acceptance; .6 review remains open; .7 has not started. No master
+merge, operator-root backup/conversion, credential import, `.env` change, legacy access/change or push
+occurred. Reverify volatile operator state after accepted review and merged-code integration gates.
+The two supporting worktrees/branches remain removed; their recorded private archives remain.
+Retain the active task worktree/branch, owned ignored artifacts and diagnostic logs pending finalization.
+Failed test-run scratch recorded by the logs is retained for diagnosis and must be considered in owned
+cleanup; do not sweep unrelated runs. Completed native reviewers are closed to further assignments.
+No app-task archival applies yet. This owner contains the complete durable continuation state, so no
+separate handoff file is needed.
