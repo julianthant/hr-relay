@@ -553,6 +553,16 @@ changed input refuses before application. SQLite retains only value-free identit
 never removes this binding, and neither SQLite restore nor normal credential readback exposes or
 rewrites it. This binds the one-time import without making either store's commit roll back the other.
 
+**2026-09-07 approved migration-input amendment.** Exactly `I9_USER_ID`, `I9_PASSWORD`,
+`TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` are historical **cleanup-only** names admitted by the
+stopped upgrade adapter. Strict syntax, duplicate-name and private-file checks still apply. Report
+these names in `envKeysToRemove`, but do not decode, import, persist, compare or expose their values.
+They are not catalog entries, registered runtime/provider environment keys, or credential-store inputs.
+Normal runtime admission continues to refuse them; every other unregistered name still refuses plan
+and apply before authority effects. Preserve `.env` bytes during planning, conversion and retry.
+This exact migration-only exception belongs to A0 and expires with its Phase-2.6 deletion; it is not
+an unknown-key fallback. Task 6's observed operator inventory is its deciding evidence.
+
 **Why.** The split file/SQLite design requires an application-level transaction and recovery protocol
 for an ordinary setting. SQLite already provides the required atomicity. Keeping all values, including
 plaintext credentials, in SQLite would simplify commits but violate the intentional secret-free backup

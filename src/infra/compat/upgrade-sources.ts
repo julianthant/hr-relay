@@ -24,6 +24,11 @@ import { recoverSettingsSources } from "./settings-source-recovery.js";
 import { PreFloorSettingsCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { SettingsFileRecordSchema as PreFloorRecordSchema, SETTINGS_SCHEMA_HASH as PRE_FLOOR_SCHEMA_HASH } from "./pre-floor-settings.js";
 
+/** D336 operator-approved historical names: report cleanup, never decode/import values. */
+const CLEANUP_ONLY_ENVIRONMENT_KEYS = new Set([
+  "I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+]);
+
 type MigrationSettingsRecord = SettingsFileRecord | z.infer<typeof PreFloorRecordSchema>;
 
 const JsonObjectSchema = z.record(z.string(), z.unknown());
@@ -227,6 +232,10 @@ export function readUpgradeSources(stateRoot: string, environmentFile: string, d
     const migrated = new Set<string>(MIGRATED_SETTINGS_ENVIRONMENT_KEYS);
     const decoded = new Map<string, string>();
     for (const name of names) {
+      if (CLEANUP_ONLY_ENVIRONMENT_KEYS.has(name)) {
+        envKeysToRemove.push(name);
+        continue;
+      }
       if (!isRegisteredEnvironmentKey(name)) throw new Error(`env-unknown-key { key: ${name} }`);
       if (!migrated.has(name)) continue; // Provider values remain unopened.
       envKeysToRemove.push(name);

@@ -29,6 +29,9 @@ import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { composeStorageCommand } from "../../src/server/storage/compose.js";
+import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
+import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { readSettings } from "../../src/server/settings-runtime.js";
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
 const ManifestGenerationSchema = z.object({ authorityGeneration: z.number().int().nonnegative() });
@@ -104,6 +107,50 @@ describe("cli storage backup (D322)", () => {
       const nextId = randomUUID(); next.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...e, runId: nextId } });
       assert.equal(next.authority.runs.get(e.runId), undefined); assert.ok(next.authority.runs.get(nextId));
     } finally { next.close(); }
+  });
+  it("admits only the four approved cleanup-only names through plan/apply without importing values", async () => {
+    const p = paths();
+    const retired = ["I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"];
+    const values = retired.map((_, index) => `synthetic-retired-private-${String(index)}`);
+    const source = retired.map((name, index) => `${name}=${values[index]}`).join("\n") + "\n";
+    const environmentFile = join(p.repoRoot, ".env");
+    writeFileSync(environmentFile, source, { mode: 0o600 });
+    const before = readdirSync(p.repoRoot);
+    const plan = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
+    assert.equal(plan.exitCode, 0, plan.output);
+    const planned = z.object({ importedKeys: z.array(z.string()), envKeysToRemove: z.array(z.string()), credentials: z.literal("empty") }).parse(JSON.parse(plan.output));
+    assert.deepEqual(planned.importedKeys, []);
+    assert.deepEqual(planned.envKeysToRemove, [...retired].sort());
+    assert.deepEqual(readdirSync(p.repoRoot), before);
+    const applied = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--json"], CLOCK, p.repoRoot);
+    assert.equal(applied.exitCode, 0, applied.output);
+    assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "converted" });
+    const database = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "cleanup-only-proof" }, CLOCK);
+    try { assert.deepEqual(readSettings(database.authority).settings, {}); }
+    finally { database.close(); }
+    assert.equal(createCredentialStore({ stateRoot: p.stateRoot }).read().revision, 1);
+    assert.equal(existsSync(join(p.stateRoot, "credentials")), false);
+    const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
+    assert.equal(backup.exitCode, 0, backup.output);
+    for (const value of values) {
+      assert.equal([plan.output, applied.output, backup.output].some((output) => output.includes(value)), false);
+      assert.equal(readFileSync(p.authorityPath).includes(Buffer.from(value)), false);
+      for (const name of readdirSync(p.backupDirectory)) assert.equal(readFileSync(join(p.backupDirectory, name)).includes(Buffer.from(value)), false);
+    }
+    const settled = readFileSync(p.authorityPath);
+    const repeat = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--json"], CLOCK, p.repoRoot);
+    assert.equal(repeat.exitCode, 0, repeat.output);
+    assert.equal(z.object({ state: z.literal("already-upgraded") }).parse(JSON.parse(repeat.output)).state, "already-upgraded");
+    assert.deepEqual(readFileSync(p.authorityPath), settled);
+    assert.equal(readFileSync(environmentFile, "utf8"), source);
+    for (const name of retired) {
+      writeFileSync(environmentFile, `${name}=synthetic-private\n`, { mode: 0o600 });
+      const env = {};
+      assert.throws(() => admitLocalEnvironmentFile(environmentFile, env));
+      assert.deepEqual(env, {});
+    }
+    writeFileSync(environmentFile, source, { mode: 0o600 });
+    assert.equal(readFileSync(environmentFile, "utf8"), source);
   });
   it("reports a migration value refusal by catalog key without echoing its value", async () => {
     const p = paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
