@@ -264,6 +264,7 @@ export function pruneEventStreams(input: Readonly<{
   stateRoot: string;
   clock: Clock;
   retentionDays?: number;
+  streams?: readonly EventStream[];
 }>): PruneReport {
   // ONE constant: the Archive's retention block computes its purge instants
   // from the same number, so the date a surface shows and the date this sweep
@@ -272,7 +273,7 @@ export function pruneEventStreams(input: Readonly<{
   const cutoff = new Date(input.clock.now().getTime() - retentionDays * 24 * 60 * 60 * 1000);
   const cutoffDate = localDatePart(cutoff);
   const removed: string[] = [];
-  for (const stream of EVENT_STREAMS) {
+  for (const stream of input.streams ?? EVENT_STREAMS) {
     for (const file of listEventStreamFiles(input.stateRoot, stream)) {
       if (file.date < cutoffDate) {
         unlinkSync(file.path);

@@ -48,7 +48,7 @@ import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js"
 import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
@@ -128,7 +128,7 @@ interface SeedSpec {
 
 interface SeedWorld {
   readonly database: AuthorityDatabase;
-  readonly spans: ReturnType<typeof createSpanJsonlWriter>;
+  readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly notes: ReturnType<typeof createNoteJsonlWriter>;
 }
 
@@ -748,6 +748,7 @@ export async function startSeededServer(
     resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
   };
   const projection = createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
@@ -769,17 +770,17 @@ export async function startSeededServer(
     },
     descriptors,
   });
-  const jsonlWriter = createSpanJsonlWriter({
-    stateRoot,
+  const jsonlWriter = createTimelineEmitter({
+    repository: database.authority.timelineEvents,
     clock,
     pid: 4242,
   });
-  // D218: the projection's one live feed is the disk tail; the seeder ticks
+  // D218: the projection's one live feed is the SQLite cursor feed; the seeder ticks
   // it after every append so each event folds through the production path.
-  const spans: ReturnType<typeof createSpanJsonlWriter> = Object.freeze({
+  const spans: ReturnType<typeof createTimelineEmitter> = Object.freeze({
     emit: (event: unknown): void => {
       jsonlWriter.emit(event);
-      projection.ingestFromDisk();
+      database.afterAuthorityCommit(() => projection.ingestFromTimeline());
     },
   });
   const notes = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
@@ -867,19 +868,7 @@ export async function startSeededServer(
       reopenBrowser: () => ({ state: "accepted" }),
     },
   });
-  const commands = createDashboardCommandService({
-    kernel,
-    clock,
-    spans,
-    projection,
-    descriptors,
-    authorityRead: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-    },
-  });
+  const commands = createDashboardCommandService({ kernel, projection });
   const startPlans = createStartPlanService({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: database,

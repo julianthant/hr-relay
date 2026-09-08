@@ -29,7 +29,7 @@ import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
@@ -164,6 +164,7 @@ function surface(): Surface {
   // proved to reach the surface an operator actually reads (D171).
   const stateRoot = join(root, ".tracker");
   const projection = createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
@@ -185,25 +186,13 @@ function surface(): Surface {
     },
     descriptors,
   });
-  const spans = createSpanJsonlWriter({
-    stateRoot,
+  const spans = createTimelineEmitter({
+    repository: database.authority.timelineEvents,
     clock,
     pid: 4242,
-    // D218: no in-process hook — the command service ticks the disk tail.
+    // D218: no in-process hook — the command service ticks the SQLite cursor feed.
   });
-  const commands = createDashboardCommandService({
-    kernel,
-    clock,
-    spans,
-    projection,
-    descriptors,
-    authorityRead: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-    },
-  });
+  const commands = createDashboardCommandService({ kernel, projection });
 
   return {
     root,

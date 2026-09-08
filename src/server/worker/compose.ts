@@ -1,6 +1,4 @@
 import { createCredentialStore } from "../../infra/config/credential-store.js";
-import { runSpanPath } from "../../core/span-emitter.js";
-import type { RunRecord } from "../../domain/run/record.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
@@ -19,7 +17,7 @@ import { hostConfigFacts } from "../../domain/config/host-display.js";
  *   `SERVER_REGISTRY`, never re-derived) and the task-store registry;
  * - the real `PlaywrightWorkerSessionFactory` under the worker-loop-owned
  *   `WorkerSessionManager` (test seam: `sessionFactory`);
- * - the JSONL span writer as the loop's required `SpanEmitter`;
+ * - the SQLite timeline writer as the loop's required `SpanEmitter`;
  * - the ref write-safety write sequencer through the loop's `writeSequencerFor` seam, so
  *   its driver leases come from the exact manager the loop's D116 window binds;
  * - one real monotonic deadline scheduler shared by task deadlines, browser
@@ -94,7 +92,7 @@ import {
 } from "../../services/trust/run-diagnostic-capture.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../settings-runtime.js";
-import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import {
   createCensusGeocodeAdapter,
   createNominatimGeocodeAdapter,
@@ -269,7 +267,6 @@ interface WorkerMaintenance {
 function startWorkerMaintenance(input: Readonly<{
   database: AuthorityDatabase;
   lifecycle: WorkerRunLifecyclePort;
-  publishCancelled: (run: RunRecord) => void;
   scheduler: MonotonicDeadlineScheduler;
   clock: Clock;
   workerId: WorkerId;
@@ -310,7 +307,7 @@ function startWorkerMaintenance(input: Readonly<{
     const staleBefore = new Date(clock.nowMs() - input.claimStaleAfterMs).toISOString();
     // Recovery is not workflow-scoped by nature (ref execution-and-sessions §3): sweep every
     // workflow's expired claims, not just this worker's.
-    const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now }, input.publishCancelled);
+    const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now });
     for (const outcome of outcomes) {
       if (outcome.state === "recovery-required") {
         log.warn(
@@ -516,16 +513,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     scheduler,
     newSessionId: () => ids.uuid(),
   });
-  const emitter = createSpanJsonlWriter({ stateRoot, clock });
-  const publishCancelled = (run: RunRecord): void => {
-    if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "cancelled") {
-      throw new Error("recovery cancellation publication requires a cancelled run");
-    }
-    emitter.emit({ t: "span.ended", kind: "run", outcome: "cancelled",
-      ts: run.lifecycle.endedAt, workflow: run.envelope.workflow, runId: run.envelope.runId,
-      attempt: run.envelope.attempt, traceId: run.envelope.traceId,
-      spanPath: runSpanPath(run.envelope.traceId) });
-  };
+  const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
   // lease, keyed on the credential identity resolved ONCE here — an
   // unresolvable identity refuses the whole worker at boot.
@@ -669,7 +657,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
      * an unfinished `attempting` write intent parks (`parked-write`) or stays
      * unclaimable, and NEVER requeues.
      */
-    for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now }, publishCancelled)) {
+    for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now })) {
       if (outcome.state !== "recovery-required") {
         const run = requireLifecycleApplied(outcome);
         log.warn("orphaned claim released before the first poll; its worker never settled", {
@@ -716,7 +704,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     const maintenance = startWorkerMaintenance({
       database,
       lifecycle,
-      publishCancelled,
       scheduler,
       clock,
       workerId,

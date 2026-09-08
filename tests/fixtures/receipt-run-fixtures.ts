@@ -125,7 +125,7 @@ function provenance(
 function checkpoint(input: Readonly<{
   nodeId: string;
   attempt: number;
-  claimGeneration: 1,
+  claimGeneration: number;
   schema: Parameters<typeof deriveSchemaHash>[0];
   value: unknown;
   provenance: readonly unknown[];
@@ -136,7 +136,7 @@ function checkpoint(input: Readonly<{
     itemId: EXIT_ITEM_ID,
     nodeId: input.nodeId,
     attempt: input.attempt,
-    claimGeneration: 1,
+    claimGeneration: input.claimGeneration,
     runId: EXIT_RUN_ID,
     output: { schemaHash: deriveSchemaHash(input.schema, "output"), value: input.value },
     descriptorVersion: personLookupDescriptor.version,
@@ -153,13 +153,13 @@ export interface SeededExitRun {
 }
 
 /**
- * Seed the exit run through the REAL authority database: enqueue at attempt 2
- * (the attempt that actually settled), claim it, walk it to `running`, write
- * the three checkpoints, and terminalize through the D110/D114 composite with
+ * Seed both attempts through the REAL authority database: write searching in
+ * attempt 1, requeue and claim attempt 2, write its two checkpoints, then
+ * terminalize through the D110/D114 composite with
  * a factory-sealed result. Nothing about the terminal row is hand-built.
  */
 export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExitRun {
-  const enqueued = database.authority.runs.enqueue({
+  database.authority.runs.enqueue({
     envelope: {
       runId: EXIT_RUN_ID,
       workflow: personLookupDescriptor.id,
@@ -173,7 +173,7 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
       shape: "single",
       priority: "interactive",
       dryRun: false,
-      attempt: 2,
+      attempt: 1,
       enqueuedAt: ENQUEUED_AT,
     },
     input: {
@@ -187,15 +187,50 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
     lifecycle: { state: "queued" },
     claimGeneration: 0,
     version: 1,
-    // The real run's record was created when it was ENQUEUED; attempt 2 came
-    // later, through a requeue this seed compresses away. (D221 anchors the
-    // "created at enqueue" invariant on the record version rather than on
-    // `attempt === 1`, so the seed has to be truthful about that instant.)
     createdAt: ENQUEUED_AT,
-    updatedAt: ATTEMPT_2_AT,
+    updatedAt: ENQUEUED_AT,
   });
 
   const workerId = "person-lookup-worker-1";
+  const firstClaim = database.authority.runs.claimNext({
+    workflow: personLookupDescriptor.id, workerId, now: ENQUEUED_AT,
+  });
+  if (firstClaim.state !== "claimed") throw new Error("exit run attempt 1 was not claimed");
+  const firstToken = { workerId, claimGeneration: firstClaim.run.claimGeneration };
+  let firstRun = firstClaim.run;
+  for (const state of ["validating", "running"] as const) {
+    const transition = database.authority.runs.transition({
+      runId: EXIT_RUN_ID, expectedVersion: firstRun.version, claim: firstToken,
+      lifecycle: { state, workerId, claimedAt: ENQUEUED_AT, heartbeatAt: ENQUEUED_AT,
+        ...(state === "running" ? { currentNodeId: "searching" } : {}) },
+      now: ENQUEUED_AT,
+    });
+    if (transition.state !== "applied") throw new Error("exit run attempt 1 did not advance");
+    firstRun = transition.run;
+  }
+  const searching = checkpoint({
+    nodeId: "searching",
+    attempt: 1,
+    claimGeneration: firstClaim.run.claimGeneration,
+    schema: SearchPersonOrg.output,
+    value: SEARCH_OUTPUT,
+    provenance: provenance(
+      [
+        "results", "selection.status", "selection.selected.emplId", "selection.selected.name",
+        "selection.selected.department", "selection.selected.jobTitle",
+        "selection.selected.employeeStatus", "selection.selected.hdh", "selection.candidateEids",
+      ],
+      "live",
+      SEARCH_OBSERVED_AT,
+    ),
+    writtenAt: SEARCH_OBSERVED_AT,
+  });
+  database.authority.runCheckpoints.insert(searching);
+  const requeued = database.authority.runs.requeue({
+    runId: EXIT_RUN_ID, expectedVersion: firstRun.version, claim: firstToken,
+    cause: "recovery", now: ATTEMPT_2_AT,
+  });
+  if (requeued.state !== "applied") throw new Error("exit run did not requeue for attempt 2");
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
@@ -222,27 +257,10 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
   });
   if (running.state !== "applied") throw new Error("exit run did not enter running");
 
-  const searching = checkpoint({
-    nodeId: "searching",
-    attempt: 1,
-    claimGeneration: 1,
-    schema: SearchPersonOrg.output,
-    value: SEARCH_OUTPUT,
-    provenance: provenance(
-      [
-        "results", "selection.status", "selection.selected.emplId", "selection.selected.name",
-        "selection.selected.department", "selection.selected.jobTitle",
-        "selection.selected.employeeStatus", "selection.selected.hdh", "selection.candidateEids",
-      ],
-      "live",
-      SEARCH_OBSERVED_AT,
-    ),
-    writtenAt: SEARCH_OBSERVED_AT,
-  });
   const crossVerify = checkpoint({
     nodeId: "cross-verify",
     attempt: 2,
-    claimGeneration: 1,
+    claimGeneration: claimed.run.claimGeneration,
     schema: CrmReadOnboardingRecord.output,
     value: CRM_OUTPUT,
     provenance: provenance(
@@ -255,13 +273,13 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
   const activeStatus = checkpoint({
     nodeId: "active-status",
     attempt: 2,
-    claimGeneration: 1,
+    claimGeneration: claimed.run.claimGeneration,
     schema: ReadActiveStatus.output,
     value: ACTIVE_STATUS_OUTPUT,
     provenance: provenance(["state", "reason", "hdh"], "derived", ACTIVE_STATUS_AT),
     writtenAt: ACTIVE_STATUS_AT,
   });
-  for (const record of [searching, crossVerify, activeStatus]) {
+  for (const record of [crossVerify, activeStatus]) {
     database.authority.runCheckpoints.insert(record);
   }
 
@@ -306,7 +324,6 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
 
   const terminal = database.authority.runs.get(EXIT_RUN_ID);
   if (terminal === undefined) throw new Error("exit run vanished after terminalization");
-  void enqueued;
   return { run: terminal, checkpoints: [searching, crossVerify, activeStatus] };
 }
 

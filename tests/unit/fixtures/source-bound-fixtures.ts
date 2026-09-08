@@ -1,3 +1,5 @@
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { readTimelineRecords } from "../../../src/infra/events/timeline-reader.js";
 import type { TaskStoreRegistry } from "../../../src/base/store.js";
 import type { WriteFixtureWorld } from "./write-sequencer-fixtures.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
@@ -36,11 +38,11 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   const ids = sequentialIdFactory("c");
   const planIds = sequentialIdFactory("b");
   const lifecycleIds = sequentialIdFactory("a");
-  const queueRoots: ReturnType<typeof runQueuedSpanEvent>[] = [];
+  const timeline = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: lifecycleIds, publishQueued: (run, publication) => {
-    assert.ok(database.authority.runs.get(run.envelope.runId), "publication sees committed run");
+    assert.ok(database.authority.runs.get(run.envelope.runId), "publication sees the run inside its owning transaction");
     assert.ok(publication, "every command creation supplies presentation");
-    queueRoots.push(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+    timeline.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
   } });
   const resolution = createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors,
     authority: database, ids, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
@@ -91,7 +93,10 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
     }));
   }
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
-  return { database, descriptor, clock, ids, lifecycleIds, planIds, queueRoots, lifecycle, kernel, planner, world, stores, manager,
+  return { database, descriptor, clock, ids, lifecycleIds, planIds, get queueRoots() {
+    return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
+      record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
+  }, lifecycle, kernel, planner, world, stores, manager,
     proposal, command, start, execute, fresh, resolution, recovery,
     dispose: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
 }

@@ -2,8 +2,8 @@
 
 ## Assignment and approval
 
-**Owner: `side/timeline-history`. Approved planning; implementation WAITING ON accepted
-integration of `side/operation-names`.** This is a separate successor, not an amendment to
+**Owner: `side/timeline-history`. T1 IN PROGRESS under the parallel execution amendment;
+accepted rename master is consumed; T1 candidate gates pass and R1 is pending.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -23,7 +23,8 @@ Three product outcomes belong together:
 The work is larger than a rename. Use two sequential, separately gated and reviewed implementation
 sessions in this one plan: **T1 `side/timeline-history-1`**, then **T2 `side/timeline-history-2`**.
 The operator opens each session. No implementation, database conversion or task creation is
-authorized in this planning session. Neither implementation unit is complete or ready to launch.
+authorized by the original planning session alone. The later execution amendment below admits T1;
+neither implementation unit is complete.
 
 ## Authorities and execution boundaries
 
@@ -278,13 +279,292 @@ state. No deletion of original import material until the explicitly assigned cle
 
 ## Progress and launch status
 
+### T1 parallel execution amendment — 2026-09-08
+
+The operator instructed **“do this in parallel”** after the prerequisite and capacity
+check. T1 therefore starts alongside the rename integration, with one local supervisor
+and no implementation workers. Its isolated branch is `codex/timeline-events` at
+`/Users/julianhein/Projects/hr-worktree-timeline-events`, initially based on the accepted
+operation-name recording commit `394bf4c631b5f01207cb3a3dd1aaaf06b1eb714c`.
+The approved plan is copied without changes from
+`121df12e817c3e19708217d1b9e22d50b8787477` before this amendment. This explicitly
+replaces T1's launch wait and temporarily permits a fifth auxiliary worktree while the
+four predecessor/integration checkouts remain occupied. No peer resources are changed.
+
+The rename integration owns its combined schema numbering and master mutation. T1
+owns only its isolated timeline implementation and records its additive migration after
+the actual accepted rename sequence. No dirty predecessor files are imported. Before
+T1 candidate gates and R1, reconcile onto the accepted integrated master and verify
+all predecessor names, released migration bytes, historical adapters and recovery paths.
+Integration of T1 itself remains separately operator-assigned after gates and R1 PASS;
+T2 and real database application remain separate assignments.
+
+Current execution: checkout admission complete; draft storage/import, emitter/reader
+switch and atomic lifecycle/checkpoint/confirmed-operation wiring are in the isolated
+working tree. Nothing is committed or integration-ready. The draft migration is
+temporarily numbered 36 against its operation-name-only base; before candidate gates
+it MUST move after the accepted worker35/operation36/command37 sequence, to 38, with
+the boot floor and every historical schema threshold reconciled. The integration task
+confirmed that sequence and exclusively owns its master and gate windows.
+
+Focused iteration evidence (not candidate gates): the foundation timeline suite passed
+11 tests with lint exit 0 before composition changes. The subsequent seven-file run
+(`events/timeline-history`, `architecture/atomic-write-outbox`, `run-record-service/service`,
+`command-kernel`, `server/run-queue-projection`, `storage-upgrade`, `storage-span-root-repair`;
+`--maxWorkers=2`) exited 1: 223 passed, seven failed in 24.41 seconds, logged at
+`/tmp/timeline-events-focused-2.log`. Its accompanying root lint exited 0 at
+`/tmp/timeline-events-lint-3.log`. Failures were exact command replay's already-applied
+state, three historical receipt fixtures carrying a future timeline field, a historical
+raw-delete fixture retaining newly introduced FK rows, an obsolete file-doctor expectation,
+and the atomic-commit guard's old signature. Corrections remain unverified. Typecheck's
+last three reported issues were corrected but not rerun. No passing full gate is claimed.
+
+New draft proofs exercise populated multi-file conversion, precommit source change,
+postcommit interruption, exact resume without originals, explicit verified-copy selection
+after old-backup restoration, cross-process cursor delivery, composed enqueue/claim/terminal/
+gate rollback, confirmed-history reconstruction and retention, shared retry evidence and
+last-owner collection. Current doctor and root repair consume SQLite; retired-file mutation
+controls replace file-authority expectations. Assertion resume now records its exact original
+checkpoint reference. Recovery-copy reads/writes use held synchronous directory traversal,
+strict no-follow file reads, immutable hashes and backup binding. Additional negative controls
+for gate-event persistence, damaged attempt ownership, symlinks and snapshot mutation await
+execution. Syntax parsing passes across 64 changed TypeScript files; whitespace checks pass.
+
+The rename-integration task owns the currently evidenced heavy-gate resource conflict
+(lifecycle AST guard timing). Its short diagnostic window was acquired and released after
+focused tests and lint exited. No owned gate process remains. A next approximately three-minute
+diagnostic window is requested; code and fixture work continues independently. The peer's
+accepted master integration and final migration identities remain prerequisites for candidate
+gates, not a reason to discard or integrate unfinished work.
+
+Latest iteration: the expanded 15-file run exited 1 with **433 passed / 3 failed**
+in 31.69 seconds (`/tmp/timeline-events-focused-3.log`). Passing complete files:
+atomic-write-outbox 12; command-kernel 65; dry-run-scenario-composition 21;
+timeline-history 18; run-record-service 50; run-queue-projection 59; storage-restore-drill
+25; storage-span-root-repair 2; storage-upgrade 29; worker-composition 37;
+write-sequencer-restart-no-repeat 3; write-sequencer 52. The remaining failures were
+executor outer-transaction visibility, the omission fixture's disconnected recording
+emitter, and explicit undefined optional span fields reaching canonical serialization.
+Those fixes are drafted; assertion replay and local-day retention controls passed.
+Typecheck exited 2 for four branded-type comparisons/fixtures, now corrected but not
+rechecked (`/tmp/timeline-events-typecheck-3.log`); accompanying lint exited 0
+(`/tmp/timeline-events-lint-4.log`). No owned gate process remains.
+
+Observed Vitest inherited project defaults produced up to four file forks despite CLI
+`--maxWorkers=2`. The temporary adapter `/tmp/timeline-events-vitest.config.mts` imports
+the real configuration and changes only root/project worker counts (root 2; unit 2,
+architecture 1, scenario 1). A structural equality check excluding those exact keys
+passed; membership, isolation, floors and deadlines remain unchanged. Verify observed
+workers on its first use. No test configuration change is proposed for the repository.
+Further draft corrections bind current replay claims, retain original optional historical
+checkpoint claim metadata, record actual confirmation append time, use indexed filtered
+paging, and refuse doctor reconciliation when timeline/run snapshots changed generation.
+The unused recovery-cancellation callback and dashboard command-service writer/read ports
+are retired; lifecycle persistence owns those events. New tests cover ordinary executor
+checkpoint rollback and contradictory source-root refusal. Conversion now checks the selected
+source history with the admitted historical scanner before importing, then rechecks exact
+source/copy digests before commit. Archive ledger fixtures bind the retained run configuration
+and instance; checkpoint fixtures establish their retained owner first. These changes await
+the next focused/typecheck/lint window. Syntax parsing last passed across 68 TypeScript files;
+subsequent small edits have only a passing whitespace check so far.
+
+UI verification uses `/ui`'s narrow unchanged-rendering route (Components lead, local): no
+frontend layout/copy/component change is intended; existing composed regressions and the full
+project parity lane must verify that claim before candidate acceptance. No snapshots are refrozen.
+
+The event map is explicit: `span` retains the strict existing run/task/worker/browser
+wire; `checkpoint-recorded` binds a newly persisted checkpoint; `checkpoint-replayed`
+binds the old checkpoint to the current run/claim without refreshing observation time;
+`operation-confirmed` retains historical ledger fields and exact attempt/checkpoint
+proof/output references. Timeline cursor and its authenticated JSON mirror are assigned
+by SQLite; ordinary retention uses original append day, imported from the source filename.
+
+Remaining implementation/proof work: verify current doctor and shared-evidence deletion,
+complete checkpoint/assertion and transient lifecycle proof, adapt remaining real fixtures to
+SQLite producers and mandatory atomic checkpoints, and resolve all focused failures. Verify
+retention/date boundaries, malformed/missing ownership and stopped source-copy recovery.
+Reconcile accepted rename master (timeline38/floor37), update contracts and guard evidence,
+run every required gate/generated check, commit/freeze, obtain R1, fix/re-review, and hand
+back for separately assigned integration/cleanup. P1–P5/P9 acceptance, full candidate gates
+and R1 remain open. No live migration, HR write, push or T2 work occurred.
+
+Latest diagnostics (fourth focused batch): 13 files, **419 passed / 5 failed**, 37.12 seconds,
+`/tmp/timeline-events-focused-4.log`; typecheck exited 0
+(`/tmp/timeline-events-typecheck-4.log`), lint exited 1 with one unbound-method test fixture
+(`/tmp/timeline-events-lint-5.log`). Failures were two stale schema-floor fixtures, two BFF
+file-backed span fixtures and a concurrent-doctor test expecting a returned report where the
+existing outer snapshot guard throws. These are corrected but not rerun. The scheduling-only
+external Vitest adapter constrained the observed process tree to two active unit workers;
+no membership, isolation, timeout or floor changed. Every owned gate process exited and the
+window was released to rename integration.
+
+Source-only follow-up ports current recovery/diagnostic guards to SQLite and keeps filesystem
+bounds, symlink, descriptor and transient-swap protections directly on the migration scanner.
+Doctor history now carries its complete authority fingerprint from the same event read snapshot;
+canonical reconciliation can separately name malformed owners. Root-directory traversal remains
+no-follow. Timeline schema diagnostics expose only schema-owned fields, and source I/O diagnostics
+withhold raw messages. Added negative controls cover immutable owner tuples, matching versus
+contradictory deletion tombstones, source I/O privacy and ignored retired files. These latest
+changes remain unverified beyond syntax/whitespace checks.
+
+Under the operator's explicit parallel-work instruction, one bounded read-only `sup_scout`
+(Astra/high, `/root/sup_scout_recovery_tests`) mapped the remaining recovery/privacy guards while
+the supervisor implemented locally. It performed no edits or gates and returned its mapping;
+zero implementation workers and the later fresh complete R1 remain unchanged. Native role-policy
+check passed. No worker branch/worktree was created. A further approximately three-minute diagnostic
+window is reserved after rename integration's current full gate chain. Release must notify both
+rename integration and legacy task `01a082a7-ce00-7b83-8bb8-5ece9dfa8b7c`; neither peer's processes
+or checkout may be modified. The accepted master prerequisite is still outstanding.
+
+Latest diagnostics (fifth focused batch): 16 files, **607 passed / 4 failed**, 58.96 seconds,
+`/tmp/timeline-events-focused-5.log`; typecheck and lint exited 0
+(`/tmp/timeline-events-typecheck-5.log`, `/tmp/timeline-events-lint-6.log`). The four
+failures were stale schema fixtures, an exact malformed-authority diagnostic expectation,
+an unowned other-run event fixture, and the explicit SQLite-module boundary allowlist.
+All four are corrected but await rerun. Atomic-write 14, timeline 19, upgrade 36, privacy 56
+and 93 dynamic recovery cases passed. The adapter again produced two active file workers;
+all owned processes exited and both peer tasks received the window release. Rename review
+remains outstanding. A source audit also found the receipt seed compressed away attempt 1;
+it now records that checkpoint during its actual first claim before requeueing attempt 2.
+This fixture correction also awaits verification. Exact timeline identity replay now validates
+retained ownership after an attempt advance; only a new event requires the current attempt.
+A real-authority regression covers checkpoint/confirmation exact replay, divergent identity,
+stale new-event rejection and unchanged generation. It awaits the next diagnostic batch.
+No accepted-candidate evidence is claimed.
+
+Sixth focused batch: 13 files, **327 passed / 1 failed**, 33.45 seconds,
+`/tmp/timeline-events-focused-6.log`. All four prior failures, receipt attempt chronology,
+exact checkpoint/confirmation replay after attempt advancement and the operator lifecycle
+walk passed. The only failure was the deliberately stale trust-fold fixture lacking its
+retained owner in the fold's separate SQLite fixture. It now seeds the supplied real run;
+its original canonical gate assertions are unchanged. The focused rerun passed **6/6** in
+2.40 seconds (`/tmp/timeline-events-focused-7.log`). Typecheck exited 0 before that final
+fixture-only edit (`/tmp/timeline-events-typecheck-6.log`); full lint exited 0 afterward
+(`/tmp/timeline-events-lint-7.log`). Two effective file workers were observed. Every process
+exited and both peer tasks received the explicit window release. No known focused failure
+remains, but final accepted-master reconciliation and all candidate gates remain open.
+
+### Accepted rename reconciliation — 2026-09-08
+
+The integration owner released accepted master **`1c8e294fe3510969c3a0f27dcf3506b922e4e42b`**
+(schema 37/floor 36). Candidate `445fe42451b85701b805ceb98f5e5b1aa8d8440d` received complete independent review from `/root/sup_review_combined_names`: PASS, 67/67 paths and
+no findings, 5,761 tests, 262 parity cases, typecheck and lint. These are predecessor evidence,
+not T1 gates. T1 fast-forwarded from `394bf4c631b5f01207cb3a3dd1aaaf06b1eb714c` to that exact
+accepted commit. Its 78 owned draft paths were saved in recovery stash
+`a7058d8198b4cefc08076e5cf7e1a607b8c838fc` before restoration. The stash remains until verified
+reconciliation; no other checkout, branch or stash was modified. Future planning through
+`910ff111fd464d56621e2800bc5a8e5c22cb551f` remains intact.
+
+The sides were accepted worker/operation/command-group storage changes and T1's timeline
+implementation. Hunk decisions preserve both assigned behaviors:
+
+| File | Resolution and source intent |
+| --- | --- |
+| `src/domain/authority.ts` | Keep released upgrade versions through 37; admit timeline 38 and require its source receipt only at 38. |
+| `src/infra/compat/backup-inspection.ts` | Preserve renamed historical fingerprint layouts and admit schema 37 as historical. |
+| `src/infra/compat/settings-database-upgrade.ts` | Keep command-group migration/credential ownership and add timeline source verification/import; both imports remain. |
+| `src/infra/sqlite/authority-database.ts` | Keep command-group derivation and add timeline evidence/repository imports; the command implementation is preserved. |
+| `src/infra/sqlite/migrations.ts` | Keep released worker35, operation36 and command37 statements byte-for-byte; append timeline38 and advance floor to37. |
+| `src/infra/sqlite/recovery-contracts.ts` | Admit historical versions through37, preserving existing refused gaps. |
+| `src/server/dashboard/commands/command-service.ts` | Keep shared command-group derivation; remove only imports whose old presentation/event emission dependencies were retired by T1. |
+| `src/server/storage/upgrade.ts` | Pass both credential ownership and verified timeline source/copy arguments to plan and apply conversion. |
+| `tests/unit/architecture/sqlite-settings-authority.test.ts` | Pin current schema38; retain all settings SQL assertions. |
+| `tests/unit/server/compose-real-port.test.ts` | Preserve downgrade/no-settings-read guards; assert current38, floor37 and newer39. |
+| `tests/unit/sqlite-authority-database.test.ts` | Preserve stopped-upgrade refusal, historical admissions and renamed request table; seed checkpoint owner and add timeline generation case. |
+| `tests/unit/storage-restore-drill.test.ts` | Keep stopped-upgrade and timeline emitter imports and both restore proof sets. |
+| `tests/unit/storage-upgrade.test.ts` | Preserve complete appended worker/auth/request tests and complete appended timeline import tests; extend historical admission through37. |
+
+All 13 conflicting files have explicit resolutions; no conflict marker remains. The plan's
+three-way merge preserved the accepted document and T1 progress. Syntax parsing passed all 78
+changed TypeScript files. Migration38's appended framed digest is
+`e4d84f51231d458c51fcc20524fe51e48b38a5ff42ae31b2557f7c7199fb0778`; earlier literals remain
+untouched. Focused reconciliation and complete candidate gates are now running under the released
+shared CPU window. Integration of T1 to master remains separately operator-assigned after R1.
+
+Reconciliation diagnostics passed 425 cases and exposed three failures: the historical-layout
+map lacked schema37, and the operation-deletion fixture combined incompatible workflow tuples.
+The map now explicitly preserves schema37's command/delegation layout. Deletion inspects both
+same-item evidence and rows explicitly owned by the run/its attempts, so contradictory workflow
+or item metadata cannot silently escape validation. The deletion test aligns only its synthetic
+owner tuple; the separately pinned historical source/fingerprint is unchanged. Real negative
+controls refuse contradictory operation ownership without a tombstone or generation change.
+The subsequent three-file batch passed **121/121**, 12.60 seconds
+(`/tmp/timeline-events-reconciled-focused-2.log`).
+
+The first full coverage attempt tested tree `e568aedfb3f7529572e27f2016e40390f874c444` using
+the unchanged `test:coverage` command body (`test-runner.ts run --coverage` then `suite-size.ts`)
+with the verified scheduling-only external config. The npm script's trailing `&& suite-size.ts`
+means a trailing npm argument would not configure Vitest; the explicit body supplies the adapter
+to the actual runner. Both effective workers were observed and no owned compiler/linter overlapped.
+Result: **450 files; 5,811 passed / 13 failed**, 610.72 seconds, exit1
+(`/tmp/timeline-events-candidate-coverage.log`); floors and suite-size did not complete.
+Typecheck/lint before that run exited0 (`/tmp/timeline-events-candidate-typecheck.log`,
+`/tmp/timeline-events-candidate-lint.log`). This is diagnostic evidence, not a passed gate.
+
+The 13 failures were resolved as follows: executor/worker assertions now read the real SQLite
+emitter and service-owned lifecycle facts; two synthetic descriptor codes now obey the existing
+two-character trace grammar; repeat-root publication now uses the transaction's SQLite sink;
+checkpoint-loss tests assert both terminal settlement refusal and reopening refusal; the private
+SQLite boundary admits exactly the new conversion/repository modules; existing-authority conversion
+requires a source digest explicitly before computing its identity. All **145 tests in the 10 affected
+files passed**, 13.54 seconds (`/tmp/timeline-events-coverage-fixes-focused.log`). Assertions,
+negative controls, membership, floors and deadlines were retained. Repeated complete gates remain
+required. Nine instruction pairs match; largest project chain is 16,659 bytes. Manifest/catalog/
+roadmap generation passed and produced no tracked differences.
+
+### T1 candidate gate and proof record — 2026-09-08
+
+Candidate status: **awaiting independent review (R1)**. The implementation and tests are complete
+for T1, with P1–P5/P9 subject to independent acceptance. T2, integration, cleanup and actual operator
+database application remain separately assigned. Candidate branch is `codex/timeline-events` in
+`/Users/julianhein/Projects/hr-worktree-timeline-events`, based on accepted master
+`1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. No implementation worker wrote this candidate; the
+bounded read-only recovery scout supplied navigation evidence only. The approved complete R1 will
+review all 95 changed paths, including the contracts, fixtures, tests and shared-boundary interactions.
+
+All runtime gates below tested frozen tree `824c3ca85f1612480c666e3570c6ff90fb34a19c`.
+Only this evidence/wording record changes afterward; source, tests, configuration, dependencies,
+reference snapshots and generated artifacts are unchanged. D191 reuse is explicit for those inputs.
+The candidate commit is the commit containing this record; its exact SHA/tree and generated path
+inventory are bound in the R1 dispatch rather than guessed before commit.
+
+| Gate | Result and evidence |
+| --- | --- |
+| `npm run typecheck` | PASS, exit0; `/tmp/timeline-events-candidate-typecheck-2.log`. |
+| `npm run lint` | PASS, exit0, zero warnings; `/tmp/timeline-events-candidate-lint-2.log`. |
+| Full coverage command body with scheduling adapter | PASS, exit0: 5,824 tests / 450 files, 617.84 seconds; `/tmp/timeline-events-candidate-coverage-3.log`. Statements 85.98%, branches 77.99% (report-only), functions 90.12%, lines 88.25%; all configured floors pass. Suite-size completed: unit 353, scenario 17, architecture 80 files. |
+| `npm run test:parity -- --workers=4` | PASS, exit0: 262/262, 1.2 minutes; `/tmp/timeline-events-candidate-parity.log`. No reference updates or skipped/flaky cases. |
+| `npm run web:build` | PASS, exit0; `/tmp/timeline-events-candidate-build.log`. Nonfatal bundle-size warning remains. |
+| `npm run build:manifest:check`, `npm run stores:catalog:check`, `npm run roadmap:check` | All PASS, exit0; generated outputs are current and unchanged. |
+| Scoped evidence checks | All 16 owner links/anchors resolve, 9 instruction pairs are byte-identical, maximum project chain 16,659 bytes. `git diff --check` and staged whitespace checks pass. The affected roadmap document-binding guard passes 24/24 after recording (`/tmp/timeline-events-candidate-doc-guard.log`). |
+
+The passing coverage command is the exact package-script body with its scheduling-only argument:
+`npm exec -- tsx scripts/test-runner.ts run --coverage --config /tmp/timeline-events-vitest.config.mts`
+followed by `npm exec -- tsx scripts/suite-size.ts`. The external adapter imports the checked-in
+config and changes only effective file scheduling: root/unit 2, architecture/scenario 1. Two actual
+forks were observed; no owned compiler/linter overlapped. Assertions, membership, isolation,
+coverage floors and deadlines remain unchanged. After peer heavy-gate release, an intervening
+unchanged-tree default-four-worker run passed 5,822 cases but timed out both lifecycle-SQL scans
+(40.502s/34.845s; `/tmp/timeline-events-candidate-coverage-2.log`, exit1, 461.12 seconds). It finished
+before termination was needed. The passing two-worker rerun completes those same checks in
+27.918s/25.624s within the unchanged 30s deadlines. This is scheduling evidence, not a waived failure.
+
+| Proof | T1 implementation and deciding coverage | Boundary retained for T2 |
+| --- | --- | --- |
+| P1 Atomicity and identity | `run-record-service/service.test.ts` injects required-event failures into create/claim/requeue/terminal/gate state transactions and outer queue-root rollback. `command-kernel.test.ts` covers gate-result/resume/event rollback and exact replay. `architecture/atomic-write-outbox.test.ts` checks checkpoint, operation, attempt, confirmed event and both compatibility outboxes at every injected storage step. `events/timeline-history.test.ts` covers exact/divergent event identity and replay after the owner's attempt advances. Existing write-sequencer restart/no-repeat and UNKNOWN/fence suites remain in full coverage. | Existing operation outboxes remain active; their retirement is T2. |
+| P2 Complete event scope | `run-executor*.test.ts`, `step-omission-d313.test.ts`, `worker-loop.test.ts`, `claim-sweep-recovery.test.ts` and real scenario/operator walk cover lifecycle, gate, assertion, omitted-node and checkpoint replay events. `events/timeline-history.test.ts` uses a separate producer process and real SQLite connections to prove lost-notification/restart visibility, equal-time identity, fixed page horizon, cursor non-reuse and local-day retention. `server/run-queue-projection.test.ts` exercises the composed cursor reader/rebuild and worker/task folds. | New Activity/archive presentation is T2. |
+| P3 Import and backup | `events/timeline-history.test.ts` checks multi-file bytes/provenance, original retention days, torn/malformed/changed sources, resource/path admission and recovery-copy identity. `storage-upgrade.test.ts` checks populated stopped conversion, contradictory/missing owner refusal, tombstone exclusion, precommit source change, postcommit interruption, exact resume and explicit source-copy recovery after old-backup restore. `storage-restore-drill.test.ts`, storage backup and historical admission matrices preserve old/current backup behavior. | Ledger/outbox-file conversion is T2. |
+| P4 Retention and deletion | `events/timeline-history.test.ts` proves ordinary pruning preserves confirmed history and lossless evidence reconstruction; deletion preserves shared retry checkpoints/operations until the last owner, and rejects missing/contradictory owners without mutation. `run-record-service/service.test.ts` retains terminal-only admission, leaves-first deletion, tombstone replay and accurate timeline tallies. Archive rows are outside ordinary pruning. | Activity/export source replacement and archive transaction-section enrichment are T2. |
+| P5 Transitive readers | Worker/dashboard/scenario compositions use the SQLite emitter. `server/run-queue-projection.test.ts`, BFF flow, stream, logs/collision and read-scan-bound tests exercise current readers; stale JSONL is ignored. Current doctor/recovery tests cover same-snapshot fingerprint/generation checks, corrupted timeline refusal, root reconciliation and stopped root repair. Full parity and dashboard build are candidate gates. | Activity remains on the explicitly preserved compatibility source until T2. |
+| P9 Compatibility | Released migrations 1–37 and their immutable fingerprints are preserved; timeline migration38/floor37 is appended. Historical upgrade/admission, credentials/settings coupling, command groups, operation names, checkpoint/replay, proof/idempotency, archive/delete, notes/artifact/terminal outbox and unrelated workflow suites remain in complete coverage. Private SQLite boundary guards admit only the new repository/conversion modules; guard-inventory entries retain deciding negative-control evidence. | No ledger table or operation-outbox retirement is claimed. |
+
 - Approval: the operator's 2026-09-08 instruction to make this separate plan, retaining two tables
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
 - Notification: `Process operation names` acknowledged unchanged scope; no integration window
   was assigned there at the time of coordination.
-- T1: **WAITING ON** accepted operation-name integration and execution-time ownership/capacity.
+- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Candidate gates pass; R1 acceptance remains open.
 - T2: **WAITING ON** accepted T1 integration. No base SHA is invented for either future result.
-- All implementation steps, P1–P9, R1/R2, integration, cleanup and real database application remain open.
+- T1 implementation and candidate gates are complete; P1–P5/P9 await R1 acceptance. R1/R2, T2, integration, cleanup and real database application remain open.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 24 tests;
   `npm run lint` exits 0 with zero warnings; `npm run roadmap:check` reports fresh output.
   Sixteen plan links/anchors and owning-contract backlinks resolve; all test selectors exist.
@@ -293,8 +573,8 @@ state. No deletion of original import material until the explicitly assigned cle
   are available at inspection. All three earlier side plans remain byte-identical to
   baseline `d94cfcc6f452963ca490e383992f8a76c85fef72`. Whitespace checks pass.
   Only this new plan and its pending dashboard/write-safety/decision amendments change.
-  Typecheck, coverage, parity, build and implementation review are unrun; no product-gate
-  evidence is claimed or reused for this unimplemented design.
+  At that planning checkpoint product gates and implementation review were unrun. The later T1
+  candidate gate record above supersedes that historical implementation status only.
 
 Each supervisor sends **Done / Now / Remaining** at start/resume and after every verified step,
 before the next tool call, with review/integration/cleanup visible. Record actual plan/base/head/tree,

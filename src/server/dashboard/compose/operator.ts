@@ -16,9 +16,10 @@ import type {
 } from "../queries/run-detail.js";
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }) {
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     stateRoot,
     clock,
     appVersion,

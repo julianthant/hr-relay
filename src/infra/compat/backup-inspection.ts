@@ -19,7 +19,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -94,6 +94,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "deleted_runs",
   "protected_settings_current",
   "authority_upgrades",
+  "timeline_events",
 ] as const);
 
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());

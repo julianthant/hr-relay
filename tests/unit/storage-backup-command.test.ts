@@ -2,6 +2,7 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrati
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { randomUUID } from "node:crypto";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 /**
  * D322: an authority backup is written ONLY by `cli storage backup`.
@@ -76,7 +77,7 @@ function createAuthority(p: Paths): number {
 }
 
 describe("cli storage backup (D322)", () => {
-  it("M18 real restore leaves fenced span-only identity absent and reports possible external write", async () => {
+  it("M18 real restore cannot resurrect a fenced run from retired span files", async () => {
     const p = paths(); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -91,12 +92,28 @@ describe("cli storage backup (D322)", () => {
       resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint, configSnapshotId: e.configSnapshotId });
     emitter.emit({ t: "transaction.fenced", ts: CLOCK.now().toISOString(), workflow: e.workflow, runId: e.runId, attempt: e.attempt,
       traceId: e.traceId, spanPath: `${e.traceId}/synthetic-write`, parentSpanPath: e.traceId, node: "synthetic-write", taskId: "ucpath/synthetic-write" });
+    const beforeRestore = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "timeline-restore-proof" }, CLOCK);
+    try {
+      const timeline = createTimelineEmitter({ repository: beforeRestore.authority.timelineEvents, clock: CLOCK, pid: 4242 });
+      for (const name of readdirSync(join(p.stateRoot, "spans"))) {
+        for (const line of readFileSync(join(p.stateRoot, "spans", name), "utf8").trimEnd().split("\n")) timeline.emit(JSON.parse(line));
+      }
+      assert.equal(beforeRestore.authority.timelineEvents.page({}).length, 2);
+    } finally { beforeRestore.close(); }
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
+    const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
+    const suspect = AuthorityDatabase.open({ path: join(p.stateRoot, "suspects", restoreReport.suspectFileName),
+      busyTimeoutMs: 500, migrationOwner: "preserved-timeline-read", openMode: "storage-doctor-read-only-no-migrate" }, CLOCK);
+    try {
+      assert.ok(suspect.authority.runs.get(e.runId));
+      assert.deepEqual(suspect.authority.timelineEvents.page({}).map((record) =>
+        record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
+    } finally { suspect.close(); }
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
-    assert.equal(doctor.exitCode, 1);
-    const report = z.object({ spanAuthority: z.object({ problems: z.array(z.object({ state: z.literal("missing"), runId: z.string(), possibleExternalWrite: z.literal(true) })) }) }).parse(JSON.parse(doctor.output));
-    assert.deepEqual(report.spanAuthority.problems, [{ state: "missing", runId: e.runId, possibleExternalWrite: true }]);
+    assert.equal(doctor.exitCode, 0, doctor.output);
+    const report = z.object({ spanAuthority: z.object({ state: z.literal("reconciled"), streamRunCount: z.literal(0), liveRunCount: z.literal(0) }) }).parse(JSON.parse(doctor.output));
+    assert.equal(report.spanAuthority.state, "reconciled");
     for (let count = 0; count < 2; count++) {
       const reopened = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "missing-stays-absent" }, CLOCK);
       try { assert.deepEqual(new RunRecordService({ database: reopened, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("read must never publish"); } }).read(e.runId), { state: "absent", runId: e.runId });

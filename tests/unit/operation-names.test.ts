@@ -44,7 +44,14 @@ describe("operation table names", () => {
   });
 
   it("deletes current operation children with accurate tallies while retaining another run's operation history", async () => {
-    const f = await currentFixture(); const db = open(f.path);
+    const f = await currentFixture();
+    // The frozen rename corpus intentionally combines generic run/operation
+    // fixtures. Deletion requires their actual ownership tuple to agree.
+    const owners = new DatabaseSync(f.path);
+    try { owners.prepare("UPDATE workflow_runs SET workflow = ?, record_json = json_set(record_json, '$.envelope.workflow', ?) WHERE item_id = ?")
+      .run(WRITE_INTENT_ATTEMPTING.workflowId, WRITE_INTENT_ATTEMPTING.workflowId, WRITE_INTENT_ATTEMPTING.itemId); }
+    finally { owners.close(); }
+    const db = open(f.path);
     try {
       const receipt = db.authority.runs.delete({ runId: WRITE_INTENT_ATTEMPTING.runId,
         origin: "queue", commandId: operationFixtureId(80), now: NOW });

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
@@ -60,10 +60,8 @@ function fixture() {
     assert.equal(consumed.state, "consumed");
     database.authority.runSessions.insert(RUN_SESSION);
     database.authority.runs.enqueue(run);
-  } finally {
-    database.close();
-  }
-  createSpanJsonlWriter({ stateRoot, clock, pid: 4242 }).emit({
+  } catch (error) { database.close(); throw error; }
+  createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 }).emit({
     t: "run.claimed",
     ts: LATER,
     workflow: run.envelope.workflow,
@@ -73,7 +71,7 @@ function fixture() {
     spanPath: run.envelope.traceId,
     workerId: "worker-1",
   });
-  const streamPath = join(stateRoot, "spans", `${run.envelope.workflow}-${NOW.slice(0, 10)}.jsonl`);
+  database.close();
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
   const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock);
   const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 300_000 }, clock);
@@ -86,27 +84,30 @@ function fixture() {
     stoppedProofMaxAgeMs: 300_000,
     busyTimeoutMs: 500,
   }, clock);
-  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, streamPath, service, stoppedSystemProof };
+  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, service, stoppedSystemProof };
 }
 
 describe("offline missing run.queued recovery", () => {
-  it("appends one authority-derived marked root without changing prior stream bytes", async () => {
+  it("appends one authority-derived marked SQLite root without changing prior records", async () => {
     const f = fixture();
-    const before = readFileSync(f.streamPath);
+    const read = () => {
+      const db = AuthorityDatabase.open({ path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "repair-verifier" }, f.clock);
+      try { return db.authority.timelineEvents.page({}); } finally { db.close(); }
+    };
+    const before = read();
     const report = f.service.repair({ runId: f.run.envelope.runId, stoppedSystemProof: f.stoppedSystemProof });
     assert.equal(report.state, "repaired");
-    const after = readFileSync(f.streamPath);
-    assert.deepEqual(after.subarray(0, before.byteLength), before);
-    const appended = SpanEventWireSchema.parse(
-      JSON.parse(after.subarray(before.byteLength).toString("utf8")),
-    );
-    if (appended.t !== "run.queued" || appended.repair === undefined) {
-      throw new Error("span root repair did not append its marked run.queued event");
+    const after = read();
+    assert.deepEqual(after.slice(0, before.length), before);
+    assert.equal(after.length, before.length + 1);
+    const payload = after.at(-1)?.payload;
+    if (payload?.kind !== "span") throw new Error("missing repaired span");
+    const appended = SpanEventWireSchema.parse(payload.event);
+    if (appended.t !== "run.queued" || appended.repair?.kind !== "timeline-authority-reconstruction") {
+      throw new Error("timeline root repair did not append its marked run.queued event");
     }
-    assert.equal(appended.t, "run.queued");
     assert.equal(appended.pid, process.pid);
-    assert.equal(appended.repair.kind, "authority-reconstruction");
-    assert.equal(appended.repair.priorStreamBytes, before.byteLength);
+    assert.equal(appended.repair.priorCursor, before.at(-1)?.cursor);
     assert.equal(appended.title, START_PLAN.planned[0]?.title);
 
     const doctor = await doctorAuthorityStorage({

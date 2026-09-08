@@ -1,3 +1,4 @@
+import { TimelineEventRecordSchema } from "../../events/timeline.js";
 import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { z } from "zod";
 import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
@@ -296,6 +297,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
   deleted_runs: DeletedRunRecordSchema,
   authority_upgrades: AuthorityUpgradeRecordSchema,
+  timeline_events: TimelineEventRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

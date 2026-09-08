@@ -159,7 +159,13 @@ const RunQueuedSchema = z.strictObject({
   resolvedInstance: z.partialRecord(SpanBrowserSystemSchema, SpanSystemInstanceSchema),
   configFingerprint: Hex64Schema,
   configSnapshotId: UuidSchema,
-  repair: AuthorityReconstructionRepairSchema.optional(),
+  repair: z.discriminatedUnion("kind", [AuthorityReconstructionRepairSchema, z.strictObject({
+    kind: z.literal("timeline-authority-reconstruction"),
+    repairedAt: IsoInstantSchema,
+    sourceAuthorityGeneration: NonnegativeIntSchema,
+    sourceAuthorityFingerprint: Hex64Schema,
+    priorCursor: NonnegativeIntSchema,
+  })]).optional(),
 });
 
 const RunClaimedSchema = z.strictObject({

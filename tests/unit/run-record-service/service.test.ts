@@ -1,3 +1,6 @@
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,11 +76,13 @@ function fixture(
   });
   let next = 100;
   const published: RunRecord[] = [];
+  const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const service = new RunRecordService({ database, clock,
     ids: { uuid: () => `10000000-0000-4000-8000-${String(next++).padStart(12, "0")}` },
     publishQueued: (run) => {
       assert.equal(database.authority.runs.get(run.envelope.runId)?.version, 1);
-      published.push(run);
+      emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic run" }));
+      database.afterAuthorityCommit(() => published.push(run));
     },
   });
   const request: CreateRunRequest = {
@@ -1197,17 +1202,68 @@ describe("canonical run-record service", () => {
       { state: "refused", refusal: { reason: "cursor-stale" } });
   });
 
+  for (const operation of ["enqueue", "claim", "terminal"] as const) {
+    it(`rolls back ${operation} state and journal when required timeline persistence fails`, () => {
+      const f = fixture();
+      const run = operation === "enqueue" ? undefined : created(f.service, f.request);
+      const raw = new DatabaseSync(join(f.root, "authority.sqlite"));
+      try {
+        raw.exec("CREATE TRIGGER injected_timeline_failure BEFORE INSERT ON timeline_events BEGIN SELECT RAISE(ABORT, 'injected timeline failure'); END");
+        const before = f.database.getMeta();
+        const events = f.database.authority.timelineEvents.page({});
+        const state = run === undefined ? undefined : f.service.read(run.envelope.runId);
+        const commandId = operation === "enqueue" ? f.request.commandId : UUID_5;
+        assert.throws(() => {
+          if (operation === "enqueue") f.service.create(f.request);
+          else if (operation === "claim") f.service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig: f.runtimeConfig });
+          else {
+            assert.ok(run);
+            f.service.transition({ commandId, runId: run.envelope.runId, expectedVersion: run.version,
+              lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+          }
+        }, /injected timeline failure/);
+        assert.deepEqual(f.database.getMeta(), before);
+        assert.deepEqual(f.database.authority.timelineEvents.page({}), events);
+        assert.equal(f.database.authority.lifecycleJournal.getCommand(commandId), undefined);
+        if (run !== undefined) assert.deepEqual(f.service.read(run.envelope.runId), state);
+        else assert.equal(f.database.authority.runs.listByWorkflow(WORKFLOW_ID).length, 0);
+      } finally { raw.close(); }
+    });
+  }
+
+  it("rolls back gate parking when its required opened event fails", () => {
+    const f = fixture();
+    const running = runningRun(f.service, f.request, f.runtimeConfig);
+    const raw = new DatabaseSync(join(f.root, "authority.sqlite"));
+    try {
+      raw.exec("CREATE TRIGGER injected_gate_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.record_json, '$.payload.event.t') = 'gate.opened' BEGIN SELECT RAISE(ABORT, 'injected gate event'); END");
+      const before = f.database.getMeta();
+      const events = f.database.authority.timelineEvents.page({});
+      const commandId = "83000000-0000-4000-8000-000000000007";
+      assert.throws(() => f.service.workerTransition({ commandId, runId: running.envelope.runId,
+        claim: { workerId: WORKER_ID, claimGeneration: 1 },
+        lifecycle: { state: "parked-gate", gateId: GATE_RESULT.gateId, parkedAt: NOW, resumeAt: "crm-dates" },
+      }), /injected gate event/u);
+      assert.deepEqual(f.database.authority.runs.get(running.envelope.runId), running);
+      assert.deepEqual(f.database.getMeta(), before);
+      assert.deepEqual(f.database.authority.timelineEvents.page({}), events);
+      assert.equal(f.database.authority.lifecycleJournal.getCommand(commandId), undefined);
+    } finally { raw.close(); }
+  });
+
   it("queue-root publication waits for the outer transaction and disappears on rollback", () => {
     const { service, request, database, published } = fixture();
     let rolledBack: RunRecord | undefined;
     assert.throws(() => database.withAuthorityTransaction(() => {
       rolledBack = created(service, request);
+      assert.equal(database.authority.timelineEvents.page({}).length, 1);
       assert.equal(published.length, 0);
       throw new Error("outer command refused");
     }), /outer command refused/);
     assert.equal(published.length, 0);
     assert.ok(rolledBack);
     assert.equal(service.read(rolledBack.envelope.runId).state, "absent");
+    assert.deepEqual(database.authority.timelineEvents.page({}), []);
     database.withAuthorityTransaction(() => {
       created(service, { ...request, commandId: UUID_5 });
       assert.equal(published.length, 0);
@@ -1558,7 +1614,8 @@ describe("canonical run-record service", () => {
     ]));
     for (const tombstone of outcome.tombstones) {
       assert.deepEqual(database.authority.deletedRuns.get(tombstone.runId), tombstone);
-      assert.deepEqual(tombstone.removed, [{ table: "workflow_runs", rows: 1 }]);
+      assert.deepEqual(tombstone.removed, [{ table: "timeline_events", rows: 2 }, { table: "workflow_runs", rows: 1 }]);
+      assert.equal(tombstone.tallyVersion, 3);
     }
     assert.equal(database.getMeta().authorityGeneration, beforeDelete + 1);
     for (const run of [...members, anchor]) assert.equal(service.read(run.envelope.runId).state, "deleted");
@@ -1749,6 +1806,7 @@ describe("canonical run-record service", () => {
          item_id, attempt, run_number, ordinal_source)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'unknown')`)
         .run(historical.runId, WORKFLOW_ID, historical.traceId, "queue", UUID_1, NOW, JSON.stringify(historical), NOW);
+      raw.prepare("DELETE FROM timeline_events WHERE run_id = ?").run(historical.runId);
       raw.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(historical.runId);
     } finally { raw.close(); }
     const before = database.getMeta().authorityGeneration;
@@ -1780,7 +1838,7 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.runSessions.get(RUN_SESSION_ID), session);
   });
 
-  it("#21 answers absent for a span-only root while the doctor emits a missing finding", async () => {
+  it("#21 ignores a retired file root in canonical reads and current storage health", async () => {
     const { service, request, root, clock } = fixture();
     const runId = UUID_5;
     const traceId = "pl-120021-0000";
@@ -1814,9 +1872,8 @@ describe("canonical run-record service", () => {
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 250,
     }, clock);
-    assert.equal(doctor.spanAuthority.state, "degraded");
-    if (doctor.spanAuthority.state !== "degraded") throw new Error("span-only root must degrade storage health");
-    assert.deepEqual(doctor.spanAuthority.problems, [{ state: "missing", runId }]);
+    assert.deepEqual(doctor.spanAuthority, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] });
+    assert.deepEqual(service.read(runId), { state: "absent", runId });
     assert.equal(countTasks(), 0);
   });
 

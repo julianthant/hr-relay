@@ -1,4 +1,10 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../domain/command-groups.js";
+import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../events/confirmed-operation.js";
+import { timelineCheckpointReference } from "../../events/timeline.js";
+import { deriveStableUuid } from "../../domain/identifiers.js";
+import { createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
+import { readTimelineRecords } from "../events/timeline-reader.js";
+import type { TimelineRepository, TimelineAppend } from "../../events/timeline.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
 import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
 import { CommandIdentityConflictError } from "../../domain/commands.js";
@@ -30,7 +36,7 @@ import {
 } from "../../domain/authority.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
-import { systemClock } from "../../domain/clock.js";
+import { systemClock, localDatePart } from "../../domain/clock.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
@@ -972,6 +978,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 }>;
 
 export type AuthorityRepositories = Readonly<{
+  timelineEvents: TimelineRepository;
   runs: RunRepository;
   terminalAuthorizations: TerminalAuthorizationRepository;
   failures: FailureRepository;
@@ -1930,6 +1937,123 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
   }
 }
 
+/** Exact retained ownership, including retries whose shared evidence outlives its source run. */
+function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord) {
+  const { runId, workflow, itemId } = deleting.envelope;
+  const eligibleOwner = (ownerId: string): boolean => {
+    const retained = readTimelineRun(database, ownerId);
+    if (retained !== undefined) {
+      if (retained.envelope.workflow !== workflow || retained.envelope.itemId !== itemId) throw new Error("run-delete-evidence-owner-mismatch");
+      return ownerId === runId;
+    }
+    const raw = database.prepare("SELECT record_json FROM deleted_runs WHERE record_key = ?").get(ownerId);
+    if (raw === undefined) throw new Error("run-delete-evidence-owner-missing");
+    const tombstone = parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(raw).record_json);
+    if (tombstone.workflow !== workflow || tombstone.itemId !== itemId) throw new Error("run-delete-evidence-tombstone-mismatch");
+    return true;
+  };
+  const referenced = (ownerId: string): boolean => {
+    return database.prepare(`SELECT 1 FROM timeline_events WHERE run_id <> ?
+      AND json_extract(record_json, '$.payload.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
+      || database.prepare(`SELECT 1 FROM run_results, json_each(run_results.record_json, '$.dependencies') AS dependency
+        WHERE run_results.record_key <> ? AND json_extract(dependency.value, '$.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
+      || database.prepare(`SELECT 1 FROM workflow_runs WHERE record_key <> ?
+        AND json_extract(record_json, '$.envelope.retryOf') = ? LIMIT 1`).get(runId, ownerId) !== undefined;
+  };
+  const checkpointKeys: string[] = [];
+  for (const raw of database.prepare("SELECT record_key, record_json FROM run_checkpoints WHERE (workflow = ? AND item_id = ?) OR run_id = ?").all(workflow, itemId, runId)) {
+    const row = AuthorityRecordFingerprintRowSchema.parse(raw);
+    const checkpoint = parseJsonRecord(RunCheckpointRecordSchema, row.record_json);
+    if (checkpoint.workflowId !== workflow || checkpoint.itemId !== itemId) throw new Error("run-delete-checkpoint-column-mismatch");
+    if (eligibleOwner(checkpoint.runId) && !referenced(checkpoint.runId)) checkpointKeys.push(row.record_key);
+  }
+  const operationIds: string[] = [];
+  for (const raw of database.prepare(`SELECT record_json FROM run_operations
+    WHERE (json_extract(record_json, '$.workflowId') = ? AND json_extract(record_json, '$.itemId') = ?)
+      OR json_extract(record_json, '$.runId') = ?
+      OR record_key IN (SELECT write_intent_id FROM run_operation_attempts WHERE json_extract(record_json, '$.runId') = ?)
+    `).all(workflow, itemId, runId, runId)) {
+    const operation = parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(raw).record_json);
+    if (operation.workflowId !== workflow || operation.itemId !== itemId) throw new Error("run-delete-operation-column-mismatch");
+    if (operation.status === "observed-present") continue;
+    const owners = new Set([operation.runId]);
+    let currentAttemptFound = false;
+    for (const row of database.prepare("SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ?").all(operation.writeIntentId)) {
+      const attempt = parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json);
+      if (attempt.writeIntentId !== operation.writeIntentId) throw new Error("run-delete-attempt-column-mismatch");
+      if (attempt.writeAttemptId === operation.currentAttemptId) {
+        if (attempt.runId !== operation.runId || attempt.generation !== operation.generation
+          || attempt.runAttempt !== operation.runAttempt) throw new Error("run-delete-current-attempt-mismatch");
+        currentAttemptFound = true;
+      }
+      owners.add(attempt.runId);
+    }
+    if (!currentAttemptFound) throw new Error("run-delete-current-attempt-missing");
+    // Evaluate every owner even after a retained peer is found: corruption is
+    // never hidden by short-circuiting to a plausible shared group.
+    const ownership = [...owners].map((owner) => ({ eligible: eligibleOwner(owner), referenced: referenced(owner) }));
+    if (ownership.every((owner) => owner.eligible && !owner.referenced)) operationIds.push(operation.writeIntentId);
+  }
+  return { checkpointKeys, operationIds };
+}
+
+function readTimelineRun(database: DatabaseSync, runId: string): RunRecord | undefined {
+  const row = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?").get(runId);
+  return row === undefined ? undefined : parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+}
+
+function timelineEvidenceRepositories(database: DatabaseSync) {
+  return {
+    writeAttempts: { get(id: string) {
+      const row = database.prepare("SELECT record_json FROM run_operation_attempts WHERE record_key = ?").get(id);
+      return row === undefined ? undefined : parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json);
+    } },
+    runCheckpoints: { get(workflow: string, itemId: string, nodeId: string, attempt: number, claimGeneration?: number) {
+      const key = checkpointLookupKey(workflow, itemId, nodeId, attempt, claimGeneration);
+      const row = database.prepare("SELECT record_json FROM run_checkpoints WHERE record_key = ?").get(key);
+      return row === undefined ? undefined : parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
+    } },
+  };
+}
+
+function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false): void {
+    if (record.scope.kind === "worker") return;
+    const run = readTimelineRun(database, record.scope.runId);
+    if (run === undefined) throw new Error("timeline-event-owner-missing");
+    if (run.envelope.workflow !== record.workflow) throw new Error("timeline-event-owner-mismatch");
+    if (record.payload.kind === "operation-confirmed") {
+      const facts = record.payload.facts;
+      if (facts.traceId !== run.envelope.traceId || facts.itemId !== run.envelope.itemId
+        || (appending ? facts.attempt !== run.envelope.attempt : facts.attempt > run.envelope.attempt) || facts.configFingerprint !== run.envelope.configFingerprint
+        || facts.instance !== run.envelope.resolvedInstance[facts.system] || run.envelope.dryRun) {
+        throw new Error("confirmed-history-run-mismatch");
+      }
+      // The resolver validates all exact proof/output/attempt references before append.
+      reconstructConfirmedOperation(timelineEvidenceRepositories(database), record);
+    }
+    if (record.payload.kind === "checkpoint-replayed" || record.payload.kind === "checkpoint-recorded") {
+      const reference = record.payload.checkpoint;
+      const checkpoint = timelineEvidenceRepositories(database).runCheckpoints.get(reference.workflowId, reference.itemId,
+        reference.nodeId, reference.attempt, reference.claimGeneration);
+      if ((appending ? record.payload.attempt !== run.envelope.attempt : record.payload.attempt > run.envelope.attempt)
+        || (appending && record.payload.kind === "checkpoint-replayed" && Number(record.payload.claimGeneration) !== Number(run.claimGeneration))
+        || reference.itemId !== run.envelope.itemId
+        || checkpoint === undefined
+        || canonicalJsonStringify(timelineCheckpointReference(checkpoint)) !== canonicalJsonStringify(reference)) {
+        throw new Error("timeline-checkpoint-reference-mismatch");
+      }
+    }
+    if (record.payload.kind === "span") {
+      const event = record.payload.event;
+      if (!("runId" in event) || event.traceId !== run.envelope.traceId
+        || event.attempt > run.envelope.attempt
+        || (event.t === "run.queued" && event.itemId !== run.envelope.itemId)) {
+        throw new Error("timeline-event-owner-mismatch");
+      }
+    }
+  }
+
+
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
@@ -1955,7 +2079,10 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
     for (const rawRow of rows) {
       const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
       try {
-        parseJsonRecord(schema, row.record_json);
+        if (table === "timeline_events") {
+          const event = timelineEventFromRow(database.prepare("SELECT * FROM timeline_events WHERE record_key = ?").get(row.record_key));
+          assertTimelineOwner(database, event);
+        } else parseJsonRecord(schema, row.record_json);
       } catch (error) {
         throw new Error(
           `authority table ${table} record ${row.record_key} failed strict record schema validation: ${errorMessage(error)}`,
@@ -2109,6 +2236,7 @@ type AuthorityReadIdentitySnapshot = Readonly<{
 function inspectAuthorityReadIdentityReadOnly(
   path: string,
   busyTimeoutMs: number,
+  readWithinSnapshot?: (database: DatabaseSync) => void,
 ): AuthorityReadIdentitySnapshot {
   const parsedPath = z.string().min(1).parse(path);
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
@@ -2152,6 +2280,7 @@ function inspectAuthorityReadIdentityReadOnly(
       authorityGeneration: meta.authority_generation,
       authorityContentFingerprint: FingerprintSchema.parse(authorityContentFingerprint(database)),
     });
+    readWithinSnapshot?.(database);
     database.exec("COMMIT");
     transactionOpen = false;
     return snapshot;
@@ -2806,6 +2935,18 @@ export class AuthorityDatabase implements Disposable {
     return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
   }
 
+  /** Event evidence and its complete authority identity from one read-only snapshot. */
+  static inspectTimelineReadOnly(path: string, busyTimeoutMs = 250) {
+    let timeline: ReturnType<typeof readTimelineRecords> | undefined;
+    const identity = inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
+      const repository = createTimelineRepository({ database, read: (work) => work(),
+        mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
+      timeline = readTimelineRecords(repository);
+    });
+    if (timeline === undefined) throw new Error("timeline-read-snapshot-missing");
+    return { ...identity, ...timeline };
+  }
+
   getSourceDatabaseIdentity(): string {
     return AuthorityDatabase.sourceDatabaseIdentity(this.#path);
   }
@@ -3236,8 +3377,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  commitWriteAttempt(input: unknown): AtomicWriteCommitReport {
+  commitWriteAttempt(input: unknown, checkpointInput: unknown): AtomicWriteCommitReport {
     const parsed = AtomicWriteCommitInputSchema.parse(input);
+    const checkpoint = RunCheckpointRecordSchema.parse(checkpointInput);
+    if (checkpoint.writtenAt !== parsed.confirmedAt
+      || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(parsed.outcome)) {
+      throw new Error("confirmed-history-checkpoint-outcome-mismatch");
+    }
     return this.withAuthorityTransaction(() => {
       const currentIntent = this.#readRecord("run_operations", parsed.writeIntentId, WriteIntentRecordSchema);
       if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
@@ -3281,6 +3427,21 @@ export class AuthorityDatabase implements Disposable {
       this.#writeCommitHooks?.afterStorageStep("ledger-outbox");
       this.#insertDurableOutbox(parsed.terminalSpanOutbox);
       this.#writeCommitHooks?.afterStorageStep("terminal-span-outbox");
+      if (parsed.ledgerOutbox.payload.kind !== "ledger-entry" || parsed.terminalSpanOutbox.payload.kind !== "write-committed-span") {
+        throw new Error("confirmed-history-source-kind");
+      }
+      this.authority.runCheckpoints.insert(checkpoint);
+      this.#writeCommitHooks?.afterStorageStep("transaction-checkpoint");
+      const history = confirmedOperationTimeline({ ledger: parsed.ledgerOutbox.payload.entry,
+        span: parsed.terminalSpanOutbox.payload, checkpoint, writeAttemptId: committedAttempt.writeAttemptId,
+        recordedAt: this.#clock.now().toISOString() });
+      const reconstructed = reconstructConfirmedOperation(this.authority, history);
+      if (canonicalJsonStringify(reconstructed.ledger) !== canonicalJsonStringify(parsed.ledgerOutbox.payload.entry)
+        || canonicalJsonStringify(reconstructed.span) !== canonicalJsonStringify(parsed.terminalSpanOutbox.payload)) {
+        throw new Error("confirmed-history-lossless-reconstruction-failed");
+      }
+      this.authority.timelineEvents.append(history);
+      this.#writeCommitHooks?.afterStorageStep("timeline-event");
 
       return AtomicWriteCommitReportSchema.parse({
         state: "committed",
@@ -4469,6 +4630,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+
   #buildAuthorityRepositories(): AuthorityRepositories {
     const opaque = (tableInput: z.input<typeof OpaqueAuthorityTableSchema>): ImmutableRepository<OpaqueAuthorityRecord> => {
       const table = OpaqueAuthorityTableSchema.parse(tableInput);
@@ -4482,6 +4644,12 @@ export class AuthorityDatabase implements Disposable {
     };
 
     return Object.freeze({
+      timelineEvents: createTimelineRepository({
+        database: this.#database,
+        read: (work) => this.#withReadSnapshot(work),
+        mutate: (work) => this.#authorityWrite("timeline_events", work),
+        assertOwner: (record, appending) => assertTimelineOwner(this.#database, record, appending),
+      }),
       runs: this.#buildRunRepository(),
       terminalAuthorizations: Object.freeze({
         get: (runId: string) => this.#readRecord(
@@ -5196,6 +5364,15 @@ export class AuthorityDatabase implements Disposable {
               recordKey, record.workflowId, record.itemId, record.nodeId,
               record.attempt, claimGeneration, record.runId, json, record.writtenAt,
             );
+            const now = this.#clock.now();
+            this.authority.timelineEvents.append({ schemaVersion: 1,
+              eventId: deriveStableUuid("timeline-checkpoint-recorded", recordKey),
+              workflow: record.workflowId, scope: { kind: "run", runId: record.runId },
+              occurredAt: record.writtenAt, recordedAt: now.toISOString(), retentionDate: localDatePart(now),
+              source: { kind: "native" }, payload: { kind: "checkpoint-recorded", runId: record.runId,
+                workflow: record.workflowId, attempt: record.attempt, claimGeneration,
+                checkpoint: timelineCheckpointReference(record) },
+            });
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
@@ -6612,6 +6789,7 @@ export class AuthorityDatabase implements Disposable {
           if (origin === "queue" && archived !== undefined) {
             throw new Error(`run ${runId} is archived; delete it from the Archive, not the queue`);
           }
+          const evidence = runDeletionEvidence(this.#database, run);
           const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
           const tombstone = (rows: readonly { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[]) =>
             DeletedRunRecordSchema.parse({
@@ -6622,7 +6800,7 @@ export class AuthorityDatabase implements Disposable {
               attempt: run.envelope.attempt,
               runNumber: run.runNumber ?? null,
               ordinalSource: "tombstone",
-              tallyVersion: 2,
+              tallyVersion: 3,
               origin,
               commandId,
               deletedAt: now,
@@ -6649,17 +6827,23 @@ export class AuthorityDatabase implements Disposable {
           this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "tombstone" });
           const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: readonly string[]): void => {
             const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
-            if (rows > 0) removed.push({ table, rows });
+            if (rows > 0) {
+              const prior = removed.find((entry) => entry.table === table);
+              if (prior === undefined) removed.push({ table, rows });
+              else prior.rows += rows;
+            }
           };
-          const intents = "SELECT record_key FROM run_operations WHERE json_extract(record_json, '$.runId') = ?";
-          // The ledger, leaves first: projection → outbox → attempts → intents.
-          remove("ledger_projections", `
-            DELETE FROM ledger_projections WHERE record_key IN (
-              SELECT outbox.record_key FROM operation_outbox AS outbox WHERE outbox.write_intent_id IN (${intents})
-            )`, runId);
-          remove("operation_outbox", `DELETE FROM operation_outbox WHERE write_intent_id IN (${intents})`, runId);
-          remove("run_operation_attempts", `DELETE FROM run_operation_attempts WHERE write_intent_id IN (${intents})`, runId);
-          remove("run_operations", "DELETE FROM run_operations WHERE json_extract(record_json, '$.runId') = ?", runId);
+          remove("timeline_events", "DELETE FROM timeline_events WHERE run_id = ?", runId);
+          // Keep an entire operation group while another retained retry owns or
+          // references its evidence. The last owner collects the held group.
+          for (const operationId of evidence.operationIds) {
+            remove("ledger_projections", `DELETE FROM ledger_projections WHERE record_key IN (
+              SELECT record_key FROM operation_outbox WHERE write_intent_id = ?
+            )`, operationId);
+            remove("operation_outbox", "DELETE FROM operation_outbox WHERE write_intent_id = ?", operationId);
+            remove("run_operation_attempts", "DELETE FROM run_operation_attempts WHERE write_intent_id = ?", operationId);
+            remove("run_operations", "DELETE FROM run_operations WHERE record_key = ?", operationId);
+          }
           // Evidence and diagnostics.
           remove("diagnostic_attachments", `
             DELETE FROM diagnostic_attachments WHERE bundle_id IN (
@@ -6676,7 +6860,7 @@ export class AuthorityDatabase implements Disposable {
           remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
           remove("run_terminal_authorizations", "DELETE FROM run_terminal_authorizations WHERE record_key = ?", runId);
           remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
-          remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE run_id = ?", runId);
+          for (const key of evidence.checkpointKeys) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
           // Inbox items that would otherwise link to a run nobody can open.
           remove("notifications", `
             DELETE FROM notifications WHERE EXISTS (

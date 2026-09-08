@@ -276,7 +276,7 @@ describe("dashboard stream hub", () => {
     const heldCursor = w.projection.cursor();
     const heldGeneration = w.projection.generation();
 
-    w.projection.rebuildFromJsonl();
+    w.projection.rebuildFromTimeline();
     const replacement = await hub.connect({
       day: DAY,
       lastEventId: heldCursor,
@@ -321,7 +321,7 @@ describe("dashboard stream hub", () => {
       backfillGaps: {
         detected: (input: unknown) => {
           const gap = BackfillGapObservationSchema.parse(input);
-          w.projection.rebuildFromJsonl();
+          w.projection.rebuildFromTimeline();
           return Promise.resolve({ published: false as const, gap });
         },
       },
@@ -461,7 +461,7 @@ describe("dashboard stream hub", () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
-    w.projection.rebuildFromJsonl();
+    w.projection.rebuildFromTimeline();
     const live = await drain(connection);
     assert.deepEqual(live.map(({ type }) => type), ["reset-required"]);
     if (live[0].type !== "reset-required") assert.fail("expected reset-required");

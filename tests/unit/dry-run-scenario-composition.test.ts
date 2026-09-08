@@ -1,7 +1,7 @@
 import { createCredentialStore } from "../../src/infra/config/credential-store.js";
 import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -42,6 +42,12 @@ import { testDataInputSource } from "./helpers/test-data-source.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+function spanTextFromAuthority(stateRoot: string, clock: Parameters<typeof AuthorityDatabase.open>[1]): string {
+  const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 500, migrationOwner: "scenario-timeline-read" }, clock);
+  try { return database.authority.timelineEvents.page({}).flatMap((record) => record.payload.kind === "span"
+    ? [JSON.stringify(record.payload.event)] : []).join("\n"); } finally { database.close(); }
+}
+
 
 function selectedSettingsFixture(root: string, clock: TestClock, env: NodeJS.ProcessEnv = {}) {
   return sharedSettingsFixture(root, clock, env, databases);
@@ -404,9 +410,7 @@ describe("dry-run scenario production composition boundary", () => {
     } finally {
       database.close();
     }
-    const spanText = readdirSync(join(stateRoot, "spans"))
-      .map((file) => readFileSync(join(stateRoot, "spans", file), "utf8"))
-      .join("\n");
+    const spanText = spanTextFromAuthority(stateRoot, clock);
     const runEvents = spanText.trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>)
       .filter((event) => event.runId === started.runId);
@@ -928,9 +932,7 @@ describe("dry-run scenario production composition boundary", () => {
     assert.ok(receipt);
     assert.match(failure.summary, /subject observation.*real write would refuse to fence/iu);
 
-    const spanText = readdirSync(join(stateRoot, "spans"))
-      .map((file) => readFileSync(join(stateRoot, "spans", file), "utf8"))
-      .join("\n");
+    const spanText = spanTextFromAuthority(stateRoot, clock);
     for (const sink of [JSON.stringify(failure), JSON.stringify(receipt), spanText, lines.join("\n")]) {
       assert.doesNotMatch(sink, new RegExp(malformedObservation));
       assert.doesNotMatch(sink, new RegExp(FINALIZATION_EID));

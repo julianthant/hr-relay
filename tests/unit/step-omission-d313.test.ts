@@ -40,7 +40,7 @@ import {
   healthyUcpathDriver,
   openAuthorityHarness,
   personLookupQueuedRun,
-  recordingEmitter,
+  recordingTimelineEmitter,
   recordingLogger,
   sessionFactoryHarness,
   sessionManagerFor,
@@ -108,7 +108,7 @@ function fixture(id: string, code: string, steps: (author: Author) => ReturnType
  * `search` (reads) → [`review` gate, `verify` task] (deciding, omittable) → result.
  * Omitting `deciding` runs neither the gate nor the read; `verify` is rebuilt.
  */
-const gateInsideOmittableStep = fixture("d313-gate-inside-omitted-step", "dgo", ({ task, gate, group, result }) => {
+const gateInsideOmittableStep = fixture("d313-gate-inside-omitted-step", "dg", ({ task, gate, group, result }) => {
   const search = task({ id: "search", contract: SearchPersonOrg, label: "Search", replay: "checkpoint" }, [], ({ input }) => ({
     kind: "by-eid" as const, emplId: input.emplId,
   }));
@@ -239,7 +239,7 @@ describe("D313 — the executor runs no entry of an omitted step and never asks 
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);
     const sessions = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver(), crm: () => healthyCrmDriver() });
-    const emitter = recordingEmitter();
+    const emitter = recordingTimelineEmitter(authority.database, authority.clock);
     const deps: RunExecutorDependencies = {
       lifecycle: testRunLifecycle(authority.database, authority.clock),
       descriptor,

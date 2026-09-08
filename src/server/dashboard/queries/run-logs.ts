@@ -308,8 +308,10 @@ function logLinesForRun(
     return matches.sort((left, right) =>
       logInstantOf(left).localeCompare(logInstantOf(right))
       || left.line.file.stream.localeCompare(right.line.file.stream)
-      || left.line.file.path.localeCompare(right.line.file.path)
-      || left.line.lineNumber - right.line.lineNumber);
+      || (left.line.file.stream === "spans"
+        ? left.line.lineNumber - right.line.lineNumber
+        : left.line.file.path.localeCompare(right.line.file.path)
+          || left.line.lineNumber - right.line.lineNumber));
   };
   return scan();
 }

@@ -215,7 +215,7 @@ export const ParallelLeavesResultSchema = z.strictObject({ searched: z.boolean()
 export const parallelLeavesWorkflow = defineWorkflow({
   id: PARALLEL_LEAVES_WORKFLOW_ID,
   version: 1,
-  code: "fpl",
+  code: "fp",
   label: "Parallel Leaves",
   icon: "Search",
   category: "operations",

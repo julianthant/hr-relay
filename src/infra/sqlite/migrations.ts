@@ -1,10 +1,11 @@
+import { TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "./timeline-repository.js";
 import { deepFreeze } from "../../domain/immutability.js";
 import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 36;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 37;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 37;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 38;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -51,6 +52,7 @@ const jsonRecordTable = (name: string): string => `
 `;
 
 export const SQLITE_TABLE_DDL = deepFreeze({
+  timeline_events: TIMELINE_EVENT_TABLE_DDL,
   authority_meta: `
     CREATE TABLE authority_meta (
       singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
@@ -674,6 +676,7 @@ const V1_TABLE_ORDER = [
 
 /** Tables created after v1, in the migration that created them. */
 const POST_V1_TABLE_ORDER = [
+  "timeline_events",
   "run_checkpoints",
   "start_plans",
   "failures",
@@ -763,13 +766,15 @@ export const INTEGRATED_AUTHORITY_TABLES_BY_VERSION = deepFreeze({
   ],
 } as const satisfies Readonly<Record<27 | 28 | 29, readonly string[]>>);
 
-/** Historical v30–v36 layouts stay independent of the current registry. */
+/** Historical v30–v37 layouts stay independent of the current registry. */
 const V30_TABLES = [...INTEGRATED_AUTHORITY_TABLES_BY_VERSION[29], "authority_upgrades", "protected_settings_current"].sort();
 const V32_TABLES = V30_TABLES.filter((name) => name !== "protected_settings_current");
 const V33_TABLES = V32_TABLES.map((name) => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name).sort();
 const V34_TABLES = V33_TABLES.filter((name) => name !== "runs_view");
 const V35_TABLES = V34_TABLES.map((name) => name === "leases" ? "workflow_workers" : name === "duo_ceremony_leases" ? "worker_auth" : name === "start_plans" ? "workflow_run_requests" : name).sort();
 const V36_TABLES = V35_TABLES.map((name) => name === "write_intents" ? "run_operations" : name === "write_attempts" ? "run_operation_attempts" : name === "durable_outbox" ? "operation_outbox" : name).sort();
+const V37_TABLES = V36_TABLES.filter((name) => name !== "bulk_command_acceptances")
+  .map((name) => name === "delegation_manifests" ? "run_delegations" : name === "dependencies" ? "delegation_dependencies" : name).sort();
 export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, readonly string[]>> = deepFreeze({
   30: V30_TABLES,
   31: [...V30_TABLES],
@@ -778,6 +783,7 @@ export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, rea
   34: V34_TABLES,
   35: V35_TABLES,
   36: V36_TABLES,
+  37: V37_TABLES,
 });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
@@ -1888,6 +1894,10 @@ export const SQLITE_MIGRATIONS = deepFreeze([
              AND family = 'bulk-parent' AND parent_command_id IS NULL))
         BEGIN SELECT RAISE(ABORT, 'command parent must be a direct bulk parent'); END`,
     ],
+  },
+  {
+    version: 38,
+    statements: [TIMELINE_EVENT_TABLE_DDL, ...TIMELINE_EVENT_INDEX_DDL],
   },
 ] as const);
 

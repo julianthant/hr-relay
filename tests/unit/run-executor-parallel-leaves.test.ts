@@ -21,7 +21,7 @@ import {
   healthyUcpathDriver,
   openAuthorityHarness,
   personLookupQueuedRun,
-  recordingEmitter,
+  recordingTimelineEmitter,
   recordingLogger,
   sessionFactoryHarness,
   sessionManagerFor,
@@ -55,8 +55,8 @@ function queuedRun(options: Readonly<{ runId?: string; attempt?: number }> = {})
 function depsFor(
   authority: AuthorityHarness,
   sessions: ReturnType<typeof sessionFactoryHarness>,
-): Readonly<{ deps: RunExecutorDependencies; emitter: ReturnType<typeof recordingEmitter> }> {
-  const emitter = recordingEmitter();
+): Readonly<{ deps: RunExecutorDependencies; emitter: ReturnType<typeof recordingTimelineEmitter> }> {
+  const emitter = recordingTimelineEmitter(authority.database, authority.clock);
   return {
     emitter,
     deps: {

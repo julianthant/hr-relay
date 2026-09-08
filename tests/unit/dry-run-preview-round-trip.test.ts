@@ -44,7 +44,7 @@ import {
   finalizationQueuedRun,
   type FinalizationHarness,
 } from "../helpers/kuali-finalization-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
+import { ManualScheduler, recordingTimelineEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
@@ -79,7 +79,7 @@ interface Harness {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
-  readonly emitter: ReturnType<typeof recordingEmitter>;
+  readonly emitter: ReturnType<typeof recordingTimelineEmitter>;
   readonly run: (options?: Readonly<{ dryRun?: boolean; probe?: unknown }>) => Promise<void>;
 }
 
@@ -99,7 +99,7 @@ function harness(): Harness {
   const scheduler = new ManualScheduler(clock);
   const ids = sequentialIdFactory("c");
   const log = recordingLogger().log;
-  const emitter = recordingEmitter();
+  const emitter = recordingTimelineEmitter(database, clock);
 
   const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
     const dryRun = options.dryRun ?? true;

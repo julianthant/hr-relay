@@ -1,3 +1,5 @@
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { timelineCheckpointReference } from "../../src/events/timeline.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D307 — the executor under step omission.
@@ -31,7 +33,6 @@ import {
   happySessionHarness,
   ManualScheduler,
   openAuthorityHarness,
-  recordingEmitter,
   recordingLogger,
   sessionManagerFor,
 } from "../helpers/phase1f-executor-harness.js";
@@ -221,7 +222,11 @@ const registry = defineTaskStoreRegistry([defineServiceStore("ocr", { fixture: f
 function harnessFor(descriptor: AnyWorkflowDescriptor) {
   const authority = openAuthorityHarness();
   disposers.push(authority.dispose);
-  const emitter = recordingEmitter();
+  const emitter = {
+    emitter: createTimelineEmitter({ repository: authority.database.authority.timelineEvents, clock: authority.clock }),
+    events: () => authority.database.authority.timelineEvents.page({}).flatMap((record) =>
+      record.payload.kind === "span" ? [record.payload.event] : []),
+  };
   const deps: RunExecutorDependencies = {
     lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor,
@@ -547,6 +552,18 @@ describe("executor step omission (D307)", () => {
     const afterResume = markedRowsFor(database, parkedRun);
     assert.equal(afterResume.length, 1, "the resume did not mint a second row for the asserted node");
     assert.deepEqual(afterResume[0], beforeResume[0], "the republished row is the parked row, unchanged");
+    const assertion = beforeResume[0];
+    assert.ok(assertion);
+    const replay = database.authority.timelineEvents.page({ runId: RUN_ID }).filter((row) =>
+      row.payload.kind === "checkpoint-replayed" && row.payload.checkpoint.nodeId === "read");
+    assert.equal(replay.length, 1);
+    const payload = replay[0]?.payload;
+    assert.ok(payload?.kind === "checkpoint-replayed");
+    assert.equal(payload.claimGeneration, 2);
+    assert.deepEqual(payload.checkpoint, timelineCheckpointReference(assertion));
+    const recorded = database.authority.timelineEvents.page({ runId: RUN_ID }).filter((row) =>
+      row.payload.kind === "checkpoint-recorded" && row.payload.checkpoint.nodeId === "read");
+    assert.equal(recorded.length, 1, "resume must not claim a second assertion observation");
 
     /* ── the terminal dependency for "read" is asserted, and the mirror accepted it ── */
     const result = database.authority.runResults.get(RUN_ID);

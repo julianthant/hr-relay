@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixtures.js";
@@ -16,7 +18,7 @@ import {
   executeClaimedRun,
   type RunExecutorDependencies,
 } from "../../src/core/run-executor.js";
-import { taskSpanPath } from "../../src/core/span-emitter.js";
+import { taskSpanPath, ExecutorSpanEventSchema } from "../../src/core/span-emitter.js";
 import type { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/domain/workflow/scenario-execution.js";
@@ -71,7 +73,14 @@ function executorHarness(options: Readonly<{
   const sessions = options.sessions ?? happySessionHarness();
   const manager = sessionManagerFor(sessions, authority.clock);
   const scheduler = new ManualScheduler(authority.clock, options.autoFireAtOrBelowMs ?? 0);
-  const emitter = recordingEmitter();
+  const emitter = {
+    emitter: createTimelineEmitter({ repository: authority.database.authority.timelineEvents, clock: authority.clock }),
+    events: () => authority.database.authority.timelineEvents.page({}).flatMap((record) => {
+      if (record.payload.kind !== "span" || record.payload.event.t === "run.queued") return [];
+      const { pid: _pid, ...event } = record.payload.event;
+      return [ExecutorSpanEventSchema.parse(event)];
+    }),
+  };
   const deps: RunExecutorDependencies = {
     lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: personLookupDescriptor,
@@ -337,6 +346,24 @@ describe("failure, retry, and resume", () => {
     ]);
   });
 
+  it("rolls back an ordinary checkpoint when its required timeline event cannot persist", async () => {
+    const h = executorHarness();
+    const { database, clock, path } = h.authority;
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const raw = new DatabaseSync(path);
+    try {
+      raw.exec("CREATE TRIGGER injected_checkpoint_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.record_json, '$.payload.kind') = 'checkpoint-recorded' BEGIN SELECT RAISE(ABORT, 'injected checkpoint event'); END");
+      const outcome = await executeClaimedRun(h.deps, { ...claimed, signal: SIGNAL });
+      assert.equal(outcome.state, "failed");
+      assert.equal(database.authority.runCheckpoints.latest(WORKFLOW_ID, claimed.run.envelope.itemId, "searching"), undefined);
+      assert.equal(database.authority.timelineEvents.page({ runId: RUN_ID }).some((row) => row.payload.kind === "checkpoint-recorded"), false);
+      assert.equal(h.emitter.events().some((event) => event.t === "span.ended" && event.kind === "task"
+        && event.spanPath.includes("/searching#") && event.outcome === "done"), false);
+      assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run"
+        && event.outcome === "failed").length, 1);
+    } finally { raw.close(); }
+  });
+
   it("replays compatible checkpoints on a cross-run retry and re-executes always-rerun nodes", async () => {
     let ucpathSearches = 0;
     const failingCrm = sessionFactoryHarness({
@@ -398,6 +425,7 @@ describe("failure, retry, and resume", () => {
       ...second.deps,
       lifecycle: testRunLifecycle(database, clock),
       authority: database,
+      emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock,
     };
     const outcome = await executeClaimedRun(secondDeps, {
@@ -419,7 +447,12 @@ describe("failure, retry, and resume", () => {
     // The always-rerun dependency was produced by THIS run, not replayed from
     // the failed one: the interpreter never consults loadCheckpoint for it.
     assert.equal(active.checkpoint.runId, UUID_5);
-    const spans = second.emitter.events().map((event) => event.spanPath);
+    const replay = database.authority.timelineEvents.page({ runId: UUID_5 }).filter((event) => event.payload.kind === "checkpoint-replayed");
+    assert.ok(replay.some((event) => event.payload.kind === "checkpoint-replayed"
+      && event.payload.checkpoint.nodeId === "searching" && event.payload.checkpoint.runId === RUN_ID
+      && event.payload.runId === UUID_5 && event.payload.attempt === 2));
+    const spans = database.authority.timelineEvents.page({ runId: UUID_5 }).flatMap((record) =>
+      record.payload.kind === "span" ? [record.payload.event.spanPath] : []);
     assert.ok(spans.every((path) => !path.includes("/searching#")), "replayed searching must not re-span");
   });
 
@@ -768,7 +801,7 @@ describe("worker terminal service boundary", () => {
           if (failure === "refusal") return { state: "refused", refusal: { reason: "lost" } };
           const result = lifecycle.terminalize(...args);
           assert.equal(result.state, "applied");
-          assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
+          assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 1, "state and event coexist inside the uncommitted transaction");
           throw new Error("outer terminal rollback");
         }),
       } };

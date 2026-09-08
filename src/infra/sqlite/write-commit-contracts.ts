@@ -82,6 +82,8 @@ export const AtomicWriteCommitStorageStepSchema = z.enum([
   "attempt-state",
   "ledger-outbox",
   "terminal-span-outbox",
+  "transaction-checkpoint",
+  "timeline-event",
 ]);
 
 export const AtomicWriteCommitInputSchema = z.strictObject({

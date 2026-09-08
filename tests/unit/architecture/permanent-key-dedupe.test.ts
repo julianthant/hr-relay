@@ -1,3 +1,4 @@
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -89,7 +90,8 @@ describe("permanent system-scoped write keys", () => {
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
-    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     const generationAfterCommit = database.getMeta().authorityGeneration;
 
     const replay = database.authority.writeIntents.fenceAttempt(competingFence());

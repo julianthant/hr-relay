@@ -1,4 +1,5 @@
 import { ProtectedSettingsNameSchema } from "../../domain/config/protected-settings.js";
+import { TimelineRecordError } from "./timeline-repository.js";
 import { createCredentialStore } from "../config/credential-store.js";
 import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
@@ -272,10 +273,12 @@ function validateRunEventAgainstRoot(
   fileName: string,
   lineNumber: number,
   lastAttemptByItem: Map<string, number>,
+  allowSameAttemptRequeue = false,
 ): void {
   if (!("runId" in event)) return;
   if (event.t === "transaction.fenced") root.possibleExternalWrite = true;
   const location = `${spanFileLabel(fileName)}:${String(lineNumber)}`;
+  if (allowSameAttemptRequeue && event.t === "run.requeued") root.terminal = false;
   if (root.terminal) addStreamIssue(root, `${event.t} at ${location} appears after its terminal run span`);
   const timestampMs = Date.parse(event.ts);
   if (timestampMs < root.lastTimestampMs) {
@@ -343,6 +346,7 @@ function validateRunEventAgainstRoot(
     );
   }
   if (event.t === "run.requeued") {
+    if (allowSameAttemptRequeue && event.nextAttempt === event.attempt) return;
     if (event.nextAttempt <= event.attempt) {
       addStreamIssue(
         root,
@@ -384,7 +388,7 @@ function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot
     configFingerprint: queued.configFingerprint,
     configSnapshotId: queued.configSnapshotId,
     queuedAt: queued.ts,
-    reconstructed: queued.repair?.kind === "authority-reconstruction",
+    reconstructed: queued.repair !== undefined,
     initialAttempt: queued.attempt,
     finalAttempt: root.finalAttempt,
     streamIssues: root.streamIssues,
@@ -655,6 +659,70 @@ export function inspectSpanAuthorityCorpusReadOnly(
   return spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
 }
 
+function timelineAuthorityCorpus(authorityPath: string, busyTimeoutMs: number): SpanAuthorityCorpus & Readonly<{
+  authorityGeneration: number; authorityContentFingerprint: string;
+}> {
+  const file = lstatSync(authorityPath);
+  if (!file.isFile() || file.isSymbolicLink()) throw new SafeSpanCorpusError("timeline authority is not a regular no-follow file");
+  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(authorityPath, busyTimeoutMs);
+  const after = lstatSync(authorityPath);
+  if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
+  const rows = snapshot.records;
+  const roots: MutableSpanAuthorityRoot[] = [];
+  const firstRoot = new Map<string, MutableSpanAuthorityRoot>();
+  const attempts = new Map<string, number>();
+  const pending = new Map<string, typeof rows[number][]>();
+  const validate = (root: MutableSpanAuthorityRoot, row: typeof rows[number]): void => {
+    if (row.payload.kind !== "span" || row.payload.event.t === "run.queued") return;
+    validateRunEventAgainstRoot(root, row.payload.event, `${row.workflow}-${row.retentionDate}.jsonl`,
+      row.cursor, attempts, row.source.kind === "native");
+  };
+  for (const row of rows) {
+    if (row.payload.kind !== "span" || !("runId" in row.payload.event)) continue;
+    const event = row.payload.event;
+    if (event.t !== "run.queued") {
+      const root = firstRoot.get(event.runId);
+      if (root !== undefined) validate(root, row);
+      else pending.set(event.runId, [...(pending.get(event.runId) ?? []), row]);
+      continue;
+    }
+    const root: MutableSpanAuthorityRoot = { queued: event, finalAttempt: event.attempt, possibleExternalWrite: false,
+      streamIssues: [], lastTimestampMs: Date.parse(event.ts), terminal: false, taskSpans: new Set() };
+    roots.push(root);
+    if (event.spanPath !== event.traceId) addStreamIssue(root, "run.queued root spanPath does not equal traceId");
+    if (event.parentSpanPath !== undefined) addStreamIssue(root, "run.queued root unexpectedly names parentSpanPath");
+    const duplicate = firstRoot.get(event.runId);
+    if (duplicate === undefined) firstRoot.set(event.runId, root);
+    else {
+      const issue = `duplicate run.queued root for run ${event.runId}`;
+      addStreamIssue(duplicate, issue);
+      addStreamIssue(root, issue);
+    }
+    const key = `${event.workflow}\0${event.itemId}`;
+    const previous = attempts.get(key);
+    if (previous !== undefined && event.attempt <= previous) {
+      addStreamIssue(root, `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previous)}`);
+    }
+    attempts.set(key, event.attempt);
+    const prior = pending.get(event.runId) ?? [];
+    pending.delete(event.runId);
+    if (prior.length > 0) {
+      if (event.repair !== undefined) {
+        const repair = event.repair;
+        if (repair.kind === "timeline-authority-reconstruction"
+          && prior.some((entry) => entry.cursor > repair.priorCursor)) {
+          addStreamIssue(root, "timeline repair does not cover the preceding event cursor");
+        }
+        for (const entry of prior) validate(root, entry);
+      } else addStreamIssue(root, "run.queued appears after prior run event(s) without authority-reconstruction repair");
+    }
+  }
+  // Retention may remove an ordinary queued root while retaining later events.
+  // The canonical reconciliation reports that missing root without inventing it.
+  return { state: "present", roots: roots.map(immutableSpanRoot),
+    authorityGeneration: snapshot.authorityGeneration, authorityContentFingerprint: snapshot.authorityContentFingerprint };
+}
+
 function reconcileSpanAuthority(
   stateRootTrustAnchor: string,
   stateRoot: string,
@@ -665,16 +733,22 @@ function reconcileSpanAuthority(
   tombstoneOrdinalFindings?: SpanAuthorityReadSnapshot["tombstoneOrdinalFindings"];
   authorityIdentity?: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
 }> {
-  let corpus: SpanAuthorityCorpus;
+  let corpus: ReturnType<typeof timelineAuthorityCorpus>;
   try {
-    corpus = spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
+    const authorityName = relative(resolve(stateRoot), resolve(authorityPath));
+    corpus = withStateRootWorkingDirectory(stateRootTrustAnchor, stateRoot, () => {
+      if (authorityName !== basename(authorityName) || authorityName === "." || authorityName === "..") {
+        throw new SafeSpanCorpusError("timeline authority must be a direct state-root file");
+      }
+      return timelineAuthorityCorpus(authorityName, busyTimeoutMs);
+    });
   } catch (error) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
         cause: {
           code: "span-stream-invalid",
-          summary: error instanceof SafeSpanCorpusError
+          summary: error instanceof SafeSpanCorpusError || error instanceof TimelineRecordError
             ? error.message
             : `span corpus spans could not be safely inspected (${errnoCode(error)})`,
         },
@@ -699,6 +773,12 @@ function reconcileSpanAuthority(
         },
       }),
     };
+  }
+  if (snapshot.authorityGeneration !== corpus.authorityGeneration
+    || snapshot.authorityContentFingerprint !== corpus.authorityContentFingerprint) {
+    return { reconciliation: SpanAuthorityReconciliationSchema.parse({ state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: "timeline and run authority changed between read snapshots; inspect again" },
+    }) };
   }
   if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
     && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {

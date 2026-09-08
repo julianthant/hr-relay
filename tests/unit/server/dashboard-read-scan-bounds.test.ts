@@ -16,9 +16,11 @@
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import {
   assertNoteWithinRunScope,
@@ -747,6 +749,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
   it("examines only this run's indexed span rows, excludes another run, and preserves legal retry attempts", () => {
     const w = world();
     terminalDone(w, 1);
+    terminalDone(w, 2);
     observedEvent(w, { seed: 2, at: instantOffsetOf(0, 5) });
     observedEvent(w, { seed: 1, attempt: 1, at: instantOffsetOf(0, 10) });
     w.writer.emit({
@@ -893,6 +896,22 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     );
   });
 
+  it("orders equal-clock SQLite observations by ingestion cursor rather than random event identity", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const identities = ["ffffffff-ffff-4fff-8fff-ffffffffffff", "00000000-0000-4000-8000-000000000001"];
+    const writer = createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid: 4242,
+      uuid: () => { const id = identities.shift(); if (id === undefined) throw new Error("fixture identities exhausted"); return id; } });
+    const producer = { ...w, writer };
+    const at = instantOffsetOf(0, 10);
+    observedEvent(producer, { at });
+    fencedEvent(producer, at);
+    w.projection.ingestFromTimeline();
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["observed", "transaction-fenced"]);
+  });
+
   it("keeps a page walk on one immutable ordering when a later append has an older record clock", () => {
     const w = world();
     terminalDone(w, 1);
@@ -916,7 +935,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.ok(walked.every((row) => row.kind !== "observed" || row.at === tie));
   });
 
-  it("refuses malformed in-scope spans by file and line, while a missing span partition remains an honest no-observation page", () => {
+  it("ignores retired malformed spans and refuses corrupt SQLite events instead of serving an empty observation page", () => {
     const w = world();
     terminalDone(w, 1);
     rmSync(join(w.stateRoot, "spans"), { recursive: true, force: true });
@@ -924,10 +943,20 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal(noSpans.section, "logs");
     assert.deepEqual(noSpans.payload.rows, []);
     appendEventStreamLine(w.stateRoot, "spans", "person-lookup", "2026-08-03", "{ not json at all");
-    w.projection.ingestFromDisk();
+    w.projection.ingestFromTimeline();
+    const unchanged = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(unchanged.section, "logs");
+    assert.deepEqual(unchanged.payload.rows, []);
+    observedEvent(w);
+    const raw = new DatabaseSync(join(w.stateRoot, "timeline.sqlite"));
+    try {
+      raw.exec("DROP TRIGGER timeline_events_never_updated; PRAGMA ignore_check_constraints=ON");
+      raw.prepare("UPDATE timeline_events SET record_json='{}' WHERE cursor=(SELECT max(cursor) FROM timeline_events)").run();
+    } finally { raw.close(); }
+    w.projection.rebuildFromTimeline();
     assert.throws(
       () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
-      new RegExp(`corrupt span line ${join(w.stateRoot, "spans", "person-lookup-2026-08-03.jsonl").replaceAll(/[.\\/]/g, "\\$&")}:1`),
+      /degraded/u,
     );
   });
 

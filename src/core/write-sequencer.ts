@@ -237,7 +237,7 @@ export type WriteSequencerRepositories = Omit<AuthorityRepositories, "runs"> & {
 export interface WriteSequencerAuthority {
   readonly authority: WriteSequencerRepositories;
   withAuthorityTransaction<Result>(work: (repositories: WriteSequencerRepositories) => Result): Result;
-  commitWriteAttempt(input: unknown): AtomicWriteCommitReport;
+  commitWriteAttempt(input: unknown, checkpoint: unknown): AtomicWriteCommitReport;
 }
 
 /**
@@ -709,7 +709,7 @@ export function executeSequencedWriteCommit(
       || current.lifecycle.intentGeneration !== parsed.commit.generation) {
       throw new Error("resume-queued settlement requires the exact parked write intent and generation");
     }
-    const report = authority.commitWriteAttempt(parsed.commit);
+    const report = authority.commitWriteAttempt(parsed.commit, parsed.checkpoint);
     hooks?.afterSequencedStep?.("commit-write-attempt");
     repositories.runCheckpoints.insert(parsed.checkpoint);
     hooks?.afterSequencedStep?.("transaction-checkpoint");

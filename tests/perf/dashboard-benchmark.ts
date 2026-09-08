@@ -40,6 +40,7 @@ import {
   scopedEventStreamFiles,
 } from "../../src/infra/events/jsonl-streams.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
+import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
 import { buildRunSection, runNotePartitionScope } from "../../src/server/dashboard/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";
@@ -159,9 +160,10 @@ function countSpanEventParses<Result>(work: () => Result): { readonly value: Res
 }
 
 function selfCheckSpanEventParseSpy(fixture: PerfFixture): void {
-  const line = readEventStreamLines(fixture.stateRoot, "spans")[0];
-  if (line === undefined) throw new Error("the span parse spy needs one real fixture line");
-  const probe = countSpanEventParses(() => SpanEventWireSchema.parse(JSON.parse(line.text)));
+  const record = readTimelineRecords(fixture.database.authority.timelineEvents).records.find((entry) => entry.payload.kind === "span");
+  if (record?.payload.kind !== "span") throw new Error("the span parse spy needs one real fixture event");
+  const event = record.payload.event;
+  const probe = countSpanEventParses(() => SpanEventWireSchema.parse(event));
   if (probe.parses !== 1) {
     throw new Error(
       `the span-event parse spy observed ${String(probe.parses)} parses while the harness performed exactly one; `

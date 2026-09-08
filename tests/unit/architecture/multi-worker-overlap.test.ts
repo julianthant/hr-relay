@@ -249,8 +249,9 @@ describe("D182 C1 — two live worker loops drain one queue", () => {
     }
 
     // No run was ever claimed by two workers: the `run.claimed` spans are the
-    // loop's own account of what it took, and each run appears once.
-    const claims = [...first.events(), ...second.events()]
+    // durable account of what each worker took, and each run appears once.
+    const claims = authority.database.authority.timelineEvents.page({})
+      .flatMap((record) => record.payload.kind === "span" ? [record.payload.event] : [])
       .filter((event) => event.t === "run.claimed")
       .map((event) => ({ runId: event.runId, workerId: event.workerId }));
     assert.equal(claims.length, enqueued.length);

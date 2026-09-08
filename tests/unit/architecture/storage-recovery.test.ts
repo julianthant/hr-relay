@@ -1,5 +1,6 @@
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs, {
   appendFileSync,
   copyFileSync,
@@ -18,7 +19,7 @@ import fs, {
 } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
@@ -41,6 +42,9 @@ import { TerminalAuthorizationRecordSchema } from "../../../src/domain/run/termi
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { SpanEventWireSchema } from "../../../src/events/types.js";
+import { createTimelineRepository } from "../../../src/infra/sqlite/timeline-repository.js";
+import { inspectSpanAuthorityCorpusReadOnly } from "../../../src/infra/sqlite/storage-doctor.js";
 import {
   AuthorityBackupService,
   AuthorityBootStore,
@@ -303,7 +307,10 @@ function databaseOptions(path: string) {
   return { path, busyTimeoutMs: 100, migrationOwner: "storage-recovery-test" };
 }
 
+const timelineFixturePaths = new Map<string, string>();
+
 function openDatabase(path: string): AuthorityDatabase {
+  timelineFixturePaths.set(resolve(dirname(path)), path);
   const database = AuthorityDatabase.open(databaseOptions(path), CLOCK);
   databases.push(database);
   return database;
@@ -355,9 +362,30 @@ function backupDirectory(root: string): string {
   return join(root, "backups");
 }
 
-function emitQueuedSpan(stateRoot: string, runInput: unknown = QUEUED_RUN): void {
+/** Explicit offline imported-history/corruption fixture. No run rows are manufactured. */
+function createImportedTimelineFixtureWriter(input: { stateRoot: string; clock: typeof CLOCK; pid: number }) {
+  return { emit(value: unknown): void {
+    const event = SpanEventWireSchema.parse({ ...(value as Record<string, unknown>), pid: input.pid });
+    const path = timelineFixturePaths.get(resolve(input.stateRoot));
+    if (path === undefined) throw new Error("timeline fixture authority path was not registered");
+    const raw = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+    try {
+      const repository = createTimelineRepository({ database: raw, read: (work) => work(),
+        mutate: (work) => work().result, assertOwner: () => {} });
+      const digest = createHash("sha256").update(JSON.stringify(event)).digest("hex");
+      repository.append({ schemaVersion: 1, eventId: randomUUID(), workflow: event.workflow,
+        scope: "runId" in event ? { kind: "run", runId: event.runId } : { kind: "worker", workerId: event.workerId },
+        occurredAt: event.ts, recordedAt: input.clock.now().toISOString(), retentionDate: "2026-07-31",
+        source: { kind: "span-import", manifestDigest: HASH_A, fileDigest: digest,
+          relativePath: `spans/${event.workflow}-2026-07-31.jsonl`, line: 1 }, payload: { kind: "span", event } });
+    } finally { raw.close(); }
+  } };
+}
+
+function emitQueuedSpan(stateRoot: string, runInput: unknown = QUEUED_RUN, historical = false): void {
   const run = RunRecordSchema.parse(runInput);
-  createSpanJsonlWriter({ stateRoot, clock: CLOCK, pid: 4242 }).emit({
+  const producer = historical ? createSpanJsonlWriter : createImportedTimelineFixtureWriter;
+  producer({ stateRoot, clock: CLOCK, pid: 4242 }).emit({
     t: "run.queued",
     kind: "run",
     ts: run.envelope.enqueuedAt,
@@ -419,18 +447,6 @@ function queuedSpanLine(index: number): string {
   });
 }
 
-async function doctorSpanCorpus(root: string) {
-  const authorityPath = join(root, "state.sqlite");
-  openDatabase(authorityPath);
-  return doctorAuthorityStorage({
-    stateRootTrustAnchor: root,
-    stateRoot: root,
-    authorityPath,
-    backupDirectory: backupDirectory(root),
-    maxBackupAgeMs: 60_000,
-    busyTimeoutMs: 100,
-  }, CLOCK);
-}
 
 function spanAuthorityRoot(runInput: unknown = QUEUED_RUN) {
   const run = RunRecordSchema.parse(runInput);
@@ -617,6 +633,7 @@ async function createBackup(database: AuthorityDatabase, directory: string) {
 }
 
 afterEach(() => {
+  timelineFixturePaths.clear();
   for (const store of bootStores.splice(0)) store.close();
   for (const database of databases.splice(0)) database.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -1065,14 +1082,11 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       busyTimeoutMs: 100,
     }, CLOCK);
 
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("erased span corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
-    assert.equal(
-      report.spanAuthority.cause.summary,
-      "span corpus directory spans is missing while authority holds 1 live and 0 archived run(s)",
-    );
-    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+    assert.deepEqual(report.spanAuthority, {
+      state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
+      problems: [{ state: "missing-span", runId: QUEUED_RUN.envelope.runId }],
+    });
+    assert.deepEqual(inspectSpanAuthorityCorpusReadOnly(root, root), { state: "missing", roots: [] });
   });
 
   it("accepts a missing span corpus only for the exact never-produced authority baseline", async () => {
@@ -1107,26 +1121,19 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const fileName = "person-lookup-2026-07-31.jsonl";
     writeFileSync(join(spans, fileName), "{ definitely-not-json\n");
 
-    const report = await doctorAuthorityStorage({
-      stateRootTrustAnchor: root,
-      stateRoot: root,
-      authorityPath,
-      backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
-      busyTimeoutMs: 100,
-    }, CLOCK);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("malformed JSON must refuse span authority");
-    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 is invalid JSON`);
-    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 is invalid JSON`);
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses a symlinked span corpus file instead of following it", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     openDatabase(authorityPath);
-    emitQueuedSpan(root);
+    emitQueuedSpan(root, QUEUED_RUN, true);
     const spans = join(root, "spans");
     const fileName = readdirSync(spans)[0];
     if (fileName === undefined) throw new Error("span fixture emitted no file");
@@ -1135,46 +1142,30 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     renameSync(ownedPath, targetPath);
     symlinkSync(targetPath, ownedPath);
 
-    const report = await doctorAuthorityStorage({
-      stateRootTrustAnchor: root,
-      stateRoot: root,
-      authorityPath,
-      backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
-      busyTimeoutMs: 100,
-    }, CLOCK);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked span corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
-    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} is not a regular no-follow file`);
-    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, `span file ${SPAN_FILE_DIAGNOSTIC_ID} is not a regular no-follow file`);
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses a symlinked span corpus directory before enumeration", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     openDatabase(authorityPath);
-    emitQueuedSpan(root);
+    emitQueuedSpan(root, QUEUED_RUN, true);
     const spans = join(root, "spans");
     const foreignSpans = join(root, "foreign-spans");
     renameSync(spans, foreignSpans);
     symlinkSync(foreignSpans, spans);
 
-    const report = await doctorAuthorityStorage({
-      stateRootTrustAnchor: root,
-      stateRoot: root,
-      authorityPath,
-      backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
-      busyTimeoutMs: 100,
-    }, CLOCK);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked span corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
-    assert.equal(report.spanAuthority.cause.summary, "span corpus directory spans is not a regular no-follow directory");
-    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "span corpus directory spans is not a regular no-follow directory");
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses a symlinked state-root parent before span enumeration", async () => {
@@ -1184,7 +1175,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     mkdirSync(stateRoot);
     const authorityPath = join(stateRoot, "state.sqlite");
     openDatabase(authorityPath);
-    emitQueuedSpan(stateRoot);
+    emitQueuedSpan(stateRoot, QUEUED_RUN, true);
     symlinkSync(stateRoot, linkedStateRoot);
 
     const report = await doctorAuthorityStorage({
@@ -1210,15 +1201,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const root = testRoot();
     const authorityPath = join(root, "authority.sqlite");
     openDatabase(authorityPath);
-    emitQueuedSpan(root);
-    await doctorAuthorityStorage({
-      stateRootTrustAnchor: root,
-      stateRoot: root,
-      authorityPath,
-      backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
-      busyTimeoutMs: 100,
-    }, CLOCK);
+    emitQueuedSpan(root, QUEUED_RUN, true);
+    inspectSpanAuthorityCorpusReadOnly(root, root);
     const descriptorsBefore = readdirSync("/dev/fd").length;
     const nativeLstat = fs.lstatSync.bind(fs);
     const nativeStat = fs.statSync.bind(fs);
@@ -1240,16 +1224,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       return nativeStat(path);
     });
     syncBuiltinESMExports();
-    let report: Awaited<ReturnType<typeof doctorAuthorityStorage>> | undefined;
     try {
-      report = await doctorAuthorityStorage({
-        stateRootTrustAnchor: root,
-        stateRoot: root,
-        authorityPath,
-        backupDirectory: backupDirectory(root),
-        maxBackupAgeMs: 60_000,
-        busyTimeoutMs: 100,
-      }, CLOCK);
+      assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root));
     } finally {
       lstatProbe.mockRestore();
       statProbe.mockRestore();
@@ -1257,7 +1233,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
 
     assert.equal(injected, true);
-    assert.equal(report?.spanAuthority.state, "unavailable");
     assert.equal(readdirSync("/dev/fd").length, descriptorsBefore);
   });
 
@@ -1271,7 +1246,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const foreignStateRoot = join(root, "foreign-state");
     mkdirSync(stateRoot);
     mkdirSync(foreignStateRoot);
-    emitQueuedSpan(stateRoot);
+    emitQueuedSpan(stateRoot, QUEUED_RUN, true);
     emitQueuedSpan(foreignStateRoot, {
       ...QUEUED_RUN,
       envelope: {
@@ -1279,7 +1254,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         runId: UUID_7,
         traceId: "pl-170000-7777",
       },
-    });
+    }, true);
     const nativeLstat = fs.lstatSync.bind(fs);
     const nativeOpen = fs.openSync.bind(fs);
     let swapped = false;
@@ -1308,16 +1283,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       }
     });
     syncBuiltinESMExports();
-    let report: Awaited<ReturnType<typeof doctorAuthorityStorage>> | undefined;
+    let corpus: ReturnType<typeof inspectSpanAuthorityCorpusReadOnly> | undefined;
     try {
-      report = await doctorAuthorityStorage({
-        stateRootTrustAnchor: root,
-        stateRoot,
-        authorityPath,
-        backupDirectory: backupDirectory(root),
-        maxBackupAgeMs: 60_000,
-        busyTimeoutMs: 100,
-      }, CLOCK);
+      corpus = inspectSpanAuthorityCorpusReadOnly(root, stateRoot);
     } finally {
       lstatProbe.mockRestore();
       openProbe.mockRestore();
@@ -1326,13 +1294,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
 
     assert.equal(injected, true);
-    assert.deepEqual(report?.spanAuthority, {
-      state: "reconciled",
-      streamRunCount: 1,
-      liveRunCount: 1,
-      archived: [],
-      deleted: [],
-    });
+    assert.equal(corpus?.state, "present");
+    assert.deepEqual(corpus?.roots.map(({ runId, traceId }) => ({ runId, traceId })),
+      [{ runId: QUEUED_RUN.envelope.runId, traceId: QUEUED_RUN.envelope.traceId }]);
   });
 
   it("refuses an intermediate state-root component replaced by a symlink while the doctor awaits", async () => {
@@ -1342,7 +1306,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const stateRootGrandparent = join(root, "span-authority-root");
     const stateRoot = join(stateRootGrandparent, "intermediate", "state");
     mkdirSync(stateRoot, { recursive: true });
-    emitQueuedSpan(stateRoot);
+    emitQueuedSpan(stateRoot, QUEUED_RUN, true);
 
     const pendingDoctor = doctorAuthorityStorage({
       stateRootTrustAnchor: root,
@@ -1379,19 +1343,12 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(spanPath, "");
     truncateSync(spanPath, 8 * 1024 * 1024 + 1);
 
-    const report = await doctorAuthorityStorage({
-      stateRootTrustAnchor: root,
-      stateRoot: root,
-      authorityPath,
-      backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
-      busyTimeoutMs: 100,
-    }, CLOCK);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("oversized span corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} exceeds the 8388608-byte file limit`);
-    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, `span file ${SPAN_FILE_DIAGNOSTIC_ID} exceeds the 8388608-byte file limit`);
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses the span corpus when its declared files exceed the total byte bound", async () => {
@@ -1403,11 +1360,12 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(join(spans, "bravo-2026-07-31.jsonl"), boundedLine.repeat(31));
     writeFileSync(join(spans, "charlie-2026-07-31.jsonl"), boundedLine.repeat(3));
 
-    const report = await doctorSpanCorpus(root);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("over-byte corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.summary, "span corpus exceeds the 16777216-byte corpus limit");
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "span corpus exceeds the 16777216-byte corpus limit");
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses one span line beyond the explicit byte bound", async () => {
@@ -1419,14 +1377,12 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       `${BOUNDED_WORKER_SPAN_LINE.padEnd(256 * 1024 + 1, " ")}\n`,
     );
 
-    const report = await doctorSpanCorpus(root);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("over-byte span line must be unavailable");
-    assert.equal(
-      report.spanAuthority.cause.summary,
-      `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 exceeds the 262144-byte line limit`,
-    );
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 exceeds the 262144-byte line limit`);
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses a span corpus beyond the explicit line-count bound", async () => {
@@ -1436,11 +1392,12 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(join(spans, "alpha-2026-07-31.jsonl"), `${BOUNDED_WORKER_SPAN_LINE}\n`.repeat(60_000));
     writeFileSync(join(spans, "bravo-2026-07-31.jsonl"), `${BOUNDED_WORKER_SPAN_LINE}\n`.repeat(40_001));
 
-    const report = await doctorSpanCorpus(root);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("over-line corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.summary, "span corpus exceeds the 100000-line limit");
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "span corpus exceeds the 100000-line limit");
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses a span corpus beyond the explicit run-ID bound", async () => {
@@ -1451,11 +1408,12 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     for (let index = 1; index <= 10_001; index += 1) lines.push(queuedSpanLine(index));
     writeFileSync(join(spans, "person-lookup-2026-07-31.jsonl"), `${lines.join("\n")}\n`);
 
-    const report = await doctorSpanCorpus(root);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("over-run corpus must be unavailable");
-    assert.equal(report.spanAuthority.cause.summary, "span corpus exceeds the 10000-run-ID limit");
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "span corpus exceeds the 10000-run-ID limit");
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("refuses a non-contract span filename without enumerating around it", async () => {
@@ -1464,15 +1422,12 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     mkdirSync(spans);
     writeFileSync(join(spans, "foreign.jsonl"), `${BOUNDED_WORKER_SPAN_LINE}\n`);
 
-    const report = await doctorSpanCorpus(root);
-
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("foreign filename must be unavailable");
-    assert.equal(
-      report.spanAuthority.cause.summary,
-      "spans/ contains sha256:1b6f-7767-0bde-0b30-611f-4e67-8da5-6d8a-d64c-2ce5-825a-f278-9082-768b-f042-1e52, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it",
-    );
-    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+    assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "spans/ contains sha256:1b6f-7767-0bde-0b30-611f-4e67-8da5-6d8a-d64c-2ce5-825a-f278-9082-768b-f042-1e52, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it");
+      assert.equal(error.message.includes(root), false);
+      return true;
+    });
   });
 
   it("stops span directory enumeration before retaining more than the file cap", async () => {
@@ -1494,24 +1449,13 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       enumerationReads += 1;
       return nativeRead.call(this);
     });
-    let report: Awaited<ReturnType<typeof doctorAuthorityStorage>>;
     try {
-      report = await doctorAuthorityStorage({
-        stateRootTrustAnchor: root,
-        stateRoot: root,
-        authorityPath,
-        backupDirectory: backupDirectory(root),
-        maxBackupAgeMs: 60_000,
-        busyTimeoutMs: 100,
-      }, CLOCK);
+      assert.throws(() => inspectSpanAuthorityCorpusReadOnly(root, root), /exceeding the 128-file limit during enumeration/u);
     } finally {
       probe.mockRestore();
     }
 
     assert.equal(enumerationReads, 129);
-    assert.equal(report.spanAuthority.state, "unavailable");
-    if (report.spanAuthority.state !== "unavailable") throw new Error("over-cap span corpus must be unavailable");
-    assert.match(report.spanAuthority.cause.summary, /exceeding the 128-file limit during enumeration/);
   });
 
   it("refuses a doctor report assembled across different authority snapshots", async () => {
@@ -2275,7 +2219,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const authorityPath = join(root, "state.sqlite");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
-    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+    createImportedTimelineFixtureWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
       t: "run.queued",
       kind: "run",
       ts: QUEUED_RUN.envelope.enqueuedAt,
@@ -2321,7 +2265,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
     emitQueuedSpan(root);
-    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+    createImportedTimelineFixtureWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
       t: "span.started",
       kind: "task",
       ts: QUEUED_RUN.envelope.enqueuedAt,
@@ -2432,7 +2376,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
     emitQueuedSpan(root);
-    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+    createImportedTimelineFixtureWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
       t: "run.requeued",
       ts: QUEUED_RUN.envelope.enqueuedAt,
       workflow: QUEUED_RUN.envelope.workflow,
@@ -2500,7 +2444,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(requeued.run.envelope.attempt, 3);
     emitQueuedSpan(root, QUEUED_RUN);
     emitQueuedSpan(root, siblingRun);
-    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+    createImportedTimelineFixtureWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
       t: "run.requeued",
       ts: AFTER_NOW,
       workflow: QUEUED_RUN.envelope.workflow,
@@ -2568,7 +2512,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       throw new Error("span order fixture did not allocate the third item attempt");
     }
     emitQueuedSpan(root, QUEUED_RUN);
-    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+    createImportedTimelineFixtureWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
       t: "run.requeued",
       ts: AFTER_NOW,
       workflow: QUEUED_RUN.envelope.workflow,
@@ -3077,7 +3021,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
-    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     database.authority.workerLeases.start(WORKER_START_REQUEST);
     database.authority.artifactOutbox.insert(ARTIFACT_OUTBOX);
     await createBackup(database, directory);
@@ -3972,6 +3917,8 @@ describe("authority.health preflight and static recovery boundary", () => {
       adapterPath,
       "src/infra/sqlite/backup-service.ts",
       "src/infra/compat/settings-database-upgrade.ts",
+      "src/infra/sqlite/timeline-conversion.ts",
+      "src/infra/sqlite/timeline-repository.ts",
     ].sort();
     const sourceFiles = gitVisibleFiles(["src"]).filter(
       (path) => (path.endsWith(".ts") || path.endsWith(".tsx"))

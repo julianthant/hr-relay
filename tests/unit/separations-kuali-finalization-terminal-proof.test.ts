@@ -270,6 +270,7 @@ function authorityWithoutFinalizationCheckpoint(
   const { authority } = value.database;
   return {
     authority: {
+      timelineEvents: authority.timelineEvents,
       runs: authority.runs,
       gateResults: authority.gateResults,
       artifactOutbox: authority.artifactOutbox,

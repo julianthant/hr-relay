@@ -1,3 +1,4 @@
+import { atomicWriteCheckpoint } from "./helpers/timeline-write-fixture.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
@@ -966,11 +967,15 @@ describe("the D80 archive model", () => {
     assert.notEqual(run, undefined);
     if (run === undefined) return;
 
+    const instance = run.envelope.resolvedInstance.ucpath;
+    assert.ok(instance !== undefined, "the filed transaction must retain its UCPath instance");
     const fixture = ledgerCommitFixture(0, {
       runId: archived,
       workflowId: "archive-fixture",
       itemId: run.envelope.itemId,
       traceId: run.envelope.traceId,
+      configFingerprint: run.envelope.configFingerprint,
+      instance,
       confirmedAt: NOW,
       // The UCPath termination's OWN proof, so the archived line resolves
       // through `LEDGER_PRESENTATION_DECLARATIONS` rather than through the
@@ -992,7 +997,7 @@ describe("the D80 archive model", () => {
       world.database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt }).state,
       "fenced",
     );
-    world.database.commitWriteAttempt(fixture.commit);
+    world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     const projected = createLedgerProjector(
       world.database,
       manualClock(new Date(NOW)),
