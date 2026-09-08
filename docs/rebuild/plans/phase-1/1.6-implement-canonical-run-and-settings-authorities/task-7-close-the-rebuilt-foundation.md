@@ -1483,3 +1483,42 @@ standalone architecture (64960 ms), then full assertion parity (259 cases, 63984
 inputs, rechecked before freeze. The next authorized live action is only the repaired SS Smart HR
 read on verified primary. The full-workflow reread admission/identity blocker is unresolved; the
 manifest continues to describe spent attempt 4, and no attempt 5 is authorized by this gate record.
+
+
+**Repaired reader live check paused before browser launch.** Frozen callback candidate
+`09436a49eccdd3a1f577c83576ff7b8de33092d3` matched all 1908 gated inputs and installed dependencies
+on clean detached primary. Provider admission/private metadata and doctor passed. A subsequent
+process check found Vite PID 3594, parent 3573, running from the separate
+`/Users/julianhein/Projects/hr-worktree-workflow-batches` checkout on shared port 5174, started
+`2026-09-08T04:05:46Z`. This is after this task's full parity completed at `04:05:16Z`, so it did not
+participate in or invalidate that gate. No process was killed or adopted, no browser was launched,
+no BFF was started, and no new workflow attempt occurred. The repaired-candidate route's stopped
+foreign-runtime precondition remains unmet. Primary was restored clean to unchanged original master.
+
+Ordinary Settings revision 7 still holds the three temporary overrides: headed mode, navigation
+60000 ms and session acquisition 120000 ms. They are intentionally retained, not reported restored.
+After the shared runtime lane is available, verify the frozen candidate/root/input/process binding
+afresh, perform the prepared login-only plus read-only scanner check, then use the unspent canonical
+`token-diagnostic-settings-command.mjs restore` command (expects revision 7) to clear exactly those
+three overrides, restart-verify revision 8, doctor, stop owned runtime and restore original master.
+Do not read credentials/private inputs through ad hoc scripts or launch another full workflow.
+The ignored scratch `smart-hr-diagnostic-hook.cjs` and its config bind the scan to the exact retained
+attempt-4 subject; they emit only statuses, counts and equality facts. They have passed syntax checks
+but have not run. The callback repair has offline proof; live repair proof remains unrun.
+
+Steps 1–3 are accepted for the frozen repair. Step 4's complete live case, Step 5 final consolidation,
+Step 6 fresh complete independent review, integration gates and owned cleanup remain open. No
+complete reviewer was dispatched with these known missing mandatory proofs. The protected-reread
+identity/admission correction needs a concrete approved plan boundary; it is not implemented or
+implied by the callback fix. All prior failed authority rows, .env reference bytes, private-source
+identity and owned resources remain preserved. No merge or push occurred.
+
+
+The runtime-blocked recording changes only this owner. All 1908 full-gate inputs still match
+09436a49, so its full candidate gates are reused under D191. Scoped roadmap/registry guards
+passed 39 tests in two files (46373); lint 64324 passed. Roadmap freshness, instruction twins/size
+and diff checks passed; no links or runtime inputs changed. Exact read-only authority queries
+confirm Person Lookup next ordinal 4 with three checkpoints and Separations next ordinal 5 with
+fourteen checkpoints; these ordinals are observations, not permission to launch or reset anything.
+`smart-blocked-next-attempts.json` records only those counts. The untracked owned recovery handoff
+records the unspent restoration command, foreign runtime and prepared-but-unrun reader check.
