@@ -7509,7 +7509,7 @@ healthy v32/generation 216 with zero pending writes, runtime/browser stopped, or
 Task 1.6.7 remains open; the owner records the safe source identity and recovery boundary.
 
 
-### 9.44 Task 1.6.7 headed replacement preview — entry navigation blocked (2026-09-07)
+### 9.44 Task 1.6.7 replacement preview — entry navigation blocked (2026-09-07)
 
 Fully gated candidate `86700bf501868d04d35d604383f6a3743e857bb5` ran the selected matching
 replacement serially after a separate production UCPath login recipe passed. Result
@@ -7526,3 +7526,10 @@ its first attempt is now spent. No retry followed. The Task-7 owner records the 
 production-browser navigation diagnosis, healthy v32/g267 post-doctor, six retained runs/results,
 zero pending writes, restored settings, stopped owned processes and clean original primary master.
 Both successful live proofs, final review and integration remain open.
+
+
+Browser-mode correction (Task 1.6.7): the preceding replacement run was actually headless;
+activated `browser.headless=false` did not override the mode inserted by scenario planning.
+The task owner records the immutable-envelope/profile readback, the correction, and a separate
+successful bounded headed login. No failed workflow verdict is relabeled. Both required live
+acceptance rows remain open until the new exact-ordinal candidate passes its gates and live proof.

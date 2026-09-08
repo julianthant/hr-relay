@@ -345,6 +345,9 @@ export function createProductionDryRunScenarioRuntime(
             submissions: [request.canonicalInput],
             dryRun,
             priority: "interactive",
+            // This CLI caller selects the activated Settings default explicitly;
+            // D306 then retains that choice through the plan, run and worker.
+            browserMode: resolved.config.browser.headless ? "headless" : "headed",
           });
           if (plan.refused.length !== 0 || plan.planned.length !== 1) {
             throw new Error(

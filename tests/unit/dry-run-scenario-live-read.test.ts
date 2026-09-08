@@ -85,9 +85,11 @@ function composedRoot(prefix: string) {
 }
 
 describe("D318 live-read T1b arm — person-lookup", () => {
-  it("starts the ordinary path under dryRun=false, settles the workflow's own result and shows exact zero write deltas", async () => {
+  it.each([true, false])("starts the ordinary path with browser.headless=%s, retains its mode and shows exact zero write deltas", async (headless) => {
     const { root, clock } = composedRoot("hrauto-live-read-");
-    selectedSettingsFixture(root, clock, {}, databases).activate();
+    const settings = selectedSettingsFixture(root, clock, {}, databases);
+    settings.apply({ "browser.headless": headless });
+    settings.activate();
     const sessions = sessionFactoryHarness({
       ucpath: () => healthyUcpathDriver(),
       crm: () => healthyCrmDriver(),
@@ -102,6 +104,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
       sessionFactory: {
         open: async (input) => {
           if (acquiringFailedAttempt) throw new Error("fixture session acquisition failed before any checkpoint");
+          assert.equal(input.browserMode, headless ? "headless" : "headed", "the actual worker launch must honor the retained scenario mode");
           return sessions.factory.open(input);
         },
       },
@@ -125,6 +128,9 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     const failedReplacement = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase,
       canonicalInput: CANONICAL_INPUT, protectedBindings: replacementBindings });
     await runtime.drain(PERSON_LOOKUP_LIVE_READ.workflow);
+    const secondFailedReplacement = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase,
+      canonicalInput: CANONICAL_INPUT, protectedBindings: replacementBindings });
+    await runtime.drain(PERSON_LOOKUP_LIVE_READ.workflow);
     acquiringFailedAttempt = false;
     const started = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase,
       canonicalInput: CANONICAL_INPUT, protectedBindings: replacementBindings });
@@ -138,8 +144,13 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     databases.push(database);
     const queued = database.authority.runs.get(started.runId);
     assert.ok(queued !== undefined);
+    assert.equal(queued.envelope.browserMode, headless ? "headless" : "headed");
     assert.equal(queued.envelope.dryRun, false, "a live read is the ordinary path; dryRun is false");
-    assert.equal(queued.envelope.attempt, 2, "the replacement's failed first attempt remains spent");
+    assert.equal(queued.envelope.attempt, 3, "both failed replacement attempts remain spent");
+    const secondRetained = database.authority.runs.get(secondFailedReplacement.runId);
+    assert.equal(secondRetained?.envelope.attempt, 2);
+    assert.equal(secondRetained?.envelope.itemId, queued.envelope.itemId);
+    assert.equal(secondRetained?.lifecycle.state === "terminal" ? secondRetained.lifecycle.outcome : undefined, "failed");
     const retainedReplacement = database.authority.runs.get(failedReplacement.runId);
     assert.equal(retainedReplacement?.envelope.attempt, 1);
     assert.equal(retainedReplacement?.envelope.itemId, queued.envelope.itemId);
@@ -169,12 +180,14 @@ describe("D318 live-read T1b arm — person-lookup", () => {
       JSON.stringify(evidence, null, 2),
     );
     const observed = DryRunScenarioEvidenceSchema.parse(evidence);
-    const wrongAttempt = evaluateDryRunScenarioEvidence(
-      PERSON_LOOKUP_LIVE_READ.arm, scenarioCase, started.writeSafetyBefore,
-      { ...observed, checkpoints: observed.checkpoints.map((row) => ({ ...row, attempt: 1 })) },
-    );
-    assert.equal(wrongAttempt.find((row) => row.assertionId === "checkpoints")?.verdict, "failed",
-      "attempt-1 evidence cannot satisfy the replacement's exact attempt-2 rehearsal");
+    for (const staleAttempt of [1, 2]) {
+      const wrongAttempt = evaluateDryRunScenarioEvidence(
+        PERSON_LOOKUP_LIVE_READ.arm, scenarioCase, started.writeSafetyBefore,
+        { ...observed, checkpoints: observed.checkpoints.map((row) => ({ ...row, attempt: staleAttempt })) },
+      );
+      assert.equal(wrongAttempt.find((row) => row.assertionId === "checkpoints")?.verdict, "failed",
+        "spent-attempt evidence cannot satisfy the replacement's exact attempt-3 rehearsal");
+    }
     // The result row is the workflow's OWN result, never a preview.
     const result = database.authority.runResults.get(started.runId);
     assert.ok(result !== undefined);

@@ -1108,7 +1108,7 @@ mandatory PeopleSoft session-token verification, no sign-in form and completed H
 prerequisite before launching the previously unspent Separations preview; it did not relabel the
 failed Person Lookup proof.
 
-After Separations also failed its entry navigation, three fresh headed production-factory login-only
+After Separations also failed its entry navigation, three fresh production-factory login-only
 smokes failed at UCPath's initial portal (17040 / 17018 / 16687 ms). The latter two added temporary
 observation only, preserving the exact production launcher, recipe and timeouts. They showed the
 main HTML returning HTTP 200 and completing in 2858 / 2308 ms, but `page.goto` timing out at the
@@ -1167,3 +1167,59 @@ passed 39 tests / 2 files (session 59571, `portal-blocked-bindings.log`); lint p
 `portal-blocked-lint.log`). Roadmap freshness, nine instruction twins/size, changed-document relative
 links and diff checks passed. No fresh complete reviewer was dispatched because both mandatory live
 `met` proofs remain absent; no acceptance, integration or completion is claimed.
+
+
+### Measured login bounds and browser-mode correction (2026-09-07)
+
+Readback corrected the earlier headed claim: both replacement runs in the preceding table retained
+`browserMode=headless`, despite activated Settings revision 2 carrying `browser.headless=false`.
+Their worker profiles ended in `-headless`. The three official login smokes also ran headless:
+`--headed` changed the factory config, but the session manager supplied its own explicit headless
+mode. Those results remain failed; their configured Settings value was not launch-mode evidence.
+
+A fresh, genuinely headed CLI profile reproduced the public portal's 15000 ms DOMContentLoaded
+failure. A separate temporary `waitUntil=commit` experiment got past the portal but failed its
+60000 ms acquisition bound at Duo clearance; subsequent automatic navigation reached UCPath at
+about 70 seconds. That partial experiment is not a fix and is not included in product code.
+`entry-commit-experiment-observation.json` preserves safe timing/host facts, with no private values.
+
+The operator confirmed the late arrival and requested continued execution. Canonical Settings
+command `cafacad7-2d48-491d-98b6-e4c81704d844` applied temporary ordinary overrides:
+`browser.headless=false`, `timeouts.navigationMs=30000`, `timeouts.sessionAcquireMs=120000`.
+Revision 3 → 4 was restart-activated and matched the served descriptor fingerprint. This is bounded
+operator configuration for measured slow service progress, not a change to test deadlines or schema
+defaults. The unchanged production login recipe, in fresh headed CLI profile `task7-timed-login`,
+returned `logged-in` at `2026-09-08T01:05:56.392Z`: HR Tasks present, no sign-in form, completed
+DOMContentLoaded, and mandatory PeopleSoft session-token verification passed inside the configured
+acquisition bound. The existing Duo credential worked; none was replaced. The official production
+factory and both workflows still need their own proof under the frozen repaired candidate.
+
+The CLI browser closed; BFF sessions 11046/67797 stopped. Post-doctor passed on the same primary
+root; primary master was restored clean to its unchanged original HEAD. The revision-4 overrides
+are intentionally retained for the next live proof and must be cleared through a fresh canonical
+command afterward. `timed-login-settings-enable.json`, `timed-login-observation.json`, the pre/post
+doctors and `timed-login-restored.json` bind these facts in the owned scratch directory.
+
+The scenario caller now explicitly selects the activated Settings browser default when planning;
+the existing immutable plan/run/worker contract carries it afterward. The shared programmatic
+start-plan ingress default and explicit dashboard selection are unchanged. The official login smoke
+also passes its selected mode to the session manager. No login selector, cookie proof, readiness
+condition, navigation retry, resource filtering or timeout default is changed.
+
+The real composition regression failed before this fix: headed Settings produced a headless run
+(5 passed / 1 failed). It now covers both modes through retained run envelopes and actual worker
+factory inputs. It retains both spent replacement failures under the same item, proves attempt 3,
+and rejects checkpoint evidence from attempts 1 and 2. Person Lookup and Separations manifests pin
+next unspent ordinals 3 and 2 without modifying private identities or deleting prior evidence.
+Full candidate gates and a frozen commit precede any next workflow start. Steps 4–6 remain open.
+
+
+**Step 3 reaccepted for mode correction.** Focused regressions passed 49 tests in three files
+(session 10350) after the recorded red. Typecheck 35297 and lint 5030 passed before coverage.
+Runner 58362 passed full coverage (438 files / 5521 tests, 322595 ms; statements 85.87%, branches
+77.52%, functions 89.87%, lines 87.99%; all floors met), suite-size (341/17/80 files, 250 ms),
+standalone architecture (60918 ms), then unchanged desktop parity (61601 ms). Manifest, catalog,
+roadmap freshness and instruction/diff checks passed. `headed-candidate-gate-results.json` and
+`headed-gated-inputs.json` bind the exact commands and 1908 unchanged-at-freeze inputs; the same
+reviewed two-worker adapter imports the actual task config. No reference image was changed by this
+repair. This commit is the next repaired-candidate live input, not Task-7 acceptance.

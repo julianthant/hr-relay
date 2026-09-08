@@ -239,3 +239,10 @@ all-at-once cutover (D89/D93).
   records the exact trials and uncertainty; this is not an expired-key finding or accepted live proof.
   All failed attempts remain intact. Post-doctor healthy v32/g267, six retained runs, zero writes;
   settings restored, owned processes stopped and original master restored clean.
+
+
+Browser-mode correction (Task 1.6.7): the preceding replacement run was actually headless;
+activated `browser.headless=false` did not override the mode inserted by scenario planning.
+The task owner records the immutable-envelope/profile readback, the correction, and a separate
+successful bounded headed login. No failed workflow verdict is relabeled. Both required live
+acceptance rows remain open until the new exact-ordinal candidate passes its gates and live proof.
