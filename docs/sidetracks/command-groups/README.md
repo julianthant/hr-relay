@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task: `side/command-groups`. S1–S5 complete. S6 combined implementation, gates and independent review passed; master integration and cleanup remain open.** This file is the single
+**Task: `side/command-groups`. S1–S6 complete: combined implementation, gates, independent review, master integration and candidate cleanup verified. Integration scratch is removed after this final record lands.** This file is the single
 task owner; it does not create a roadmap phase or change phase completion.
 
 The operator approved consolidating bulk requests into parent/child rows in `commands`,
@@ -696,3 +696,31 @@ unchanged from the reviewed candidate. This merge and acceptance recording reuse
 on tested tree `e7cdeb4a0a4d51c21e409be219eadfa63de6134a` under D191, with scoped
 links/anchors, instruction twin/chain and whitespace checks. Master integration and owned
 cleanup follow this accepted recording. No push or operator database conversion is authorized.
+
+
+### Accepted local integration and cleanup — 2026-09-08
+
+Local master merge `1c8e294fe3510969c3a0f27dcf3506b922e4e42b` accepts all three
+candidates and acceptance record `c135d64c4d6021c77bdfe8410883d2b8690a3b34`.
+The resulting tree exactly matched the accepted integration branch; all subsequent changes
+in this final record are documentation only, with D191 reuse of the previously identified gates.
+Scoped checks passed for all ten current owner documents, nine instruction pairs/chain caps
+and whitespace. No source, test, dependency, configuration or generator input changed.
+
+| Original assignment | Incorporated candidate | Verified repository cleanup |
+| --- | --- | --- |
+| Worker names | `0a0edb10b3a9f0852727d584ab1cd8164383a5ed` | `hr-worktree-worker-names` and `codex/worker-names` removed |
+| Operation names | `394bf4c631b5f01207cb3a3dd1aaaf06b1eb714c` | `hr-worktree-operation-names` and `codex/operation-names` removed |
+| Command groups | `aff7f5656bdf13af509620f1ee4b1ebd0451dba7` | `hr-worktree-command-groups` and `codex/command-groups` removed |
+
+Each candidate was a master ancestor, clean and inactive before ordinary worktree removal
+and branch deletion; exact physical paths and refs are absent. Ignored contents were owned
+gate/dependency output and empty parity locks, with no operator database or credentials.
+The integration scratch `hr-worktree-command-merge` / `codex/command-groups-integration`
+is removed from the primary checkout immediately after this final record merges.
+Worker task `01a08248-038a-78e3-aa66-ee6bbb38d6dd` and operation task
+`01a08248-291a-7a12-9f03-2d33106410dc` explicitly requested remaining visible for final
+read-only verification; they are not archived. The calling task also remains visible.
+Timeline and separation-accounting checkouts and the primary untracked `docs/handoffs/`
+are excluded and preserved. Timeline received the accepted schema-37/floor-36 master binding.
+No push, live HR write or operator database conversion occurred.
