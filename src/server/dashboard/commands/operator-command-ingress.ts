@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
+import { deriveBulkChildCommandId } from "../../../domain/command-groups.js";
 import {
+  CommandIdentityConflictError,
   BulkRunCommandRequestSchema,
   CommandResultSchema,
   CommandRequestSchema,
@@ -269,18 +271,25 @@ export function createOperatorCommandIngress(input: Readonly<{
   bulkAcceptances: BulkCommandAcceptanceAuthority;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
-  const serialize = async <Result>(key: string, work: () => Promise<Result>): Promise<Result> => {
-    const previous = tails.get(key);
+  const serialize = async <Result>(keys: readonly string[], work: () => Promise<Result>): Promise<Result> => {
+    const identities = [...new Set(keys)];
+    const previous = new Set(identities.flatMap((key) => {
+      const tail = tails.get(key);
+      return tail === undefined ? [] : [tail];
+    }));
     let release: () => void = () => undefined;
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
-    tails.set(key, current);
-    if (previous !== undefined) await previous;
+    // Reserve the whole set synchronously, before waiting on older owners.
+    // Overlapping groups therefore wait only on earlier reservations, without
+    // nested-lock cycles, and async singles keep their IDs through journaling.
+    for (const key of identities) tails.set(key, current);
     try {
+      if (previous.size > 0) await Promise.all(previous);
       return await work();
     } finally {
-      if (tails.get(key) === current) tails.delete(key);
+      for (const key of identities) if (tails.get(key) === current) tails.delete(key);
       release();
     }
   };
@@ -292,8 +301,14 @@ export function createOperatorCommandIngress(input: Readonly<{
     ): Promise<CommandResult> {
       const ingress = parseOperatorCommand(command, input.clock);
       if (ingress.state === "refused") return Promise.resolve(ingress.response);
-      return serialize(`command:${ingress.request.commandId}`, () =>
-        execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt)));
+      return serialize([`command:${ingress.request.commandId}`], async () => {
+        try {
+          return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt));
+        } catch (error) {
+          if (!(error instanceof CommandIdentityConflictError)) throw error;
+          return CommandResultSchema.parse({ state: "rejected", commandId: ingress.request.commandId, code: "command-divergent", message: error.message });
+        }
+      });
     },
     executeBulk(
       command: unknown,
@@ -302,13 +317,21 @@ export function createOperatorCommandIngress(input: Readonly<{
       const intent = parseOperatorBulkCommand(command, input.clock);
       if (intent.state === "refused") return Promise.resolve(intent.response);
       const run = async (): Promise<BulkRunCommandResponse> => {
-        const acceptance = input.bulkAcceptances.withTransaction((repository) =>
-          acceptOperatorBulkCommand(intent.request, input.clock, repository));
-        return acceptance.state === "refused"
-          ? acceptance.response
-          : execute(acceptance.request);
+        try {
+          const acceptance = input.bulkAcceptances.withTransaction((repository) =>
+            acceptOperatorBulkCommand(intent.request, input.clock, repository));
+          return acceptance.state === "refused"
+            ? acceptance.response
+            : execute(acceptance.request);
+        } catch (error) {
+          if (!(error instanceof CommandIdentityConflictError)) throw error;
+          return Object.freeze({ state: "refused", code: "command-divergent", message: error.message });
+        }
       };
-      return serialize(`bulk:${intent.request.bulkCommandId}`, run);
+      return serialize([
+        `command:${intent.request.bulkCommandId}`,
+        ...intent.request.targets.map((target) => `command:${deriveBulkChildCommandId(intent.request.bulkCommandId, target.runId)}`),
+      ], run);
     },
   });
 }

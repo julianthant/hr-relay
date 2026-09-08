@@ -60,9 +60,9 @@ describe("operation table names", () => {
     assert.equal(inspectAuthorityBackupReadOnly(f.path).counts.unresolvedWriteIntents, 1);
   });
 
-  it.each([33, 34, 35])("preserves populated v%s rows, old receipts and pending counts through stopped conversion", async (version) => {
+  it.each([33, 34, 35, 36])("preserves populated v%s rows, old receipts and pending counts through stopped conversion", async (version) => {
     const f = fixture(version);
-    const prior = OPERATION_TABLE_RENAMES.map(([old]) => rows(f.path, old));
+    const prior = OPERATION_TABLE_RENAMES.map(([old, current]) => rows(f.path, version < 36 ? old : current));
     const receipts = rows(f.path, "deleted_runs");
     const historical = inspectAuthorityBackupReadOnly(f.path);
     assert.equal(historical.counts.unresolvedWriteIntents, 3);
@@ -120,7 +120,7 @@ describe("operation table names", () => {
     assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 35);
   });
 
-  it.each([33, 34, 35, 36])("validates SQL mirrors and strict records at schema %s without skipping old operation queries", (version) => {
+  it.each([33, 34, 35, 36, 37])("validates SQL mirrors and strict records at schema %s without skipping old operation queries", (version) => {
     const f = fixture(version);
     const names = version < 36 ? OPERATION_TABLE_RENAMES.map(([old]) => old) : OPERATION_TABLE_RENAMES.map(([, current]) => current);
     const db = new DatabaseSync(f.path);
@@ -129,7 +129,7 @@ describe("operation table names", () => {
     assert.throws(() => inspectAuthorityBackupReadOnly(f.path), /write-attempt-columns-match-record/u);
   });
 
-  it.each([34, 35, 36])("refuses corrupt records in every operation family at schema %s", (version) => {
+  it.each([34, 35, 36, 37])("refuses corrupt records in every operation family at schema %s", (version) => {
     for (const [old, current] of OPERATION_TABLE_RENAMES) {
       const f = fixture(version);
       const table = version < 36 ? old : current;

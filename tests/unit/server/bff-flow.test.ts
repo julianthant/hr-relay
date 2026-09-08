@@ -475,7 +475,7 @@ function harness(options: {
       ?? database.authority.commands,
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
-        work(repositories.bulkCommandAcceptances)),
+        work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
     },
     ...(options.omitDiagnosticBundles
       ? {}
@@ -2597,7 +2597,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const snapshot = () => ({
       settings: settingsAuthoritySnapshot(h, commandId),
       run: h.database.authority.runs.get(RUN_ID),
-      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      parent: h.database.authority.commands.getBulk(bulkCommandId),
       child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
     });
     const before = snapshot();
@@ -2651,7 +2651,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const snapshot = () => ({
       settings: settingsAuthoritySnapshot(h, commandId),
       run: h.database.authority.runs.get(RUN_ID),
-      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      parent: h.database.authority.commands.getBulk(bulkCommandId),
       child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
     });
     const before = snapshot();
@@ -3983,8 +3983,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(acceptedChild?.requestedAt, h.clock.now().toISOString());
     assert.equal(acceptedChild?.requestedBy, "local-operator");
     assert.equal(acceptedChild?.source, "dashboard");
-    const acceptedParent = h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId);
+    const acceptedParent = h.database.authority.commands.getBulk(envelope.bulkCommandId);
     assert.notEqual(acceptedParent, undefined);
+    assert.equal(h.database.authority.commands.parentId(String(results[0].commandId)), envelope.bulkCommandId);
+    assert.equal(h.database.authority.commands.parentId(String(results[1].commandId)), undefined);
+    assert.equal(h.database.authority.commands.parentId(String(results[2].commandId)), undefined);
+    assert.equal(h.database.authority.commandAudits.findByCommand(envelope.bulkCommandId), undefined);
+
     assert.deepEqual(acceptedParent?.request.targets, bulkBody.targets);
     assert.equal(acceptedParent?.request.requestedAt, h.clock.now().toISOString());
     assert.equal(acceptedParent?.request.requestedBy, "local-operator");
@@ -4000,14 +4005,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
     assert.equal(replayed[0].commandId, results[0].commandId);
     assert.deepEqual(
-      h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      h.database.authority.commands.getBulk(envelope.bulkCommandId),
       acceptedParent,
       "exact replay reuses the byte-exact accepted parent and its original accepted time",
     );
 
     const snapshot = (): unknown => ({
       generation: h.database.getMeta().authorityGeneration,
-      parent: h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      parent: h.database.authority.commands.getBulk(envelope.bulkCommandId),
       runs: [runA, runB, runC, runD].map((runId) => h.database.authority.runs.get(runId)),
       children: [runA, runB, runC, runD].map((runId) => {
         const childId = deriveBulkChildCommandId(envelope.bulkCommandId, runId);
@@ -4017,7 +4022,30 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         };
       }),
     });
+    const simultaneous = await Promise.all([postBulk(bulkBody), postBulk(bulkBody)]);
+    assert.ok(simultaneous.every((response) => response.payload.state === "vector"));
+    assert.ok(simultaneous.every((response) => (response.payload.results as Record<string, unknown>[])[0].replayed === true));
+    const identityBefore = snapshot();
+    for (const commandId of [envelope.bulkCommandId, String(results[0].commandId)]) {
+      const response = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+        body: JSON.stringify({ commandId, family: "run", type: "cancel", target: bulkBody.targets[0] }) });
+      const refusal = await json(response);
+      assert.equal(refusal.state, "rejected");
+      assert.equal(refusal.code, "command-divergent");
+    }
+    const bulkIdentityRefusal = await postBulk({ ...bulkBody, bulkCommandId: String(results[0].commandId) });
+    assert.equal(bulkIdentityRefusal.payload.state, "refused");
+    assert.equal(bulkIdentityRefusal.payload.code, "command-divergent");
+    assert.deepEqual(snapshot(), identityBefore);
+    const beforeConcurrent = snapshot();
+    const divergentConcurrent = await Promise.all([postBulk(bulkBody), postBulk({ ...bulkBody, reason: "different selection reason" })]);
+    assert.equal(divergentConcurrent[0].payload.state, "vector");
+    assert.equal(divergentConcurrent[1].payload.state, "refused");
+    assert.deepEqual(snapshot(), beforeConcurrent);
     const divergentReplays = [
+      { label: "changes operation", body: { ...bulkBody, type: "retry" } },
+      { label: "changes mode", body: { ...bulkBody, mode: "all-or-none" } },
+      { label: "changes reason", body: { ...bulkBody, reason: "different selection reason" } },
       {
         label: "adds an old+new target",
         body: {
@@ -4052,6 +4080,38 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
       assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
     }
+
+    const runG = await startRun("10873704", "1a000000-0000-4000-8000-000000000008");
+    const concurrentBody = { ...envelope, commandId: "1a000000-0000-4000-8000-00000000000f", bulkCommandId: "1a000000-0000-4000-8000-00000000000f", targets: [{ runId: runG, expectedVersion: versionOf(runG) }] };
+    const concurrentNew = await Promise.all([postBulk(concurrentBody), postBulk(concurrentBody), postBulk({ ...concurrentBody, reason: "divergent concurrent acceptance" })]);
+    assert.deepEqual(concurrentNew.map(({ payload }) => payload.state), ["vector", "vector", "refused"]);
+    assert.equal((concurrentNew[0].payload.results as Record<string, unknown>[])[0].replayed, false);
+    assert.equal((concurrentNew[1].payload.results as Record<string, unknown>[])[0].replayed, true);
+
+    // Fail the second real child inside its command/audit transaction. Prior success
+    // remains durable, the failed child rolls back, and the third is never attempted.
+    const runE = await startRun("10873702", "1a000000-0000-4000-8000-000000000006");
+    const runF = await startRun("10873703", "1a000000-0000-4000-8000-000000000007");
+    const failureBody = { ...envelope, commandId: "1a000000-0000-4000-8000-00000000000e", bulkCommandId: "1a000000-0000-4000-8000-00000000000e", targets: [runD, runE, runF].map((runId) => ({ runId, expectedVersion: versionOf(runId) })) };
+    const failId = deriveBulkChildCommandId(failureBody.bulkCommandId, runE);
+    const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
+    try {
+      raw.exec(`CREATE TRIGGER synthetic_child_failure BEFORE INSERT ON command_audits WHEN NEW.command_id = '${failId}' BEGIN SELECT RAISE(ABORT, 'synthetic-child-audit-failure'); END`);
+      const failure = await postBulk(failureBody);
+      assert.equal(failure.payload.requestedCount, 3);
+      assert.deepEqual((failure.payload.results as Record<string, unknown>[]).map(({ outcome }) => outcome), ["applied", "errored"]);
+      assert.equal(h.database.authority.commands.get(failId), undefined);
+      assert.equal(h.database.authority.commands.get(deriveBulkChildCommandId(failureBody.bulkCommandId, runF)), undefined);
+      assert.equal(versionOf(runE), failureBody.targets[1].expectedVersion);
+      raw.exec("DROP TRIGGER synthetic_child_failure");
+      const resumed = await postBulk(failureBody);
+      const outcomes = resumed.payload.results as Record<string, unknown>[];
+      assert.deepEqual(outcomes.map(({ outcome }) => outcome), ["applied", "applied", "applied"]);
+      assert.equal(outcomes[0].replayed, true);
+      assert.equal(outcomes[1].replayed, false);
+      assert.equal(outcomes[2].replayed, false);
+    } finally { raw.close(); }
+
   });
   /**
    * The remaining browser-reachable POSTs (ref frontend-backend-integration §3.4 admission table):

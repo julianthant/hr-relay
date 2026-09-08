@@ -2,17 +2,15 @@
 
 ## Approved assignment and status
 
-**Task: `side/command-groups`. Approved; implementation WAITING ON the accepted integration
-of `side/worker-names` and execution-time capacity/ownership checks.** This file is the single
+**Task: `side/command-groups`. S1–S5 complete: independently reviewed candidate ready for assigned integration. S6 combined integration is assigned; integration review and cleanup remain open.** This file is the single
 task owner; it does not create a roadmap phase or change phase completion.
 
 The operator approved consolidating bulk requests into parent/child rows in `commands`,
 asked for two more changes in the same plan, agreed to keep delegation and dependency
 tables separate, changed the proposed dependency name to `delegation_dependencies`, then
 said **“okay do it”** on 2026-09-08 after the final three-change list. That is approval to
-write this plan in the planning-only session. Implementation belongs to a new supervisor
-session; no implementation, independent review, integration, or database application has
-occurred under this assignment.
+write this plan in the planning-only session. The original planning session performed no implementation, independent review, integration, or
+database application. The execution amendment and progress below record this supervisor session.
 
 | Change | Approved outcome |
 | --- | --- |
@@ -21,9 +19,11 @@ occurred under this assignment.
 | 3 | Rename `delegation_manifests` to `run_delegations`. Keep these two tables separate. |
 
 The existing three-rename [worker/request plan](../worker-names/README.md) is unchanged.
-This assignment follows its reviewed integration because both own the same migration chain,
-table registries, database adapter, and historical backup machinery. That prerequisite itself
-requires Task 2.6.1-3. Do not take either task's scope or dirty files to accelerate this one.
+The original serial binding followed its reviewed integration because both affect the same
+migration chain, registries, adapter and backup machinery. The explicit parallel execution
+amendment below replaces that ordering: each candidate validates independently against schema 34,
+with combined migration reconciliation deferred to assigned integration. Task 2.6.1-3 is integrated.
+Do not take either peer's scope or dirty files.
 
 ## Authorities and inspection evidence
 
@@ -246,6 +246,274 @@ prerequisite/base-resolution rule, gates/review, and operator-assigned integrati
 > repository contracts, independent review, required gates and authorized integration/cleanup
 > conditions.
 
+
+## Execution amendment — parallel implementation (2026-09-08)
+
+The operator explicitly instructed “no do in parallel”, replacing the worker-names integration
+prerequisite for implementation. This task uses an independent schema-34 base and implements no
+worker/request or operation renames. The earlier serial-base instructions above are superseded
+only for execution admission and migration sequencing by this amendment.
+
+- S1 admitted: base `35635a04e16e9c3cf1e99b16d4963752a18c616a`; approved plan commit
+  `46892ab3704526feb2c8af80e2317e39e97bde36` is an ancestor. Task 2.6.1-3 integration
+  `813581124` is an ancestor; its owner records accepted review and integration gates.
+- Branch `codex/command-groups`, checkout `/Users/julianhein/Projects/hr-worktree-command-groups`.
+  Created after verifying name/path absence and capacity: fourth auxiliary worktree, preserving
+  worker-names, operation-names, phase-four and primary checkout changes.
+- One local implementer; no supporting implementation agents. R1 remains a fresh complete
+  read-only reviewer. Current schema 34; this isolated candidate appends schema 35.
+- Each peer owns its own isolated candidate, fixtures, generated output and evidence. No shared
+  working-tree writes, unmerged API dependency or automatic integration. Worker-names confirmed
+  its independent schema-34 base and three-rename schema-35 candidate.
+- Either candidate can be integrated first. Later operator-assigned integration must append the
+  subsequent still-unreleased migrations with new version/digest bindings, preserve all released
+  history, reconcile the combined historical table/record/fingerprint families and floor, and run
+  required combined gates plus independent review of those behavioral conflict resolutions.
+  The same applies to the separately active operation-names assignment. A standalone candidate
+  PASS does not establish combined migration correctness or authorize real database application.
+- S2–S5 remain open; S6 integration and cleanup remain operator-assigned. No product gates yet run.
+
+
+## Candidate progress and evidence
+
+S1 is admitted under the parallel amendment. S2 storage/conversion and S3 command integration
+are implemented; S4 regression/reference work and S5 candidate gates are complete.
+S5 independent review is complete. S6 integration and cleanup are not assigned.
+No real operator database was read or converted in this implementation session.
+
+The candidate uses a strict `bulk-parent` stored variant while preserving the public command
+union and lifecycle/settings readers. Parent acceptance is owned by `commands.acceptBulk` /
+`commands.getBulk`; the old database repository and current bulk table are retired. The ingress
+composition adapts those methods to its existing interface. Internal parent context reaches
+identity admission and insertion under the child authority transaction. Parents reserve their
+own and derived child identities, including independent credential command IDs.
+
+The stopped adapter validates the complete historical mapping in its read-only rehearsal and
+again inside conversion. It preserves individual command/audit bytes, links only exact existing
+children, and refuses parent, child or credential-identity collisions. Current fingerprints
+include relational linkage; historical fingerprints and record grammars remain version-scoped.
+Delegation names change without changing public manifest/dependency fields or activating workflows.
+
+| Proof | Candidate evidence |
+| --- | --- |
+| P1 | `command-groups.test.ts`: stored variants, valid/replayed links, forged/missing/self/nested parents, immutable parents/links, no parent audit, standalone findings, removed/reassigned link corruption. |
+| P2 | Populated schema-34 fixtures with zero/some/all journaled children; exact command/audit byte comparisons, original parent facts, explicit zero/one/many delegation manifests and active/satisfied/failed/cancelled dependency rows. Real stopped conversion and refusal paths. |
+| P3 | Extended real `bff-flow` bulk case retains applied/conflict/refused ordering and public admission. Audit-failure injection produces applied/errored with an unattempted remainder, then safe exact replay. |
+| P4 | Real simultaneous identical/divergent BFF acceptance, changed target selection/order/version/type/mode/reason, restart replay, standalone/parent identities and independent credential conflicts. Existing actor/media/origin tests remain selected by full coverage. |
+| P5 | Child transaction failure preserves prior siblings and parent, rolls back failing command/audit/lifecycle effects; no parent execution audit; backup counts retain genuine unaudited individual commands. |
+| P6 | Historical backup admission, read-only rehearsal, precommit rollback, postcommit interruption/exact settlement and no-write settled rerun; incompatible pending conversions from 32/33/34 refuse. Existing backup/restore/admission suites remain full-gate requirements. |
+| P7 | Real renamed repositories preserve populated historical manifests/dependencies and exact replay; existing planner/join/cancellation/tree tests remain full-gate requirements. No live delegation capability claimed. |
+| P8 | Composed BFF and health read the consolidated authority; generated manifest/catalog/roadmap freshness passes. Full coverage and parity remain required. |
+
+Iteration evidence (all logs under `/tmp/hr-command-groups-*`):
+
+- Initial implementation checks exposed a missed schema-version allowlist and historical fixture
+  assumptions; fixes retain the old journal bytes and released migration digests. Initial failures
+  are retained, not reused as passing gates.
+- `typecheck-2.log` and `lint.log`: exit 0 on the intermediate implementation.
+- `focused-2.log`: 255 passing, three failures: the v32 fixture copied a new nullable column into
+  old DDL; the never-delete fixture lacked a bulk parent; the generation-accounting test exceeded
+  its unchanged 30-second deadline under measured concurrent host gates.
+- `targeted.log`: scheduling-only root/per-project one-worker adapter, one fork observed; 16 tests
+  passed, 244 deliberately unselected, four files, 23.94 seconds. It verifies those fixes, composed
+  bulk failure/replay and the populated migration/refusal/recovery tests. Subsequent proof additions
+  remain subject to the complete candidate gate.
+- `doc-audit.log`: nine equal instruction pairs, project chains below 32,768 bytes, all 13 owner
+  links/anchors resolve. `manifest-check.log`, `catalog-check.log`, `roadmap-check.log`: current.
+- Final compiler found one missing `PreFloorCommandSchema` import in the historical-reader override;
+  corrected. No claim of a final compiler pass yet.
+- Gate-resource coordination: worker-names and operation-names both reported coverage architecture
+  timeouts while overlapping heavy gates. This task finishes existing checks and waits for their
+  coverage release before starting another compiler/linter/coverage/parity cycle. No peer process
+  is stopped. Assertions, membership, isolation, floors and timeouts remain unchanged.
+
+
+Candidate gate/repair record:
+
+- Initial frozen gate tree: `0105478f754c62985132dc0603ddd68acdd5688d`. Final typecheck
+  (`typecheck-gate.log`), lint (`lint-gate.log`), manifest/catalog/roadmap freshness
+  (`*-check-final.log`) and documentation audit (`doc-audit-final.log`) passed on this tree.
+  The latest focused proofs (`targeted-final.log`) passed 16 tests across three files.
+- Full coverage (`coverage.log`) used the unchanged repository configuration with only effective
+  root/per-project `maxWorkers: 2`; two actual child workers were recorded in
+  `worker-processes.log`. It finished with 5,648 passed and six failed across 448 files, exit 1.
+  This failed gate is retained and never reused as a pass. No floor, assertion, membership,
+  isolation or timeout was changed.
+- Failures: one browser import-closure regression from moving child derivation into the public
+  command module; four stale schema/floor expectations in architecture/real-port fixtures; one
+  historical-command fixture using an implicit four-column insert against the new five-column
+  table. Repairs move unchanged derivation into server-only `src/domain/command-groups.ts`,
+  update current/future schema expectations and preserve historical values with explicit columns.
+  No guard was added or retired; their checks and negative controls remain intact.
+- Repaired runtime/test tree: `56ff4380a7966cae9a7c9f7f71bb3ba5f2601f54`.
+  `repair-focused.log` passed all 22 selected tests across six files (195 deliberately unselected),
+  exit 0, using one effective worker. It covers all six failures plus command-group and composed
+  BFF behavior after the helper move. Full repaired gates remain pending.
+- After the failed full run and all owned children exited, the heavy gate window was explicitly
+  released to operation-names for its prepared recovery repair. This task performs bounded repair
+  proofs only until that task releases its compiler/linter/coverage/parity window back.
+
+
+## Frozen candidate — awaiting independent review
+
+Base remains `35635a04e16e9c3cf1e99b16d4963752a18c616a`; branch remains
+`codex/command-groups`. Approved plan and parallel amendment are unchanged. The complete
+implementation includes 28 paths; there are no unrelated working-tree changes. Candidate commit
+is the implementation commit containing this record; R1 must bind its exact SHA before inspection.
+No real database application, merge, push, roadmap completion or worktree removal is included.
+
+All final implementation gates used tree `00ead7a5b12764ea35b09991be51e8fe5c4b9785`.
+Only this task-owner evidence was edited afterward; source, tests, dependency/configuration inputs,
+manifest/catalog/roadmap outputs and parity references are unchanged. Verify that one-file delta
+when binding the candidate. Logs below are under `/tmp/hr-command-groups-`.
+
+| Gate | Exact command and result | Log suffix |
+| --- | --- | --- |
+| Typecheck | `npm run typecheck` — exit 0 | `typecheck-repaired.log` |
+| Lint | `npm run lint` — exit 0, zero warnings | `lint-repaired.log` |
+| Full coverage | `npm exec -- tsx scripts/test-runner.ts run --coverage --config /tmp/hr-command-groups-vitest.mts` — exit 0; 448 files, 5,654 tests passed; all configured floors met | `coverage-repaired.log` |
+| Suite-size constituent | `npm exec -- tsx scripts/suite-size.ts` — exit 0; unit 351 files/127,060 lines, scenario 17/7,411, architecture 80/30,885 | `suite-size.log` |
+| Parity | `npm run test:parity -- --workers=2` — exit 0; 262/262 passed, no baseline changes | `parity.log` |
+| Manifest | `npm run build:manifest:check` — exit 0 | `manifest-check-repaired.log` |
+| Store catalog | `npm run stores:catalog:check` — exit 0 | `catalog-check-repaired.log` |
+| Roadmap | `npm run roadmap:check` — exit 0 | `roadmap-check-repaired.log` |
+| Documents | `python3 /tmp/hr-command-groups-doc-audit.py` — exit 0; nine equal instruction pairs, project chains below 32,768 bytes, 13 owner links/anchors resolve | `doc-audit-final.log` |
+| Whitespace | `git diff --cached --check` — exit 0 | terminal evidence |
+
+Coverage: statements 86.01%, branches 77.88%, functions 90.01%, lines 88.23%. The external
+Vitest adapter imports the repository configuration and changes only `maxWorkers` to two at
+root and each project; effective unit/architecture/scenario isolation and 30-second deadlines
+are unchanged. `worker-config.log` records the resolved comparison; `worker-processes-repaired.log`
+records exactly two owned forks. The coverage and suite-size commands together are the repository's
+`test:coverage` script with that scheduling-only override. Parity likewise changes only worker
+count; the assertion wrapper, reporters, case membership, retries and all reference pairs remain
+unchanged. Coverage ran without this task's compiler/linter/parity contention.
+
+All owned gate processes exited. S2–S4 and S5 gates are complete; one fresh complete read-only R1
+review is pending. S6 integration and cleanup still require operator assignment. A standalone PASS
+will not resolve the parallel candidates' combined migration numbering or authorize database use.
+
+
+## R1 review and bounded repair
+
+Reviewer `/root/sup_review_command_groups` independently inspected the complete 28-path
+candidate `92ba918741f138ec9bfd7698e9858775ab657db5` against the recorded base/plan and
+returned **CHANGES REQUIRED**, with one high-severity finding (R1). No paths were unreviewed;
+all P1–P8 boundaries were inspected. R1 affects P4 identity concurrency and P5 audit truth.
+The inspected gate logs were supervisor-run evidence, not reviewer reruns. The reviewer
+independently rechecked identity, inventory, whitespace and document audit.
+
+R1: bulk ingress serialized only the parent ID. A single async worker command using a prospective
+child ID could spawn, wait for birth acknowledgement, then lose its journal/audit when a bulk
+parent accepted during the await reserved that ID. An all-or-none request caused the worker to
+return `command-divergent` without a command/audit despite spawning; a best-effort request could
+cancel a run under that same identity before the worker settled. Evidence at the reviewed SHA:
+`operator-command-ingress.ts:323`, `authority-database.ts:2868`, `command-kernel.ts:2513`.
+
+The external synthetic probe ran on unchanged reviewed HEAD with the real ingress/service/kernel,
+composed worker supervisor, fake process edge and real temporary authority/birth lease:
+`npm exec -- tsx scripts/test-runner.ts run --config /tmp/hr-command-groups-r1/vitest.mts`.
+`/tmp/hr-command-groups-r1-probe.log` contains two passing assertions demonstrating the defect.
+The initial scratch-only assertion typo (`cancelled` versus terminal/cancelled lifecycle) was
+corrected; its failed log is retained separately. No real processes or operator state were used.
+
+Repair: ingress atomically reserves the parent and every derived child identity in its existing
+in-process lane map before awaiting prior owners, then holds those lanes through acceptance,
+effects and journaling. Every reservation waits only on earlier promises, avoiding nested-lock
+cycles. Stable IDs, envelopes, storage/replay semantics and the async worker kernel remain
+unchanged. An already executing single command settles first; the colliding bulk then refuses
+before parent acceptance or child execution.
+
+Permanent regression cases in `worker-pool-composition.test.ts` cover both bulk modes through
+real ingress, async kernel and supervisor. They prove the parent stays absent until the fake
+worker's durable birth acknowledgement; its command and audit remain worker-owned; bulk refuses
+before execution; the run stays queued. Both cases failed against the reviewed implementation
+(`r1-red.log`, exit 1), then passed with neighboring composed bulk and command-group cases
+(`r1-green.log`, 15 tests across three files, exit 0). Logs use `/tmp/hr-command-groups-`.
+
+R1 disposition: repair implemented, awaiting final gates and independent verification. This is
+one repair round for one finding. The bounded recheck may use the same independent reviewer
+only with uncompacted capacity; no author participated as reviewer. S6 remains separately assigned.
+
+
+### R1 repair candidate gates
+
+Frozen tested tree: `b6417a7164945395efbe766f378fb08810721d90`. The repair changes only
+`operator-command-ingress.ts`, `worker-pool-composition.test.ts` and this owner relative to
+reviewed commit `92ba918741f138ec9bfd7698e9858775ab657db5`. The complete base-to-candidate
+inventory is now 29 paths. Only this evidence record changes after the tested tree; all gate
+inputs and parity references remain unchanged.
+
+The exact commands in the frozen-candidate gate table were rerun for the repair, with the same
+scheduling-only two-worker adapters and no compiler/linter overlap during coverage. All exited 0:
+
+| Gate | Result | `/tmp/hr-command-groups-` log suffix |
+| --- | --- | --- |
+| Typecheck / lint | Both passed; zero lint warnings | `typecheck-r1.log`, `lint-r1.log` |
+| Full coverage | 448 files, 5,656 tests passed; all floors met | `coverage-r1.log` |
+| Suite-size constituent | Unit 351/127,126 lines; scenario 17/7,411; architecture 80/30,885 | `suite-size-r1.log` |
+| Parity | 262/262 passed; unchanged baselines | `parity-r1.log` |
+| Manifest / catalog / roadmap freshness | All current | `manifest-check-r1.log`, `catalog-check-r1.log`, `roadmap-check-r1.log` |
+| Documents / whitespace | Nine instruction pairs, chain cap and 13 links passed; diff check clean | `doc-audit-r1.log`, terminal evidence |
+
+Coverage: statements 86.01%, branches 77.88%, functions 90.01%, lines 88.23%.
+`worker-processes-r1.log` verifies two owned forks. All owned gate children exited. R1 repair
+is awaiting commit-bound independent recheck; S6 integration/cleanup remains separately assigned.
+
+
+## Accepted candidate and delivery assessment
+
+The same independent reviewer, `/root/sup_review_command_groups`, completed the bounded repair
+recheck **without compaction** and returned **PASS — complete candidate** for
+`e779bdcce22bd498d0b8321d7bde9b75cf82c6d6` (tree
+`8db91452f13470bd5533d33142548163c8ea0d17`) against base
+`35635a04e16e9c3cf1e99b16d4963752a18c616a` and the approved plan/parallel amendment.
+All 29 paths are accounted for: 15 source, ten test/fixture and four documentation paths.
+S2–S5 and P1–P8 are reconciled; **R1 is independently verified fixed, with no unresolved findings
+or unreviewed boundaries**. The reviewer inspected the new full gate logs and independently
+reran inventory, frozen identity/clean-state checks, whitespace and document audit. Runtime
+checks were supervisor-run, not independently rerun by the reviewer.
+
+Implementation commits:
+
+- `92ba918741f138ec9bfd7698e9858775ab657db5`: command authority consolidation, delegation
+  renames, historical conversion/recovery and P1–P8 proof.
+- `e779bdcce22bd498d0b8321d7bde9b75cf82c6d6`: R1 ingress serialization repair and permanent
+  async worker concurrency regressions.
+
+Final recording changes only this owner and the two owning contracts' candidate-acceptance
+status sentences. Requirements, source, tests, dependencies, configuration, generated artifacts
+and parity references are unchanged from accepted HEAD. The recording commit therefore reuses
+that exact review and the final gates on tree `b6417a7164945395efbe766f378fb08810721d90`
+under D191, with the three-file prose-only delta verified, document/link/instruction audit,
+roadmap freshness and whitespace checks rerun. All owned gate processes exited; logs and
+synthetic diagnostic evidence are retained under `/tmp/hr-command-groups-*`.
+
+Delivery assessment:
+
+- **New operator execution direction:** “no do in parallel” removed the original serial
+  prerequisite. Independent schema-34 bases and later migration reconciliation were recorded
+  before implementation. Scope stayed at the approved three storage changes.
+- **External resource constraint:** overlapping heavy gates caused measured architecture
+  timeouts. Peers queued only heavy gates; bounded implementation and focused proofs continued.
+  No assertions, membership, isolation, coverage floors or deadlines were weakened.
+- **Implementation defects:** initial schema/fixture assumptions and browser import reachability
+  were corrected before review. R1 found one missing async identity/concurrency case already
+  within P4/P5; one repair round added the red/green proof and corrected ingress ordering.
+  This was one complete independent review followed by one bounded repair recheck, with no
+  reviewer exhaustion or assignment resizing. Supervisor compaction count was not recorded.
+- **Preventable rework:** enumerate async preflight/effect/journal boundaries when moving
+  identity ownership, and run the browser import-closure guard when relocating a shared helper.
+  The plan already required these identity and transitive-consumer proofs; no separate planning
+  omission is established. Mandatory gate reruns are retained separately from failed iterations;
+  no estimated elapsed-time savings or quality score is claimed.
+
+S1–S5 are complete for the isolated candidate. S6 remains unassigned: operator-chosen integration
+must reconcile the peer candidates' still-unreleased migrations, run combined gates and review
+behavioral conflict resolutions before worktree/branch cleanup. Actual operator database
+application remains a separate explicit assignment. No merge, push or real database conversion
+was performed by this task.
+
 ## Assigned combined integration — 2026-09-08
 
 The operator's **“do it”** after reviewed candidate delivery authorizes this task to
@@ -295,7 +563,103 @@ runs in a separate operator-authorized checkout and is excluded from this integr
 cleanup; heavy-gate windows are coordinated with its exact task
 `01a082a8-92ac-7031-8eb2-31708e7b0aad`. Primary untracked `docs/handoffs/` is preserved.
 
-Current state: worker merged into the isolated integration branch; operation reconciliation
-is in verification. Command merge, remaining gates, combined review, primary integration and
-owned cleanup are still open. Existing independent candidate review and repair provenance
-in each owner remains authoritative for its original frozen candidate.
+Operation integration commit `c2c602245bcea1d9f83c297e97ffd289e2d2432e` has tested tree
+`5fc4000a3ae1799ad476d6744aaa8c7cc12a0dd1`. Typecheck, lint, full coverage
+(448 files / 5,715 tests; all floors), suite-size, 262 parity cases (127,897 ms),
+manifest/catalog/roadmap freshness and documentation checks passed. Coverage took 548,262 ms;
+statements 85.97%, branches 77.80%, functions 89.96%, lines 88.19%. Logs are
+`/tmp/hr-command-merge-operation-{typecheck-2,lint-2,coverage-2,suite-size,parity,manifest,catalog,roadmap,doc-audit-2}.log`.
+
+The first operation full run passed 5,714 tests but timed out the lifecycle guard at
+33.54 seconds. Profiling identified argument/overload inference across 39,349 calls.
+A callable-declaration prefilter now skips unrelated resolution; potentially protected
+calls still use the original selected-overload resolver. Every source file, AST node,
+property-symbol check, SQL/view check, deadline and per-audit isolation remains intact.
+Baseline and optimized probes reported the same 13 violations, with a safe overload still
+allowed. New fixtures cover renamed, indexed, optional, generic, union and overloaded
+aliases. Standalone timing improved only modestly (8.42 to 8.16 seconds); the accepted
+full-coverage guard cases passed at 22.88 and 21.68 seconds. Timing varies with workload;
+the evidence establishes this gate pass, not a guaranteed speed ratio. Source inspection
+by `/root/sup_scout_guard_performance` checked TypeScript 5.9.3's candidate/declaration
+preservation; this was research, not independent acceptance review. The guard inventory
+records the expanded controls. Earlier failed logs remain retained.
+
+Primary advanced during verification. Merge `b6d18989c` preserves planning-only
+`261111d1af16c431633a514c6e35f72aaf03c87e` (provider usage, run completion and diagnostics),
+including both sides of the additive decision-index conflict. All seven changed paths
+are planning/contract Markdown; source/tests/config/dependencies/generator inputs stayed
+unchanged. D191 reuses the operation tree's code gates; expanded six-owner links/anchors,
+nine instruction pairs/chain caps and diff checks passed. These successor plans remain
+outside this implementation scope.
+
+Current state: worker and operation candidates are merged in the isolated integration
+branch. Command-group reconciliation is implemented at schema 37; its combined gates passed
+and fresh independent integration review is next. Historical conversion tests now cover
+populated schema 34, 35 and 36 command/delegation records, parent/child/credential collisions,
+rollback and resume; backup/restore/worker/operation matrices retain every intermediate
+layout. Original independent candidate review and repair provenance above remains tied to
+its original frozen candidate. Primary integration and owned cleanup remain open.
+
+### Integration conflict dispositions
+
+All conflicts were resolved from the three approved owners and their accepted candidates.
+The original standalone migration number 35 was provisional; only later ordinal/digest
+bindings changed. No accepted behavior was dropped. Paths and line numbers below identify
+the resulting hunks; the merge commits retain both parents and the original conflict sources.
+
+| Resulting file / hunk | Side intents and resolution |
+| --- | --- |
+| `docs/rebuild/reference/decisions.md` additive tails | Primary planning/Phase-4 entries and worker/operation/command amendments all remain; later primary provider/run-completion/diagnostics entries also remain. |
+| `docs/sidetracks/command-groups/README.md` evidence tail | Incoming standalone implementation/review history precedes this newly assigned combined integration record; neither replaces the other. |
+| `src/domain/authority.ts:36,163,207` | Worker and operation current table names coexist with command delegation names; baseline/settings upgrade unions retain every prior destination and add 37. |
+| `src/infra/compat/backup-inspection.ts:20,302,343,362` | Historical admission extends through 36. All renamed aliases/fingerprint ordering remain. Parent-column fingerprinting and parent-excluding pending counts start at 37; worker/operation counts retain 35/36 boundaries. Historical commands before 37 use their original grammar. |
+| `src/infra/sqlite/authority-database.ts:1899,1904,1909,1933,2004` | Separate worker/operation/command historical rewrites use 35/36/37 respectively; record adapters retain all old aliases. Current counts combine all new names and non-executable parent exclusion. |
+| `src/infra/sqlite/migrations.ts:6,24,645,773,1829,1838,1859,1896` | Current/floor becomes 37/36; the historical DDL type/exclusion sets include all retained names; exact historical table maps remain independent of the current registry. Three unchanged migration statement lists append in assigned order; the coverage rename map includes all three families. |
+| `src/infra/sqlite/recovery-contracts.ts:29` | Both branches' historical reader admission remains and extends through 36, without admitting excluded schemas 19–26. |
+| `src/infra/sqlite/storage-records.ts:260` | Worker and operation records coexist with command/delegation records in the current registry; only historical readers retain retired aliases. |
+| `tests/unit/architecture/migration-history-immutability.test.ts` suffix pins | Retain released 1–34 digests and worker 35; bind operation statements at 36 and command statements at 37. |
+| `tests/unit/architecture/sqlite-settings-authority.test.ts` current pin | Preserve settings assertions and pin the combined current schema 37. |
+| `tests/unit/server/compose-real-port.test.ts` current/floor/future hunks | Preserve real downgrade/process-record cleanup assertions; bind current/floor/future to 37/36/38. |
+| `tests/unit/sqlite-authority-database.test.ts` fixture union and admission hunks | Extend the exact released fixture union through 37; preserve ordinary-open refusal and every historical admission assertion, including explicit 34/35/36 floor cases. |
+| `tests/unit/storage-upgrade.test.ts:133,159,379` | Preserve operation's stronger plan-and-apply pending-conversion/credential/environment no-effects checks and worker's complete row/rollback proofs; extend matrices through 36. |
+
+The data-aware stopped hook in `settings-database-upgrade.ts:231` also moves from the
+standalone command ordinal 35 to the assigned ordinal 37. Populated conversion proofs
+exercise this hook after zero, one or both earlier rename migrations. Test fixtures extend
+all three predecessor versions without weakening original assertions or sharing state.
+
+The first combined coverage attempt on tree `e7cdeb4a0a4d51c21e409be219eadfa63de6134a`
+passed the lifecycle guard at 25.62/24.23 seconds, then recorded two timeout failures:
+`descriptor-coverage` manifest freshness at 51.48 seconds and `guard-manifest` ratchet
+fixtures at 74.44 seconds (both deadlines remain 30 seconds). Process inspection found
+an unrelated legacy full-suite run with approximately ten file workers while this task
+had one architecture worker. The supervisor stopped only its already-failed runner
+(exit 143), verified its entire process group absent, and retained
+`/tmp/hr-command-merge-command-coverage.log`. No assertion, deadline, member, coverage floor
+or source file changed in response. The legacy task subsequently confirmed its offline
+gates had ended and reserved the next bounded window; its live read-only work continued.
+The retry uses the identical tree, with timeline also remaining source-only.
+The unchanged-source retry passed those two cases at 10.40 and 12.94 seconds,
+respectively; the lifecycle guard passed at 23.10 and 24.92 seconds. This paired evidence
+supports host contention as the cause of the two unrelated timeouts, without requiring
+any additional source or deadline change.
+
+### Combined candidate gates — 2026-09-08
+
+Tested tree: `e7cdeb4a0a4d51c21e409be219eadfa63de6134a`. Typecheck and lint passed.
+The focused command/migration/identity/concurrency matrix passed 13 files / 506 tests
+in 67.47 seconds. The full retry passed all 449 files / 5,761 tests in 556.16 seconds
+(runner 557,676 ms); suite-size passed. Coverage: statements 86.02%, branches 77.90%,
+functions 90.01%, lines 88.24%, with every configured floor retained and passed.
+Parity passed all 262 cases in 121,666 ms with unchanged baselines. Manifest, store catalog
+and roadmap freshness passed; all six owner link sets and nine instruction pairs/chain
+caps passed. Logs: `/tmp/hr-command-merge-command-{typecheck,focused,lint,coverage-2,suite-size,parity,manifest,catalog,roadmap,doc-audit}.log`.
+
+Commands used the recorded project-group adapter (`run --coverage --config
+/tmp/hr-command-merge-vitest-groups.mts`) and `npm run test:parity -- --workers=2`;
+`npm exec -- tsx scripts/suite-size.ts` completed the full-coverage gate. All gates ran
+against the same source/test/config/dependency inputs. This subsequent owner-only evidence
+recording reuses those code gates under D191, with scoped documentation/diff checks;
+the commit body binds the tested tree and confirms the changed-input inspection.
+The candidate is awaiting a fresh complete read-only integration reviewer, not yet accepted
+for primary integration. No operator database conversion or push occurred.

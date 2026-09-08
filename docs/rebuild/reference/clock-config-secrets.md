@@ -2606,9 +2606,9 @@ FY2028.jobEndDate=06/30/2027 is stale for today 2027-07-03
 
 ### Worker/request schema rename and settings preservation (2026-09-08)
 
-[The schema-35 naming amendment](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
+[The combined schema-35–37 upgrade](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
 preserves D331/D336 settings and independent credential authority. Conversion of schema
-33/34 sources retains the exact ordinary settings revisions/journals and credential bytes;
+32–36 sources retains the exact ordinary settings revisions/journals and credential bytes;
 it does not replay schema 33's batch defaults or reimport environment values. `config_snapshots`
 keeps its name, rows and references. Existing source-change refusal and interrupted settlement
 remain required. The [side assignment](../../sidetracks/worker-names/README.md) owns execution evidence.

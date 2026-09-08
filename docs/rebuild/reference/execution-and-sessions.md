@@ -193,8 +193,8 @@ registered and poisoned — §7.1 row C6/C7 execute both.
 ## 3. Worker lifecycle and claiming
 
 **Worker-table naming amendment (2026-09-08; [side/worker-names](../../sidetracks/worker-names/README.md)).**
-Schema 35 names the worker lifecycle authority `workflow_workers` (formerly `leases`)
-and the credential-scoped Duo lock `worker_auth` (formerly `duo_ceremony_leases`).
+Since schema 35, the worker lifecycle authority is named `workflow_workers` (formerly `leases`)
+and the credential-scoped Duo lock is named `worker_auth` (formerly `duo_ceremony_leases`).
 `worker_pools` retains its name and declaration/CAS role. Worker repository interfaces,
 lease generations, heartbeats, directives, authentication scope and timings are unchanged.
 `worker_auth` holds one expiring authentication lock per credential across workers and

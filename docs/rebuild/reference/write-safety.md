@@ -468,7 +468,7 @@ instrumentation failure.
 
 <a id="operation-table-names"></a>
 
-**2026-09-08 operation names — independently reviewed side-task candidate; awaiting assigned integration.** The current SQL tables are renamed
+**2026-09-08 operation names — combined integration candidate; awaiting independent integration review.** The current SQL tables are renamed
 `write_intents` → `run_operations`, `write_attempts` → `run_operation_attempts`, and
 `durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../../sidetracks/operation-names/README.md)
 owns execution; the operator authorized isolated parallel implementation on 2026-09-08. The names change no write,
@@ -476,7 +476,7 @@ retry, outbox, deletion or retention behavior. Operations can span workflow retr
 operation generations and workflow attempt numbers remain distinct. Preserve stored JSON
 fields, identities, proof/fingerprint algorithms and historical records. Current deletion
 receipts name current tables; historical receipts retain their original names and bytes.
-Schema 35 uses the new names, including current registries, SQL consumers and deletion tallies.
+Schema 36 introduces the new names, including current registries, SQL consumers and deletion tallies.
 The historical accounts and original SQL sketches below retain their contemporary names;
 interpret them through this explicit mapping. Released migrations and historical records
 retain their original bytes. Migration/gate/review evidence lives in the side task.

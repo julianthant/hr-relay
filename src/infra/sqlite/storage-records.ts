@@ -15,7 +15,7 @@ import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
-  BulkRunCommandAcceptanceRecordSchema,
+  BulkParentCommandRecordSchema,
 } from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
@@ -258,12 +258,11 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   provider_budget_counters: ProviderBudgetCounterSchema,
   provider_admissions: ProviderAdmissionRecordSchema,
   workflow_workers: WorkerLeaseRecordSchema,
-  dependencies: DependencyRecordSchema,
-  delegation_manifests: DelegationManifestSchema,
+  delegation_dependencies: DependencyRecordSchema,
+  run_delegations: DelegationManifestSchema,
   // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
-  commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
+  commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
   command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
-  bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
   settings_current: SettingsCurrentRecordSchema,

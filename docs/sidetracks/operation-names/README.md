@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task `side/operation-names`: candidate implemented, gated and independently reviewed on an isolated parallel branch; awaiting assigned integration and cleanup.** This file owns the assignment, not a roadmap phase.
+**Task `side/operation-names`: candidate implemented, gated and independently reviewed on an isolated parallel branch; combined integration assigned; integration review and cleanup remain open.** This file owns the assignment, not a roadmap phase.
 
 On 2026-09-08 the operator proposed `run_operations` and `operation_outbox`, discussed
 `run_attempts`, and accepted the recommendation `run_operation_attempts` with “okay do that”
@@ -376,3 +376,14 @@ material conflict repairs, then remove only the integrated owned branch/worktree
 primary ownership and coordinate its mutation window first. Never infer permission to push or to
 apply the migration to the operator database. No database application, HR write, push or primary
 integration occurred in this task.
+
+
+### Assigned combined integration — 2026-09-08
+
+The operator's **“do it”** assigns S5 integration and cleanup. This task yielded shared-target
+ownership to the command-groups task. The [combined integration record](../command-groups/README.md#assigned-combined-integration--2026-09-08)
+binds the exact three candidates, primary base, isolated integration branch, migration order,
+gates, repairs, independent review and cleanup. Original rejection/repair and accepted-candidate
+evidence above is retained. Final numbering is worker 35, operation 36, command groups 37, with
+stopped-upgrade floor 36. Combined integration acceptance and cleanup are still pending.
+No operator database conversion, unrelated timeline implementation or push is included.

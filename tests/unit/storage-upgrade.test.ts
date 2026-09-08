@@ -120,7 +120,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it.each([29, 30, 31, 32, 33, 34, 35])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34, 35, 36])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
     await assert.rejects(f.run(true), /backup-required/u);
     assert.deepEqual(readFileSync(f.path), before);
@@ -130,7 +130,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it.each([32, 33, 34, 35])("refuses to supersede an unfinished schema-%s settings conversion in plan and apply", async (version) => {
+  it.each([32, 33, 34, 35, 36])("refuses to supersede an unfinished schema-%s settings conversion in plan and apply", async (version) => {
     const seed = fixture(); await seed.run();
     const source = new DatabaseSync(seed.path, { readOnly: true });
     let pending: Record<string, unknown>;
@@ -156,7 +156,7 @@ describe("D336 stopped SQLite upgrade", () => {
       assert.equal(existsSync(f.input.processLockRoot), false);
     }
   });
-  it.each([32, 33, 34, 35])("renames a v%s database without reimporting settings or touching independent credentials", async (version) => {
+  it.each([32, 33, 34, 35, 36])("renames a v%s database without reimporting settings or touching independent credentials", async (version) => {
     const seed = fixture();
     writeFileSync(seed.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=3\nUCPATH_PASSWORD=synthetic-batch-upgrade\n", { mode: 0o600 });
     await seed.run();
@@ -169,8 +169,8 @@ describe("D336 stopped SQLite upgrade", () => {
       for (const table of tables) {
         const rows = source.prepare(`SELECT * FROM ${table}`).all(); before.set(table, rows);
         for (const row of rows) {
-          const columns = Object.keys(row);
-          target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+          const columns = Object.keys(row).filter((column) => column !== "parent_command_id");
+          target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...columns.map((column) => row[column]));
         }
       }
     } finally { source.close(); target.close(); }
@@ -376,7 +376,7 @@ const RENAMED_TABLES = [
 ] as const;
 
 /** Build historical rows through real repositories, then copy their complete SQL shape. */
-async function populatedWorkerRenameFixture(version: 33 | 34 | 35) {
+async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36) {
   const seed = fixture();
   await seed.run();
   const database = AuthorityDatabase.open({ path: seed.path, busyTimeoutMs: 250, migrationOwner: "rename-seed" }, clock);
@@ -437,7 +437,7 @@ async function populatedWorkerRenameFixture(version: 33 | 34 | 35) {
 }
 
 describe("worker/auth/request SQL rename through stopped upgrade", () => {
-  it.each([33, 34, 35] as const)("preserves complete populated v%s rows, grouping, historical backup and current readback", async (version) => {
+  it.each([33, 34, 35, 36] as const)("preserves complete populated v%s rows, grouping, historical backup and current readback", async (version) => {
     const f = await populatedWorkerRenameFixture(version);
     const original = readFileSync(f.path);
     const historical = inspectAuthorityBackupReadOnly(f.path);
@@ -459,7 +459,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
       assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
     const current = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(current.schemaVersion, 36);
+    assert.equal(current.schemaVersion, 37);
     assert.equal(current.counts.leases, 1);
     const currentBackup = await f.backup();
     assert.equal(currentBackup.manifests[0]?.authorityContentFingerprint, current.authorityContentFingerprint);
@@ -468,14 +468,14 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     assert.deepEqual(readFileSync(f.path), settled);
   });
 
-  it.each([33, 34, 35] as const)("rolls back populated v%s before commit and resumes exactly after commit", async (version) => {
+  it.each([33, 34, 35, 36] as const)("rolls back populated v%s before commit and resumes exactly after commit", async (version) => {
     const f = await populatedWorkerRenameFixture(version);
     await f.backup();
     const before = readFileSync(f.path);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("rename-before-commit"); } } }, clock), /rename-before-commit/u);
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 36);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 37);
     assert.equal((await f.run()).state, "converted");
     const after = new DatabaseSync(f.path, { readOnly: true });
     try {
@@ -485,7 +485,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     } finally { after.close(); }
   });
 
-  it.each(([34, 35] as const).flatMap((version) => RENAMED_TABLES.map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("refuses corrupt schema-$version $table records instead of omitting their validation", async ({ version, table }) => {
+  it.each(([34, 35, 36] as const).flatMap((version) => RENAMED_TABLES.map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("refuses corrupt schema-$version $table records instead of omitting their validation", async ({ version, table }) => {
     const f = await populatedWorkerRenameFixture(version);
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE ${table} SET record_json='{}'`); } finally { raw.close(); }
@@ -495,7 +495,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     assert.deepEqual(readFileSync(f.path), before);
   });
 
-  it.each(([34, 35] as const).flatMap((version) => RENAMED_TABLES.slice(0, 2).map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("retains schema-$version $table mirrored-column invariants", async ({ version, table }) => {
+  it.each(([34, 35, 36] as const).flatMap((version) => RENAMED_TABLES.slice(0, 2).map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("retains schema-$version $table mirrored-column invariants", async ({ version, table }) => {
     const f = await populatedWorkerRenameFixture(version);
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE ${table} SET version=version+1`); } finally { raw.close(); }

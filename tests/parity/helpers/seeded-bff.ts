@@ -903,7 +903,7 @@ export async function startSeededServer(
     protectedCommandAcceptedAt: () => { throw new Error("seeded BFF has no credential command authority"); },
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
-        work(repositories.bulkCommandAcceptances)),
+        work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
     },
     preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {

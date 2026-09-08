@@ -377,7 +377,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     });
   });
 
-  it.each([29, 30, 31, 32, 33, 34, 35])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34, 35, 36])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
     const paths = drillPaths();
     const credentialPath = join(paths.stateRoot, "credentials", "protected.json");
     const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
