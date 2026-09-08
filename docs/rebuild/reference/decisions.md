@@ -2283,3 +2283,16 @@ persisted owner, following accepted run-completion integration. Requirements liv
 [operator trust](operator-trust.md#diagnostic-evidence-and-resolution) and
 [dashboard surfaces](dashboard-surfaces.md#failure-resolution). No prior running plan is amended;
 this is planning approval, not implementation or operator-database conversion.
+
+### 2026-09-08 — unified imported and generated artifact records (pending implementation)
+
+Operator selected `imported_artifacts` for one import's full preparation/submission lifecycle,
+`extracted_artifacts` for admitted page data and `generated_artifacts` for output files across creation
+and updates. This replaces two intake tables and consolidates output pending/head state on one
+logical-file row while retaining every pending update and exact historical file references. Requirements
+live at [data intake](data-intake-and-edit-data.md#artifact-storage-model) and
+[dashboard surfaces](dashboard-surfaces.md#artifact-storage-model).
+[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) combines the work in sequential
+T1 import/extraction and T2 output units after accepted diagnostics integration. No earlier plan is
+amended; this records planning approval, not implementation, new workflow activation or operator
+file/database conversion.
