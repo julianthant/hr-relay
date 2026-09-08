@@ -1371,6 +1371,7 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | serial prerequisite in `phase-3-1-dashboard-c21194e18-r08-truth-reset`; it must merge before any implementation wave and freeze the file/artifact ownership that makes peers independent · left: execute after 2.6 closes
 
 needs:
+- p2f-close
 
 ##### 2 · Establish independent dashboard boundaries {#dash-boundary-foundation}
 status: planned
