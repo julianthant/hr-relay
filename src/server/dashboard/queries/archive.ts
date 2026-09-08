@@ -1,5 +1,5 @@
 import type { RunRecordService } from "../../../core/run-record-service.js";
-import { listCanonicalRuns } from "./canonical-runs.js";
+import { canonicalRunChildren, listCanonicalRuns } from "./canonical-runs.js";
 import { requireCanonicalRun } from "./run-read.js";
 import { deriveRunStatus } from "../run-status.js";
 import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
@@ -662,9 +662,19 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
  * of re-deriving them later from rows the projection has stopped serving.
  */
 export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSnapshotSource {
-  return Object.freeze({
-    snapshot(runId: string): ArchiveRunSnapshot {
-      const row = deps.projection.queueSurface(runId);
+  const snapshotBatch = (runIds: readonly string[]): ReadonlyMap<string, ArchiveRunSnapshot> => {
+    if (runIds.length === 0) return new Map();
+    const captured = deps.projection.captureQueueSnapshot();
+    const children = canonicalRunChildren(captured.runs);
+    const memberIds = new Map(runIds.map((runId) => [runId,
+      (children.get(runId) ?? []).filter((run) => run.envelope.shape === "operation-member")
+        .map((run) => String(run.envelope.runId)),
+    ]));
+    const renderIds = [...new Set([...runIds, ...[...memberIds.values()].flat()])];
+    const surfaces = new Map(captured.surfaces(renderIds).map((row) => [String(row.runId), row]));
+    const snapshots = new Map<string, ArchiveRunSnapshot>();
+    for (const runId of runIds) {
+      const row = surfaces.get(runId);
       if (row === undefined) {
         throw new TargetNotFoundError(
           `run ${runId} has no live canonical row; refusing to archive a run the projection cannot render, `
@@ -685,9 +695,18 @@ export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSn
           // archive keeps whichever one the live surface would have shown
           // rather than flattening three different facts into one absence.
           : { state: "absent", reason: payload.state === "error" ? payload.message : payload.reason },
-        sections: freezeProjectionSections(deps, runId),
+        sections: freezeProjectionSections(deps, runId, memberIds.get(runId) ?? [], surfaces),
       };
-      return Object.freeze(snapshot);
+      snapshots.set(runId, Object.freeze(snapshot));
+    }
+    return snapshots;
+  };
+  return Object.freeze({
+    snapshotBatch,
+    snapshot(runId: string): ArchiveRunSnapshot {
+      const snapshot = snapshotBatch([runId]).get(runId);
+      if (snapshot === undefined) throw new Error(`archive batch omitted candidate ${runId}`);
+      return snapshot;
     },
   });
 }
@@ -706,15 +725,17 @@ const FROZEN_LOG_PAGE_LIMIT = 500;
  * panel would have shown differently — that is the whole reason the freeze goes
  * through this seam instead of reading authority a second time.
  */
-function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): ArchivedProjectionSections {
+function freezeProjectionSections(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  memberRunIds: readonly string[],
+  surfaces: ReadonlyMap<string, QueueSurfaceWire>,
+): ArchivedProjectionSections {
   const { row: fold, authority } = requireCanonicalRun(deps, runId);
-  if (deps.runReader === undefined) throw new Error("archive snapshot requires canonical run reader");
-  const members = listCanonicalRuns(deps.runReader, "live").filter((run) =>
-    run.envelope.parent?.runId === authority.envelope.runId && run.envelope.shape === "operation-member");
   return ArchivedProjectionSectionsSchema.parse({
     logs: { state: "present", value: freezeLogs(deps, runId) },
     data: { state: "present", value: freezeData(deps, runId) },
-    people: freezePeople(deps, runId, members.map((run) => run.envelope.runId)),
+    people: freezePeople(runId, memberRunIds, surfaces),
     attempts: fold === undefined
       ? { state: "absent", reason: "no execution span evidence was recorded" }
       : { state: "present", value: foldAttempts(fold, authority.envelope.attempt) },
@@ -791,14 +812,13 @@ function freezeData(deps: RunDetailQueryDeps, runId: string): ContextDataSection
  * for the same reason an unrenderable row does.
  */
 function freezePeople(
-  deps: RunDetailQueryDeps,
   runId: string,
   memberRunIds: readonly string[],
+  byId: ReadonlyMap<string, QueueSurfaceWire>,
 ): ArchivedProjectionSections["people"] {
   if (memberRunIds.length === 0) {
     return { state: "absent", reason: "this run fanned out no member runs" };
   }
-  const byId = new Map(deps.projection.queueSurfaces(memberRunIds).map((surface) => [String(surface.runId), surface]));
   const members = memberRunIds.map((memberRunId) => {
     const surface = byId.get(memberRunId);
     if (surface === undefined) {

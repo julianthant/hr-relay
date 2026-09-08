@@ -1,3 +1,10 @@
+import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import { CommandResultSchema } from "../../../src/domain/commands.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +32,12 @@ function fixture() {
   const clock = manualClock(AT);
   const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
   cleanups.push(() => database.close());
-  const reader = sqliteRunReader(database, clock);
+  const realReader = sqliteRunReader(database, clock);
+  let listCalls = 0;
+  const reader: typeof realReader = {
+    read: (id) => realReader.read(id),
+    list: (input) => { listCalls += 1; return realReader.list(input); },
+  };
   const world = makeWorld({ reader });
   cleanups.push(() => world.dispose());
   const service = new RunRecordService({ database, clock,
@@ -38,7 +50,9 @@ function fixture() {
     canonical: { reader, database, descriptors: { resolve: () => undefined } },
   };
   const detail = (runId: string) => buildRunDetail(detailDeps, runId);
-  return { database, reader, world, service, detail, detailDeps, clock };
+  return { database, reader, world, service, detail, detailDeps, clock,
+    listCalls: () => listCalls, resetListCalls: () => { listCalls = 0; },
+  };
 }
 
 it.each(["single", "operation-member"] as const)("freezes a spanless canonical %s and converges live/archive/deleted views without reconstructing evidence", async (shape) => {
@@ -270,4 +284,75 @@ it("counts zero, one and multiple spanless members and removes the settled tree 
   assert.equal(f.world.projection.queueSurface(parent.envelope.runId), undefined);
   assert.deepEqual(f.world.projection.buildDashboardDayWire(DAY).queueSurfaces, []);
   assert.equal(f.world.projection.buildActivityReportWire(DAY, DAY).totalRuns, 0);
+});
+
+it.each([
+  { order: "child first", parentSeed: 412, childSeed: 409, extraRuns: 0 },
+  { order: "parent first", parentSeed: 409, childSeed: 412, extraRuns: 0 },
+  { order: "child first, larger batch", parentSeed: 412, childSeed: 409, extraRuns: 18 },
+])("freezes complete membership with one canonical enumeration: $order", ({ parentSeed, childSeed, extraRuns }) => {
+  const f = fixture();
+  seedSyntheticRuntimeConfig(f.database);
+  const parent = runRecordOf({ seed: parentSeed, shape: "operation" });
+  const child = runRecordOf({ seed: childSeed, shape: "operation-member", parentSeed });
+  const runs = [parent, child, ...Array.from({ length: extraRuns }, (_, index) => runRecordOf({ seed: 500 + index }))];
+  for (const [index, run] of runs.entries()) {
+    f.database.authority.runs.enqueue(run);
+    requireLifecycleApplied(f.service.transition({
+      commandId: uuidOf(6400 + index), runId: run.envelope.runId,
+      expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: AT.toISOString() },
+    }));
+  }
+  const kernel = createCommandKernel({
+    lifecycle: f.service, authority: { withAuthorityTransaction: work => f.database.withAuthorityTransaction(work) },
+    clock: f.clock, ids: sequentialIdFactory("a"), appVersion: "0.1.0",
+    descriptors: { resolve: id => id === "person-lookup" ? personLookupDescriptor : undefined },
+    archiveSnapshots: createArchiveSnapshotSource(f.detailDeps),
+    configIdentity: { configFingerprint: HASH_B, configSnapshotId: UUID_4 },
+    intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    writeResolution: { resolvePresent: () => { throw new Error("unused"); }, resolveAbsent: () => { throw new Error("unused"); } },
+    workerRuntime: { planWorkerCount: () => { throw new Error("unused"); }, spawnWorker: () => { throw new Error("unused"); },
+      refreshBrowser: () => { throw new Error("unused"); }, reopenBrowser: () => { throw new Error("unused"); } },
+  });
+  const envelope = { requestedAt: AT.toISOString(), requestedBy: "local-operator", source: "archive", family: "version-archive" };
+  const planned = CommandResultSchema.parse(kernel.execute({ ...envelope, commandId: uuidOf(7501), type: "plan-version-bump",
+    target: { scope: { kind: "workflows", workflowIds: ["person-lookup"] } }, payload: {
+      targetVersion: "0.2.0", changeFingerprint: HASH_B,
+      changeRecord: { kind: "major", what: "Archive synthetic prior-version parent and child", why: "Prove archive ordering preserves frozen membership",
+        commit: { state: "absent", reason: "synthetic archive batch regression" } },
+    },
+  }));
+  assert.equal(planned.state, "applied", JSON.stringify(planned));
+  if (planned.state !== "applied") throw new Error("plan not applied");
+  const target = planned.affectedTargets.find(value => value.family === "version-archive");
+  assert.ok(target?.family === "version-archive");
+  const plan = f.database.authority.versionPlans.get(target.versionPlanId); assert.ok(plan);
+  f.resetListCalls();
+  const applied = CommandResultSchema.parse(kernel.execute({ ...envelope, commandId: uuidOf(7502), type: "apply-version-bump",
+    target: { versionPlanId: plan.versionPlanId, expectedVersion: plan.version }, payload: { planFingerprint: plan.planFingerprint },
+  }));
+  assert.equal(applied.state, "applied", JSON.stringify(applied));
+  for (const run of runs) {
+    const existence = f.reader.read(run.envelope.runId);
+    assert.ok(existence.state === "present" && existence.disposition === "archived");
+  }
+  const frozen = f.database.authority.archivedRuns.get(parent.envelope.runId);
+  assert.ok(frozen?.row.surfaceKind === "operation");
+  assert.deepEqual(frozen.row.memberRunIds, [child.envelope.runId]);
+  assert.deepEqual(frozen.row.memberRollup, { total: 1, terminal: 1, failed: 0 });
+  assert.equal(frozen.sections?.people.state, "present");
+  if (frozen.sections?.people.state !== "present") throw new Error("missing frozen people");
+  assert.equal(frozen.sections.people.value.total, 1);
+  assert.deepEqual(frozen.sections.people.value.members.map(({ runId, parentRunId, status }) =>
+    ({ runId, parentRunId, status })), [{ runId: child.envelope.runId, parentRunId: parent.envelope.runId, status: "cancelled" }]);
+  assert.equal(f.listCalls(), 1, "archive batch enumeration must not grow with candidate count");
+});
+
+it("does not enumerate authority for an empty archive batch and refuses absent candidates", () => {
+  const f = fixture();
+  const snapshots = createArchiveSnapshotSource(f.detailDeps);
+  f.resetListCalls();
+  assert.equal(snapshots.snapshotBatch([]).size, 0);
+  assert.equal(f.listCalls(), 0);
+  assert.throws(() => snapshots.snapshotBatch([uuidOf(409)]), /no live canonical row/);
 });

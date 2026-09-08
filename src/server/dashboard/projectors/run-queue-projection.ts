@@ -266,6 +266,12 @@ interface CanonicalProjectionSnapshot {
   readonly children: ReadonlyMap<string, readonly RunRecord[]>;
 }
 
+/** A synchronous operation can render several rows from one canonical membership read. */
+export interface RunQueueReadSnapshot {
+  readonly runs: readonly RunRecord[];
+  surfaces(runIds: readonly string[]): readonly QueueSurfaceWire[];
+}
+
 interface ParsedSpanLine {
   readonly line: EventStreamLine;
   readonly event: SpanEventWire;
@@ -738,10 +744,17 @@ export class RunQueueProjection {
 
   /** Bulk frozen-member reads share one canonical enumeration. */
   queueSurfaces(runIds: readonly string[]): readonly QueueSurfaceWire[] {
+    return this.captureQueueSnapshot().surfaces(runIds);
+  }
+
+  captureQueueSnapshot(): RunQueueReadSnapshot {
     const snapshot = this.#canonicalSnapshot();
-    return runIds.flatMap((runId) => {
-      const run = snapshot.byId.get(runId);
-      return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, snapshot.children.get(runId) ?? [])];
+    return Object.freeze({
+      runs: snapshot.runs,
+      surfaces: (runIds: readonly string[]) => runIds.flatMap((runId) => {
+        const run = snapshot.byId.get(runId);
+        return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, snapshot.children.get(runId) ?? [])];
+      }),
     });
   }
 

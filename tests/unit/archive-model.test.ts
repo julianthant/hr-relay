@@ -177,6 +177,9 @@ function snapshotSource(world: {
     | { state: "absent"; reason: string };
 }) {
   return {
+    snapshotBatch(runIds: readonly string[]): ReadonlyMap<string, ArchiveRunSnapshot> {
+      return new Map(runIds.map((runId) => [runId, this.snapshot(runId)]));
+    },
     snapshot(runId: string): ArchiveRunSnapshot {
       const run = world.database.authority.runs.get(runId);
       if (run === undefined) throw new Error(`no run ${runId} to snapshot`);

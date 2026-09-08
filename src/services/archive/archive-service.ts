@@ -79,6 +79,8 @@ export interface ArchiveSnapshotSource {
    * evidence in the frozen snapshot; they do not erase the run's existence.
    */
   snapshot(runId: string): ArchiveRunSnapshot;
+  /** Freeze every candidate before any archival changes live membership. */
+  snapshotBatch(runIds: readonly string[]): ReadonlyMap<string, ArchiveRunSnapshot>;
 }
 
 export interface VersionBumpAssessment {
