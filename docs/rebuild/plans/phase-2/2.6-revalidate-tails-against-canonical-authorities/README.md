@@ -17,6 +17,38 @@ This reopened part starts only after 1.6 closes. It changes downstream read mode
 operator services that consume run/settings authority; it does not change the canonical stores,
 rewrite append-only evidence, repeat D135's controlled write, or improvise a new contract.
 
+**Task 1.6.7 deterministic handoff (2026-09-07; live/closure acceptance still pending).**
+At base `da85e5d1d`, the nine-file upgrade/restore/doctor/settings set passed 139 tests and the five
+focused authority/secrecy guards passed 60 tests, including their injected violations. Exact commands
+and the reproducible two-worker adapter are in the [Task-7 owner](../../phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md#gate-schedule-and-review-coverage).
+
+| Boundary | Verified handoff and downstream owner |
+| --- | --- |
+| Fresh fixture | `tests/unit/storage-upgrade.test.ts`, “plans a fresh root without files, creates v33 directly, and reruns without writes”: `fixture()` constructs an isolated empty root; plan creates nothing, conversion produces schema 33/settings revision 1 without credentials, repeat is byte-identical. |
+| Migrated fixture | Same file, “preserves an applied empty v29 revision and authenticates its immutable historical journal after conversion”: `fixture(29)` applies migrations through v29 with synthetic generation 7; the case seeds revision-2 empty settings plus its immutable command/audit, creates a verified stopped backup, converts to v33, retains revision 2 and source bytes. These are regenerable constructors, not operator database copies or retained temporary paths. |
+| A0/A1 | Task 2 deletes `src/infra/compat/{upgrade-sources,pre-floor-settings,settings-database-upgrade,settings-source-recovery}.ts`; only the stopped `src/server/storage/upgrade.ts` boundary may reach them. Activate `authority-upgrade-adapters-retired` and retire `authority-upgrade-adapters-isolated` in that deletion commit. Keep `sqlite-settings-authority` and strict historical readers. |
+| A2/A3 | Task 1-3 removes the `row.ended` and `row.claimedBy` lifecycle arms in `src/server/dashboard/run-status.ts` and lands `run-status-fold-contributes-no-lifecycle-arm` in the same commit. It removes `runs_view` with projector rewire; the existing lifecycle-SQL guard's reader violation remains red-capable. No deletion occurs in Task 7. |
+| Gate records | `checkpoint_payloads` is written only through `gateResults.insert`, keyed by run/gate and parsed as `GateResultRecordSchema` in `src/infra/sqlite/authority-database.ts`. D330.11 #22 is exercised in `tests/unit/run-record-service/service.test.ts`; M23 is the tombstoned-gate removal/retention/trigger case in `tests/unit/storage-upgrade.test.ts`. No non-gate writer is admitted. |
+| D183 | Preserve `D331_SERVED_LEAF_DISPOSITIONS` and the schema-driven audit in `tests/unit/architecture/redaction-surface-scan.test.ts`: closed literals/identifier-free presence, revision, opaque value identities, runtime status and refusal facts; no protected values. Missing/wrong/unreviewed dispositions are injected negative controls. D341 test inputs remain private config, outside Settings and evidence values. |
+| Environment | `migrated-refused` means startup refusal by name, not an inert or fallback environment value. Under approved D343, Task 7 preserves `.env` as operator reference and admits only `.env.providers` at normal startup. Retired names remain refused in the runtime source and inherited process environment; repeat current admission before live work. |
+| A8/P40 | Task 6 already changed the immediate Settings source presentation to `Saved` and accepted its parity references. Phase 3.1 Task 9-2 owns the remaining catalog-driven editor/Settings expansion and any deliberate parity refreeze. Neither this phase nor Task 7 restores the obsolete `settings.json: not set` copy. |
+
+At reset, the primary operator root had schema 32/generation 0 and one fresh baseline marker; the
+historical generation-94 database and generation-91 backup are not fixture inputs or restore targets.
+This handoff does not mark Phase 1.6 or Phase 2.6 complete.
+
+**Current closure residuals (2026-09-08).** Task 7 consumes accepted schema-33 master and the
+combined fresh/v29 fixture proofs. Executable candidate `4a242128` passed 5546 coverage tests and
+261 parity cases. Both T1b workflows are accepted with exact 0/0/0 write-authority deltas; complete
+Separations proof has fifteen fresh current-run checkpoints and all eight assertions met. Latest
+doctor at 2026-09-08T07:29:41.609Z is healthy schema 33/generation 836 with twelve reconciled runs.
+Preserve the two local terminal-result projection handoffs for the successful runs, along with all
+failed evidence; they are distinct from the empty HR write outbox. Preserve `workflow_runs` and
+`workflow_run_batches`; the schema-32 reset remains historical, not a restoration target. The
+protected reread and pending-set recording defects are repaired and live-verified. No unresolved
+implementation defect is transferred by this record. Task 7 still owns fresh complete review,
+integration gates, operator-deferred settings restoration and cleanup. Phase 2.6 remains unstarted.
+
 **Execution order and wave ruling (2026-09-04).** The part runs as wave 1
 (`1-1` ∥ `1-2` ∥ `1-3`) → Task 2 → Task 3. The three wave members consume the same frozen
 1.6 authorities but own disjoint downstream seams: trust/evidence projections, intake/data
@@ -131,8 +163,9 @@ These historical readers never reintroduce runtime settings-file authority.
 > with §D332.11 M17 (`restore-rollback-pairs-with-evidence`) and M22
 > (`pre-floor-manifest-readable-for-restore`), re-run over a migrated COPY, and §D332.7 item 6 — a run
 > left `authority-unknown` by a restore is never re-admitted. This task deletes adapters A0 and A1 and
-> flips `authority-upgrade-adapters-retired` and `settings-root-single-pathname` from `planned` to
-> `active` in that same deletion commit (`ref guards-and-tests` §5.2, intended entries 1–2). Task 1.6.6
+> flips `authority-upgrade-adapters-retired` from `planned` to `active` in that deletion commit.
+> D336 supersedes the former `settings-root-single-pathname` activation with the already-active
+> `sqlite-settings-authority` guard (`ref guards-and-tests` §5.2). Task 1.6.6
 > previously upgraded the real root; the operator subsequently reset it. Prove §D332.9 rule 5’s
 > `authority-below-floor` refusal with a synthetic pre-floor artifact after adapter retirement;
 > the deleted operator root/backup is not an input. D135 is cited; no second controlled write. No
@@ -146,6 +179,6 @@ These historical readers never reintroduce runtime settings-file authority.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | hands 3.1 `ref clock-config-secrets` §D331.10 (the
 > Settings/Setup edit contract), the served observed/active `display` pair (§D331.10's `derived-host`
-> row on §D331.5's bootstrap/readback wire), and P40/A8 — the eleven frozen parity references carrying
-> the Settings surface's `settings.json: not set` line are re-frozen DELIBERATELY at 3.1, not here —
+> row on §D331.5's bootstrap/readback wire), and P40/A8 — after Task 6's accepted `Saved` source-copy
+> correction, remaining Settings expansion and deliberate refreeze belong to 3.1 Task 9-2 —
 > alongside the fixture matrix. No redesign.

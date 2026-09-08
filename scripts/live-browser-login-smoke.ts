@@ -221,6 +221,7 @@ async function main(): Promise<void> {
     clock: systemClock,
     scheduler: realScheduler,
     acquireDeadlineMs: config.timeouts.sessionAcquireMs,
+    defaultBrowserMode: headed ? "headed" : "headless",
     duoCeremony,
     onEvent: (event) => {
       const detail = event.type === "browser-session:start" ? ` login=${event.login}` : "";

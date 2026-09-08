@@ -144,6 +144,7 @@ const CHECKPOINT_KEY = [
  * from current evidence rather than replay a checkpoint across an input/source
  * change.
  */
+// Explicit reread item: independently require no prior runs/checkpoints before its first attempt.
 const EXPECTED_CHECKPOINTS = [
   { node: "resolve-action", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "document", attempt: 1, keyedBy: CHECKPOINT_KEY },

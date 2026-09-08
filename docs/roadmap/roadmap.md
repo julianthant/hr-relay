@@ -592,20 +592,27 @@ log:
 - 2026-09-07 | direct supervisor close | Steps 1.6.6.1–1.6.6.7 complete. Original complete standalone Sol/high PASS plus fresh sup_review R11 PASS; final integration 440013f193d7f3451828cbc740591248139db077. Candidate/integration typecheck, lint, 5,461 coverage tests, 827 architecture tests, 259 desktop parity cases and freshness gates pass. Merged-code backup/plan/upgrade/repeat/doctor converted operator v29/g91 to v32/g94, preserving prior rows, evidence, backup and .env; nine cleanup names reported, no runtime startup. Assigned worktree/ref and 27 dead owned test roots removed; exact review task archived. No push, legacy change, cutover or next-task dispatch.
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
-status: planned
+status: active
 doc: 1.6/task-7-close-the-rebuilt-foundation · 1.6 §1.6 · Implement canonical run and settings authorities · 2.6 §2.6 · 3.1 §Reopened completion tasks
 
 > D341 prerequisite: the approved test-data foundation detour completed 2026-09-07 (accepted review, `--no-ff` integration `bc6dc9b54`, private conversion; `ref guards-and-tests` §10.5); no new phase number. Use the fresh operator-reset root and shared synthetic recovery fixtures.
 
 builds:
-- [ ] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (unchanged), storage-doctor on the fresh root after the D341 detour, and both workflows' T1b live manifests with exact zero write-authority deltas
+- [x] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (only the approved D343 generated-fingerprint refresh), storage-doctor on the fresh root after the D341 detour, and both workflows' T1b live manifests with exact zero write-authority deltas
 - [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
-- [ ] DOCS record the migration and hand 2.6 only verified contracts, the reproducible synthetic fresh/migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 2; A2 + its unit test and A3 → 2.6 Task 1-3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
+- [x] DOCS record the migration and hand 2.6 only verified contracts, the reproducible synthetic fresh/migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 2; A2 + its unit test and A3 → 2.6 Task 1-3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
 
 needs:
 - p1f-migration-proof
 
 log:
+- 2026-09-08 | Task 1.6.7 standalone review approved | operator authorized one independent Astra/high review task with checkpoint/resume through compaction. Full candidate/proof scope and complete PASS before integration remain required; R1/R2 have no acceptance credit. Settings restoration remains separately deferred.
+- 2026-09-08 | Task 1.6.7 review capacity blocked | frozen evidence `d9ccb0c2`: R1 and R2 complete native reviews stopped after automatic compaction, no confirmed findings and no PASS. R2 used measured bounded retrieval; a resumable standalone complete review is proposed in the owner, awaiting approval. No merge; settings restoration remains separately deferred.
+- 2026-09-08 | Task 1.6.7 Step 5 accepted | final candidate gates pass: 5546 coverage tests, 833 architecture checks, 261 unchanged parity cases. Both accepted T1b proofs and the schema-33 handoff are recorded; awaiting complete independent review. Integration gates and cleanup remain, with settings restoration explicitly operator-deferred.
+- 2026-09-08 | Task 1.6.7 Step 4 accepted | executable `4a242128`: 5546 coverage tests, 833 architecture checks and 261 unchanged parity cases pass. Both T1b proofs accepted; fresh Separations result `3a1b9d6a-32f3-4ea3-886d-d049c0eec191` met all eight assertions with fifteen current-run checkpoints and exact 0/0/0 writes. Post-doctor healthy schema33/g836, primary master restored. Final recording/review/integration/cleanup remain; settings restoration is operator-deferred.
+- 2026-09-08 | Task 1.6.7 fresh reread | combined schema-33 candidate `7eb62eea` passed 5542 coverage tests, 833 architecture checks and 261 parity cases. Person Lookup retained proof is unchanged. Fresh Separations reread failed at pending-set observation/provenance recording after fourteen new checkpoints; exact 0/0/0 writes. Narrow repair and renewed full proof, review, integration and cleanup remain open; settings restoration is operator-deferred.
+- 2026-09-07 | Task 1.6.7 current residuals | callback repair `09436a49` passed 5522 coverage tests, 259 desktop parity cases and a production read-only scan; Person Lookup full live-read met with exact 0/0/0 writes. Separations full T1b remains blocked by protected reread identity/admission. Temporary-settings restoration waits for the operator's signal; final review, integration and cleanup remain open.
+- 2026-09-07 | Task 1.6.7 Steps 1–3 | source checkpoint `9316abc6` preserves `.env` as reference and admits only `.env.providers` (D343); operator-approved fingerprint-only reference refresh classified. Typecheck/lint, 5513 coverage tests, 833 architecture tests and 259 assertion-mode parity cases pass. Live pair, complete independent review, integration and cleanup remain open.
 - 2026-09-07 | D341 detour complete | accepted review (rounds 2–4 + conversion addendum), `--no-ff` merge `bc6dc9b54`, integration gates green, private conversion performed (credentials v2 revision 3, private file 0600, doctor exit 0); person-lookup input and retired-env cleanup remain Task-7 prerequisites.
 - 2026-09-07 | D341 approved detour | test-only configuration and complete shared-fixture consolidation precede Task 7; operator database reset verified, credentials preserved; implementation remains pending and the paused Task-7 worktree must consume the new base.
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound to its gate and its 2.6 handoff list (doc 01 §1.6 Task 7) · left: implementation

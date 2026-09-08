@@ -370,6 +370,58 @@ describe("ucpath login recipe", () => {
     assert.equal(harness.url(), UCPATH_APP);
   });
 
+  // Live 2026-09-07: the post-SSO BuildPage redirect interrupts our entry goto,
+  // then UCPath itself reaches the requested HR Tasks route. No login is retried.
+  const buildPage = new URL(
+    "/psp/ucphrprd/EMPLOYEE/HRMS/s/WEBLIB_IS_PB.ISCRIPT1.FieldFormula.IScript_BuildPage",
+    UCPATH_ENTRY,
+  ).href;
+  const interruptedEntry = `page.goto: Navigation to "${UCPATH_ENTRY}" is interrupted by another navigation to "${buildPage}"`;
+
+  function interruptedLanding(overrides: Partial<FakePageScript> = {}): ReturnType<typeof contextFor> {
+    return contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO },
+        "campus-link": { count: 0 },
+        "sso-submit": {},
+        "sso-username": {},
+        "sso-password": {},
+      },
+      elementsByUrl: { [UCPATH_ENTRY]: NO_SIGN_IN_FORMS },
+      navigationFailures: { [UCPATH_ENTRY]: { message: interruptedEntry, landedAt: buildPage } },
+      settlesTo: [UCPATH_PUBLIC_PORTAL, UCPATH_ENTRY],
+      cookiesByUrl: { [UCPATH_ENTRY]: [PS_TOKEN] },
+      ...overrides,
+    });
+  }
+
+  it("observes the exact entry after the known BuildPage interruption and proves authentication", async () => {
+    const { context, harness, evidence } = interruptedLanding();
+    assert.equal(await ucpathLoginRecipe(context), "logged-in");
+    assert.equal(harness.url(), UCPATH_ENTRY);
+    assert.equal(harness.actions().filter((action) => action === `goto:${UCPATH_ENTRY}`).length, 1);
+    assert.equal(evidence().length, 1);
+  });
+
+  it.each([
+    ["missing session cookie", { cookiesByUrl: {} }],
+    ["remaining sign-in form", { elementsByUrl: { [UCPATH_ENTRY]: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } } } }],
+    ["wrong final route", { settlesTo: [UCPATH_PUBLIC_PORTAL, UCPATH_APP] }],
+    ["unsettled redirect", { settlesTo: [UCPATH_PUBLIC_PORTAL, undefined] }],
+    ["foreign redirect", { navigationFailures: { [UCPATH_ENTRY]: { message: interruptedEntry, landedAt: "https://example.invalid/psp/ucphrprd/EMPLOYEE/HRMS/s/WEBLIB_IS_PB.ISCRIPT1.FieldFormula.IScript_BuildPage" } } }],
+    ["unrelated navigation error", { navigationFailures: { [UCPATH_ENTRY]: { message: "page.goto: net::ERR_CONNECTION_RESET", landedAt: buildPage } } }],
+  ] satisfies ReadonlyArray<readonly [string, Partial<FakePageScript>]>) ("refuses the interrupted entry with %s", async (_name, overrides) => {
+    const { context, harness, evidence } = interruptedLanding(overrides);
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.step, "verify-landing");
+      return true;
+    });
+    assert.equal(harness.actions().filter((action) => action === `goto:${UCPATH_ENTRY}`).length, 1);
+    assert.deepEqual(evidence(), []);
+  });
+
   it("refuses a logged-in landing that never got a PeopleSoft session", async () => {
     const { context } = contextFor({
       url: "about:blank",

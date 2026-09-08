@@ -12,7 +12,7 @@ import { selectedSettingsFixture as sharedSettingsFixture, startEffects } from "
 import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { WorkflowIdSchema } from "../../src/domain/ids.js";
-import { TEST_TARGET_REGISTRY } from "../../src/control/test-target-registry.js";
+import { parseTestTargetRegistry, TEST_TARGET_REGISTRY } from "../../src/control/test-target-registry.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   composeDryRunScenarioCommand,
@@ -440,6 +440,58 @@ describe("dry-run scenario production composition boundary", () => {
     const before = startEffects(fixture.path);
     await assert.rejects(fixture.runtime.start({ manifest: CHAIN_READY_MANIFEST, scenarioCase,
       canonicalInput: { documentNumber: "4998" } }), /protected input timekeeperName is absent/);
+    assert.deepEqual(startEffects(fixture.path), before);
+  });
+
+  it("carries a protected reread from target resolution through the real start command into a fresh item", async () => {
+    const fixture = admissionFixture();
+    fixture.activate();
+    const file = createCredentialStore({ stateRoot: join(fixture.root, ".tracker") });
+    journalProtectedSettings(fixture.database, file, { timekeeperName: { set: "Synthetic Admission Operator" } });
+    const source = testDataInputSource({ separationsKualiFinalizationCanaryDocumentNumber: "4999" });
+    const manifest = parseDryRunScenarioManifest({ ...CHAIN_READY_MANIFEST,
+      cases: CHAIN_READY_MANIFEST.cases.map((entry) => ({ ...entry, subjectLabel: "synthetic-reread" })) });
+    const resolve = (reRead?: { ordinal: number; reason: string }) => {
+      const registry = parseTestTargetRegistry({ schemaVersion: 2, targets: [{
+        label: "synthetic-reread", availability: { state: "available", lastObserved: "2026-08-25", reason: "Synthetic fixture" },
+        provenance: { document: "docs/rebuild/reference/guards-and-tests.md", section: "§10.5" },
+        usagePolicy: "read-only", cleanupObligation: "Synthetic fixture only", owner: "unit test", purpose: "Synthetic reread admission",
+        workflows: { separations: { kind: "full-chain-dry-run", publicInput: {
+          document: { state: "configured", reference: { name: "separationsKualiFinalizationCanaryDocumentNumber" } },
+          ...(reRead === undefined ? {} : { reRead }),
+        } } },
+      }] });
+      const result = resolveDryRunScenarioTarget(registry, manifest, "synthetic-reread", source);
+      assert.equal(result.state, "ready");
+      if (result.state !== "ready") throw new Error("synthetic target not ready");
+      return result;
+    };
+    const scenarioCase = manifest.cases[0];
+    assert.ok(scenarioCase);
+    const original = resolve();
+    const reread = { ordinal: 1, reason: "Synthetic full rehearsal after repair" };
+    const fresh = resolve(reread);
+    const start = (target: ReturnType<typeof resolve>) => fixture.runtime.start({
+      manifest, scenarioCase, canonicalInput: target.canonicalInput,
+      protectedBindings: target.protectedBindings,
+    });
+    const first = await start(original);
+    const second = await start(fresh);
+    const firstRun = fixture.database.authority.runs.get(first.runId);
+    const secondRun = fixture.database.authority.runs.get(second.runId);
+    assert.ok(firstRun);
+    assert.ok(secondRun);
+    assert.notEqual(firstRun.envelope.itemId, secondRun.envelope.itemId);
+    assert.equal(firstRun.envelope.attempt, 1);
+    assert.equal(secondRun.envelope.attempt, 1);
+    assert.deepEqual(secondRun.input.parsed.protectedBindings, firstRun.input.parsed.protectedBindings);
+    assert.deepEqual(Reflect.get(secondRun.input.parsed.value as object, "reRead"), reread);
+    assert.deepEqual(first.writeSafetyBefore, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
+    assert.deepEqual(second.writeSafetyBefore, first.writeSafetyBefore);
+    const before = startEffects(fixture.path);
+    await assert.rejects(start(resolve({ ...reread, reason: "Synthetic revised explanation" })), /active run|refused|already has/);
+    assert.equal(fixture.database.authority.runs.get(first.runId)?.envelope.itemId, firstRun.envelope.itemId);
+    assert.equal(fixture.database.authority.runs.get(second.runId)?.envelope.itemId, secondRun.envelope.itemId);
     assert.deepEqual(startEffects(fixture.path), before);
   });
 
@@ -1008,6 +1060,7 @@ describe("dry-run scenario target dispatch", () => {
 
     assert.deepEqual(capturedCanonicalInput, {
       documentNumber: "4999",
+      reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
     });
     // D341 P5: the start record binds the private input by NAME and opaque source identity,
     // never by value, so resume/rerun/archive compare identities the value can't leak through.

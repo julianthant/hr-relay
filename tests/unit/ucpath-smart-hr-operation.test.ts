@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { describe, it, vi } from "vitest";
 import type { Page } from "playwright";
 import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
@@ -71,6 +74,7 @@ function singleResultAutoDrillPage(
   bodyText = resultRowTexts.join(" "),
   resultRowVisibilities: readonly boolean[] = resultRowTexts.map(() => true),
   options: Readonly<{
+    browserPredicateSource?: string;
     noResultsCount?: number;
     noResultsVisible?: boolean;
     keyedReceiptPresent?: boolean;
@@ -241,7 +245,12 @@ function singleResultAutoDrillPage(
         },
       });
       try {
-        const visible = (predicate as (value: typeof selectors) => unknown)(selectors);
+        // Playwright serializes the callback into a realm without Node/tsx helpers.
+        const visible = options.browserPredicateSource === undefined
+          ? (predicate as (value: typeof selectors) => unknown)(selectors)
+          : runInNewContext(`(${options.browserPredicateSource})(selectors)`, {
+            document: globalThis.document, window: globalThis.window, selectors,
+          }) as unknown;
         if (visible !== true) throw timeoutError("fixture settlement wait expired");
       } finally {
         if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
@@ -254,6 +263,42 @@ function singleResultAutoDrillPage(
 }
 
 describe("SS Smart HR transaction scan", () => {
+  it("settles visible rows, auto-detail and empty states after tsx browser serialization, but rejects hidden signals", async () => {
+    const root = fileURLToPath(new URL("../..", import.meta.url));
+    // Import through the real CLI compiler, capture its actual callback, then
+    // exercise it in a fresh browser-like realm with no __name helper.
+    const browserPredicateSource = JSON.parse(execFileSync(process.execPath, [
+      "--import", "tsx", "--input-type=module", "-e", `
+        import { scanTerminationTransactionsOnPage } from "./src/stores/ucpath/driver/smart-hr-operation.ts";
+        let captured;
+        const locator = {
+          first() { return this; }, async waitFor() {}, async fill() {},
+          async selectOption() {}, async click() {}, async count() { return 0; },
+          async isVisible() { return false; },
+        };
+        await scanTerminationTransactionsOnPage({
+          async goto() {}, locator() { return locator; }, getByText() { return locator; },
+          async waitForFunction(callback) { captured = callback.toString(); throw Error("captured"); },
+        }, { emplId: "10800000" }, "2026-09-07T00:00:00.000Z");
+        if (captured === undefined) throw Error("settlement callback was not reached");
+        process.stdout.write(JSON.stringify(captured));
+      `,
+    ], { cwd: root, encoding: "utf8" })) as string;
+    for (const [label, page, expected] of [
+      ["detail", singleResultAutoDrillPage(undefined, 1, undefined, "none", "none", undefined, undefined,
+        undefined, { browserPredicateSource }), "read"],
+      ["rows", singleResultAutoDrillPage(undefined, 0, undefined, "row", "none", undefined, undefined,
+        undefined, { browserPredicateSource }), "read"],
+      ["empty", singleResultAutoDrillPage(undefined, 0, undefined, "empty", "none", undefined, undefined,
+        undefined, { browserPredicateSource }), "read"],
+      ["hidden detail", singleResultAutoDrillPage(undefined, 1, undefined, "none", "none", undefined, undefined,
+        undefined, { browserPredicateSource, autoReceiptVisible: false }), "unreadable"],
+    ] as const) {
+      const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+      assert.equal(scan.state, expected, scan.state === "unreadable" ? `${label}: ${scan.reason}` : label);
+    }
+  });
+
   it("reads the one transaction when PeopleSoft auto-drills a single search result", async () => {
     const scan = await scanTerminationTransactionsOnPage(
       singleResultAutoDrillPage(),

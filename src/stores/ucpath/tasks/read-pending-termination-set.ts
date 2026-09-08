@@ -33,9 +33,10 @@ export const readPendingTerminationSetTask = defineTask(
       ctx.recordData([
         { direction: "read", field: "kind", value: set.kind },
         { direction: "read", field: "emplId", value: set.emplId },
-        { direction: "read", field: "eligibleCount", value: set.eligible.length },
-        { direction: "read", field: "protectedCount", value: set.protected.length },
+        { direction: "read", field: "eligible", value: set.eligible },
+        { direction: "read", field: "protected", value: set.protected },
         { direction: "read", field: "observedAt", value: set.observedAt },
+        { direction: "read", field: "source", value: set.source },
       ]);
       return set;
     },

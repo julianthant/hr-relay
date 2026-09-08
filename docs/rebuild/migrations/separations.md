@@ -7449,3 +7449,225 @@ asserted exact-run `write_intents` / `write_attempts` / `durable_outbox` deltas 
 The result is honest availability evidence but not D320's required fresh `met` T1b. Do not retry it
 as though a deterministic employee-not-found result were transient; either the New Kronos subject
 fact must be corrected with evidence or the operator must select another canary.
+
+
+### 9.41 Task 1.6.7 shared-login prerequisite blocked — 2026-09-07
+
+At frozen candidate `331b7a8454afb19671e48881d5d8cb3ed93b6001`, the selected Separations private
+input passed its workflow-qualified presence/admission check. The serial Person Lookup proof then
+failed UCPath session acquisition; an independent login-only diagnostic failed the same 60000 ms
+bound after returning from Duo to UCSD SSO. Separations was not launched through that unresolved
+shared dependency. There is no new Separations result, run, manifest verdict or run-scoped delta to
+claim. The whole primary write-intent/attempt/durable-outbox tables remained **0/0/0**. The Task-7
+owner records the failed Person Lookup identities, safe diagnostic evidence, healthy post-doctor and
+restored primary branch. The selected subject's source facts were not disproved or silently changed;
+its required fresh `met` preview at `clear-pending` remains open.
+
+### 9.42 Task 1.6.7 repaired-login preview — New Kronos refusal (2026-09-07)
+
+Frozen candidate `b69d9d92a82b437f36c707e4e74adb61bf63d216` passed production UCPath login and
+neutral reset. The exact serial preview command on the verified primary root then produced result
+`05ec70d9-1286-4582-acd6-2378b487e112`, **failed**, run
+`8e4d59c9-e04d-49d0-bfe0-adb8bd6863e8` / trace `sp-155816-8e4d`, attempt 1, `dryRun=true`.
+Manifest `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978`; evaluator
+104395 ms / command 106413 ms. Nine attempt-1/claim-generation-1 checkpoints passed: resolve-action,
+document, plan, termination-type, name-search, subject, job-summary, employment and department-option.
+
+`timecard-search` returned typed `EMPLOYEE_NOT_FOUND`: New Kronos displayed its own no-results
+sentinel, distinct from a search timeout or rendered nonmatching rows. Failure
+`a8bf8136-f077-4f5f-b6ac-cde48496c45b` is non-transient, `not-attempted`, diagnostic bundle
+`bf86a07e-fc23-43ea-8959-4167876c2376`. Receipt
+`4a6d07b8-9be6-5d99-a5fb-0cd7f9dae252` is `failed` / `unknown`; three assertions met
+(nodes-excluded, gate-results, write-safety-deltas), five failed. No preview stop is claimed.
+Exact run-scoped write-intent/attempt/durable-outbox counts and deltas are **0/0/0**. No further
+rehearsal was launched. The observed search refusal needs reconciliation with the operator's
+manual New Kronos check or an operator-selected replacement; it is not treated as transient.
+
+Post-doctor `2026-09-07T23:00:50.683Z` was healthy schema32/g172 on the same primary root, with
+three retained failed runs/results, reconciled spans and zero pending command/write/outbox counts.
+Both retained worker leases are stopped. The BFF stopped with exit 0; no owned browser/runtime or
+3938/5174 listener remains. Original primary master was restored clean and unchanged. Private
+source metadata remained unchanged. The Task-7 owner binds the candidate, safe evidence and both
+remaining live blockers; no final review or merge has occurred.
+
+### 9.43 Task 1.6.7 matching replacement selected; shared SAML prerequisite blocked (2026-09-07)
+
+The operator supplied matching Kuali and New Kronos screenshots and selected the corresponding
+private Kuali document. Value-free comparisons proved that the previous failed document represented
+a different employee. The explicit replacement was applied through the atomic private writer with
+a fresh opaque identity; the entire Person Lookup entry was preserved. Complete production
+admission, including the timekeeper binding, proved Separations next attempt 1 with no checkpoints.
+No identifier entered this record or the public registry.
+
+At frozen candidate `9018540f564e82be8db972d4509fe3e3386fdbba`, the serial Person Lookup proof
+failed UCPath acquisition (result `711c7193-4a49-4b9f-a0cf-0f97d6665106`). A login-only diagnostic
+then observed the post-Duo UCSD SAML page remain loading with an unfinished main response, before
+its automatic form handoff. The underlying cause is unresolved. Separations was not launched
+through that shared prerequisite: no new result/run/verdict or run-scoped deltas are claimed.
+The old failed document's evidence remains intact; the replacement is unspent. Post-doctor was
+healthy v32/generation 216 with zero pending writes, runtime/browser stopped, original master restored clean.
+Task 1.6.7 remains open; the owner records the safe source identity and recovery boundary.
+
+
+### 9.44 Task 1.6.7 replacement preview — entry navigation blocked (2026-09-07)
+
+Fully gated candidate `86700bf501868d04d35d604383f6a3743e857bb5` ran the selected matching
+replacement serially after a separate production UCPath login recipe passed. Result
+`0cf153a0-b82f-4270-beab-b43960d66673` **failed**; run `eceac973-8ea2-418e-9322-72684169fd8b` /
+trace `sp-174312-ecea`, attempt 1, `dryRun=true`. Manifest
+`59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978`; evaluator 15707 ms,
+command 17329 ms / exit 1. `resolve-action` failed at `navigate-login-entry`: the Kuali Build
+space entry route did not load. Failure `85649ae9-b959-4426-a55f-6d561d268e3f` is `UNHANDLED`,
+non-transient, not-attempted; bundle `9fd18ad6-98ea-4499-920d-08ae80c49e12`. Zero checkpoints;
+receipt `129d8407-5dac-5aa9-a936-577801bab263` failed/unknown. Three assertions met, five failed;
+no preview stop is claimed. Exact run-scoped write-intent/attempt/durable-outbox deltas and
+independent readback counts are **0/0/0**. The selected private value/identity was unchanged and
+its first attempt is now spent. No retry followed. The Task-7 owner records the subsequent fresh
+production-browser navigation diagnosis, healthy v32/g267 post-doctor, six retained runs/results,
+zero pending writes, restored settings, stopped owned processes and clean original primary master.
+Both successful live proofs, final review and integration remain open.
+
+
+Browser-mode correction (Task 1.6.7): the preceding replacement run was actually headless;
+activated `browser.headless=false` did not override the mode inserted by scenario planning.
+The task owner records the immutable-envelope/profile readback, the correction, and a separate
+successful bounded headed login. No failed workflow verdict is relabeled. Both required live
+acceptance rows remain open until the new exact-ordinal candidate passes its gates and live proof.
+
+
+Task 1.6.7 headed proof on candidate `145e50a32e6a817e67bdedb4963d8e240be86349`: result `78ff3c7c-013c-4b7b-b5de-6460187d561d` **failed**, run `11078b76-e4dd-4e2e-9c73-250e28b6f8e6` / `sp-182240-1107`, dry-run-preview, attempt 2. Manifest `265a4325296541ba0c8036b862eca91674276c4b8ea5088a6c8a23fbcecba94e`; evaluator 30904 ms. Independent run-scoped write counts and evaluator deltas are exactly **0/0/0**. Three assertions met and five failed; no checkpoint. The Kuali entry-page application script exceeded the 30-second navigation bound. A separate unchanged-recipe login subsequently passed with measured 60-second navigation configuration; exact next workflow attempt is 3. This failed result remains retained.
+The Task-7 owner records full command, receipt, doctor, canonical configuration and recovery evidence.
+
+
+Task 1.6.7 current blocker: candidate `bcd60b35607554af6812e6cb5c9b50e67a42eebb`, result
+`47f3519e-e5f4-4824-9056-0eaff71c9aea` **failed**, run `08fa51f4-56f2-4922-b4fc-c05936320cdf`
+/ `sp-183748-08fa`, headed dry-run-preview attempt 3. Kuali completed four checkpoints; UCPath
+`name-search` then refused at `verify-landing` because the required `PS_TOKEN` cookie was absent.
+This is not a timeout or an UNKNOWN external submit. The non-transient failure, failed/unknown
+receipt and attempt-3 checkpoints are retained. Evaluator 232052 ms; command 233922 ms / exit 1;
+manifest `5497832debae867babf4b4174b74bd04f6bd9fcf840c8351c70e9a542d28dbcd`.
+Independent counts and evaluator write deltas are exactly **0/0/0**. Temporary ordinary settings
+were restored through their canonical command, post-doctor was healthy at schema 32/generation 536,
+and primary master was restored clean and unchanged. Exact next attempt is 4 only after a diagnosed
+correction or recovered prerequisite; no identity/checkpoint reset or automatic retry is authorized.
+The Task-7 owner records full failure/receipt/doctor/recovery bindings and the remaining acceptance.
+
+
+### Task 1.6.7 attempt 4 — callback failure, no transaction (2026-09-07)
+
+On frozen b684fc21e1d62bb014f5fd0ffa6b85dcaf6914d6, headed dry-run-preview attempt 4 returned
+failed result `a7040114-67c4-4a62-8789-91e17d7c4c30`, run
+`4afd9e34-b9ce-460b-9151-09d0b4f96831`, trace `sp-204534-4afd`. UCPath and New Kronos reads
+passed through approval; SS Smart HR `pending-set` failed `UNEXPECTED_PAGE_STATE` because a
+serialized callback referenced tsx's unavailable `__name` helper. Evaluator/command 108086/109974 ms,
+exit 1; manifest `2f02c09966086677b0c00f2d96c8289d897b63bbb9179065a67f0b5f21b5b082`;
+receipt `ca7f3b4a-c97e-5256-a14d-e0598a05c36c` failed/unknown. Both evaluator and independent
+write-intent/write-attempt/durable-outbox proof are exactly **0/0/0**. All failed rows and ten new
+checkpoints remain, together with four earlier replayed checkpoints.
+
+The callback repair has a production-tsx serialization regression. A separate full-read acceptance
+blocker remains: the current-run T1b manifest cannot count replayed checkpoints, and protected input
+admission currently suppresses the workflow's explicit reread item identity. The Task-7 owner records
+the isolated synthetic reproduction and required decision boundary. No fresh-read identity was
+invented, no checkpoint deleted, no assertion reduced, and no next workflow attempt started.
+
+The callback repair in `09436a49eccdd3a1f577c83576ff7b8de33092d3` subsequently passed its production
+reader on clean primary at evidence candidate `26adc63773e6e8317d4a6018924a8e0ca79f0c04`.
+On 2026-09-08 UTC, production login completed at 04:12:11.099Z and the exact retained subject's
+scan completed at 04:12:28.324Z: subject matched, three rows, zero eligible and three protected.
+Independent whole-table write counts stayed exactly **0/0/0**; no workflow attempt or transaction
+was started. The browser closed and post-doctor passed at 04:13:01.307Z, schema 32/generation 632,
+with zero pending commands, unresolved write intents and durable outbox rows. This is live repair
+proof only; the failed full-workflow result and protected reread blocker above remain unchanged.
+
+
+### Fresh protected reread: observation-contract failure (2026-09-08)
+
+Frozen candidate `7eb62eea84c2d0fcb284c3f4c6144737f92e36a2` matched all 1911 gated inputs and
+installed dependencies on clean detached primary; original master f75e24a5 remained unchanged.
+Provider/parent admission and unchanged private-source metadata passed; both protected inputs were
+ready. Read-only pre-doctor at 07:04:13.485Z passed healthy schema 33/generation 634, same root
+identity. Settings revision 7 was active, headed, and served descriptors matched. The explicit
+reread item had next attempt 1, zero runs and zero checkpoints; the original item retained next
+attempt 5 and fourteen checkpoints. The planner used the same captured source bindings.
+
+| Proof | Observed evidence |
+| --- | --- |
+| Result / verdict | `da596650-6e02-4d43-ba6f-a1290307a579` / failed, three met and five failed assertions |
+| Run / trace | `28272e44-bbc8-4c6c-a8c8-ed49a579def5` / `sp-000455-2827` |
+| Arm / attempt / browser | dry-run-preview / 1 on explicit reread ordinal 1 / headed; dryRun=true |
+| Manifest | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 100126 / 101790 ms / 1 |
+| Failure / diagnostic bundle | `4fb2b7e5-7752-45da-a2d3-57652404ee73` / `5a253a91-16e0-4e00-8bea-1865a791fbcf` |
+| Receipt | `4e426672-a324-5964-82e6-b17a7df704e7`, failed / unknown |
+| Evaluator deltas, independent run-scoped counts and whole transaction tables | **0/0/0** write intents / write attempts / durable outbox |
+
+The run read Kuali, UCPath identity/employment/department and the New Kronos timecard, then reached
+approval, writing fourteen current-run attempt-1/claim-generation-1 checkpoints without replay.
+`pending-set` failed `UNHANDLED`, non-transient, writeState `not-attempted`. Static-source matching
+identified the exact failure: no declared evidence classification for
+`task-output:ucpath/read-pending-termination-set` field `eligibleCount`. The task records count
+aliases instead of its `eligible`/`protected` array output fields and omits `source`. The real
+provenance collector also requires every recorded point to exist in output and every output leaf
+to have provenance. Merely adding count classifications would hide the first boundary failure
+and then fail finalization. The correction belongs in the task's recording, retaining existing
+population/count redaction and strict finalization. No protected value or raw failure text was
+copied into this evidence. No UNKNOWN submit or HR transaction occurred.
+
+`separations-reread-{command,readback}.json`, `pending-count-safe-failure.json`,
+`reread-live-unused-item-preflight.json`, `reread-live-{pre-doctor,post-doctor,write-counts}.json`
+retain the sanitized facts in the existing task scratch. Post-doctor at 07:07:58.681Z passed schema
+33/generation 733, same identity, eleven reconciled runs, zero pending commands/unresolved writes/
+durable outbox/provider reservations/artifact outbox. Two historical leases and the one local
+terminal outbox remain. The owned BFF (session 35232) stopped; no primary browser or CLI session
+remained. Primary master was restored clean to f75e24a5. Revision-7 settings remain deliberately
+unrestored, and no failure/checkpoint/result was removed. This proof is failed, not acceptance.
+
+
+### Task 1.6.7 full-chain acceptance after observation repair (2026-09-08)
+
+Frozen executable candidate `4a2421285ba013fae6743412f50e85c19c62ca60` matched all 1912 gated
+inputs/dependencies on clean detached primary. Original master f75e24a5 remained unchanged. The
+production provider reader admitted the runtime source, parent retired names were absent, and the
+operator-confirmed private source metadata was unchanged. Both inputs were ready. Explicit reread
+2 was unused (next attempt 1, zero runs/checkpoints); failed reread 1 retained next attempt 2 and
+fourteen checkpoints, and the original item retained next attempt 5 and fourteen checkpoints.
+No source binding was changed. Settings revision 7 was active/headed and served fingerprints matched.
+
+| Proof | Accepted evidence |
+| --- | --- |
+| Result / verdict | `3a1b9d6a-32f3-4ea3-886d-d049c0eec191` / **met**, all eight assertions |
+| Run / trace | `feaa9141-9a99-44ba-80e7-5131ae7e6096` / `sp-002736-feaa` |
+| Arm / attempt / browser | dry-run-preview / 1 on explicit reread ordinal 2 / headed; dryRun=true |
+| Manifest | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 104181 / 105829 ms / 0 |
+| Checkpoints | All fifteen current-run rows, attempt 1 / claim generation 1; no replay |
+| Receipt | `d96564f4-7467-552f-b319-57682585e36d`, partial / unknown as required for the preview |
+| Terminal / failures | done / none |
+| Evaluator deltas, independent run-scoped counts and whole transaction tables | **0/0/0** write intents / write attempts / durable outbox |
+
+The full reached path, excluded later transactions and identity gate, checkpoint set, empty gate
+results, receipt, terminal and preview assertions all met. This is the complete fresh T1b rehearsal,
+not the earlier isolated scanner proof. The preview receipt's unknown confidence is not an UNKNOWN
+submit; no intent, attempt, durable outbox or HR transaction occurred. Every earlier failed result,
+checkpoint, receipt and diagnostic remains intact. No further run is needed for this acceptance.
+
+Pre-doctor at 07:27:12.578Z passed healthy schema 33/generation 733. After the owned BFF (27786)
+and worker stopped, post-doctor at 07:29:41.609Z passed healthy schema 33/generation 836 on the same
+root identity, twelve reconciled runs, zero pending commands/unresolved writes/durable outbox/
+provider reservations/artifact outbox. Two historical stopped leases remain. The two pending
+`run_terminal_outbox` records are exactly the local projection handoffs for the accepted Person
+Lookup and Separations successes, with kind `run-terminal-result`; they are separate from the HR
+write `durable_outbox`, which is empty. They are preserved for the downstream authority readers.
+No primary browser/CLI browser or listener remained, and primary master was restored clean to
+`f75e24a57e6494e2846af248539c819c9223e53e`. The externally created compatible backup is retained;
+Task 7 created none. Ordinary settings revision 7 remains deliberately unrestored at the operator's
+deferral. No protected value, value-derived identity or raw failure text is part of this evidence.
+
+`separations-observation-repair-{command,readback}.json`,
+`pending-count-live-unused-item-preflight.json` and
+`pending-count-live-{pre-doctor,post-doctor,write-counts}.json` retain sanitized primary evidence in
+the task scratch. Person Lookup's accepted result `bcc1d548-6e1e-40e6-a683-cc7492d99d73` remains
+unchanged on schema 33; its explicit source/runtime/manifest comparison is recorded above and in
+its migration owner. **Step 4 is accepted.** Final recording, independent review, integration gates,
+operator-deferred settings restoration and owned cleanup remain open.

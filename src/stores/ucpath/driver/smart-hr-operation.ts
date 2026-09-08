@@ -228,20 +228,21 @@ const hasVisibleSsSmartHrSettlementSignal = (selectors: Readonly<{
   receipt: string;
   noResultsText: string;
 }>): boolean => {
-  const isVisible = (node: Element): boolean => {
+  // This callback crosses into the browser. A named inner function acquires
+  // tsx's __name helper, which exists only in the Node realm.
+  for (const node of [
+    ...document.querySelectorAll(selectors.resultRow),
+    ...document.querySelectorAll(selectors.receipt),
+  ]) {
     const style = window.getComputedStyle(node);
     const bounds = node.getBoundingClientRect();
-    return style.visibility !== "hidden"
+    if (style.visibility !== "hidden"
       && style.display !== "none"
       && bounds.width > 0
-      && bounds.height > 0;
-  };
-  const resultRowVisible = [...document.querySelectorAll(selectors.resultRow)].some(isVisible);
-  const receiptVisible = [...document.querySelectorAll(selectors.receipt)].some(isVisible);
+      && bounds.height > 0) return true;
+  }
   const visibleBodyText = document.body?.innerText.toLowerCase() ?? "";
-  return resultRowVisible
-    || receiptVisible
-    || visibleBodyText.includes(selectors.noResultsText);
+  return visibleBodyText.includes(selectors.noResultsText);
 };
 
 async function observeSsSmartHrSettlement(

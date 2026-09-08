@@ -95,6 +95,8 @@ export interface FakePageScript {
   readonly elementsByUrl?: Readonly<Record<string, Partial<Record<FakeElementName, FakeElementScript>>>>;
   /** Where `goto` lands, keyed by requested URL; defaults to the requested URL. */
   readonly navigation?: Readonly<Record<string, string>>;
+  /** A navigation rejected while another page navigation takes ownership. */
+  readonly navigationFailures?: Readonly<Record<string, Readonly<{ message: string; landedAt: string }>>>;
   /** Where a `waitForURL` settles, in order. `undefined` entries time out. */
   readonly settlesTo?: readonly (string | undefined)[];
   /** The browser context's cookie store. Empty unless a test issues one. */
@@ -211,6 +213,11 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
     context: () => browserContext,
     goto: async (target: string) => {
       actions.push(`goto:${target}`);
+      const failure = script.navigationFailures?.[target];
+      if (failure !== undefined) {
+        current = failure.landedAt;
+        throw new Error(failure.message);
+      }
       current = script.navigation?.[target] ?? target;
       return null;
     },

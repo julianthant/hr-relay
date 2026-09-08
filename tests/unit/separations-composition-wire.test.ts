@@ -1,4 +1,5 @@
 import { ProtectedStoreRecordSchema } from "../../src/domain/config/protected-settings.js";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { deriveCheckpointOutputDigest, deriveRunResultDigest } from "../../src/domain/run/result.js";
 /**
@@ -169,6 +170,55 @@ describe("separations — start planning through the existing service", () => {
     const rereadRefusal = { read: () => { throw new Error("must not reread"); } };
     assert.deepEqual(planStart({ ...deps, protectedSecrets: rereadRefusal }, { ...request, retainedInputs: [retained] })
       .planned[0].input, retained);
+  });
+
+  it("gives an explicit protected reread a stable new item without changing captured source identity", () => {
+    const deps = { authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
+      protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
+    const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
+      protectedSubmissionBindings: [{ kind: "test-data-local" as const, inputPath: "documentNumber" as const,
+        name: "separationsKualiFinalizationCanaryDocumentNumber" as const, sourceId: uuidOf(88) }],
+      dryRun: true, priority: "bulk" as const, shape: "single" as const, configFingerprint: HASH_A,
+      configSnapshotId: UUID_4, plannedBy: "local-operator" };
+    const read = (ordinal: number, reason = "Synthetic complete rehearsal", documentNumber = "4511") =>
+      planStart(deps, { ...request, submissions: [{ documentNumber, reRead: { ordinal, reason } }] });
+    const original = planStart(deps, request);
+    const fresh = read(1);
+    const sameDecision = read(1, "Synthetic revised explanation");
+    const nextDecision = read(2);
+    const changedValue = read(1, "Synthetic complete rehearsal", "4512");
+    for (const result of [original, fresh, sameDecision, nextDecision, changedValue]) {
+      assert.equal(result.planned.length, 1);
+      assert.equal(result.refused.length, 0);
+    }
+    const first = original.planned[0];
+    const reread = fresh.planned[0];
+    assert.notEqual(first.itemId, reread.itemId, "fresh reads cannot reuse the original item's checkpoints");
+    assert.equal(first.matchKey, `protected-input:${canonicalJsonStringify(first.input.protectedBindings)}`);
+    assert.equal(reread.matchKey, `${first.matchKey}#re-read-1`);
+    assert.equal(reread.itemId, sameDecision.planned[0].itemId, "reason text is not item identity");
+    assert.notEqual(fresh.inputFingerprint, sameDecision.inputFingerprint, "confirmation still binds the reason");
+    assert.notEqual(reread.itemId, nextDecision.planned[0].itemId);
+    assert.equal(reread.itemId, changedValue.planned[0].itemId, "private values cannot derive item identity");
+    assert.equal(fresh.inputFingerprint, changedValue.inputFingerprint);
+    assert.deepEqual(reread.input.protectedBindings, first.input.protectedBindings);
+    assert.equal(reread.title, "Protected test subject");
+    assert.equal(reread.subtitle, undefined);
+    assert.equal(reread.matchKey.includes("Synthetic"), false);
+    assert.equal(reread.matchKey.includes("4511"), false);
+
+    const retained = planStart({ ...deps, protectedSecrets: { read: () => { throw new Error("must not reread"); } } },
+      { ...request, submissions: [{ documentNumber: "4511", reRead: { ordinal: 1, reason: "Synthetic complete rehearsal" } }],
+        retainedInputs: [reread.input] });
+    assert.equal(retained.planned[0].itemId, reread.itemId);
+    assert.deepEqual(retained.planned[0].input, reread.input);
+    const duplicate = planStart(deps, { ...request, submissions: [
+      { documentNumber: "4511", reRead: { ordinal: 1, reason: "Synthetic first reason" } },
+      { documentNumber: "4511", reRead: { ordinal: 1, reason: "Synthetic second reason" } },
+    ] });
+    assert.equal(duplicate.planned.length, 1);
+    assert.equal(duplicate.refused[0].code, "active-run-exists");
+    for (const ordinal of [0, 100, 1.5]) assert.equal(read(ordinal).refused[0].code, "input-invalid");
   });
 
   it("hides the protected canary document while keeping approval bound to its retained identity", () => {

@@ -52,7 +52,7 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
   scenarioId: "person-lookup/live-read",
   workflow: "person-lookup",
   arm: "live-read",
-  recordedBy: "R3 2026-09-02 — D318 live-read arm; receipt vocabulary pinned by the composition proof",
+  recordedBy: "Task 1.6.7 2026-09-07 — replacement attempts 1–2 retained as failed acquisition; bounded login recovered, exact attempt 3, unchanged D318 receipt obligations",
   cases: [
     {
       caseId: "search-by-eid",
@@ -61,7 +61,9 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
       why: "the ordinary Search mode: one current person resolved by EID, cross-verified against the CRM, folded to a verdict; the CRM dates arm stays off by the start box's declared constant",
       nodesReached: [...READ_NODES],
       nodesExcluded: ["crm-dates"],
-      checkpoints: READ_NODES.map((node) => ({ node, attempt: 1, keyedBy: [...CHECKPOINT_KEY] })),
+      // Prior selection and replacement acquisition failures remain in authority.
+      // The same replacement identity must prove its next unspent attempt.
+      checkpoints: READ_NODES.map((node) => ({ node, attempt: 3, keyedBy: [...CHECKPOINT_KEY] })),
       gateResults: [],
       durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
       receipt: {

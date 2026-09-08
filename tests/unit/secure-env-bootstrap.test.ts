@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -10,6 +10,8 @@ import {
   runSecureEnvironmentBootstrap,
   secureEnvironmentEntrypoint,
 } from "../../scripts/secure-env-bootstrap.js";
+
+import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -20,7 +22,7 @@ describe("secure environment bootstrap", () => {
     const unrelatedDirectory = mkdtempSync(join(tmpdir(), "hrauto-bootstrap-cwd-"));
     try {
       process.chdir(unrelatedDirectory);
-      assert.equal(repositoryEnvironmentFilePath(), join(REPO_ROOT, ".env"));
+      assert.equal(repositoryEnvironmentFilePath(), join(REPO_ROOT, ".env.providers"));
     } finally {
       process.chdir(originalDirectory);
       rmSync(unrelatedDirectory, { recursive: true, force: true });
@@ -41,11 +43,40 @@ describe("secure environment bootstrap", () => {
       },
     });
 
-    assert.equal(admittedPath, join(REPO_ROOT, ".env"));
+    assert.equal(admittedPath, join(REPO_ROOT, ".env.providers"));
     assert.equal(smokeInvocations, 1);
   });
 
-  it("refuses the parent environment before opening .env or starting a runner", async () => {
+  it.each([true, false])("ignores the reference file when runtime provider file present=%s", async (present) => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-provider-source-"));
+    const reference = "CEREBRAS_API_KEY=unsupported-reference\nGEMINI_API_KEY=stale-reference\n";
+    const original = [...process.argv];
+    const env: NodeJS.ProcessEnv = {};
+    let ran = false;
+    try {
+      writeFileSync(join(root, ".env"), reference, { mode: 0o600 });
+      if (present) writeFileSync(join(root, ".env.providers"), "GEMINI_API_KEY=current-fixture\n", { mode: 0o600 });
+      const launch = runSecureEnvironmentBootstrap(["cli"], {
+        assertEnvironment: () => {},
+        admitEnvironmentFile: (path) => admitLocalEnvironmentFile(join(root, basename(path)), env),
+        runCli: async () => { ran = true; },
+      });
+      if (present) {
+        await launch;
+        assert.equal(env.GEMINI_API_KEY, "current-fixture");
+      } else {
+        await assert.rejects(launch, /local environment file \.env\.providers is unavailable/u);
+        assert.deepEqual(env, {});
+      }
+      assert.equal(ran, present);
+      assert.equal(readFileSync(join(root, ".env"), "utf8"), reference);
+    } finally {
+      process.argv.splice(0, process.argv.length, ...original);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the parent environment before opening .env.providers or starting a runner", async () => {
     const events: string[] = [];
     await assert.rejects(
       runSecureEnvironmentBootstrap(["cli"], {
@@ -67,14 +98,14 @@ describe("secure environment bootstrap", () => {
   it.each([
     ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"], ["storage", "restore"],
     // D341: `test-data check` and `test-data migrate` read the private file and
-    // the credential store only; neither may load provider `.env`.
+    // the credential store only; neither may load provider `.env.providers`.
     ["test-data", "check"], ["test-data", "migrate"],
   ])("isolates %s %s from provider environment admission", async (command, operation) => {
     const original = [...process.argv]; const events: string[] = [];
     try {
       await runSecureEnvironmentBootstrap(["cli", command, operation], {
         assertEnvironment: () => { throw new Error(`${command} must not read parent provider environment`); },
-        admitEnvironmentFile: () => { throw new Error(`${command} must not open provider .env`); },
+        admitEnvironmentFile: () => { throw new Error(`${command} must not open provider .env.providers`); },
         runCli: async () => { events.push(...process.argv.slice(2)); },
       });
       assert.deepEqual(events, [command, operation]);

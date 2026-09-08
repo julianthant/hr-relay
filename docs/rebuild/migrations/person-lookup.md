@@ -163,3 +163,100 @@ all-at-once cutover (D89/D93).
   `tests/scenario/workflows/person-lookup/`. Match mode, T2/T3 and the capability close remained for the next acceptance run.
 - 2026-09-05 — D329 routing refresh: the 2026-09-02 run remains historical evidence; doc 03.2
   Task 5-1 owns current Search/Match acceptance and doc 03.3 Task 4 owns final capability closure.
+- 2026-09-07 — Task 1.6.7 attempted the exact `live-read` command from the primary checkout at
+  frozen candidate `231a349486f17d278957fc8ea20e9d549b847235`. Startup exited 1 in 387 ms:
+  provider-only `.env` admission refused unsupported `CEREBRAS_API_KEY`. No browser, run or T1b
+  result was created; exact task/result row counts remained zero. Both private input checks had
+  passed. Post-check doctor remained healthy at schema 32/generation 0 with unchanged database
+  content and zero runs/spans/pending counts. The Task-7 owner records all unsupported key names
+  and sanitized evidence. This is blocked launch evidence, not current live acceptance or a failed
+  workflow result; no retry was made and the original primary `master` was restored unchanged.
+
+- 2026-09-07 — Task 1.6.7 resumed at frozen candidate `331b7a8454afb19671e48881d5d8cb3ed93b6001`.
+  An initial pre-start refusal exposed absent dashboard activation; the ordinary BFF boot established
+  it and exact admission passed. The subsequent live-read produced result
+  `df0e7125-3c46-45c5-9127-47bf94c9a3a1` (`failed`), run
+  `6e42041a-cd1f-48c7-bc62-d945bd4b8950` / trace `pl-132154-6e42`, attempt 1, `dryRun=false`.
+  Manifest digest `c7f309fc8e1bdc49f30a2b3574391e8872f8761d9c862160acf0814e9b5299a4`;
+  evaluator 60164 ms / command 62226 ms. `searching` failed with `UNHANDLED`, non-transient,
+  `not-attempted`, at the 60000 ms UCPath session-acquisition bound; zero checkpoints.
+  Receipt `725c0e5e-b898-56e6-bafe-3aa5394855e3` is `failed` / `unknown`. Three of seven assertions
+  met (`nodes-excluded`, `gate-results`, `write-safety-deltas`); the other four failed. Exact run-scoped
+  and whole-table write-intent/attempt/durable-outbox counts and deltas were **0/0/0**.
+  A separate fresh-profile login diagnostic reached Duo and returned to UCSD SSO but failed the
+  same bound; cause remains unresolved. No workflow retry occurred. Post-doctor was healthy v32/g39
+  on the same primary database identity, with one retained stopped worker lease and all pending
+  write counts zero. Original primary master was restored clean. Full identities, diagnostic evidence
+  and remaining recovery obligations are in the Task-7 owner; this does not replace the required `met` proof.
+
+- 2026-09-07 — Task 1.6.7 repaired the observed post-SSO UCPath navigation race and froze
+  `b69d9d92a82b437f36c707e4e74adb61bf63d216` after all deterministic gates. A production-factory
+  cold login plus neutral reset and session closure passed in 24812 ms. The new live-read
+  result `0303c27a-4fbe-41dd-b825-4e73dbc3da43` nevertheless **failed**: run
+  `bedc3aed-be12-455e-93d8-fab1e70ea6cf` / trace `pl-155640-bedc`, attempt 2, `dryRun=false`,
+  manifest `a4281efcf0726ed66456f17d6a80270eef2e71bcb12e722bf88e91f7e3dd3174`, evaluator
+  46551 ms / command 48580 ms. UCPath `searching` produced an attempt-2/claim-generation-1
+  checkpoint. CRM `cross-verify` then found **two exact displayed-EID records**, which the
+  existing identity contract correctly refuses. Failure `2b977fc1-91d3-4541-84cf-dfa33d8f0c7d`
+  is `UNHANDLED`, non-transient, `not-attempted`; diagnostic bundle
+  `1c1e7d1b-ccd5-48c4-a76f-d7f62c2249f4`. Receipt
+  `9388c8c6-c1ab-55c3-864d-9e32cc8f34f1` is `failed` / `unknown`. Nodes-excluded, gate-results
+  and write-safety-deltas met; the other four assertions failed. Exact run-scoped write counts
+  and deltas are **0/0/0**. Both failed attempts remain retained. This deterministic ambiguity
+  needs an operator-resolved subject/source fact; neither a blind rerun nor choosing one CRM
+  record is authorized. Separations does not use CRM and may be checked independently.
+
+- 2026-09-07 — Task 1.6.7 froze replacement-input candidate
+  `9018540f564e82be8db972d4509fe3e3386fdbba` after full deterministic gates. The fresh replacement
+  live-read produced result `711c7193-4a49-4b9f-a0cf-0f97d6665106`, **failed**, run
+  `78967c1a-5797-4ab7-826b-be31472acf0e` / trace `pl-164455-7896`, attempt 1, `dryRun=false`.
+  Manifest `3ca0eaf2e0db1aff2da866b01fd34b73d5a2ba8d369caee497ac76ec7adee89f`; evaluator 60181 ms,
+  command 62349 ms/exit 1. UCPath acquisition hit the existing 60000 ms bound before any checkpoint.
+  Failure `921a158e-bba5-4e42-98a7-749bc8512f78` (`UNHANDLED`, non-transient, not-attempted),
+  bundle `72ad2765-ec36-46b9-8461-37fc4dcff42a`; receipt
+  `ee5e5746-0bf9-5008-b00f-f556240840ad` failed/unknown. Three assertions met, four failed;
+  exact write-intent/attempt/durable-outbox deltas and readback counts were **0/0/0**.
+  A login-only diagnostic reached the UCSD SAML response after Duo but its main response never
+  completed within the bound, preventing the page's auto-submit-on-load. Underlying cause remains
+  unresolved; no retry or form replay occurred. This replacement's first ordinal is now spent.
+  Post-doctor passed healthy v32/generation 216 with four retained runs and zero pending writes; the primary
+  master was restored clean. The Task 7 owner holds exact binding and diagnostic evidence.
+
+
+- 2026-09-07 — Task 1.6.7 headed live-read at fully gated candidate
+  `86700bf501868d04d35d604383f6a3743e857bb5` produced **failed** result
+  `73b07cea-3e8c-46b4-8e52-04acdbdbefbe`, run `e2f87c63-f3c8-45f6-9e42-229fae1ab7ad` /
+  trace `pl-174013-e2f8`, replacement attempt 2, `dryRun=false`. Manifest
+  `a370eb1f1ce9de77a1b8c6b1a5458478fabe7cfe7e22609b8f06824a2252f4bb`; evaluator 16100 ms,
+  command 17818 ms / exit 1. `searching` failed at `navigate-login-entry` because the UCPath portal
+  did not load; failure `665e7cfb-0db6-4cff-8c4b-a54e4f21503d`, bundle
+  `b9d84506-0274-47e0-86ab-a96c3a31d646`, non-transient, not-attempted. Zero checkpoints;
+  receipt `f9df029e-0cdd-5969-a571-b07a55f57b86` failed/unknown; three assertions met, four failed.
+  Exact run-scoped write deltas/readback counts **0/0/0**. A separate CLI production-recipe login
+  succeeded, but three fresh production-factory smokes reproduced the portal readiness failure.
+  Instrumentation observed HTTP-200 main HTML completing while scripts remained pending and
+  DOMContentLoaded missed the unchanged 15000 ms bound. The Task-7 owner's current-blocker section
+  records the exact trials and uncertainty; this is not an expired-key finding or accepted live proof.
+  All failed attempts remain intact. Post-doctor healthy v32/g267, six retained runs, zero writes;
+  settings restored, owned processes stopped and original master restored clean.
+
+
+Browser-mode correction (Task 1.6.7): the preceding replacement run was actually headless;
+activated `browser.headless=false` did not override the mode inserted by scenario planning.
+The task owner records the immutable-envelope/profile readback, the correction, and a separate
+successful bounded headed login. No failed workflow verdict is relabeled. Both required live
+acceptance rows remain open until the new exact-ordinal candidate passes its gates and live proof.
+
+
+Task 1.6.7 headed proof on candidate `145e50a32e6a817e67bdedb4963d8e240be86349`: result `bcc1d548-6e1e-40e6-a683-cc7492d99d73` **met**, run `c19cae5a-8529-413b-968f-2b6d95675832` / `pl-181857-c19c`, live-read, attempt 3. Manifest `a68d9f65f403c9faacf4b8174a7b0374484fa9205da6916d69fe68f045c1ed6c`; evaluator 211335 ms. Independent run-scoped write counts and evaluator deltas are exactly **0/0/0**. All seven assertions and the verified-done/verified receipt passed; three exact attempt-3 checkpoints. This accepted proof remains bound to its immutable settings snapshot.
+The Task-7 owner records full command, receipt, doctor, canonical configuration and recovery evidence.
+
+
+Task 1.6.7 schema-33 evidence reuse (2026-09-08): all 59 descriptor sources, the live manifest and
+production T1b runtime are unchanged from the accepted candidate above. The protected start planner
+retains the exact non-document key. On primary candidate `7eb62eea84c2d0fcb284c3f4c6144737f92e36a2`,
+exact result `bcc1d548-6e1e-40e6-a683-cc7492d99d73`, run, three checkpoints, receipt and independent
+0/0/0 counts matched the earlier readback byte-for-byte after parsing. Combined migration/persistence
+gates passed against accepted master f75e24a5. No new Person Lookup attempt or live observation was
+made; its dated accepted observation is retained. `person-lookup-combined-proof-reuse.json` and
+`person-lookup-schema33-readback.json` preserve the comparison in Task-7 scratch.

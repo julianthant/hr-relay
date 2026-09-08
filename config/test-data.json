@@ -7,12 +7,12 @@
         "label": "finalization-canary",
         "availability": {
           "state": "available",
-          "lastObserved": "2026-09-03",
-          "reason": "The operator selected the replacement on 2026-09-03 and live dry-run 5c9e0c34-f507-48fe-b59b-8c75b9c0051a verified the Kuali document and UCPath subject reads before New Kronos returned EMPLOYEE_NOT_FOUND; exact-run write intents, attempts and outbox were 0/0/0. The document number is a private input in ignored config/test-data.local.json (D341)."
+          "lastObserved": "2026-09-08",
+          "reason": "The unchanged operator-selected private source was admitted on 2026-09-08. The complete headed Separations dry-run rehearsal met all eight T1b assertions, with fifteen fresh checkpoints and exact write-intent/write-attempt/durable-outbox deltas 0/0/0. The accepted result and all failed prior rehearsals are retained in the Task 1.6.7 owner. This available subject authorizes read-only verification only. Historical prior-selection result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 and retained result 05ec70d9-1286-4582-acd6-2378b487e112 failed EMPLOYEE_NOT_FOUND with exact write-intent/attempt/durable-outbox deltas 0/0/0; neither establishes this replacement\u2019s outcome."
         },
         "provenance": {
-          "document": "docs/rebuild/03.2-finish-workflow-authoring.md",
-          "section": "Task 6 \u2014 replacement selected 2026-09-03; live dry-run result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 remains historical evidence pending current-source acceptance"
+          "document": "docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "section": "Task 1.6.7 full-chain acceptance after observation repair"
         },
         "usagePolicy": "read-only",
         "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
@@ -27,6 +27,10 @@
                 "reference": {
                   "name": "separationsKualiFinalizationCanaryDocumentNumber"
                 }
+              },
+              "reRead": {
+                "ordinal": 2,
+                "reason": "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained."
               }
             }
           },
@@ -45,12 +49,12 @@
         "label": "person-lookup-canary",
         "availability": {
           "state": "available",
-          "lastObserved": "2026-09-02",
-          "reason": "Re-verified by the 2026-09-02 D318 live-read rehearsal (npm run cli -- dry-run-scenario person-lookup --subject person-lookup-canary): UCPath Person Org resolved the configured EID to exactly one current person and the CRM cross-verification settled."
+          "lastObserved": "2026-09-07",
+          "reason": "Operator-selected replacement applied to the D341 private source on 2026-09-07. Presence and complete production input admission were verified without exposing the value. Current live acceptance and preserved prior failures are recorded in the Task 1.6.7 owner; this availability entry authorizes read-only verification only."
         },
         "provenance": {
-          "document": "docs/migrations/person-lookup.md",
-          "section": "\u00a74 D318 \u2014 read-only T1b contract resolved; \u00a75 live-read evidence"
+          "document": "docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "section": "Network recovery and current live acceptance"
         },
         "usagePolicy": "read-only",
         "cleanupObligation": "A live read changes nothing; the run reads UCPath Person Org and the CRM onboarding record and writes no external system.",

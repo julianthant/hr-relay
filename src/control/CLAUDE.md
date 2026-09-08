@@ -20,7 +20,8 @@ changing facts in instructions.
   closed document-number reference through the current typed test-target reader and derives person facts live.
   Never commit person values or replace retired person inputs with a document number.
 - Resolve through the actual descriptor's ingress/canonical schemas, constants, and defaults.
-  A rehearsal cannot start with an input the real start box cannot produce. The standalone
+  Resolve the document through the real start-box parser. Explicit reread metadata may use the
+  descriptor's existing canonical ingress; never invent or increment its ordinal during resolution. The standalone
   finalization arm stays blocked by its declared missing facts; never fabricate a ready input.
 - Maintain the manifest/registry/CLI correspondence in both directions. Preserve named blocked
   reasons and the observation date without leaking secret values.

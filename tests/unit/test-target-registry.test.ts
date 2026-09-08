@@ -239,6 +239,7 @@ describe("the committed test target registry", () => {
         sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: COMMITTED_DOCUMENT_NUMBER,
+        reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
       },
     });
     assert.deepEqual(read, ["separationsKualiFinalizationCanaryDocumentNumber"]);
@@ -252,7 +253,7 @@ describe("the committed test target registry", () => {
     assert.deepEqual(result, {
       state: "blocked",
       label: "finalization-canary",
-      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-03",
+      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-08",
     });
     // Since D300 this resolver cannot spend a credential because it cannot be
     // HANDED one: it takes the registry and the label, and nothing else.
@@ -713,6 +714,42 @@ describe("separations-kuali-finalization test target resolution", () => {
 });
 
 describe("separations chain test target resolution", () => {
+  it("preserves only an explicitly declared reread decision and never advances it during resolution", () => {
+    const reRead = { ordinal: 1, reason: "Synthetic fresh rehearsal after a repaired read" };
+    const parsed = parseTestTargetRegistry(rawRegistry([{
+      ...chainSubject({ availability: AVAILABLE }),
+      workflows: { separations: { ...CHAIN_ARM, publicInput: { ...CHAIN_ARM.publicInput, reRead } } },
+    }]));
+    const first = resolveSeparationsTestTarget(parsed, "fixture-target", FIXTURE_CONFIGURED_SOURCE);
+    const second = resolveSeparationsTestTarget(parsed, "fixture-target", FIXTURE_CONFIGURED_SOURCE);
+    assert.equal(first.state, "ready");
+    assert.deepEqual(second, first);
+    if (first.state !== "ready") throw new Error("synthetic ready resolution missing");
+    assert.deepEqual(first.canonicalInput, { documentNumber: FIXTURE_DOCUMENT_NUMBER, reRead });
+    const ordinary = resolveSeparationsTestTarget(
+      parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })])),
+      "fixture-target", FIXTURE_CONFIGURED_SOURCE,
+    );
+    assert.equal(ordinary.state, "ready");
+    if (ordinary.state !== "ready") throw new Error("synthetic ordinary resolution missing");
+    assert.equal(Object.hasOwn(ordinary.canonicalInput, "reRead"), false);
+    assert.deepEqual(first.protectedBindings, ordinary.protectedBindings);
+  });
+
+  it("refuses malformed reread metadata before a private source can be accessed", () => {
+    for (const reRead of [
+      { ordinal: 0, reason: "Synthetic reason" }, { ordinal: 100, reason: "Synthetic reason" },
+      { ordinal: 1.5, reason: "Synthetic reason" }, { ordinal: 1 }, { reason: "Synthetic reason" },
+      { ordinal: 1, reason: "" }, { ordinal: 1, reason: "x".repeat(201) },
+      { ordinal: 1, reason: "Synthetic reason", retry: true },
+    ]) {
+      assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+        ...chainSubject({ availability: AVAILABLE }),
+        workflows: { separations: { ...CHAIN_ARM, publicInput: { ...CHAIN_ARM.publicInput, reRead } } },
+      }])));
+    }
+  });
+
   it("resolves an available chain subject through the descriptor's own start box", () => {
     const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
 
