@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
@@ -781,7 +782,7 @@ export async function startSeededServer(
 
   const runIds = seed({ database, spans, notes });
 
-  const trust = createReceiptService({ database, descriptors: [personLookupDescriptor] });
+  const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
 
   /**
    * THE DONE RUN'S EVIDENCE RECEIPT IS PART OF THE SEED, not a side effect of
@@ -816,7 +817,7 @@ export async function startSeededServer(
     );
   }
 
-  const runDetailDeps = {
+  const runDetailDeps = { runReader: sqliteRunReader(database, clock),
     stateRoot,
     projection,
     authority: {

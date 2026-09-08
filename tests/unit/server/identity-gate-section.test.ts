@@ -142,7 +142,7 @@ function depsOf(
   w: DashboardWorld,
   gateNodes: readonly unknown[] | null = GATE_NODES,
 ): RunDetailQueryDeps {
-  return {
+  return { runReader: w.runReader,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,

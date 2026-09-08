@@ -223,7 +223,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
     seedRun(w, 10);
     w.authority.putCheckpoint(searchingCheckpoint(10, RESOLVED) as never);
 
-    const detail = buildRunDetail({
+    const detail = buildRunDetail({ runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,

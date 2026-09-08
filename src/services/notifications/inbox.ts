@@ -1,3 +1,4 @@
+import type { RunExistence } from "../../domain/authority.js";
 /**
  * Ref dashboard-surfaces §2.6 / §10.4 (D79b) and ref operator-trust §6 — the durable, actor-keyed inbox.
  *
@@ -83,6 +84,7 @@ export interface NotificationAuthority {
 }
 
 export interface NotificationInboxDependencies {
+  readonly runReader?: { read(runId: string): RunExistence };
   readonly authority: NotificationAuthority;
   readonly clock: Clock;
   readonly ids: IdFactory;

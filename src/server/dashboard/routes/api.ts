@@ -1,3 +1,9 @@
+import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
+export type { DashboardApp, DashboardAppDeps } from "./api-types.js";
+import { registerDataRoutes } from "./data.js";
+import { registerTrustRoutes } from "./trust.js";
+import { registerOperatorRoutes } from "./operator.js";
+import { composeDataQueries } from "../compose/data.js";
 /**
  * The dashboard BFF routes (ref frontend-backend-integration §0/§3.6) — thin parse/dispatch boundaries
  * over the queries, the command service, and the stream hub. A handler here
@@ -11,117 +17,31 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import type { DashboardCommandService } from "../commands/command-service.js";
 import {
   createOperatorCommandIngress,
-  type BulkCommandAcceptanceAuthority,
 } from "../commands/operator-command-ingress.js";
-import type { CommandRequest } from "../../../domain/commands.js";
-import type { IntakeService } from "../commands/intake-service.js";
-import type { StartPlanService } from "../commands/start-plan-service.js";
-import type { ExplorerEditService } from "../commands/explorer-edit-service.js";
-import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
-import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
-import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
-import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../queries/settings-editor.js";
-import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
-import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
-import { readRunDetail, readRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
-import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
-import {
-  readDiagnosticBundle,
-  readDiagnosticBundleAttachment,
-  type DiagnosticBundleQueryDeps,
-} from "../queries/diagnostic-bundle.js";
-import {
-  IndexedArtifactBytesMissingError,
-  prepareDiagnosticArtifactLease,
-  type ArtifactBytesQueryDeps,
-} from "../queries/artifact-bytes.js";
+import { buildBootstrap } from "../queries/bootstrap.js";
+import { buildWorkflowExplorer } from "../queries/explorer.js";
+import { buildUiCatalogWire } from "../queries/ui-catalog.js";
+import { buildRunAdvisory } from "../queries/advisory.js";
+
 import {
   ArchivedCaptureReadError,
-  buildArchiveIndex,
-  buildArchivedCaptureResource,
-  buildArchivedRunDetail,
-  prepareArchivedCaptureLease,
-  type ArchiveQueryDeps,
 } from "../queries/archive.js";
-import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
-import type { CrossDateSearchQueryService } from "../queries/search.js";
-import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
-import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-service.js";
-import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
-import { staticBundleHandler, type StaticBundle } from "../static-bundle.js";
-import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../failures.js";
+import { staticBundleHandler } from "../static-bundle.js";
+import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
 import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
-import type { createPreflightAuthority } from "../../../domain/preflight.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import {
   assertRequestActor,
   type RequestIdentityCheckpoint,
 } from "../request-identity.js";
 import { failureStatus, wireError } from "./failure-status.js";
-import { verifiedByteResponse } from "./verified-byte-response.js";
 
-export interface DashboardAppDeps {
-  /** D75: the one server-owned actor derivation every BFF request crosses. */
-  readonly requestIdentity: RequestIdentityCheckpoint;
-  readonly bootstrap: BootstrapQueryDeps;
-  /** Read-only strict preflight authority; no command-kernel mutation or journal row is produced. */
-  readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
-  readonly projection: RunQueueProjection;
-  /** D283: bounded cross-date reads from exact durable run authority. */
-  readonly search: CrossDateSearchQueryService;
-  /** DCR5's dedicated command; it persists exact attachment evidence before returning bytes. */
-  readonly xlsxExports?: OperatorXlsxExportService;
-  readonly runDetail: RunDetailQueryDeps;
-  /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
-  readonly diagnosticBundles?: DiagnosticBundleQueryDeps & ArtifactBytesQueryDeps;
-  /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
-  readonly archive: ArchiveQueryDeps;
-  readonly commands: DashboardCommandService;
-  readonly commandJournal: Readonly<{
-    get(commandId: string): CommandRequest | undefined;
-  }>;
-  readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
-  readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
-  readonly startPlans: StartPlanService;
-  readonly intake: IntakeService;
-  readonly hub: DashboardStreamHub;
-  readonly storage: StorageQueryDeps;
-  /** D274 item 6 / ledger 3 SE40–SE42 — the two READ-ONLY Settings status sections. */
-  readonly settings: SettingsQueryDeps;
-  /** DCC3's closed, resolver-owned editable Settings inventory and current readback. */
-  readonly settingsEditor: SettingsEditorQueryDeps;
-  /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
-  readonly explorer: ExplorerQueryDeps;
-  /** D186/D283 safe-edit authority; production always composes it. */
-  readonly explorerEdits?: Pick<ExplorerEditService, "validate">;
-  /** The committed semantic UI catalog, served read-only (2i-G, D177). */
-  readonly uiCatalog: UiCatalogQueryDeps;
-  /**
-   * Ref operator-trust §4.4's advisory seam (2i-G, D178). Absent when no `ai.advisory`
-   * adapter is composed — the route then refuses by NAME rather than the
-   * composition root wiring a producer that answers nothing.
-   */
-  readonly advisory?: AdvisoryQueryDeps;
-  /**
-   * The built dashboard bundle, present only in `built-bundle` mode (ref
-   * frontend-backend-integration §6.9): its handler is registered last so every route
-   * above wins, and it serves `dist/dashboard` from this same loopback process.
-   */
-  readonly staticBundle?: StaticBundle;
-}
-
-export type DashboardApp = Hono<{
-  Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> };
-}>;
-
-const DayQuerySchema = z.iso.date();
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
 const StreamResumeSchema = z.strictObject({
   lastEventId: ProjectionCursorSchema.optional(),
@@ -270,6 +190,10 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/runs/:runId/advisory", operatorOpaqueIngressGuard);
 
+  registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
+  registerOperatorRoutes(app, deps);
+  registerTrustRoutes(app, deps);
+
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
   app.post("/api/v1/preflight/rerun", async (c) => {
@@ -366,21 +290,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     });
   });
 
-  // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
-  app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
-
-  /**
-   * D274 item 6 — System hosts + Workflow capabilities, read-only.
-   *
-   * GET-only by construction, and that remains the ruling: DCC3's separate
-   * resolver-owned Settings editor does not make host/capability facts mutable.
-   * Item 6's rejected option C was coupling these reads to the write family.
-   */
-  app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
-
-  // DCC3: values, provenance and editability are server-owned; this route has no mutation arm.
-  app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
-
   /** Ref operator-trust §5.2–§5.4: exact graph read plus strict safe-edit draft validation. */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
   app.post("/api/v1/explorer/validate", async (c) => {
@@ -392,186 +301,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
       : result.state === "ready-to-apply" ? 200 : 422;
     return c.json(result, status);
   });
-  /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
-  app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
-  app.get("/api/v1/archive/:runId/captures/:artifactId/resource", async (c) => {
-    c.header("cache-control", "no-store");
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
-    }
-    return c.json(await buildArchivedCaptureResource(
-      { authority: deps.archive.authority, artifactReader: deps.diagnosticBundles.artifactReader },
-      c.req.param("runId"),
-      c.req.param("artifactId"),
-      c.req.raw.signal,
-    ));
-  });
-  app.get("/api/v1/archive/:runId", (c) =>
-    c.json(buildArchivedRunDetail(deps.archive, c.req.param("runId"))));
 
-  app.get("/artifacts/v1/archive/:runId/:artifactId", async (c) => {
-    c.header("cache-control", "no-store");
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
-    }
-    const artifact = await prepareArchivedCaptureLease(
-      { authority: deps.archive.authority, artifactReader: deps.diagnosticBundles.artifactReader },
-      c.req.param("runId"),
-      c.req.param("artifactId"),
-      c.req.raw.signal,
-    );
-    return verifiedByteResponse({
-      lease: artifact.lease,
-      method: c.req.method,
-      range: c.req.header("range"),
-      profile: "archive",
-    });
-  });
-  app.get("/api/v1/reports/activity", (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      // A missing range is NOT "today" or "this month": an aggregate over a
-      // window the caller never named is a number nobody asked for.
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
-    return c.json(deps.projection.buildActivityReportWire(from, to));
-  });
-
-  /**
-   * The same report as a file (D240). It refuses a missing bound in the SAME
-   * words as the JSON route above — an export is the one copy that gets mailed
-   * on, so a window it defaulted silently would travel further than a page that
-   * did. The artifact carries its own caveats; see `activity-export.ts`.
-   */
-  app.get("/api/v1/reports/activity.csv", (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
-    const report = deps.projection.buildActivityReportWire(from, to);
-    return new Response(activityReportCsv(report), {
-      status: 200,
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${activityReportCsvFileName(report)}"`,
-        "cache-control": "no-store",
-      },
-    });
-  });
   app.get("/api/v1/ui-catalog", (c) => c.json(buildUiCatalogWire(deps.uiCatalog)));
-
-  app.get("/api/v1/dashboard", (c) => {
-    const day = DayQuerySchema.parse(c.req.query("day"));
-    return c.json(deps.projection.buildDashboardDayWire(day));
-  });
-
-  app.get("/api/v1/runs/:runId", async (c) =>
-    c.json(await readRunDetail(deps.runDetail, c.req.param("runId"), c.req.raw.signal)));
-
-  // Failure responses are private evidence too. Install after the capture Host
-  // gate so a phone request still receives the byte-identical unrouted refusal.
-  app.use("/api/v1/diagnostic-bundles/*", async (c, next) => {
-    await next();
-    c.header("cache-control", "no-store");
-    c.header("x-content-type-options", "nosniff");
-  });
-
-  app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
-    }
-    const bundle = await readDiagnosticBundle(
-      deps.diagnosticBundles,
-      c.req.param("bundleId"),
-      undefined,
-      c.req.raw.signal,
-    );
-    return c.json(bundle.wire);
-  });
-
-  app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", async (c) => {
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
-    }
-    const bundle = await readDiagnosticBundle(
-      deps.diagnosticBundles,
-      c.req.param("bundleId"),
-      undefined,
-      c.req.raw.signal,
-    );
-    return new Response(bundle.manifest, {
-      status: 200,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "content-disposition": `attachment; filename="${bundle.wire.bundleId}.json"`,
-        "cache-control": "no-store",
-      },
-    });
-  });
-
-  /** A screenshot resource stays bound to the exact inspected bundle, not only its global artifact id. */
-  app.get("/api/v1/diagnostic-bundles/:bundleId/attachments/:artifactId", async (c) => {
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError(
-        "diagnostic attachment readback is not available: no diagnostic attachment authority is composed",
-      );
-    }
-    const attachment = await readDiagnosticBundleAttachment(
-      deps.diagnosticBundles,
-      c.req.param("bundleId"),
-      c.req.param("artifactId"),
-      c.req.raw.signal,
-    );
-    return verifiedByteResponse({
-      lease: attachment.lease,
-      method: c.req.method,
-      range: c.req.header("range"),
-      profile: "bundle",
-    });
-  });
-
-  app.get("/artifacts/v1/:artifactId", async (c) => {
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError(
-        "diagnostic artifact readback is not available: no diagnostic attachment authority is composed",
-      );
-    }
-    let artifact: Awaited<ReturnType<typeof prepareDiagnosticArtifactLease>>;
-    try {
-      artifact = await prepareDiagnosticArtifactLease(
-        {
-          authority: deps.diagnosticBundles.authority,
-          artifactReader: deps.diagnosticBundles.artifactReader,
-        },
-        c.req.param("artifactId"),
-        c.req.raw.signal,
-      );
-    } catch (error: unknown) {
-      if (error instanceof IndexedArtifactBytesMissingError) {
-        throw new DiagnosticBundleBytesMissingError(error.message, { cause: error });
-      }
-      throw error;
-    }
-    return verifiedByteResponse({
-      lease: artifact.lease,
-      method: c.req.method,
-      range: c.req.header("range"),
-      profile: "generic",
-    });
-  });
-
-  app.get("/api/v1/runs/:runId/:section", async (c) => {
-    const cursor = c.req.query("cursor");
-    return c.json(await readRunSection(
-      deps.runDetail,
-      c.req.param("runId"),
-      c.req.param("section"),
-      cursor,
-      c.req.raw.signal,
-    ));
-  });
 
   /**
    * Ref operator-trust §4.4's on-demand failure advisory (D178). It is a POST because it

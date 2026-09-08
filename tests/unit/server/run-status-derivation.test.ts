@@ -55,7 +55,7 @@ const TIMELINE: NonNullable<RunDetailDescriptorView["timeline"]> = [
 
 function detailOf(w: DashboardWorld, seed: number, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>) {
   return buildRunDetail(
-    {
+    { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,

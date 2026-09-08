@@ -54,7 +54,7 @@ const DATE_FIELDS_VIEW = {
 } as const;
 
 function depsOf(w: DashboardWorld, view: unknown = DATE_FIELDS_VIEW) {
-  return {
+  return { runReader: w.runReader,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,

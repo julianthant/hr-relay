@@ -1,8 +1,6 @@
+import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, it } from "vitest";
-import { REPO_ROOT } from "./helpers/guard-files.js";
 
 /**
  * Guard (ref frontend-backend-integration §3.4, D75): every browser-reachable
@@ -17,7 +15,6 @@ import { REPO_ROOT } from "./helpers/guard-files.js";
  * media contract), and the one inline door (preflight rerun) is named as such
  * so nobody mistakes "no app.use line" for "unguarded".
  */
-const ROUTES_SOURCE = "src/server/dashboard/routes/api.ts";
 
 type Admission =
   | { readonly guard: "operatorMutationIngressGuard" | "operatorOpaqueIngressGuard" }
@@ -96,7 +93,7 @@ export function auditOperatorMutationAdmission(source: string, table: Readonly<R
 }
 
 describe("operator mutation admission (ref frontend-backend-integration §3.4, D75)", () => {
-  const source = readFileSync(join(REPO_ROOT, ROUTES_SOURCE), "utf8");
+  const source = dashboardRouteSource();
 
   it("admits every browser-reachable mutating route through a loopback Host/Origin door registered before it", () => {
     const audit = auditOperatorMutationAdmission(source, ADMITTED_MUTATIONS);
@@ -140,4 +137,37 @@ describe("operator mutation admission (ref frontend-backend-integration §3.4, D
       'line 13 registers a route with a shape this guard does not classify (app.post(`); use app.<method>("<literal path>") and add its admission row',
     ]);
   });
+});
+
+
+it("audits imported registrations at the call site and detects relocated unguarded mutations", () => {
+  const entry = "/route-proof/api.ts";
+  const child = "/route-proof/child.ts";
+  const root = `import { attachChild } from "./child.js";
+    export function createDashboardApp() {
+      app.use("/guarded", operatorMutationIngressGuard);
+      attachChild(app);
+    }`;
+  const sources = new Map([
+    [entry, root],
+    [child, `export function attachChild(app) {
+      app.post("/guarded", handler);
+      app.post("/unguarded", handler);
+    }`],
+  ]);
+  const read = (file: string): string => {
+    const source = sources.get(file);
+    if (source === undefined) throw new Error(`unknown fixture: ${file}`);
+    return source;
+  };
+  const table = { "/guarded": { guard: "operatorMutationIngressGuard" as const } };
+  assert.deepEqual(auditOperatorMutationAdmission(dashboardRouteSource(entry, read), table).violations,
+    ["POST /unguarded is browser-reachable but has no admission row"]);
+  sources.set(child, `export function attachChild(app) { app.post("/guarded", handler); }`);
+  assert.deepEqual(auditOperatorMutationAdmission(dashboardRouteSource(entry, read), table).violations, []);
+  sources.set(entry, root.replace('app.use("/guarded", operatorMutationIngressGuard);', "")
+    .replace('attachChild(app);', 'attachChild(app); app.use("/guarded", operatorMutationIngressGuard);'));
+  assert.match(auditOperatorMutationAdmission(dashboardRouteSource(entry, read), table).violations[0] ?? "", /AFTER the route/u);
+  sources.set(child, "export function removed() {}");
+  assert.throws(() => dashboardRouteSource(entry, read), /registrar is missing/u);
 });

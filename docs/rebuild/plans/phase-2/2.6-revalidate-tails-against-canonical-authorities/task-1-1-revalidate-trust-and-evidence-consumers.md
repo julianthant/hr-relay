@@ -78,17 +78,31 @@ payloads, errors, route admission, archive bytes or lifecycle derivations:
 P2 separates wiring and registration. `compose/trust.ts` owns receipt/capture/
 notification dependencies. `compose/data.ts` owns data query composition;
 `compose/operator.ts` owns operator projection/detail/archive read wiring.
-`routes/data.ts` registers the exact Context Data/Attempts paths before the
-parameterized section route. The data factory return is inferred, allowing 1-2
+`routes/data.ts` handles Context Data/Attempts on the existing parameterized
+section path before the generic section registrar; other sections call `next()`. The data factory return is inferred, allowing 1-2
 to add Rerun values and its route without editing the root. Its production
 backing bundle supplies AuthorityDatabase snapshot/evidence reads,
-`Pick<RunRecordService, 'read'>`, full descriptor resolution, and source fold/log
+`Pick<RunRecordService, 'read' | 'list'>`, full descriptor resolution, and source fold/log
 evidence access. Existing minimal Context test compositions may omit that
 explicit bundle; future Rerun reads must refuse `RERUN_VALUES_NOT_CONFIGURED`
 before reads if unconfigured, never use a raw repository fallback. No Rerun
 feature is implemented in P. Trust/operator route ownership is extracted as
 needed so their peer implementations do not share route files. Root dispatch,
 request identity, loopback/content-type guards and static-last order remain.
+
+P2 also supplies the independent `runReader?: CanonicalRunReader` read/list port
+for trust and generic lifecycle consumers, separate from the data backing bundle.
+Production binds both to the same service. Shared fixture backing lands in P:
+`tests/helpers/canonical-run-reader.ts` supplies an isolated SQLite service reader
+and an explicitly named in-memory unit fake with caller-controlled generation.
+The fake is never canonical acceptance evidence. Dashboard harnesses expose
+`runReader` and `runReaderState`; existing detail/section/archive/parity/perf
+compositions pass their actual reader. `archiveSnapshots` refuses an unconfigured
+fixture. This mechanical addition resolves the pre-freeze 1-1/1-3 fixture conflict;
+post-P the helper freezes and generic fixtures remain 1-3-owned. Receipt, diagnostic and notification dependency interfaces also expose optional `runReader`
+ports, wired in production and shared BFF/scenario/parity/perf fixtures without
+changing reads in P. T and 1-3 require
+the direct `runReader` port at admission with no raw or data-bundle fallback.
 
 P3 runs the existing behavioral safety net and required gates, reviews the
 complete extraction, integrates it, and records actual exports, path ownership,
@@ -192,14 +206,82 @@ or authority-schema work to hide a failure.
 
 ## Current execution state
 
-Plan recorded on the peer planning commits `a57ecae8f` and `8af59c63e`;
-shared roadmap generation/freshness and owned document links pass. These
-planning changes contain no executable/test/config/dependency changes; full
-code gates are not represented as rerun by this documentation commit. Baseline on unchanged executable base `2dd3048f8` passed: focused
-server/inbox/gate-park command above, 50 files/949 tests, exit 0, 16.71 seconds;
-`npm run lint` exit 0. Logs are `/tmp/hr-tail-readers-evidence/baseline.log` and
-`baseline-lint.log`. Nine existing instruction twins and their project chains
-passed equality and the 32768-byte cap; task-local document links resolve.
-No implementation, review, full coverage or live gate has run. The accepted
-recovery note's unique findings are captured above. Prerequisite/common-base
-and trust completion remain open.
+P is **awaiting independent review**. T remains unstarted. The candidate enclosing
+this record is on `codex/tail-readers` at
+`/Users/julianhein/Projects/hr-worktree-tail-readers`, based on approved plan
+`6e0d05183ba9427e23af4427b62265389fc12281`. No wave peer has begun implementation.
+The review brief pins this commit and the base by full SHA; no writer or gate
+mutates the checkout during review. Candidate inventory: 51 paths, comprising
+21 production, 28 test/fixture and two documentation files.
+
+P preserves lifecycle derivations and payloads; it only exposes canonical ports.
+The fixed shared seam consists of `queries/run-detail-types.ts`, the
+`queries/run-sections.ts` dispatcher, `routes/api-types.ts` (re-exported from
+`routes/api.ts`), and `tests/helpers/canonical-run-reader.ts`. The helper exposes
+`sqliteRunReader(database, clock)` and `inMemoryRunReaderFake(state)`; the latter
+uses explicit records/archived/deleted maps and caller-controlled generation,
+and is not canonical acceptance evidence. Existing detail compositions pass the
+reader explicitly; shared receipt/diagnostic/inbox compositions do likewise.
+
+`readRunCaptureSection` lives in `queries/run-captures.ts`. After acceptance,
+1-3 owns generic `queries/run-read.ts` admission and its stable section schema;
+1-1 owns trust/log/capture readers; 1-2 owns `queries/data.ts`. Composition and
+route ownership follow P2. `createOperatorArchive` and projection receive the
+same canonical service instance. `composeDataQueries(deps)` returns the inferred
+`createDataQueries` result `{ contextData, contextAttempts, canonical, source }`.
+`registerDataRoutes(app, queriesFactory)` is lazy, preserving archive-only
+fixtures; its existing parameterized route handles Context sections and passes
+other sections onward. A future literal Rerun route registers before it.
+
+### Candidate gate evidence
+
+All commands below exited 0 on the final executable/test inputs; subsequent
+changes before this commit only record evidence in this owner. Logs and their
+SHA-256 digests are in `/tmp/hr-tail-readers-evidence/gate-record.json`.
+
+| Command | Result | Log in that directory |
+| --- | --- | --- |
+| `npm run typecheck` | PASS | `prereq-typecheck-reviewed.log` |
+| `npm run lint` | PASS, zero warnings | `prereq-lint-reviewed.log` |
+| `npm run test:coverage` | 441 files / 5,549 tests; statements 85.92%, branches 77.56%, functions 89.88%, lines 88.04%; suite-size check PASS | `prereq-coverage-reviewed.log` |
+| `npm run web:build` | PASS | `web-build-final.log` |
+| `npm run test:parity` | 261 cases PASS; no reference change | `parity-final.log` |
+| `npm run build:manifest:check` | PASS | `manifest-final.log` |
+| `npm run stores:catalog:check` | PASS | `catalog-final.log` |
+| `npm run roadmap:check` | PASS | `roadmap-final.log` |
+| `git diff --check`, task links, instruction twins/chains | PASS; nine pairs, chains below 32,768 bytes | recording check |
+
+Coverage used the unchanged `vitest.config.ts`: forks, isolated files,
+`maxWorkers = min(4, availableParallelism())`, inherited by all three projects.
+Four workers were observed; no task compiler/linter ran alongside coverage.
+The full run includes all 80 architecture files and 17 scenario files; no
+standalone full architecture run is claimed. Gate inventory membership, floors,
+timeouts and assertions remain unchanged. The two existing route guards now
+expand imported registrars at their call sites; injected unguarded mutations,
+late guards and missing registrars still fail. No guard was added or retired.
+
+### Retained iteration evidence and provisional assessment
+
+Baseline on unchanged executable base `2dd3048f8` passed 949 server/inbox/gate-park
+tests and lint. The mechanical worker `/root/sup_astra_query_extract` returned
+its bounded query extraction; the supervisor inspected and incorporated it.
+The worker is finished; the independent reviewer did not participate in that work.
+
+- Implementation defects: eager data composition broke 48 minimal archive-route
+  fixtures; lazy registration restored them. Literal Context routes broke wire
+  connectivity; preserving the existing parameterized route restored 53 focused
+  checks. The first coverage attempt caught three type-import cycles; neutral
+  `api-types.ts` removed them and the 59 focused checks passed.
+- Planning omission: independent downstream gates also needed canonical fixture
+  backing, including receipt, diagnostic and notification compositions. The
+  shared ports and 31 detail fixture bindings now land before wave 1. Earlier
+  coverage/parity passes remain historical, not final-candidate evidence.
+- Implementation defects in that addition: a new terminal fixture had an invalid
+  `reason` field and then an unbranded Map key; both were corrected. The last
+  notification port initially imported a core type across the service layer;
+  the architecture guard rejected it. A domain `RunExistence` read contract
+  removed the inversion; the focused ratchet and final complete gates passed.
+
+All failed logs are retained beside the final evidence. No production runtime,
+operator database, live transaction or push was used. Prerequisite integration,
+review acceptance and cleanup remain open; all T proof and completion remain open.

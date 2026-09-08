@@ -1,3 +1,4 @@
+import type { RunRecordService } from "../../../core/run-record-service.js";
 /** D137 diagnostic-bundle readback: exact id, verified authority row, verified artifacts. */
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import {
@@ -29,6 +30,7 @@ import {
 } from "./artifact-bytes.js";
 
 export interface DiagnosticBundleQueryDeps {
+  readonly runReader?: Pick<RunRecordService, "read">;
   readonly authority: Pick<AuthorityRepositories["diagnosticBundles"], "get" | "listAttachments">;
   readonly artifactReader: ServerVerifiedArtifactReader;
 }

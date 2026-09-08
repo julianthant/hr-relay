@@ -74,7 +74,7 @@ function omittedRun(w: DashboardWorld): void {
 
 function detailOf(w: DashboardWorld) {
   return buildRunDetail(
-    {
+    { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,

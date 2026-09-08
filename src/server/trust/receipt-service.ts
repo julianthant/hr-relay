@@ -1,3 +1,4 @@
+import type { RunRecordService } from "../../core/run-record-service.js";
 /**
  * The ONE authority-backed receipt path (D141).
  *
@@ -23,6 +24,7 @@ import type { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { TargetNotFoundError } from "../failures.js";
 
 export interface ReceiptServiceDeps {
+  readonly runReader?: Pick<RunRecordService, "read">;
   readonly database: AuthorityDatabase;
   /** The composition root's registered descriptors, by workflow id. */
   readonly descriptors: readonly AnyWorkflowDescriptor[];

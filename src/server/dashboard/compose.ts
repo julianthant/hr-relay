@@ -1,3 +1,8 @@
+import { createOperatorProjection, createOperatorRunDetail, createOperatorArchive } from "./compose/operator.js";
+import { createTrustNotifications, createTrustReadDependencies } from "./compose/trust.js";
+import { composeDataQueries } from "./compose/data.js";
+export { dataOriginViewsOf } from "./compose/run-detail-descriptors.js";
+export { readGateParks } from "./compose/trust.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { ActorIdSchema } from "../../domain/ids.js";
@@ -57,8 +62,6 @@ import {
   WORKFLOW_MODULES,
   readPendingImplBindings,
 } from "../../control/workflow-registry.js";
-import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } from "../../base/workflow.js";
-import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
 import {
   createCommandKernel,
   createExplorerCommandJournal,
@@ -87,7 +90,6 @@ import {
   ProviderAdmissionIdSchema,
   type Fingerprint,
 } from "../../domain/ids.js";
-import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import {
   assertNoMigratedEnvironmentKeys,
   hostAwareResolutionEnvironment,
@@ -113,13 +115,7 @@ import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server-verified-artifact-reader.js";
-import { createNotificationInbox } from "../../services/notifications/inbox.js";
-import { createBackfillGapNotifier } from "../../services/notifications/backfill-gap.js";
-import {
-  GateParkObservationSchema,
-  createGateParkNotifier,
-  type GateParkObservation,
-} from "../../services/notifications/gate-park.js";
+
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createCredentialSecretSource, createSettingsRuntimeReader, readSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
@@ -140,10 +136,8 @@ import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
-import { createRunQueueProjection } from "./projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "./subscriptions/dashboard-stream.js";
 import { startDashboardHttpServer } from "./http-server.js";
-import { createReceiptService } from "../trust/receipt-service.js";
 import { createAdvisoryProviderClient } from "../../core/provider-admission.js";
 import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
@@ -151,165 +145,9 @@ import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
-import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
-import type {
-  RunDetailDataOriginView,
-  RunDetailQueryDeps,
-  RunDetailWriteContractView,
-} from "./queries/run-detail.js";
-import { describeProofShape } from "../../validation/proof-shape.js";
-import type { RegisteredTaskStore } from "../../base/store.js";
+import { createArchiveSnapshotSource } from "./queries/archive.js";
+
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
-
-
-/**
- * The gate nodes of a descriptor, in the shape the identity-gate section reads.
- *
- * `resultSchemaHash` is `deriveSchemaHash(node.result, "output")` — byte for
- * byte the value `executeResolveGate` compares an incoming payload against, so a
- * surface that echoes it back cannot be refused for naming a schema this build
- * does not have.
- */
-function gateNodeViewsOf(descriptor: AnyWorkflowDescriptor): readonly Readonly<{
-  nodeId: string;
-  label: string;
-  dependsOn: readonly string[];
-  resultSchemaHash: string;
-}>[] {
-  return descriptorRuntimeNodes(descriptor).flatMap((node) => (
-    node.kind === "gate"
-      ? [{
-        nodeId: String(node.id),
-        label: node.label,
-        dependsOn: node.dependsOn.map(String),
-        resultSchemaHash: deriveSchemaHash(node.result, "output"),
-      }]
-      : []
-  ));
-}
-
-/**
- * The transaction nodes of a descriptor, in the shape the parked-write
- * section's proof form reads (D245, ref write-safety §4.1).
- *
- * `proofSchemaHash` is `deriveSchemaHash(completion.proofSchema, "output")` —
- * byte for byte the value `resolvePresent` compares an incoming
- * `proof.schemaHash` against — and `proof` is that same schema described as a
- * field list, or the named reason this build cannot describe it. Both are
- * derived HERE for the reason stated on `gateNodeViewsOf`: the queries never
- * reach the descriptor builders, and a query that re-walked a proof schema
- * would be a second copy of the contract's identity.
- */
-function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDetailWriteContractView[] {
-  return descriptorRuntimeNodes(descriptor).flatMap((node) => {
-    if (node.kind !== "transaction") return [];
-    const completion = node.commit.uses.writeSafety.completion;
-    return [{
-      commitTaskId: String(node.commit.uses.id),
-      completionKind: completion.kind,
-      proofSchemaHash: deriveSchemaHash(completion.proofSchema, "output"),
-      proof: describeProofShape(completion.proofSchema),
-    }];
-  });
-}
-
-/**
- * D252/L3 — every ordinary task and every real transaction role, with the facts
- * the rail's origin line draws: the step's label, whether its task READS or
- * WRITES, the system it runs against, and the reuse bound its own contract
- * declares per field.
- *
- * Nothing here is inferred. `dir` is the node's task `effect` (ref task-contract's own
- * word for what a contract does to the world) — the rail's header comment used
- * to record direction as unservable because "nothing durable says whether a
- * recorded field was read or written", which is true of the CHECKPOINT ROW and
- * false of the descriptor that wrote it. `system` comes from the module's own
- * store list, the same binding the explorer's node panel reads, and a headless
- * store contributes none rather than a fabricated label. The bound is resolved
- * through `resolveFreshnessBound`, which is the function `auditCheckpointFreshness`
- * itself calls, and `feeds` through `reachableCommits` for the same reason —
- * the sentence the operator reads is the rule the executor applies.
- *
- * Probe/prepare/commit/verify each retain their invoked task id; this is what
- * lets an observed row resolve system without treating the transaction node's
- * commit as every beat. Only the field paths a Data entry can actually carry are resolved, which is
- * exactly `details[].source` ∪ `capabilities.editData.fields`: a bound for a
- * path no surface serves is a fact nobody reads.
- */
-export function dataOriginViewsOf(module: {
-  readonly descriptor: AnyWorkflowDescriptor;
-  readonly stores: readonly RegisteredTaskStore[];
-}): readonly RunDetailDataOriginView[] {
-  const { descriptor } = module;
-  const systemByTaskId = new Map<string, string>();
-  for (const store of module.stores) {
-    if (store.kind !== "browser") continue;
-    for (const task of Object.values(store.tasks)) {
-      systemByTaskId.set(String(task.contract.id), String(store.driver.system));
-    }
-  }
-  const nodes = descriptorRuntimeNodes(descriptor);
-  const commitNodeIds = new Set(
-    nodes.filter((node) => node.kind === "transaction").map((node) => String(node.id)),
-  );
-  const editData = descriptor.capabilities?.editData;
-  const declaredPaths = new Map<string, Set<string>>();
-  const declare = (nodeId: string, fieldPath: string): void => {
-    const existing = declaredPaths.get(nodeId);
-    if (existing === undefined) declaredPaths.set(nodeId, new Set([fieldPath]));
-    else existing.add(fieldPath);
-  };
-  for (const detail of descriptor.details) declare(String(detail.source.nodeId), detail.source.fieldPath);
-  if (typeof editData === "object") {
-    for (const field of editData.fields) declare(String(field.nodeId), field.fieldPath);
-  }
-
-  return nodes.flatMap((node) => {
-    if (node.kind !== "task" && node.kind !== "transaction") return [];
-    const paths = declaredPaths.get(String(node.id));
-    const feeds = reachableCommits(nodes, node.id, commitNodeIds).map((sink) => {
-      const target = nodes.find((candidate) => String(candidate.id) === String(sink.nodeId));
-      return {
-        nodeId: String(sink.nodeId),
-        label: target === undefined ? String(sink.nodeId) : runtimeNodeLabel(target),
-      };
-    });
-    const contracts = node.kind === "task"
-      ? [{ role: "task" as const, contract: node.uses }]
-      : [
-        { role: "probe" as const, contract: node.commit.uses.writeSafety.idempotency.probe },
-        { role: "prepare" as const, contract: node.prepare.uses },
-        { role: "commit" as const, contract: node.commit.uses },
-        ...(node.commit.uses.writeSafety.completion.kind === "receipt"
-          ? []
-          : [{ role: "verify" as const, contract: node.commit.uses.writeSafety.completion.verify }]),
-      ];
-    return contracts.map(({ role, contract }) => {
-      const taskId = "id" in contract ? String(contract.id) : String(contract.taskId);
-      return {
-        nodeId: String(node.id),
-        step: runtimeNodeLabel(node),
-        taskId,
-        role,
-        dir: contract.effect === "read" ? "read" as const : "write" as const,
-        ...(systemByTaskId.has(taskId) ? { system: systemByTaskId.get(taskId) } : {}),
-        ...(role === "task" && "freshness" in contract && paths !== undefined
-          ? {
-            freshness: [...paths].sort().map((fieldPath) => {
-              const bound = resolveFreshnessBound(contract.freshness, fieldPath);
-              return {
-                fieldPath,
-                maxAge: Number.isFinite(bound.maxAgeMs) ? bound.maxAgeMs : "unbounded" as const,
-                override: bound.override,
-              };
-            }),
-          }
-          : {}),
-        feeds,
-      };
-    });
-  });
-}
 
 export interface DashboardRuntime {
   readonly port: number;
@@ -390,32 +228,6 @@ const SPAN_TAIL_POLL_MS = 250;
  * empty.
  */
 export const GATE_PARK_WATCH_MS = 5_000;
-
-/**
- * D262's read: every run currently parked at a gate, narrowed to the shape
- * `GateParkNotifier.observed` takes. Exported (not a `createDashboardRuntime`
- * closure) so a scenario test can prove the SAME fold the running composition
- * calls, rather than a hand-copy that could drift from it unnoticed. Lives
- * here rather than in `src/services/notifications/gate-park.ts` because that
- * module's own header is explicit that the notifier "holds no authority
- * handle and does no I/O of its own" — this function does both, so it belongs
- * with the other authority-reading folds the composition owns (see
- * `readBackupSummary` below).
- */
-export function readGateParks(database: AuthorityDatabase): readonly GateParkObservation[] {
-  return database.authority.runs.listParkedAtGate().map((run) => {
-    // The repository refuses such a row before it reaches here; this keeps the
-    // narrowing below a checked fact rather than an assertion.
-    if (run.lifecycle.state !== "parked-gate") {
-      throw new Error(`run ${run.envelope.runId} was listed as parked at a gate but reads ${run.lifecycle.state}`);
-    }
-    return GateParkObservationSchema.parse({
-      runId: run.envelope.runId,
-      workflowId: run.envelope.workflow,
-      gateId: run.lifecycle.gateId,
-    });
-  });
-}
 
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
   return FingerprintSchema.parse(
@@ -767,13 +579,16 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     );
   };
 
-  const inbox = createNotificationInbox({
-    authority: database,
-    clock,
-    ids,
-    actorId: LOCAL_OPERATOR_ACTOR_ID,
+  const spanWriter = createSpanJsonlWriter({ stateRoot, clock });
+  const lifecycle = new RunRecordService({ database, clock, ids,
+    publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("queued run is missing its publication context");
+      spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+    },
   });
-  const backfillGapNotifier = createBackfillGapNotifier({ inbox });
+  const { backfillGapNotifier, gateParkNotifier, readParks } = createTrustNotifications({
+    database, clock, ids, reader: lifecycle,
+  });
 
   /**
    * D262: the second wired producer — ref dashboard-surfaces §2.6's open operator gate. A run
@@ -783,10 +598,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * even when the inbox cannot be written), so the fact is READ back here from
    * authority, where it stands until a human resolves it.
    */
-  const gateParkNotifier = createGateParkNotifier({ inbox });
+
   const publishGateParks = async (): Promise<void> => {
     try {
-      await gateParkNotifier.observed(readGateParks(database));
+      await gateParkNotifier.observed(readParks());
     } catch {
       /*
        * This catch keeps the timer alive; it does not decide the alert was
@@ -853,34 +668,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    */
   const ledger = createLedgerReadThrough(stateRoot);
 
-  const projection = createRunQueueProjection({
-    stateRoot,
-    clock,
-    appVersion,
-    descriptorSetHash: setHash,
-    ledger,
-    authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
-      listWorkerPools: () => database.authority.workerPools.list(),
-      listRunBatches: () => database.authority.runSessions.list(),
-      getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
-      getFailure: (failureId) => database.authority.failures.get(failureId),
-      getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
-      listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
-      // Ref dashboard-surfaces §1.2: the one stored node output a queue row reads — the
-      // subject's name, at the leaf the descriptor declares.
-      latestCheckpoint: (workflowId, itemId, nodeId) =>
-        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-    },
-    descriptors,
-    projectionStore: database,
-  });
+  const projection = createOperatorProjection({ stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: lifecycle });
 
-  const spanWriter = createSpanJsonlWriter({ stateRoot, clock });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
 
   // D86: spans/notes prune at 30 days, applied at boot before the fold so the
@@ -953,12 +742,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   });
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
-  const lifecycle = new RunRecordService({ database, clock, ids,
-    publishQueued: (run, publication) => {
-      if (publication === undefined) throw new Error("queued run is missing its publication context");
-      spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
-    },
-  });
+
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
     continuation: runContinuationPort(lifecycle),
     descriptors,
@@ -986,65 +770,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * these deps render: the snapshot source and the route are one read model,
    * not two.
    */
-  const runDetailDeps: RunDetailQueryDeps = {
-    stateRoot,
-    projection,
-    authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      latestCheckpoint: (workflowId, itemId, nodeId) =>
-        database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-      // Ref write-safety §4.1: read straight off write-safety authority, per request.
-      getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
-      // D237: the SAME `listByRun` read D204 gave the receipt, so the panel and
-      // the receipt name one approver for one gate.
-      listGateResults: (runId) => database.authority.gateResults.listByRun(runId),
-    },
-    descriptors: {
-      /**
-       * The descriptor itself, plus the gate view the identity-gate section
-       * needs. The gate facts are DERIVED from the runtime graph here rather
-       * than in the query, for the same reason the receipt service lives here:
-       * `src/server/dashboard/queries` never reaches the descriptor builders,
-       * and a query that re-derived a schema hash would be a second copy of the
-       * descriptor's identity.
-       */
-      resolve: (workflowId) => {
-        // D252 reads the MODULE, not the descriptor alone: a task's system is
-        // the store's, and `src/workflows/<id>/descriptor.ts` may not reach a
-        // store (D106). The tuple is the same one every other registry derives
-        // from, so there is no second list to keep in step.
-        const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId);
-        if (module === undefined) return undefined;
-        const { descriptor } = module;
-        return {
-          ...descriptor,
-          gateNodes: gateNodeViewsOf(descriptor),
-          writeContracts: writeContractViewsOf(descriptor),
-          dataOrigins: dataOriginViewsOf(module),
-        };
-      },
-    },
-    // D140/D142: the receipt and failure sections serve CONTENT through the
-    // one authority-backed derivation, the same one `explain run` reads.
-    trust: createReceiptService({ database, descriptors: DESCRIPTORS }),
-    // DCA3: the initial capability and lazy section both verify this exact
-    // run-indexed diagnostic authority before advertising capture artifacts.
-    captures: {
-      authority: database.authority.diagnosticBundles,
-      artifactReader,
-    },
-  };
+  const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
-  const archiveDeps: ArchiveQueryDeps = {
-    clock,
-    appVersion,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    descriptors: { list: () => DESCRIPTORS },
-    // The archive's ledger read-through, over the SAME state root the
-    // projector appends to — the pointers stay pointers and this is what
-    // turns them back into what was filed.
-    ledger,
-  };
+  const archiveDeps = createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle });
 
   const explorerDeps = {
     clock,
@@ -1270,10 +999,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     search,
     xlsxExports,
     runDetail: runDetailDeps,
-    diagnosticBundles: {
-      authority: database.authority.diagnosticBundles,
-      artifactReader,
-    },
+    data: composeDataQueries(runDetailDeps),
+    diagnosticBundles: trustReads.diagnosticBundles,
     archive: archiveDeps,
     commands,
     commandJournal: database.authority.commands,

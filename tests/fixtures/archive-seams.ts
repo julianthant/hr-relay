@@ -48,5 +48,6 @@ export function archiveQueryDeps(input: Readonly<{
 }
 
 export function archiveSnapshots(runDetail: RunDetailQueryDeps): ReturnType<typeof createArchiveSnapshotSource> {
+  if (runDetail.runReader === undefined) throw new Error("archive fixture requires its canonical run reader");
   return createArchiveSnapshotSource(runDetail);
 }
