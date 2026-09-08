@@ -17,9 +17,11 @@ that rename to this existing plan. This amendment extends the same migration, co
 and review scope; it preserves the task ID, checkout binding, prerequisite, and integration
 conditions. Use the amended plan commit rather than the original `f4487557` launch reference.
 
-**Implementation and candidate gates complete; awaiting independent R1 review. S6 integration/cleanup remain open.** Implementation is committed in the bound worktree and candidate gates passed. Independent
-review, integration, cleanup, and operator database conversion are not yet accepted. The original planning
-session created no checkout or app task and dispatched no agents.
+**S1–S5 complete; R1 PASS. S6 candidate delivered; integration/cleanup remain open.** The
+implementation and candidate gates passed, with complete independent acceptance of all
+23 changed paths and P1–P7. The reviewed candidate is ready for operator-assigned integration.
+The operator database has not been converted. The original planning session created no
+checkout or app task and dispatched no agents.
 
 | Current table | Approved current-table name |
 | --- | --- |
@@ -465,3 +467,71 @@ consumers. The supervisor must wait for its verdict, repair any required finding
 applicable gates and obtain renewed acceptance. S6 delivery, operator-assigned integration
 and owned branch/worktree cleanup remain open. The actual operator database has not been
 converted and no push occurred.
+
+
+### Independent R1 acceptance and candidate delivery — 2026-09-08
+
+- Reviewer: fresh read-only `sup_review`, task `/root/sup_review_worker_names_r1`, Astra/high;
+  no implementation history, no delegation, no edits or write-producing validation.
+- Verdict: **PASS**, with no material findings or unresolved acceptance gaps. Complete review
+  covers all 23 paths (8 source, 9 tests, 6 documentation) and P1–P7 without exclusions.
+- Exact reviewed candidate: `4cfeedd2aa4d842247d9a0c7026e8e3e8e1371cf`; implementation
+  `ea97d89679f12636a669d95f799a5a73deaa0ced`; base
+  `35635a04e16e9c3cf1e99b16d4963752a18c616a`. Approved plan remains
+  `44460e2b65051a23d1a9584ac350c665d2da9985`.
+- The reviewer inspected the complete diff, surrounding implementations, relevant callers,
+  tests and owning contracts. It independently checked Git inventory, clean branch/root/HEAD,
+  plan ancestry, 2,193 input hashes, local links and whitespace. Gate logs were inspected;
+  no independent gate rerun is claimed.
+- Parent artifact verification also found every tested input unchanged, all retained gate logs
+  present, no owned gate process, and no temporary adapter in the checkout. Log SHA-256s and
+  candidate identity are retained in `/tmp/hr-worker-names-r1-artifact-seal.json`.
+
+| Acceptance | Result |
+| --- | --- |
+| P1–P2 | Fresh/stopped-upgraded schema and complete row/settings/credential preservation accepted |
+| P3 | Worker lifecycle, generation fencing, pools and Duo lock semantics accepted |
+| P4–P5 | Historical/current backup compatibility, restore, refusals and interruption settlement accepted |
+| P6–P7 | Current consumers, unchanged wire identities and Start request/consumption semantics accepted |
+| Required candidate gates | Accepted results in the candidate table above; unchanged tested input tree `738914e5cc384f9afdc0d0caa56c4791402d8be4` |
+| S1–S5 | Complete, with zero required R1 repairs |
+| S6 delivery | Reviewed candidate returned for assigned integration; whole-task completion remains open |
+
+This final recording changes only this evidence owner. Under D191, code gates and R1 remain
+bound to the exact reviewed implementation and unchanged inputs; scoped instruction/link/
+whitespace checks repeat before the recording commit. The recording commit does not claim a
+new runtime run or a review of a changed implementation.
+
+Integration is unassigned. Preserve `codex/worker-names` and
+`/Users/julianhein/Projects/hr-worktree-worker-names` until the operator chooses integration
+ordering with the independently developed command-groups and operation-names candidates.
+Reverify local master, active ownership and all candidates; reconcile later unreleased migration
+numbers and historical adapters, integrate with `--no-ff`, run required integrated-input gates,
+and renew review for behavioral conflict fixes. Then remove only this task's integrated branch
+and worktree. No push, actual database application or workflow execution occurred.
+
+### Delivery assessment
+
+The approved assignment retained one local implementer and one complete reviewer. Observed
+review count is one initial complete R1, with zero required review repair rounds and no reviewer
+resizing or compaction. The supervisor used context continuations without splitting ownership.
+
+- **Implementation defects during iteration:** newly historical schema admission, schema-35
+  journal grammar and schema/floor test/type pins were incomplete in early attempts. The plan
+  already covered these boundaries; focused failures identified them and the final proofs/gates
+  passed after repair. A single pre-edit checklist of closed schema unions, historical mappings
+  and pin owners could have prevented these omissions. They are not planning omissions.
+- **External/prerequisite change:** explicit parallel successor work and the advancing primary
+  branch changed integration/resource conditions. Independent candidate ownership was preserved;
+  later integration remains operator-assigned. This task's product scope did not expand.
+- **External resource contention:** the four-worker coverage attempt timed out two architecture
+  checks; an initial two-worker retry was interrupted to release the shared gate window. The
+  exclusive two-worker run passed unchanged assertions, membership, isolation, floors and
+  deadlines. Earlier stale-input compiler/linter attempts were explicitly stopped. Recorded logs
+  distinguish failed/aborted runs from accepted results; total avoidable elapsed cost is unknown.
+  Earlier process/resource coordination and the demonstrated resource-only adapter could have
+  avoided these repeated gate attempts without weakening acceptance.
+
+No evidence supports a blanket quality score or estimated time saving. The observed focused
+iterations, aborted gates and accepted complete gates remain the authoritative delivery record;
+mandatory future integration gates are separate from this iteration rework.
