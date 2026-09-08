@@ -2246,3 +2246,16 @@ distinct from retained transaction history. This records planning approval, not 
 permission to apply the migration to the operator database, or an amendment of the running renames.
 
 **2026-09-08 amendment to D323 — Phase 4 numbering.** The operator replaced 4A with 4.1 Background Check and requested concrete tasks under 4.1. Phase 4 now uses decimal subphases; discovery/preparation may be recorded before admission, while Phase 3 prerequisites and D319 implementation approval remain unchanged. Authority: [workflow-model §1.6.2](workflow-model.md#162-workflow-admission-before-a-phase-4-part-d319d323-2026-09-03) and [roadmap naming amendment](../../roadmap/roadmap.md#phase-4-decimal-naming-amendment--2026-09-08).
+
+### 2026-09-08 — provider-neutral request and usage storage (pending implementation)
+
+Operator approved `provider_requests` and `provider_usage`, then explicitly limited the assignment
+to generic tables and storage behavior so providers can be added later. Real keys, provider-specific
+wiring, pool selection, quota discovery and UI/reporting are excluded. Existing capability admission
+continues through a compatibility mapping. Usage supports tracked cumulative totals, current windows,
+reservations and locally calculated remaining amounts with honest attribution and unknown values;
+run deletion preserves aggregate usage. Requirements live at
+[execution and sessions, provider storage foundation](execution-and-sessions.md#provider-storage-foundation);
+[side task `side/provider-usage`](../../sidetracks/provider-usage/README.md) owns execution after
+accepted timeline/history T2 integration. This records planning approval, not implementation or
+permission to migrate the operator database.

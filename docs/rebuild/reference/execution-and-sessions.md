@@ -1285,3 +1285,30 @@ is evidence, not capacity to silently erase. After restart, a supervisor reconst
 controls only durably proven children; every other live member is reported as **externally running**
 and is not controlled. B's PID adoption and C's false stopped state were rejected. D269's
 authority/pool distinction and D181/D200 recovery/identity rules remain unchanged.
+
+## Provider storage foundation
+
+**2026-09-08 — approved, pending implementation.**
+[Side task `side/provider-usage`](../../sidetracks/provider-usage/README.md) owns the successor to
+D112's two storage tables: `provider_admissions` → `provider_requests` and
+`provider_budget_counters` → `provider_usage`. The operator explicitly limited this assignment to
+provider-neutral tables/storage logic and compatibility; real API keys, provider-specific adapters,
+pool selection, quota retrieval and presentation remain future work.
+
+Request records retain exact execution/config/request identity, budgets, reservations, lifecycle
+and evidence, with explicit legacy/unattributed/attributed scope. Generic storage accepts opaque
+caller-supplied provider/credential/model/shared-quota references, never secrets; these references
+do not register providers. Usage retains cumulative tracked amounts and current windows separately,
+including reservations, unknown charges, limit provenance and locally calculated remaining values.
+Tracking start and incomplete history are explicit. Unknown cost/quota is not a measured zero.
+
+Existing runtime admission remains capability-scoped through a compatibility mapping into the new
+tables. No current key attribution is fabricated. Reserve/settle/expire and request/accounting writes
+remain atomic and replay-fenced; window rollover cannot erase lifetime totals or reconcile against
+the wrong window. D308 deletes request details while retaining non-personal cumulative accounting,
+finalizing pending reservations conservatively and refusing callbacks for deleted owners.
+
+The application-only usage assumption governs future local accounting, not a claim of provider
+verification. The plan follows accepted timeline/history T2 integration and carries migration,
+restore, concurrency and deletion proof. This amendment records approved scope; it does not assert
+implementation, authorize operator-database conversion or amend any running predecessor plan.
