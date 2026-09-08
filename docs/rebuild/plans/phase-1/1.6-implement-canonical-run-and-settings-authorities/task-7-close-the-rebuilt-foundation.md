@@ -1,6 +1,6 @@
 # Task 7 · Close the rebuilt foundation
 
-**Current supervisor checkpoint (2026-09-08).** Steps 1–5 are accepted; integration is blocked on complete independent review capacity. Executable candidate
+**Current supervisor checkpoint (2026-09-08).** Steps 1–5 are accepted; the standalone complete review is approved and awaiting its verdict. Executable candidate
 `4a2421285ba013fae6743412f50e85c19c62ca60` passed full gates (5546 coverage tests, 833 architecture
 checks, 261 unchanged desktop parity cases) and the complete headed Separations T1b rehearsal:
 all eight assertions, fifteen fresh checkpoints and exact 0/0/0 write-authority deltas. Person
@@ -14,7 +14,7 @@ generation 836, twelve reconciled runs, zero pending commands/unresolved writes/
 two historical leases and two local terminal-result projection handoffs. The public subject metadata
 now records this accepted observation, with no operational input or private-source change.
 Final candidate gates passed. Both native complete reviewers stopped after context compaction;
-neither provides acceptance credit. A revised review arrangement requires operator approval. Settings
+neither provides acceptance credit. The operator approved the resumable standalone arrangement below. Settings
 revision 7 and its three temporary overrides remain deliberately deferred until a separate operator
 signal; no restoration, scheduling or availability polling is authorized by this checkpoint.
 Step 6, independent review, integration gates and owned cleanup remain open. No push or Phase-2.6
@@ -1905,12 +1905,14 @@ instruction twins/size 104 ms and diff 7 ms, all exit 0. Exact commands are in
 `foundation-r2-requested-checks.json` with per-check logs. R2 did not inspect this supplied output
 before its stop; it is supervisor evidence, not independent acceptance. No implementation changed.
 
-**Proposed standalone review amendment — WAITING ON operator approval.** Preserve one complete
+**Standalone review amendment — APPROVED by the operator (2026-09-08).** After the supervisor
+explained that one separate review task would save progress and resume until complete, the operator
+said “do it.” This approves that task creation and the exact arrangement below. Preserve one complete
 independent review of the entire Task-7 candidate, rather than partitioning or reusing partial credit.
 Authorize one separately opened Codex review task on Astra/high, with automatic context compaction
-and durable checkpoint/resume explicitly permitted. This would be the sole exception to the original
+and durable checkpoint/resume explicitly permitted. This is the sole exception to the original
 no-additional-task dispatch boundary, only for this review; no sibling implementation or next task.
-Do not create that task or claim this arrangement approved until the operator explicitly accepts it.
+Create only that authorized independent review task; no additional approval is needed to dispatch it.
 
 The reviewer receives the approved plan/amendments, exact accepted base, implementation SHA and
 then-frozen evidence SHA, strict 503-path inventory and complete proof map. It independently inspects
@@ -1930,8 +1932,41 @@ checkout/branch/SHAs/dirty state before source reads, reconciles inventory and p
 reopens uncertain deciding evidence. A summary alone cannot support PASS. Final identity must be clean
 and unchanged. Only the original supervisor performs fixes, gates, reviewed integration and cleanup.
 
-This proposal changes review execution/recovery, not the approved product scope, proof obligations or
+This approved amendment changes review execution/recovery, not the approved product scope, proof obligations or
 merge condition. All code gates and both live proofs remain accepted at their recorded identities;
 the current blocker is absence of a complete independent verdict. Primary remains clean on f75e24a5.
 No integration or settings restoration occurred. Settings revision 7 and its unspent restoration
 script remain under the separate operator deferral.
+
+
+### Standalone review dispatch binding (2026-09-08)
+
+Review ID **R3-standalone-complete**, one independent Codex root review on `gpt-6-astra`/high;
+the supervising/planning platform remains Codex/Astra/high under the operator override. This is
+the explicitly admitted standalone arrangement, not a native subagent or a partitioned review.
+Its complete PASS is the required whole-candidate verdict; R1/R2 partial inspections supply zero
+acceptance credit. Original supervisor retains all implementation, fixes, integration and cleanup.
+
+Base is `f75e24a57e6494e2846af248539c819c9223e53e`; implementation remains
+`4a2421285ba013fae6743412f50e85c19c62ca60`; prior fully gated evidence is
+`d9ccb0c2dc843c91ffab2a03fb028d69ca2fcc56`. The new frozen evidence HEAD is the commit containing
+this approval record, resolved to a full SHA in the dispatch and strict generated inventory before
+creation. The reviewed checkout is `/Users/julianhein/Projects/hr-worktree-foundation-close`, branch
+`codex/phase-1-6-foundation-close`. Any app-created execution workspace is not a different review
+target: all candidate reads and identity checks must bind to this exact frozen checkout.
+
+Use durable `foundation-r3-review-checkpoint.md` and `foundation-r3-review-verdict.md` in the
+existing absolute task scratch. The checkpoint carries the complete path/proof ledger and deciding
+evidence, no protected values. Revalidate identities before every resumed source-reading batch,
+reopen uncertain evidence and reconcile R1/R2 findings/unfinished boundaries. Automatic compaction
+is explicitly permitted for this root review only; no native reviewer rule or context limit changes.
+The expected inventory remains all 503 paths and the complete Step-6 adversarial proof obligations.
+
+All 1912 full-gate inputs are byte-identical to the final tested map through this approval recording.
+D191 reuses full code gates and both bound live proofs; scoped roadmap/registry, lint, generated
+freshness, instruction equality/size and diff checks are required before freezing. No new workflow
+or settings command is part of dispatch. The separately deferred settings restoration is unchanged.
+
+The exact consumed recovery file `docs/handoffs/2026-09-08-task-1-6-7-review-capacity.md` is
+preserved byte-for-byte as `consumed-task-1-6-7-review-capacity.md` in the task scratch. Its pending
+approval wording is historical; this approved owner and the new frozen dispatch are authoritative.

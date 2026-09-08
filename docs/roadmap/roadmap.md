@@ -606,6 +606,7 @@ needs:
 - p1f-migration-proof
 
 log:
+- 2026-09-08 | Task 1.6.7 standalone review approved | operator authorized one independent Astra/high review task with checkpoint/resume through compaction. Full candidate/proof scope and complete PASS before integration remain required; R1/R2 have no acceptance credit. Settings restoration remains separately deferred.
 - 2026-09-08 | Task 1.6.7 review capacity blocked | frozen evidence `d9ccb0c2`: R1 and R2 complete native reviews stopped after automatic compaction, no confirmed findings and no PASS. R2 used measured bounded retrieval; a resumable standalone complete review is proposed in the owner, awaiting approval. No merge; settings restoration remains separately deferred.
 - 2026-09-08 | Task 1.6.7 Step 5 accepted | final candidate gates pass: 5546 coverage tests, 833 architecture checks, 261 unchanged parity cases. Both accepted T1b proofs and the schema-33 handoff are recorded; awaiting complete independent review. Integration gates and cleanup remain, with settings restoration explicitly operator-deferred.
 - 2026-09-08 | Task 1.6.7 Step 4 accepted | executable `4a242128`: 5546 coverage tests, 833 architecture checks and 261 unchanged parity cases pass. Both T1b proofs accepted; fresh Separations result `3a1b9d6a-32f3-4ea3-886d-d049c0eec191` met all eight assertions with fifteen current-run checkpoints and exact 0/0/0 writes. Post-doctor healthy schema33/g836, primary master restored. Final recording/review/integration/cleanup remain; settings restoration is operator-deferred.
