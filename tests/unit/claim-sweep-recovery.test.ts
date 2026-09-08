@@ -358,8 +358,8 @@ describe("bounded recovery candidate selection", () => {
       const queries = spy.mock.calls.map(([sql]) => sql.replace(/\s+/gu, " ").trim());
       assert.ok(queries.some((sql) => sql.includes("WHERE state IN ('claimed', 'validating', 'running')")
         && sql.includes("AND heartbeat_at < ?")), "recovery must filter active/stale rows before reading their JSON");
-      assert.equal(queries.some((sql) => sql.startsWith("SELECT DISTINCT workflow FROM tasks")), false);
-      assert.equal(queries.some((sql) => sql === "SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key"), false);
+      assert.equal(queries.some((sql) => sql.startsWith("SELECT DISTINCT workflow FROM workflow_runs")), false);
+      assert.equal(queries.some((sql) => sql === "SELECT record_json FROM workflow_runs WHERE workflow = ? ORDER BY created_at, record_key"), false);
     } finally {
       spy.mockRestore();
     }

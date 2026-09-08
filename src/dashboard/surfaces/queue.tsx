@@ -1,3 +1,5 @@
+import { queueBatchLayout, type QueueBatch } from "./queue-model.js";
+import { WorkflowBatchGroup, GroupWorkflowBatchButton } from "./workflow-batch.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoQueue.tsx
@@ -27,7 +29,7 @@
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
-import { memo } from "react";
+import { Fragment, memo } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
@@ -124,6 +126,7 @@ export interface QueueViewState {
 }
 
 export interface QueueHandlers {
+  onSetBatchGrouping?: (batch: QueueBatch, grouped: boolean) => Promise<void>;
   onSelect: (runId: string) => void;
   /** every command control on a row goes through here — see `./actions.js` */
   onAction?: DashboardActionHandler;
@@ -1558,6 +1561,7 @@ export const QueuePanel = memo(function QueuePanel({
   sort?: QueueSortKey;
 }) {
   const { top, membersOf } = partition(surfaces);
+  const { batchByRun, flatBatchByFirst, displayTop } = queueBatchLayout(top, sort, state.nowIso);
   const bands = BAND_ORDER.map((key) => ({
     key,
     label: BAND_LABEL[key],
@@ -1565,7 +1569,7 @@ export const QueuePanel = memo(function QueuePanel({
     // another one on the toolbar — and even then the reorder stays inside the
     // band, so nothing leaves the group its status put it in.
     rows: sortQueueBand(
-      top.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
+      displayTop.filter((surface) => (batchByRun.get(surface.runId)?.band ?? bandOf(dsStatusOf(surface.status))) === key),
       sort,
       state.nowIso,
     ),
@@ -1584,7 +1588,7 @@ export const QueuePanel = memo(function QueuePanel({
    * verified is itself the answer; the other three appear only when they
    * happened, which is how the demo folds it (`DemoQueue.tsx:1845-1850`).
    */
-  const finished = bands.find((band) => band.key === "finished")?.rows ?? [];
+  const finished = top.filter((surface) => bandOf(dsStatusOf(surface.status)) === "finished");
   const digestOf = (status: ProposedStatus): number =>
     finished.filter((surface) => dsStatusOf(surface.status) === status).length;
   const digest = {
@@ -1729,18 +1733,13 @@ export const QueuePanel = memo(function QueuePanel({
                   )}
                 </div>
               )}
-              {band.rows.map((surface) => (
-                <QueueRow
-                  key={surface.runId}
-                  surface={surface}
-                  members={membersOf.get(surface.runId) ?? []}
-                  state={state}
-                  handlers={handlers}
-                  actionsOf={actionsOf}
-                  workflowLabelOf={workflowLabelOf}
-                  {...(parentOf === undefined ? {} : { parentOf })}
-                />
-              ))}
+              {band.rows.map((surface) => {
+                const renderRow = (row: QueueSurfaceWire) => <QueueRow key={row.runId} surface={row} members={membersOf.get(row.runId) ?? []} state={state} handlers={handlers} actionsOf={actionsOf} workflowLabelOf={workflowLabelOf} {...(parentOf === undefined ? {} : { parentOf })} />;
+                const batch = batchByRun.get(surface.runId);
+                if (batch !== undefined) return <WorkflowBatchGroup key={batch.id} batch={batch} label={workflowLabelOf(surface.workflowId)} selected={[...batch.members, ...batch.history].find((row) => row.runId === state.selectedRunId)?.runId} {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })} history={batch.history.map(renderRow)}>{batch.members.map(renderRow)}</WorkflowBatchGroup>;
+                const flatBatch = flatBatchByFirst.get(surface.runId);
+                return <Fragment key={surface.runId}>{flatBatch !== undefined && <GroupWorkflowBatchButton batch={flatBatch} {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })} />}{renderRow(surface)}</Fragment>;
+              })}
             </div>
           );
         })}

@@ -150,7 +150,10 @@ const LinkedRunWireSchema = z.strictObject({
 export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
 
 const QueueSessionWireSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("present"), sessionId: RunSessionIdSchema }),
+  z.strictObject({ state: z.literal("present"), sessionId: RunSessionIdSchema,
+    // Absent only in frozen pre-batch queue snapshots.
+    presentation: z.strictObject({ groupInQueue: z.boolean(), version: PositiveIntSchema, startedAt: IsoInstantSchema }).optional(),
+  }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
@@ -244,7 +247,7 @@ const QueueBaseFields = {
    * The dashboard-started GROUP this run belongs to (D269, ref execution-and-sessions
    * §11.1) — read off `RunRecord.sessionId`, the ONE place membership lives.
    * The session view reads membership from THIS field across the day's rows;
-   * `run_sessions` holds no member list to disagree with it.
+   * `workflow_run_batches` holds no member list to disagree with it.
    *
    * The absent arm is read-forward (D133): a run enqueued before schema v17
    * carries no session, and the row says so with its reason rather than being

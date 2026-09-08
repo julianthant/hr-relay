@@ -8,7 +8,7 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync } from "node:fs";
+import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -62,14 +62,14 @@ describe("D336 stopped SQLite upgrade", () => {
     const source = new DatabaseSync(seedPath); const raw = new DatabaseSync(f.path);
     let prior: unknown;
     try {
-      const row = source.prepare("SELECT * FROM tasks").get(); assert.ok(row);
+      const row = source.prepare("SELECT * FROM workflow_runs").get(); assert.ok(row);
       const columns = Object.keys(row);
       raw.prepare(`INSERT INTO tasks (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
       prior = raw.prepare("SELECT * FROM tasks").get();
     } finally { source.close(); raw.close(); rmSync(seedPath); }
     await f.backup(); assert.equal((await f.run()).state, "converted");
     const after = new DatabaseSync(f.path);
-    try { assert.deepEqual(after.prepare("SELECT * FROM tasks").get(), prior); } finally { after.close(); }
+    try { assert.deepEqual(after.prepare("SELECT * FROM workflow_runs").get(), prior); } finally { after.close(); }
   });
   it("M13 preserves historical snapshot bytes and reports retained exposure without disclosing its value", async () => {
     const f = fixture(29);
@@ -98,12 +98,12 @@ describe("D336 stopped SQLite upgrade", () => {
     } finally { await runtime.stop(); }
     assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=3\n");
   });
-  it("plans a fresh root without files, creates v32 directly, and reruns without writes", async () => {
+  it("plans a fresh root without files, creates v33 directly, and reruns without writes", async () => {
     const f = fixture(); const before = readdirSync(f.root);
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(readdirSync(f.root), before);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, 32);
+    assert.equal(read(f).meta.schemaVersion, 33);
     assert.equal(read(f).settings.revision, 1);
     assert.equal(existsSync(join(f.root, "credentials")), false);
     const bytes = readFileSync(f.path);
@@ -116,9 +116,9 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal(existsSync(f.path), false);
     assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 1);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, 32);
+    assert.equal(read(f).meta.schemaVersion, 33);
   });
-  it.each([29, 30, 31])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
+  it.each([29, 30, 31, 32])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
     await assert.rejects(f.run(true), /backup-required/u);
     assert.deepEqual(readFileSync(f.path), before);
@@ -126,7 +126,57 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run(true)).fromSchemaVersion, version);
     assert.deepEqual(readFileSync(f.path), before);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, 32);
+    assert.equal(read(f).meta.schemaVersion, 33);
+  });
+  it("refuses to supersede an unfinished schema-32 settings conversion", async () => {
+    const seed = fixture(); await seed.run();
+    const source = new DatabaseSync(seed.path, { readOnly: true });
+    let pending: Record<string, unknown>;
+    try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM authority_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
+    finally { source.close(); }
+    const f = fixture(32);
+    const raw = new DatabaseSync(f.path);
+    try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: 32 }), now); }
+    finally { raw.close(); }
+    const before = readFileSync(f.path);
+    await assert.rejects(f.run(true), /upgrade-pending: finish the interrupted schema-32/u);
+    assert.deepEqual(readFileSync(f.path), before);
+  });
+  it("renames a v32 database without reimporting settings or touching independent credentials", async () => {
+    const seed = fixture();
+    writeFileSync(seed.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=3\nUCPATH_PASSWORD=synthetic-batch-upgrade\n", { mode: 0o600 });
+    await seed.run();
+    const f = fixture(32);
+    const source = new DatabaseSync(seed.path, { readOnly: true });
+    const target = new DatabaseSync(f.path);
+    const tables = ["commands", "command_audits", "settings_current", "runtime_config"];
+    const before = new Map<string, unknown[]>();
+    try {
+      for (const table of tables) {
+        const rows = source.prepare(`SELECT * FROM ${table}`).all(); before.set(table, rows);
+        for (const row of rows) {
+          const columns = Object.keys(row);
+          target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+        }
+      }
+    } finally { source.close(); target.close(); }
+    cpSync(join(seed.root, "credentials"), join(f.root, "credentials"), { recursive: true });
+    const credentialPath = join(f.root, "credentials", "protected.json");
+    const credentialBytes = readFileSync(credentialPath);
+    // Retired import material must not override current SQLite settings.
+    writeFileSync(f.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=9\n", { mode: 0o600 });
+    await f.backup();
+    const plan = await f.run(true);
+    assert.deepEqual(plan.importedKeys, []);
+    assert.equal(plan.credentials, "verified");
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("schema-only-interrupted"); } } }, clock), /schema-only-interrupted/u);
+    assert.equal((await f.run()).credentials, "verified");
+    assert.equal(read(f).settings.settings.concurrency?.defaultWorkers, 3);
+    const after = new DatabaseSync(f.path, { readOnly: true });
+    try { for (const table of tables) assert.deepEqual(after.prepare(`SELECT * FROM ${table}`).all(), before.get(table), table); }
+    finally { after.close(); }
+    assert.deepEqual(readFileSync(credentialPath), credentialBytes);
+    assert.equal((await f.run()).state, "already-upgraded");
   });
   it("settles credentials separately and resumes after the SQLite commit without editing sources", async () => {
     const f = fixture(29); const environment = "HRAUTO_DEFAULT_WORKERS=3\nUCPATH_PASSWORD=synthetic-upgrade-password\n";

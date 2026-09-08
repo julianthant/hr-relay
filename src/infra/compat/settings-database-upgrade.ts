@@ -14,7 +14,7 @@ import { CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsC
 import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../domain/config/settings.js";
 import { inspectConvertedAuthority } from "../sqlite/authority-database.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../sqlite/migrations.js";
 import type { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { ordinaryLeaves, readUpgradeSources, type UpgradeSources } from "./upgrade-sources.js";
@@ -174,7 +174,7 @@ export function convertSettingsDatabase(args: Readonly<{
   const report = sources;
   let pending: UpgradeRecord | undefined;
       const now = clock.now().toISOString();
-      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: 32, backup: backupEvidence?.manifest.sha256 ?? "fresh", settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
+      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
       if (!existed && args.verifyOnly !== true) { const fd = openSync(path, "wx", 0o600); closeSync(fd); }
       const createdIdentity = !existed && args.verifyOnly !== true ? lstatSync(path) : undefined;
       let database: DatabaseSync | undefined;
@@ -203,8 +203,8 @@ export function convertSettingsDatabase(args: Readonly<{
         applyTombstoneBackfill(database, tombstones);
         const removed = database.prepare(`DELETE FROM checkpoint_payloads WHERE ${ORPHAN_GATE_WHERE}`).run().changes;
         if (removed !== orphanGateRecords) throw new Error("source-changed: orphan gate inventory differs from preflight");
-        const revision = writeOrdinaryConversion(database, sources, now, upgradeId);
-        pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: 32,
+        const revision = from >= 32 ? sources.ordinary.revision : writeOrdinaryConversion(database, sources, now, upgradeId);
+        pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
           by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
           ordinaryFingerprint: derivePersistedSettingsFingerprint(sources.settings), sourceFiles: report.sourceFiles, historicalExposure: args.historicalExposure, orphanGateRecordsRemoved: orphanGateRecords, tombstoneBackfill: tombstones.counts,
           credentialCommandId: randomUUID(), credentialWriteId: randomUUID(), importedKeys: report.importedKeys, envKeysToRemove: report.envKeysToRemove });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../fixtures/phase1c-contract-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../src/core/run-record-service.js";
@@ -2116,7 +2117,7 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     assert.equal(tombstone.origin, "queue");
     assert.equal(tombstone.commandId, lifecycleCommandId("operator-delete", command.commandId));
     assert.equal(tombstone.workflow, "kernel-reject");
-    assert.deepEqual(tombstone.removed.filter(({ table }) => table === "tasks"), [{ table: "tasks", rows: 1 }]);
+    assert.deepEqual(tombstone.removed.filter(({ table }) => table === "workflow_runs"), [{ table: "workflow_runs", rows: 1 }]);
     assert.ok(harness.database.authority.commands.get(command.commandId) !== undefined, "the delete is journaled");
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
 
@@ -2162,8 +2163,8 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     const tombstone = harness.database.authority.deletedRuns.get(RUN_ID);
     assert.equal(tombstone?.origin, "archive");
     assert.deepEqual(
-      tombstone?.removed.filter(({ table }) => table === "archived_runs" || table === "tasks"),
-      [{ table: "archived_runs", rows: 1 }, { table: "tasks", rows: 1 }],
+      tombstone?.removed.filter(({ table }) => table === "archived_runs" || table === "workflow_runs"),
+      [{ table: "archived_runs", rows: 1 }, { table: "workflow_runs", rows: 1 }],
     );
   });
 
@@ -2261,5 +2262,39 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     assert.deepEqual(harness.database.authority.dependencies.listByParentRun(parentId), []);
     assert.ok(harness.database.authority.deletedRuns.get(childId) !== undefined);
     assert.ok(harness.database.authority.deletedRuns.get(parentId) !== undefined);
+  });
+});
+
+
+describe("workflow batch queue presentation", () => {
+  it("defaults multi-run starts to grouped and changes only presentation with a replay-safe audited command", () => {
+    const h = createHarness();
+    const plan = createPlan(h, rejectActiveDescriptor, ["10800000", "10800001"]);
+    const start = h.kernel.execute(startCommand(plan));
+    const runIds = appliedRunIds(start);
+    const runs = runIds.map((id) => h.database.authority.runs.get(id));
+    const batchId = runs[0]?.sessionId;
+    assert.ok(batchId);
+    assert.equal(h.database.authority.runSessions.get(batchId)?.groupInQueue, true);
+    const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "workflow-batch", type: "set-batch-grouping", target: { batchId, expectedVersion: 1 }, payload: { groupInQueue: false } });
+    const result = h.kernel.execute(command);
+    assert.equal(result.state, "applied");
+    assert.equal(h.database.authority.runSessions.get(batchId)?.groupInQueue, false);
+    assert.equal(h.database.authority.runSessions.get(batchId)?.version, 2);
+    assert.deepEqual(runIds.map((id) => h.database.authority.runs.get(id)), runs);
+    assert.ok(h.database.authority.commandAudits.findByCommand(command.commandId));
+    assert.equal(h.kernel.execute(command).state, "already-applied");
+    assert.equal(h.database.authority.runSessions.get(batchId)?.version, 2);
+    assert.equal(h.kernel.execute({ ...command, commandId: randomUUID() }).state, "conflict");
+    assert.equal(h.kernel.execute({ ...command, commandId: randomUUID(), target: { batchId: randomUUID(), expectedVersion: 1 } }).state, "rejected");
+    assert.equal(h.kernel.execute({ ...command, commandId: randomUUID(), target: { batchId, expectedVersion: 2 }, payload: { groupInQueue: true } }).state, "applied");
+  });
+
+  it("defaults a single-run start to separate presentation", () => {
+    const h = createHarness();
+    const result = h.kernel.execute(startCommand(createPlan(h, rejectActiveDescriptor, ["10800000"])));
+    const batchId = h.database.authority.runs.get(appliedRunIds(result)[0] ?? "")?.sessionId;
+    assert.ok(batchId);
+    assert.equal(h.database.authority.runSessions.get(batchId)?.groupInQueue, false);
   });
 });

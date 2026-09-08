@@ -1,3 +1,4 @@
+import { HistoricalRunSessionRecordSchema } from "../../domain/run/session.js";
 import { createHash } from "node:crypto";
 import { existsSync, rmSync, statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -16,7 +17,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31,
+  27, 28, 29, 30, 31, 32,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -29,6 +30,7 @@ const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "authority_meta",
   "tasks",
+  "workflow_runs",
   "run_terminal_authorizations",
   "failures",
   "run_results",
@@ -78,6 +80,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "duo_ceremony_leases",
   "worker_pools",
   "run_sessions",
+  "workflow_run_batches",
   "deleted_runs",
   "protected_settings_current",
   "authority_upgrades",
@@ -344,6 +347,8 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>) 
 function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number, tables: ReadonlySet<string>): void {
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    tasks: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_runs,
+    run_sessions: HistoricalRunSessionRecordSchema,
     ...(schemaVersion < 32 ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   };
   for (const table of tables) {

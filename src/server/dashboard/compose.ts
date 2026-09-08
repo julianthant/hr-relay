@@ -865,6 +865,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
+      listRunBatches: () => database.authority.runSessions.list(),
+      getRunBatch: (id) => database.authority.runSessions.get(id),
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),

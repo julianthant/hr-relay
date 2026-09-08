@@ -155,7 +155,7 @@ import {
   type DuoCeremonyLeaseRecord,
   type DuoCeremonyLeaseReleaseOutcome,
 } from "../../domain/duo-ceremony-lease.js";
-import { RunSessionRecordSchema, type RunSessionRecord } from "../../domain/run/session.js";
+import { HistoricalRunSessionRecordSchema, RunSessionRecordSchema, type RunSessionRecord } from "../../domain/run/session.js";
 import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../domain/run/worker-pool.js";
 import {
   isDuoCeremonyLeaseToken,
@@ -606,7 +606,7 @@ type RunRepository = Readonly<{
   listClaimRecoveryCandidates(input: unknown): readonly RunRecord[];
   /**
    * D269 — the MEMBERSHIP of a run session, derived from the run rows that
-   * carry the id (`tasks.session_id`). There is no stored member list to
+   * carry the id (`workflow_runs.session_id`). There is no stored member list to
    * disagree with this; a session IS the set this returns, oldest first.
    */
   listBySession(sessionId: string): readonly RunRecord[];
@@ -835,10 +835,13 @@ type WorkerPoolRepository = Readonly<{
 
 /**
  * D269 (ref execution-and-sessions §11.1): the durable run SESSION — a
- * dashboard-started group. Insert-only and member-less: `runs.listBySession`
+ * dashboard-started group. Immutable identity, versioned presentation and no member list: `runs.listBySession`
  * is the membership, derived from the run rows that carry the id.
  */
 type RunSessionRepository = Readonly<{
+  list(): readonly RunSessionRecord[];
+  setGrouping(sessionId: string, expectedVersion: number, groupInQueue: boolean): RunSessionRecord;
+
   insert(input: unknown): ImmutableInsertResult<RunSessionRecord>;
   get(sessionId: string): RunSessionRecord | undefined;
   listByWorkflow(workflow: string): readonly RunSessionRecord[];
@@ -1408,6 +1411,10 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 
 const INVARIANT_QUERIES = Object.freeze([
   {
+    name: "workflow-batch-columns-match-record",
+    sql: "SELECT count(*) AS count FROM workflow_run_batches WHERE record_key IS NOT json_extract(record_json, '$.sessionId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR started_at IS NOT json_extract(record_json, '$.startedAt') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR group_in_queue IS NOT json_extract(record_json, '$.groupInQueue') OR version IS NOT json_extract(record_json, '$.version')",
+  },
+  {
     name: "settings-current-columns-match-record",
     sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
   },
@@ -1417,11 +1424,11 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "run-columns-match-record",
-    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
+    sql: "SELECT count(*) AS count FROM workflow_runs WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
   },
   {
     name: "run-claim-owner-matches-record",
-    sql: "SELECT count(*) AS count FROM tasks WHERE state IN ('claimed','validating','running') AND (owner_worker_id <> json_extract(record_json, '$.lifecycle.workerId') OR heartbeat_at <> json_extract(record_json, '$.lifecycle.heartbeatAt'))",
+    sql: "SELECT count(*) AS count FROM workflow_runs WHERE state IN ('claimed','validating','running') AND (owner_worker_id <> json_extract(record_json, '$.lifecycle.workerId') OR heartbeat_at <> json_extract(record_json, '$.lifecycle.heartbeatAt'))",
   },
   {
     name: "failure-columns-match-record",
@@ -1434,7 +1441,7 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "failed-runs-bind-failure",
     sql: `
-      SELECT count(*) AS count FROM tasks AS run
+      SELECT count(*) AS count FROM workflow_runs AS run
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
         AND NOT EXISTS (
           SELECT 1 FROM failures AS failure
@@ -1447,7 +1454,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "failures-bind-failed-run",
     sql: `
       SELECT count(*) AS count FROM failures AS failure
-      JOIN tasks AS run ON run.record_key = failure.run_id
+      JOIN workflow_runs AS run ON run.record_key = failure.run_id
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
         OR json_extract(run.record_json, '$.lifecycle.failureId') IS NOT failure.record_key
     `,
@@ -1456,7 +1463,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "failure-identity-matches-run",
     sql: `
       SELECT count(*) AS count FROM failures AS failure
-      JOIN tasks AS run ON run.record_key = failure.run_id
+      JOIN workflow_runs AS run ON run.record_key = failure.run_id
       WHERE json_extract(failure.record_json, '$.workflowId') <> json_extract(run.record_json, '$.envelope.workflow')
         OR json_extract(failure.record_json, '$.traceId') <> json_extract(run.record_json, '$.envelope.traceId')
         OR json_extract(failure.record_json, '$.attempt') <> json_extract(run.record_json, '$.envelope.attempt')
@@ -1465,7 +1472,7 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "failed-runs-bind-terminal-authorization",
     sql: `
-      SELECT count(*) AS count FROM tasks AS run
+      SELECT count(*) AS count FROM workflow_runs AS run
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
         AND NOT EXISTS (
           SELECT 1 FROM run_terminal_authorizations AS authorization
@@ -1499,7 +1506,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "run-result-identity-matches-run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
-      JOIN tasks AS run ON run.record_key = result.record_key
+      JOIN workflow_runs AS run ON run.record_key = result.record_key
       WHERE json_extract(result.record_json, '$.workflowId') <> json_extract(run.record_json, '$.envelope.workflow')
         OR json_extract(result.record_json, '$.attempt') <> json_extract(run.record_json, '$.envelope.attempt')
         OR json_extract(result.record_json, '$.descriptorVersion') <> json_extract(run.record_json, '$.envelope.descriptorVersion')
@@ -1522,7 +1529,7 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "done-runs-bind-result-and-outbox",
     sql: `
-      SELECT count(*) AS count FROM tasks AS run
+      SELECT count(*) AS count FROM workflow_runs AS run
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
         AND NOT EXISTS (
           SELECT 1 FROM run_results AS result
@@ -1536,14 +1543,14 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "results-bind-done-run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
-      JOIN tasks AS run ON run.record_key = result.record_key
+      JOIN workflow_runs AS run ON run.record_key = result.record_key
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
     `,
   },
   {
     name: "done-runs-bind-terminal-authorization",
     sql: `
-      SELECT count(*) AS count FROM tasks AS run
+      SELECT count(*) AS count FROM workflow_runs AS run
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
         AND NOT EXISTS (
           SELECT 1 FROM run_terminal_authorizations AS authorization
@@ -1578,7 +1585,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "terminal-authorization-binds-exact-terminal-authority",
     sql: `
       SELECT count(*) AS count FROM run_terminal_authorizations AS authorization
-      LEFT JOIN tasks AS run ON run.record_key = authorization.record_key
+      LEFT JOIN workflow_runs AS run ON run.record_key = authorization.record_key
       LEFT JOIN failures AS failure
         ON failure.run_id = authorization.record_key
           AND failure.record_key = json_extract(authorization.record_json, '$.failureId')
@@ -1646,7 +1653,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "worker-owns-at-most-one-active-run",
     sql: `
       SELECT count(*) AS count FROM (
-        SELECT owner_worker_id FROM tasks
+        SELECT owner_worker_id FROM workflow_runs
         WHERE state IN ('claimed','validating','running')
         GROUP BY owner_worker_id HAVING count(*) > 1
       )
@@ -1744,13 +1751,13 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "activity-person-pseudonym-binds-run",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN tasks AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN workflow_runs AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
   },
   {
     name: "started-dry-run-scenario-result-binds-run",
     sql: `
       SELECT count(*) AS count FROM dry_run_scenario_results AS result
-      LEFT JOIN tasks AS run ON run.record_key = result.run_id
+      LEFT JOIN workflow_runs AS run ON run.record_key = result.run_id
       WHERE result.execution_state = 'started' AND (
         run.record_key IS NULL
         OR result.workflow IS NOT run.workflow
@@ -1852,9 +1859,11 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
     const reference = new DatabaseSync(":memory:");
     try {
       for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= version)) for (const statement of migration.statements) reference.exec(statement);
-      const taskColumns = new Set(reference.prepare("PRAGMA table_info(tasks)").all().map((row) => row.name));
+      const taskColumns = new Set(reference.prepare(`PRAGMA table_info(${version < 33 ? "tasks" : "workflow_runs"})`).all().map((row) => row.name));
       queries = INVARIANT_QUERIES.flatMap((entry) => {
-        let sql: string = entry.sql;
+        let sql: string = version < 33
+          ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
+          : entry.sql;
         if (entry.name === "run-columns-match-record") {
           if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
           if (!taskColumns.has("session_id")) sql = sql.replace(" OR session_id IS NOT json_extract(record_json, '$.sessionId')", "");
@@ -1877,7 +1886,10 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
-  for (const [table, schema] of Object.entries(AUTHORITY_RECORD_SCHEMA_REGISTRY)) {
+  for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
+    ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
+  })) {
     if (presentTables !== undefined && !presentTables.has(table)) continue;
     const rows = database.prepare(`
       SELECT record_key, record_json FROM ${table} ORDER BY record_key
@@ -2094,7 +2106,7 @@ function mismatchSummary(
   field: string,
   spanValue: unknown,
   authorityValue: unknown,
-  table: "tasks" | "archived_runs",
+  table: "workflow_runs" | "archived_runs",
 ): string | undefined {
   const spanJson = canonicalJsonStringify(spanValue);
   const authorityJson = canonicalJsonStringify(authorityValue);
@@ -2106,22 +2118,22 @@ function mismatchSummary(
 function liveSpanRootMismatches(root: SpanAuthorityRunRoot, run: RunRecord): readonly string[] {
   const envelope = run.envelope;
   return [
-    mismatchSummary("runId", root.runId, envelope.runId, "tasks"),
-    mismatchSummary("workflow", root.workflow, envelope.workflow, "tasks"),
-    mismatchSummary("itemId", root.itemId, envelope.itemId, "tasks"),
-    mismatchSummary("traceId", root.traceId, envelope.traceId, "tasks"),
-    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "tasks"),
-    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "tasks"),
-    mismatchSummary("shape", root.shape, envelope.shape, "tasks"),
-    mismatchSummary("priority", root.priority, envelope.priority, "tasks"),
-    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "tasks"),
-    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "tasks"),
-    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "tasks"),
-    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "tasks"),
-    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "tasks"),
-    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "tasks"),
-    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "tasks"),
-    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "tasks"),
+    mismatchSummary("runId", root.runId, envelope.runId, "workflow_runs"),
+    mismatchSummary("workflow", root.workflow, envelope.workflow, "workflow_runs"),
+    mismatchSummary("itemId", root.itemId, envelope.itemId, "workflow_runs"),
+    mismatchSummary("traceId", root.traceId, envelope.traceId, "workflow_runs"),
+    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "workflow_runs"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "workflow_runs"),
+    mismatchSummary("shape", root.shape, envelope.shape, "workflow_runs"),
+    mismatchSummary("priority", root.priority, envelope.priority, "workflow_runs"),
+    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "workflow_runs"),
+    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "workflow_runs"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "workflow_runs"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "workflow_runs"),
+    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "workflow_runs"),
+    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "workflow_runs"),
+    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "workflow_runs"),
+    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "workflow_runs"),
   ].filter((issue): issue is string => issue !== undefined);
 }
 
@@ -2172,7 +2184,7 @@ function retainedArchiveMismatchSummary(
   const archivedJson = canonicalJsonStringify(archivedValue);
   return retainedJson === archivedJson
     ? undefined
-    : `retained tasks ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
+    : `retained workflow_runs ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
 }
 
 function archivedFailureIdentityMismatch(
@@ -2188,7 +2200,7 @@ function archivedFailureIdentityMismatch(
   const archiveJson = canonicalJsonStringify(archiveValue);
   return failureJson === retainedJson && failureJson === archiveJson
     ? undefined
-    : `archived failure.${field} ${failureJson} does not match retained tasks ${retainedField} ${retainedJson} `
+    : `archived failure.${field} ${failureJson} does not match retained workflow_runs ${retainedField} ${retainedJson} `
       + `and archive ${archiveField} ${archiveJson}`;
 }
 
@@ -2368,11 +2380,11 @@ function inspectSpanRunAuthorityReadOnly(
     }
     const meta = readMetaRow(database);
     const authorityFingerprint = authorityContentFingerprint(database);
-    const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM tasks").get()).count;
+    const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM workflow_runs").get()).count;
     const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
     const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
-    const taskById = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?");
-    // D308: the delete cascade removes the `tasks` row (and any `archived_runs`
+    const taskById = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?");
+    // D308: the delete cascade removes the `workflow_runs` row (and any `archived_runs`
     // row) but writes ONE tombstone first, and span files are never rewritten
     // (D301). So a root with neither authority row is not yet missing — the
     // tombstone is consulted, in this same read transaction, before absence.
@@ -2382,7 +2394,7 @@ function inspectSpanRunAuthorityReadOnly(
     const queuedRunIds = new Set(roots.map(({ runId }) => runId));
     const missingSpanRunIds: RunId[] = [];
     const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
-    for (const [table, source] of [["tasks", "current"], ["archived_runs", "archived"]] as const) {
+    for (const [table, source] of [["workflow_runs", "current"], ["archived_runs", "archived"]] as const) {
       for (const raw of database.prepare(`SELECT record_key, record_json FROM ${table} ORDER BY record_key`).iterate()) {
         const row = AuthorityRecordFingerprintRowSchema.parse(raw);
         const parsedKey = RunIdSchema.safeParse(row.record_key);
@@ -2399,7 +2411,7 @@ function inspectSpanRunAuthorityReadOnly(
           malformed(`${table} record is not valid JSON`);
           continue;
         }
-        const parsed = table === "tasks"
+        const parsed = table === "workflow_runs"
           ? RunRecordSchema.safeParse(decoded)
           : ArchivedRunStorageRecordSchema.safeParse(decoded);
         if (!parsed.success) {
@@ -2411,7 +2423,7 @@ function inspectSpanRunAuthorityReadOnly(
           malformed(`${table} record key does not equal its stored run identity`);
           continue;
         }
-        if (table === "tasks" && !queuedRunIds.has(runId) && archivedRunById.get(runId) === undefined) {
+        if (table === "workflow_runs" && !queuedRunIds.has(runId) && archivedRunById.get(runId) === undefined) {
           missingSpanRunIds.push(runId);
         }
       }
@@ -2435,7 +2447,7 @@ function inspectSpanRunAuthorityReadOnly(
             state: "malformed",
             runId: root.runId,
             table: "archived_runs",
-            summary: "archived_runs authority is missing its required retained tasks authority",
+            summary: "archived_runs authority is missing its required retained workflow_runs authority",
           });
         }
         let retainedRun: RunRecord;
@@ -2448,8 +2460,8 @@ function inspectSpanRunAuthorityReadOnly(
           return SpanAuthorityRunResolutionSchema.parse({
             state: "malformed",
             runId: root.runId,
-            table: "tasks",
-            summary: "archived_runs authority has retained tasks authority that failed strict record or identity validation",
+            table: "workflow_runs",
+            summary: "archived_runs authority has retained workflow_runs authority that failed strict record or identity validation",
           });
         }
         const retainedMismatches = liveSpanRootMismatches(root, retainedRun);
@@ -2458,7 +2470,7 @@ function inspectSpanRunAuthorityReadOnly(
             state: "malformed",
             runId: root.runId,
             table: "archived_runs",
-            summary: "archived_runs authority's required retained tasks tuple contradicts the span root: "
+            summary: "archived_runs authority's required retained workflow_runs tuple contradicts the span root: "
               + retainedMismatches.join("; "),
           });
         }
@@ -2467,7 +2479,7 @@ function inspectSpanRunAuthorityReadOnly(
             state: "malformed",
             runId: root.runId,
             table: "archived_runs",
-            summary: "archived_runs authority requires terminal retained tasks authority; retained lifecycle is "
+            summary: "archived_runs authority requires terminal retained workflow_runs authority; retained lifecycle is "
               + retainedRun.lifecycle.state,
           });
         }
@@ -2483,7 +2495,7 @@ function inspectSpanRunAuthorityReadOnly(
               state: "malformed",
               runId: root.runId,
               table: "archived_runs",
-              summary: "retained tasks authority matches the span root but archived_runs authority contradicts it: "
+              summary: "retained workflow_runs authority matches the span root but archived_runs authority contradicts it: "
                 + mismatches.join("; "),
             });
           }
@@ -2497,7 +2509,7 @@ function inspectSpanRunAuthorityReadOnly(
             state: "malformed",
             runId: root.runId,
             table: "archived_runs",
-            summary: "retained tasks authority is valid but archived_runs authority failed strict record or identity validation",
+            summary: "retained workflow_runs authority is valid but archived_runs authority failed strict record or identity validation",
           });
         }
       }
@@ -2550,7 +2562,7 @@ function inspectSpanRunAuthorityReadOnly(
           return SpanAuthorityRunResolutionSchema.parse({
             state: "malformed",
             runId: root.runId,
-            table: "tasks",
+            table: "workflow_runs",
             summary: mismatches.join("; "),
           });
         }
@@ -2559,8 +2571,8 @@ function inspectSpanRunAuthorityReadOnly(
         return SpanAuthorityRunResolutionSchema.parse({
           state: "malformed",
           runId: root.runId,
-          table: "tasks",
-          summary: "tasks authority failed its strict record or identity validation",
+          table: "workflow_runs",
+          summary: "workflow_runs authority failed its strict record or identity validation",
         });
       }
     });
@@ -3616,7 +3628,7 @@ export class AuthorityDatabase implements Disposable {
     `).all().map((row) => TableNameRowSchema.parse(row).name);
     const expected = schemaVersion === 27 || schemaVersion === 28 || schemaVersion === 29
       ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[schemaVersion]
-      : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+      : AUTHORITY_TABLE_REGISTRY.map(({ name }) => schemaVersion < 33 ? name === "workflow_runs" ? "tasks" : name === "workflow_run_batches" ? "run_sessions" : name : name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(
         `authority database tables do not match admitted v${String(schemaVersion)} registry: `
@@ -3624,6 +3636,10 @@ export class AuthorityDatabase implements Disposable {
       );
     }
     validateAuthorityRecordSchemas(this.#database, new Set(names));
+    if (schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      inspectHistoricalAuthorityInvariants(this.#database, schemaVersion);
+      return;
+    }
     const violations = invariantViolations(this.#database);
     if (violations.length > 0) {
       throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
@@ -4598,7 +4614,7 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             if (record.execution.state === "started") {
-              const run = this.#readRecord("tasks", record.execution.runId, RunRecordSchema);
+              const run = this.#readRecord("workflow_runs", record.execution.runId, RunRecordSchema);
               // D318 — a live-read result binds to an ORDINARY run (dryRun
               // false); a preview result (and every pre-D318 row, which
               // carries no arm) binds to a dry run. Neither may cite the other.
@@ -5898,7 +5914,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readRunRow(runId: string): RunRecord | undefined {
-    return this.#readRecord("tasks", runId, RunRecordSchema);
+    return this.#readRecord("workflow_runs", runId, RunRecordSchema);
   }
 
   /**
@@ -5912,7 +5928,7 @@ export class AuthorityDatabase implements Disposable {
   #nextItemAttempt(workflow: string, itemId: string): number {
     const row = MaxAttemptRowSchema.parse(this.#database.prepare(`
       SELECT max(attempt) AS attempt FROM (
-        SELECT attempt FROM tasks WHERE workflow = ? AND item_id = ?
+        SELECT attempt FROM workflow_runs WHERE workflow = ? AND item_id = ?
         UNION ALL
         SELECT attempt FROM deleted_runs WHERE workflow = ? AND item_id = ?
       )
@@ -5940,7 +5956,7 @@ export class AuthorityDatabase implements Disposable {
   #nextWorkflowRunNumber(workflow: string): number {
     const row = MaxRunNumberRowSchema.parse(this.#database.prepare(`
       SELECT max(run_number) AS run_number FROM (
-        SELECT run_number FROM tasks WHERE workflow = ?
+        SELECT run_number FROM workflow_runs WHERE workflow = ?
         UNION ALL
         SELECT run_number FROM deleted_runs WHERE workflow = ?
       )
@@ -5968,7 +5984,7 @@ export class AuthorityDatabase implements Disposable {
     const rows = z.array(RunSearchCorpusRowSchema).parse(this.#database.prepare(`
       SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
         ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms
-      FROM tasks AS t
+      FROM workflow_runs AS t
       WHERE NOT EXISTS (
         SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
       )
@@ -5982,17 +5998,17 @@ export class AuthorityDatabase implements Disposable {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
     const notBefore = record.lifecycle.state === "queued" ? record.lifecycle.notBefore ?? null : null;
-    this.#authorityWrite("tasks", () => {
+    this.#authorityWrite("workflow_runs", () => {
       const statement = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO tasks (
+          INSERT INTO workflow_runs (
             record_key, workflow, item_id, state, priority, attempt, not_before,
             owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, session_id, version,
             record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         : this.#database.prepare(`
-          UPDATE tasks SET
+          UPDATE workflow_runs SET
             workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
             owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, parent_run_id = ?,
             run_number = ?, session_id = ?, version = ?, record_json = ?
@@ -6124,7 +6140,7 @@ export class AuthorityDatabase implements Disposable {
       // second row is a bug in the loop, not a state to serve — and serving
       // it would put two runs and two browser-session sets under one owner.
       const held = HeldRunRowSchema.parse(this.#database.prepare(`
-        SELECT record_key AS run_id FROM tasks
+        SELECT record_key AS run_id FROM workflow_runs
         WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
         LIMIT 1
       `).get(request.workerId) ?? { run_id: null });
@@ -6133,14 +6149,14 @@ export class AuthorityDatabase implements Disposable {
         throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
       }
       const row = this.#database.prepare(`
-        SELECT record_json FROM tasks
+        SELECT record_json FROM workflow_runs
         WHERE workflow = ? AND state = 'queued'
           AND (not_before IS NULL OR not_before <= ?)
           AND (? = 0 OR (
-            NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = tasks.record_key)
+            NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
             AND NOT EXISTS (
               SELECT 1 FROM dependencies d
-              WHERE json_extract(d.record_json, '$.parentRunId') = tasks.record_key
+              WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
                 AND json_extract(d.record_json, '$.state') <> 'satisfied'
             )
           ))
@@ -6149,13 +6165,13 @@ export class AuthorityDatabase implements Disposable {
       `).get(request.workflow, request.now, canonical ? 1 : 0);
       if (row === undefined) {
         const deferred = NextEligibleRowSchema.parse(this.#database.prepare(`
-          SELECT min(not_before) AS next_eligible_at FROM tasks
+          SELECT min(not_before) AS next_eligible_at FROM workflow_runs
           WHERE workflow = ? AND state = 'queued' AND not_before > ?
             AND (? = 0 OR (
-              NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = tasks.record_key)
+              NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
               AND NOT EXISTS (
                 SELECT 1 FROM dependencies d
-                WHERE json_extract(d.record_json, '$.parentRunId') = tasks.record_key
+                WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
                   AND json_extract(d.record_json, '$.state') <> 'satisfied'
               )
             ))
@@ -6263,7 +6279,7 @@ export class AuthorityDatabase implements Disposable {
            * replayed pre-v17 row) and the shape of a run no fan-out grouped.
            */
           if (record.sessionId !== undefined) {
-            const session = this.#readRecord("run_sessions", record.sessionId, RunSessionRecordSchema);
+            const session = this.#readRecord("workflow_run_batches", record.sessionId, RunSessionRecordSchema);
             if (session === undefined) {
               throw new Error(
                 `run ${record.envelope.runId} names session ${record.sessionId}, which authority never wrote; `
@@ -6320,7 +6336,7 @@ export class AuthorityDatabase implements Disposable {
               SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
                 ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
                 ${runSearchRankSql(request.scope)} AS match_rank
-              FROM tasks AS t CROSS JOIN search
+              FROM workflow_runs AS t CROSS JOIN search
               WHERE ${filter.sql}
             ), matched AS MATERIALIZED (
               SELECT ranked.*, count(*) OVER () AS total_matches
@@ -6372,10 +6388,10 @@ export class AuthorityDatabase implements Disposable {
       },
       /** D179: the whole set a version bump assesses — terminal and not. */
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key
+        SELECT record_json FROM workflow_runs WHERE workflow = ? ORDER BY created_at, record_key
       `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       listCurrentByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
-        SELECT t.record_json FROM tasks AS t
+        SELECT t.record_json FROM workflow_runs AS t
         WHERE t.workflow = ?
           AND NOT EXISTS (
             SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
@@ -6384,13 +6400,13 @@ export class AuthorityDatabase implements Disposable {
       `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       listWorkflows: () => Object.freeze(
         z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
-          SELECT DISTINCT workflow AS workflow FROM tasks ORDER BY workflow
+          SELECT DISTINCT workflow AS workflow FROM workflow_runs ORDER BY workflow
         `).all()).map(({ workflow }) => workflow),
       ),
       findByTrace: (traceId: string) => {
         const parsed = TraceIdSchema.parse(traceId);
         const rows = this.#database.prepare(`
-          SELECT record_json FROM tasks
+          SELECT record_json FROM workflow_runs
           WHERE json_extract(record_json, '$.envelope.traceId') = ?
           ORDER BY created_at, record_key
         `).all(parsed);
@@ -6406,7 +6422,7 @@ export class AuthorityDatabase implements Disposable {
       listByItem: (input: unknown) => {
         const query = RunItemQuerySchema.parse(input);
         const rows = this.#database.prepare(`
-          SELECT record_json FROM tasks WHERE workflow = ? AND item_id = ? ORDER BY created_at, record_key
+          SELECT record_json FROM workflow_runs WHERE workflow = ? AND item_id = ? ORDER BY created_at, record_key
         `).all(query.workflow, query.itemId);
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
@@ -6432,7 +6448,7 @@ export class AuthorityDatabase implements Disposable {
           bindings.push(request.workflow);
         }
         const rows = this.#database.prepare(`
-          SELECT record_json FROM tasks
+          SELECT record_json FROM workflow_runs
           WHERE state IN ('claimed', 'validating', 'running')
             ${clauses.map((clause) => `AND ${clause}`).join(" ")}
           ORDER BY heartbeat_at, record_key
@@ -6451,15 +6467,15 @@ export class AuthorityDatabase implements Disposable {
       },
       listByWorker: (workerId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM tasks WHERE owner_worker_id = ? ORDER BY created_at, record_key
+          SELECT record_json FROM workflow_runs WHERE owner_worker_id = ? ORDER BY created_at, record_key
         `).all(WorkerIdSchema.parse(workerId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
       listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM tasks WHERE session_id = ? ORDER BY created_at, record_key
+        SELECT record_json FROM workflow_runs WHERE session_id = ? ORDER BY created_at, record_key
       `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       /**
-       * D262. `tasks_heartbeat_idx ON tasks(state, heartbeat_at)` leads on
+       * D262. `tasks_heartbeat_idx ON workflow_runs(state, heartbeat_at)` leads on
        * `state`, so this is an index scan over a set that is almost always
        * empty. The parsed record is re-checked against the column the scan
        * selected on: the two are written together by `#writeRunRow`, and a row
@@ -6469,14 +6485,14 @@ export class AuthorityDatabase implements Disposable {
        */
       listParkedAtGate: () => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM tasks WHERE state = 'parked-gate' ORDER BY created_at, record_key
+          SELECT record_json FROM workflow_runs WHERE state = 'parked-gate' ORDER BY created_at, record_key
         `).all();
         return Object.freeze(rows.map((row) => {
           const record = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
           if (record.lifecycle.state !== "parked-gate") {
             throw new Error(
               `run ${record.envelope.runId} is stored under state 'parked-gate' but its record's lifecycle `
-              + `reads ${record.lifecycle.state}; the tasks row and its record_json disagree`,
+              + `reads ${record.lifecycle.state}; the workflow_runs row and its record_json disagree`,
             );
           }
           return record;
@@ -6484,14 +6500,14 @@ export class AuthorityDatabase implements Disposable {
       },
       delete: (input: unknown) => {
         const { runId, origin, commandId, now } = RunDeleteInputSchema.parse(input);
-        return this.#authorityWrite("tasks", () => {
+        return this.#authorityWrite("workflow_runs", () => {
           const run = this.#readRunRow(runId);
           if (run === undefined) throw new Error(`run ${runId} does not exist; nothing to delete`);
           if (run.lifecycle.state !== "terminal") {
             throw new Error(`run ${runId} is ${run.lifecycle.state}, not terminal; only a terminal run can be deleted`);
           }
           const remainingChildren = CountRowSchema.parse(
-            this.#database.prepare("SELECT count(*) AS count FROM tasks WHERE parent_run_id = ?").get(runId),
+            this.#database.prepare("SELECT count(*) AS count FROM workflow_runs WHERE parent_run_id = ?").get(runId),
           ).count;
           if (remainingChildren > 0) {
             throw new Error(
@@ -6585,9 +6601,9 @@ export class AuthorityDatabase implements Disposable {
           remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
           remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
           // Last, the run itself.
-          const task = sqliteChanges(this.#database.prepare("DELETE FROM tasks WHERE record_key = ?").run(runId).changes);
-          if (task !== 1) throw new Error(`deleting run ${runId} removed ${String(task)} tasks rows, not exactly one`);
-          removed.push({ table: "tasks", rows: task });
+          const task = sqliteChanges(this.#database.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(runId).changes);
+          if (task !== 1) throw new Error(`deleting run ${runId} removed ${String(task)} workflow_runs rows, not exactly one`);
+          removed.push({ table: "workflow_runs", rows: task });
           this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "cascade-complete" });
           const record = tombstone(removed);
           // The one-way settle: the trigger admits exactly this transition.
@@ -6601,7 +6617,7 @@ export class AuthorityDatabase implements Disposable {
       },
       listChildren: (parentRunId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM tasks WHERE parent_run_id = ? ORDER BY created_at, record_key
+          SELECT record_json FROM workflow_runs WHERE parent_run_id = ? ORDER BY created_at, record_key
         `).all(RunIdSchema.parse(parentRunId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
@@ -6799,7 +6815,7 @@ export class AuthorityDatabase implements Disposable {
             bindings.push(request.workflow);
           }
           const rows = this.#database.prepare(`
-            SELECT record_json FROM tasks
+            SELECT record_json FROM workflow_runs
             WHERE state IN ('claimed', 'validating', 'running')
               ${clauses.map((clause) => `AND ${clause}`).join(" ")}
             ORDER BY heartbeat_at, record_key
@@ -7705,11 +7721,22 @@ export class AuthorityDatabase implements Disposable {
 
   #buildRunSessionRepository(): RunSessionRepository {
     return Object.freeze({
+      list: () => Object.freeze(this.#database.prepare("SELECT record_json FROM workflow_run_batches ORDER BY record_key").all().map((row) => parseJsonRecord(RunSessionRecordSchema, JsonRowSchema.parse(row).record_json))),
+      setGrouping: (sessionId: string, expectedVersion: number, groupInQueue: boolean) => this.#authorityWrite("workflow_run_batches", () => {
+        const current = this.#readRecord("workflow_run_batches", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema);
+        if (current === undefined) throw new Error(`workflow batch ${sessionId} does not exist`);
+        if (current.version !== expectedVersion) throw new Error(`workflow batch ${sessionId} version conflict`);
+        const record = RunSessionRecordSchema.parse({ ...current, groupInQueue, version: current.version + 1 });
+        const result = this.#database.prepare(`UPDATE workflow_run_batches SET group_in_queue = ?, version = ?, record_json = ? WHERE record_key = ? AND version = ?`)
+          .run(record.groupInQueue ? 1 : 0, record.version, canonicalJsonStringify(record), sessionId, expectedVersion);
+        if (sqliteChanges(result.changes) !== 1) throw new Error(`workflow batch ${sessionId} version conflict`);
+        return { result: record, changes: 1 };
+      }),
       insert: (input: unknown) => {
         const record = RunSessionRecordSchema.parse(input);
         const json = canonicalJsonStringify(record);
-        return this.#authorityWrite("run_sessions", () => {
-          const existing = this.#readRecord("run_sessions", record.sessionId, RunSessionRecordSchema);
+        return this.#authorityWrite("workflow_run_batches", () => {
+          const existing = this.#readRecord("workflow_run_batches", record.sessionId, RunSessionRecordSchema);
           if (existing !== undefined) {
             if (canonicalJsonStringify(existing) !== json) {
               throw new Error(`run session ${record.sessionId} already exists with different content`);
@@ -7717,16 +7744,16 @@ export class AuthorityDatabase implements Disposable {
             return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
           }
           const result = this.#database.prepare(`
-            INSERT INTO run_sessions (record_key, workflow, started_at, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?)
-          `).run(record.sessionId, record.workflow, record.startedAt, json, record.createdAt);
+            INSERT INTO workflow_run_batches (record_key, workflow, started_at, record_json, created_at, group_in_queue, version)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(record.sessionId, record.workflow, record.startedAt, json, record.createdAt, record.groupInQueue ? 1 : 0, record.version);
           return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
         });
       },
       get: (sessionId: string) =>
-        this.#readRecord("run_sessions", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema),
+        this.#readRecord("workflow_run_batches", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM run_sessions WHERE workflow = ? ORDER BY started_at, record_key
+        SELECT record_json FROM workflow_run_batches WHERE workflow = ? ORDER BY started_at, record_key
       `).all(WorkflowIdSchema.parse(workflow)).map((row) => parseJsonRecord(RunSessionRecordSchema, JsonRowSchema.parse(row).record_json))),
     });
   }

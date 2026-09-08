@@ -61,6 +61,7 @@ import {
 } from "../../../domain/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../domain/dashboard/subscription.js";
 import {
+  PositiveIntSchema,
   FingerprintSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
@@ -83,6 +84,7 @@ import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
+import type { RunSessionRecord } from "../../../domain/run/session.js";
 import type { WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
@@ -197,6 +199,8 @@ export interface RunQueueProjectionDeps {
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
     /** D269: every workflow's pool declaration — the spawn control's CAS basis, served from authority. */
     listWorkerPools(): readonly WorkerPoolRecord[];
+    listRunBatches(): readonly RunSessionRecord[];
+    getRunBatch(batchId: string): RunSessionRecord | undefined;
     /**
      * D179/D80: whether a version bump has archived this run. Ref dashboard-surfaces §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
@@ -537,6 +541,7 @@ export class RunQueueProjection {
    * settled by another process, a `plan-worker-count`) reaches subscribers.
    */
   #workerAuthorityFingerprint: string;
+  #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -545,7 +550,7 @@ export class RunQueueProjection {
     this.#deps = deps;
     this.#generationValue = Math.max(1, Math.trunc(deps.clock.nowMs()));
     this.#foldSchemaHash = deriveSchemaHash(RunFoldRecordSchema, "output");
-    this.#workerAuthorityFingerprint = this.#workerAuthorityFingerprintOf();
+    this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
   }
 
   onChange(listener: (change: RunQueueProjectionChange) => void): () => void {
@@ -653,7 +658,7 @@ export class RunQueueProjection {
   reconcileWorkerAuthority(): void {
     if (this.#health.state === "degraded") return;
     try {
-      const fingerprint = this.#workerAuthorityFingerprintOf();
+      const fingerprint = this.#captureSharedAuthorityFingerprint();
       if (fingerprint === this.#workerAuthorityFingerprint) return;
       this.#workerAuthorityFingerprint = fingerprint;
       this.#cursorValue += 1;
@@ -727,7 +732,7 @@ export class RunQueueProjection {
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
       this.#cursorValue = Math.max(1, this.#cursorValue);
       this.#health = { state: "live" };
-      this.#workerAuthorityFingerprint = this.#workerAuthorityFingerprintOf();
+      this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
       const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
       for (const listener of this.#listeners) listener(change);
     } catch (error) {
@@ -1027,6 +1032,7 @@ export class RunQueueProjection {
   #notify(affected: { runIds: readonly string[]; workerChanged: boolean }): void {
     const changes: RunQueueProjectionChange[] = [];
     let snapshotNeeded = affected.workerChanged;
+    let batchPresentationChanged = false;
     for (const runId of affected.runIds) {
       const row = this.#rows.get(runId);
       if (row === undefined) continue;
@@ -1044,6 +1050,14 @@ export class RunQueueProjection {
         continue;
       }
       const replacement = this.#surface(row, authority);
+      const batch = replacement.session;
+      if (batch.state === "present" && batch.presentation !== undefined
+        && this.#publishedBatchVersions.get(batch.sessionId) !== batch.presentation.version) {
+        // A row refresh can beat the poll. Its batch facts must move together
+        // for all members, never leak a new revision through one row patch.
+        batchPresentationChanged = true;
+        snapshotNeeded = true;
+      }
       const countNeutral = replacement.surfaceKind === "member"
         ? previousStatus !== undefined
         : previousStatus === replacement.status;
@@ -1063,8 +1077,12 @@ export class RunQueueProjection {
         }),
       });
     }
+    if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
     if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
-    for (const change of changes) {
+    const publications: readonly RunQueueProjectionChange[] = batchPresentationChanged
+      ? [{ kind: "snapshot", cursor: this.cursor() }]
+      : changes;
+    for (const change of publications) {
       for (const listener of this.#listeners) listener(change);
     }
   }
@@ -1099,8 +1117,8 @@ export class RunQueueProjection {
     return leases;
   }
 
-  /** Leases as the cards render them, plus pool declarations as the wire serves them. */
-  #workerAuthorityFingerprintOf(): string {
+  /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
+  #captureSharedAuthorityFingerprint(): string {
     const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
       workflowId: pool.workflow,
       desiredWorkers: pool.desiredWorkers,
@@ -1108,7 +1126,10 @@ export class RunQueueProjection {
       plannedBy: pool.plannedBy,
       plannedAt: pool.plannedAt,
     }));
-    return JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools });
+    const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    const fingerprint = JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools, batches });
+    this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
+    return fingerprint;
   }
 
   /* ── the authority join ────────────────────────────────────────────────── */
@@ -1399,10 +1420,12 @@ export class RunQueueProjection {
   }
 
   /** D269: membership is the run row's own field — never a lookup in a stored member list. */
-  #session(authority: RunRecord): { state: "present"; sessionId: string } | { state: "absent"; reason: string } {
-    return authority.sessionId === undefined
-      ? { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" }
-      : { state: "present", sessionId: authority.sessionId };
+  #session(authority: RunRecord): QueueSurfaceWire["session"] {
+    if (authority.sessionId === undefined) return { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" };
+    const batch = this.#deps.authority.getRunBatch(authority.sessionId);
+    if (batch === undefined || batch.workflow !== authority.envelope.workflow) throw new Error(`workflow batch ${authority.sessionId} is missing or belongs to another workflow`);
+    return { state: "present", sessionId: batch.sessionId,
+      presentation: { groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
   }
 
   /**

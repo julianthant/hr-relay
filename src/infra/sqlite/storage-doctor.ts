@@ -739,7 +739,7 @@ function reconcileSpanAuthority(
     ? [
         ...resolutions.filter((resolution) => resolution.state === "malformed"),
         ...snapshot.malformedRecords.filter((record) => !malformedResolutionKeys.has(
-          `${record.source === "current" ? "tasks" : "archived_runs"}\0${record.recordKey}`)),
+          `${record.source === "current" ? "workflow_runs" : "archived_runs"}\0${record.recordKey}`)),
       ]
     : [
         ...resolutions.filter((resolution) => resolution.state === "missing" || resolution.state === "malformed"),

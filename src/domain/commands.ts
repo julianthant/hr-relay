@@ -26,6 +26,7 @@ import {
   NonNegativeIntSchema,
   PositiveIntSchema,
   RunIdSchema,
+  RunSessionIdSchema,
   SourceColumnIdSchema,
   SourceSurfaceIdSchema,
   StartPlanIdSchema,
@@ -48,6 +49,7 @@ export class CommandIdentityConflictError extends Error {
 }
 
 export const CommandFamilySchema = z.enum([
+  "workflow-batch",
   "start",
   "intake",
   "worker-browser",
@@ -60,6 +62,7 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
+  "set-batch-grouping",
   "start-run",
   "inspect-intake",
   "confirm-intake-mapping",
@@ -361,7 +364,16 @@ export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
 /** D283: the sole durable Explorer edit door; validation remains a read-only route. */
 export const ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema;
 
+export const WorkflowBatchCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("workflow-batch"),
+  type: z.literal("set-batch-grouping"),
+  target: z.strictObject({ batchId: RunSessionIdSchema, expectedVersion: PositiveIntSchema }),
+  payload: z.strictObject({ groupInQueue: z.boolean() }),
+});
+
 export const CommandRequestSchema = z.union([
+  WorkflowBatchCommandRequestSchema,
   StartCommandRequestSchema,
   IntakeCommandRequestSchema,
   WorkerBrowserCommandRequestSchema,
@@ -376,6 +388,7 @@ export const CommandRequestSchema = z.union([
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
+  z.strictObject({ family: z.literal("workflow-batch"), batchId: RunSessionIdSchema }),
   z.strictObject({
     family: z.literal("start"),
     workflowId: WorkflowIdSchema,
@@ -723,6 +736,7 @@ export const CommandFamilySpecSchema = z.strictObject({
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
+  "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
@@ -753,6 +767,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
 });
 
 export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
+  { family: "workflow-batch", actions: ["set-batch-grouping"] },
   { family: "start", actions: ["start-run"] },
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },

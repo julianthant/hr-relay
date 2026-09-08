@@ -235,11 +235,11 @@ export const ProjectionStorageRecordSchema = z.strictObject({
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "authority_meta">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
-  // Ref dashboard-surfaces §2.3 names `tasks` and `leases` the task/claim store. Schema v4 gave
+  // Ref dashboard-surfaces §2.3 names `workflow_runs` and `leases` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row
   // that predates the typing fails validation at boot rather than being
   // reinterpreted as a run or a worker it was never written as.
-  tasks: RunRecordSchema,
+  workflow_runs: RunRecordSchema,
   run_terminal_authorizations: TerminalAuthorizationRecordSchema,
   failures: FailureRecordSchema,
   run_results: RunResultRecordSchema,
@@ -293,7 +293,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   duo_ceremony_leases: DuoCeremonyLeaseRecordSchema,
   /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */
   worker_pools: WorkerPoolRecordSchema,
-  run_sessions: RunSessionRecordSchema,
+  workflow_run_batches: RunSessionRecordSchema,
   /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
   deleted_runs: DeletedRunRecordSchema,
   authority_upgrades: AuthorityUpgradeRecordSchema,
