@@ -982,14 +982,14 @@ log:
 - 2026-09-05 | D334 operator correction | the old `run.edit-checkpoint` consumer retires in 1.6.4. This task owns only completed-value/provenance reads for 3.1 Task 11-2's source-bound Rerun modal; the source remains immutable · left: implementation after 1.6 closes
 
 #### 1-3 · Revalidate operator read models {#p2f-operator}
-status: planned
-date: parallel wave 1 · dedicated worktree
+status: done
+date: 2026-09-08 · reviewed and integrated locally
 doc: 2.6/task-1-3-revalidate-operator-read-models · ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
-- [ ] BOTH migrate archive, Activity, Explorer, storage doctor, setup/preflight, and generic read models
-- [ ] PROOF archive/current/queue counts converge from one run authority under create, update, archive, relaunch, delete, and restore
-- [ ] PROOF settings status and preflight resolve from one catalog without returning protected values
+- [x] BOTH migrate archive, Activity, Explorer, storage doctor, setup/preflight, and generic read models
+- [x] PROOF archive/current/queue counts converge from one run authority under create, update, archive, relaunch, delete, and restore
+- [x] PROOF settings status and preflight resolve from one catalog without returning protected values
 
 needs:
 - p1f-close
@@ -997,6 +997,7 @@ needs:
 - p2f-readers
 
 log:
+- 2026-09-08 | C9b7365d76 · 2.6.1-3-R2 PASS · integrated 813581124 | canonical operator lifecycle/counts, Cancelling, immutable archive batch snapshots, safe upgrade status and schema-34 runs_view retirement; integration typecheck/lint, 447 files / 5,639 tests and 262 desktop parity cases pass; owned worktree/ref and scratch cleaned
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
 
 #### 2 · Run the non-mutating migration and recovery proof {#p2f-proof}
