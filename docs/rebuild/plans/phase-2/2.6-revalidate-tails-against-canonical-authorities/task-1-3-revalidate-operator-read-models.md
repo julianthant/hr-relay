@@ -2,9 +2,9 @@
 
 ## Admission and current state
 
-The operator requested `/phase-plan` for exactly **2.6.1-3**, followed by implementation in the same task, on 2026-09-08. The delayed continuation ran and its one-time heartbeat is paused. The operator subsequently approved the shared-reader prerequisite before the three parallel tasks. This overrides the routine fresh-session/prompt boundary, not contracts, independent review, gates or isolation.
+The operator requested `/phase-plan` for exactly **2.6.1-3**, followed by implementation in the same task, on 2026-09-08. The delayed continuation ran; its original automation is no longer present, and no replacement was created. The operator subsequently approved the shared-reader prerequisite before the three parallel tasks. This overrides the routine fresh-session/prompt boundary, not contracts, independent review, gates or isolation.
 
-**S1–S4 implemented; full candidate gates pass; awaiting independent review.** Task 2.6.1-1's session owned that prerequisite and the shared overview/roadmap ledger; its window is now released. Its inspected starting master is `2dd3048f8d5d223f3eb1347353c83c3d07297cfe`, which contains accepted Phase-1.6 closure. P candidate `249d96edf1cf0007e93f6313fc85d37a1dee4878` passed complete independent P-R1; integration `826cae74414e84fcd8559bbb34a43f2d68e4678e` and completion base `64db38e017f585014173bae3c428e6c2a1f63099` were verified before worktree creation. This file is the task's detailed plan; the phase overview retains shared wave governance. Independent review, integration and completion remain open.
+**Awaiting renewed independent review R2; repaired P3/P4 candidate gates pass.** Task 2.6.1-1's session owned that prerequisite and the shared overview/roadmap ledger; its window is now released. Its inspected starting master is `2dd3048f8d5d223f3eb1347353c83c3d07297cfe`, which contains accepted Phase-1.6 closure. P candidate `249d96edf1cf0007e93f6313fc85d37a1dee4878` passed complete independent P-R1; integration `826cae74414e84fcd8559bbb34a43f2d68e4678e` and completion base `64db38e017f585014173bae3c428e6c2a1f63099` were verified before worktree creation. This file is the task's detailed plan; the phase overview retains shared wave governance. Independent review, integration and completion remain open.
 
 | Assignment | Binding |
 | --- | --- |
@@ -83,11 +83,13 @@ Worktree-local test scratch is owned by `scripts/test-runner.ts`; coverage and p
 
 ### Current checkpoint — 2026-09-08
 
-**Awaiting independent review.** Implementation candidate `8abb4cbaca50420e18b735d816ea05b93ab9c992`
-is committed on `codex/operator-reads` at `/Users/julianhein/Projects/hr-worktree-operator-reads`.
-Review base is `46892ab3704526feb2c8af80e2317e39e97bde36`. S1–S4 implementation/proof and all
-candidate gates pass; S5 independent review and S6 integration/cleanup remain open. The evidence
-commit following this implementation changes only this owner and does not change acceptance.
+**Awaiting complete independent review R2.** Implementation candidate
+`9b7365d7679b21abaf9c61dea24d5381bc7320fb` is committed on `codex/operator-reads` at
+`/Users/julianhein/Projects/hr-worktree-operator-reads`; base remains
+`46892ab3704526feb2c8af80e2317e39e97bde36`. R1 findings F1/F2 are repaired and all required candidate
+gates pass on these exact implementation inputs. S5 renewed independent review and S6 local
+integration, integration gates and cleanup remain open. The following evidence commit changes
+only this owner; it does not alter acceptance or tested implementation inputs.
 
 The base contains accepted T candidate `98305e1bccf3f4c1db80735496060bbcbfc68855`, integration
 `5a07b329ec8a935535ee34935fc05717bbc4f0c1` and completion `393d5da75e96ae431ac0fa9d73d07176d924a3d7`;
@@ -109,7 +111,72 @@ has occurred. The temporary two-worker adapter is removed from the review tree a
 the approved gate command below. It imports the repository configuration and asserts only root/
 project worker counts differ. Projects, assertions, isolation, timeouts and floors are unchanged.
 
-### Frozen candidate gates
+### Independent review R1 and repair boundary
+
+Complete reviewer `/root/sup_review_operator_reads` returned **CHANGES REQUIRED** for base
+`46892ab3704526feb2c8af80e2317e39e97bde36`, implementation `8abb4cbaca50420e18b735d816ea05b93ab9c992`,
+evidence `49edc838b0cdc05c3229de2127cebcbc0fb1701d`. It inspected all 79 implementation paths plus
+the evidence owner and P1–P7. F1 (high/P4): child-first archive order removes membership from the
+parent's frozen history. F2 (medium/P3): each candidate enumerates the full canonical corpus twice.
+Actual kernel plan/apply probe failed the membership assertion and measured four list calls for
+two candidates; `/tmp/hr-operator-reads-review-archive-order-probe-2.log` and corresponding observation
+JSON retain the evidence. Probe lint passed. The first probe had an invalid synthetic command UUID
+and is not defect evidence. No other required finding was reported.
+
+Both findings await independent verification of the repair. The archive snapshot seam now freezes
+the entire accepted candidate batch before archive mutations, using one shared canonical projection snapshot.
+This requires the bounded archive call site in `src/core/command-kernel.ts`, the archive snapshot
+interface and its unwired/fake implementations; it changes no command envelope, lifecycle mutation
+policy, external scope or operator authority. The initial plan already required P3/P4; this is an
+implementation repair, not new operator scope. Permanent real-command tests cover both UUID
+orders and batch read scaling. Full gates pass; renewed complete independent review remains required.
+
+### R2 repair candidate and gates
+
+Fresh complete R2 is required because the repair connects the archive batch snapshot contract to
+its kernel transaction caller. It covers the full original candidate plus repair and neighboring
+paths; no old verdict is carried forward as acceptance. The supervisor alone authored the repair.
+The reviewer will inspect primary requirements/code before reconciling this prior-finding ledger.
+
+| Prior finding | Repair and deciding evidence; independent disposition pending |
+| --- | --- |
+| F1 high, P4 | The kernel obtains all snapshots before any archive mutation. Real SQLite kernel plan/apply tests cover child-first and parent-first UUID orders, frozen parent member IDs/terminal rollup and stored people rows. Reinstating per-run freezing makes both child-first tests fail with empty membership. |
+| F2 medium, P3 | One captured canonical list supplies all candidate and member surfaces; freeze sections consume that same membership. Two-run and twenty-run real command batches each call list once; empty batch does not enumerate. Reinstating per-run freezing fails the parent-first bound, 2 instead of 1. |
+
+`/tmp/hr-operator-reads-r1-negative-control.log` preserves the three intentional failures.
+`/tmp/hr-operator-reads-r1-repairs-focused-final.log` passes 43/43 cases after restoring repaired
+code. The initial focused run had test-only mistakes about archived disposition and fixture startup
+read counts; corrected assertions use the actual canonical contract.
+
+| Gate on implementation `9b7365d7679b21abaf9c61dea24d5381bc7320fb` | Result | Evidence |
+| --- | --- | --- |
+| Typecheck and lint | Both exit 0 | `/tmp/hr-operator-reads-r2-typecheck.log`, `/tmp/hr-operator-reads-r2-lint.log` |
+| Full coverage, approved two-worker adapter | 447/447 files, 5,639/5,639 tests, all configured floors; 317.04 seconds; two observed fork workers and no compiler/linter contention | `/tmp/hr-operator-reads-r2-coverage.log` |
+| Suite-size constituent | 350 unit, 80 architecture, 17 scenario files | `/tmp/hr-operator-reads-r2-suite-size.log` |
+| Full desktop parity | 262/262 cases; wrapper 65.471 seconds | `/tmp/hr-operator-reads-r2-parity-final.log` |
+| Production build, after parity exit 0 | Exit 0; existing chunk-size advisory only | `/tmp/hr-operator-reads-r2-web-build-final.log` |
+| Manifest, catalog, roadmap freshness | All exit 0 | `/tmp/hr-operator-reads-r2-{manifest,catalog,roadmap}.log` |
+| Documentation | Nine equal instruction pairs, all project chains below cap, owner links resolve, whitespace clean; recording checks repeated below | `/tmp/hr-operator-reads-r2-docs-audit.log` |
+
+`/tmp/hr-operator-reads-r2-inputs.json` binds all 82 implementation paths by SHA-256; the candidate
+inventory also includes this existing evidence owner. All hashes were rechecked after gates and
+before commit. The adapter was removed before review. No reference was refrozen during the repair.
+
+A supervisor scheduling error started production build while the first R2 parity run was still
+active. That invalidated run had 258/262 passes and asset-404/readiness failures; logs remain at
+`/tmp/hr-operator-reads-r2-parity.log` and `/tmp/hr-operator-reads-r2-web-build.log`. Both processes
+finished before the clean full parity rerun and subsequent build above. No assertions, references,
+timeouts or gate membership were weakened. This is avoidable execution rework, not an accepted gate.
+
+R2 evidence-only recording passes the 23-case roadmap binding suite, lint, roadmap freshness,
+nine instruction pairs/project-chain audit, owner links and `git diff --check`. Logs are
+`/tmp/hr-operator-reads-r2-evidence-binding-final.log`, `-evidence-lint.log`,
+`-evidence-roadmap.log` and `-evidence-docs.log` with the same prefix. The initial misspelled test
+filter selected no tests and exited 1 (`-evidence-bindings.log`); it supplies no acceptance evidence.
+Only this owner differs from implementation `9b7365d7679b21abaf9c61dea24d5381bc7320fb`; all 82
+implementation hashes match, permitting reuse of the recorded implementation gates under D191.
+
+### R1 candidate gates (superseded for changed repair inputs)
 
 All following code/test/build gates ran on the exact source/test/config/dependency inputs committed
 as `8abb4cbaca50420e18b735d816ea05b93ab9c992`. Only this evidence owner changes afterward.
