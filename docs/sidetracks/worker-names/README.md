@@ -17,7 +17,7 @@ that rename to this existing plan. This amendment extends the same migration, co
 and review scope; it preserves the task ID, checkout binding, prerequisite, and integration
 conditions. Use the amended plan commit rather than the original `f4487557` launch reference.
 
-**S1–S5 complete; R1 PASS. S6 combined gates and independent review passed; master integration and cleanup remain open.** The
+**S1–S5 complete; R1 PASS. S6 complete: combined review, gates, master integration and owned candidate cleanup verified.** The
 implementation and candidate gates passed, with complete independent acceptance of all
 23 changed paths and P1–P7. The reviewed candidate is ready for operator-assigned integration.
 The operator database has not been converted. The original planning session created no
@@ -546,3 +546,14 @@ gates, repairs, independent review and cleanup. Original rejection/repair and ac
 evidence above is retained. Final numbering is worker 35, operation 36, command groups 37, with
 stopped-upgrade floor 36. The complete combined candidate passed fresh independent review at `445fe42451b85701b805ceb98f5e5b1aa8d8440d`; master integration and cleanup follow the combined owner record.
 No operator database conversion, unrelated timeline implementation or push is included.
+
+
+### Integrated completion — 2026-09-08
+
+The combined owner records fresh complete review PASS at `445fe424`, full gates
+(5,761 tests, 262 parity cases, typecheck/lint and freshness), and accepted local master
+merge `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. This assignment's exact clean,
+inactive candidate checkout and branch were removed after ancestry verification; physical
+path and ref absence passed. The observer task remains visible by its explicit request.
+See the [combined closeout](../command-groups/README.md#accepted-local-integration-and-cleanup--2026-09-08)
+for exact candidate, review, integration and cleanup bindings. No push or database conversion.
