@@ -161,3 +161,14 @@ Three standing rules for this class:
 - **`log:` lines are append-only.** A prior session's line is history: never edit it, never delete it. Correct it with a new line that names what the old one got wrong.
 - **A session that changed no roadmap node leaves no roadmap marker.** Its durable evidence belongs in the document or code it changed; the phase spine is reserved for the plan.
 - **The next agent reads first.** Before starting, read the newest `log:` lines of the nodes it is assigned (`npm run roadmap -- --json` if you want them structured) — the node's own journal is where the last agent said what is left.
+
+## D344 nested dashboard groups
+
+Within 3.1, `####` nodes 8, 9-1–9-4 and 10 organize smaller subphases; their `#####`
+children are individually assigned tasks. Historical immediate Tasks 1–7 remain unchanged.
+Use `doc: 3.1/subphase-…` for group owners and existing `3.1/task-…` bindings for retained
+leaves. Stable node IDs and historical logs do not change. Numeric groups do not imply
+whole-wave barriers: explicit accepted prerequisite edges and applicable phase entry gates
+determine readiness. Proposed preparation/extraction studies never gate required completion.
+The operator coordinates; the old coordinator-ledger wording above is superseded by
+[roadmap D344](roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08) for new assignments.

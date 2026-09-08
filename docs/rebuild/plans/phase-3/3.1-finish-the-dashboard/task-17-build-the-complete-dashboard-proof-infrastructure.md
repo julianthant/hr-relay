@@ -1,6 +1,11 @@
 # Task 17 · Build the complete dashboard proof infrastructure
 <!-- roadmap: dash-proof-infrastructure -->
 
+**Current assignment: 3.1.10.4.** Former task 3.1.17; stable node `dash-proof-infrastructure`.
+Read [Integrated acceptance](subphase-10-integrated-acceptance.md) for dependencies and operator-controlled integration.
+The existing filename and historical task heading remain citation aliases, not another assignment.
+
+
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 - [ ] Complete T2 feature, T3 production-browser, T4 live dry-run, accessibility, performance, and

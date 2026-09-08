@@ -1,6 +1,11 @@
 # Task 14 · Generic Review and People pages — deferred until needed
 <!-- roadmap: dash-review-people -->
 
+**Current assignment: 3.1.9-4.6.** Former task 3.1.14; stable node `dash-review-people`.
+Read [Standing surfaces](subphase-9-4-standing-surfaces.md) for dependencies and operator-controlled integration.
+The existing filename and historical task heading remain citation aliases, not another assignment.
+
+
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 **D339: approved deferral, not a release prerequisite.** Admit this work when a concrete workflow

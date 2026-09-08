@@ -1,6 +1,11 @@
 # Task 8 · Re-baseline dashboard truth and acceptance
 <!-- roadmap: dash-truth-reset -->
 
+**Current assignment: 3.1.8.1.** Former task 3.1.8; stable node `dash-truth-reset`.
+Read [Shared foundations](subphase-8-shared-foundations.md) for dependencies and operator-controlled integration.
+The existing filename and historical task heading remain citation aliases, not another assignment.
+
+
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 - [ ] D339: bind each required screen to a current workflow/operator journey and record deferred

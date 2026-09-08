@@ -58,6 +58,10 @@ All Codex roles use Astra/high; no nested delegation. Each stage has one fresh
 complete read-only reviewer, two initial reviews total, one active at a time.
 
 ### P — shared-reader prerequisite
+<!-- roadmap: p2f-readers -->
+
+D344 displays this independently accepted prerequisite as its own roadmap gate. The existing
+owner, branch, P1–P3 steps, gates and P/T execution authorization remain unchanged.
 
 P1 extracts the existing mixed query into explicit files without changing public
 payloads, errors, route admission, archive bytes or lifecycle derivations:

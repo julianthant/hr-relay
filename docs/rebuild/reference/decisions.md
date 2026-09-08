@@ -2201,3 +2201,9 @@ runs without changing execution or membership. New multi-run batches default to 
 batches preserve their current display. Requirements live in
 [dashboard-surfaces, workflow batch presentation](dashboard-surfaces.md#workflow-batch-presentation)
 and [execution-and-sessions §11](execution-and-sessions.md).
+
+## Reconciliation round 148 (2026-09-08) — operator-coordinated prerequisite groups
+
+| Decision | Ruling | Owner |
+| --- | --- | --- |
+| **D344** | **COMPLETE SHARED PREREQUISITES, THEN OPERATOR-LAUNCHED INDEPENDENT WORKTREES.** Six nested dashboard subphases overlap through explicit accepted prerequisite tasks. Agents do not coordinate siblings or merge automatically; the operator assigns serial integration. Preserve in-flight plans, all gates, phase closure and the four-worktree limit. Further unverified splits remain proposed. | [roadmap D344](../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08) · [3.1 current identity map](../plans/phase-3/3.1-finish-the-dashboard/README.md#current-task-identities) |

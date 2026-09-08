@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-07
-head: da85e5d1d
+asOf: 2026-09-08
+head: 6e0d05183
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
@@ -11,9 +11,9 @@ footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadm
 
 tiles:
 - Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
-- Active | Phase 1.6 | implement D330/D331/D332 as amended by D336: SQLite runs/settings with independent credentials; Task 6 owns conversion after Task 5
-- Next | Phase 2.6 | revalidate the downstream read models, joins and operator services against the canonical authorities
-- Decisions | D1–D342 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D131 retired, never reused
+- Active | Phase 2.6 | shared-reader prerequisite before three independent consumer tasks
+- Next | Phase 3.1 | six smaller subphases; operator launches tasks after accepted prerequisite gates
+- Decisions | D1–D344 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D344 separates prerequisite gates and operator-coordinated dashboard subphases · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | D329 holds every write behind 3.2's independent candidate audit and 3.3's exact-candidate admission. Historical 4589 remains inspection-only; the bounded authorization must name the candidate, fingerprints, disposable targets, disposition, and sequence, and expires on drift, failure, or UNKNOWN
 
@@ -918,6 +918,7 @@ needs:
 - p2-2j
 
 log:
+- 2026-09-08 | D344 prerequisite planning | visible prerequisite gates and smaller dashboard groups; operator coordinates launches/merges; existing in-flight 2.6 briefs and all acceptance remain binding
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330/D331/D332 as landed — `ref:dashboard-surfaces` §9.2 and §2.5, `ref:clock-config-secrets` §3, `ref:guards-and-tests` §5.2 (no redesign) · left: a proposed contract change returns to a newly numbered 0.3 task
 - 2026-09-04 | 2.6 parallelism ruling | wave 1 is `1-1` trust/evidence ∥ `1-2` intake/data ∥ `1-3` operator read models, each from the same verified 1.6-close base in a dedicated worktree; serial Task 2 converges the migration/recovery proof and Task 3 closes · left: coordinator ledger binds exact paths, gates and peer integration order before dispatch
 
@@ -934,9 +935,29 @@ builds:
 needs:
 - p1f-close
 - p2-2j
+- p2f-readers
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
+
+##### 1 · Complete shared-reader prerequisite {#p2f-readers}
+status: planned
+date: D344 · operator-coordinated prerequisites
+doc: 2.6/task-1-1-revalidate-trust-and-evidence-consumers §P — shared-reader prerequisite
+
+> A separate accepted gate, displayed under its existing in-flight owner to preserve the approved 2026-09-08 P/T execution brief. No trust/data/operator peer implementation starts before this extraction is reviewed and integrated.
+
+builds:
+- [ ] BOTH separate run query/read ports, trust/data/operator composition and route registration without changing behavior
+- [ ] PROOF pass the prerequisite candidate and integration gates plus independent review
+- [ ] DOCS record the exact common integration SHA and exclusive peer ownership in the existing owner; the operator starts the peers
+
+needs:
+- p1f-close
+- p2-2j
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
 
 #### 1-2 · Revalidate data, intake, and prior-run value consumers {#p2f-data}
 status: planned
@@ -951,6 +972,7 @@ builds:
 needs:
 - p1f-close
 - p2-2j
+- p2f-readers
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9, D331 §D331.8 (one source per leaf) and D332 §D332.7 item 4 (no redesign) · left: no intake or Edit Data path writes settings or a lifecycle row
@@ -969,6 +991,7 @@ builds:
 needs:
 - p1f-close
 - p2-2j
+- p2f-readers
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
@@ -1045,11 +1068,11 @@ log:
 
 ### 3.1 · Shared dashboard {#dash-defaults}
 status: planned
-chip: Tasks 1–7 evidenced · Task 8, waves 9–13, Tasks 14–18 wait for 2.6
+chip: Tasks 1–7 evidenced · six smaller subphases · explicit prerequisite gates
 size: XL
 doc: 3.1 §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Historical Tasks 1–7 built and proved important shared seams, but operator review found incomplete and broken generic journeys. Task 8, parallel waves 9–13, and serial Tasks 15–18 reopen the part (Task 14 is deferred by D339) around those journeys: a real modal-to-queue-to-worker path, one CRUD run authority, one settings authority, reliable date/session/notification/queue controls, and complete logs/archive/explorer/intake/trust surfaces. Workflow-specific content still belongs to 3.2/3.3.
+> Historical Tasks 1–7 remain evidenced. Remaining work is organized into six smaller subphases: shared foundations; shell/configuration; run operations; detail/evidence; standing surfaces; and integrated acceptance. The operator launches independent worktrees after exact prerequisite tasks are accepted and merged; whole-wave waits and agent coordination are removed for newly planned work. Deferred People/Review stays optional. Workflow-specific content and frozen-candidate acceptance remain in 3.2/3.3.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -1083,6 +1106,7 @@ needs:
 - p2f-close
 
 log:
+- 2026-09-08 | D344 prerequisite planning | visible prerequisite gates and smaller dashboard groups; operator coordinates launches/merges; existing in-flight 2.6 briefs and all acceptance remain binding
 - 2026-09-04 | D328 parallel task identities | remaining 3.1 work is Task 8, parallel waves 9–13 with numeric members, then serial Tasks 14–18. A label such as `3.1.9-1` is one supervisor task in wave 9; exact branches/worktrees remain bound in doc 03a · left: 2.6 closure, then Task 8
 - 2026-09-03 | 3.1 parallel execution plan | coordination `C21194e18` makes `master` integration-only for Tasks 8–32, fixes five dependency-gated parallel waves under the four-worktree limit, and names every task worktree/branch in doc 03a · left: 2.6 closure, then Task 8's ownership matrix before wave 1 dispatch
 - 2026-09-03 | D326/D327 reopened scope | Tasks 8–32 supersede the false part closure without invalidating Tasks 1–7 evidence. Each new task is one supervisor session; the final acceptance task audits only and opens focused remediation tasks rather than absorbing broad fixes
@@ -1311,9 +1335,28 @@ log:
 - 2026-08-25 | observed-logs FE adversarial repair | exact run+cursor+snapshot ownership ignores a delayed stale continuation without changing current rows/loading/error; live notes-only pages fail with run+cursor; ARIA names served observation system/directions and no fence defaults; computed read/write token assertions, named server errors, 44×44 mobile continuation geometry and the complete/searchable/no-eager-fetch 200-row bound are pinned. D9 still owns the triggered shared queue/log/archive virtualization primitive; this node claims none · left: live separations proof
 - 2026-08-25 | observed-logs live proof | §9.25 records the dashboard/composed run: document 4502, plan `479f9f1e-83b3-4157-915b-2794bcf61ab0`, run `25d90c9d-72bf-4fa4-bcea-116665f22790` / `sp-143516-25d9`, `parked-gate` v52; 13 observed rows in sequences 0..12, no notes and 0 / 0 / 0 run-scoped write evidence. The service-origin row at `separations-2026-08-25.jsonl:12` has no browser-system declaration; `17468e60` repaired the false API-500 invariant, so the API answered 200 and UI omitted the system claim. Processes and browser sessions stopped after collection · left: notes emitter and fidelity extras
 
-#### 8 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
+#### 8 · Shared foundations {#dash-foundations}
 status: planned
-date: serial gate 0 · worktree r08-truth-reset
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/subphase-8-shared-foundations §Shared foundations
+
+> An organizational subphase, not one supervisor assignment or an execution barrier. The operator starts individual tasks when their explicit prerequisites are integrated; other subphases may remain open.
+
+builds:
+- [ ] DOCS retain exact task ownership and individually verified prerequisites
+- [ ] PROOF close this group only after all required child tasks are reviewed, integrated and accepted
+
+needs:
+- dash-truth-reset
+- dash-boundary-foundation
+- dash-detail-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 1 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
+status: planned
+date: D344 · former 3.1.8 · independent worktree after named prerequisites
 doc: 3.1/task-8-re-baseline-dashboard-truth-and-acceptance §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
 
 builds:
@@ -1324,11 +1367,109 @@ builds:
 - [ ] DOCS D340: settle minimum desktop viewport and resize/zoom acceptance in planning; consume the immediate pre-1.6.6 mobile-proof dispositions without losing desktop assertions
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.8.1; former 3.1.8; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial prerequisite in `phase-3-1-dashboard-c21194e18-r08-truth-reset`; it must merge before any implementation wave and freeze the file/artifact ownership that makes peers independent · left: execute after 2.6 closes
 
-#### 9-1 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
+needs:
+- p2f-close
+
+##### 2 · Establish independent dashboard boundaries {#dash-boundary-foundation}
 status: planned
-date: parallel wave 9 · worktree r09-1-shell
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/prerequisite-boundary-foundation §Establish independent dashboard boundaries
+
+> Complete the shared changes discovered by the acceptance inventory before independent surface writers start. Preserve existing behavior and real production consumers; no mock-only foundation.
+
+builds:
+- [ ] BOTH isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
+- [ ] PROOF verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass required candidate review and integration gates
+- [ ] DOCS publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
+
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 3 · Establish independent run-detail sections {#dash-detail-foundation}
+status: planned
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/prerequisite-detail-foundation §Establish independent run-detail sections
+
+> Extract the section-boundary obligation from former Task 12-2. Finish this prerequisite before the timeline and evidence-section tasks; those tasks need this accepted boundary, not each other.
+
+builds:
+- [ ] BOTH separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
+- [ ] PROOF preserve the existing live detail path and section behavior, pass required gates and independent review, then integrate the common base
+- [ ] DOCS freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
+
+needs:
+- dash-boundary-foundation
+- dash-run-modal
+- dash-queue
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 4 · Prepare dashboard inventory during tail revalidation {#dash-early-inventory}
+status: proposed
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/prerequisite-early-inventory §Prepare dashboard inventory during tail revalidation
+
+> Optional read-only preparation while 2.6 recovery and closure continue. This produces a provisional inventory only; it does not freeze acceptance, authorize dashboard implementation or satisfy Task 8.
+
+builds:
+- [?] DOCS map verified 2.6 handoffs to current controls, routes and proposed owners without modifying runtime or in-flight 2.6 plans
+- [?] DOCS mark volatile observations and unresolved producer changes for recheck after 2.6 closure
+
+needs:
+- p2f-readers
+- fact: focused preparation scope and exclusive artifact owner approved
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 5 · Assess further prerequisite extractions {#dash-smaller-prerequisites}
+status: proposed
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/prerequisite-smaller-prerequisites §Assess further prerequisite extractions
+
+> Candidate splits only: shared navigation before date work, configuration/status before sessions, and enqueue/identity before queue/detail. No dependency is shortened until a focused plan proves the replacement boundary.
+
+builds:
+- [?] DOCS inspect exact consumers, shared files and independent proof; admit a smaller complete prerequisite only with approved ownership and gates
+- [?] DOCS retain existing whole-task dependencies wherever the proposed extraction is unverified; no unfinished-branch consumers
+
+needs:
+- dash-truth-reset
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+#### 9-1 · Shell and configuration {#dash-shell-configuration}
+status: planned
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/subphase-9-1-shell-and-configuration §Shell and configuration
+
+> An organizational subphase, not one supervisor assignment or an execution barrier. The operator starts individual tasks when their explicit prerequisites are integrated; other subphases may remain open.
+
+builds:
+- [ ] DOCS retain exact task ownership and individually verified prerequisites
+- [ ] PROOF close this group only after all required child tasks are reviewed, integrated and accepted
+
+needs:
+- dash-shell
+- dash-settings
+- dash-storage
+- dash-date-navigation
+- dash-setup
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 1 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
+status: planned
+date: D344 · former 3.1.9-1 · independent worktree after named prerequisites
 doc: 3.1/task-9-1-finish-the-shell-navigation-and-accessibility-baseline §Task 9-1 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
 
 builds:
@@ -1338,13 +1479,15 @@ builds:
 
 needs:
 - dash-truth-reset
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.1; former 3.1.9-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 frame seam in `phase-3-1-dashboard-c21194e18-r09-shell`, parallel with Tasks 11, 13 and 25 · left: Task 8 ownership freeze
 
-#### 9-2 · Finish Settings over the canonical settings authority {#dash-settings}
+##### 2 · Finish Settings over the canonical settings authority {#dash-settings}
 status: planned
-date: parallel wave 9 · worktree r09-2-settings
+date: D344 · former 3.1.9-2 · independent worktree after named prerequisites
 doc: 3.1/task-9-2-finish-settings-over-the-canonical-settings-authority §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
 > D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset and restart behavior.
@@ -1358,14 +1501,16 @@ builds:
 
 needs:
 - dash-truth-reset
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.2; former 3.1.9-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 settings seam in `phase-3-1-dashboard-c21194e18-r11-settings`, parallel with Tasks 9, 13 and 25 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 edit contract, §D331.5's two CAS arms and §D331.6 presence readback (no redesign) · left: the deliberate P40/A8 parity re-freeze happens here
 
-#### 9-3 · Finish basic storage health and recovery access {#dash-storage}
+##### 3 · Finish basic storage health and recovery access {#dash-storage}
 status: planned
-date: parallel wave 9 · worktree r09-3-storage
+date: D344 · former 3.1.9-3 · independent worktree after named prerequisites
 doc: 3.1/task-9-3-finish-basic-storage-health-and-recovery-access §Task 9-3 · Finish basic storage health and recovery access · ref:operator-trust §1 · ref:frontend-backend-integration §10 · ref:dashboard-surfaces §2.5
 
 > D336 supplies the revised SQLite-settings recovery contract. D339 keeps basic health and access to recovery commands in release scope; new advanced recovery interfaces are deferred until needed.
@@ -1377,32 +1522,17 @@ builds:
 
 needs:
 - dash-truth-reset
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.3; former 3.1.9-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 storage seam in `phase-3-1-dashboard-c21194e18-r13-storage`, parallel with Tasks 9, 11 and 25 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.1 (`cli storage upgrade` as a fourth subcommand), §D332.6 verdicts, §D332.5 journal and §D332.4 restore admission (no redesign) · left: D322 explicit-only backup stands
 - 2026-09-06 | D339 approved deferral | basic health/recovery access remains required; new advanced recovery UI waits for a concrete need or explicit post-release request
 
-#### 9-4 · Finish Workflow Explorer and catalog editing {#dash-explorer}
+##### 4 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned
-date: parallel wave 9 · worktree r09-4-explorer
-doc: 3.1/task-9-4-finish-workflow-explorer-and-catalog-editing §Task 9-4 · Finish Workflow Explorer and catalog editing · ref:operator-trust §5.4
-
-builds:
-- [ ] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
-- [ ] BE D337: put label/icon/category overrides, revision and command/audit in one SQLite transaction; preserve existing values and remove file authority and prepared-claim recovery
-- [ ] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases, exact replay, conversion and rejection of old override sources; bind shared DDL/composition ownership before the wave
-
-needs:
-- dash-truth-reset
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 1 Explorer/catalog seam in `phase-3-1-dashboard-c21194e18-r25-explorer`, parallel with Tasks 9, 11 and 13 · left: Task 8 ownership freeze
-- 2026-09-06 | D337 approved simplification | same appearance editing, one SQLite commit instead of file/database coordination; implementation remains Task 9-4
-
-#### 10-1 · Repair date navigation and the date picker {#dash-date-navigation}
-status: planned
-date: parallel wave 10 · worktree r10-1-date-navigation
+date: D344 · former 3.1.10-1 · independent worktree after named prerequisites
 doc: 3.1/task-10-1-repair-date-navigation-and-the-date-picker §Task 10-1 · Repair date navigation and the date picker · ref:clock-config-secrets §1 · ref:dashboard-surfaces §3
 
 builds:
@@ -1412,64 +1542,15 @@ builds:
 
 needs:
 - dash-shell
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.4; former 3.1.10-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 date-state seam in `phase-3-1-dashboard-c21194e18-r10-date-navigation`, after the shell contract and parallel with Tasks 14, 17 and 26 · left: Tasks 8 and 9
 
-#### 10-2 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
+##### 5 · Finish Setup and preflight {#dash-setup}
 status: planned
-date: parallel wave 10 · worktree r10-2-sessions
-doc: 3.1/task-10-2-finish-sessions-worker-pools-and-browser-lifecycle §Task 10-2 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
-
-builds:
-- [ ] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
-- [ ] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
-- [ ] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
-
-needs:
-- dash-settings
-- dash-storage
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
-
-#### 10-3 · Finish notifications and delivery behavior {#dash-notifications}
-status: planned
-date: parallel wave 10 · worktree r10-3-notifications
-doc: 3.1/task-10-3-finish-notifications-and-delivery-behavior §Task 10-3 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
-
-builds:
-- [ ] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
-- [ ] BOTH implement pinned/read/snooze/dismiss/filter/open-target behavior from durable actor-keyed rows
-- [ ] PROOF row-before-OS-delivery, dedupe, restart, reconnect-gap, permission-denied, stale command, and target-link cases
-
-needs:
-- dash-truth-reset
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 2 notification seam in `phase-3-1-dashboard-c21194e18-r17-notifications`, parallel with Tasks 10, 14 and 26 · left: Task 8 ownership freeze
-
-#### 10-4 · Finish Intake surfaces {#dash-intake-edit}
-status: planned
-date: parallel wave 10 · worktree r10-4-intake
-doc: 3.1/task-10-4-finish-intake-surfaces §Task 10-4 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
-
-builds:
-- [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff flows over existing services
-- [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
-- [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
-- [ ] PROOF this task does not edit the Run modal, Rerun launchers, or 2.6's prior-run value projection
-
-needs:
-- dash-truth-reset
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 2 Intake/Edit Data seam in `phase-3-1-dashboard-c21194e18-r26-intake-edit`, parallel with Tasks 10, 14 and 17 · left: Task 8 ownership freeze
-- 2026-09-05 | D334 ownership correction | this task now owns Intake only; Rerun and prior-run value consumption move to Task 11-2, preserving independent wave ownership · left: Task 8 ownership freeze
-
-#### 11-1 · Finish Setup and preflight {#dash-setup}
-status: planned
-date: parallel wave 11 · worktree r11-1-setup
+date: D344 · former 3.1.11-1 · independent worktree after named prerequisites
 doc: 3.1/task-11-1-finish-setup-and-preflight §Task 11-1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3 · ref:clock-config-secrets §3
 
 builds:
@@ -1481,14 +1562,54 @@ needs:
 - dash-settings
 - dash-storage
 - dash-sessions
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.5; former 3.1.11-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
 
-#### 11-2 · Make Run and Rerun enqueue real work {#dash-run-modal}
+#### 9-2 · Run operations {#dash-run-operations}
 status: planned
-date: parallel wave 11 · worktree r11-2-run-start
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/subphase-9-2-run-operations §Run operations
+
+> An organizational subphase, not one supervisor assignment or an execution barrier. The operator starts individual tasks when their explicit prerequisites are integrated; other subphases may remain open.
+
+builds:
+- [ ] DOCS retain exact task ownership and individually verified prerequisites
+- [ ] PROOF close this group only after all required child tasks are reviewed, integrated and accepted
+
+needs:
+- dash-sessions
+- dash-run-modal
+- dash-queue
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 1 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
+status: planned
+date: D344 · former 3.1.10-2 · independent worktree after named prerequisites
+doc: 3.1/task-10-2-finish-sessions-worker-pools-and-browser-lifecycle §Task 10-2 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
+
+builds:
+- [ ] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
+- [ ] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
+- [ ] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
+
+needs:
+- dash-settings
+- dash-storage
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.1; former 3.1.10-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
+
+##### 2 · Make Run and Rerun enqueue real work {#dash-run-modal}
+status: planned
+date: D344 · former 3.1.11-2 · independent worktree after named prerequisites
 doc: 3.1/task-11-2-make-run-and-rerun-enqueue-real-work §Task 11-2 · Make Run and Rerun enqueue real work · ref:workflow-model §5.6 · ref:frontend-backend-integration §5.1.1 · ref:data-intake-and-edit-data §6 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2
 
 builds:
@@ -1500,32 +1621,17 @@ builds:
 
 needs:
 - dash-sessions
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.2; former 3.1.11-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 run-start seam in `phase-3-1-dashboard-c21194e18-r15-run-start`, parallel with Tasks 12 and 23 after the session supervisor is real · left: Task 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
 - 2026-09-05 | D334 operator correction | Rerun is the launcher for the ordinary Run modal, not direct recovery commands. This task consumes 2.6 Task 1-2's read-only prefill projection; Task 10-4 retains Intake only · left: implementation after 2.6
 
-#### 11-3 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
+##### 3 · Finish queue rows, commands, and deletion {#dash-queue}
 status: planned
-date: parallel wave 11 · worktree r11-3-archive
-doc: 3.1/task-11-3-finish-archive-versions-relaunch-and-deletion §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
-
-builds:
-- [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
-- [ ] BOTH implement view, compare, version bump, export, relaunch, archive, and delete with explicit evidence-retention results
-- [ ] PROOF historical-generation read-forward, stale commands, relaunch lineage, storage delta, delete idempotence, and current/archive convergence
-
-needs:
-- dash-truth-reset
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
-- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.8 (archive, `delete-archived-run` citing `contentDigest`), §D330.7 relaunch as a fresh run with archive lineage, and D332 §D332.7 item 7 (no redesign) · left: archive visibility is unchanged across the upgrade
-
-#### 12-1 · Finish queue rows, commands, and deletion {#dash-queue}
-status: planned
-date: parallel wave 12 · worktree r12-1-queue
+date: D344 · former 3.1.12-1 · independent worktree after named prerequisites
 doc: 3.1/task-12-1-finish-queue-rows-commands-and-deletion §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
 
 builds:
@@ -1536,66 +1642,58 @@ builds:
 
 needs:
 - dash-run-modal
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.3; former 3.1.12-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 queue seam in `phase-3-1-dashboard-c21194e18-r16-queue`, parallel with Tasks 18, 24 and 30 after authoritative start exists · left: Task 15
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 row facts, §D330.6 `list` order and §D330.8 delete plus tombstone (no redesign) · left: this task owns the two R01 residues — producing the `remove-queue-surface` / `tombstone-queue-surface` wire events, and reconciling the two projector outcome enums that disagree on `skipped`
 
-#### 12-2 · Finish run detail and the live timeline {#dash-run-detail}
+#### 9-3 · Run detail and evidence {#dash-detail-evidence}
 status: planned
-date: parallel wave 12 · worktree r12-2-run-detail
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/subphase-9-3-run-detail-and-evidence §Run detail and evidence
+
+> An organizational subphase, not one supervisor assignment or an execution barrier. The operator starts individual tasks when their explicit prerequisites are integrated; other subphases may remain open.
+
+builds:
+- [ ] DOCS retain exact task ownership and individually verified prerequisites
+- [ ] PROOF close this group only after all required child tasks are reviewed, integrated and accepted
+
+needs:
+- dash-run-detail
+- dash-context-data
+- dash-logs
+- dash-receipts-failures
+- dash-gates
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 1 · Finish run detail and the live timeline {#dash-run-detail}
+status: planned
+date: D344 · former 3.1.12-2 · independent worktree after named prerequisites
 doc: 3.1/task-12-2-finish-run-detail-and-the-live-timeline §Task 12-2 · Finish run detail and the live timeline · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
 - [ ] BOTH follow the selected run live without losing expansion, focus, scroll, or exact attempt identity
-- [ ] BOTH freeze separate section projector/component/test seams so Tasks 13-1–13-4 need no shared mutable switch or query file
+- [ ] BOTH consume the accepted detail-section foundation while retaining exclusive timeline ownership; section extraction is owned by 3.1.8.3
 - [ ] PROOF refresh/reconnect, replay, retry, archive, out-of-order patch, and terminal convergence against direct authority checks
 
 needs:
 - dash-run-modal
+- dash-boundary-foundation
+- dash-detail-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.1; former 3.1.12-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 run-detail foundation in `phase-3-1-dashboard-c21194e18-r18-run-detail`, parallel with Tasks 16, 24 and 30; its exit freezes the four disjoint wave-5 section seams · left: Task 15
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.3's seven states and §D330.4's `version` as `rowRevision`, with D268's one derivation retained and no fold arm (§D330.12 item 1) (no redesign) · left: attempts render as separately selectable rows, never compared (D289 amendment)
 
-#### 12-3 · Finish Activity, search, and export {#dash-activity}
+##### 2 · Finish Context, Data, Attempts, and provenance readback {#dash-context-data}
 status: planned
-date: parallel wave 12 · worktree r12-3-activity
-doc: 3.1/task-12-3-finish-activity-search-and-export §Task 12-3 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
-
-builds:
-- [ ] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
-- [ ] BOTH produce truthful summaries and spreadsheet/diagnostic exports from stable result snapshots
-- [ ] PROOF pagination, cancellation, stale responses, redaction, large history, empty/error cases, and exported-row reconciliation
-
-needs:
-- dash-archive
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 4 Activity/search/export seam in `phase-3-1-dashboard-c21194e18-r24-activity`, parallel with Tasks 16, 18 and 30 after Archive freezes history identity · left: Task 23
-
-#### 12-4 · Finish production startup, serving, and shutdown {#dash-production-runtime}
-status: planned
-date: parallel wave 12 · worktree r12-4-production-runtime
-doc: 3.1/task-12-4-finish-production-startup-serving-and-shutdown §Task 12-4 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
-
-builds:
-- [ ] BOTH serve the production bundle, admit one runtime, report startup failures, and expose truthful readiness
-- [ ] BE stop signals, workers, browsers, writers, projections, locks, and backups in the declared order without abandoned authority
-- [ ] PROOF clean start, duplicate start, missing bundle/settings, signal drain, second signal, crash recovery, and orphan sweep
-
-needs:
-- dash-setup
-- dash-storage
-- dash-sessions
-
-log:
-- 2026-09-03 | 3.1 parallel execution plan | wave 4 production-runtime seam in `phase-3-1-dashboard-c21194e18-r30-production-runtime`, parallel with Tasks 16, 18 and 24 after setup/storage/session authority is integrated · left: Tasks 12–14
-
-#### 13-1 · Finish Context, Data, Attempts, and provenance readback {#dash-context-data}
-status: planned
-date: parallel wave 13 · worktree r13-1-context-data
+date: D344 · former 3.1.13-1 · independent worktree after named prerequisites
 doc: 3.1/task-13-1-finish-context-data-attempts-and-provenance-readback §Task 13-1 · Finish Context, Data, Attempts, and provenance readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
 
 builds:
@@ -1605,14 +1703,16 @@ builds:
 
 needs:
 - dash-queue
-- dash-run-detail
+- dash-detail-foundation
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.2; former 3.1.13-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Context/Data section seam in `phase-3-1-dashboard-c21194e18-r19-context-data`, parallel with Tasks 20–22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 
-#### 13-2 · Finish logs, observations, and captures {#dash-logs}
+##### 3 · Finish logs, observations, and captures {#dash-logs}
 status: planned
-date: parallel wave 13 · worktree r13-2-logs
+date: D344 · former 3.1.13-2 · independent worktree after named prerequisites
 doc: 3.1/task-13-2-finish-logs-observations-and-captures §Task 13-2 · Finish logs, observations, and captures · ref:operator-trust §2.3 · ref:dashboard-surfaces §5
 
 builds:
@@ -1622,14 +1722,16 @@ builds:
 
 needs:
 - dash-queue
-- dash-run-detail
+- dash-detail-foundation
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.3; former 3.1.13-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Logs section seam in `phase-3-1-dashboard-c21194e18-r20-logs`, parallel with Tasks 19, 21 and 22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 
-#### 13-3 · Finish receipts and failure records {#dash-receipts-failures}
+##### 4 · Finish receipts and failure records {#dash-receipts-failures}
 status: planned
-date: parallel wave 13 · worktree r13-3-receipts-failures
+date: D344 · former 3.1.13-3 · independent worktree after named prerequisites
 doc: 3.1/task-13-3-finish-receipts-and-failure-records §Task 13-3 · Finish receipts and failure records · ref:operator-trust §5 · ref:write-safety §6
 
 builds:
@@ -1639,14 +1741,16 @@ builds:
 
 needs:
 - dash-queue
-- dash-run-detail
+- dash-detail-foundation
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.4; former 3.1.13-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Receipt/Failure section seam in `phase-3-1-dashboard-c21194e18-r21-receipts-failures`, parallel with Tasks 19, 20 and 22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 
-#### 13-4 · Finish gates and parked-write resolution {#dash-gates}
+##### 5 · Finish gates and parked-write resolution {#dash-gates}
 status: planned
-date: parallel wave 13 · worktree r13-4-gates
+date: D344 · former 3.1.13-4 · independent worktree after named prerequisites
 doc: 3.1/task-13-4-finish-gates-and-parked-write-resolution §Task 13-4 · Finish gates and parked-write resolution · ref:write-safety §14 · ref:dashboard-surfaces §5
 
 builds:
@@ -1656,15 +1760,132 @@ builds:
 
 needs:
 - dash-queue
-- dash-run-detail
+- dash-detail-foundation
+- dash-boundary-foundation
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.5; former 3.1.13-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Gate/Parked-write section seam in `phase-3-1-dashboard-c21194e18-r22-gates`, parallel with Tasks 19–21 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 
-#### 14 · Generic Review and People pages — deferred until needed {#dash-review-people}
+#### 9-4 · Standing surfaces {#dash-standing-surfaces}
+status: planned
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/subphase-9-4-standing-surfaces §Standing surfaces
+
+> An organizational subphase, not one supervisor assignment or an execution barrier. The operator starts individual tasks when their explicit prerequisites are integrated; other subphases may remain open.
+
+builds:
+- [ ] DOCS retain exact task ownership and individually verified prerequisites
+- [ ] PROOF close this group only after all required child tasks are reviewed, integrated and accepted
+
+needs:
+- dash-explorer
+- dash-notifications
+- dash-intake-edit
+- dash-archive
+- dash-activity
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 1 · Finish Workflow Explorer and catalog editing {#dash-explorer}
+status: planned
+date: D344 · former 3.1.9-4 · independent worktree after named prerequisites
+doc: 3.1/task-9-4-finish-workflow-explorer-and-catalog-editing §Task 9-4 · Finish Workflow Explorer and catalog editing · ref:operator-trust §5.4
+
+builds:
+- [ ] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
+- [ ] BE D337: put label/icon/category overrides, revision and command/audit in one SQLite transaction; preserve existing values and remove file authority and prepared-claim recovery
+- [ ] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases, exact replay, conversion and rejection of old override sources; bind shared DDL/composition ownership before the wave
+
+needs:
+- dash-truth-reset
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.1; former 3.1.9-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 1 Explorer/catalog seam in `phase-3-1-dashboard-c21194e18-r25-explorer`, parallel with Tasks 9, 11 and 13 · left: Task 8 ownership freeze
+- 2026-09-06 | D337 approved simplification | same appearance editing, one SQLite commit instead of file/database coordination; implementation remains Task 9-4
+
+##### 2 · Finish notifications and delivery behavior {#dash-notifications}
+status: planned
+date: D344 · former 3.1.10-3 · independent worktree after named prerequisites
+doc: 3.1/task-10-3-finish-notifications-and-delivery-behavior §Task 10-3 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
+
+builds:
+- [ ] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
+- [ ] BOTH implement pinned/read/snooze/dismiss/filter/open-target behavior from durable actor-keyed rows
+- [ ] PROOF row-before-OS-delivery, dedupe, restart, reconnect-gap, permission-denied, stale command, and target-link cases
+
+needs:
+- dash-truth-reset
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.2; former 3.1.10-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 notification seam in `phase-3-1-dashboard-c21194e18-r17-notifications`, parallel with Tasks 10, 14 and 26 · left: Task 8 ownership freeze
+
+##### 3 · Finish Intake surfaces {#dash-intake-edit}
+status: planned
+date: D344 · former 3.1.10-4 · independent worktree after named prerequisites
+doc: 3.1/task-10-4-finish-intake-surfaces §Task 10-4 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
+
+builds:
+- [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff flows over existing services
+- [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
+- [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
+- [ ] PROOF this task does not edit the Run modal, Rerun launchers, or 2.6's prior-run value projection
+
+needs:
+- dash-truth-reset
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.3; former 3.1.10-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 2 Intake/Edit Data seam in `phase-3-1-dashboard-c21194e18-r26-intake-edit`, parallel with Tasks 10, 14 and 17 · left: Task 8 ownership freeze
+- 2026-09-05 | D334 ownership correction | this task now owns Intake only; Rerun and prior-run value consumption move to Task 11-2, preserving independent wave ownership · left: Task 8 ownership freeze
+
+##### 4 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
+status: planned
+date: D344 · former 3.1.11-3 · independent worktree after named prerequisites
+doc: 3.1/task-11-3-finish-archive-versions-relaunch-and-deletion §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
+
+builds:
+- [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
+- [ ] BOTH implement view, compare, version bump, export, relaunch, archive, and delete with explicit evidence-retention results
+- [ ] PROOF historical-generation read-forward, stale commands, relaunch lineage, storage delta, delete idempotence, and current/archive convergence
+
+needs:
+- dash-truth-reset
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.4; former 3.1.11-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
+- 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.8 (archive, `delete-archived-run` citing `contentDigest`), §D330.7 relaunch as a fresh run with archive lineage, and D332 §D332.7 item 7 (no redesign) · left: archive visibility is unchanged across the upgrade
+
+##### 5 · Finish Activity, search, and export {#dash-activity}
+status: planned
+date: D344 · former 3.1.12-3 · independent worktree after named prerequisites
+doc: 3.1/task-12-3-finish-activity-search-and-export §Task 12-3 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
+
+builds:
+- [ ] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
+- [ ] BOTH produce truthful summaries and spreadsheet/diagnostic exports from stable result snapshots
+- [ ] PROOF pagination, cancellation, stale responses, redaction, large history, empty/error cases, and exported-row reconciliation
+
+needs:
+- dash-archive
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.5; former 3.1.12-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 4 Activity/search/export seam in `phase-3-1-dashboard-c21194e18-r24-activity`, parallel with Tasks 16, 18 and 30 after Archive freezes history identity · left: Task 23
+
+##### 6 · Generic Review and People pages — deferred until needed {#dash-review-people}
 status: proposed
 chip: deferred · not a release blocker
-date: concrete workflow need or explicit post-release request
+date: D344 · former 3.1.14 · independent worktree after named prerequisites
 doc: 3.1/task-14-generic-review-and-people-pages-deferred-until-needed §Task 14 · Generic Review and People pages — deferred until needed · ref:frontend-backend-integration §10
 
 > D339 defers generic pages. A required workflow keeps its actual Review/People journey in scope; speculative generic page contracts do not hold the release.
@@ -1677,12 +1898,54 @@ needs:
 - you: a concrete workflow need or an explicit post-release request
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.6; former 3.1.14; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial section-extension gate in `phase-3-1-dashboard-c21194e18-r27-review-people`; it follows wave 5 so it cannot collide with the four run-detail section writers · left: Tasks 18–22
 - 2026-09-06 | D339 approved deferral | removed from 3.1 realtime/acceptance dependencies; the unchecked future feature does not block release
 
-#### 15 · Prove realtime convergence and reconnect {#dash-realtime}
+#### 10 · Integrated acceptance {#dash-integrated-acceptance}
 status: planned
-date: serial gate 15 · worktree r15-realtime
+date: D344 · operator-coordinated prerequisites
+doc: 3.1/subphase-10-integrated-acceptance §Integrated acceptance
+
+> An organizational subphase, not one supervisor assignment or an execution barrier. The operator starts individual tasks when their explicit prerequisites are integrated; other subphases may remain open.
+
+builds:
+- [ ] DOCS retain exact task ownership and individually verified prerequisites
+- [ ] PROOF close this group only after all required child tasks are reviewed, integrated and accepted
+
+needs:
+- dash-production-runtime
+- dash-realtime
+- dash-performance
+- dash-proof-infrastructure
+- dash-acceptance
+
+log:
+- 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+
+##### 1 · Finish production startup, serving, and shutdown {#dash-production-runtime}
+status: planned
+date: D344 · former 3.1.12-4 · independent worktree after named prerequisites
+doc: 3.1/task-12-4-finish-production-startup-serving-and-shutdown §Task 12-4 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
+
+builds:
+- [ ] BOTH serve the production bundle, admit one runtime, report startup failures, and expose truthful readiness
+- [ ] BE stop signals, workers, browsers, writers, projections, locks, and backups in the declared order without abandoned authority
+- [ ] PROOF clean start, duplicate start, missing bundle/settings, signal drain, second signal, crash recovery, and orphan sweep
+
+needs:
+- dash-setup
+- dash-storage
+- dash-sessions
+- dash-boundary-foundation
+
+log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.10.1; former 3.1.12-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
+- 2026-09-03 | 3.1 parallel execution plan | wave 4 production-runtime seam in `phase-3-1-dashboard-c21194e18-r30-production-runtime`, parallel with Tasks 16, 18 and 24 after setup/storage/session authority is integrated · left: Tasks 12–14
+
+##### 2 · Prove realtime convergence and reconnect {#dash-realtime}
+status: planned
+date: D344 · former 3.1.15 · independent worktree after named prerequisites
 doc: 3.1/task-15-prove-realtime-convergence-and-reconnect §Task 15 · Prove realtime convergence and reconnect · ref:frontend-backend-integration §3.5 · ref:dashboard-surfaces §1
 
 builds:
@@ -1711,11 +1974,12 @@ needs:
 - dash-intake-edit
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.10.2; former 3.1.15; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial convergence gate in `phase-3-1-dashboard-c21194e18-r28-realtime`; it starts only after every feature worktree through Task 27 is integrated and closed · left: Tasks 9–27
 
-#### 16 · Meet large-data and responsiveness budgets {#dash-performance}
+##### 3 · Meet large-data and responsiveness budgets {#dash-performance}
 status: planned
-date: serial gate 16 · worktree r16-performance
+date: D344 · former 3.1.16 · independent worktree after named prerequisites
 doc: 3.1/task-16-meet-large-data-and-responsiveness-budgets §Task 16 · Meet large-data and responsiveness budgets · ref:frontend-backend-integration §7.4
 
 builds:
@@ -1727,11 +1991,12 @@ needs:
 - dash-realtime
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.10.3; former 3.1.16; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial integrated-performance gate in `phase-3-1-dashboard-c21194e18-r29-performance`; it measures the converged tree and cannot run beside feature writers · left: Task 28
 
-#### 17 · Build the complete dashboard proof infrastructure {#dash-proof-infrastructure}
+##### 4 · Build the complete dashboard proof infrastructure {#dash-proof-infrastructure}
 status: planned
-date: serial gate 17 · worktree r17-proof-infrastructure
+date: D344 · former 3.1.17 · independent worktree after named prerequisites
 doc: 3.1/task-17-build-the-complete-dashboard-proof-infrastructure §Task 17 · Build the complete dashboard proof infrastructure · ref:guards-and-tests §3 · ref:frontend-backend-integration §7
 
 builds:
@@ -1745,11 +2010,12 @@ needs:
 - dash-production-runtime
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.10.4; former 3.1.17; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial proof-corpus gate in `phase-3-1-dashboard-c21194e18-r31-proof-infrastructure`; it owns the shared T2/T3/T4/parity infrastructure only after features, convergence, performance and production runtime settle · left: Tasks 9–30
 
-#### 18 · Execute integrated dashboard acceptance and close 3.1 {#dash-acceptance}
+##### 5 · Execute integrated dashboard acceptance and close 3.1 {#dash-acceptance}
 status: planned
-date: serial gate 18 · worktree r18-acceptance
+date: D344 · former 3.1.18 · independent worktree after named prerequisites
 doc: 3.1/task-18-execute-integrated-dashboard-acceptance-and-close-3-1 §Task 18 · Execute integrated dashboard acceptance and close 3.1 · 3.1 §Exit criteria
 
 builds:
@@ -1784,6 +2050,7 @@ needs:
 - dash-proof-infrastructure
 
 log:
+- 2026-09-08 | D344 prerequisite planning | now 3.1.10.5; former 3.1.18; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | final isolated acceptance in `phase-3-1-dashboard-c21194e18-r32-acceptance`; the 3.1 coordinator dispatches it only after every earlier task worktree, branch and supervisor row is integrated and closed · left: Tasks 8–31
 
 ### 3.2 · Workflow authoring and candidate freeze {#workflow-authoring-model}
@@ -3007,6 +3274,60 @@ Use `/handoff` only for interrupted work whose unique state is not already prese
 Keep exact ids, scopes, bases, worktrees and integration order for owned workers; historical
 coordination records do not enroll new work. This amendment supersedes D325/D326 and older direct-
 assignment text only for session orchestration and completion timing.
+
+### D344 — Operator-coordinated prerequisite groups (2026-09-08)
+
+The operator approves smaller, overlapping dashboard subphases and completed prerequisite tasks.
+This changes scheduling and plan organization, not product requirements or acceptance floors.
+Phase 3.1 preserves historical Tasks 1–7 and stable node IDs. Its remaining work is grouped as
+3.1.8 foundations, 3.1.9-1 shell/configuration, 3.1.9-2 run operations, 3.1.9-3 detail/evidence,
+3.1.9-4 standing surfaces, and 3.1.10 integrated acceptance. Each group has numbered leaf tasks;
+these grouping nodes are not supervisor assignments. The phase overview owns the old/new map.
+Group order and a numeric parallel prefix do not require whole-group completion. A leaf starts
+only after its own named prerequisites are accepted and integrated, plus applicable phase-entry
+requirements. Do not inherit a requirement to close an unrelated sibling or the entire group.
+
+The operator coordinates and opens each task. Agents do not message siblings, negotiate shared
+ownership, dispatch another task, or merge automatically. Each independently assigned writer uses
+an exclusive branch/worktree from a verified prerequisite base, owns disjoint code, contracts,
+tests and artifacts, and can pass its gates without unmerged peer changes. Before launch, the
+focused plan proves both merge orders and specifies exact paths, resource isolation, gate commands,
+review and stop boundaries. Separate worktrees alone do not establish independence. Extract any
+shared mutable interface, composition/registration file or fixture into a completed prerequisite;
+never use a promised API or mock-only frontend as a completed vertical slice. Unexpected ownership
+or dependency overlap stops affected work for the operator; it does not authorize taking peer files.
+
+For newly approved assignments, the implementation session obtains fresh independent review, fixes
+findings, and returns an exact reviewed candidate as **ready for operator integration**. That is a
+valid task-session stop, not roadmap completion. The operator chooses a merge or explicitly assigns
+one integration session. That session serially verifies target/candidate identity, integrates under
+repository policy, reconciles shared roadmap/phase records and combined generated output, runs all
+required integration gates, obtains renewed review for behavioral conflicts, and verifies cleanup
+before marking completion. Candidate-required generated artifacts and guard changes must already
+have an exclusive owner and independently passing gates; deferring them cannot hide a red candidate.
+No self-review, dropped proof, weakened coverage, push or live-write authorization is implied.
+
+Test/runtime resources also need independent ownership before launch. Isolate supported ports,
+roots and outputs, and demonstrate the host worker budget. Where a real shared resource remains,
+the operator schedules that gate; agents report the named wait and continue unaffected work.
+Do not build an agent coordinator or infer ownership from age/title. The current ceiling remains
+four auxiliary worktrees including unrelated work; a fifth requires explicit capacity approval.
+Three to five independently assignable tasks is a planning opportunity, not a concurrency promise.
+
+Existing in-flight assignments retain their approved ownership, gates and integration permissions.
+The 2.6 shared-reader P stage now has a visible node under its existing 1-1 owner, without moving
+its brief or adopting that session. It must close before the three peer implementations. Recovery,
+adapter-retirement proof and Phase-2.6 closure remain required. Optional early dashboard inventory
+is proposed read-only preparation, not early implementation or a substitute for the final acceptance
+freeze. Phase 3.1 implementation still waits for closed 2.6; 3.2 waits for closed 3.1, and 3.3 still
+consumes the unchanged 3.2 candidate. Unverified smaller prerequisites remain proposed and remove
+no dependency. No optional preparation, extraction study or deferred People/Review task gates release.
+
+D344 supersedes the earlier whole-wave/coordinator wording only for newly planned work and the
+newly displayed 3.1 structure. Historical log entries and existing in-flight exceptions remain evidence.
+Repository guidance takes precedence over older personal-skill one/two-session sizing and automatic
+finalization wording for these explicitly operator-coordinated assignments. Planning is still required:
+this roadmap amendment does not declare leaf briefs launch-ready or dispatch any implementation.
 
 ### D1 ownership map — the quick index (concept → owning doc)
 

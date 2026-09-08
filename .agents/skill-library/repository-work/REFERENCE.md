@@ -316,6 +316,13 @@ canary from `.env`, expose its value, silently substitute another target, or inf
 
 ## Authorized orchestration
 
+For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
+supersedes automatic integration and shared-agent coordination below. The operator launches tasks
+from accepted prerequisites and assigns serial integration. Agents return independently reviewed
+candidates without messaging siblings, taking shared files or launching other tasks. Existing
+in-flight ownership/gates/integration permissions remain unchanged. The four-worktree ceiling
+includes unrelated work; an additional lane requires explicit capacity approval.
+
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
 The operator opens planning and supervisor sessions. Skills use the exact phase task and approved
 plan commit. The supervisor dispatches a fresh read-only analyst using /review with no implementation
