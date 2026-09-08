@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task: `side/command-groups`. S1–S5 complete: independently reviewed candidate ready for assigned integration. S6 combined integration is assigned; integration review and cleanup remain open.** This file is the single
+**Task: `side/command-groups`. S1–S5 complete. S6 combined implementation, gates and independent review passed; master integration and cleanup remain open.** This file is the single
 task owner; it does not create a roadmap phase or change phase completion.
 
 The operator approved consolidating bulk requests into parent/child rows in `commands`,
@@ -671,3 +671,28 @@ and remain unimplemented here. This planning-only merge and the owner evidence a
 change no source, tests, configuration, dependencies, runtime artifacts or generator inputs;
 D191 reuses the exact combined code gates above, with expanded seven-owner links/anchors,
 nine instruction pairs/chain caps and diff checks. Original primary additions remain intact.
+
+
+### Combined independent acceptance — 2026-09-08
+
+Fresh read-only reviewer `/root/sup_review_combined_names` returned **PASS**, with no
+material findings, unresolved prior findings or unreviewed boundaries. The complete
+candidate was commit `445fe42451b85701b805ceb98f5e5b1aa8d8440d`, tree
+`b2fe9ad1bc2ba1ff8df02a01fbb6bcf0cfd35272`, against primary base
+`ad159128b44926408babf02126941ba782052192`. Its generated inventory reconciled all
+67 unique paths: 19 source, 33 tests/fixtures and 15 instructions/configuration/contracts/evidence.
+Coverage included worker P1–P7, operation P1–P6, command P1–P8, schema 35/36/37
+composition, historical formats, pending-conversion refusal, asynchronous identity reservation,
+and both lifecycle-guard repairs. Released migration declarations 1–34 remain byte-identical.
+The reviewer inspected the actual gate logs above and independently checked inventory,
+whitespace, owner links and instruction twins; it did not rerun runtime gates or live operations.
+
+After acceptance, primary `910ff111fd464d56621e2800bc5a8e5c22cb551f` merged without
+conflicts. Its changes reorganize future database plans and their reference pointers under
+`database-parallel/`; they explicitly preserve the running assignments. The supervisor
+inspected every reference hunk and retained those changes. Source, tests, configuration,
+dependencies, generator inputs and the accepted worker/operation/command requirements are
+unchanged from the reviewed candidate. This merge and acceptance recording reuse the gates
+on tested tree `e7cdeb4a0a4d51c21e409be219eadfa63de6134a` under D191, with scoped
+links/anchors, instruction twin/chain and whitespace checks. Master integration and owned
+cleanup follow this accepted recording. No push or operator database conversion is authorized.

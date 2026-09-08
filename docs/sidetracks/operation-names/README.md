@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task `side/operation-names`: candidate implemented, gated and independently reviewed on an isolated parallel branch; combined integration assigned; integration review and cleanup remain open.** This file owns the assignment, not a roadmap phase.
+**Task `side/operation-names`: candidate implemented, gated and independently reviewed on an isolated parallel branch; combined gates and independent review passed; master integration and cleanup remain open.** This file owns the assignment, not a roadmap phase.
 
 On 2026-09-08 the operator proposed `run_operations` and `operation_outbox`, discussed
 `run_attempts`, and accepted the recommendation `run_operation_attempts` with “okay do that”
@@ -385,5 +385,5 @@ ownership to the command-groups task. The [combined integration record](../comma
 binds the exact three candidates, primary base, isolated integration branch, migration order,
 gates, repairs, independent review and cleanup. Original rejection/repair and accepted-candidate
 evidence above is retained. Final numbering is worker 35, operation 36, command groups 37, with
-stopped-upgrade floor 36. Combined integration acceptance and cleanup are still pending.
+stopped-upgrade floor 36. The complete combined candidate passed fresh independent review at `445fe42451b85701b805ceb98f5e5b1aa8d8440d`; master integration and cleanup follow the combined owner record.
 No operator database conversion, unrelated timeline implementation or push is included.

@@ -2,9 +2,10 @@
 
 ## Assignment and approval
 
-**Owner: `side/run-completion`. Approved planning; implementation WAITING ON accepted integration
-of `side/provider-usage`, whose prerequisite is timeline/history T2.** This is a separate successor
-assignment. Do not amend running rename, timeline or provider plans or create a roadmap phase.
+**Owner: `side/run-completion`. Prerequisite A in the [parallel execution plan](README.md). Implementation
+WAITING ON accepted integration of `side/timeline-history-2` and its unchanged prerequisites.**
+The operator's 2026-09-08 parallel-execution amendment removes the provider-usage dependency.
+Complete this whole assignment before the shared foundation; leave the four running plans unchanged.
 
 On 2026-09-08 the operator approved `run_failures`, questioned the need for a separate completion
 authorization table when the run already owns its worker assignment, and selected removal of the
@@ -38,10 +39,10 @@ No worker-history table, new run-attempt table, replacement outbox or separate c
   owns backup/upgrade and paired authority. [Guards and tests](../../rebuild/reference/guards-and-tests.md),
   §3.14 D191, owns gates; [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md)
   owns wire shapes and parity.
-- [Provider usage](../provider-usage/README.md) precedes this work because both modify migration,
-  integrity, deletion and storage diagnostics. This serial assignment fixes shared ownership without
-  changing its admitted scope. [Timeline history](../timeline-history/README.md) is a transitive
-  prerequisite; consume its completed event authority, including retirement of the operation outbox.
+- [Timeline history](../timeline-history/README.md) T2 is the direct predecessor; consume its completed
+  event authority and retired operation outbox. The [parallel execution plan](README.md) places this completion
+  assignment before all remaining shared-schema work. Provider, diagnostics and artifact peers cannot
+  modify this assignment's shared files while it runs.
 
 Own the run/completion/failure domain and repository contracts; terminal factories and executor/service
 callers; SQLite migrations, integrity, recovery, deletion and backup adapters; failure references;
@@ -143,7 +144,7 @@ may recognize old tables strictly as historical input. No dual-write or permanen
 
 ## Execution and proof
 
-1. **S1 Admission:** verify accepted provider-usage integration (and timeline T2 ancestry), approved
+1. **S1 Admission:** verify accepted timeline T2 integration and existing prerequisite ancestry, approved
    plan availability, current consumers, scope ownership, instruction/lesson requirements and base.
    Record the exact completion representation, old/new replay map and immutable archive handling.
 2. **S2 Storage and migration:** implement versioned run completion, failure rename, old-record
@@ -170,13 +171,18 @@ conversation. Review does not implement or delegate. No planning dispatch or imp
 
 | Assignment | Branch / checkout | Base / integration condition |
 | --- | --- | --- |
-| `side/run-completion` | Create `codex/run-completion` in `/Users/julianhein/Projects/hr-worktree-run-completion`; recheck availability/capacity first. | Actual accepted local-master integration of `side/provider-usage`, containing this approved plan and timeline T2. Record full base SHA before editing. No unfinished peer branch or planning HEAD substitutes for that prerequisite. |
+| `side/run-completion` | Create `codex/run-completion` in `/Users/julianhein/Projects/hr-worktree-run-completion`; recheck availability/capacity first. | Actual accepted local-master integration of timeline T2 and its prerequisites, containing this approved plan. Record full base SHA before editing. No unfinished peer branch or planning HEAD substitutes for that prerequisite. |
 
 The operator assigns integration into local master at `/Users/julianhein/Projects/hr-automation-rebuild`
 after review PASS and gates. Recheck target ownership and serialize the assigned integration; gate
 the combined tree and independently re-review behavioral conflict fixes. Remove only this accepted
-task's branch/worktree from a safe checkout. No push, automatic integration or next-task dispatch.
+task's branch/worktree from a safe checkout. No push, integration before review/gates, or next-task dispatch. The prerequisite launch assigns local integration.
 Material scope, evidence-loss or ownership conflicts return for amendment; routine fixes remain local.
+
+The [parallel execution plan](README.md) owns the new batch's resource allocation, prerequisite release,
+compact handoffs and subsequent peer integration. This task is a sequential prerequisite, not one
+of those peers. Complete all P1–P6 locally; its accepted integration releases only the shared
+foundation, never the three peers directly. Record the accepted SHA and cleanup here.
 
 ## Gates
 
@@ -213,18 +219,21 @@ completion identities, result/failure preservation, FK integrity and intended ru
 
 ## Progress and launch status
 
-- Planning: scope approved; source and sanitized target inspection complete. On 2026-09-08,
-  `npm run roadmap:check`, 14 local links, 14 test-selector paths, nine instruction pairs (largest
-  chain 16,648 bytes), five unchanged preceding plans and `git diff --check` passed. Changes are
-  limited to this plan and authored contract/index additions. No product tests were run or reused
-  as evidence of the new behavior; implementation is unverified.
-- S1–S4, P1–P6, implementation gates, independent review, integration and cleanup: **not started**.
-- Launch: **WAITING ON accepted integration of `side/provider-usage`** and verification of plan/base
-  availability and the assigned checkout. Timeline T2 is its transitive prerequisite.
+- Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
+  the remaining plans for parallel execution, including their ownership, prerequisites and gates.
+- Earlier inspection/check records are historical planning evidence. This amendment's validation
+  is recorded in the [parallel execution plan](README.md); no product tests are claimed from planning.
+- S1–S4 and P1–P6: **not started**. Required product proof, gates, independent review, accepted integration
+  and cleanup remain unfinished until linked to exact evidence.
+- Launch: **WAITING ON accepted timeline T2 integration and its existing prerequisites**. Verify the committed plan revision, base, branch/path ownership
+  and capacity. Do not substitute a planning commit or unmerged sibling for the prerequisite.
 
-The operator opens `/supervise side/run-completion` using this absolute plan path and verified plan
-SHA once the prerequisite is accepted. This is an approved side-work assignment: this side plan
-owns progress, review, gate evidence and completion wherever `/supervise` refers to a task/phase
-section. Do not create a phase number or mark roadmap tasks complete. Preserve repository contracts,
-independent review and assigned integration/cleanup conditions. Send Done / Now / Remaining at
-start/resume and after each verified step, including all unfinished proofs, gates, review and cleanup.
+The operator launches [the prerequisite task](00-prerequisites.md) once. It executes this internal
+`side/run-completion` unit locally, then B after A's accepted integration and cleanup. Do not separately
+launch this file or a sibling supervisor. The prerequisite launch assigns this unit's local integration.
+This is an approved side-work assignment. This side plan is the task owner wherever `/supervise`
+refers to a task/phase section. Record progress, review, gate evidence and completion here; do not
+create a phase number or mark roadmap tasks complete. Preserve repository contracts, Astra/high,
+fresh read-only `sup_review`, all required gates and the linked integration/cleanup conditions.
+Send Done / Now / Remaining at start/resume and after each verified step. No automatic task launch,
+push or application to the operator database.

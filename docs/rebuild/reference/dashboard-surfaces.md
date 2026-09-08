@@ -4655,7 +4655,7 @@ are renamed without rewriting records. Parallel integration must reconcile migra
 and historical families before claiming a combined current schema.
 
 
-**2026-09-08 command-group storage — combined integration candidate; awaiting independent integration review.**
+**2026-09-08 command-group storage — combined implementation and independent review accepted; local integration recorded in the task owner.**
 [Side task `side/command-groups`](../../sidetracks/command-groups/README.md) moves the
 exact accepted bulk envelope from `bulk_command_acceptances` into a non-executable parent
 row in `commands`, with direct individual commands linked by nullable `parent_command_id`.
@@ -7036,10 +7036,11 @@ dropped, and this table is how a citation to the old flat list resolves.
 ## Run completion storage
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/run-completion`](../../sidetracks/run-completion/README.md) amends D110/D114 and
+[Side task `side/run-completion`](../../sidetracks/database-parallel/00a-run-completion.md) amends D110/D114 and
 D330 storage: move `run_terminal_authorizations` evidence into a strict immutable completion record
 on `workflow_runs`, rename `failures` to `run_failures`, and retire the unused `run_terminal_outbox`.
-It follows accepted provider-usage integration and leaves running predecessor plans unchanged.
+It follows accepted timeline T2 integration, before the shared database foundation, under the
+[parallel execution binding](../../sidetracks/database-parallel/README.md). Running predecessor plans remain unchanged.
 
 Active ownership remains the run's worker/claim generation and expected-version protocol. Completion
 preserves the exact accepted worker, generation, version, timestamp and result/failure identity after
@@ -7058,8 +7059,9 @@ implementation claim or authorization to convert the operator database.
 ## Failure resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md), following run-completion,
-adds Mark resolved and Reopen to existing failure details. The current annotation is stored on the
+[Side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) adds Mark resolved and Reopen
+after the shared foundation supplies run completion and annotation storage. Its independent parallel
+assignment follows the [parallel execution binding](../../sidetracks/database-parallel/README.md). The actions appear in existing failure details. The current annotation is stored on the
 owning `run_failures` row separately from immutable occurrence evidence, with its own version,
 operator actor/time and optional bounded note. It needs no fix/lesson table, required commit or
 verification report. Historical failures start unresolved; matching fingerprints or later successful
@@ -7077,7 +7079,7 @@ evidence. This records approved scope, not a current feature or database applica
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) owns one-row `imported_artifacts`,
+[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) owns one-row `imported_artifacts`,
 `extracted_artifacts` and `generated_artifacts`; [data intake](data-intake-and-edit-data.md#artifact-storage-model)
 owns their lifecycle/identity rules. Preserve intake mapping/validation/correction/exclusion, frozen
 submission, batch origin/grouping, command replay and current duplicate/re-upload behavior. Historical

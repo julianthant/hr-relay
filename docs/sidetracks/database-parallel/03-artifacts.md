@@ -2,9 +2,10 @@
 
 ## Assignment and approval
 
-**Owner: `side/artifacts`. Approved planning; T1 WAITING ON accepted integration of
-`side/diagnostics`. T2 follows accepted T1 integration.** This is one combined side plan with two
-sequential implementation units, not a new roadmap phase or an amendment to running work.
+**Product owner: `side/artifacts`. Revised execution follows the [parallel execution plan](README.md).**
+Former T1 import/extraction implementation and shared generated storage move to prerequisite B.
+T2 `side/artifacts-2` becomes parallel peer G, **WAITING ON accepted B release**. The operator
+approved this allocation amendment on 2026-09-08. The four currently running plans stay unchanged.
 
 On 2026-09-08 the operator approved combining intake preparation and submission into one row,
 explicitly rejecting draft rows and snapshot rows with different purposes. They requested that the
@@ -23,10 +24,15 @@ Three product outcomes:
    output file, with pending work, current processing state and verified file-version references.
    Creation and subsequent updates use the same kind of record, not separate row types or tables.
 
-T1 `side/artifacts-1` implements import consolidation/extraction naming. T2 `side/artifacts-2`
-implements generated-file state and replaces the two output-maintenance tables. The filesystem/DB
-boundary and output-version recovery require a separate complete proof/review unit. Both live here;
-the operator opens each session after its prerequisite, with no automatic sibling dispatch.
+The product sections retain T1/T2 labels for requirement/proof continuity. **Do not launch
+`side/artifacts-1` separately:** its full scope is now implemented and reviewed in B. B also supplies
+T2's physical storage, conversion and real adapters. T2 `side/artifacts-2` owns the filesystem/DB
+publication and export behavior through those frozen seams. It can run independently alongside
+provider accounting and diagnostic resolution after B; neither peer is its prerequisite.
+
+The one [prerequisite task](00-prerequisites.md) must publish its verified B release before launch.
+Use that exact accepted release base, also used by both peers. Record this peer's detailed evidence
+only in `03-artifacts-evidence.md` in this folder; do not share an `implementation.md` or edit another peer's plan.
 
 ## Authorities and scope
 
@@ -37,22 +43,23 @@ the operator opens each session after its prerequisite, with no automatic siblin
   owns the pending amendment to intake/extraction and D164's output-maintenance tables.
 - [Dashboard surfaces: artifact storage model](../../rebuild/reference/dashboard-surfaces.md#artifact-storage-model)
   owns unchanged intake behavior, command replay, generated-file/export presentation and diagnostics.
-- [Diagnostics](../diagnostics/README.md) is the prerequisite, retaining its snapshot/file/receipt
-  identities and artifact protection. [Run completion](../run-completion/README.md),
-  [provider usage](../provider-usage/README.md) and [timeline history](../timeline-history/README.md)
-  are transitive predecessors; do not amend or duplicate their implementation scope.
+- The [parallel execution plan](README.md) owns B, which provides diagnostic snapshot/file/receipt names
+  and protection plus import/extraction and generated storage. Run completion and timeline T2 precede
+  B. Diagnostic resolution and provider accounting are independent peers, not predecessors.
 - [Task contract](../../rebuild/reference/task-contract.md), [workflow model](../../rebuild/reference/workflow-model.md),
   [operator trust](../../rebuild/reference/operator-trust.md), [clock/config/secrets](../../rebuild/reference/clock-config-secrets.md)
   D321/D322/D332, [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md),
   and [guards and tests](../../rebuild/reference/guards-and-tests.md) §3.14 D191 retain authority,
   protected evidence, upgrade/backup, commands, resource admission and gates.
 
-T1 owns intake/extraction domain/storage/repository schemas, migration/integrity/compatibility,
-upload and command handlers, fan-out/run-origin references and transitive intake readers/tests.
-T2 owns generated-file domain/storage, artifact projection/sink interfaces, executor checkpoint/output
-composites, artifact-version publication/verification, existing operator XLSX export registration,
-storage diagnostics and transitive readers/tests. Both own only their necessary reference/catalog
-updates and record progress here. Read nearest instructions and linked lessons before module edits.
+B owns all T1 intake/extraction implementation, including commands, fan-out/origin references,
+transitive readers and proof. B also owns T2 physical schema, strict low-level queue/CAS/receipts,
+migration/source backups/integrity/retention, shared executor/export composition and pending counts.
+G owns generated-file publication, writer and immutable-version verification, exact checkpoint update
+consumption, and existing explicit XLSX export registration through B's real frozen interfaces.
+Only G's enumerated production/tests and this plan/evidence may change in parallel; no shared
+migration, IDs, global repository types, root composition or intake command edits. The [parallel execution plan](README.md)
+owns exact file lists and integration. Read nearest instructions and lessons before module edits.
 
 Do not change workflow meaning, source coercion, sensitive-field rules, active-import reuse policy,
 batch grouping/priority, run membership, retry, operation proof or UNKNOWN-submit safety. Do not
@@ -209,18 +216,18 @@ verified database backup/source manifest, following the timeline predecessor's s
 
 ## Work sequence, review and proof
 
-1. **T1 admission/schema:** verify diagnostics integration, current names/consumers and target floor;
-   bind one-row import schema, old-ID mapping and frozen submitted representation before edits.
-2. **T1 implementation:** consolidate import repositories/commands/fan-out and rename extraction;
-   migrate supported historical shapes, preserve all transitive readers and prove P1–P3/P8.
-3. **T1 acceptance:** gate, commit/freeze, obtain R1, fix/re-review, then assigned integration/gates/
-   cleanup. Record accepted base for T2 here; no automatic T2 dispatch.
-4. **T2 admission/storage:** consume accepted T1, bind file/update/version identities, destination
-   ownership and historical source preservation; implement strict row and atomic queue/receipt methods.
-5. **T2 writer/consumers:** adapt checkpoint/projector and export paths, verified immutable version
-   retention and diagnostics, migrate and retire old output authorities. Prove P4–P8.
-6. **T2 acceptance:** gate, commit/freeze, obtain R2 covering T2 plus import/extraction interactions,
-   fix/re-review, then operator-assigned integration/gates/cleanup. No completion before required work.
+1. **B/T1:** the shared foundation implements the complete one-row import/extraction scope,
+   validates historical identity and frozen readers, and proves P1–P3 plus its P8 cases.
+2. **B/T2 storage:** B implements final generated-file schema/queue methods, populated conversion,
+   verified source preservation, legacy adapters and shared composition; prove storage P4/P7/P8.
+3. **G admission:** verify B accepted release, immutable APIs/schema, exclusive exact paths,
+   base and test resources. No provider or diagnostic-resolution peer input is required.
+4. **G writer/export:** implement managed immutable publication, ordered/fenced checkpoint output
+   consumption and existing explicit export registration. Prove P4–P6 and generated-output P8 on B alone.
+5. **G acceptance:** full gates, frozen candidate and fresh independent review covering G plus
+   its preserved import/extraction interactions; fix/re-review and return the compact handoff for
+   operator-chosen integration, combined gates and cleanup. Do not claim all artifacts complete
+   until both B's and G's proof allocations have accepted evidence.
 
 | Proof | Required result and negative controls |
 | --- | --- |
@@ -233,38 +240,35 @@ verified database backup/source manifest, following the timeline predecessor's s
 | P7 Output migration/retirement | Populated pending/completed/mixed updates, existing heads and files, old exports and unavailable history have exact conversion outcomes. Required stopped file copies and DB backup are identity-bound; changed/missing sources refuse. Old output tables/current consumers retire and pending counts remain accurate. |
 | P8 Upgrade/retention/compatibility | Fresh creation, supported old backups/upgrades, pre/postcommit interruption, exact resume, no-write repeat and full restore pass. D308/tombstones, shared file refs, diagnostics/pins, archive identity and schema/settings coupling remain correct. No new real provider/workflow activation. |
 
-Each unit uses one GPT-6 Astra/high supervisor implementing locally, zero implementation workers, and
-one fresh complete read-only `sup_review` on Astra/high (R1/T1, R2/T2). At most two active agents per
-unit. Reviews receive pinned base/head/tree, full diff, plan/proof map and gate evidence, not the author's
-conversation. Reviewers never implement or delegate. Re-review required findings and behavioral
-integration fixes. Separate filesystem and import concerns justify two sequential units rather than
-parallel edits to unfinished shared migrations and artifact references.
+B's implementation/review allocation lives in the [parallel execution plan](README.md). G uses one Astra/high
+supervisor implementing locally, zero implementation workers, and one fresh complete read-only
+`sup_review` on Astra/high. The reviewer receives exact base/head/tree, full assigned diff, this product
+contract/proof allocation and gate evidence, not the author's conversation. It never implements or
+delegates. Re-review required findings and behavioral integration fixes.
 
 | Unit | Branch / absolute checkout | Base / owned scope |
 | --- | --- | --- |
-| T1 `side/artifacts-1` | Create `codex/artifact-imports` at `/Users/julianhein/Projects/hr-worktree-artifact-imports` | Accepted local-master integration of `side/diagnostics`, containing this plan. Own import/extraction consolidation only. |
-| T2 `side/artifacts-2` | Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs` | Accepted T1 local-master integration. Own generated-file authority, writer/export consumers and combined compatibility. |
+| Former T1 | No separate task or checkout; execute inside `side/database-foundation`. | B owns its complete implementation and review. |
+| T2 `side/artifacts-2` | Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs`. | Exact accepted B release SHA, also used by P/D; G owns publication/export behavior only. |
 
-Names are proposals until checked. Recheck capacity/ref/path ownership; record actual full base before
-edits. Never start from planning HEAD or an unfinished peer branch. The operator assigns local-master
-integration at `/Users/julianhein/Projects/hr-automation-rebuild` after complete review PASS and gates.
-Serialize the assigned target operation, gate combined inputs, independently review behavioral conflict
-fixes and remove only the accepted owned worktree/branch from a safe checkout. No push, automatic
-integration, sibling launch or phase completion. Material scope/ownership/evidence loss needs amendment;
-routine implementation and proof repairs remain local.
+Verify availability, capacity and full base before editing. The provider-usage implementing supervisor
+is the one peer integration owner. Return the reviewed candidate with exact proof/handoff; transfer
+responsibility only on acceptance. Integration may occur before or after P or D. The shared plan owns
+serialized target operations, combined gates, renewed review and safe cleanup. No automatic integration,
+push, sibling launch, operator-database application or phase completion.
 
 ## Gates and application
 
 Read nearest instructions and relevant lessons; use `/ui` for required intake/diagnostic/export UI
 adaptations and preserve existing layouts. No new artifact-management screen is assigned.
 
-Focused iteration selectors:
+Focused iteration selectors (T1 belongs to B; T2 belongs to G except B-owned migration/storage proof):
 
 - T1: `npm run test -- tests/unit/intake-session.test.ts tests/unit/intake-command-arms.test.ts tests/unit/intake-validation.test.ts tests/unit/server/intake-surface.test.ts tests/unit/ocr-extraction-admission.test.ts tests/unit/ocr-command.test.ts`
 - T1: `npm run test:architecture -- tests/unit/architecture/intake-mapping-boundary.test.ts tests/unit/architecture/ocr-producer-parity.test.ts`
 - T2: `npm run test -- tests/unit/artifact-projection.test.ts tests/unit/infra/server-verified-artifact-reader.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/server/operator-xlsx-export-service.test.ts`
-- Both: `npm run test -- tests/unit/storage-upgrade.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/archive-model.test.ts`
-- Both: `npm run test:architecture -- tests/unit/architecture/migration-history-immutability.test.ts`
+- B and G: `npm run test -- tests/unit/storage-upgrade.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/archive-model.test.ts`
+- B and G: `npm run test:architecture -- tests/unit/architecture/migration-history-immutability.test.ts`
 
 Add actual concurrent database/writer, failure-injection, complete source-copy restore and historical
 identity fixtures for the proof rows. Record renamed selector/guard mapping and guard inventory evidence;
@@ -291,18 +295,19 @@ No live HR submission, real OCR call or maintained production workbook is needed
 
 ## Progress and launch status
 
-- Planning: scope approved; relevant code, ownership and sanitized target metadata inspected.
-  On 2026-09-08, scoped checks passed: `npm run roadmap:check`, 16 local links, 17 test-selector
-  paths, nine instruction pairs (largest chain 16,648 bytes), seven preceding plans byte-unchanged
-  and `git diff --check`. Changes are limited to this plan and authored contract/index additions.
-  No product tests were run or reused as proof of the unimplemented storage behavior.
-- T1/T2 implementation, P1–P8, product gates, R1/R2, integration and cleanup: **not started**.
-- T1 launch: **WAITING ON accepted `side/diagnostics` integration** and verified plan/base/checkouts.
-- T2 launch: **WAITING ON accepted `side/artifacts-1` integration**. No automatic next-unit dispatch.
+- Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
+  the remaining plans for parallel execution, including their ownership, prerequisites and gates.
+- Earlier inspection/check records are historical planning evidence. This amendment's validation
+  is recorded in the [parallel execution plan](README.md); no product tests are claimed from planning.
+- B/T1, B/T2 storage, G/T2 publication and P1–P8 allocated proof: **not started**. Required product proof, gates, independent review, accepted integration
+  and cleanup remain unfinished until linked to exact evidence.
+- Launch: **WAITING ON accepted B release, including complete former T1 and shared generated-storage proof**. Verify the committed plan revision, base, branch/path ownership
+  and capacity. Do not substitute a planning commit or unmerged sibling for the prerequisite.
 
-The operator opens `/supervise side/artifacts-1` or `/supervise side/artifacts-2` with this absolute
-plan path and verified plan SHA after its prerequisite. This is an approved side-work assignment: this
-plan owns progress, review, gate evidence and completion wherever `/supervise` refers to a task/phase
-section. Do not create a phase number or mark roadmap tasks complete. Preserve repository contracts,
-independent review and assigned integration/cleanup. Send Done / Now / Remaining at start/resume and
-after each verified step, keeping all unfinished proof, gates, review and cleanup visible.
+The operator opens `/supervise side/artifacts-2` using this absolute plan path and the approved plan SHA.
+This is an approved side-work assignment. This side plan is the task owner wherever `/supervise`
+refers to a task/phase section. Record progress, review, gate evidence and completion here; do not
+create a phase number or mark roadmap tasks complete. Preserve repository contracts, Astra/high,
+fresh read-only `sup_review`, all required gates and the linked integration/cleanup conditions.
+Send Done / Now / Remaining at start/resume and after each verified step. No automatic task launch,
+push or application to the operator database.

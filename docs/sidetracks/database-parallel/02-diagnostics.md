@@ -2,8 +2,10 @@
 
 ## Assignment and approval
 
-**Owner: `side/diagnostics`. Approved planning; implementation WAITING ON accepted integration of
-`side/run-completion`.** This is one combined diagnostic assignment, not another roadmap phase.
+**Product owner: `side/diagnostics`. Parallel peer D in the [parallel execution plan](README.md).**
+Implementation is **WAITING ON accepted `side/database-foundation` release**. The operator's
+2026-09-08 amendment moves shared storage/renames/retirement to B and assigns this peer the complete
+operator-resolution behavior. Product scope stays together here; this is not a roadmap phase.
 
 On 2026-09-08 the operator approved `diagnostic_snapshots`, `diagnostic_files` and `run_receipts`.
 They subsequently rejected keeping database lessons and detailed fix records, preferring workflow
@@ -23,6 +25,10 @@ Outcomes:
 3. Add lightweight, explicit operator resolution to `run_failures`: status, actor/time and optional
    short note, with a usable dashboard action and honest history. No separate issue/fix table.
 
+The one [prerequisite task](00-prerequisites.md) must publish its verified B release before launch.
+Use that exact accepted release base, also used by both peers. Record this peer's detailed evidence
+only in `02-diagnostics-evidence.md` in this folder; do not share an `implementation.md` or edit another peer's plan.
+
 ## Authorities, prerequisites and scope
 
 - [Root instructions](../../../AGENTS.md), [document routing](../../README.md),
@@ -32,22 +38,22 @@ Outcomes:
   owns the pending amendment to diagnostic/receipt naming and §4's knowledge/fix authority.
 - [Dashboard surfaces: failure resolution](../../rebuild/reference/dashboard-surfaces.md#failure-resolution)
   owns operator actions, immutable failure/completion/receipt boundaries and archive presentation.
-- [Run completion](../run-completion/README.md) is the predecessor. Consume its accepted
-  `run_failures` and immutable completion on `workflow_runs`; do not rename failures independently.
-  [Provider usage](../provider-usage/README.md) and [timeline history](../timeline-history/README.md)
-  are transitive prerequisites. This ordering resolves shared migrations, deletion, command and
-  diagnostic presentation ownership without amending those plans.
+- The [parallel execution plan](README.md) owns the shared prerequisite B, following run completion and
+  timeline T2. B provides `run_failures`, immutable completion, diagnostic renames and strict annotation
+  storage. Provider accounting and generated-file behavior are independent peers, not prerequisites.
 - [Clock/config/secrets](../../rebuild/reference/clock-config-secrets.md), D321/D322/D332,
   [guards and tests](../../rebuild/reference/guards-and-tests.md), §3.14 D191, and
   [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md) own
   upgrade/backup, evidence protection, gates, command transport and parity.
 
-Own diagnostic/failure/receipt domain and storage contracts; SQLite migrations, FK/index/integrity,
-recovery/backup/deletion readers; diagnostic capture/retention and receipt services; knowledge/fix
-retirement; one failure-resolution command through existing command/audit infrastructure; minimal
-failure-detail UI and archived readback; associated tests, generated catalogs and owner documentation.
-Read nearest instructions including `src/server/AGENTS.md`, `src/dashboard/AGENTS.md`, and
-`src/control/AGENTS.md` where applicable, plus each affected module's linked lessons.
+B owns diagnostic/failure/receipt schemas, migrations/FKs/integrity/recovery/deletion registration,
+knowledge/fix retirement and protected backup, existing capture/readback adaptations, and low-level
+independently versioned annotation storage. D owns resolution command admission/dispatch, the command
+transaction and audits/events, current annotation read model, failure-detail/archive controls, exclusive
+tests and this plan/evidence. The [parallel execution plan](README.md) binds exact paths, resource slots and release proof.
+D alone owns the enumerated command/UI files; provider and generated-artifact peers cannot edit them.
+D cannot reopen shared migration/composition/domain-ID files. Read nearest server/dashboard/control
+instructions and linked lessons before edits.
 
 Keep `run_failures`, `run_results`, `workflow_runs`, artifact storage and timeline authority. No
 snapshot/file-table merge, attachment deduplication redesign, new global issue tracker, commit/file-list
@@ -158,14 +164,14 @@ bytes and protected download admission retain their existing rules.
 
 ## Ordered work, allocation and proof
 
-1. **S1 Admission:** verify accepted run-completion integration, plan/base availability and exclusive
-   checkout; record current name/consumer map, annotation schema and command/archived read boundaries.
-2. **S2 Storage:** implement three renames, preserved evidence/pins, knowledge/fix retirement and
-   independently versioned failure annotation with strict populated migration/backup proof.
-3. **S3 Resolution:** add the transactional command, audits/events, read model and scoped failure UI;
-   verify current-versus-frozen archived resolution, correction and protection boundaries.
-4. **S4 Acceptance:** complete proofs/gates, commit/freeze, obtain independent review, fix/re-review,
-   then operator-assigned integration, combined gates and owned cleanup.
+1. **S1 Admission:** verify accepted B release and exact frozen annotation/transaction contracts,
+   owned command/read/UI files, base and test slots. No dependency on P or G.
+2. **S2 Resolution:** implement the admitted Mark resolved/Reopen command, canonical actor/version
+   fences, atomic annotation/audit/event persistence, read model and usable failure UI on B alone.
+3. **S3 Proof:** complete P3–P5 and annotation-specific P6; link B's P1/P2/storage P6 evidence and
+   test the composed current/archive boundary without requiring sibling behavior.
+4. **S4 Acceptance:** full gates, frozen candidate and fresh independent review, fix/re-review, then
+   compact handoff to the named integration owner for operator-chosen integration and cleanup.
 
 | Proof | Required result / negative control |
 | --- | --- |
@@ -176,21 +182,20 @@ bytes and protected download admission retain their existing rules.
 | P5 Served behavior | Live and archived failure views show truthful current resolution, accessible actions, optional-note feedback and real refusals. Archive frozen content remains unchanged. Reopening corrects mistaken marking; refreshed processes observe persisted state. Capture-only runs have no control. Marking resolved cannot enable a prohibited retry or resolve UNKNOWN external state. |
 | P6 Upgrade/deletion | Fresh DB, supported historical upgrade/backup/restore, interrupted conversion before/after commit, exact resume and repeated no-write conversion pass. D308 removes exact annotations with owner failures and does not resurrect them from cached UI/archive; shared artifacts, diagnostic pin/prune rules and protected download checks remain valid. |
 
-One GPT-6 Astra/high supervisor implements this cohesive diagnostic unit locally; zero implementation
-workers. One fresh read-only `sup_review` on Astra/high reviews the complete frozen candidate and
-P1–P6, including UI/command and historical evidence boundaries. At most two active agents. Reviewer
-receives pinned base/head/tree, complete diff, approved plan and evidence, not the author's working
-conversation; it never implements/delegates. No planning agents or automatic new-task dispatch.
+One Astra/high supervisor implements this complete command/UI peer locally, zero implementation
+workers; one fresh read-only `sup_review` on Astra/high reviews its complete assigned candidate.
+It receives base/head/tree, full diff, proof allocation and gate evidence, not the author's working
+conversation, and never implements or delegates. B must already have proved the storage prerequisites.
 
 | Assignment | Branch / checkout | Base / integration condition |
 | --- | --- | --- |
-| `side/diagnostics` | Create `codex/diagnostics` in `/Users/julianhein/Projects/hr-worktree-diagnostics`; recheck refs/path/capacity. | Actual accepted local-master integration of `side/run-completion`, containing this plan and transitive prerequisites. Record full SHA before edits; planning HEAD and unfinished peer branches are not substitutes. |
+| `side/diagnostics` | Create `codex/diagnostics` in `/Users/julianhein/Projects/hr-worktree-diagnostics`; verify availability. | Exact accepted B release SHA, also used by P and G. No unfinished peer dependency. |
 
-The operator assigns integration into local master at `/Users/julianhein/Projects/hr-automation-rebuild`
-after complete review PASS and gates. Recheck ownership, serialize the assigned integration, gate
-combined inputs and independently re-review behavioral conflict fixes. Remove only the accepted owned
-branch/worktree from a safe checkout. No push or next-task dispatch. Material evidence-loss, scope or
-ownership changes return for amendment; routine implementation and test fixes remain local.
+The [parallel execution plan](README.md) names the provider-usage implementing supervisor as peer integration owner.
+Return a compact reviewed candidate and retain responsibility until its exact handoff is accepted.
+End the turn when no local work remains; do not poll other tasks. Operator-chosen integration may
+place D before or after either peer. Shared-target operations, combined gates, conflict review and
+owned cleanup follow that plan. No automatic merge, sibling dispatch, push or scope expansion.
 
 ## Gates and application
 
@@ -228,18 +233,19 @@ counts, identities, evidence digests and integrity. Preserve original recovery m
 
 ## Progress and launch status
 
-- Planning: scope approved, current code and sanitized target inspected. Scoped checks passed on
-  2026-09-08: `npm run roadmap:check`, 12 local links, 15 test-selector paths, nine instruction pairs
-  (largest chain 16,648 bytes), six preceding plans byte-unchanged, and `git diff --check`. Changes
-  are this plan and authored contract/index additions only. No product tests were run or reused
-  as proof of the proposed behavior; implementation remains unverified.
-- S1–S4, P1–P6, implementation gates, review, integration and cleanup: **not started**.
-- Launch: **WAITING ON accepted integration of `side/run-completion`**, approved-plan/base availability
-  and assigned-checkout admission. No earlier plan was amended.
+- Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
+  the remaining plans for parallel execution, including their ownership, prerequisites and gates.
+- Earlier inspection/check records are historical planning evidence. This amendment's validation
+  is recorded in the [parallel execution plan](README.md); no product tests are claimed from planning.
+- B-owned storage prerequisites and this peer's S1–S4/P1–P6 proof allocation: **not started**. Required product proof, gates, independent review, accepted integration
+  and cleanup remain unfinished until linked to exact evidence.
+- Launch: **WAITING ON accepted B release with evidence-preserving storage and independent command/UI ownership**. Verify the committed plan revision, base, branch/path ownership
+  and capacity. Do not substitute a planning commit or unmerged sibling for the prerequisite.
 
-The operator opens `/supervise side/diagnostics` with this absolute plan path and verified plan SHA
-once prerequisites are accepted. This is an approved side-work assignment: this side plan owns progress,
-review, gate evidence and completion wherever `/supervise` refers to a task/phase section. Do not invent
-a phase number or mark roadmap tasks complete. Preserve repository contracts, independent review and
-assigned integration/cleanup conditions. Send Done / Now / Remaining at start/resume and after each
-verified step, keeping all unfinished proofs, gates, review and cleanup visible.
+The operator opens `/supervise side/diagnostics` using this absolute plan path and the approved plan SHA.
+This is an approved side-work assignment. This side plan is the task owner wherever `/supervise`
+refers to a task/phase section. Record progress, review, gate evidence and completion here; do not
+create a phase number or mark roadmap tasks complete. Preserve repository contracts, Astra/high,
+fresh read-only `sup_review`, all required gates and the linked integration/cleanup conditions.
+Send Done / Now / Remaining at start/resume and after each verified step. No automatic task launch,
+push or application to the operator database.

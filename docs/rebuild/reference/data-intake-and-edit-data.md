@@ -2357,11 +2357,12 @@ claims a port is implemented.
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) consolidates the artifact naming
+[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) consolidates the artifact naming
 and lifecycle decisions: `intake_sessions` plus `intake_manifests` become `imported_artifacts`,
 `ocr_extractions` becomes `extracted_artifacts`, and `artifact_outbox` plus `artifact_sink_heads`
-become `generated_artifacts`. It follows accepted diagnostics integration in two sequential units:
-T1 import/extraction, then T2 managed outputs. Existing running plans remain unchanged.
+become `generated_artifacts`. Under the [parallel execution binding](../../sidetracks/database-parallel/README.md), prerequisite B
+completes T1 and shared T2 storage; T2 publication/export then runs independently of provider accounting
+and diagnostic resolution. Existing running plans remain unchanged.
 
 Every imported-artifact row represents one whole import: mutable preparation then frozen submitted
 data on the same row, atomically bound to enqueue. Preserve source versions, explicit row dispositions,
