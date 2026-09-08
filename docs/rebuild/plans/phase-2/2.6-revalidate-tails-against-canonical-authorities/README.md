@@ -37,16 +37,17 @@ At reset, the primary operator root had schema 32/generation 0 and one fresh bas
 historical generation-94 database and generation-91 backup are not fixture inputs or restore targets.
 This handoff does not mark Phase 1.6 or Phase 2.6 complete.
 
-**Current closure residuals (2026-09-08).** Accepted master advanced the authority to schema 33;
-Task 7 consumed it and passed the combined fresh/v29 fixture checks, 5542 coverage tests and 261
-parity cases. Latest doctor passed schema 33/generation 733 at 2026-09-08T07:07:58.681Z with eleven
-reconciled runs and zero write-safety counts. Person Lookup's accepted full live-read was read back
-unchanged. The protected reread correction is implemented, but the fresh Separations rehearsal
-failed at pending-set observation recording after fourteen new checkpoints. Task 7 owns the narrow
-recording/provenance correction and renewed complete proof, plus the operator-deferred temporary
-settings restoration. None is transferred to Phase 2.6. Final independent review, integration gates
-and owned cleanup remain outstanding. Preserve accepted master's `workflow_runs` and
-`workflow_run_batches` names; the older schema-32 reset is historical, not a restoration target.
+**Current closure residuals (2026-09-08).** Task 7 consumes accepted schema-33 master and the
+combined fresh/v29 fixture proofs. Executable candidate `4a242128` passed 5546 coverage tests and
+261 parity cases. Both T1b workflows are accepted with exact 0/0/0 write-authority deltas; complete
+Separations proof has fifteen fresh current-run checkpoints and all eight assertions met. Latest
+doctor at 2026-09-08T07:29:41.609Z is healthy schema 33/generation 836 with twelve reconciled runs.
+Preserve the two local terminal-result projection handoffs for the successful runs, along with all
+failed evidence; they are distinct from the empty HR write outbox. Preserve `workflow_runs` and
+`workflow_run_batches`; the schema-32 reset remains historical, not a restoration target. The
+protected reread and pending-set recording defects are repaired and live-verified. No unresolved
+implementation defect is transferred by this record. Task 7 still owns fresh complete review,
+integration gates, operator-deferred settings restoration and cleanup. Phase 2.6 remains unstarted.
 
 **Execution order and wave ruling (2026-09-04).** The part runs as wave 1
 (`1-1` ∥ `1-2` ∥ `1-3`) → Task 2 → Task 3. The three wave members consume the same frozen

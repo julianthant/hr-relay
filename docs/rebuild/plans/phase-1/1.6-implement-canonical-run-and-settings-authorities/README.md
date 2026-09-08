@@ -10,14 +10,14 @@ approved only the resulting generated-fingerprint parity refresh, including disp
 with all other semantics/layout and zero tolerance preserved. Task 7's owner records the classified
 refresh and candidate gates; live proof, review and integration remain open.
 
-**Task 7 current evidence (2026-09-08).** Combined candidate `7eb62eea` passed 5542 coverage tests,
-833 architecture checks and 261 desktop parity cases against accepted schema-33 master. Person
-Lookup's headed live-read still has all seven assertions met and exact 0/0/0 writes; its retained
-result was read back unchanged. The protected reread repair produced a distinct unused item, but
-its full Separations rehearsal failed at pending-set observation recording after fourteen new
-checkpoints. Task 7 is repairing the actual task's recordData/output mismatch and retains every
-failed result. Settings restoration remains deferred until the operator signals readiness. The
-Task-7 owner binds exact proof and remaining gates; no review, integration or completion is claimed.
+**Task 7 current evidence (2026-09-08).** Steps 1–5 are accepted; executable candidate `4a242128`:
+5546 coverage tests, 833 architecture checks and 261 unchanged desktop parity cases pass. Person
+Lookup's headed live-read meets all seven assertions; Separations' complete fresh headed preview
+meets all eight with fifteen current-run checkpoints. Both have exact 0/0/0 write-authority deltas.
+The healthy primary root is schema 33/generation 836 with twelve reconciled runs; primary master
+is restored clean to f75e24a5 and owned runtime/browser processes stopped. The Task-7 owner retains
+all prior failures and binds the accepted proof and final gates. Fresh complete review, integration
+and cleanup remain; temporary-settings restoration stays operator-deferred. Phase 1.6 is not closed.
 
 **D341 detour (approved 2026-09-07; accepted, integrated into local `master` as `bc6dc9b54` and the
 private conversion performed the same day — see `ref guards-and-tests` §10.5 completion record).** It

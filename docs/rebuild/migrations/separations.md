@@ -7622,3 +7622,52 @@ durable outbox/provider reservations/artifact outbox. Two historical leases and 
 terminal outbox remain. The owned BFF (session 35232) stopped; no primary browser or CLI session
 remained. Primary master was restored clean to f75e24a5. Revision-7 settings remain deliberately
 unrestored, and no failure/checkpoint/result was removed. This proof is failed, not acceptance.
+
+
+### Task 1.6.7 full-chain acceptance after observation repair (2026-09-08)
+
+Frozen executable candidate `4a2421285ba013fae6743412f50e85c19c62ca60` matched all 1912 gated
+inputs/dependencies on clean detached primary. Original master f75e24a5 remained unchanged. The
+production provider reader admitted the runtime source, parent retired names were absent, and the
+operator-confirmed private source metadata was unchanged. Both inputs were ready. Explicit reread
+2 was unused (next attempt 1, zero runs/checkpoints); failed reread 1 retained next attempt 2 and
+fourteen checkpoints, and the original item retained next attempt 5 and fourteen checkpoints.
+No source binding was changed. Settings revision 7 was active/headed and served fingerprints matched.
+
+| Proof | Accepted evidence |
+| --- | --- |
+| Result / verdict | `3a1b9d6a-32f3-4ea3-886d-d049c0eec191` / **met**, all eight assertions |
+| Run / trace | `feaa9141-9a99-44ba-80e7-5131ae7e6096` / `sp-002736-feaa` |
+| Arm / attempt / browser | dry-run-preview / 1 on explicit reread ordinal 2 / headed; dryRun=true |
+| Manifest | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 104181 / 105829 ms / 0 |
+| Checkpoints | All fifteen current-run rows, attempt 1 / claim generation 1; no replay |
+| Receipt | `d96564f4-7467-552f-b319-57682585e36d`, partial / unknown as required for the preview |
+| Terminal / failures | done / none |
+| Evaluator deltas, independent run-scoped counts and whole transaction tables | **0/0/0** write intents / write attempts / durable outbox |
+
+The full reached path, excluded later transactions and identity gate, checkpoint set, empty gate
+results, receipt, terminal and preview assertions all met. This is the complete fresh T1b rehearsal,
+not the earlier isolated scanner proof. The preview receipt's unknown confidence is not an UNKNOWN
+submit; no intent, attempt, durable outbox or HR transaction occurred. Every earlier failed result,
+checkpoint, receipt and diagnostic remains intact. No further run is needed for this acceptance.
+
+Pre-doctor at 07:27:12.578Z passed healthy schema 33/generation 733. After the owned BFF (27786)
+and worker stopped, post-doctor at 07:29:41.609Z passed healthy schema 33/generation 836 on the same
+root identity, twelve reconciled runs, zero pending commands/unresolved writes/durable outbox/
+provider reservations/artifact outbox. Two historical stopped leases remain. The two pending
+`run_terminal_outbox` records are exactly the local projection handoffs for the accepted Person
+Lookup and Separations successes, with kind `run-terminal-result`; they are separate from the HR
+write `durable_outbox`, which is empty. They are preserved for the downstream authority readers.
+No primary browser/CLI browser or listener remained, and primary master was restored clean to
+`f75e24a57e6494e2846af248539c819c9223e53e`. The externally created compatible backup is retained;
+Task 7 created none. Ordinary settings revision 7 remains deliberately unrestored at the operator's
+deferral. No protected value, value-derived identity or raw failure text is part of this evidence.
+
+`separations-observation-repair-{command,readback}.json`,
+`pending-count-live-unused-item-preflight.json` and
+`pending-count-live-{pre-doctor,post-doctor,write-counts}.json` retain sanitized primary evidence in
+the task scratch. Person Lookup's accepted result `bcc1d548-6e1e-40e6-a683-cc7492d99d73` remains
+unchanged on schema 33; its explicit source/runtime/manifest comparison is recorded above and in
+its migration owner. **Step 4 is accepted.** Final recording, independent review, integration gates,
+operator-deferred settings restoration and owned cleanup remain open.

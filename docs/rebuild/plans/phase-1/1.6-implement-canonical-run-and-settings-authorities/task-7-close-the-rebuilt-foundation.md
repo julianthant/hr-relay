@@ -1,27 +1,23 @@
 # Task 7 · Close the rebuilt foundation
 
-**Current supervisor checkpoint (2026-09-08).** Combined candidate
-`7eb62eea84c2d0fcb284c3f4c6144737f92e36a2` passed all required offline gates against accepted
-master `f75e24a57e6494e2846af248539c819c9223e53e` and schema 33. Its new protected reread was
-independently unused (next attempt 1, zero runs/checkpoints); old item history remained intact.
-The headed Separations full rehearsal failed at `pending-set` after fourteen new checkpoints;
-all evaluator and independent write deltas are 0/0/0. The exact result and cause are recorded in
-“Fresh protected reread: observation-contract failure” below. Person Lookup's accepted result,
-run, receipt, three checkpoints and zero-write rows were read back unchanged on schema 33.
+**Current supervisor checkpoint (2026-09-08).** Steps 1–5 are accepted; awaiting independent review. Executable candidate
+`4a2421285ba013fae6743412f50e85c19c62ca60` passed full gates (5546 coverage tests, 833 architecture
+checks, 261 unchanged desktop parity cases) and the complete headed Separations T1b rehearsal:
+all eight assertions, fifteen fresh checkpoints and exact 0/0/0 write-authority deltas. Person
+Lookup's accepted seven-assertion result was read back unchanged after schema-33 migration, with
+unchanged descriptor sources, manifest and runtime. The final acceptance section below binds both
+proofs and all earlier failures remain preserved.
 
-The failure is deterministic and pre-write. The actual pending-set task's `recordData`
-fields now match its existing output contract, exercising real redaction and provenance finalization;
-do not add undeclared count aliases to the classification table or relax either guard. The real collector/redaction regression was red on the exact recorded failure and passes the
-repaired task through output finalization. The supervisor explicitly selects reread ordinal 2 for
-the complete repaired rehearsal; this one named decision never increments automatically. Require
-zero runs/checkpoints and next attempt 1 for ordinal 2, preserving ordinal 1 with fourteen failed
-checkpoints and the original item with fourteen earlier checkpoints. No workflow starts until all
-candidate gates pass. Failed reread ordinal 1 is spent and remains evidence.
-Primary is restored clean to master f75e24a5; the owned BFF/browser stopped. Latest healthy doctor:
-2026-09-08T07:07:58.681Z, schema 33/generation 733, eleven reconciled runs, zero pending commands,
-unresolved writes and durable outbox, two historical leases and one retained local terminal outbox.
-Settings revision 7 and its three overrides remain unchanged at the operator's explicit deferral.
-Steps 4–6, final evidence, complete independent review, integration and cleanup remain open.
+Primary is restored clean to accepted master `f75e24a57e6494e2846af248539c819c9223e53e`; owned
+runtime/browser processes stopped. Latest doctor at 2026-09-08T07:29:41.609Z is healthy schema 33 /
+generation 836, twelve reconciled runs, zero pending commands/unresolved writes/durable outbox,
+two historical leases and two local terminal-result projection handoffs. The public subject metadata
+now records this accepted observation, with no operational input or private-source change.
+Final candidate gates passed; fresh complete `sup_review` remains before integration. Settings
+revision 7 and its three temporary overrides remain deliberately deferred until a separate operator
+signal; no restoration, scheduling or availability polling is authorized by this checkpoint.
+Step 6, independent review, integration gates and owned cleanup remain open. No push or Phase-2.6
+implementation is authorized.
 
 **Earlier checkpoint (2026-09-07, protected-reread correction authorized).** The operator
 said to get started after the remaining protected-reread correction was identified. This authorizes
@@ -1782,3 +1778,99 @@ This gate-recording update passed 39 scoped architecture tests (51737) and lint 
 all 1912 executable/test/configuration inputs unchanged from the full gated tree. Logs are
 `pending-count-recording-{architecture,lint}.log`. D191 reuses that exact full-gate evidence;
 no Markdown link, implementation or parity reference changed during recording.
+
+
+### Task 1.6.7 full-chain acceptance after observation repair (2026-09-08)
+
+Frozen executable candidate `4a2421285ba013fae6743412f50e85c19c62ca60` matched all 1912 gated
+inputs/dependencies on clean detached primary. Original master f75e24a5 remained unchanged. The
+production provider reader admitted the runtime source, parent retired names were absent, and the
+operator-confirmed private source metadata was unchanged. Both inputs were ready. Explicit reread
+2 was unused (next attempt 1, zero runs/checkpoints); failed reread 1 retained next attempt 2 and
+fourteen checkpoints, and the original item retained next attempt 5 and fourteen checkpoints.
+No source binding was changed. Settings revision 7 was active/headed and served fingerprints matched.
+
+| Proof | Accepted evidence |
+| --- | --- |
+| Result / verdict | `3a1b9d6a-32f3-4ea3-886d-d049c0eec191` / **met**, all eight assertions |
+| Run / trace | `feaa9141-9a99-44ba-80e7-5131ae7e6096` / `sp-002736-feaa` |
+| Arm / attempt / browser | dry-run-preview / 1 on explicit reread ordinal 2 / headed; dryRun=true |
+| Manifest | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 104181 / 105829 ms / 0 |
+| Checkpoints | All fifteen current-run rows, attempt 1 / claim generation 1; no replay |
+| Receipt | `d96564f4-7467-552f-b319-57682585e36d`, partial / unknown as required for the preview |
+| Terminal / failures | done / none |
+| Evaluator deltas, independent run-scoped counts and whole transaction tables | **0/0/0** write intents / write attempts / durable outbox |
+
+The full reached path, excluded later transactions and identity gate, checkpoint set, empty gate
+results, receipt, terminal and preview assertions all met. This is the complete fresh T1b rehearsal,
+not the earlier isolated scanner proof. The preview receipt's unknown confidence is not an UNKNOWN
+submit; no intent, attempt, durable outbox or HR transaction occurred. Every earlier failed result,
+checkpoint, receipt and diagnostic remains intact. No further run is needed for this acceptance.
+
+Pre-doctor at 07:27:12.578Z passed healthy schema 33/generation 733. After the owned BFF (27786)
+and worker stopped, post-doctor at 07:29:41.609Z passed healthy schema 33/generation 836 on the same
+root identity, twelve reconciled runs, zero pending commands/unresolved writes/durable outbox/
+provider reservations/artifact outbox. Two historical stopped leases remain. The two pending
+`run_terminal_outbox` records are exactly the local projection handoffs for the accepted Person
+Lookup and Separations successes, with kind `run-terminal-result`; they are separate from the HR
+write `durable_outbox`, which is empty. They are preserved for the downstream authority readers.
+No primary browser/CLI browser or listener remained, and primary master was restored clean to
+`f75e24a57e6494e2846af248539c819c9223e53e`. The externally created compatible backup is retained;
+Task 7 created none. Ordinary settings revision 7 remains deliberately unrestored at the operator's
+deferral. No protected value, value-derived identity or raw failure text is part of this evidence.
+
+`separations-observation-repair-{command,readback}.json`,
+`pending-count-live-unused-item-preflight.json` and
+`pending-count-live-{pre-doctor,post-doctor,write-counts}.json` retain sanitized primary evidence in
+the task scratch. Person Lookup's accepted result `bcc1d548-6e1e-40e6-a683-cc7492d99d73` remains
+unchanged on schema 33; its explicit source/runtime/manifest comparison is recorded above and in
+its migration owner. **Step 4 is accepted.** Final recording, independent review, integration gates,
+operator-deferred settings restoration and owned cleanup remain open.
+
+
+### Final candidate freeze and Step 5 acceptance (2026-09-08)
+
+The seven exact evidence/registry metadata paths after executable
+`4a2421285ba013fae6743412f50e85c19c62ca60` record both accepted live proofs and the schema-33
+handoff. The final candidate is **awaiting independent review**, against accepted base
+`f75e24a57e6494e2846af248539c819c9223e53e`. Its evidence commit is the commit containing this
+section; implementation and evidence identities remain distinct. Task 7 and Phase 1.6 remain active.
+
+Final typecheck (11807), lint (4187), scoped roadmap/registry architecture (76458, 39 tests),
+manifest/catalog/roadmap freshness, instruction-pair/size audit and diff checks (22811) passed.
+Sequential runner 27154 then passed coverage (440 files / 5546 tests, 331401 ms), suite size
+(239 ms), standalone architecture (833 tests, 61445 ms), and unchanged desktop parity
+(261 cases, 61550 ms). Coverage is 85.91% statements, 77.57% branches, 89.89% functions,
+88.03% lines. Exact commands/results are in `foundation-final-candidate-gate-results.json`;
+corresponding logs and `foundation-final-gated-inputs.json` retain all 1912 exact inputs in
+`/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/task-1-6-7-dzgx4bwi`. The actual-config-importing
+two-worker adapter and imported config retain the hashes recorded above.
+
+`foundation-final-live-equivalence.json` proves the only difference from the successful live
+executable is the selected public subject's `availability.reason` and `provenance.section`.
+Operational input, availability state/date, protected reference, descriptor sources, manifests and
+runtime remain unchanged. Both accepted live proofs are carried forward under the approved
+metadata-equivalence route; no new runtime verification is claimed. All 1912 final gate inputs
+were rechecked unchanged before this documentation-only recording. Its scoped recording checks
+are required before commit; full code gates are reused under D191. No new Markdown link is added.
+
+The current migrations, Phase-1.6 overview, public observation metadata, Phase-2.6 handoff and
+roadmap now agree. Step 5 is accepted; no unresolved implementation defect is transferred.
+Step 6 still owns complete independent review, any fixes/re-review, local no-ff integration and
+its full gates, final evidence and owned cleanup. Review covers all 503 changed paths against
+the accepted base: 40 non-parity paths and 463 approved fingerprint reference paths (210 YAML,
+210 metadata JSON, 43 PNG), including each affected production entry point and consumer.
+
+Settings restoration remains explicitly deferred until a separate operator signal. Do not poll
+or schedule it. The unspent scratch `token-diagnostic-settings-command.mjs restore` expects
+revision 7 and clears exactly `browser.headless`, `timeouts.navigationMs` and
+`timeouts.sessionAcquireMs`; after that authorized action, activate/read back revision 8, doctor
+and stop owned runtime. Recheck actual revision first; never force a stale command. Preserve
+these settings and the scratch script while completing other authorized work. No further live
+workflow, push, next-task dispatch or Phase-2.6 implementation is authorized by this record.
+
+The exact consumed untracked recovery file
+`docs/handoffs/2026-09-07-task-1-6-7-reread-blocker.md` is preserved byte-for-byte as
+`scratch/consumed-task-1-6-7-reread-blocker.md`, where scratch is the absolute evidence directory
+above. Current actionable facts now live in this owner; older snapshots remain historical.
