@@ -2229,6 +2229,36 @@ Two neighbours remain separate. An intake-born item's rerun against an immutable
 manifest diff/revalidation path. An archived run's archive relaunch keeps its immutable archive
 digest and lineage path. Neither is a shortcut around this modal or a way to mutate the source.
 
+### 6.6 Explicit Rerun value mappings (operator-approved 2026-09-08)
+
+Task 2.6.1-2 may add explicit descriptor mappings from completed node output fields
+to existing operator-suppliable Run input or step-omission fields. This declaration
+is separate from the retired checkpoint-edit policy. It neither makes old
+checkpoints editable nor enlarges the ordinary input/omission schema.
+
+Each mapping names the producing node, exact durable output field path, an
+operator-facing label, and the target input field or omission step/field. The
+descriptor compiler validates both ends. No field-name matching, inferred
+mapping, inverse execution of a producer, or undeclared output exposure is
+permitted. A transaction output may supply a schema-valid operator assertion;
+its old proof is never installed as evidence that a new transaction occurred.
+
+The read projection validates canonical source existence, version, eligibility
+and descriptor identity. It offers only source-owned completed values with exact
+node/step/field, execution and recorded provenance coordinates. Missing optional
+values or provenance are reported explicitly; malformed source evidence refuses
+instead of falling back to another attempt. Omitted-step assertions do not count
+as observed completion. Values that the ordinary target schema does not admit,
+or that contain protected source data, are withheld. Protection derives from
+retained source identities, never the current private configuration.
+
+The same response may report completed/failed/unfinished step facts and settled
+transaction evidence coordinates for the existing warning protocol. It grants
+no repeat consent and writes no run, checkpoint, plan, settings or modal state.
+The existing source-bound planner still checks copied-value attribution, complete
+submitted values/omissions and repeat acknowledgment at its own boundaries.
+Task 3.1.11-2 continues to own modal selection, editing and submission.
+
 ---
 
 ## 7. Adversarial self-review — silent-fallback vectors and their guards
