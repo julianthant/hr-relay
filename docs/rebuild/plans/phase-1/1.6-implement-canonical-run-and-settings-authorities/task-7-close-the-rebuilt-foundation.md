@@ -987,3 +987,81 @@ checks passed. All 1908 tracked hashes in `replacement-gated-inputs.json` still 
 9018540f, proving D191 reuse for these three evidence-only Markdown additions. Full gates remain
 passing evidence for that input set; the failed live gate remains failed. The two retained worker
 lease PIDs, 38761 and 29045, were independently confirmed stopped. Their rows were preserved.
+
+### Network recovery and current live acceptance
+
+The operator requested headed diagnosis, then a fresh Duo key, then a retry after suspecting Wi-Fi.
+No key was enrolled or replaced: the extension still held its two prior credentials. Cancelled the
+pending one-shot security-key capture and restored automatic signing in the owned diagnostic profile.
+The same production login recipe then returned **logged-in** at `2026-09-08T00:19:07.224Z`, with
+HR Tasks present, no sign-in form, completed main response/DOMContentLoaded and the mandatory
+PeopleSoft session-token verification. `network-recovery-login-observation.json` records only
+safe facts. The prior SAML reset is consistent with a temporary service/network failure; the
+underlying cause is not established and no product timeout, fallback or login-retry rule changed.
+
+This follows a clean-profile headed comparison that reproduced a chunked HTTP/1.1 SAML response
+reset after about 28 seconds (`cold-headed-login-observation.json`). Earlier headed attempts included
+operator interaction and cannot establish the cause of later redirects. The operator separately
+reported successful manual login; presence-only inspection observed PS_TOKEN and no sign-in form.
+The later fully automated success is the recovered-prerequisite proof, not a relabeling of any failure.
+
+The browser closed. Post-doctor at `2026-09-08T00:19:31.470Z` passed healthy schema 32/generation 224,
+with four retained runs/results, zero pending command/write/outbox counts and the same primary
+identity. Primary restoration readback found clean master at its unchanged original full HEAD;
+reflog records restoration at `00:19:43Z`, after the successful login and browser closure. A subsequent
+restoration assertion expected detached HEAD and refused because master was already restored;
+no force, reset or additional checkout was performed after that refusal.
+
+The existing Person Lookup replacement's first failed attempt is retained. Its live manifest now
+pins exact attempt 2; the composition regression retains both the old selection's failure and the
+replacement's failed first attempt, then proves a same-identity second attempt and rejects attempt-1
+checkpoint evidence. The Separations replacement remains unspent at attempt 1. Public registry
+metadata now points to this current owner and records operator-selected replacement readiness,
+without claiming that a pending or failed live proof met its assertions. No private values or
+identities were changed to manufacture a new attempt. Full candidate gates precede another live pair.
+
+
+The first focused invocation incorrectly bypassed the repository test wrapper (`npx vitest`), so
+credential-path admission refused symlink ancestry under macOS `/var`. No credential/path guard was
+changed. The required `npm test --` wrapper supplied its canonical private temporary root and the
+composition suite passed all five tests (`recovery-composition-wrapper.log`, session 69467).
+
+The first full recovery coverage gate (session 50039) failed one registry architecture assertion:
+438 files, 5519 passed / 1 failed of 5520 tests, 326183 ms. The refreshed Separations availability
+reason had omitted its required historical `EMPLOYEE_NOT_FOUND` and exact `0/0/0` evidence.
+Restored that accurate history in public registry metadata; the guard and assertions are unchanged.
+The focused registry suites then passed 66 tests (session 97821); typecheck session 18185 and lint
+session 57880 passed. Failed `recovery-candidate-*` logs and its failed test root remain preserved.
+A separate full rerun uses `recovery-fixed-candidate-*` and `recovery-fixed-gated-inputs.json`;
+its 1908 inputs differ from the failed gate only at `config/test-data.json`.
+
+Consumed the temporary SAML handoff after verifying its branch/commit and retained evidence.
+The login recovery above supersedes its active enrollment snapshot. Owned diagnostic sessions
+`task7-headed-login`, `task7-recovered-login` and `task7-cold-headed-login` are closed; their exact
+stopped locks are under primary `.tracker/locks/live-smoke/` with those names. The latter's owned
+profile is primary `.auth/task7-cold-headed-login`; no new key was enrolled. Retain the older shared
+worker profiles, all failed runs/results, user screenshots and diagnostic scratch until final
+owned-resource cleanup. The earlier stopped `task7-replacement-login` smoke lock is also owned.
+
+
+**Step 3 reaccepted after network recovery.** Full gated input map
+`recovery-fixed-gated-inputs.json` contains 1908 files; exact recheck found no changed input.
+Typecheck and lint passed before coverage. Serial runner session 15721 passed:
+
+| Gate | Result | Wall time |
+| --- | --- | --- |
+| Full coverage, two effective workers | 438 files / 5520 tests passed; statements 85.87%, branches 77.51%, functions 89.87%, lines 87.99%; configured floors met | 325830 ms |
+| Suite size | 341 unit / 17 scenario / 80 architecture files | 174 ms |
+| Standalone architecture | 80 files / 833 tests passed | 61390 ms |
+| Desktop assertion-mode parity | 259 passed; no reference update | 59787 ms |
+
+Manifest, store-catalog and roadmap freshness passed (session 43619). Instruction audit passed all
+nine twin pairs with project chains under 32768 bytes; owner relative link and `git diff --check`
+passed. Adapter SHA256 remains `1da8cd8f34f538a00f96e5d92a7b422a53794b05b79789c5a24c880184e63936`,
+importing this checkout's actual config SHA256
+`1f9122bf9bbcf1fcab9e01b5aec3428bcde7f9b10b47f0f91aab41775bdbf68f` and asserting worker count 2.
+Gate commands, timings and exit statuses are in `recovery-fixed-candidate-gate-results.json`.
+The candidate is frozen for the repaired-candidate route; Step 4 still requires both fresh `met`
+proofs. The operator's visible-browser request will use the canonical ordinary-settings command
+for `browser.headless=false`, with restart activation, then restore its previously absent override.
+No credential, private test identity or `.env` change is part of headed mode.
