@@ -859,6 +859,12 @@ export const separationsWorkflow = defineWorkflow({
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsCanonicalInput,
+  rerunValues: [
+    { nodeId: DATES_NODE, fieldPath: "lastDayWorked", label: "Last day worked", targetStepKey: "kronos-timecard", targetFieldPath: "lastDayWorked" },
+    { nodeId: DATES_NODE, fieldPath: "separationDate", label: "Separation date", targetStepKey: "kronos-timecard", targetFieldPath: "separationDate" },
+    { nodeId: RECEIPT_NODE, fieldPath: "transactionNumber", label: "UCPath transaction number", targetStepKey: "ucpath-transaction", targetFieldPath: "transactionNumber" },
+    { nodeId: RECEIPT_NODE, fieldPath: "approvalStatus", label: "Approval status", targetStepKey: "ucpath-transaction", targetFieldPath: "approvalStatus" },
+  ],
   protectedInputs: [{ inputPath: "timekeeperName", name: "timekeeperName" }],
   inputSubject: "document",
   surface: { shape: "single" },

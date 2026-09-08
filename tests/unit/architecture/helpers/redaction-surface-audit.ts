@@ -114,6 +114,7 @@ import {
 import { StorageDoctorWireSchema, ProtectedSettingsInspectionWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/domain/dashboard/xlsx-export.js";
+import { RerunValuesResponseSchema } from "../../../../src/domain/dashboard/rerun-values.js";
 import { StartPlanWireSchema } from "../../../../src/domain/dashboard/start-plan.js";
 import { IntakeSessionWireSchema } from "../../../../src/domain/intake/wire.js";
 import { LedgerEntrySchema } from "../../../../src/domain/ledger.js";
@@ -856,6 +857,7 @@ export function canariesIn(text: string, names: readonly CanaryName[] = ALL_CANA
 /* ── 6. the registry ──────────────────────────────────────────────────────── */
 
 export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
+  { id: "wire/rerun-values", egress: "operator-loopback", module: "src/domain/dashboard/rerun-values.ts", schema: RerunValuesResponseSchema },
   { id: "wire/run-detail", egress: "operator-loopback", module: "src/domain/dashboard/run-detail.ts", schema: RunDetailWireSchema },
   { id: "wire/run-detail-section", egress: "operator-loopback", module: "src/domain/dashboard/run-detail.ts", schema: RunDetailSectionResponseSchema },
   { id: "wire/queue-surface", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: QueueSurfaceWireSchema },
@@ -1144,6 +1146,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.value", origin: "captured-hr-value" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].title", origin: "captured-hr-value" },
+  { surface: "wire/rerun-values", path: "snapshot.steps[].key", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.values[].label", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.values[].targetStepKey", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.values[].sourceStepKey", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.values[].value", origin: "captured-hr-value" },
+  { surface: "wire/rerun-values", path: "snapshot.transactions[].stepKey", origin: "repository-authored" },
   { surface: "wire/start-plan", path: "planned[].logicalKey", origin: "repository-authored" },
   { surface: "wire/start-plan", path: "rerun.source.selectedStepKeys[]", origin: "repository-authored" },
   { surface: "wire/start-plan", path: "rerun.source.copiedFrom[].targetStepKey", origin: "repository-authored" },
@@ -1770,6 +1778,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
     { module: "src/domain/dashboard/xlsx-export.ts", state: "audited", reason: "the XLSX evidence retains one exact redacted query or Activity snapshot and attachment identity" },
+    { module: "src/domain/dashboard/rerun-values.ts", state: "audited", reason: "the read-only Rerun response carries explicit descriptor coordinates and target-valid captured values; the reader withholds protected content and never grants repeat consent" },
     { module: "src/domain/dashboard/start-plan.ts", state: "audited", reason: "the start-plan wire answers a plan with planned-row titles, match keys and refusal messages; the request and its omission facts never echo back" },
     { module: "src/domain/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/domain/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },

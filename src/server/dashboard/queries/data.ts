@@ -6,9 +6,18 @@ import {
 } from "../../../domain/dashboard/run-detail.js";
 import { runClaim, type RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
-import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
-import { requireRun } from "./run-read.js";
+import { TargetNotFoundError, SectionUnavailableError } from "../../failures.js";
+
+function requireDataRun(deps: RunDetailQueryDeps, runId: string) {
+  const reader = deps.canonical?.reader ?? deps.runReader;
+  if (reader === undefined) throw new Error("CANONICAL_DATA_READER_NOT_CONFIGURED");
+  const existence = reader.read(runId);
+  if (existence.state !== "present") throw new TargetNotFoundError(`DATA_SOURCE_${existence.state}`);
+  if (existence.run.envelope.runId !== runId) throw new Error("DATA_SOURCE_IDENTITY_MISMATCH");
+  if (existence.disposition === "archived") throw new SectionUnavailableError("DATA_SOURCE_ARCHIVED");
+  return existence.run;
+}
 
 /* ── the context-data edit projection (2i-C) ─────────────────────────────── */
 
@@ -321,17 +330,16 @@ function editableEntryOf(
 
 function buildContextDataPayload(
   deps: RunDetailQueryDeps,
-  row: RunFoldRecord,
   authority: RunRecord,
 ): { runId: string; editing: ContextDataEditing; entries: ContextDataEntry[] } {
-  const descriptor = deps.descriptors.resolve(row.queued.workflow);
+  const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
   const editing = contextEditingOf(authority, descriptor);
   const editData = descriptor?.capabilities?.editData;
   const editFields = typeof editData === "object" ? editData.fields : [];
   const entries: ContextDataEntry[] = [];
   for (const field of editFields) {
     const stored = deps.authority.latestCheckpoint(
-      row.queued.workflow,
+      authority.envelope.workflow,
       authority.envelope.itemId,
       String(field.nodeId),
     );
@@ -354,7 +362,7 @@ export function buildDataSection(
   runId: string,
   section: "context-data" | "context-attempts",
 ): RunDetailSectionResponse {
-  const { row, authority } = requireRun(deps, runId);
+  const authority = requireDataRun(deps, runId);
   if (section === "context-data") {
     // The descriptor-declared detail patches ARE the display-safe data facts
     // (ref dashboard-surfaces §1.1), joined back to their declaring specs for field identity;
@@ -362,18 +370,21 @@ export function buildDataSection(
     // scalars a correction targets (ref data-intake-and-edit-data §6, 2i-C).
     return RunDetailSectionResponseSchema.parse({
       section,
-      payload: buildContextDataPayload(deps, row, authority),
+      payload: buildContextDataPayload(deps, authority),
     });
   }
 
+  const row = deps.projection.runFold(runId);
+  if (row !== undefined && (row.queued.runId !== runId || row.queued.workflow !== authority.envelope.workflow))
+    throw new Error("DATA_SOURCE_EVIDENCE_MISMATCH");
   return RunDetailSectionResponseSchema.parse({
     section,
     payload: {
       runId,
       entries: [
-        { label: "current-attempt", valueRedacted: String(row.attempt) },
-        { label: "requeues", valueRedacted: String(row.requeues) },
-        { label: "enqueued-day", valueRedacted: localDatePart(new Date(row.queued.ts)) },
+        { label: "current-attempt", valueRedacted: String(authority.envelope.attempt) },
+        { label: "requeues", valueRedacted: row === undefined ? "not recorded" : String(row.requeues) },
+        { label: "enqueued-day", valueRedacted: localDatePart(new Date(authority.envelope.enqueuedAt)) },
       ],
     },
   });

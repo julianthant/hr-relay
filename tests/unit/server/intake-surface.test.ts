@@ -19,7 +19,7 @@ import { RunRecordService } from "../../../src/core/run-record-service.js";
  *    holds no rows or columns at all.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -37,6 +37,7 @@ import {
   INTAKE_UPLOAD_MAX_BYTES,
   createIntakeService,
   type IntakeService,
+  type IntakeServiceDependencies,
 } from "../../../src/server/dashboard/commands/intake-service.js";
 import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../fixtures/phase1c-contract-fixtures.js";
@@ -72,6 +73,8 @@ function commandId(): string {
 }
 
 interface Surface {
+  readonly root: string;
+  readonly freshIntake: (missingManifest?: boolean) => IntakeService;
   readonly intake: IntakeService;
   readonly database: AuthorityDatabase;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
@@ -112,7 +115,7 @@ function surface(): Surface {
       (workflowId === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined),
   };
 
-  const intake = createIntakeService({
+  const intakeDependencies: IntakeServiceDependencies = {
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
@@ -127,7 +130,8 @@ function surface(): Surface {
     clock,
     ids: sequentialIdFactory("c"),
     actorId: LOCAL_OPERATOR_ACTOR_ID,
-  });
+  };
+  const intake = createIntakeService(intakeDependencies);
 
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
@@ -203,6 +207,11 @@ function surface(): Surface {
   });
 
   return {
+    root,
+    freshIntake: (missingManifest = false) => createIntakeService({ ...intakeDependencies,
+      parser: createIntakeParser({ artifacts }), authorityRead: { ...intakeDependencies.authorityRead,
+        getIntakeManifest: (id) => missingManifest ? undefined : intakeDependencies.authorityRead.getIntakeManifest(id),
+      } }),
     intake,
     database,
     projection,
@@ -672,4 +681,37 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     );
     assert.deepEqual(fresh.rerun?.diff.added, [], "an unmapped current plan adds no runnable item");
   });
+
+
+describe("2.6.1-2 retained intake evidence", () => {
+  it("cold rereads preserve exact source bytes, manifest and database generation", async () => {
+    const h = surface(); const sessionId = await runTheRoster(h);
+    const before = await h.intake.read(sessionId);
+    const file = join(h.root, ".tracker/artifacts", `${before.artifact.sha256}.artifact`);
+    const bytes = readFileSync(file); const generation = h.database.getMeta().authorityGeneration;
+    const session = h.database.authority.intakeSessions.get(sessionId);
+    const fresh = await h.freshIntake().read(sessionId);
+    assert.deepEqual(fresh, before);
+    assert.deepEqual(readFileSync(file), bytes);
+    assert.deepEqual(h.database.authority.intakeSessions.get(sessionId), session);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+  });
+  it("refuses missing exact manifest linkage instead of finding a newer manifest", async () => {
+    const h = surface(); const sessionId = await runTheRoster(h);
+    const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
+    assert.ok(before.intakeManifestId);
+    await assert.rejects(() => h.freshIntake(true).read(sessionId), /names missing manifest/u);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(await h.intake.read(sessionId), before);
+  });
+  it("a cold read refuses removed artifact bytes without an empty or cached replacement", async () => {
+    const h = surface(); const sessionId = await runTheRoster(h);
+    const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
+    rmSync(join(h.root, ".tracker/artifacts", `${before.artifact.sha256}.artifact`));
+    await assert.rejects(() => h.freshIntake().read(sessionId), /ENOENT/u);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.equal(h.database.authority.intakeSessions.get(sessionId)?.artifact.sha256, before.artifact.sha256);
+  });
+});
+
 });

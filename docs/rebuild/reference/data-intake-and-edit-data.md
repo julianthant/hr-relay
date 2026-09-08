@@ -2257,7 +2257,7 @@ transaction evidence coordinates for the existing warning protocol. It grants
 no repeat consent and writes no run, checkpoint, plan, settings or modal state.
 The existing source-bound planner still checks copied-value attribution, complete
 submitted values/omissions and repeat acknowledgment at its own boundaries.
-Task 3.1.11-2 continues to own modal selection, editing and submission.
+Task 3.1.11.2 (`dash-run-modal`, historical filename 11-2) continues to own modal selection, editing and submission.
 
 ---
 

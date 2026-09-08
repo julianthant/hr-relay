@@ -1,3 +1,5 @@
+import type { RerunValueMappingSpec } from "../domain/workflow/rerun-values.js";
+import { validateRerunValueMappings } from "../validation/rerun-values.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
 import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../domain/protected-input.js";
 /**
@@ -271,6 +273,8 @@ export interface WorkflowDescriptor<
     ? SealedCompletionProgram<Completion>
     : undefined;
   readonly capabilities?: WorkflowCapabilitiesSpec;
+  /** Explicit optional candidates for new Run input/omission assertions. */
+  readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces §1.2: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
@@ -346,6 +350,8 @@ export interface AnyWorkflowDescriptor {
   readonly verdicts?: readonly VerdictDefinition[];
   readonly completion?: Readonly<{ kind: "sealed-completion-program"; mode: string; gate: string }>;
   readonly capabilities?: WorkflowCapabilitiesSpec;
+  /** Explicit optional candidates for new Run input/omission assertions. */
+  readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly details: readonly Readonly<{
     key: string;
     label: string;
@@ -1303,6 +1309,10 @@ export function defineWorkflowDescriptor<
   // leaves unread (omitted). Derived once here so the terminal-dependency
   // authentication and the descriptor's retained declaration agree by construction.
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
+  const rerunValues = spec.rerunValues === undefined ? undefined : validateRerunValueMappings({
+    input: spec.flow.input, nodes, stepOmissions,
+    ...(spec.protectedInputs === undefined ? {} : { protectedInputs: spec.protectedInputs }),
+  }, spec.rerunValues);
   const omissionOfNode = new Map<string, Readonly<{ step: string; produced: boolean }>>();
   for (const declared of spec.timeline ?? []) {
     if (declared.omission === undefined) continue;
@@ -1331,6 +1341,7 @@ export function defineWorkflowDescriptor<
     timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, nodes: members }) => ({ key, label, nodes: members }))),
     timelineDeclared: spec.timeline !== undefined,
     stepOmissions,
+    ...(rerunValues === undefined ? {} : { rerunValues }),
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, Object.freeze({
