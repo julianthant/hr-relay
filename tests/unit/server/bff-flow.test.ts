@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
@@ -320,7 +321,7 @@ function harness(options: {
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
-  const runDetailDeps = {
+  const runDetailDeps = { runReader: sqliteRunReader(database, clock),
     stateRoot,
     projection,
     authority: {
@@ -333,8 +334,9 @@ function harness(options: {
     descriptors: {
       resolve: (workflowId: string) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
     },
-    trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
+    trust: createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [fixtureDescriptor] }),
     captures: {
+      runReader: sqliteRunReader(database, clock),
       authority: options.runCaptureAuthority?.(database.authority.diagnosticBundles)
         ?? database.authority.diagnosticBundles,
       artifactReader,
@@ -482,10 +484,12 @@ function harness(options: {
       ? {}
       : {
           diagnosticBundles: options.diagnosticBundles?.({
+            runReader: sqliteRunReader(database, clock),
             authority: database.authority.diagnosticBundles,
             artifactReader,
             artifacts,
           }) ?? {
+            runReader: sqliteRunReader(database, clock),
             authority: database.authority.diagnosticBundles,
             artifactReader,
           },

@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../src/domain/ids.js";
@@ -247,8 +248,8 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       projection.ingestFromDisk();
     },
   });
-  const receipts = createReceiptService({ database, descriptors });
-  const runDetail: RunDetailQueryDeps = {
+  const receipts = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors });
+  const runDetail: RunDetailQueryDeps = { runReader: sqliteRunReader(database, clock),
     stateRoot,
     projection,
     authority: {
@@ -336,6 +337,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
     runDetail,
     receipts,
     inbox: createNotificationInbox({
+      runReader: sqliteRunReader(database, clock),
       authority: {
         authority: database.authority,
         withAuthorityTransaction: (work) => database.withAuthorityTransaction(work),

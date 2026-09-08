@@ -115,7 +115,7 @@ const PARKED_LIFECYCLE = {
  * for a run whose workflow this build no longer registers.
  */
 function depsOf(w: DashboardWorld, writeContracts?: RunDetailWriteContractView[]): RunDetailQueryDeps {
-  return {
+  return { runReader: w.runReader,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,

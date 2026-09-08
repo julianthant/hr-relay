@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA3 cases retained by intent from 7a85bbd596f00ba4052ce1dddd13cd40c8a897ac;
  * D292 uses real SQLite bundle/index authority and the public live queries. */
 import assert from "node:assert/strict";
@@ -100,7 +101,7 @@ function harness() {
     },
   });
   const captures = { authority: database.authority.diagnosticBundles, artifactReader };
-  const deps: RunDetailQueryDeps = {
+  const deps: RunDetailQueryDeps = { runReader: sqliteRunReader(database, world.clock),
     stateRoot: world.stateRoot, projection: world.projection,
     authority: { ...world.authority, getRun: (id) => database.authority.runs.get(id) },
     descriptors: { resolve: () => undefined }, captures,
@@ -158,7 +159,7 @@ describe("DCA3/D292 run capture authority", () => {
     const world = makeWorld();
     const runId = uuidOf(301);
     queuedEventOf(world, { seed: 301 });
-    const deps = {
+    const deps = { runReader: world.runReader,
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,

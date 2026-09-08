@@ -63,7 +63,7 @@ const TERMINAL_DONE = {
 } as const;
 
 function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-  return {
+  return { runReader: w.runReader,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,

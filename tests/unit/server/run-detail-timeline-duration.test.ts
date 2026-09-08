@@ -46,7 +46,7 @@ function seedRun(w: DashboardWorld, seed = 1): void {
 
 function detailOf(w: DashboardWorld, seed = 1) {
   return buildRunDetail(
-    { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
+    { runReader: w.runReader, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
     uuidOf(seed),
   );
 }

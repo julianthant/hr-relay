@@ -261,7 +261,7 @@ const CATEGORIES: NonNullable<RunDetailDescriptorView["timeline"]> = [
 
 function detailOf(w: DashboardWorld, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>, seed = 1) {
   return buildRunDetail(
-    {
+    { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,

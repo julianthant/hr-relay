@@ -315,7 +315,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return {
+    return { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -532,7 +532,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
       system?: string;
     }>[],
   ): RunDetailQueryDeps {
-    return {
+    return { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -680,7 +680,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     });
     emitObserved("kuali/save-separation-finalization", "write", instantOffsetOf(0, 40));
     emitObserved("kuali/verify-separation-finalization", "read", instantOffsetOf(0, 50));
-    const deps: RunDetailQueryDeps = {
+    const deps: RunDetailQueryDeps = { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -930,7 +930,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
 
 describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", () => {
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return {
+    return { runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,

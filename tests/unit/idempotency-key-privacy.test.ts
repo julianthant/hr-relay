@@ -116,7 +116,7 @@ describe("idempotency-key privacy across operator projections", () => {
       bindingProof,
       bindingProofDigest: deriveWriteBindingProofDigest(bindingProof),
     }));
-    const dashboard = buildRunSection({
+    const dashboard = buildRunSection({ runReader: world.runReader,
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,
@@ -172,7 +172,7 @@ describe("idempotency-key privacy across operator projections", () => {
       confidence: "partial",
       result: "done-with-warnings",
     });
-    const runDetail = buildRunSection({
+    const runDetail = buildRunSection({ runReader: world.runReader,
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,

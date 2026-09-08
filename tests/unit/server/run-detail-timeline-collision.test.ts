@@ -54,7 +54,7 @@ const NODE = "timecard-search";
 const SPAN_PATH = `${traceOf(SEED)}/${NODE}#1`;
 
 function deps(w: DashboardWorld) {
-  return {
+  return { runReader: w.runReader,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,

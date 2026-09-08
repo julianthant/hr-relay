@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../../helpers/canonical-run-reader.js";
 import { protectedSecretSource } from "../../../helpers/protected-secret-source.js";
 import { runQueuedSpanEvent } from "../../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/domain/ids.js";
@@ -197,8 +198,8 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
     },
   });
 
-  const receipts = createReceiptService({ database, descriptors: [descriptor] });
-  const runDetail: RunDetailQueryDeps = {
+  const receipts = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [descriptor] });
+  const runDetail: RunDetailQueryDeps = { runReader: sqliteRunReader(database, clock),
     stateRoot,
     projection,
     authority: {
@@ -275,6 +276,7 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
   });
 
   const inbox = createNotificationInbox({
+      runReader: sqliteRunReader(database, clock),
     authority: {
       authority: database.authority,
       withAuthorityTransaction: (work) => database.withAuthorityTransaction(work),

@@ -466,7 +466,7 @@ describe("separations — the identity-gate wire", () => {
     const packet = packetWithPlan();
     seedGate(world, packet);
 
-    const deps: RunDetailQueryDeps = {
+    const deps: RunDetailQueryDeps = { runReader: world.runReader,
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,

@@ -1,3 +1,5 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
+import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 // @vitest-environment jsdom
 /**
  * Wire connectivity — ref frontend-backend-integration §8.8, both directions (D107's pattern one layer up).
@@ -105,7 +107,7 @@ const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
  * whole run-detail build, so a scan of the literals it can emit is the honest
  * cheap reading — and its three verbs are plain literals there.
  */
-const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail.ts";
+const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-trust.ts";
 const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 
@@ -138,7 +140,7 @@ async function auditArchiveBrowser(probe: ArchiveBrowserProbe, accounting: {
   readonly references?: readonly ClientRouteReference[];
   readonly pending?: readonly PendingWireBinding[];
 } = {}) {
-  const routes = accounting.routes ?? servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+  const routes = accounting.routes ?? servedRoutes(dashboardRouteSource());
   const scanned = accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
   const observation = await archiveBrowserRouteReferences(probe).then(
     (references) => ({ state: "observed", references }) as const,
@@ -185,7 +187,7 @@ async function auditRunCaptureBrowser(probe: RunCaptureBrowserProbe, accounting:
   const references = [...(accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)))),
     ...(observation.state === "observed" ? observation.references : [])];
   const problems = routeConnectivityProblems({
-    routes: accounting.routes ?? servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8")),
+    routes: accounting.routes ?? servedRoutes(dashboardRouteSource()),
     references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
   });
   return { observation, references, problems: [
@@ -325,7 +327,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     database.authority.runs.enqueue(run);
     const bytes = Buffer.from("[]");
     const digest = createHash("sha256").update(bytes).digest("hex");
-    const deps = { stateRoot: world.stateRoot, projection: world.projection,
+    const deps = { runReader: sqliteRunReader(database, world.clock), stateRoot: world.stateRoot, projection: world.projection,
       authority: { ...world.authority, getRun: (id: string) => database.authority.runs.get(id) },
       descriptors: { resolve: () => undefined },
       captures: { authority: database.authority.diagnosticBundles, artifactReader: {
@@ -588,7 +590,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
   it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
-    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+    const routes = servedRoutes(dashboardRouteSource());
     assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
     const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
@@ -700,7 +702,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
   it("A10 keeps native calls orphaned when the served generic route is removed", async () => {
-    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+    const routes = servedRoutes(dashboardRouteSource());
     const result = await auditRunCaptureBrowser(runCaptureProbe(), { routes: routes.filter(route => route.path !== GENERIC_ROUTE) });
     assert.equal(result.observation.state, "observed");
     const missing = `src/dashboard/surfaces/run-captures.tsx calls /artifacts/v1/${CAPTURE_ARTIFACT_A}, which ${API_ROUTES_FILE} does not register`;
@@ -823,7 +825,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
   it("A8 observed consumers still fail accounting when their server route is missing", async () => {
-    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+    const routes = servedRoutes(dashboardRouteSource());
     const result = await auditArchiveBrowser(archiveProbe(), { routes: routes.filter(({ path }) => path !== ARCHIVE_ROUTE) });
     assert.equal(result.observation.state, "observed");
     const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/server/dashboard/routes/api.ts does not register";
@@ -906,7 +908,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     // (c) a client path with no route, and a route pattern that must not
     //     over-match — a matcher that accepted anything would report every
     //     joint healthy forever.
-    const routes = servedRoutes(readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8"));
+    const routes = servedRoutes(dashboardRouteSource());
     assert.ok(!routes.some(({ path }) => routeMatches(path, "/api/v1/invented")));
     assert.ok(routeMatches("/api/v1/runs/:runId", normalizeClientPath("/api/v1/runs/${runId}")));
     assert.ok(!routeMatches("/api/v1/runs/:runId", "/api/v1/runs/abc/logs"));

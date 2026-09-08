@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 /**
  * The §7.4 measurement fixture: ONE seeded state root at legacy's real
  * volume — 1,240 queue rows on ONE day, an operation with 108 members, a
@@ -743,7 +744,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
   // dashboard uses.
   projection.ingestFromDisk();
 
-  const trust = createReceiptService({ database, descriptors: [personLookupDescriptor] });
+  const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
   // D141: a receipt exists because somebody opened the run. Deriving a subset
   // is what a real day looks like, and it is what puts both `#warningVerdict`
   // arms on one wire.
@@ -751,7 +752,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
     trust.ensureReceipt(runId);
   }
 
-  const runDetail: RunDetailQueryDeps = {
+  const runDetail: RunDetailQueryDeps = { runReader: sqliteRunReader(database, clock),
     stateRoot,
     projection,
     authority: {

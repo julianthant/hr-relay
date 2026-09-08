@@ -1,3 +1,4 @@
+import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../../../helpers/canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/domain/run/session.js";
 /**
  * Shared harness for the 1g-spine projection/hub/route suites: a temp state
@@ -249,6 +250,8 @@ export interface DashboardWorld {
   readonly stateRoot: string;
   readonly clock: TestClock;
   readonly authority: AuthorityFake;
+  readonly runReader: CanonicalRunReader;
+  readonly runReaderState: InMemoryRunReaderState;
   readonly store: ProjectionStoreFake;
   readonly projection: RunQueueProjection;
   readonly writer: SpanJsonlWriter;
@@ -270,6 +273,8 @@ export function makeWorld(input?: Readonly<{
   const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-dashboard-"));
   const clock = manualClock(AT);
   const authority = authorityFake();
+  const runReaderState = { records: authority.records, archived: authority.archived, deleted: new Map(), generation: 0 };
+  const runReader = inMemoryRunReaderFake(runReaderState);
   const store = projectionStoreFake();
   const scheduledRebuilds: (() => void)[] = [];
   const projection = createRunQueueProjection({
@@ -309,6 +314,8 @@ export function makeWorld(input?: Readonly<{
     stateRoot,
     clock,
     authority,
+    runReader,
+    runReaderState,
     store,
     projection,
     writer,
