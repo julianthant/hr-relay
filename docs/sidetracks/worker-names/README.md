@@ -1,4 +1,4 @@
-# Worker table names
+# Worker and workflow request table names
 
 ## Assignment, approval, and status
 
@@ -11,6 +11,12 @@ proposal identified the active migration-owner overlap, the operator replied **�
 to this plan, including execution after independently reviewed integration of Task 2.6.1-3.
 The operator requested planning only in this session, with implementation in a new session.
 
+**Approved amendment, 2026-09-08:** the operator subsequently chose `start_plans` →
+`workflow_run_requests`, kept `config_snapshots` unchanged, and explicitly requested adding
+that rename to this existing plan. This amendment extends the same migration, compatibility,
+and review scope; it preserves the task ID, checkout binding, prerequisite, and integration
+conditions. Use the amended plan commit rather than the original `f4487557` launch reference.
+
 **Approved; WAITING ON Task 2.6.1-3's accepted integration and execution-time checkout
 capacity verification.** No product implementation, candidate review, integration, or
 operator database conversion is complete under this assignment. Planning may save,
@@ -22,12 +28,20 @@ dispatches no agents. A launch instruction is conditional until the prerequisite
 | `worker_pools` | `worker_pools` (unchanged) |
 | `leases` | `workflow_workers` |
 | `duo_ceremony_leases` | `worker_auth` |
+| `start_plans` | `workflow_run_requests` |
+| `config_snapshots` | `config_snapshots` (unchanged) |
 
 `worker_auth` still represents one expiring Duo authentication lock per credential
 identity, shared across workers and systems. It is not a password store, a browser-session
 table, or one authentication record per worker. `workflow_workers` retains worker
 lifecycle, operator directives, heartbeats, active-run association, and lease generations.
 The concepts of a worker lease and a Duo ceremony remain valid internal terminology.
+
+`workflow_run_requests` stores the saved proposal before confirmed execution. One request
+may produce several runs; an unconfirmed or expired request may produce none. Confirmation
+still uses the existing Start command and audit; successful consumption retains the request
+with its consuming command identity. No confirmation table is added, and the row is not moved
+into `workflow_runs`. Internal start-plan terminology and its existing interfaces remain valid.
 
 ## Authorities and prerequisites
 
@@ -48,6 +62,8 @@ The concepts of a worker lease and a Duo ceremony remain valid internal terminol
 - [Server instructions](../../../src/server/AGENTS.md),
   [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md),
   and [operator trust](../../rebuild/reference/operator-trust.md) apply to affected consumers.
+  Frontend/backend integration section 5.1 also owns start planning and confirmation;
+  the approved request-table name does not change that protocol.
 
 Task 2.6.1-3 owns an active change to `migrations.ts`, `authority-database.ts`, table
 registries, historical backup inspection, and storage/upgrade tests. Its inspected working
@@ -55,6 +71,13 @@ tree was adding schema 34 and retiring `runs_view`. This is overlapping implemen
 ownership, not merely a shared reference. Do not consume its dirty files, take its scope,
 reserve its migration number, or change its admitted acceptance. This task follows its
 reviewed integration. Other unrelated tasks and their resources must be preserved.
+
+Task 2.6.1-2's Rerun-values work excludes SQL migrations and canonical store mutations.
+The added rename stays in the storage adapter; do not take its planning/input-mapping
+implementation or change Rerun consent. Existing Start/Rerun callers are read-only trace
+and regression targets unless they contain a direct SQL table reference requiring mechanical
+replacement. Recheck newly changed ownership before execution; a new actual overlap needs
+resolution, not silent reassignment.
 
 ## Inspection evidence and highest risks
 
@@ -69,6 +92,7 @@ read-only storage report. It did not execute product tests, migration, backup, r
 | Does ordinary startup perform conversion? | Schema admission is controlled by `UPGRADE_FLOOR_SCHEMA_VERSION`; the inspected current schema is 33 with floor 32. Raise the floor appropriately for the new rename so existing sources require the stopped, verified-backup upgrade route. Recheck after the prerequisite rather than freezing its implementation prematurely. |
 | Can settings and credentials be preserved? | `src/infra/compat/upgrade-sources.ts` and `settings-database-upgrade.ts` use SQLite sources for schema 32+ and preserve ordinary settings revisions. `src/server/storage/upgrade.ts` verifies backup/source identity, rehearses conversion, rechecks stopped admission, and supports interrupted settlement. Preserve these mechanisms and test the newly historical schema versions. |
 | Will the UI or runtime meaning change? | `src/domain/run/worker.ts`, `src/domain/run/worker-pool.ts`, and `src/core/duo-ceremony-gate.ts` define unchanged lifecycle, requested-count, and lock semantics. Existing worker repository interfaces and wire fields remain compatible. Full parity and composed worker tests detect transitive regression even without frontend edits. |
+| Does the request rename change confirmation? | `src/domain/run/start-plan.ts` defines accepted/refused entries, expiry, configuration/input identities, and `consumedBy`. `src/server/dashboard/commands/start-plan-service.ts` persists the proposal through `startPlans.create`; `src/core/command-kernel.ts` validates and consumes it before fan-out. `authority-database.ts` implements create/get/consume against `start_plans`. Rename the registered SQL target and historical aliases, preserving repository interfaces, records, command/audit references, refusal behavior, and transactional consumption/fan-out. No new confirmation state or table is needed. |
 
 Actual target observed with `npm run cli -- storage doctor --json` at
 `2026-09-08T15:51:16.007Z`: rebuild `/Users/julianhein/Projects/hr-automation-rebuild/.tracker/state.db`,
@@ -103,7 +127,7 @@ allocation before executing it; a partial or exhausted review is not PASS.
 Owned implementation seams:
 
 - Current authority and storage-record registries; the new SQL migration and current-table
-  coverage mapping; worker/auth SQL reads, writes, accounting, and integrity checks.
+  coverage mapping; worker/auth/request SQL reads, writes, accounting, and integrity checks.
 - Historical schema/table/record admission and fingerprint ordering in
   `src/infra/compat/backup-inspection.ts`; narrowly required stopped-upgrade, recovery,
   backup, and doctor compatibility changes under `src/infra/compat/`,
@@ -116,8 +140,11 @@ Owned implementation seams:
   historical schema names; do not sweep historical ledgers or change roadmap completion.
 
 Repository interfaces, public JSON fields (including existing count fields), command names,
-stored worker/auth record fields, error identities, worker generations, Duo timing, and
-authentication scope are not renamed just because they contain the word “lease.” Preserve
+stored worker/auth/request record fields, error identities, worker generations, Duo timing,
+and authentication scope are not renamed just because they contain “lease” or “start plan.”
+In particular retain `startPlans`, `startPlanId`, `StartPlanRecordSchema`, Start command
+targets/fingerprints, expiry, and `consumedBy`; this assignment renames SQL tables rather
+than the planning/confirmation API. Preserve
 released SQL history, including historical trigger/index identifiers; current SQL targets
 and diagnostics that actually identify a table must resolve accurately. No compatibility
 alias tables or views are introduced.
@@ -129,10 +156,10 @@ alias tables or views are introduced.
    branch/base/plan/head before edits. Read changed module instructions and prerequisite
    compatibility contracts. A new schema-owner conflict or unsupported prerequisite change
    returns for amendment, rather than quietly broadening this assignment.
-2. **S2 — append the two renames and wire current storage.** Use the next schema version after
+2. **S2 — append the three renames and wire current storage.** Use the next schema version after
    the accepted prerequisite. Preserve historical statement bytes/digests; update registries,
    current queries, integrity/accounting checks, and the stopped-upgrade floor together.
-   Keep `worker_pools`, run/batch names, data, and runtime behavior unchanged.
+   Keep `worker_pools`, `config_snapshots`, run/batch names, data, and runtime behavior unchanged.
 3. **S3 — complete historical and recovery compatibility.** Preserve old backup fingerprints,
    historical record validation, older admitted source families, source-change refusal,
    interrupted settlement, and settings/credential preservation. Add meaningful regression
@@ -155,12 +182,13 @@ alias tables or views are introduced.
 
 | Proof | Required result and negative control |
 | --- | --- |
-| P1 Fresh and upgraded schema | A fresh database has `workflow_workers`, `worker_auth`, and unchanged `worker_pools`; old worker/auth table names are absent from the current schema. Upgrade schema 33 and the accepted prerequisite schema using regenerable synthetic fixtures and the real stopped-upgrade route. Earlier admitted source families remain covered. Existing schemas are not converted by ordinary runtime startup. |
-| P2 Data and identity preservation | Compare complete worker/auth rows before and after rename, including record bytes, keys, generations, versions, timestamps, holder, and state. Preserve pool declarations, run identity, settings/journals, independent credential bytes, and batch grouping/revisions. Verify both grouped and separate batches; do not reset all batches to false by replaying migration 33 incorrectly. |
+| P1 Fresh and upgraded schema | A fresh database has `workflow_workers`, `worker_auth`, `workflow_run_requests`, and unchanged `worker_pools`/`config_snapshots`; the three former SQL table names are absent from the current schema. Upgrade schema 33 and the accepted prerequisite schema using regenerable synthetic fixtures and the real stopped-upgrade route. Earlier admitted source families remain covered. Existing schemas are not converted by ordinary runtime startup. |
+| P2 Data and identity preservation | Compare complete worker/auth/request rows before and after rename, including record bytes, keys, generations, versions, timestamps, holder/state, planned/refused entries, expiry, fingerprints, and consuming command identity. Preserve pool declarations, config snapshot rows/references, run identity, settings/journals, independent credential bytes, and batch grouping/revisions. Verify both grouped and separate batches; do not reset all batches to false by replaying migration 33 incorrectly. |
 | P3 Worker and auth behavior | Real SQLite repository/service tests prove registration, heartbeat, claim, pause/stop, restart generation fencing, and pool controls. Duo tests prove acquire/release, exclusivity across workers, expiry/takeover, and rejection of superseded holders. Two workers sharing one credential must not acquire overlapping valid authentication turns. |
 | P4 Backup and restore | Validate pre-rename historical backups with their original table names and fingerprint ordering; validate current backups with the new names. Exercise the existing restore drill and upgraded readback. Corrupt schema/records, unexpected tables, and identity mismatches refuse rather than becoming empty/default records or weakening historical admission. |
 | P5 Upgrade refusals and interruption | At the real upgrade boundary, active processes, absent/stale backup, changed source, unsupported schema, and unresolved earlier conversion refuse with no unauthorized database effects. Prove a valid setup converts. Inject failure before SQLite commit and after commit/before settlement; verify rollback or exact resume as applicable, no duplicate conversion, preserved credentials/settings, and no-write rerun after settlement. Preserve earlier pending-conversion restrictions. |
 | P6 Consumer consistency | Current integrity/doctor/count checks read the renamed tables; worker controls and queue/session rendering retain their existing wire semantics. Full parity passes without baseline changes. Source checks allow old names in released history, explicit historical adapters/fixtures, and historical documentation only; do not blindly replace legitimate lease terminology. |
+| P7 Request creation and consumption | Through real SQLite and Start command/service boundaries, prove request creation alone creates no workflow runs; confirming a valid multi-entry request creates the accepted runs/batch and records consumption once. Verify unused, expired, and consumed historical request rows survive migration byte-for-byte. Expired requests, stale revisions, mismatched fingerprints, and consumption by another command refuse without new runs. Replaying an already journaled successful command returns its existing outcome without duplicate runs; failure during fan-out rolls back consumption and run creation together. Preserve accepted/refused entry handling, omission/Rerun metadata, configuration snapshot references, and existing command/audit linkage. |
 
 ## Gate schedule and evidence
 
@@ -177,6 +205,7 @@ another task's processes or take its locks.
 | --- | --- |
 | Iteration: storage and runtime | `npm run test -- tests/unit/sqlite-authority-database.test.ts tests/unit/duo-ceremony-lease-store.test.ts tests/unit/duo-ceremony-gate.test.ts tests/unit/worker-loop.test.ts tests/unit/run-record-service/service.test.ts tests/unit/server/worker-pool-parallel-proof.test.ts`. Add/select the task's migration-preservation and refusal tests at their real boundaries. Run lint when tests run. |
 | Iteration: compatibility | `npm run test -- tests/unit/storage-upgrade.test.ts tests/unit/storage-upgrade-admission.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-backup-command.test.ts tests/unit/storage-restore-drill.test.ts`; targeted immutable-history guard via `npm run test:architecture -- tests/unit/architecture/migration-history-immutability.test.ts`. Full coverage later includes these; do not add redundant standalone full suites. |
+| Iteration: requests and confirmation | `npm run test -- tests/unit/start-plan.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/run-fan-out-step-omission.test.ts`, plus focused real command-kernel/storage regression cases implementing P7. Preserve Start/Rerun API behavior; use the existing command tests rather than tests that only compare renamed strings. Run lint when tests run. |
 | Implementation commit/candidate | `npm run typecheck`, `npm run lint`, `npm run test:coverage`, `npm run test:parity`, and `git diff --check`. Record command, exit, tested SHA/tree, effective worker configuration, proof selectors, and retained log locations. Group related fixes; focused green micro-cycles do not each require a separate commit/full run. |
 | Generated artifacts | For affected inputs, run the appropriate generator (`npm run build:manifest`, `npm run stores:catalog`, `npm run roadmap`) before `npm run build:manifest:check`, `npm run stores:catalog:check`, or `npm run roadmap:check`. Inspect descriptor import closure even for comments. Do not hand-edit generated output or bypass a newly exposed freshness failure. |
 | Material integration | Typecheck, lint, full coverage, full parity, affected freshness checks, and diff check on actual integrated inputs. Behavioral conflict fixes require renewed review. Do not merge before candidate PASS/gates. |
@@ -224,8 +253,12 @@ interrupted unique recovery state, not as a second plan.
 
 - Planning baseline: `a3c73c8039508ea307db70f9c2f01228c689435c`.
 - Planning approval: operator “approve”, 2026-09-08, following the complete proposal.
+- Amendment approval: operator selected `workflow_run_requests`, kept `config_snapshots`,
+  and asked “can you add this in the earlier plan?” on 2026-09-08. The revised single
+  assignment owns three SQL renames, with P7 and request-focused checks added to R1's
+  complete review scope; supervisor/reviewer counts and all integration controls are unchanged.
 - Planning validation (2026-09-08): all 13 local Markdown links resolve; named test
-  selectors exist; all six steps and six proof rows are retained. Documentation audit
+  selectors exist; all six steps and seven proof rows are retained in the amendment. Documentation audit
   passes for nine identical instruction pairs, with every discovered project chain
   below 32,768 bytes. The sole planned change is this side-plan file, outside the
   roadmap scanner's `docs/rebuild` input; no generated/runtime input changes and no
@@ -235,7 +268,7 @@ interrupted unique recovery state, not as a second plan.
 - Proposed branch/path: absent at planning inspection; primary checkout remains on `master`.
 - Capacity observation: three auxiliary worktrees at persistence inspection; recheck the
   repository ceiling and ownership before creating a fourth. Capacity is not reserved.
-- S1–S6 and P1–P6: open. No implementation gates, review PASS, integration, or live conversion
+- S1–S6 and P1–P7: open. No implementation gates, review PASS, integration, or live conversion
   claimed by this planning record.
 
 For the new session, use `/supervise side/worker-names` with this absolute plan path, its
