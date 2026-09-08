@@ -1065,3 +1065,105 @@ The candidate is frozen for the repaired-candidate route; Step 4 still requires 
 proofs. The operator's visible-browser request will use the canonical ordinary-settings command
 for `browser.headless=false`, with restart activation, then restore its previously absent override.
 No credential, private test identity or `.env` change is part of headed mode.
+
+
+### Current blocker: fresh production entry navigation (2026-09-07)
+
+Frozen executable candidate `86700bf501868d04d35d604383f6a3743e857bb5` passed the preceding full
+gates and all 1908 input hashes matched after detaching the clean primary checkout. Installed
+package and lockfile bytes matched the task checkout; master stayed at
+`f0b1cf92195897e56e4917384b512c45d7b4d41a`. Fresh doctor and complete production input admission
+passed, including the unchanged private source identity and exact unspent ordinals 2/1.
+The BFF's bootstrap/Explorer descriptor-set hash matched the candidate:
+`4651f4c1376e0e39446cae9b906368b8943449ffa8ca2b0dd85eb6863d4676f7`.
+
+For the operator's headed request, canonical command `a62c3e35-4197-4cb8-a42a-831220259943`
+applied only `browser.headless=false`, settings revision 1 → 2. After BFF restart, runtime
+activation was current at revision 2 with `headless=false`. No credential or provider-file value
+changed. Executed the exact official scenario commands serially from primary:
+
+| Proof | Person Lookup | Separations |
+| --- | --- | --- |
+| Result / verdict | `73b07cea-3e8c-46b4-8e52-04acdbdbefbe` / **failed** | `0cf153a0-b82f-4270-beab-b43960d66673` / **failed** |
+| Run / trace | `e2f87c63-f3c8-45f6-9e42-229fae1ab7ad` / `pl-174013-e2f8` | `eceac973-8ea2-418e-9322-72684169fd8b` / `sp-174312-ecea` |
+| Arm / attempt / dryRun | live-read / 2 / false | dry-run-preview / 1 / true |
+| Manifest | `a370eb1f1ce9de77a1b8c6b1a5458478fabe7cfe7e22609b8f06824a2252f4bb` | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 16100 ms / 17818 ms / 1 | 15707 ms / 17329 ms / 1 |
+| Failure node / static reason | searching / `navigate-login-entry`: the UCPath portal did not load | resolve-action / `navigate-login-entry`: the Kuali Build space entry route did not load |
+| Failure / diagnostic bundle | `665e7cfb-0db6-4cff-8c4b-a54e4f21503d` / `b9d84506-0274-47e0-86ab-a96c3a31d646` | `85649ae9-b959-4426-a55f-6d561d268e3f` / `9fd18ad6-98ea-4499-920d-08ae80c49e12` |
+| Receipt | `f9df029e-0cdd-5969-a571-b07a55f57b86` failed/unknown | `129d8407-5dac-5aa9-a936-577801bab263` failed/unknown |
+| Assertions / checkpoints | 3 met, 4 failed / zero | 3 met, 5 failed / zero |
+| Exact write-intent / attempt / durable-outbox deltas and independent run readback | **0/0/0** | **0/0/0** |
+
+Both failures are `UNHANDLED`, non-transient, `not-attempted`. Nodes-excluded, gate-results and
+write-safety-deltas met; the other assertions failed. There is no successful terminal/preview proof.
+The two `*-recovery-command.json` and `*-recovery-readback.json` records preserve command, result,
+lifecycle, checkpoint, receipt and exact SQL-count evidence. Neither ordinal may be reused.
+
+**Discriminating diagnostics, not workflow retries.** After Person Lookup failed, a separate
+visible CLI browser loaded the public portal with HTTP 200 / DOMContentLoaded in 7744 ms. The same
+production login recipe then passed `logged-in` at `2026-09-08T00:42:44.037Z`, with HR Tasks,
+mandatory PeopleSoft session-token verification, no sign-in form and completed HTTP/2 navigation.
+`portal-recovery-login-observation.json` records safe facts. This re-established the shared UCPath
+prerequisite before launching the previously unspent Separations preview; it did not relabel the
+failed Person Lookup proof.
+
+After Separations also failed its entry navigation, three fresh headed production-factory login-only
+smokes failed at UCPath's initial portal (17040 / 17018 / 16687 ms). The latter two added temporary
+observation only, preserving the exact production launcher, recipe and timeouts. They showed the
+main HTML returning HTTP 200 and completing in 2858 / 2308 ms, but `page.goto` timing out at the
+unchanged 15000 ms DOMContentLoaded bound with `document.readyState=loading`. At the final timeout,
+five script requests to `cdn.ucsd.edu` and one to `www.googletagmanager.com` remained pending about
+12.7 seconds; images/fonts were also pending. No main-document connection reset/abort was observed
+in these trials. `portal-production-login-smoke.json`, `portal-production-observed-smoke.json` and
+`portal-production-resources-smoke.json` retain timings and host/type-only metadata. The CLI and
+production factory use the same Chromium executable. The later fresh-profile failures are distinct
+from the earlier unfinished SAML main response. An intermediate CLI inspection lost its evaluation
+context during navigation; the final settled probe succeeded, and no navigation was replayed by that
+inspection. No subresource URL/query/body, protected input or credential was recorded.
+
+**Actual blocker:** fresh production entry pages are not reaching DOMContentLoaded within the
+existing navigation contract. Main HTTP 200 alone does not prove readiness; the previously used
+CLI profile does not prove a fresh worker login. Pending resource delivery is observed, but the
+underlying network/service/profile contribution is not established. No timeout increase, resource
+blocking, selector fallback, credential replacement, SSO form replay or new workflow retry was made.
+Before another workflow attempt, prove the production login prerequisite recovered or diagnose and
+gate a concrete owned fix. Then pin actual next ordinals without changing private identity or erasing
+failures; both required `met` rows remain missing. Final review/integration cannot proceed.
+
+**Recovery completed.** Canonical command `fb2a59f5-5c6a-4aed-b168-ef8e74e91ffa` cleared only the
+headed override, settings revision 2 → 3. Restart activation verified current revision 3 and the
+prior effective `headless=true`. BFF sessions 11095, 2340 and 71166 stopped (exit 130); all owned
+smokes and CLI session `task7-portal-recovery` (PID 56795) closed. Post-doctor at
+`2026-09-08T00:47:44.039Z` passed healthy schema 32/generation 267, same source identity
+`35ae66fbb575adebdc61b4018fb4d9153d53bbb8d0f38e0b45cba410c459f54a`, six retained runs/results,
+reconciled spans, zero pending command/write/outbox/provider/artifact counts, and whole write tables
+**0/0/0**. Two historical stopped worker leases remain. No primary browser/runtime process or
+3938/5174 listener remained. Private source metadata and provider admission were unchanged.
+Primary was restored to clean, unchanged original master; no merge or push occurred.
+`recovery-live-post-summary.json`, `recovery-live-restored.json` and the headed-settings/activation
+receipts bind this recovery. The task worktree/ref and evidence remain owned and unmerged.
+
+Additional attributable diagnostic resources are stopped smoke locks and profile roots named
+`task7-portal-production`, `task7-portal-observed`, and `task7-portal-resources` under primary's
+live-smoke lock directory / `.auth/hrauto-rebuild/`. The CLI reused owned
+`.auth/task7-cold-headed-login`; preserve it for the fresh/reused-profile comparison until diagnosis closes.
+Keep all failed authority rows and user screenshots. Scratch remains the previously named owned
+`task-1-6-7-dzgx4bwi` directory. No extra product changes were made during this diagnosis.
+
+
+A final complete protected-input admission readback (`post-portal-exact-preflight.mjs`) verified
+Person Lookup next attempt **3** and Separations next attempt **2**, each with zero checkpoints.
+The committed manifests still describe the now-spent 2/1 proofs above; they must be deliberately
+updated and gated only after a recovered prerequisite or concrete fix supports another attempt.
+No private identity renewal, checkpoint reset or retry is part of this evidence-only checkpoint.
+
+
+The blocked evidence update changes only this owner and the two migration records. Exact comparison
+against `recovery-fixed-gated-inputs.json` proved all 1908 full-gate inputs unchanged from executable
+`86700bf501868d04d35d604383f6a3743e857bb5`; full coverage/architecture/parity evidence is reused
+under D191 solely for this documentation checkpoint. Scoped roadmap-binding and registry tests
+passed 39 tests / 2 files (session 59571, `portal-blocked-bindings.log`); lint passed (session 28935,
+`portal-blocked-lint.log`). Roadmap freshness, nine instruction twins/size, changed-document relative
+links and diff checks passed. No fresh complete reviewer was dispatched because both mandatory live
+`met` proofs remain absent; no acceptance, integration or completion is claimed.

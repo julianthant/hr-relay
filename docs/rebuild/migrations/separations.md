@@ -7507,3 +7507,22 @@ through that shared prerequisite: no new result/run/verdict or run-scoped deltas
 The old failed document's evidence remains intact; the replacement is unspent. Post-doctor was
 healthy v32/generation 216 with zero pending writes, runtime/browser stopped, original master restored clean.
 Task 1.6.7 remains open; the owner records the safe source identity and recovery boundary.
+
+
+### 9.44 Task 1.6.7 headed replacement preview — entry navigation blocked (2026-09-07)
+
+Fully gated candidate `86700bf501868d04d35d604383f6a3743e857bb5` ran the selected matching
+replacement serially after a separate production UCPath login recipe passed. Result
+`0cf153a0-b82f-4270-beab-b43960d66673` **failed**; run `eceac973-8ea2-418e-9322-72684169fd8b` /
+trace `sp-174312-ecea`, attempt 1, `dryRun=true`. Manifest
+`59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978`; evaluator 15707 ms,
+command 17329 ms / exit 1. `resolve-action` failed at `navigate-login-entry`: the Kuali Build
+space entry route did not load. Failure `85649ae9-b959-4426-a55f-6d561d268e3f` is `UNHANDLED`,
+non-transient, not-attempted; bundle `9fd18ad6-98ea-4499-920d-08ae80c49e12`. Zero checkpoints;
+receipt `129d8407-5dac-5aa9-a936-577801bab263` failed/unknown. Three assertions met, five failed;
+no preview stop is claimed. Exact run-scoped write-intent/attempt/durable-outbox deltas and
+independent readback counts are **0/0/0**. The selected private value/identity was unchanged and
+its first attempt is now spent. No retry followed. The Task-7 owner records the subsequent fresh
+production-browser navigation diagnosis, healthy v32/g267 post-doctor, six retained runs/results,
+zero pending writes, restored settings, stopped owned processes and clean original primary master.
+Both successful live proofs, final review and integration remain open.

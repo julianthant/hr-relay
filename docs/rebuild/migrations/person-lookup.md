@@ -221,3 +221,21 @@ all-at-once cutover (D89/D93).
   unresolved; no retry or form replay occurred. This replacement's first ordinal is now spent.
   Post-doctor passed healthy v32/generation 216 with four retained runs and zero pending writes; the primary
   master was restored clean. The Task 7 owner holds exact binding and diagnostic evidence.
+
+
+- 2026-09-07 — Task 1.6.7 headed live-read at fully gated candidate
+  `86700bf501868d04d35d604383f6a3743e857bb5` produced **failed** result
+  `73b07cea-3e8c-46b4-8e52-04acdbdbefbe`, run `e2f87c63-f3c8-45f6-9e42-229fae1ab7ad` /
+  trace `pl-174013-e2f8`, replacement attempt 2, `dryRun=false`. Manifest
+  `a370eb1f1ce9de77a1b8c6b1a5458478fabe7cfe7e22609b8f06824a2252f4bb`; evaluator 16100 ms,
+  command 17818 ms / exit 1. `searching` failed at `navigate-login-entry` because the UCPath portal
+  did not load; failure `665e7cfb-0db6-4cff-8c4b-a54e4f21503d`, bundle
+  `b9d84506-0274-47e0-86ab-a96c3a31d646`, non-transient, not-attempted. Zero checkpoints;
+  receipt `f9df029e-0cdd-5969-a571-b07a55f57b86` failed/unknown; three assertions met, four failed.
+  Exact run-scoped write deltas/readback counts **0/0/0**. A separate CLI production-recipe login
+  succeeded, but three fresh production-factory smokes reproduced the portal readiness failure.
+  Instrumentation observed HTTP-200 main HTML completing while scripts remained pending and
+  DOMContentLoaded missed the unchanged 15000 ms bound. The Task-7 owner's current-blocker section
+  records the exact trials and uncertainty; this is not an expired-key finding or accepted live proof.
+  All failed attempts remain intact. Post-doctor healthy v32/g267, six retained runs, zero writes;
+  settings restored, owned processes stopped and original master restored clean.
