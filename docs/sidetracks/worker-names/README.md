@@ -17,11 +17,9 @@ that rename to this existing plan. This amendment extends the same migration, co
 and review scope; it preserves the task ID, checkout binding, prerequisite, and integration
 conditions. Use the amended plan commit rather than the original `f4487557` launch reference.
 
-**Approved; WAITING ON Task 2.6.1-3's accepted integration and execution-time checkout
-capacity verification.** No product implementation, candidate review, integration, or
-operator database conversion is complete under this assignment. Planning may save,
-validate, and commit this file; it creates no implementation checkout or app task and
-dispatches no agents. A launch instruction is conditional until the prerequisite is proven.
+**Implementation and candidate gates complete; awaiting independent R1 review. S6 integration/cleanup remain open.** Implementation is committed in the bound worktree and candidate gates passed. Independent
+review, integration, cleanup, and operator database conversion are not yet accepted. The original planning
+session created no checkout or app task and dispatched no agents.
 
 | Current table | Approved current-table name |
 | --- | --- |
@@ -284,3 +282,186 @@ above rather than supplying a fabricated future hash. The handoff must include:
 
 The operator opens the supervisor session. Planning does not open it, implement, dispatch
 siblings, merge a product candidate, or push.
+
+### Execution admission — 2026-09-08
+
+- S1 complete. Approved plan `44460e2b65051a23d1a9584ac350c665d2da9985` is reachable
+  from local master; its committed file SHA-256 is
+  `4264464b9662f5a23eb528877271bf3e35e942c055606923a9db4ffc4941cdee`.
+- Base/head at creation: `35635a04e16e9c3cf1e99b16d4963752a18c616a`; branch
+  `codex/worker-names`, checkout `/Users/julianhein/Projects/hr-worktree-worker-names`.
+- Prerequisite integration `8135811243470e9ca87972401fd244a7c6092d0b` is an ancestor.
+  Its owner records complete R2 PASS at candidate `9b7365d7679b21abaf9c61dea24d5381bc7320fb`,
+  evidence `cb14065ce74eb3720e96a34d3d8ce3cf618a1d30`, and integration typecheck/lint,
+  5,639 coverage tests and 262 parity cases passing. Schema 34 removes `runs_view`;
+  released migrations and the stopped conversion adapters are present as anticipated.
+- Capacity: one pre-existing auxiliary checkout (`hr-worktree-phase-four`); this task
+  created the second. Primary untracked handoffs and all peer resources are preserved.
+  Active command-groups and operation-names assignments explicitly depend on this task's
+  accepted integration, so no shared schema ownership is taken from them.
+- No implementation gate reuse is claimed. S2–S5 proceed locally; S6 integration and
+  cleanup remain operator-assigned. Real database conversion is not assigned.
+
+- Parallel successor coordination: the command-groups supervisor reported the operator's
+  explicit “no do in parallel” amendment in its task. It is independently implementing from
+  the same schema-34 base. This task preserves its own complete candidate and owns no peer
+  changes. Both candidates may use schema 35 before release; operator-assigned integration
+  must choose ordering and reconcile the later unreleased migration, historical adapters,
+  combined gates and review. No automatic integration is authorized here.
+
+
+### Implementation and proof checkpoint — 2026-09-08
+
+S2 storage wiring is implemented: schema 35 appends exactly three ALTER TABLE statements,
+with floor 34, current repositories/registries/counts, historical layouts/record aliases,
+released fingerprint order, and schema-35 journal/backup admission. Released v1–v34 SQL
+and digests are preserved. No interface or wire field was renamed.
+
+S3's focused storage run passed 151 tests (`/tmp/hr-worker-names-focused-3.log`, exit 0).
+The stronger populated tests then passed in focused run 4, including the independent
+schema-34 fingerprint order, generation-2 busy worker with heartbeat/pause, unused/expired/
+consumed requests, and grouped/separate batches. That run had one stale literal assertion
+in the composed downgrade test (34 rather than 35); the source is corrected, with rerun
+pending. These are iteration results, not candidate acceptance.
+
+Earlier failed iterations are retained at `/tmp/hr-worker-names-focused-{1,2,4}.log`:
+missing schema-35 journal grammar, overly broad historical pending-journal inspection,
+missing schema-34 manifest admission, and old floor/schema test pins. Typecheck iterations
+1/2 exposed the historical DDL type needing exclusions for the three renamed current
+names and the exact-fixture version union; both corrected. No assertions or thresholds
+were removed. Candidate typecheck, lint, full coverage and parity remain required.
+
+The original runner configuration retains isolated forks and four file workers. Host
+inspection during focused iteration found three compilers, three linters and multiple test
+runs across tasks, with 18.5 GiB swap used; peer resource coordination requested no duplicate
+compiler/linter starts. This task's final coverage will start only after its own compiler,
+linter and focused runs have exited. No other task's process or lock is stopped.
+
+
+### Candidate gate binding
+
+- Frozen staged tree before candidate gates: `738914e5cc384f9afdc0d0caa56c4791402d8be4`.
+  `/tmp/hr-worker-names-candidate-inputs.json` binds all 2,193 tracked files except this
+  evidence owner by SHA-256. Later evidence-only recording must verify every hash unchanged.
+- Focused run 4: 140 passed, one outdated v34 downgrade literal failed; corrected in final
+  inputs. Focused run 5: 11 files / 234 tests, exit 0, including the corrected downgrade
+  proof and v33/v34 restore followed by real stopped upgrade with preserved credentials.
+  Logs: `/tmp/hr-worker-names-focused-{4,5}.log`.
+- Iteration typecheck 3 and lint 1 were explicitly terminated (exit 143) after source changes
+  made their input snapshots stale and host memory contention was verified. Neither is a pass.
+  Final typecheck/lint run sequentially against the frozen inputs; coverage follows both.
+- Manifest, store catalog and roadmap generation completed, exit 0; all three outputs remain
+  byte-identical to the base. No descriptor identity or parity reference changes occurred.
+- S2–S4 implementation/proofs are complete subject to the mandatory candidate gates and
+  complete independent review. S5 and S6 remain open.
+
+
+### Proof map for complete R1
+
+| Proof | Deciding boundaries and negative controls |
+| --- | --- |
+| P1 | `sqlite-authority-database.test.ts` fresh registry/baseline and immutable chain; `storage-upgrade.test.ts` populated v33/v34 conversion, ordinary-open refusal, old-table/view absence and current inspection; admission matrix preserves every earlier admitted version. |
+| P2 | `populatedWorkerRenameFixture` compares every SQL column and record byte in all renamed tables, pools, snapshots, batches and runs. Generation-2 busy worker has heartbeat, active run and pause directive; requests include unused, expired, consumed and refused entries. Grouped batch version 2 and separate batch version 1 remain exact. Parameterized schema-32/33/34 settings tests compare settings/journals and independent credential bytes. |
+| P3 | Real repositories in `run-authority`, `worker-loop`, `duo-ceremony-lease-store`, `duo-ceremony-gate`, and composed `server/worker-pool-parallel-proof`: claim/heartbeat, pause/stop, restart fencing, pool count, credential exclusivity, TTL takeover and superseded-holder refusal. |
+| P4 | Populated v33/v34 backups match an independently frozen schema-34 fingerprint order; current backups match current inspection. Historical corrupt JSON and mirrored worker/auth columns refuse. `storage-restore-drill` restores v33/v34 and then upgrades through the real stopped boundary with unchanged credentials. Existing backup suites cover unexpected tables, malformed metadata and manifest/source identity refusal. |
+| P5 | Admission matrix covers active locks, absent/stale backup, unsupported/ahead schemas, schema drift and transactional interruption. Populated v33/v34 cases compare exact pre-commit rollback, post-commit resume, one committed/settled pair and no-write settled replay. Existing source-binding/credential interruption tests remain; schema-32/33/34 unfinished conversions now all refuse before supersession. |
+| P6 | Current SQL references were traced in `src`: old exact table names remain only in immutable DDL, historical adapters/layouts and historical fixtures. `leases` wire/count fields and generic lease terminology remain. Full current integrity/accounting mutation matrix, composed dashboard/worker tests and unchanged parity are required candidate gates. |
+| P7 | `command-kernel.test.ts` proves saved multi-entry request creates no runs/batch, confirmation creates accepted runs with exact consuming command/audit, expiry/binding/version refusals, exact replay and cross-command consumption refusal, and atomic rollback during fan-out. `start-plan`, omissions, step-omission carry and Rerun tests preserve accepted/refused entry handling, omission/provenance and snapshot identities. |
+
+No guard was added or retired; the existing migration-history digest and schema pin were
+extended. All injected controls, suite membership, isolation, timeouts and coverage floors
+remain. No full-gate or review acceptance is inferred from these selectors alone.
+
+
+### Coverage resource correction
+
+The first full four-worker run (`/tmp/hr-worker-names-candidate-coverage.log`) hit two
+30-second `no-lifecycle-sql-outside-the-adapter` timeouts (35.630s and 44.920s observed).
+It was stopped with exit 143; its owned child group was verified absent before rerun.
+This is failed evidence, not a partial pass. No source/test/assertion change followed it.
+
+The rerun uses the prerequisite's demonstrated resource-only adapter, retained at
+`/tmp/hr-worker-names-vitest-adapter.mts` and temporarily loaded from
+`.worker-names-vitest.mts`. It imports this checkout's actual `vitest.config.ts`, sets
+root and every project to two workers, and asserts deep equality after stripping only
+those worker counts. `/tmp/hr-worker-names-candidate-worker-processes-2.json` proves two
+live isolated forks; the earlier four-worker observation is retained separately. No own
+compiler/linter overlaps coverage. Suite membership, timeouts, isolation and floors match
+installed configuration exactly. The adapter is removed from the review checkout after use.
+
+Exact coverage constituents: `npm exec -- tsx scripts/test-runner.ts run --coverage --config
+.worker-names-vitest.mts`, then `npm exec -- tsx scripts/suite-size.ts`. These are the installed
+`test:coverage` constituents with only the approved resource setting changed; both must pass.
+
+
+The first two-worker retry was stopped early (exit 143, log `candidate-coverage-2.log`)
+after the concurrent operation-names supervisor reported the identical two architecture
+timeouts (47.8s/41.4s). Its older coverage run owns the current heavy-gate window; this
+supervisor released all observed coverage descendants and awaits that owner's explicit
+release. Worker-names then owns two-worker coverage followed by parity, with command-groups
+also notified. This queue is limited to the demonstrated coverage/parity resource conflict;
+independent implementation and light documentation checks continue. The interrupted retry
+is not an accepted gate. Typecheck/lint remain passed on unchanged tracked inputs.
+
+
+Pre-integration observation while waiting for the resource window: local master advanced to
+`f1e138842722b760b043d1d9f1f88f516938e8b7` with Phase-4.1 planning, roadmap-parser/schema, binding-test and documentation changes.
+This candidate remains based on `35635a04e16e9c3cf1e99b16d4963752a18c616a`; no peer work is
+consumed and no integration is attempted. Target state must be reverified when assigned.
+
+
+### Candidate coverage accepted
+
+After operation-names explicitly released all gate children, the exclusive two-worker run
+passed: 447 files / 5,657 tests; statements 85.97%, branches 77.78%, functions 89.96%,
+lines 88.18%; all configured floors passed. Runner exit 0, 350.684 seconds. The subsequent
+suite-size constituent exited 0: 350 unit / 80 architecture / 17 scenario files. Exact logs:
+`/tmp/hr-worker-names-candidate-coverage-3.log` and
+`/tmp/hr-worker-names-candidate-suite-size.log`. Two observed forks are recorded in
+`/tmp/hr-worker-names-candidate-worker-processes-3.json`; all 2,193 tracked input hashes
+still match `738914e5cc384f9afdc0d0caa56c4791402d8be4`, excluding only this evidence owner.
+
+The previously timed-out lifecycle SQL guard passes in this exclusive window without
+source/assertion/deadline changes. Candidate typecheck and lint also exited 0 in the
+sequential final run (`/tmp/hr-worker-names-candidate-{typecheck,lint}.log`). Full parity
+uses the wrapper's supported `--workers=2` flag with unchanged authority configuration,
+retries, timeouts, membership and baselines. Review and integration are not yet accepted.
+
+
+### Frozen candidate awaiting independent review
+
+- Implementation commit: `ea97d89679f12636a669d95f799a5a73deaa0ced` (22 changed paths),
+  against base `35635a04e16e9c3cf1e99b16d4963752a18c616a`.
+- Approved plan remains `44460e2b65051a23d1a9584ac350c665d2da9985`. This recording-only
+  commit adds the 23rd reviewed path, this owner. R1 reviews the complete base-to-evidence
+  range, with implementation and evidence commits distinguished. No proof row is excluded.
+- Branch/checkout remain `codex/worker-names` at
+  `/Users/julianhein/Projects/hr-worktree-worker-names`. All gate children exited; the
+  temporary adapter is removed. The heavy window was explicitly released to command-groups,
+  with operation-names' repair window following it. Independent review starts on a clean,
+  frozen checkout, with no writes or test reruns by the reviewer.
+
+| Candidate check | Result | Log under `/tmp/hr-worker-names-` |
+| --- | --- | --- |
+| `npm run typecheck` | Exit 0 | `candidate-typecheck.log` |
+| `npm run lint` | Exit 0 | `candidate-lint.log` |
+| Full coverage, resource-only two-worker adapter | Exit 0; 447 files / 5,657 tests, all floors; 350.684s | `candidate-coverage-3.log` |
+| `npm exec -- tsx scripts/suite-size.ts` | Exit 0; 350 unit / 80 architecture / 17 scenario | `candidate-suite-size.log` |
+| `npm run test:parity -- --workers=2` | Exit 0; 262/262, unchanged baselines; 118.381s | `candidate-parity.log` |
+| Manifest / catalog / roadmap freshness | All exit 0 after generation; outputs unchanged | `candidate-manifest.log`, `candidate-catalog.log`, `candidate-roadmap.log` |
+| Documentation / instruction twins / chain size | Exit 0; nine equal pairs, maximum chain 16,650 bytes | `candidate-docs.log` |
+| Whitespace and input identity | Clean full/staged diff; all 2,193 frozen tracked hashes unchanged except this owner | `candidate-inputs.json` |
+| Native reviewer policy | Valid Astra/high role configuration | `review-role-check.log` |
+
+Tests and normative contracts belong to implementation commit `ea97d8967`. D191 permits
+code-gate reuse for this evidence-only commit: the input hash comparison includes all source,
+tests, scripts, configuration, dependencies, generated files, contract documents and parity
+baselines; only this side-plan evidence owner differs from tested tree
+`738914e5cc384f9afdc0d0caa56c4791402d8be4`. Scoped documentation/link/whitespace checks repeat
+for the evidence commit. No runtime rerun or independent review is claimed by recording.
+
+R1 is a single complete fresh `sup_review`, covering P1–P7, all changed paths and transitive
+consumers. The supervisor must wait for its verdict, repair any required finding, rerun
+applicable gates and obtain renewed acceptance. S6 delivery, operator-assigned integration
+and owned branch/worktree cleanup remain open. The actual operator database has not been
+converted and no push occurred.
