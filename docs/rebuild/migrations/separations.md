@@ -7551,3 +7551,22 @@ were restored through their canonical command, post-doctor was healthy at schema
 and primary master was restored clean and unchanged. Exact next attempt is 4 only after a diagnosed
 correction or recovered prerequisite; no identity/checkpoint reset or automatic retry is authorized.
 The Task-7 owner records full failure/receipt/doctor/recovery bindings and the remaining acceptance.
+
+
+### Task 1.6.7 attempt 4 — callback failure, no transaction (2026-09-07)
+
+On frozen b684fc21e1d62bb014f5fd0ffa6b85dcaf6914d6, headed dry-run-preview attempt 4 returned
+failed result `a7040114-67c4-4a62-8789-91e17d7c4c30`, run
+`4afd9e34-b9ce-460b-9151-09d0b4f96831`, trace `sp-204534-4afd`. UCPath and New Kronos reads
+passed through approval; SS Smart HR `pending-set` failed `UNEXPECTED_PAGE_STATE` because a
+serialized callback referenced tsx's unavailable `__name` helper. Evaluator/command 108086/109974 ms,
+exit 1; manifest `2f02c09966086677b0c00f2d96c8289d897b63bbb9179065a67f0b5f21b5b082`;
+receipt `ca7f3b4a-c97e-5256-a14d-e0598a05c36c` failed/unknown. Both evaluator and independent
+write-intent/write-attempt/durable-outbox proof are exactly **0/0/0**. All failed rows and ten new
+checkpoints remain, together with four earlier replayed checkpoints.
+
+The callback repair has a production-tsx serialization regression. A separate full-read acceptance
+blocker remains: the current-run T1b manifest cannot count replayed checkpoints, and protected input
+admission currently suppresses the workflow's explicit reread item identity. The Task-7 owner records
+the isolated synthetic reproduction and required decision boundary. No fresh-read identity was
+invented, no checkpoint deleted, no assertion reduced, and no next workflow attempt started.

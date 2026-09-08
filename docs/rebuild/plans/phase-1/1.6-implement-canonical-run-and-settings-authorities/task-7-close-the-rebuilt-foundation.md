@@ -1401,3 +1401,85 @@ unchanged desktop parity (259 cases, 60703 ms). `token-candidate-gate-results.js
 configuration identities and all 1908 input hashes, rechecked before freeze. Against the prior
 full-gated candidate, only the Separations manifest ordinal changed; accepted Person Lookup inputs
 remain unchanged. No final review, integration or task completion is claimed.
+
+
+### Headed attempt 4: callback failure and full-read rehearsal blocker (2026-09-07)
+
+Frozen candidate `b684fc21e1d62bb014f5fd0ffa6b85dcaf6914d6` matched all 1908 gated inputs and
+installed dependencies on clean detached primary. Production provider/private-source admission,
+next ordinals and pre-doctor passed; settings revision 7 was active and served descriptors matched.
+Only Separations ran; Person Lookup's accepted result was retained.
+
+| Proof | Observed evidence |
+| --- | --- |
+| Result / verdict | `a7040114-67c4-4a62-8789-91e17d7c4c30` / **failed**, 3 met and 5 failed assertions |
+| Run / trace | `4afd9e34-b9ce-460b-9151-09d0b4f96831` / `sp-204534-4afd` |
+| Arm / attempt / browser | dry-run-preview / 4 / headed; dryRun=true |
+| Manifest | `2f02c09966086677b0c00f2d96c8289d897b63bbb9179065a67f0b5f21b5b082` |
+| Evaluator / command / exit | 108086 / 109974 ms / 1 |
+| Failure / bundle | `9864586f-2072-4340-95fa-16cbeafbba06` / `7f5e6f83-2f68-495d-aa58-f15422b1c3f0` |
+| Receipt | `ca7f3b4a-c97e-5256-a14d-e0598a05c36c`, failed / unknown |
+| Exact evaluator deltas and independent run-scoped write-intents / write-attempts / durable-outbox | **0/0/0** |
+
+The run passed UCPath identity/employment/department and New Kronos timecard checks, reaching
+approval. It wrote ten attempt-4 checkpoints: name-search, subject, job-summary, employment,
+department-option, timecard-search, timecard, dates, comparison and approval, each claim generation 1.
+The first four reads replayed the retained attempt-3 checkpoints. `pending-set` then failed
+non-transient `UNEXPECTED_PAGE_STATE`, writeState not-attempted. Static-source matching isolated
+`ReferenceError: __name is not defined` inside SS Smart HR's settlement scan; no raw failure summary
+or protected/derived identifier was emitted. `separations-token-{command,readback}.json` retain
+exact safe evidence. BFF 21126 stopped; post-doctor passed healthy schema 32/generation 630, ten
+reconciled runs, zero pending commands/unresolved writes/durable outbox, two historical leases and
+one retained local run-terminal outbox. Primary master was restored clean and unchanged.
+
+**Callback defect.** The page predicate declared an inner `const isVisible = ...` function. The
+CLI's tsx compiler adds a Node-side `__name` helper inside the serialized callback; Playwright's
+browser realm does not contain it. Existing unit fixtures invoked the callback inside Node and
+therefore missed the production boundary. A regression now imports the actual production module
+through tsx in a child, captures the real serialized callback and executes it in a separate realm
+without compiler helpers. Before repair: 27 passed / 1 failed, with the exact live ReferenceError
+(`smart-hr-serialization-red-confirmed.log`). A plain loop removes the inner function while retaining
+the same row/detail visibility and no-results checks. The regression covers visible rows, visible
+auto-detail, explicit empty results and hidden-signal refusal; neighboring scan/verdict tests pass.
+No selector, deadline, retry, session proof, HR-write behavior or empty-result fallback changed.
+
+**Separate blocker: full-read proof and protected reread identity.** The committed T1b case requires
+the complete executed path and fifteen current-run checkpoint rows. Replayed tasks intentionally
+emit no task spans; `reachedNodes` collects executed spans and `collectEvidence` filters checkpoints
+by the exact result run. Thus merely raising the expected attempt cannot make a post-partial-failure
+run satisfy the full-read case. The attempt-4 expectation missed this distinction; retain its failure
+rather than weakening that assertion or presenting historical reads as new observations.
+
+The workflow's existing `reRead` input explicitly creates a new logical item for fresh reads, but
+`src/services/start/plan.ts` uses only protected bindings for the match key whenever a protected
+subject exists, bypassing the descriptor's reread-aware identity. A synthetic isolated database
+reproducer (`reproduce-protected-reread.mjs`, exit 1; `protected-reread-reproduction.json`) verifies
+ordinary reread creates a new item, protected reread does not, while its input fingerprint changes.
+It reads no operator state or private input. The test-target resolver also deliberately admits only
+the document-number canonical input. A complete fresh rehearsal therefore needs an explicitly owned
+protected-identity/reread admission correction; silently changing private identity, deleting retained
+checkpoints, relabeling replay as fresh evidence or reducing path/checkpoint expectations is refused.
+The callback repair does not solve this separate acceptance boundary. No attempt 5 is launched or
+claimed. Steps 4–6 remain open; review/integration cannot yield acceptance with this missing proof.
+
+
+The callback repair regenerated only twelve Smart HR task fingerprints and their twelve source
+hashes in the manifest. Initial assertion parity failed twelve Explorer cases solely on two displayed
+implementation identifiers. A filtered reference update ran all twelve cases but its wrapper refused
+missing full-suite a11y evidence; that failure is retained in `smart-parity-update.log`. The complete
+`npm run test:parity:update` subsequently passed. Exact comparison to b684fc21 verified only twelve
+a11y reference lines changed, with the two fingerprint substitutions; no PNG or metadata changed
+(`smart-parity-classification.json`). This uses the approved fingerprint-only exception. Full
+assertion parity remains required after coverage and standalone architecture.
+
+
+**Step 3 reaccepted for the callback repair.** Focused scan/verdict regressions passed 40 tests
+in two files. Typecheck 54086, lint 81160, generated freshness, instruction audit and diff checks
+passed. Full runner 34953 passed coverage (438 files / 5522 tests, 329831 ms; statements 85.87%,
+branches 77.51%, functions 89.86%, lines 87.99%; configured floors met), suite size (212 ms),
+standalone architecture (64960 ms), then full assertion parity (259 cases, 63984 ms).
+`smart-candidate-gate-results.json`, `smart-gate-prerequisites.json`, `smart-gated-inputs.json` and
+`smart-parity-classification.json` bind commands, process handles, config identity and all 1908
+inputs, rechecked before freeze. The next authorized live action is only the repaired SS Smart HR
+read on verified primary. The full-workflow reread admission/identity blocker is unresolved; the
+manifest continues to describe spent attempt 4, and no attempt 5 is authorized by this gate record.
