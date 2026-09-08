@@ -2660,7 +2660,7 @@ needs:
 - migrations
 
 log:
-- 2026-09-08 | Background Check walkthrough (operator label: Phase 4.1) | collaborative batch discovery recorded in 4A Admission; select yellow Date Background Entered cells from the original workbook, use the portal's batch template, and show the completed workbook before submission; current PDF reviewed, live form and cohort verification pending; no implementation admission or submission claimed
+- 2026-09-08 | Background Check walkthrough (operator label: Phase 4.1) | live batch form verified; original roster yields 87 yellow Date Background Entered cells (85 Residential/Retail, 2 Catering); separate copy of portal template prepared and checked; operator workbook review and applicant-specific clarifications pending; shared originals unchanged, no upload/submission or implementation admission claimed
 
 #### Shared capabilities assigned with 4A {#cross-cutting}
 status: planned

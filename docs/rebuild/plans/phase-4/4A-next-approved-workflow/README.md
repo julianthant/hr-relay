@@ -55,11 +55,34 @@ Applicant data and authenticated browser artifacts remain outside committed docu
 | Selected service | Universal Background Check: Any Position Posted On Or After 12/1/24 (SB791 Compliance) |
 | Report results to | Careen Cumper, `person@example.edu` |
 
-**Current evidence and remaining discovery.** Headed Chrome session `background-check` reached
-UCSD SSO after clicking Human Resources; its second tab reached Microsoft sign-in for the supplied
-SharePoint workbook. The PDF's two batch pages were extracted and visually inspected. Authentication,
-actual highlighted membership, current template fields, job-number mapping, final page state and
-submission receipt remain unverified. No workbook has been uploaded and no request submitted.
+**Current evidence and remaining discovery (updated 2026-09-08).** After operator sign-in, headed
+Chrome session `background-check` reached the live Talent Support Services order guide, selected
+Background Check Request and Multiple Applicants (10 or more), and advanced to Choose Options.
+The expanded item requires a workbook attachment. Submitted By is the authenticated operator;
+item-level Report Results to was set to the PDF's recipient and read back. The page has not advanced
+to Summary or Submit.
+
+The original SharePoint roster was downloaded with its formatting. Its Sept 28 sheet contains 121
+applicants, of whom 87 have solid yellow (`FFFFFF00`) Date Background Entered cells. Their dates
+are blank. Three orange cells contain prior-entry dates and are excluded. Color, rather than
+visibility under the source table's current filter, determines membership. The selected cohort has
+85 Residential/Retail applicants and two Catering applicants; the PDF's corresponding job numbers
+were applied. There are no duplicate selected email addresses. One selected applicant has a blank
+Accept Terms field, and two compound-name splits await operator confirmation in the private review.
+
+The portal's current 19-column workbook was downloaded through **Create a Copy → Download a Copy**.
+The operator explicitly required a copy and no edits to the shared original. A separate local review
+copy contains all 87 selected applicants, extends the template's applicant rows, and retains native
+checkboxes: 87 post-December-1-2024 SB791 selections and 435 other service boxes unchecked. The
+authoring exporter omits form controls, so native controls were restored in the local copy using
+the template's control structures. All applicant values were reconciled to the selected source
+records, checkbox state was verified in the saved workbook, and a separate LibreOffice PDF render
+verified the resulting layout and visible selections. The downloaded original's bytes are unchanged.
+Applicant-specific review notes and artifacts remain outside committed documentation.
+
+The operator must review the completed workbook before submission. No workbook has been uploaded
+and no request submitted; final Summary state and receipt remain unverified. The PDF's two batch
+pages were extracted and visually inspected.
 The single-applicant branch (PDF pages 3–4), automated task/store boundaries, ordered tuple model,
 resume/no-repeat-write mechanics and controlled proof targets remain outside this completed evidence.
 
