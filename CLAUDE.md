@@ -123,6 +123,10 @@ session. Separate review sessions remain an explicit operator option. Read roadm
 finalization. The supervisor records the candidate as awaiting independent review and marks the
 phase/roadmap task complete only after accepted review, required integration gates and cleanup.
 Use the exact assigned task including parallel suffixes; no agent coordinator or next-task dispatch.
+D344 (roadmap Governance) governs newly planned parallel work: the operator launches independent
+worktrees and chooses integration. Agents do not message siblings or auto-merge; they return reviewed
+candidates, with completion open until operator-assigned integration, gates and cleanup. Phase 3.1
+contains six nested subphases; use its current identity map. Preserve all existing in-flight briefs.
 At start/resume and after every verified task/step completion, send Done / Now / Remaining in chat
 before the next tool call: completed work with evidence, current action, and all unfinished items.
 Keep review, integration and cleanup visible; tool logs or plan UI never replace this update.

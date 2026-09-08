@@ -16,3 +16,7 @@ Each subphase owns its existing tasks, evidence and exit criteria. Phase 3.3 con
 - [Phase 3.3 · Accept Person Lookup and Separations](3.3-accept-person-lookup-and-separations/README.md)
 - [Phase 3.4 · Optional document tools and AI assistance](3.4-optional-document-tools/README.md)
 - [Phase 3.5 · Codex and Claude cooperation](3.5-co-operate-with-claude/README.md)
+
+D344 divides the remaining 3.1 work into six [nested subphases](3.1-finish-the-dashboard/README.md#parallel-execution-and-worktree-contract).
+They overlap by explicit accepted prerequisites; the operator coordinates independent worktrees.
+The optional early inventory is read-only preparation, not a waiver of the 2.6 implementation gate.

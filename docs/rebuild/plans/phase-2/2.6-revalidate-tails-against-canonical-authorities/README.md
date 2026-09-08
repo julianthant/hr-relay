@@ -78,6 +78,11 @@ closed. This is scheduling under D328, not authority redesign.
 
 ### Shared-reader prerequisite — approved 2026-09-08
 
+D344 gives the existing P stage its own visible roadmap gate (`p2f-readers`) while retaining
+the approved owner, brief, branches and gates. This is not a new competing extraction task.
+Existing in-flight permissions remain unchanged. Newly planned work follows operator-coordinated
+launches and integration in [roadmap D344](../../../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08).
+
 The operator approved a serial extraction before wave 1 after discovery found
 trust/data/operator sections sharing `run-detail.ts` and root composition.
 The complete prerequisite and trust execution brief lives in

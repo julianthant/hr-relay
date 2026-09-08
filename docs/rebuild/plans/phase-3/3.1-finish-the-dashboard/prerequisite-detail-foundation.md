@@ -1,0 +1,16 @@
+# Establish independent run-detail sections
+<!-- roadmap: dash-detail-foundation -->
+
+Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract) and
+[shared foundations](subphase-8-shared-foundations.md) before a focused assignment.
+
+Extract the section-boundary obligation from former Task 12-2. Finish this prerequisite before the timeline and evidence-section tasks; those tasks need this accepted boundary, not each other.
+
+- [ ] separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
+- [ ] preserve the existing live detail path and section behavior, pass required gates and independent review, then integrate the common base
+- [ ] freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
+
+This is roadmap scope, not a launch-ready execution brief. Before implementation, the operator
+approves exact paths, base, branch/worktree, proof commands and resource ownership through
+`/phase-plan`. Preserve D191, independent review, vertical-slice acceptance and all source safety
+contracts. No agent-to-agent coordination, sibling dispatch or automatic merge.
