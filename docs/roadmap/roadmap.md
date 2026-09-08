@@ -924,7 +924,7 @@ log:
 #### 1-1 · Revalidate trust and evidence consumers {#p2f-trust}
 status: planned
 date: parallel wave 1 · dedicated worktree
-doc: ref:operator-trust · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.2
+doc: 2.6/task-1-1-revalidate-trust-and-evidence-consumers · ref:operator-trust · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.2
 
 builds:
 - [ ] BOTH migrate notifications, receipts, failures, captures, logs, gates, and parked-write views
@@ -941,7 +941,7 @@ log:
 #### 1-2 · Revalidate data, intake, and prior-run value consumers {#p2f-data}
 status: planned
 date: parallel wave 1 · dedicated worktree
-doc: ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
+doc: 2.6/task-1-2-revalidate-data-intake-and-prior-run-values · ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
 
 builds:
 - [ ] BOTH migrate intake, OCR, manifests, mappings, and D334's read-only prior-run value/provenance projection; diagnostic capture projection stays with `1-1`
@@ -959,7 +959,7 @@ log:
 #### 1-3 · Revalidate operator read models {#p2f-operator}
 status: planned
 date: parallel wave 1 · dedicated worktree
-doc: ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
+doc: 2.6/task-1-3-revalidate-operator-read-models · ref:frontend-backend-integration §6 · ref:dashboard-surfaces §9 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
 - [ ] BOTH migrate archive, Activity, Explorer, storage doctor, setup/preflight, and generic read models

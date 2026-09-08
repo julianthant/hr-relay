@@ -76,66 +76,40 @@ closed. This is scheduling under D328, not authority redesign.
 > contracts; it amends none of them. A proposed contract change returns to a newly numbered 0.3 task
 > and is never improvised here.
 
+### Shared-reader prerequisite — approved 2026-09-08
+
+The operator approved a serial extraction before wave 1 after discovery found
+trust/data/operator sections sharing `run-detail.ts` and root composition.
+The complete prerequisite and trust execution brief lives in
+[Task 1-1](task-1-1-revalidate-trust-and-evidence-consumers.md).
+This amendment changes the wave's common base to the reviewed prerequisite
+integration; it does not redesign D330/D331/D332 or dispatch the siblings.
+
+| Owner after prerequisite | Exclusive files / boundary |
+| --- | --- |
+| 1-1 trust, current task `01a08042-bb76-7131-844a-872dd909a835` | Extracted trust/log/capture queries, receipt/Explain consumers, notification observation, `compose/trust.ts`, trust routes/tests; this README and shared roadmap recording until serialized integration. |
+| 1-2 data, existing task `01a08043-5395-7c73-ae8f-8b6047aab3a4` | `queries/data.ts`, `compose/data.ts`, `routes/data.ts`, new Rerun values domain/service/query modules, explicit descriptor mappings/compiler checks/workflow declarations and tests. Mapping contract/decision pointer edits remain 1-2. |
+| 1-3 operator, existing task `01a08043-6490-7181-a040-736db353cb68` | Remaining `queries/run-detail.ts`, status/projector/Activity/archive/operator composition/routes, `dashboard-harness.ts`, A2/A3 retirement and required DDL/historical backup admission. |
+| Prerequisite owner before common base | Shared types/read-port and root wiring, query/route extraction and mechanical fixture/guard adaptation; full review/gates before any peer implementation. |
+
+Each peer plans only its own task-specific file. Shared `guard-inventory.json`,
+roadmap/generated artifacts and master integration are serialized with the
+current integration owner; no concurrent shared-file edits. Peer implementation
+and gates are independent after the common base; either verified merge order is
+permitted. The existing four-auxiliary-worktree limit includes unrelated work.
+Task 2 waits for every reviewed/integrated peer; 1-2 and 1-3 retain all their scope.
+
 ### Task 1-1 · Revalidate trust and evidence consumers
-<!-- roadmap: p2f-trust -->
 
-- [ ] Rewire notification, receipt, failure, capture, log, gate, and parked-write run joins.
-- [ ] Prove durable linkage through retry, archive, and tombstone without rewriting evidence.
-- [ ] Stay behind the stable run/evidence boundary; do not edit intake data projections or generic
-  lifecycle status/count/archive projections owned by Tasks 1-2 and 1-3.
-
-> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9's evidence-linkage invariants:
-> spans/logs, receipts, failures, captures and gate records are evidence ABOUT a run and link to it by
-> the stable `runId` alone, so no reader joins evidence to evidence to reach a lifecycle fact and the
-> span fold contributes no lifecycle arm (§D330.12 item 1). Existence stays §D330.2's three-way answer
-> (`absent` · `present` live/archived · `deleted`), and §D330.8's tombstone governs deletion — a
-> deleted run's gate records leave WITH the run. The notification inbox row stays run-linked. No
-> redesign.
+See the [owning task and execution brief](task-1-1-revalidate-trust-and-evidence-consumers.md).
 
 ### Task 1-2 · Revalidate data, intake, and prior-run value consumers
-<!-- roadmap: p2f-data -->
 
-- [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and the
-  D334 Rerun prefill source.
-- [ ] Serve every descriptor-allowed completed-step value with exact source run/version, step/node,
-  field path and provenance; preserve artifact readability and fail loud on missing canonical linkage.
-  Also serve read-only completed/failed/unfinished step classification and completed-transaction evidence
-  coordinates for D335 defaults/warnings. Never infer completion from an omitted-step assertion or grant
-  repeat consent in this projection; 1.6.4 owns the already-built backend authorization boundary.
-- [ ] Keep the projection read-only: it offers prefill candidates and never writes a lifecycle row,
-  checkpoint, start plan or modal value. Redact/withhold any value the ordinary operator-suppliable
-  schema does not admit.
-- [ ] Treat diagnostic capture projection as Task 1-1's seam and generic lifecycle/operator reads as
-  Task 1-3's seam; consume their stable contracts without editing them.
-
-> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9 — intake, OCR, manifest, mapping
-> and Edit Data rows are evidence linked by `runId` and decide no lifecycle fact — together with
-> `ref clock-config-secrets` §D331.8 (a leaf has exactly one source, so no intake or Edit Data path
-> writes settings or a lifecycle row) and §D332.7 item 4 (the upgrade leaves evidence and its
-> immutability rules untouched, so existing artifacts stay readable across it). No redesign.
->
-> 2026-09-05 | D334 operator correction | the old `run.edit-checkpoint` consumer is retired by 1.6.4.
-> This task owns only the replacement READ: completed-step values and their exact provenance for the
-> source-bound Rerun modal. Prove partial/missing/malformed/deleted/archived sources, copied
-> versus operator-entered provenance, transaction outputs represented as assertions rather than new
-> write proof, and a byte-identical source run. Task 3.1.11-2 owns all modal state and submission.
+See the [owning task and execution brief](task-1-2-revalidate-data-intake-and-prior-run-values.md).
 
 ### Task 1-3 · Revalidate operator read models
-<!-- roadmap: p2f-operator -->
 
-- [ ] Rewire archive, Activity, Explorer, doctor, preflight, and settings-status reads.
-- [ ] Prove current/queue/archive/delete counts converge and protected settings never read back.
-- [ ] Own shared lifecycle status/count envelopes and the A2/A3 deletions; do not edit the trust
-  evidence or intake data projections owned by Tasks 1-1 and 1-2.
-
-> 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.5: `read` and `list` are the ONLY
-> lifecycle reads — never a span fold, never `runs_view`. This task lands adapter A2's deletion, so the
-> `run-status-fold-contributes-no-lifecycle-arm` unit test lands in the SAME commit that deletes the two
-> `run-status.ts` fold arms (§D332.9 rule 4; `ref guards-and-tests` §5.2 A2); A3's `runs_view` table is
-> removed with the projector's rewire, its `runs-view-has-no-reader` arm already active from 1.6.
-> Settings status reads only `ref clock-config-secrets` §D331.6's presence/revision tuple; doctor and
-> preflight follow §D331.11 P16 and report the `authority_upgrades` phases (§D332.5/§D332.6). No
-> redesign.
+See the [owning task and execution brief](task-1-3-revalidate-operator-read-models.md).
 
 ### Task 2 · Run the non-mutating migration and recovery proof
 
