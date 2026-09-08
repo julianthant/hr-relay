@@ -37,6 +37,8 @@ import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../settings-runtime.js";
+import { createTrustRunReader } from "../trust/canonical-reader.js";
+import { requireTrustRun, assertTrustEvidenceIdentity } from "../trust/run-reader.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker/compose.js";
 
@@ -503,8 +505,8 @@ export function createProductionDryRunScenarioRuntime(
       if (expected === undefined) throw new Error("dry-run evidence collection ran before start");
       const database = open();
       try {
-        const run = database.authority.runs.get(runId);
-        if (run === undefined) throw new Error(`dry-run ${runId} does not exist at evidence collection`);
+        const runReader = createTrustRunReader(database, input.clock);
+        const run = requireTrustRun(runReader, runId);
         if (run.lifecycle.state !== "terminal") {
           throw new Error(`dry-run ${runId} is ${run.lifecycle.state}; evidence requires a terminal run`);
         }
@@ -529,13 +531,14 @@ export function createProductionDryRunScenarioRuntime(
           decision: IdentityApprovalResultSchema.parse(gate.result.value).decision,
           resolvedBy: gate.resolvedBy,
         }));
-        const receipt = createReceiptService({ database, descriptors: DESCRIPTORS }).ensureReceipt(runId);
+        const receipt = createReceiptService({ database, descriptors: DESCRIPTORS, runReader }).ensureReceipt(runId);
         const failure = run.lifecycle.failureId === undefined
           ? undefined
           : database.authority.failures.get(run.lifecycle.failureId);
         if (run.lifecycle.outcome === "failed" && failure === undefined) {
           throw new Error(`dry-run ${runId} failed without its durable failure record`);
         }
+        if (failure !== undefined) assertTrustEvidenceIdentity(run, failure, "dry-run failure");
         const descriptor = descriptorFor(run.envelope.workflow);
         if (descriptor === undefined) throw new Error(`dry-run ${runId} names unregistered workflow ${run.envelope.workflow}`);
         const receiptEvidence = {

@@ -21,6 +21,8 @@ import {
   type GateParkObservation,
 } from "../../../services/notifications/gate-park.js";
 
+import { createTrustRunReader } from "../../trust/canonical-reader.js";
+import { listLiveTrustRuns, type TrustRunReader } from "../../trust/run-reader.js";
 import { createReceiptService } from "../../trust/receipt-service.js";
 
 /**
@@ -34,8 +36,8 @@ import { createReceiptService } from "../../trust/receipt-service.js";
  * with the other authority-reading folds the composition owns (see
  * `readBackupSummary` below).
  */
-export function readGateParks(database: AuthorityDatabase): readonly GateParkObservation[] {
-  return database.authority.runs.listParkedAtGate().map((run) => {
+export function readGateParks(database: AuthorityDatabase, reader: TrustRunReader = createTrustRunReader(database)): readonly GateParkObservation[] {
+  return database.withAuthorityReadSnapshot(() => listLiveTrustRuns(reader).filter(run => run.lifecycle.state === "parked-gate").map((run) => {
     // The repository refuses such a row before it reaches here; this keeps the
     // narrowing below a checked fact rather than an assertion.
     if (run.lifecycle.state !== "parked-gate") {
@@ -46,13 +48,13 @@ export function readGateParks(database: AuthorityDatabase): readonly GateParkObs
       workflowId: run.envelope.workflow,
       gateId: run.lifecycle.gateId,
     });
-  });
+  }));
 }
 
 export function createTrustNotifications(input: { database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { database, clock, ids } = input;
   const inbox = createNotificationInbox({ authority: database, clock, ids, runReader: input.reader, actorId: LOCAL_OPERATOR_ACTOR_ID });
-  return { inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database) };
+  return { inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }
 export function createTrustReadDependencies(input: { database: AuthorityDatabase; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { database, artifactReader, reader } = input;

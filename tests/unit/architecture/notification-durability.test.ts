@@ -1,3 +1,6 @@
+import { createTrustRunReader } from "../../../src/server/trust/canonical-reader.js";
+import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 /**
  * Guard: `notification-durability` (ref guards-and-tests §3.10; ref dashboard-surfaces §2.6 + §10.4 D79b;
  * ref operator-trust §6/§6.1 D134).
@@ -60,6 +63,10 @@ function openDatabase(): AuthorityDatabase {
     database.close();
     rmSync(root, { recursive: true, force: true });
   });
+  database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_2 }));
+  const separations = RunRecordSchema.parse(personLookupQueuedRun({ runId: UUID_4 }));
+  database.authority.runs.enqueue(RunRecordSchema.parse({ ...separations,
+    envelope: { ...separations.envelope, workflow: "separations" } }));
   return database;
 }
 
@@ -69,6 +76,7 @@ function inboxFor(
   delivery?: OsNotificationDelivery,
 ): NotificationInbox {
   return createNotificationInbox({
+    runReader: createTrustRunReader(database),
     authority: database,
     clock: manualClock(new Date(now)),
     ids: sequentialIds(),
@@ -90,11 +98,11 @@ const RUN_FAILED = {
 const EVERY_EVENT = [
   RUN_FAILED,
   {
-    kind: "subject-mismatch", runId: UUID_2, workflowId: "separations",
+    kind: "subject-mismatch", runId: UUID_4, workflowId: "separations",
     failureId: UUID_4, failureFingerprint: HASH_B,
   },
-  { kind: "gate-opened", runId: UUID_2, workflowId: "separations", gateId: "confirm-identity" },
-  { kind: "write-parked", runId: UUID_2, workflowId: "separations", writeIntentId: UUID_4 },
+  { kind: "gate-opened", runId: UUID_4, workflowId: "separations", gateId: "confirm-identity" },
+  { kind: "write-parked", runId: UUID_4, workflowId: "separations", writeIntentId: UUID_4 },
   {
     kind: "repeating-failure", runId: UUID_2, workflowId: "person-lookup",
     failureId: UUID_1, failureFingerprint: HASH_A, occurrences: 5, threshold: 3,
@@ -255,7 +263,8 @@ describe("notification-durability: repeats fold, they do not spam", () => {
     const database = openDatabase();
     const operator = await inboxFor(database, NOW).publish(RUN_FAILED);
     const second = createNotificationInbox({
-      authority: database,
+      runReader: createTrustRunReader(database),
+    authority: database,
       clock: manualClock(new Date(NEXT)),
       ids: sequentialIds("1"),
       actorId: "second-operator",

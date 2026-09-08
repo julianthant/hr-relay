@@ -1,3 +1,11 @@
+import { VersionBumpApplicationSchema, archivedRunReferenceFingerprint, ArchivedRunRecordSchema, archivedRunContentDigest } from "../../../src/domain/archive/model.js";
+import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
+import { trustArchiveRecord } from "./helpers/trust-authority-fixture.js";
+import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
+import { readDiagnosticBundleAttachment, prepareLiveDiagnosticArtifactLease } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA3 cases retained by intent from 7a85bbd596f00ba4052ce1dddd13cd40c8a897ac;
  * D292 uses real SQLite bundle/index authority and the public live queries. */
@@ -88,7 +96,8 @@ function harness() {
   cleanups.push(() => database.close());
   const run = world.authority.getRun(uuidOf(1));
   assert.ok(run);
-  database.authority.runs.enqueue({ ...run, envelope: {
+  database.authority.runs.enqueue({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
+    schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } }, envelope: {
     ...run.envelope, contractFingerprint: personLookupDescriptor.contractFingerprint,
   } });
   writeArtifactEnvelope(world.stateRoot, refOf(ATTACHMENT), BYTES);
@@ -151,6 +160,118 @@ function recordFailure(database: AuthorityDatabase): void {
 }
 
 describe("DCA3/D292 run capture authority", () => {
+  it("requires a live membership for generic bytes while preserving shared artifacts across archive and deletion", async () => {
+    const h = harness();
+    const queued = h.database.authority.runs.get(uuidOf(1)); assert.ok(queued);
+    h.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope,
+      runId: uuidOf(2), itemId: uuidOf(6002), traceId: "pl-010101-0002" } });
+    recordFailure(h.database);
+    const first = bundleOf(61, { kind: "operator-request", requestedBy: "local-operator" });
+    h.database.authority.diagnosticBundles.insert(first);
+    const deps = { ...h.captures, runReader: h.deps.runReader };
+    await assert.rejects(prepareLiveDiagnosticArtifactLease({ ...deps, authority: { ...h.captures.authority,
+      get: () => ({ ...first, runId: RunIdSchema.parse(uuidOf(2)) }),
+    } }, ATTACHMENT.artifactId), /content identity does not match/);
+    const before = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId);
+    await before.lease.dispose();
+    const service = new RunRecordService({ database: h.database, clock: h.world.clock,
+      ids: { uuid: () => { throw new Error("unexpected id"); } }, publishQueued: () => {} });
+    const run = service.read(uuidOf(1)); assert.equal(run.state, "present");
+    if (run.state !== "present") throw new Error("run missing");
+    h.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
+    h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({ ...VERSION_BUMP_APPLICATION,
+      archivedRunIds: [uuidOf(1)] }));
+    const trust = createReceiptService({ database: h.database, descriptors: [personLookupDescriptor], runReader: h.deps.runReader });
+    const failure = buildTrustSection({ ...h.deps, trust }, uuidOf(1), "failure");
+    assert.equal(failure.section, "failure");
+    if (failure.section !== "failure" || failure.payload.state !== "available") throw new Error("failure evidence missing");
+    const { contentDigest: _digest, ...template } = trustArchiveRecord(run.run);
+    const content = { ...template, failure: { state: "present" as const, value: failure.payload.value } };
+    const archive = ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
+    assert.deepEqual(h.database.authority.archivedRuns.bindingMismatches(archive), []);
+    assert.equal(service.archive({ commandId: uuidOf(81), expectedVersion: run.run.version, archive }).state, "applied");
+    const frozen = canonicalJsonStringify(h.database.authority.archivedRuns.get(uuidOf(1)));
+    await assert.rejects(prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId), SectionUnavailableError);
+    h.database.authority.diagnosticBundles.insert(bundleOf(62,
+      { kind: "operator-request", requestedBy: "local-operator" }, { runId: uuidOf(2) }));
+    const changedAttachment = { ...ATTACHMENT, digest: HASH_A };
+    const conflicting = bundleOf(61, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [changedAttachment] });
+    await assert.rejects(prepareLiveDiagnosticArtifactLease({ ...deps, authority: { ...h.captures.authority,
+      get: (id: string) => id === first.bundleId ? conflicting : h.captures.authority.get(id),
+      findByArtifact: (id: string) => h.captures.authority.findByArtifact(id).map(row => row.bundleId === first.bundleId
+        ? { ...row, attachment: { ...row.attachment, digest: conflicting.attachments[0]?.digest } } : row),
+    } }, ATTACHMENT.artifactId), /shared artifact metadata disagrees/);
+    const shared = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await shared.lease.dispose();
+    assert.equal(canonicalJsonStringify(h.database.authority.archivedRuns.get(uuidOf(1))), frozen);
+    assert.equal(service.deleteArchived({ commandId: uuidOf(82), runId: uuidOf(1),
+      archiveFingerprint: archivedRunReferenceFingerprint(archive) }).state, "deleted");
+    const retained = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await retained.lease.dispose();
+    assert.equal(h.database.authority.diagnosticBundles.get(first.bundleId), undefined);
+    await h.artifactReader.verify(refOf(ATTACHMENT));
+  });
+
+  it("serves captures, failure and receipt without a fold, then refuses foreign failure identity", async () => {
+    const h = harness(); recordFailure(h.database);
+    const id = uuidOf(1);
+    h.database.authority.diagnosticBundles.insert(bundleOf(50, { kind: "failure", failureId: uuidOf(40) }));
+    vi.spyOn(h.world.projection, "runFold").mockReturnValue(undefined);
+    const trust = createReceiptService({ database: h.database, descriptors: [personLookupDescriptor], runReader: h.deps.runReader });
+    const deps = { ...h.deps, trust };
+    assert.equal((await readRunSection(deps, id, "captures")).section, "captures");
+    assert.equal(buildTrustSection(deps, id, "failure").section, "failure");
+    assert.equal(buildTrustSection(deps, id, "receipt").section, "receipt");
+    const failure = h.database.authority.failures.get(uuidOf(40)); assert.ok(failure);
+    for (const change of [{ runId: RunIdSchema.parse(uuidOf(2)) }, { attempt: failure.attempt + 1 },
+      { workflowId: "separations" }, { traceId: "pl-010101-0002" }]) {
+      const foreign = { ...failure, ...change };
+      assert.throws(() => buildTrustSection({ ...deps, trust: { ...trust,
+        getFailure: () => foreign as typeof failure } }, id, "failure"), /TRUST_EVIDENCE_IDENTITY_MISMATCH/);
+    }
+  });
+
+  for (const boundary of ["verification", "attachment preparation", "generic preparation"] as const) {
+    it(`refuses deletion during ${boundary} and closes its prepared lease`, async () => {
+      const h = harness(); recordFailure(h.database);
+      const id = uuidOf(1);
+      const bundle = bundleOf(51, { kind: "operator-request", requestedBy: "local-operator" });
+      h.database.authority.diagnosticBundles.insert(bundle);
+      const service = new RunRecordService({ database: h.database, clock: h.world.clock,
+        ids: { uuid: () => { throw new Error("unexpected id allocation"); } }, publishQueued: () => {} });
+      const remove = () => {
+        const run = service.read(id); assert.equal(run.state, "present");
+        if (run.state !== "present") throw new Error("missing run before deletion");
+        assert.equal(service.delete({ commandId: uuidOf(71), runId: id, expectedVersion: run.run.version }).state, "deleted");
+      };
+      let closed = 0;
+      const artifactReader = { ...h.artifactReader,
+        async verify(ref: ArtifactRef, signal?: AbortSignal) {
+          await h.artifactReader.verify(ref, signal);
+          if (boundary === "verification") remove();
+        },
+        async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+          const lease = await h.artifactReader.prepare(ref, signal);
+          remove();
+          return { ...lease, async dispose() { closed++; await lease.dispose(); } };
+        },
+      };
+      if (boundary === "verification") {
+        await assert.rejects(readRunSection({ ...h.deps, captures: { ...h.captures, artifactReader } }, id, "captures"), /deleted/);
+      } else if (boundary === "generic preparation") {
+        await assert.rejects(prepareLiveDiagnosticArtifactLease({ ...h.captures, runReader: h.deps.runReader, artifactReader },
+          ATTACHMENT.artifactId), /membership was removed/);
+        assert.equal(closed, 1);
+      } else {
+        await assert.rejects(readDiagnosticBundleAttachment({ ...h.captures, runReader: h.deps.runReader, artifactReader },
+          bundle.bundleId, ATTACHMENT.artifactId), /deleted/);
+        assert.equal(closed, 1);
+      }
+      assert.equal(service.read(id).state, "deleted");
+      assert.equal(h.database.authority.diagnosticBundles.get(bundle.bundleId), undefined);
+      // Membership leaves; content-addressed bytes remain independently verifiable.
+      await h.artifactReader.verify(refOf(ATTACHMENT));
+    });
+  }
+
   it("refuses an empty verified capture index rather than projecting a plausible empty receipt", () => {
     assert.equal(CaptureListSchema.safeParse({ runId: uuidOf(301), artifacts: [] }).success, false);
   });

@@ -1,3 +1,4 @@
+import { RunIdSchema } from "../../../src/domain/ids.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
@@ -4184,8 +4185,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       let advised = 0;
       const h = harness({
         advisory: {
+          runReader: { read: (id) => { reads += 1; return { state: "absent", runId: RunIdSchema.parse(id) }; } },
           authority: {
-            getRun: () => { reads += 1; return undefined; },
             getFailureForRun: () => { reads += 1; return undefined; },
           },
           advise: () => { advised += 1; throw new Error("unreachable"); },
@@ -4206,8 +4207,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     let reads = 0;
     const h = harness({
       advisory: {
+        runReader: { read: (id) => { reads += 1; return { state: "absent", runId: RunIdSchema.parse(id) }; } },
         authority: {
-          getRun: () => { reads += 1; return undefined; },
           getFailureForRun: () => undefined,
         },
         advise: () => { throw new Error("unreachable: the run does not exist"); },

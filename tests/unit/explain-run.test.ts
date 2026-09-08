@@ -1,3 +1,4 @@
+import { TargetNotFoundError } from "../../src/server/failures.js";
 /**
  * `explain run` against the real authority database (ref operator-trust §2.5, D143).
  *
@@ -57,7 +58,7 @@ describe("explain run", () => {
     assert.throws(() => explainRunFrom(database, "the-run-i-mean"), /neither a run id .* nor a trace id/s);
     assert.throws(
       () => explainRunFrom(database, "00000000-0000-4000-8000-000000000000"),
-      /no run matches/,
+      (error: unknown) => error instanceof TargetNotFoundError && /absent from canonical authority/.test(error.message),
     );
   });
 

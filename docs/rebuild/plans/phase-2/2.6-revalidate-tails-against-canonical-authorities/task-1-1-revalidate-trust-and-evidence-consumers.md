@@ -206,7 +206,10 @@ or authority-schema work to hide a failure.
 
 ## Current execution state
 
-P is **accepted and integrated**. T remains unstarted. Independent complete review
+P is **accepted and integrated**. T is **in progress**, bound before edits to
+`codex/tail-trust` at `/Users/julianhein/Projects/hr-worktree-tail-trust`, from
+common base `64db38e017f585014173bae3c428e6c2a1f63099`. The supervisor implements
+T locally; its separate complete independent reviewer remains required. Independent complete review
 P-R1 by `sup_review_tail_readers` passed all 51 candidate paths with no findings:
 base `6e0d05183ba9427e23af4427b62265389fc12281`, candidate
 `249d96edf1cf0007e93f6313fc85d37a1dee4878` (tree
@@ -305,3 +308,270 @@ The worker is finished; the independent reviewer did not participate in that wor
 All failed logs are retained beside the final evidence. No production runtime,
 operator database, live transaction or push was used. Prerequisite integration,
 review acceptance and cleanup are complete; all T proof and completion remain open.
+
+
+## T implementation and proof record
+
+T remains open until its complete independent review, integration gates and cleanup.
+The dedicated checkout is based on `64db38e017f585014173bae3c428e6c2a1f63099`.
+The supervisor implemented T locally. No peer-owned source, fixture, contract,
+authority schema or generated runtime input was edited.
+
+- `server/trust/canonical-reader.ts` binds CLI compositions to canonical read/list;
+  the pure `run-reader.ts` helper admits live trust reads with distinct absent, deleted and archived refusals.
+  Receipt/failure/gate/write/capture serving no longer requires a span fold.
+  Generic operator admission remains 1-3-owned. Shared ports and dispatcher freeze.
+- Receipt derivation and Explain run in an authority transaction. The derivation,
+  composition fingerprint and item-wide compatible checkpoint reuse are unchanged;
+  run/workflow/trace/attempt identity is checked before evidence is served.
+  Explain resolves trace identities through a canonical paged read, refusing stale
+  walks; dry-run evidence collection uses the same canonical reader and receipt path.
+- Canonical lifecycle decides a gate's open state; durable gate rows explain a
+  resolution. Optional folded resolution evidence can explain a missing durable
+  decision, never open a gate. Identity checkpoints must match the logical item
+  and cannot come from a future attempt. Parked intents retain status/generation
+  checks and bind workflow/item/run/attempt plus their binding proof.
+- Logs use the canonical workflow and attempt upper bound. Optional fold instants
+  only expand the partition scan. The run/trace/workflow tuple is checked on each
+  line; positive historical attempts remain valid through same-run requeue.
+  No immutable initial-attempt field exists on a requeued canonical row, so a
+  missing/stale fold never supplies an invented lower bound. Immutable page walks
+  and retained-input redaction remain unchanged.
+- Capture reads recheck disposition and exact membership after asynchronous byte
+  work; failed re-admission disposes prepared leases. Discovery while tracing all
+  routes found the existing generic `/artifacts/v1/:artifactId` door bypassed run
+  disposition. The repair stays in owned diagnostic queries and trust routes:
+  admit at least one verified live membership, refuse archive-only membership,
+  preserve legitimately shared bytes and recheck after lease preparation. This
+  expands the inspected route proof within T's existing capture-serving scope;
+  no new endpoint, shared interface, schema or product authority is introduced.
+- Notification publication checks canonical run/workflow linkage inside the
+  transaction before creating/folding its row; delivery remains after commit.
+  Gate observation uses canonical live list paging in one read snapshot and
+  refuses stale page walks. No future notification producer is added.
+
+The separate real SQLite trust fixture supplies canonical create/read/retry/
+archive/delete paths. The empty projector supplies evidence only; it is never
+lifecycle acceptance authority. New tests exercise no-fold receipt/Explain/log/
+failure/capture/gate/write serving, foreign receipt/failure/gate/intent linkage,
+immutable log pagination, independent retry receipts, archive-door refusal,
+tombstone cascade, unchanged JSONL and shared artifact bytes, deletion during
+verification/preparation and lease cleanup. Existing notification durability
+proof still checks committed rows before delivery, failed/no-channel delivery,
+dedupe, read state and snooze. Final gate results are recorded below after execution.
+
+Iteration findings: newly enforced ports exposed unconfigured receipt, diagnostic
+and notification unit fixtures; those now supply real canonical backing. One
+capture fixture's intentionally arbitrary input hash could not derive a receipt;
+it now binds its input to the registered canonical schema. Typed absence changed
+Explain's unknown-run assertion to check both refusal class and canonical absent
+reason. An inner cleanup catch initially violated `preserve-caught-error`; the
+aggregate now retains both failures with the original admission failure as cause.
+The generic route's new pre-read initially escaped its established corruption
+normalizer; the existing BFF path-redaction test caught it, and the normalization
+boundary was restored. Earlier parity (261 PASS), build and freshness checks are
+provisional for the later generic-route repair, not final-candidate evidence.
+
+The later generic-byte proof also preserves cross-membership metadata agreement
+when one member is archived and another remains live. Its archive fixture initially
+omitted the terminal failure named by the real run; the canonical archive service
+correctly refused it. The fixture now freezes the actual failure section and
+passes archive binding checks. A provisional parity run collided with a concurrent
+production build over `dist/dashboard` and had one readiness timeout (256 passed,
+two failed, three not run). Build and parity are now serialized, with compiler/
+linter processes stopped before parity and coverage; no timeout/reference change.
+The host has 11 logical CPUs and 18 GiB RAM. Existing peers acknowledged the next
+heavy-gate slot for T and are keeping their source work independent.
+
+
+A peer feasibility limitation was reported during T gates: 1-3's new no-fold
+header invokes the P-era capture-availability reader, whose retained generic
+admission still requires a fold. Thus P's earlier either-order independence
+claim is not established for that particular 1-3 path. T supplies the canonical
+capture admission within its approved ownership and does not depend on either
+peer. The 1-3 owner was told to record the actual dependency and handle the
+required dependency/merge-order amendment with its operator; this task neither
+silently approves that amendment nor edits 1-3 files. Acceptance of T does not
+claim completion or independent gates for either peer.
+
+
+### T full-suite repair evidence
+
+The first complete T coverage run executed 442 files and 5,561 tests: 438 files /
+5,555 tests passed, four files / six tests failed. This is a failed gate, not a
+coverage-floor pass. `/tmp/hr-tail-trust-evidence/coverage.log` retains the result.
+
+- The archive import guard found that the new admission helper value-imported
+  `RunRecordService`, reaching `base/workflow.ts` from immutable Archive reads.
+  The runtime factory now lives in composition-only `canonical-reader.ts`; pure
+  admission uses only a type import. The unchanged archive guard passes.
+- Two privacy fixtures supplied foreign workflow/item/attempt or receipt tuples.
+  They now bind to the fixture's actual run; all raw-key/EID withholding and
+  immutable-authority assertions remain intact. Together these repair checks
+  passed seven tests in two files.
+- The inherited D344 roadmap hierarchy changed four displayed task codes without
+  updating `roadmap-ui.test.ts`. The narrow repair updates those four expected
+  values only; all six UI tests pass against unchanged generated roadmap input.
+  Both existing peers requested this shared baseline correction. No unrelated
+  roadmap task's source, branch or worktree was modified. The earlier P reuse
+  record missed this guard-consumed documentation input; it does not justify
+  waiving the failing test. This interim repair was later superseded by the accepted master update
+  recorded below; it is absent from the final T diff.
+- Both unchanged whole-source lifecycle SQL guard tests exceeded their 30-second
+  deadlines under four-worker coverage. Another task's compiler/linter was
+  observed during the run. Focused discrimination and a lower file-concurrency
+  repeat will preserve all tests, assertions, floors, isolation and deadlines.
+
+After the failures, T released the acknowledged heavy-gate slot to 1-2 and held
+its own whole-repository compiler/AST guard work during the peer coverage run.
+The completed serialized parity run passed all 261 cases. Later factory/fixture
+repairs reopen affected checks before candidate acceptance.
+
+
+Focused discrimination passed both unchanged lifecycle SQL guard tests in 16.40
+seconds (8.405 / 7.740 seconds), with no deadline change. The temporary adapter
+`/tmp/hr-tail-trust-two-workers.config.mts` imports the actual Vitest config and
+asserts deep equality after stripping only root/project `maxWorkers`. Resolved
+configuration confirms two workers at root and every project, unchanged include/
+exclude sets, isolation, 30-second test/hook timeouts and all coverage thresholds.
+Its SHA256 is `32733f490018020281a1bd648cfd5721a56fc52a5821d61d4c24017ba7955977`.
+
+The repaired factory passed 97 focused trust tests in seven files. Final source
+inspection found one further generic-byte admission gap: a forged bundle runId
+could otherwise keep its old content digest and claim another live run. The
+existing bundle content-identity verifier is now shared by exact-bundle and
+generic-byte admission. A negative control supplies a different real live run
+with the original digest and verifies refusal; all 36 capture tests pass.
+
+
+The generic-route change passed 157 BFF/archive tests in two files. Its new test
+initially used an unbranded runId; canonical parsing corrected the fixture and
+final typecheck passed. Full lint reported a transient parser error while that
+fixture was edited; focused lint and a new full lint on frozen source passed.
+Build, manifest/catalog/roadmap freshness and whitespace checks passed. Final
+all-file input hashes (excluding only this evidence owner) are retained in
+`/tmp/hr-tail-trust-evidence/final-inputs.json`, 2,175 inputs, SHA256
+`f237c9677e27ab79b87ad767d05dc8bd04930ca0a9828bb4352c3e96c6cce7f3`.
+This inventory includes Markdown and generated roadmap HTML consumed by tests.
+
+
+### Accepted upstream baseline update during T verification
+
+While T coverage ran, master integrated the independently reviewed roadmap naming
+candidate `55efefcf4dd0145e477126b19688e36f0377ba1e` as
+`a3c73c8039508ea307db70f9c2f01228c689435c`. Its commit records complete
+`sup_review_task_names` PASS and 441-file/5,549-test coverage. The accepted change
+includes `generate-roadmap.ts` and both roadmap test files, and supersedes T's
+interim roadmap expectations. T stopped its owned old-base coverage with SIGTERM
+(exit 143), verified its runner and children exited, and retained the partial log;
+no complete-pass claim is made. Both formerly timed-out guards had passed under
+that coverage run in 22.323 / 22.509 seconds without raised deadlines.
+
+T preserved its implementation, removed only its now-superseded roadmap test
+patch, and fast-forwarded its dedicated branch to the accepted merge. The final
+review base is now `a3c73c8039508ea307db70f9c2f01228c689435c`; original creation base
+`64db38e017f585014173bae3c428e6c2a1f63099` remains historical provenance. Relevant
+instruction changes were read; existing in-flight P/T permissions remain intact.
+The added source/test inputs require fresh final gates. This is an external
+prerequisite change, not an accepted test waiver or peer implementation merge.
+
+
+## T candidate gates — awaiting independent review
+
+The complete T candidate is the implementation commit containing this record,
+reviewed against base `a3c73c8039508ea307db70f9c2f01228c689435c`. All T checkboxes
+remain open until exact-candidate independent acceptance, integration and cleanup.
+T-R1 is one fresh complete `sup_review`, covering every T changed path and the
+T1–T4/proof-table requirements, including generic artifact admission and privacy.
+No peer implementation is included. The accepted upstream roadmap test repair is
+outside T's diff and is preserved unchanged.
+
+| Gate | Evidence and result |
+| --- | --- |
+| Typecheck / full lint | `npm run typecheck`, `npm run lint`: exit 0; `typecheck-upstream.log`, `lint-upstream.log`. |
+| Full coverage / suite size | `npm test -- --coverage --config /tmp/hr-tail-trust-two-workers.config.mts`, then `npm exec tsx -- scripts/suite-size.ts`: exit 0; 442 files / 5,561 tests; 318.292 seconds. Global statements 85.92%, branches 77.63%, functions 89.89%, lines 88.08%; configured floors pass. 345 unit / 17 scenario / 80 architecture files. |
+| Visual parity | `npm run test:parity`: exit 0, 261 cases, 56.256 seconds; `parity-upstream.log`. No reference refreeze. |
+| Build / manifest / catalog | `npm run web:build`, `npm run build:manifest:check`, `npm run stores:catalog:check`: exit 0 in final logs. Compared pre/post-upstream all-file manifests: no runtime, build-config or dependency input changed; these results are reused. |
+| Roadmap | `npm run roadmap:check`: exit 0; both roadmap test files pass all 29 tests on accepted upstream source. |
+| Documentation / whitespace | Nine instruction pairs equal, chains within cap, no audit issues; `git diff --check` passes. |
+
+Evidence is retained in `/tmp/hr-tail-trust-evidence`. The final manifest is
+`final-inputs-upstream.json`, 2,175 files including documentation/generated test
+inputs, excluding only this evidence owner; SHA256
+`b9a53d61b23abafc67b941a67b0af15990b7e9618435584c3b59b6ac2d939671`.
+Every listed input was reverified unchanged after coverage. The resource-only
+adapter and resolved configuration are retained there; both former 30-second
+SQL guards pass under final coverage in 22.341 / 22.657 seconds. No owned compiler,
+linter, build or parity ran alongside coverage. Peers confirmed their releases.
+
+All failed and interrupted iterations remain recorded above. T's heavy-gate
+window was released after final parity for peers to continue independently while
+this frozen candidate receives review. No push, production write or live HR run.
+
+
+## T-R1 findings and bounded repair
+
+Fresh complete reviewer `/root/sup_review_trust_tail` returned CHANGES REQUIRED
+on `6e65af26fca6727706f28677ad4c8efa2a2770d0`, base
+`a3c73c8039508ea307db70f9c2f01228c689435c`. It inspected all 24 paths and all eight
+proof rows, independently verified the 2,175 input hashes, and inspected the
+passing gate logs. It reran no write-producing gate. Three required findings:
+
+1. P2: existing failure advisory still used raw lifecycle admission, allowing an
+   archived retained run to reach current provider work, and lacked async
+   re-admission. No approved exclusion exists.
+2. P2: real no-fold/stale-page tests did not supply the promised contradictory
+   open/resolved-fold gate/write proof.
+3. P3: complete candidate-range whitespace failed for blank EOF lines in two new
+   files. Precommit whitespace had missed then-untracked files; its recorded PASS
+   was insufficient for the complete candidate.
+
+The advisory omission is a planning/ownership gap within the existing T failure
+consumer requirement. The bounded ownership correction assigns T
+`queries/advisory.ts`, its new trust advisory tests, only the advisory dependency
+binding in root `compose.ts`, and the two existing advisory ingress fixtures in
+`bff-flow.test.ts`. Both peers confirmed no conflicting advisory/root work;
+1-3's other BFF hunks remain its own and consume accepted T before integration.
+No root registrar, data/operator wiring, shared run port, provider feature,
+public wire, lifecycle authority or schema is changed. This repairs an already
+required trust boundary; it adds no roadmap task or new provider capability.
+
+The repair uses the existing canonical reader, requires the terminal run's exact
+failure tuple/pointer before provider invocation, and rechecks after the await.
+Real SQLite tests cover positive no-fold triage, missing/foreign failure,
+absent/archive/tombstone refusal before invocation, and archive/delete during
+provider work. Contradictory real folded events cannot close a canonical gate,
+open a queued run's gate, hide real parked-write actions, or regrant those actions
+after actual typed write resolution. The two trailing blank lines are removed;
+full base-to-candidate whitespace will be verified after the repair commit.
+Findings remain open until repaired gates and independent renewed acceptance.
+
+
+### T-R1 repair candidate gates — awaiting renewed acceptance
+
+The repair commit containing this record addresses the three findings above and
+keeps the original candidate as history. One test initially emitted a duplicate
+immutable `run.queued` event; the fixture now emits it only for the first fold,
+then appends the contradictory gate evidence. Two ingress mocks initially omitted
+the typed absent result's runId; they now return the complete canonical shape.
+These fixture defects were corrected without weakening assertions or schemas.
+
+| Repaired gate | Verified result |
+| --- | --- |
+| Focused proof | 27/27 tests across real advisory, canonical linkage and parked-write round trips; initial broader cohort also passed BFF/advisory architecture checks. |
+| Typecheck / full lint | Exit 0; `review-repair-typecheck-2.log`, `review-repair-lint.log`. |
+| Full coverage / suite size | Exit 0; 443 files / 5,566 tests; 308.597 seconds. Statements 85.93%, branches 77.65%, functions 89.91%, lines 88.10%; all configured floors pass. 346 unit / 17 scenario / 80 architecture files. |
+| Parity | Exit 0, 261/261, 56.355 seconds; no refreeze. |
+| Build / generated freshness | Build, manifest, catalog and roadmap checks exit 0. |
+| Whitespace / docs | Complete working range against base passes, including the intent-added new test. Instruction-pair/chain audit passes. Committed range is checked below at freeze. |
+
+All logs use the `review-repair-` prefix under `/tmp/hr-tail-trust-evidence`.
+`final-inputs-review-repair.json` binds 2,176 inputs, excludes only this evidence
+owner, and has SHA256
+`8210b55b6e9281527eb8f2619439048ba8de3f0e286a897f60a1cf169047f139`.
+All bound inputs were reverified unchanged after coverage. The same verified
+2-worker adapter preserves membership, isolation, floors and timeouts; lifecycle
+SQL guards passed in 20.663 / 20.381 seconds. Owned compiler/linter/build/parity did
+not overlap coverage; peers confirmed release. Their next gate window was
+released after repaired parity. Review findings remain pending independent
+verification; integration and all task completion checkboxes remain open.

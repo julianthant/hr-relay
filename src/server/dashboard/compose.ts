@@ -883,8 +883,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const advisory: AdvisoryQueryDeps | undefined = advisoryChildren.length === 0
     ? undefined
     : {
+      runReader: lifecycle,
       authority: {
-        getRun: (runId) => database.authority.runs.get(runId),
         getFailureForRun: (runId) => database.authority.failures.listByRun(runId).at(-1),
       },
       advise: (run, failure) => {

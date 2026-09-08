@@ -26,6 +26,7 @@ import type { IdFactory } from "../../domain/identifiers.js";
 import { ActorIdSchema, IsoInstantSchema, NotificationIdSchema } from "../../domain/ids.js";
 import {
   NotificationDeliverabilitySchema,
+  NotificationTriggerEventSchema,
   notificationDeliverability,
   projectNotificationTrigger,
 } from "../../domain/notification-triggers.js";
@@ -121,11 +122,22 @@ export function createNotificationInbox(
 
   return Object.freeze({
     async publish(event: unknown): Promise<NotificationPublishReport> {
-      const projection = projectNotificationTrigger(event);
+      const trigger = NotificationTriggerEventSchema.parse(event);
+      const projection = projectNotificationTrigger(trigger);
       const seenAt = now();
 
       /* ── phase 1: durable, and complete before anything is delivered ───── */
       const settled = dependencies.authority.withAuthorityTransaction((repositories) => {
+        if ("runId" in trigger) {
+          if (dependencies.runReader === undefined) throw new Error("NOTIFICATION_RUN_READER_NOT_CONFIGURED");
+          const existence = dependencies.runReader.read(trigger.runId);
+          if (existence.state !== "present" || existence.disposition !== "live") {
+            throw new Error(`NOTIFICATION_RUN_UNAVAILABLE: ${trigger.runId} is ${existence.state === "present" ? existence.disposition : existence.state}`);
+          }
+          if (existence.run.envelope.runId !== trigger.runId || existence.run.envelope.workflow !== trigger.workflowId) {
+            throw new Error(`NOTIFICATION_RUN_IDENTITY_MISMATCH: ${trigger.runId}`);
+          }
+        }
         const notifications = repositories.notifications;
         const existing = notifications.findByDedupe(actorId, projection.dedupeFingerprint);
         if (existing === undefined) {

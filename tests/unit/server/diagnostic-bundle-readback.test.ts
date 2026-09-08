@@ -1,3 +1,4 @@
+import { createTrustRunReader } from "../../../src/server/trust/canonical-reader.js";
 /** E29/D291: durable D137 bundle readback through request-local verified-byte passes and leases. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -106,6 +107,7 @@ async function captureConsoleBundle(
 
 function bundleDeps(value: Fixture) {
   return {
+    runReader: createTrustRunReader(value.database),
     authority: value.database.authority.diagnosticBundles,
     artifactReader: value.artifactReader,
   };
@@ -238,6 +240,7 @@ describe("E29 diagnostic bundle readback", () => {
     };
 
     await assertSafeCorruption(() => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
       artifactReader: value.artifactReader,
       authority: {
         get: () => { throw new Error(`failed reading ${localPath}`); },
@@ -245,6 +248,7 @@ describe("E29 diagnostic bundle readback", () => {
       },
     }, bundle.bundleId));
     await assertSafeCorruption(() => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
       artifactReader: value.artifactReader,
       authority: {
         get: () => DiagnosticBundleSchema.parse({ ...bundle, record_json: localPath }),
@@ -252,6 +256,7 @@ describe("E29 diagnostic bundle readback", () => {
       },
     }, bundle.bundleId));
     await assertSafeCorruption(() => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
       artifactReader: value.artifactReader,
       authority: {
         get: () => bundle,
@@ -276,6 +281,7 @@ describe("E29 diagnostic bundle readback", () => {
 
     await assert.rejects(
       () => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
         artifactReader: value.artifactReader,
         authority: {
           get: () => DiagnosticBundleSchema.parse({ ...bundle, bundleId: foreignBundleId }),
@@ -309,6 +315,7 @@ describe("E29 diagnostic bundle readback", () => {
 
     await assert.rejects(
       () => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
         artifactReader: value.artifactReader,
         authority: {
           get: () => DiagnosticBundleSchema.parse({ ...bundle, contentDigest: "0".repeat(64) }),
@@ -347,6 +354,7 @@ describe("E29 diagnostic bundle readback", () => {
       value.sourceReads.length = 0;
       await assert.rejects(
         () => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
           artifactReader: value.artifactReader,
           authority: {
             get: () => bundle,
@@ -467,6 +475,7 @@ describe("E29 diagnostic bundle readback", () => {
       });
 
       await assert.rejects(readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
         authority: value.database.authority.diagnosticBundles,
         artifactReader: reader,
       }, bundle.bundleId), (error: unknown) => {
@@ -703,6 +712,7 @@ describe("E29 diagnostic bundle readback", () => {
 
     await assert.rejects(
       () => readDiagnosticBundle({
+        runReader: createTrustRunReader(value.database),
         artifactReader: value.artifactReader,
         authority: {
           get: () => bundle,
