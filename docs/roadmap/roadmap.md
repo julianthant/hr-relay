@@ -962,14 +962,14 @@ log:
 - 2026-09-08 | P C249d96edf P-R1 PASS · integrated 826cae744 | 5,549 tests and 261 parity cases; identical integration code inputs, scoped recording checks; owned worktree/ref removed · trust/data/operator implementation remains open
 
 #### 1-2 · Revalidate data, intake, and prior-run value consumers {#p2f-data}
-status: planned
-date: parallel wave 1 · dedicated worktree
+status: done
+date: 2026-09-08 · reviewed and integrated locally
 doc: 2.6/task-1-2-revalidate-data-intake-and-prior-run-values · ref:data-intake-and-edit-data · ref:dashboard-surfaces §9.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3
 
 builds:
-- [ ] BOTH migrate intake, OCR, manifests, mappings, and D334's read-only prior-run value/provenance projection; diagnostic capture projection stays with `1-1`
-- [ ] BOTH serve only descriptor-allowed completed-step values with exact source run/version, step/node, field path and provenance; withhold values the ordinary operator-suppliable schema does not admit
-- [ ] PROOF existing artifacts remain readable, missing/malformed/deleted/archived source links fail loud, and no intake/prefill path writes run lifecycle, checkpoints, plans, modal values, or settings state
+- [x] BOTH migrate intake, OCR, manifests, mappings, and D334's read-only prior-run value/provenance projection; diagnostic capture projection stays with `1-1`
+- [x] BOTH serve only descriptor-allowed completed-step values with exact source run/version, step/node, field path and provenance; withhold values the ordinary operator-suppliable schema does not admit
+- [x] PROOF existing artifacts remain readable, missing/malformed/deleted/archived source links fail loud, and no intake/prefill path writes run lifecycle, checkpoints, plans, modal values, or settings state
 
 needs:
 - p1f-close
@@ -977,6 +977,7 @@ needs:
 - p2f-readers
 
 log:
+- 2026-09-08 | C75e3fb655 · 2.6.1-2-R1 PASS · integrated b2302c057 | canonical read-only prior-run values/provenance and Context admission; typecheck/lint, 446 files / 5,613 tests and 261 desktop parity cases pass; identical integration tree and 2,185 inputs verified; owned worktree/ref removed
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9, D331 §D331.8 (one source per leaf) and D332 §D332.7 item 4 (no redesign) · left: no intake or Edit Data path writes settings or a lifecycle row
 - 2026-09-05 | D334 operator correction | the old `run.edit-checkpoint` consumer retires in 1.6.4. This task owns only completed-value/provenance reads for 3.1 Task 11-2's source-bound Rerun modal; the source remains immutable · left: implementation after 1.6 closes
 

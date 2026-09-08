@@ -8,23 +8,25 @@ descriptor source-to-input mappings and resolving shared-reader ownership.
 This overrides the routine prompt/fresh-session handoff, not the safety, review,
 isolation or gate requirements. No push or sibling implementation is authorized.
 
-**Candidate complete; awaiting independent review.** The shared-reader prerequisite
+**Complete: independently reviewed, integrated locally and cleaned up.** The shared-reader prerequisite
 candidate `249d96edf1cf0007e93f6313fc85d37a1dee4878` received complete P-R1 PASS and
 was integrated at `826cae74414e84fcd8559bbb34a43f2d68e4678e`; this worktree was
 created from resolved common base `64db38e017f585014173bae3c428e6c2a1f63099`.
 The accepted D344 task-naming baseline and then Task 1-1 trust implementation were
 consumed before final gates. Current candidate base is
 `393d5da75e96ae431ac0fa9d73d07176d924a3d7`. Each fast-forward preserved the complete
-local diff byte-identically. Branch `codex/rerun-values` remains at
-`/Users/julianhein/Projects/hr-worktree-rerun-values` pending review and integration.
+local diff byte-identically. The accepted candidate was integrated at
+`b2302c057836254067845c95b75ec9edaca78ef5`. Owned branch `codex/rerun-values` and
+worktree `/Users/julianhein/Projects/hr-worktree-rerun-values` have been removed;
+their ref, registration and physical path are verified absent.
 
 M/R/H implementation and final candidate gates pass. The read route serves only
 explicit mappings, source-bound facts and protected-safe transaction coordinates;
 Context Data/Attempts use canonical admission. Intake/OCR production rewiring was
 unnecessary after dependency inspection and real cold-read proofs. Future modal
 consumer is **3.1.11.2** (`dash-run-modal`); modal state/submission and repeat
-consent remain their existing owners. Original acceptance stays unchecked until
-independent PASS, required integration gates and owned cleanup.
+consent remain their existing owners. Original acceptance is complete following
+independent PASS, verified integration inputs and owned cleanup.
 
 **Planning validation (2026-09-08).** Scoped roadmap-binding suite passed
 23 tests; `npm run lint` passed. New plan file/anchor links, existing instruction
@@ -204,17 +206,17 @@ mapping amendment, not transferred as an undisclosed implementation discovery.
 ### Task 1-2 · Revalidate data, intake, and prior-run value consumers
 <!-- roadmap: p2f-data -->
 
-- [ ] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and the
+- [x] Rewire only actual run/settings dependencies across intake, OCR, manifests, mappings, and the
   D334 Rerun prefill source.
-- [ ] Serve every descriptor-allowed completed-step value with exact source run/version, step/node,
+- [x] Serve every descriptor-allowed completed-step value with exact source run/version, step/node,
   field path and provenance; preserve artifact readability and fail loud on missing canonical linkage.
   Also serve read-only completed/failed/unfinished step classification and completed-transaction evidence
   coordinates for D335 defaults/warnings. Never infer completion from an omitted-step assertion or grant
   repeat consent in this projection; 1.6.4 owns the already-built backend authorization boundary.
-- [ ] Keep the projection read-only: it offers prefill candidates and never writes a lifecycle row,
+- [x] Keep the projection read-only: it offers prefill candidates and never writes a lifecycle row,
   checkpoint, start plan or modal value. Redact/withhold any value the ordinary operator-suppliable
   schema does not admit.
-- [ ] Treat diagnostic capture projection as Task 1-1's seam and generic lifecycle/operator reads as
+- [x] Treat diagnostic capture projection as Task 1-1's seam and generic lifecycle/operator reads as
   Task 1-3's seam; consume their stable contracts without editing them.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9 — intake, OCR, manifest, mapping
@@ -313,7 +315,7 @@ update/assert logs are `/tmp/hr-rerun-parity-update.log` and
 `/tmp/hr-rerun-parity-final3.log` (261/261, exit 0, 61.520 seconds before accepted
 trust consumption). Final combined parity above is the acceptance result.
 
-### Iteration history and delivery assessment (provisional)
+### Iteration history and delivery assessment
 
 The operator approved explicit mapping/source-target admission after planning
 identified the old checkpoint-edit policy gap. The shared canonical-reader
@@ -338,12 +340,11 @@ have traced fixture descriptor identity and displayed receipt stamps before
 claiming unchanged references. Reference repair preserved the actual UI contract.
 
 All implementation stayed with this supervisor (zero implementation workers).
-One fresh complete independent review is required; none is claimed here yet.
-Final review/repair counts and integration/cleanup evidence will be recorded at
-closure. Elapsed work versus queue time is not fully measured; no savings or
-blanket planning-quality score is claimed.
+One fresh complete independent reviewer returned PASS with no unresolved
+findings; no review repair round was needed. Elapsed work versus queue time is
+not fully measured; no savings or blanket planning-quality score is claimed.
 
-### Integration and close conditions
+### Independent review, integration and cleanup
 
 T accepted candidate `98305e1bccf3f4c1db80735496060bbcbfc68855` after complete
 T-R1 PASS, integrated at `5a07b329ec8a935535ee34935fc05717bbc4f0c1`, and closed at
@@ -353,11 +354,36 @@ transferred shared-document ownership for only p2f-data's status/binding and
 serialized roadmap generation after this task's independent PASS/integration.
 Coordinate primary mutations with remaining Task 1-3; preserve every peer row.
 
-No 1-2 integration or cleanup is complete yet. Freeze the implementation/evidence
-identities, obtain one complete fresh read-only `sup_review` verdict, resolve any
-findings with renewed gates/review, then perform the authorized local `--no-ff`
-merge and required integration checks. Remove only this worktree/ref from the
-primary checkout after verified integration. Never push or dispatch siblings.
+**Independent review `2.6.1-2-R1`: PASS, no unresolved findings.** Fresh read-only
+`sup_review_rerun_values` (GPT-6 Astra/high) reviewed the complete candidate from
+base `393d5da75e96ae431ac0fa9d73d07176d924a3d7` through implementation
+`75e3fb655b438bcf2c97f2d1d9df3582ccdf7f15` and evidence checkout
+`00a80682b48b0b72898798722cff023170d47047`: all 480 implementation paths and two
+documentation paths, F1–F8 and cross-boundary consumers. The reviewer independently
+verified all 2,185 bound input hashes, 44 generated manifest records and 2,617
+source-hash entries, seven changed workflow fingerprints, all 420 exact text
+substitutions, all 43 PNG comparator deltas and 179 unchanged reference files.
+Representative images were inspected. Gate logs were inspected, not independently
+rerun. No live HR verification was required or performed.
+
+The authorized local `--no-ff` merge is
+`b2302c057836254067845c95b75ec9edaca78ef5`. Its complete tracked tree,
+`0e68ccb106b9eb83c1ec458cb5eff4547c9d6081`, is identical to the reviewed evidence
+checkout tree, and all 2,185 bound input hashes match. Integration had no conflicts
+or behavioral changes. Under D191, the exact typecheck, lint, full coverage,
+desktop parity and generated-output results above are reused for this identical
+tree; they are not reported as rerun. `/tmp/hr-rerun-integration.json` records the
+merge, tree, manifest count and preserved peer handoff hash.
+
+Ordinary `git worktree remove /Users/julianhein/Projects/hr-worktree-rerun-values`
+and `git branch -d codex/rerun-values` succeeded from the primary checkout.
+Registration, physical path and exact branch ref are absent. Ignored content was
+inspected as owned generated build/coverage/parity output, an empty parity lock
+and a dependency symlink; final parity results were preserved outside the removed
+checkout. Task 1-3's active worktree, branch and recovery note remain untouched.
+The current task remains visible; its nested reviewer has no separate sidebar
+task. No push occurred. Task 1-3 receives the accepted canonical Context reader;
+3.1.11.2 retains modal state, submission and repeat-consent integration.
 
 
 ### Evidence recording checks
@@ -373,4 +399,30 @@ freshness results above are reused for unchanged inputs under D191.
 excluding only this evidence owner; SHA256 `d817ad15a9a2102efb71f62a69a3ed28398bf12413a1792656bc1427aa9209f9`.
 The evidence commit's contract delta only updates the future consumer's decimal
 task name; that exact text was present during the combined gates. The frozen
-checkout's input hashes must match this manifest before review and integration.
+checkout's input hashes matched this manifest before review and again after integration.
+
+
+### Final completion recording checks
+
+The completion-only candidate is the three-document delta on integration
+`b2302c057836254067845c95b75ec9edaca78ef5`: this task owner, only the p2f-data
+roadmap record, and generated `docs/roadmap/index.html`. `npm run roadmap` refreshed
+the view and `npm run roadmap:check` passed. Fresh targeted checks passed:
+`npm run test:architecture -- tests/unit/architecture/roadmap-doc-binding.test.ts`
+(**23/23**) and `npm test -- --project unit tests/unit/roadmap/roadmap-ui.test.ts`
+(**6/6**). Existing instruction pairs/chains passed **9/9**, owning-plan links and
+anchors passed **3/3**, and complete base-to-completion plus staged whitespace
+checks passed.
+
+Hash comparison against the reviewed 2,185-input manifest found **2,183 unchanged
+files** and exactly two changed inputs: roadmap source and generated HTML, covered
+by the fresh checks above. The manifest excludes only this evidence owner; no
+source, test, configuration, dependency, descriptor or parity-reference input
+changed. The exact typecheck/lint exit-0, full coverage **446 files / 5,613 tests**,
+desktop parity **261/261**, manifest freshness and store-catalog freshness results
+in the candidate table are therefore reused under D191, not claimed as rerun.
+Completion recording introduces no new requirement or behavior and does not reopen
+the accepted implementation review. The dependent 1-3 session confirmed consumption
+of `b2302c057` and **29/29** canonical/archive and intake cases, including both
+spanless freeze/archive/delete proofs; those are peer evidence, not additional
+1-2 gate runs.
