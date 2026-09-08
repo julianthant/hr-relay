@@ -468,15 +468,18 @@ instrumentation failure.
 
 <a id="operation-table-names"></a>
 
-**2026-09-08 approved names — pending implementation.** Rename the current SQL tables
+**2026-09-08 operation names — implemented in the side-task candidate; awaiting review/integration.** The current SQL tables are renamed
 `write_intents` → `run_operations`, `write_attempts` → `run_operation_attempts`, and
 `durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../../sidetracks/operation-names/README.md)
-owns execution after accepted command/delegation integration. The names change no write,
+owns execution; the operator authorized isolated parallel implementation on 2026-09-08. The names change no write,
 retry, outbox, deletion or retention behavior. Operations can span workflow retries;
 operation generations and workflow attempt numbers remain distinct. Preserve stored JSON
 fields, identities, proof/fingerprint algorithms and historical records. Current deletion
 receipts name current tables; historical receipts retain their original names and bytes.
-The following as-built account retains existing names until implementation is accepted.
+Schema 35 uses the new names, including current registries, SQL consumers and deletion tallies.
+The historical accounts and original SQL sketches below retain their contemporary names;
+interpret them through this explicit mapping. Released migrations and historical records
+retain their original bytes. Migration/gate/review evidence lives in the side task.
 
 Attempts/outbox currently have SQL foreign keys to their operation. The attempt's run ID
 and workflow-attempt ordinal are stored in JSON, copied from the execution envelope, and

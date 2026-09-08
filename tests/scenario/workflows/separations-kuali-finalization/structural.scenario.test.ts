@@ -10,7 +10,7 @@
  *   runs. They are S55-S59's contract halves.
  * - **Sequencer walks** (5b) drive the REAL write sequencer over a REAL
  *   authority database, which is the only way to say "zero rows in
- *   `write_intents`" about anything. They produce the transaction node's four
+ *   `run_operations`" about anything. They produce the transaction node's four
  *   coverage points, plus S60's park and S61's dry run at graph level.
  * - **A pure graph walk** (5b) runs the descriptor's real binds and its real
  *   terminal derive, so it falsifies the PATH and produces the gate's points.

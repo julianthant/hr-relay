@@ -485,7 +485,7 @@ type WriteIntentRepository = Readonly<{
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
   /**
-   * Ref operator-trust §2.3/§2.5: what external writes did THIS run fence? `write_intents`
+   * Ref operator-trust §2.3/§2.5: what external writes did THIS run fence? `run_operations`
    * has no `run_id` column — an intent outlives the run that created it, which
    * is the point of a permanent key — so the run identity is read out of the
    * record itself. An `observed-present` row carries no `runId` at all and is
@@ -1685,15 +1685,15 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "write-intent-columns-match-record",
-    sql: "SELECT count(*) AS count FROM write_intents WHERE system <> json_extract(record_json, '$.system') OR idempotency_key <> json_extract(record_json, '$.idempotencyKey') OR idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
+    sql: "SELECT count(*) AS count FROM run_operations WHERE system <> json_extract(record_json, '$.system') OR idempotency_key <> json_extract(record_json, '$.idempotencyKey') OR idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
   },
   {
     name: "write-attempt-columns-match-record",
-    sql: "SELECT count(*) AS count FROM write_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
+    sql: "SELECT count(*) AS count FROM run_operation_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
   },
   {
     name: "durable-outbox-columns-match-record",
-    sql: "SELECT count(*) AS count FROM durable_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
+    sql: "SELECT count(*) AS count FROM operation_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
   },
   {
     name: "failure-fingerprint-column-matches-record",
@@ -1814,14 +1814,14 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "ledger-projection-binds-a-ledger-outbox",
     sql: `
       SELECT count(*) AS count FROM ledger_projections AS projection
-      LEFT JOIN durable_outbox AS outbox ON outbox.record_key = projection.record_key
+      LEFT JOIN operation_outbox AS outbox ON outbox.record_key = projection.record_key
       WHERE outbox.record_key IS NULL OR outbox.kind IS NOT 'ledger-entry'
     `,
   },
   {
     name: "projected-ledger-outbox-has-an-appended-line",
     sql: `
-      SELECT count(*) AS count FROM durable_outbox AS outbox
+      SELECT count(*) AS count FROM operation_outbox AS outbox
       LEFT JOIN ledger_projections AS projection ON projection.record_key = outbox.record_key
       WHERE outbox.kind = 'ledger-entry'
         AND json_extract(outbox.record_json, '$.projection.state') = 'projected'
@@ -1833,9 +1833,9 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "attempting-write-has-current-attempt",
     sql: `
-      SELECT count(*) AS count FROM write_intents AS intent
+      SELECT count(*) AS count FROM run_operations AS intent
       WHERE intent.status = 'attempting' AND NOT EXISTS (
-        SELECT 1 FROM write_attempts AS attempt
+        SELECT 1 FROM run_operation_attempts AS attempt
         WHERE attempt.record_key = json_extract(intent.record_json, '$.currentAttemptId')
           AND attempt.write_intent_id = intent.record_key
           AND attempt.generation = json_extract(intent.record_json, '$.generation')
@@ -1866,6 +1866,11 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
+        if (version < 35) {
+          sql = sql.replaceAll("run_operations", "write_intents")
+            .replaceAll("run_operation_attempts", "write_attempts")
+            .replaceAll("operation_outbox", "durable_outbox");
+        }
         if (entry.name === "run-columns-match-record") {
           if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
           if (!taskColumns.has("session_id")) sql = sql.replace(" OR session_id IS NOT json_extract(record_json, '$.sessionId')", "");
@@ -1889,6 +1894,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    ...(presentTables?.has("write_intents") === true ? { write_intents: WriteIntentRecordSchema, write_attempts: WriteAttemptRecordSchema, durable_outbox: AtomicOutboxRecordSchema } : {}),
     ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
     ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
     ...(presentTables?.has("protected_settings_current") === true
@@ -1950,9 +1956,9 @@ function pendingCounts(database: DatabaseSync) {
   const count = (sql: string): number => CountRowSchema.parse(database.prepare(sql).get()).count;
   return {
     pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
-    unresolvedWriteIntents: count("SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
+    unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count("SELECT count(*) AS count FROM leases"),
-    durableOutbox: count("SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
+    durableOutbox: count("SELECT count(*) AS count FROM operation_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
     runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
@@ -3161,7 +3167,7 @@ export class AuthorityDatabase implements Disposable {
   commitWriteAttempt(input: unknown): AtomicWriteCommitReport {
     const parsed = AtomicWriteCommitInputSchema.parse(input);
     return this.withAuthorityTransaction(() => {
-      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
+      const currentIntent = this.#readRecord("run_operations", parsed.writeIntentId, WriteIntentRecordSchema);
       if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
       if (currentIntent.status !== "attempting") {
         throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
@@ -3169,7 +3175,7 @@ export class AuthorityDatabase implements Disposable {
       if (currentIntent.generation !== parsed.generation) {
         throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
       }
-      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
+      const currentAttempt = this.#readRecord("run_operation_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
       if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
       if (currentAttempt.outcome.state !== "attempting") {
         throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
@@ -4147,7 +4153,7 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({
       listPendingOutbox: () => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM durable_outbox
+          SELECT record_json FROM operation_outbox
           WHERE kind = 'ledger-entry'
             AND json_extract(record_json, '$.projection.state') = 'pending'
           ORDER BY created_at, record_key
@@ -4158,7 +4164,7 @@ export class AuthorityDatabase implements Disposable {
         )));
       },
       getOutbox: (outboxId: string) => this.#readRecord(
-        "durable_outbox",
+        "operation_outbox",
         OutboxIdSchema.parse(outboxId),
         AtomicOutboxRecordSchema,
       ),
@@ -4168,14 +4174,14 @@ export class AuthorityDatabase implements Disposable {
        * This is what lets the archive name the ledger LINES a run filed
        * without copying them: the sweep walks the run's intents, this walks
        * each intent's outbox rows, and `getProjection` turns each into a
-       * `(system, date, seq)` pointer. `durable_outbox_intent_id_idx` is the
+       * `(system, date, seq)` pointer. `operation_outbox_intent_id_idx` is the
        * index it rides. `kind` is filtered here rather than by the caller
        * because a `write-committed-span` row is not a ledger line and a
        * pointer to one would name a partition that does not exist.
        */
       listLedgerOutboxByWriteIntent: (writeIntentId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM durable_outbox
+          SELECT record_json FROM operation_outbox
           WHERE write_intent_id = ? AND kind = 'ledger-entry'
           ORDER BY created_at, record_key
         `).all(WriteIntentIdSchema.parse(writeIntentId));
@@ -4267,7 +4273,7 @@ export class AuthorityDatabase implements Disposable {
             }
             return { result: existing, changes: 0 };
           }
-          const outbox = this.#readRecord("durable_outbox", request.outboxId, AtomicOutboxRecordSchema);
+          const outbox = this.#readRecord("operation_outbox", request.outboxId, AtomicOutboxRecordSchema);
           if (outbox === undefined || outbox.payload.kind !== "ledger-entry") {
             throw new Error(`ledger outbox ${request.outboxId} is not a durable ledger-entry row`);
           }
@@ -4339,7 +4345,7 @@ export class AuthorityDatabase implements Disposable {
           // Marking the outbox is separate and separately idempotent: the crash
           // window between the line landing and the outbox flipping is exactly
           // what recovery has to be able to close without re-appending.
-          const outbox = this.#readRecord("durable_outbox", request.outboxId, AtomicOutboxRecordSchema);
+          const outbox = this.#readRecord("operation_outbox", request.outboxId, AtomicOutboxRecordSchema);
           if (outbox === undefined) throw new Error(`ledger outbox ${request.outboxId} disappeared before projection`);
           if (outbox.projection.state === "projected") {
             if (outbox.projection.projectionFingerprint !== request.lineDigest) {
@@ -4356,7 +4362,7 @@ export class AuthorityDatabase implements Disposable {
             },
           });
           const marked = this.#database.prepare(`
-            UPDATE durable_outbox SET record_json = ? WHERE record_key = ?
+            UPDATE operation_outbox SET record_json = ? WHERE record_key = ?
           `).run(canonicalJsonStringify(projected), request.outboxId);
           if (sqliteChanges(marked.changes) !== 1) {
             throw new Error(`ledger outbox ${request.outboxId} projection marking affected no rows`);
@@ -5608,7 +5614,7 @@ export class AuthorityDatabase implements Disposable {
       writeIntents: Object.freeze({
         listByBusinessKey: (system: unknown, digest: unknown) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_intents WHERE system = ? AND
+            SELECT record_json FROM run_operations WHERE system = ? AND
               (json_extract(record_json, '$.idempotencyKeyDigest') = ? OR
                json_extract(record_json, '$.occurrence.businessKeyDigest') = ?)
             ORDER BY record_key
@@ -5783,7 +5789,7 @@ export class AuthorityDatabase implements Disposable {
             return attempting;
           });
         },
-        get: (writeIntentId: string) => this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema),
+        get: (writeIntentId: string) => this.#readRecord("run_operations", writeIntentId, WriteIntentRecordSchema),
         findByPermanentKey: (system: unknown, idempotencyKey: unknown) => this.#findPermanentWriteIntent(
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
@@ -5791,7 +5797,7 @@ export class AuthorityDatabase implements Disposable {
         listAttemptingByItem: (input: unknown) => {
           const request = z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema }).parse(input);
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_intents
+            SELECT record_json FROM run_operations
             WHERE status = 'attempting'
               AND json_extract(record_json, '$.workflowId') = ?
               AND json_extract(record_json, '$.itemId') = ?
@@ -5805,7 +5811,7 @@ export class AuthorityDatabase implements Disposable {
         },
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_intents
+            SELECT record_json FROM run_operations
             WHERE json_extract(record_json, '$.runId') = ?
             ORDER BY created_at, record_key
           `).all(RunIdSchema.parse(runId));
@@ -5821,27 +5827,27 @@ export class AuthorityDatabase implements Disposable {
           ).count;
           return DryRunWriteSafetyCountsSchema.parse({
             writeIntents: count(`
-              SELECT count(*) AS count FROM write_intents
+              SELECT count(*) AS count FROM run_operations
               WHERE json_extract(record_json, '$.runId') = ?
             `),
             writeAttempts: count(`
-              SELECT count(*) AS count FROM write_attempts AS attempt
-              JOIN write_intents AS intent ON intent.record_key = attempt.write_intent_id
+              SELECT count(*) AS count FROM run_operation_attempts AS attempt
+              JOIN run_operations AS intent ON intent.record_key = attempt.write_intent_id
               WHERE json_extract(intent.record_json, '$.runId') = ?
             `),
             durableOutbox: count(`
-              SELECT count(*) AS count FROM durable_outbox AS outbox
-              JOIN write_intents AS intent ON intent.record_key = outbox.write_intent_id
+              SELECT count(*) AS count FROM operation_outbox AS outbox
+              JOIN run_operations AS intent ON intent.record_key = outbox.write_intent_id
               WHERE json_extract(intent.record_json, '$.runId') = ?
             `),
           });
         },
       }),
       writeAttempts: Object.freeze({
-        get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
+        get: (writeAttemptId: string) => this.#readRecord("run_operation_attempts", writeAttemptId, WriteAttemptRecordSchema),
         listByIntent: (writeIntentId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_attempts WHERE write_intent_id = ? ORDER BY generation
+            SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ? ORDER BY generation
           `).all(WriteIntentIdSchema.parse(writeIntentId));
           return Object.freeze(rows.map((row) => parseJsonRecord(
             WriteAttemptRecordSchema,
@@ -5850,7 +5856,7 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       durableOutbox: Object.freeze({
-        get: (outboxId: string) => this.#readRecord("durable_outbox", outboxId, AtomicOutboxRecordSchema),
+        get: (outboxId: string) => this.#readRecord("operation_outbox", outboxId, AtomicOutboxRecordSchema),
       }),
       artifactOutbox: Object.freeze({
         insert: (input: unknown) => {
@@ -6586,15 +6592,15 @@ export class AuthorityDatabase implements Disposable {
             const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
             if (rows > 0) removed.push({ table, rows });
           };
-          const intents = "SELECT record_key FROM write_intents WHERE json_extract(record_json, '$.runId') = ?";
+          const intents = "SELECT record_key FROM run_operations WHERE json_extract(record_json, '$.runId') = ?";
           // The ledger, leaves first: projection → outbox → attempts → intents.
           remove("ledger_projections", `
             DELETE FROM ledger_projections WHERE record_key IN (
-              SELECT outbox.record_key FROM durable_outbox AS outbox WHERE outbox.write_intent_id IN (${intents})
+              SELECT outbox.record_key FROM operation_outbox AS outbox WHERE outbox.write_intent_id IN (${intents})
             )`, runId);
-          remove("durable_outbox", `DELETE FROM durable_outbox WHERE write_intent_id IN (${intents})`, runId);
-          remove("write_attempts", `DELETE FROM write_attempts WHERE write_intent_id IN (${intents})`, runId);
-          remove("write_intents", "DELETE FROM write_intents WHERE json_extract(record_json, '$.runId') = ?", runId);
+          remove("operation_outbox", `DELETE FROM operation_outbox WHERE write_intent_id IN (${intents})`, runId);
+          remove("run_operation_attempts", `DELETE FROM run_operation_attempts WHERE write_intent_id IN (${intents})`, runId);
+          remove("run_operations", "DELETE FROM run_operations WHERE json_extract(record_json, '$.runId') = ?", runId);
           // Evidence and diagnostics.
           remove("diagnostic_attachments", `
             DELETE FROM diagnostic_attachments WHERE bundle_id IN (
@@ -6856,7 +6862,7 @@ export class AuthorityDatabase implements Disposable {
             // whole sweep unwinds rather than defaulting to "no unfinished
             // write".
             const intents = this.#database.prepare(`
-              SELECT record_json FROM write_intents
+              SELECT record_json FROM run_operations
               WHERE status = 'attempting'
                 AND json_extract(record_json, '$.workflowId') = ?
                 AND json_extract(record_json, '$.itemId') = ?
@@ -7909,7 +7915,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #requireWriteIntent(writeIntentId: string): WriteIntentRecord {
-    const current = this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema);
+    const current = this.#readRecord("run_operations", writeIntentId, WriteIntentRecordSchema);
     if (current === undefined) throw new Error(`write intent ${writeIntentId} does not exist`);
     return current;
   }
@@ -7933,7 +7939,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
-    const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
+    const attempt = this.#readRecord("run_operation_attempts", writeAttemptId, WriteAttemptRecordSchema);
     if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
     return attempt;
   }
@@ -7967,7 +7973,7 @@ export class AuthorityDatabase implements Disposable {
 
   #findPermanentWriteIntent(system: string, idempotencyKey: string): WriteIntentRecord | undefined {
     const row = this.#database.prepare(`
-      SELECT record_json FROM write_intents WHERE system = ? AND idempotency_key = ?
+      SELECT record_json FROM run_operations WHERE system = ? AND idempotency_key = ?
     `).get(system, idempotencyKey);
     if (row === undefined) return undefined;
     return parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
@@ -7975,17 +7981,17 @@ export class AuthorityDatabase implements Disposable {
 
   #insertWriteIntent(record: WriteIntentRecord): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("write_intents", () => {
-      const existingById = this.#readRecord("write_intents", record.writeIntentId, WriteIntentRecordSchema);
+    this.#authorityWrite("run_operations", () => {
+      const existingById = this.#readRecord("run_operations", record.writeIntentId, WriteIntentRecordSchema);
       if (existingById !== undefined) throw new Error(`write intent id ${record.writeIntentId} already exists with a different permanent key`);
       const digestCollision = this.#database.prepare(`
-        SELECT system, idempotency_key FROM write_intents WHERE idempotency_key_digest = ?
+        SELECT system, idempotency_key FROM run_operations WHERE idempotency_key_digest = ?
       `).get(record.idempotencyKeyDigest);
       if (digestCollision !== undefined) {
         throw new Error("write intent digest is already bound to a different permanent key");
       }
       const result = this.#database.prepare(`
-        INSERT INTO write_intents (
+        INSERT INTO run_operations (
           record_key, system, idempotency_key, idempotency_key_digest, status, record_json, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -8003,9 +8009,9 @@ export class AuthorityDatabase implements Disposable {
 
   #insertWriteAttempt(record: WriteAttemptRecord): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("write_attempts", () => {
+    this.#authorityWrite("run_operation_attempts", () => {
       const result = this.#database.prepare(`
-        INSERT INTO write_attempts (
+        INSERT INTO run_operation_attempts (
           record_key, write_intent_id, generation, record_json, created_at
         ) VALUES (?, ?, ?, ?, ?)
       `).run(record.writeAttemptId, record.writeIntentId, record.generation, json, record.recordedAt);
@@ -8015,7 +8021,7 @@ export class AuthorityDatabase implements Disposable {
 
   #replaceWriteIntent(record: WriteIntentRecord): void {
     const result = this.#database.prepare(`
-      UPDATE write_intents
+      UPDATE run_operations
       SET status = ?, record_json = ?
       WHERE record_key = ? AND idempotency_key_digest = ?
     `).run(record.status, canonicalJsonStringify(record), record.writeIntentId, record.idempotencyKeyDigest);
@@ -8026,7 +8032,7 @@ export class AuthorityDatabase implements Disposable {
 
   #replaceWriteAttempt(record: WriteAttemptRecord): void {
     const result = this.#database.prepare(`
-      UPDATE write_attempts SET record_json = ?
+      UPDATE run_operation_attempts SET record_json = ?
       WHERE record_key = ? AND write_intent_id = ? AND generation = ?
     `).run(canonicalJsonStringify(record), record.writeAttemptId, record.writeIntentId, record.generation);
     const changes = sqliteChanges(result.changes);
@@ -8037,7 +8043,7 @@ export class AuthorityDatabase implements Disposable {
   #insertDurableOutbox(record: z.infer<typeof AtomicOutboxRecordSchema>): void {
     const json = canonicalJsonStringify(record);
     const result = this.#database.prepare(`
-      INSERT INTO durable_outbox (
+      INSERT INTO operation_outbox (
         record_key, write_intent_id, generation, kind, record_json, created_at
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run(record.outboxId, record.aggregate.writeIntentId, record.aggregate.generation, record.payload.kind, json, record.createdAt);

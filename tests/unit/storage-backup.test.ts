@@ -311,6 +311,21 @@ describe("D336 DB-only authority backups", () => {
     await verifyBackupManifestAtPath(manifestPath, world.database.getSourceDatabaseIdentity());
   });
 
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 27, 28, 29, 30, 31, 32, 33, 34])(
+    "admits immutable historical schema %s without changing its bytes",
+    (version) => {
+      const root = temporaryRoot("historical-operation-names-");
+      const path = join(root, "state.db");
+      createHistoricalAuthority(path, version);
+      const bytes = readFileSync(path);
+      const inspected = inspectAuthorityBackupReadOnly(path, version);
+      assert.equal(inspected.schemaVersion, version);
+      assert.equal(inspected.counts.unresolvedWriteIntents, 0);
+      assert.equal(inspected.counts.durableOutbox, 0);
+      assert.deepEqual(readFileSync(path), bytes);
+    },
+  );
+
   it("preserves checksum and source-identity refusals", async () => {
     const world = openCurrentWorld();
     const { manifest, manifestPath } = await takeBackup(world);

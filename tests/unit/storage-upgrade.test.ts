@@ -99,7 +99,7 @@ describe("D336 stopped SQLite upgrade", () => {
     } finally { await runtime.stop(); }
     assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=3\n");
   });
-  it("plans a fresh root without files, creates v34 directly, and reruns without writes", async () => {
+  it("plans a fresh root without files, creates the current schema directly, and reruns without writes", async () => {
     const f = fixture(); const before = readdirSync(f.root);
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(readdirSync(f.root), before);
@@ -119,7 +119,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it.each([29, 30, 31, 32])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
     await assert.rejects(f.run(true), /backup-required/u);
     assert.deepEqual(readFileSync(f.path), before);

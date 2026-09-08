@@ -254,7 +254,7 @@ function cancelBody(facts: QueueRowActionFacts): string {
  * the run reached a fenced write, and a body that only warned about released
  * keys when it thought a write had happened would be this module guessing at
  * write-safety authority from a lifecycle status. The permanent key in
- * `write_intents` is what stops the same live HR transaction from being
+ * `run_operations` is what stops the same live HR transaction from being
  * submitted twice, so the honest sentence names the condition ("if this run
  * wrote…") and lets the operator hold it against what they know.
  */

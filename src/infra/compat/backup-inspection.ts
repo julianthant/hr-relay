@@ -17,7 +17,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33,
+  27, 28, 29, 30, 31, 32, 33, 34,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -67,8 +67,11 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "capture_photo_order",
   "capture_finalization_outboxes",
   "write_intents",
+  "run_operations",
   "write_attempts",
+  "run_operation_attempts",
   "durable_outbox",
+  "operation_outbox",
   "artifact_outbox",
   "artifact_sink_heads",
   "intake_sessions",
@@ -328,15 +331,18 @@ function count(database: DatabaseSync, sql: string): number {
   return CountRowSchema.parse(database.prepare(sql).get()).count;
 }
 
-function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>) {
+function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, schemaVersion: number) {
+  // Schema admission already proved the exact layout. Missing required tables must throw.
+  const operations = schemaVersion < 35 ? "write_intents" : "run_operations";
+  const outbox = schemaVersion < 35 ? "durable_outbox" : "operation_outbox";
   const countIfPresent = (tableName: string, sql: string): number => (
     tableNames.has(tableName) ? count(database, sql) : 0
   );
   return Object.freeze({
     pendingCommands: count(database, "SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
-    unresolvedWriteIntents: count(database, "SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
+    unresolvedWriteIntents: count(database, `SELECT count(*) AS count FROM ${operations} WHERE status NOT IN ('committed', 'observed-present')`),
     leases: count(database, "SELECT count(*) AS count FROM leases"),
-    durableOutbox: count(database, "SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
+    durableOutbox: count(database, `SELECT count(*) AS count FROM ${outbox} WHERE json_extract(record_json, '$.projection.state') = 'pending'`),
     runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count(database, "SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
@@ -348,6 +354,9 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
     tasks: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_runs,
+    write_intents: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_operations,
+    write_attempts: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_operation_attempts,
+    durable_outbox: AUTHORITY_RECORD_SCHEMA_REGISTRY.operation_outbox,
     run_sessions: HistoricalRunSessionRecordSchema,
     ...(schemaVersion < 32 ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   };
@@ -426,7 +435,7 @@ export function inspectOpenDatabase(
       name,
       classification: PROJECTION_TABLES.has(name) ? "projection" as const : "authority" as const,
     }))),
-    counts: pendingCounts(database, tableNames),
+    counts: pendingCounts(database, tableNames, schemaVersion),
   });
 }
 

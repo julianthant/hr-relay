@@ -1068,7 +1068,7 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
  * D187 each found once.
  *
  * Every field is a durable fact re-read from authority at request time: the
- * `write_intents` row is the write-safety authority, and a cached copy of it is
+ * `run_operations` row is the write-safety authority, and a cached copy of it is
  * exactly the value nobody may act on. `expectedVersion` on the served actions
  * is the RUN's version, which is what both resolutions CAS against.
  *

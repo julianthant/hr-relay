@@ -1029,7 +1029,7 @@ function executeCancel(
  * the archive record's content digest, so an operator deleting from the
  * Archive can never remove a record other than the one on their screen.
  *
- * What is knowingly given up: the run's `write_intents` rows carry the
+ * What is knowingly given up: the run's `run_operations` rows carry the
  * permanent idempotency keys that stop the same live write from being
  * submitted twice. Deleting a run that WROTE releases those keys. The confirm
  * copy says so; this arm does not second-guess a ruling that was given twice.

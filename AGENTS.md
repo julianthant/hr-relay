@@ -93,7 +93,7 @@ to hide growth. Ordinary code/schema/catalog facts should be looked up at their 
 Read-only selectors, login checks, collectors, and dry-runs are pre-authorized; never ask about access,
 spending the session, or Duo. Transaction-bearing verification uses `dryRun=true`: no UCPath submit
 or Kuali finalization. D318's transaction-free `live-read` uses `dryRun=false` only with a zero-transaction
-graph and zero deltas in `write_intents`, `write_attempts`, and `durable_outbox`. This does not authorize cutover.
+graph and zero deltas in `run_operations`, `run_operation_attempts`, and `operation_outbox`. This does not authorize cutover.
 
 Use `playwright-cli` and its platform playbook, never Codex-in-chrome/chrome-devtools MCPs. Default
 headless; snapshot before selecting locators. Duo Autopilot requires full Chromium; see

@@ -696,7 +696,7 @@ flowchart LR
     CL["claims · checkpoints"]
     DEP["dependencies · manifests"]
     CMD["commands (idempotent, version/actor-stamped; scoped CAS)"]
-    WI["write_intents (the fence)"]
+    WI["run_operations (the fence)"]
     OB["ledger + span OUTBOXES"]
   end
 
@@ -932,7 +932,7 @@ _Its checklist is the `p1-authority` status block under §2 — one block per no
   dependencies, delegation manifests, commands, start plans, terminal authorizations/results, failures,
   notifications, capture sessions/photo order/finalization outboxes — ref workflow-model §5.7's checkpoint payloads,
   §4.4's `ocr_approvals` manifests, and
-  ref write-safety's permanent-key `write_intents`, `write_attempts`, and durable outbox, plus
+  ref write-safety's permanent-key `run_operations`, `run_operation_attempts`, and durable outbox, plus
   stable-keyed local `artifact_outbox`/sink-head rows). The system-of-record set is
   "planned/accepted run authority + claims + checkpoint/result/failure payloads + write
   authority/outboxes + local artifact projection authority + in-progress capture/handoff
@@ -3183,7 +3183,7 @@ a rot table that cites imaginary machinery is itself the rot it warns about.
 | 11 | A historical import silently drops unknown legacy records | same subject-less `one-time-import-offline` entry as row 9. The requirement stands (source/result/quarantine counts must reconcile; import commits only against an immutable backup with a signed-off manifest) and nothing checks it yet |
 | 12 | Resolved member trees creep back onto the wire (the 5–8k-field re-serialization) | structural in the schema: only the `operation` variant carries `memberRunIds`, a flat `RunId[]`, and there is no recursive member field to populate — `dashboard-wire.test.ts` pins both directions (a non-operation surface carrying `memberRunIds` is refused, and duplicate ids are refused). `wire-connectivity` holds the wider "every advertised section has a query" rule in both directions |
 | 13 | Attempt discipline erodes (a re-pend reuses attempt 1 and re-opens closed spans) | the JSONL writer refuses a re-open or re-close per identity in-process, and D214 put the claim generation INTO the task span path so two executions of one node inside one attempt cannot collide. D221 made a retry take the item's next unspent attempt from authority, and `runs.enqueue` refuses an attempt the item has already spent. D282's storage reconciliation additionally requires each `run.requeued.nextAttempt` to be strictly greater than the prior attempt while permitting gaps consumed by sibling runs; non-increasing or foreign relations are malformed |
-| 14 | The `ledger/` dir gets pruned, or `write_intents` treated as a rebuildable projection (D21/D79/D86) | `pruneEventStreams` can only see `spans`/`notes`, and a ratchet fails any module that both names `ledger/` and calls a deletion primitive; `ledger-projector` guards the ordered five-fact append. `write_intents` is system-of-record in the frozen authority registry. Notes and spans are both 30d. The hash-chain/tail-anchor stays deferred until multi-user (D79) |
+| 14 | The `ledger/` dir gets pruned, or `run_operations` treated as a rebuildable projection (D21/D79/D86) | `pruneEventStreams` can only see `spans`/`notes`, and a ratchet fails any module that both names `ledger/` and calls a deletion primitive; `ledger-projector` guards the ordered five-fact append. `run_operations` is system-of-record in the frozen authority registry. Notes and spans are both 30d. The hash-chain/tail-anchor stays deferred until multi-user (D79) |
 | 15 | Cancel/deletion targets fall back to whatever roots the caller can currently see | the kernel resolves the dependency tree from authority inside its own transaction and commits every transition together or none. The source-scan guard this row named, `authority-target-no-fallback`, is **RETIRED** (D188) into `storage-recovery`, which executes the whole family — corrupt, truncated, newer-schema, foreign-key-invalid, invariant-invalid and record-invalid authority all open degraded read-only with a named cause and zero bytes written |
 | 16 | Two active runs appear because active-run lookup failed and enqueue continued | the enqueue policy is applied inside the fan-out's own transaction (`src/core/run-fan-out.ts`): a lookup or constraint failure rolls the whole fan-out back, so every outcome is reject / no-op / exactly one new generation |
 | 17 | A dashboard retry races a newer state and mutates the wrong attempt | every action descriptor carries the row revision it was projected at, and **CAS is enforced on every run verb** (D233/D234) — the earlier sentence here, *"version drift alone is not a Retry conflict"*, was superseded by §2.4 and is deleted. The idempotent command resolves the stable run from current authority and rejects an inapplicable state rather than mutating a caller-selected attempt |
@@ -3924,8 +3924,8 @@ Both take the tree LEAVES FIRST — a group anchor deletes its members, then its
 whole tree while any member is non-terminal. A non-terminal run is never deletable: cancel is the
 one door that settles a run.
 
-**What leaves.** In foreign-key order: the write ledger (`ledger_projections` → `durable_outbox` →
-`write_attempts` → `write_intents`), `diagnostic_attachments`, `diagnostic_bundles`,
+**What leaves.** In foreign-key order: the write ledger (`ledger_projections` → `operation_outbox` →
+`run_operation_attempts` → `run_operations`), `diagnostic_attachments`, `diagnostic_bundles`,
 `evidence_receipts`, `dry_run_scenario_results`, `activity_person_pseudonyms`,
 `provider_admissions`, `failures`, `run_terminal_outbox`, `run_results`,
 `run_terminal_authorizations`, `run_checkpoints`, the inbox `notifications` whose links name the
@@ -3955,7 +3955,7 @@ admits. A stray `DELETE` from any other path still aborts by name, so no code ga
 was not this one. `PRAGMA secure_delete = ON` zeros freed pages, so the bytes leave the file, not
 only the b-tree.
 
-**What is knowingly given up.** A run's `write_intents` rows carry the permanent idempotency keys
+**What is knowingly given up.** A run's `run_operations` rows carry the permanent idempotency keys
 that stop the same live UCPath / Kuali write from being submitted twice (ref write-safety §4). Deleting
 a run that WROTE releases those keys: a later run for the same person can submit again. The confirm
 dialog on both doors says this in one sentence; the kernel does not second-guess a ruling given
@@ -4087,7 +4087,7 @@ legal next states in the message; the service never widens the table for a calle
 
 **Parked states are authority, not span folds.** `parked-gate` on the row plus the `gate_results`
 record it names are the ONLY inputs to "this run awaits approval"; `parked-write` plus its
-`write_intents` row are the only inputs to "this run is blocked on a write". An open gate span whose
+`run_operations` row are the only inputs to "this run is blocked on a write". An open gate span whose
 row is not `parked-gate`, or a `parked-gate` row with no gate record, is a doctor finding by run id,
 never a derived `awaiting-approval`.
 
@@ -4308,7 +4308,7 @@ fresh completion evidence are owned by `ref write-safety` §D335. It does not ch
 operations or let a replay of one confirmation click again.
 
 The compatibility attempt's executor reuses
-a completed `write_intents` fence by its permanent idempotency key (ref write-safety §4); the
+a completed `run_operations` fence by its permanent idempotency key (ref write-safety §4); the
 service's only part is to refuse `retry`/`restart` on a source parked on an unknown write
 (`parked-write` uses `resolve-write-present`/`-absent` first) and on a `deleted` source.
 
@@ -4383,7 +4383,7 @@ lifecycle fact the service has already decided without ever deciding one itself.
 | span/note JSONL lines and the `run.queued` root | `runId` on every event line; the root additionally carries the full identity tuple `liveSpanRootMismatches` reconciles against the row | immutable shared per-workflow-per-day files, never rewritten (D301) | the timeline, node progress, what a worker observed | existence, lifecycle state, disposition | stays; the doctor classifies its root `deleted` (D308), an accounted state beside `archived` |
 | `run_checkpoints` | `run_id` column plus the resume key (`workflow`, `itemId`, `nodeId`, `attempt`) | insert-only per resume key | which nodes completed and what a resume would reuse | that a run is `running` or `terminal` | leaves with the run |
 | `run_results` and `run_terminal_authorizations` (`record_key` = `runId`), `failures` (`run_id`; own key `failureId`), `run_terminal_outbox` (`run_id`) | as noted | written in the SAME transaction as the `terminal` transition (§D330.4) | the outcome the terminal row already names, and the `failureId` it names | that the run is terminal; the lifecycle row decides that | leave with the run |
-| `write_intents` → `write_attempts` → `durable_outbox` | ONLY `write_intents` carries `runId`, and only inside `record_json`; attempts and outbox link solely by `write_intent_id` (lesson 2026-08-25) | insert-only rows plus the sequencer's fenced status advance | that a write was fenced, attempted, parked or committed | the `parked-write` state; per-run counts derive through THIS run's intent ids, never a global table count | leave with the run; the permanent idempotency keys are released and the confirm copy says so |
+| `run_operations` → `run_operation_attempts` → `operation_outbox` | ONLY `run_operations` carries `runId`, and only inside `record_json`; attempts and outbox link solely by `write_intent_id` (lesson 2026-08-25) | insert-only rows plus the sequencer's fenced status advance | that a write was fenced, attempted, parked or committed | the `parked-write` state; per-run counts derive through THIS run's intent ids, never a global table count | leave with the run; the permanent idempotency keys are released and the confirm copy says so |
 | `evidence_receipts` | `run_id`, UNIQUE | one immutable composition per run | the ordered obligation/verdict tuples | the outcome | leaves with the run |
 | `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D330.3) | **leaves with the run.** D308's "what stays" keeps `checkpoint_payloads` as shared authority, but as-built the table holds ONLY gate records keyed `${runId}:${gateId}` — every row is owned by exactly one run, so the cascade removes that run's keys and the table has nothing that survives its run. 1.6 adds `checkpoint_payloads_never_deleted` relaxed behind the tombstone and extends `DeletedRunTableSchema` with the table so the tally can count it. §D330.11 test 22 pins it. (Ruled 2026-09-04 under D308's own rationale; D308's list did not know gate records were the table's only content.) |
 | `diagnostic_bundles` (`run_id`) and `diagnostic_attachments` (`bundle_id`) | as noted | insert-only, content-digest bound | what was captured at a failure or operator request | existence or state | leave with the run, attachments first |
