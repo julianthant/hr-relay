@@ -43,7 +43,7 @@ describe("operation table names", () => {
       "2fc06e2ed8866535acad0ba9850200dbc34d2ea28e67fea2126f764f2c0ad71b");
   });
 
-  it("deletes current operation children with accurate tallies while retaining another run's operation history", async () => {
+  it("retains shared-item operation history until the last run deletion and reports exact tallies", async () => {
     const f = await currentFixture();
     // The frozen rename corpus intentionally combines generic run/operation
     // fixtures. Deletion requires their actual ownership tuple to agree.
@@ -55,16 +55,26 @@ describe("operation table names", () => {
     try {
       const receipt = db.authority.runs.delete({ runId: WRITE_INTENT_ATTEMPTING.runId,
         origin: "queue", commandId: operationFixtureId(80), now: NOW });
-      assert.deepEqual(receipt.removed.filter(({ table }) => OPERATION_TABLE_RENAMES.some(([, current]) => current === table)), [
-        { table: "operation_outbox", rows: 2 }, { table: "run_operation_attempts", rows: 3 }, { table: "run_operations", rows: 3 },
-      ]);
-      // An operation's current run owns deletion. A prior run's attempt is retained with it.
+      assert.deepEqual(receipt.removed.filter(({ table }) => OPERATION_TABLE_RENAMES.some(([, current]) => current === table)), []);
+      // The retained run can still consume this workflow/item's permanent keys.
+      assert.equal(db.authority.writeIntents.get(operationFixtureId(3))?.status, "committed");
+      assert.equal(db.authority.ledgerProjection.listPendingOutbox().length, 1);
       assert.equal(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).length, 2);
       assert.equal(db.authority.writeIntents.get(operationFixtureId(2))?.status, "attempting");
-      assert.equal(db.authority.deletedRuns.get(receipt.runId)?.removed[0]?.table, "operation_outbox");
+      assert.deepEqual(db.authority.deletedRuns.get(receipt.runId)?.removed, receipt.removed);
+      const last = db.authority.runs.delete({ runId: operationFixtureId(50),
+        origin: "queue", commandId: operationFixtureId(81), now: NOW });
+      assert.deepEqual(last.removed.filter(({ table }) => OPERATION_TABLE_RENAMES.some(([, current]) => current === table)), [
+        { table: "run_operation_attempts", rows: 5 }, { table: "run_operations", rows: 4 }, { table: "operation_outbox", rows: 2 },
+      ]);
+      assert.equal(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).length, 0);
+      assert.equal(db.authority.writeIntents.get(operationFixtureId(2)), undefined);
+      assert.equal(db.authority.writeIntents.get(operationFixtureId(3)), undefined);
+      assert.equal(db.authority.ledgerProjection.listPendingOutbox().length, 0);
+      assert.deepEqual(db.authority.deletedRuns.get(last.runId)?.removed, last.removed);
       assert.equal(db.authority.deletedRuns.get(operationFixtureId(70))?.removed[0]?.table, "durable_outbox");
     } finally { db.close(); }
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).counts.unresolvedWriteIntents, 1);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).counts.unresolvedWriteIntents, 0);
   });
 
   it.each([33, 34, 35, 36])("preserves populated v%s rows, old receipts and pending counts through stopped conversion", async (version) => {

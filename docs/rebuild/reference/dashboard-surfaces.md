@@ -628,7 +628,8 @@ an existing span event, a checkpoint-recorded/replayed reference, or a confirmed
 exact evidence references. Native append uses the authority clock's local day; file import retains
 the source filename's day. Equal timestamps or text are distinct events. Exact event identity
 replays without a write; divergent content refuses. Required queued/claimed/requeued/gate/terminal
-and checkpoint events join the owning authority transaction. Cross-process queue/detail/log/worker
+and checkpoint events join the owning authority transaction. Presentation-only transitions do not
+repeat a lifecycle event. Cross-process queue/detail/log/worker
 readers page one SQLite snapshot and rebuild after a cursor reset; notifications are only wakeups.
 
 Stopped upgrade validates bounded no-follow span sources, freezes a content-addressed source copy
@@ -637,9 +638,21 @@ event import commit together. Missing, changed, malformed or orphan history refu
 deleted owners are excluded. Resuming a committed conversion verifies its retained copy. After
 restoring an older backup without original files, `storage upgrade --timeline-from <verified-copy-directory>`
 requires explicit selection of the original verified copy. Current doctor/root repair use SQLite;
-retired files cannot resurrect events. Ordinary pruning uses the existing 30-day local-day cutoff,
-while confirmed events remain until D308. Shared checkpoint/operation evidence stays until its last
-retained owner/reference is deleted; missing or contradictory ownership refuses deletion. Tombstone
+retired files cannot resurrect events. Restore reconciliation also inspects preserved SQLite copies
+under the configured `suspects` directory as diagnostic evidence only. A displaced run absent from
+current authority and its tombstones is reported as `missing`; a retained run with a newer preserved
+version or missing write attempt is reported as `restore-loss`. Both carry `possibleExternalWrite`
+when a retained fence/attempt establishes that possibility. No run or event is re-admitted. Damaged,
+unsupported, changed or unsafe copies produce an explicit unavailable finding, never healthy absence.
+Inspection bounds are 128 databases, 384 directory entries and 256 MiB total bytes. Database/WAL
+identity and metadata are checked across the read; SQLite's shared-memory read cache and newly
+initialized empty WAL are not authority changes. Removal of preserved copies remains explicitly
+assigned cleanup after evidence is resolved. This preserves §2.5 item 6 and D332.7 item 6.
+
+Ordinary pruning uses the existing 30-day local-day cutoff, while confirmed events remain until
+D308. Checkpoint and permanent-operation lookup share the exact workflow/item group; evidence stays
+while any other retained run in that group can consume it, including a queued transitive retry with
+no materialized reference yet. Missing or contradictory ownership refuses deletion. Tombstone
 version 3 counts the actual timeline rows and evidence removed. Notes retain their existing files.
 
 **T2 requirements, not implemented by T1.**

@@ -1952,8 +1952,22 @@ function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord) {
     if (tombstone.workflow !== workflow || tombstone.itemId !== itemId) throw new Error("run-delete-evidence-tombstone-mismatch");
     return true;
   };
+  // Checkpoints and permanent operation keys are read by workflow/item, before
+  // a queued retry materializes an explicit evidence reference. Tombstones do
+  // not retain retryOf, so a direct lineage edge cannot protect a later retry.
+  // Keep this exact evidence group while any other retained run can read it.
+  const retainedPeers = database.prepare(`SELECT record_key, record_json FROM workflow_runs
+    WHERE workflow = ? AND item_id = ? AND record_key <> ?`).all(workflow, itemId, runId);
+  for (const raw of retainedPeers) {
+    const row = AuthorityRecordFingerprintRowSchema.parse(raw);
+    const peer = parseJsonRecord(RunRecordSchema, row.record_json);
+    if (peer.envelope.runId !== row.record_key || peer.envelope.workflow !== workflow || peer.envelope.itemId !== itemId) {
+      throw new Error("run-delete-peer-identity-mismatch");
+    }
+  }
+  const retainedItemPeer = retainedPeers.length > 0;
   const referenced = (ownerId: string): boolean => {
-    return database.prepare(`SELECT 1 FROM timeline_events WHERE run_id <> ?
+    return retainedItemPeer || database.prepare(`SELECT 1 FROM timeline_events WHERE run_id <> ?
       AND json_extract(record_json, '$.payload.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
       || database.prepare(`SELECT 1 FROM run_results, json_each(run_results.record_json, '$.dependencies') AS dependency
         WHERE run_results.record_key <> ? AND json_extract(dependency.value, '$.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
@@ -2936,15 +2950,43 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** Event evidence and its complete authority identity from one read-only snapshot. */
-  static inspectTimelineReadOnly(path: string, busyTimeoutMs = 250) {
+  static inspectTimelineReadOnly(path: string, busyTimeoutMs = 250, includeRecoveryEvidence = false) {
     let timeline: ReturnType<typeof readTimelineRecords> | undefined;
+    let recoveryEvidence: Readonly<{
+      runs: readonly Readonly<{ runId: RunRecord["envelope"]["runId"]; workflow: string; traceId: string; version: number;
+        possibleExternalWrite: boolean; attemptIds: readonly string[] }>[];
+      deleted: readonly DeletedRunRecord[];
+    }> | undefined;
     const identity = inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
       const repository = createTimelineRepository({ database, read: (work) => work(),
         mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
       timeline = readTimelineRecords(repository);
+      if (!includeRecoveryEvidence) return;
+      const attempts = database.prepare("SELECT record_json FROM run_operation_attempts").all().map((row) =>
+        parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json));
+      const attemptsByRun = new Map<string, WriteAttemptRecord[]>();
+      for (const attempt of attempts) {
+        const owned = attemptsByRun.get(attempt.runId);
+        if (owned === undefined) attemptsByRun.set(attempt.runId, [attempt]);
+        else owned.push(attempt);
+      }
+      const fenced = new Set(timeline.records.flatMap((row) => row.payload.kind === "span"
+        && row.payload.event.t === "transaction.fenced" ? [row.payload.event.runId] : []));
+      const runs = database.prepare("SELECT record_key, record_json FROM workflow_runs ORDER BY record_key").all().map((raw) => {
+        const row = AuthorityRecordFingerprintRowSchema.parse(raw);
+        const run = parseJsonRecord(RunRecordSchema, row.record_json);
+        if (run.envelope.runId !== row.record_key) throw new Error("restore-evidence-run-identity-mismatch");
+        const owned = attemptsByRun.get(run.envelope.runId) ?? [];
+        return { runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
+          version: run.version, possibleExternalWrite: owned.length > 0 || fenced.has(run.envelope.runId),
+          attemptIds: owned.map((attempt) => attempt.writeAttemptId) };
+      });
+      const deleted = database.prepare("SELECT record_json FROM deleted_runs").all().map((row) =>
+        parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json));
+      recoveryEvidence = { runs, deleted };
     });
-    if (timeline === undefined) throw new Error("timeline-read-snapshot-missing");
-    return { ...identity, ...timeline };
+    if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
+    return { ...identity, ...timeline, recoveryEvidence };
   }
 
   getSourceDatabaseIdentity(): string {

@@ -339,6 +339,8 @@ const ArchivedSpanAuthoritySchema = z.strictObject({
 /** `deleted` and `archived` are ACCOUNTED, so neither is ever a problem arm. */
 const SpanAuthorityProblemSchema = z.discriminatedUnion("state", [
   MissingSpanAuthorityRunSchema,
+  z.strictObject({ state: z.literal("restore-loss"), runId: RunIdSchema,
+    possibleExternalWrite: z.literal(true).optional() }),
   MalformedSpanAuthorityRunSchema,
   z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
   MalformedAuthorityRecordSchema,

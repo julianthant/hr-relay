@@ -1453,7 +1453,11 @@ checkpoint settlement; a UI wakeup may occur later. Retain actor, instance, time
 kind, proof source and exact evidence references needed to reconstruct every historical ledger and
 committed-span payload. A timeline label is not new proof that an external write succeeded.
 Normal timeline retention cannot remove confirmed transaction history; D308 still governs its
-authorized owner deletion. Do not retire evidence or delivery paths until historical outbox/file/
+authorized owner deletion. Shared checkpoint/operation evidence remains while another retained run
+in the exact workflow/item group can reuse it; deleting an intermediate retry cannot release an
+ancestor's permanent key. After a restore, preserved SQLite evidence of an absent run or lost write
+attempt remains a doctor warning, with `possibleExternalWrite` where applicable; it never restores
+run authority or authorizes a new submission. Do not retire evidence or delivery paths until historical outbox/file/
 archive sources are accounted for, conflicting identities fail loudly, and the replacement readers
 are verified. This does not retire artifact or run-terminal outboxes, activate the unwired ledger
 projector, authorize another live submission or implement stronger run-reference foreign keys.

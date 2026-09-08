@@ -1,3 +1,9 @@
+import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
+import { seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
+import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../fixtures/phase1c-contract-fixtures.js";
+import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { randomUUID } from "node:crypto";
@@ -22,10 +28,10 @@ import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
  *     backup arm as missing.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { truncateSync, copyFileSync, symlinkSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
@@ -77,7 +83,7 @@ function createAuthority(p: Paths): number {
 }
 
 describe("cli storage backup (D322)", () => {
-  it("M18 real restore cannot resurrect a fenced run from retired span files", async () => {
+  it("M18 real restore warns about displaced fenced evidence without resurrecting the run", async () => {
     const p = paths(); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -103,6 +109,14 @@ describe("cli storage backup (D322)", () => {
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
     const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
+    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+    assert.equal(doctor.exitCode, 1, doctor.output);
+    const observed = z.object({ spanAuthority: z.unknown() }).parse(JSON.parse(doctor.output));
+    assert.equal(z.object({ state: z.string() }).parse(observed.spanAuthority).state, "degraded", JSON.stringify(observed.spanAuthority));
+    const report = z.object({ spanAuthority: z.object({ state: z.literal("degraded"),
+      problems: z.array(z.object({ state: z.string(), runId: z.string(), possibleExternalWrite: z.boolean().optional() })) }) }).parse(JSON.parse(doctor.output));
+    assert.ok(report.spanAuthority.problems.some((problem) => problem.state === "missing"
+      && problem.runId === e.runId && problem.possibleExternalWrite === true));
     const suspect = AuthorityDatabase.open({ path: join(p.stateRoot, "suspects", restoreReport.suspectFileName),
       busyTimeoutMs: 500, migrationOwner: "preserved-timeline-read", openMode: "storage-doctor-read-only-no-migrate" }, CLOCK);
     try {
@@ -110,10 +124,6 @@ describe("cli storage backup (D322)", () => {
       assert.deepEqual(suspect.authority.timelineEvents.page({}).map((record) =>
         record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
     } finally { suspect.close(); }
-    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
-    assert.equal(doctor.exitCode, 0, doctor.output);
-    const report = z.object({ spanAuthority: z.object({ state: z.literal("reconciled"), streamRunCount: z.literal(0), liveRunCount: z.literal(0) }) }).parse(JSON.parse(doctor.output));
-    assert.equal(report.spanAuthority.state, "reconciled");
     for (let count = 0; count < 2; count++) {
       const reopened = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "missing-stays-absent" }, CLOCK);
       try { assert.deepEqual(new RunRecordService({ database: reopened, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("read must never publish"); } }).read(e.runId), { state: "absent", runId: e.runId });
@@ -126,6 +136,101 @@ describe("cli storage backup (D322)", () => {
       assert.equal(next.authority.runs.get(e.runId), undefined); assert.ok(next.authority.runs.get(nextId));
     } finally { next.close(); }
   });
+  it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
+    const p = paths(); createAuthority(p);
+    const initial = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
+    try {
+      seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT);
+      const run = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
+      if (run === undefined) throw new Error("missing owner");
+      createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
+        runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Retained restore owner" }));
+    } finally { initial.close(); }
+    assert.equal((await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot)).exitCode, 0);
+    const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
+    const newer = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "newer-write" }, CLOCK);
+    try { newer.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); }
+    finally { newer.close(); }
+    const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
+    assert.equal(restore.exitCode, 0, restore.output);
+    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+    assert.equal(doctor.exitCode, 1, doctor.output);
+    const report = z.object({ spanAuthority: z.object({ state: z.literal("degraded"), problems: z.array(z.object({
+      state: z.string(), runId: z.string(), possibleExternalWrite: z.boolean().optional() })) }) }).parse(JSON.parse(doctor.output));
+    assert.ok(report.spanAuthority.problems.some((problem) => problem.state === "restore-loss"
+      && problem.runId === WRITE_INTENT_ATTEMPTING.runId && problem.possibleExternalWrite === true));
+    const wire = z.object({ spanAuthority: z.unknown() }).parse(JSON.parse(doctor.output));
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(wire.spanAuthority).success, true);
+    const text = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], CLOCK, p.repoRoot);
+    assert.ok(text.output.includes("newer preserved authority evidence; possibleExternalWrite=true"));
+  });
+
+  it.each(["corrupt", "file-symlink", "directory-symlink", "changed-during-read"] as const)(
+    "refuses %s preserved authority evidence without leaking supplied content", async (damage) => {
+      const p = paths(); createAuthority(p);
+      const directory = join(p.stateRoot, "suspects");
+      const name = "suspect-20260903120000000-87000000-0000-4000-8000-000000000008.sqlite";
+      const source = join(directory, name);
+      const privateText = "synthetic-preserved-private-value";
+      if (damage === "directory-symlink") symlinkSync(p.backupDirectory, directory);
+      else {
+        mkdirSync(directory);
+        if (damage === "file-symlink") symlinkSync(p.authorityPath, source);
+        else if (damage === "corrupt") writeFileSync(source, privateText);
+        else copyFileSync(p.authorityPath, source);
+      }
+      const original = AuthorityDatabase.inspectTimelineReadOnly.bind(AuthorityDatabase);
+      const spy = vi.spyOn(AuthorityDatabase, "inspectTimelineReadOnly").mockImplementation((path, timeout, recovery) => {
+        const result = original(path, timeout, recovery);
+        if (damage === "changed-during-read" && path === name) writeFileSync(path, privateText);
+        return result;
+      });
+      try {
+        const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+        assert.equal(doctor.exitCode, 1, doctor.output);
+        assert.equal(z.object({ spanAuthority: z.object({ state: z.literal("unavailable") }) }).parse(
+          JSON.parse(doctor.output)).spanAuthority.state, "unavailable");
+        assert.equal(doctor.output.includes(privateText), false);
+      } finally { spy.mockRestore(); }
+    });
+
+  it.each(["database count", "file count", "bytes"] as const)("bounds preserved authority %s", async (limit) => {
+    const p = paths(); createAuthority(p);
+    const directory = join(p.stateRoot, "suspects"); mkdirSync(directory);
+    const count = limit === "file count" ? 385 : limit === "database count" ? 129 : 1;
+    for (let index = 0; index < count; index++) {
+      const name = `suspect-20260903120000000-87000000-0000-4000-8000-${String(index).padStart(12, "0")}.sqlite`;
+      const path = join(directory, name);
+      writeFileSync(path, "");
+      if (limit === "bytes") truncateSync(path, 256 * 1024 * 1024 + 1);
+    }
+    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+    assert.equal(doctor.exitCode, 1, doctor.output);
+    const report = z.object({ spanAuthority: z.object({ state: z.literal("unavailable"), cause: z.object({ summary: z.string() }) }) }).parse(JSON.parse(doctor.output));
+    assert.equal(report.spanAuthority.cause.summary, `preserved authority ${limit} ${limit === "bytes" ? "exceed" : "exceeds"} the inspection limit`);
+  });
+
+  it("accounts a preserved run after explicit deletion without reviving it", async () => {
+    const p = paths(); createAuthority(p);
+    const initial = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
+    try {
+      initial.authority.runs.enqueue(QUEUED_RUN);
+      createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
+        runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Deleted restore owner" }));
+      initial.authority.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: QUEUED_RUN.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: CLOCK.now().toISOString() }, now: CLOCK.now().toISOString() });
+    } finally { initial.close(); }
+    const directory = join(p.stateRoot, "suspects"); mkdirSync(directory);
+    copyFileSync(p.authorityPath, join(directory, "suspect-20260903120000000-87000000-0000-4000-8000-000000000009.sqlite"));
+    const current = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "delete-preserved-owner" }, CLOCK);
+    try { current.authority.runs.delete({ runId: QUEUED_RUN.envelope.runId, origin: "queue", commandId: randomUUID(), now: CLOCK.now().toISOString() }); }
+    finally { current.close(); }
+    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+    assert.equal(doctor.exitCode, 0, doctor.output);
+    assert.equal(z.object({ spanAuthority: z.object({ state: z.literal("reconciled") }) }).parse(
+      JSON.parse(doctor.output)).spanAuthority.state, "reconciled");
+  });
+
   it("admits only the four approved cleanup-only names through plan/apply without importing values", async () => {
     const p = paths();
     const retired = ["I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"];

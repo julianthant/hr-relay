@@ -53,6 +53,8 @@ export type SpanAuthorityProblem = DegradedSpanAuthority["problems"][number];
 export function spanAuthorityProblemDetail(problem: SpanAuthorityProblem): string {
   switch (problem.state) {
     case "missing":
+    case "restore-loss":
+      return `run ${problem.runId}${problem.possibleExternalWrite === true ? " · possible external write" : ""}`;
     case "missing-span":
       return `run ${problem.runId}`;
     case "malformed-authority":

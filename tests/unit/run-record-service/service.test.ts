@@ -1,3 +1,4 @@
+import { makeWorld } from "../server/helpers/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
@@ -1230,6 +1231,31 @@ describe("canonical run-record service", () => {
       } finally { raw.close(); }
     });
   }
+
+  it("keeps one gate opening when a parked run is renamed and the rename is replayed", () => {
+    const f = fixture();
+    const running = runningRun(f.service, f.request, f.runtimeConfig);
+    const parked = f.service.workerTransition({ commandId: "83000000-0000-4000-8000-000000000077",
+      runId: running.envelope.runId, claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      lifecycle: { state: "parked-gate", gateId: GATE_RESULT.gateId, parkedAt: NOW, resumeAt: "crm-dates" } });
+    if (parked.state !== "applied") throw new Error("park refused");
+    const before = f.database.authority.timelineEvents.page({});
+    const request = { commandId: "83000000-0000-4000-8000-000000000078",
+      runId: running.envelope.runId, expectedVersion: parked.run.version, displayName: "Reviewed parked run" };
+    const renamed = f.service.transition(request);
+    if (renamed.state !== "applied") throw new Error("rename refused");
+    assert.equal(renamed.run.displayName, request.displayName);
+    assert.equal(f.service.transition(request).state, "applied-already");
+    assert.deepEqual(f.database.authority.timelineEvents.page({}), before);
+    const world = makeWorld();
+    try {
+      world.authority.records.set(running.envelope.runId, renamed.run);
+      for (const record of f.database.authority.timelineEvents.page({})) {
+        if (record.payload.kind === "span") world.writer.emit(record.payload.event);
+      }
+      assert.equal(world.projection.runFold(running.envelope.runId)?.openGates.length, 1);
+    } finally { world.dispose(); }
+  });
 
   it("rolls back gate parking when its required opened event fails", () => {
     const f = fixture();

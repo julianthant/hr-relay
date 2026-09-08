@@ -168,6 +168,7 @@ function formatReport(report: StorageDoctorReport): string {
     const problemSummary = report.spanAuthority.problems.map((problem) => {
       switch (problem.state) {
         case "missing": return `${problem.runId} missing authority${problem.possibleExternalWrite === true ? "; possibleExternalWrite=true" : ""}`;
+        case "restore-loss": return `${problem.runId} newer preserved authority evidence${problem.possibleExternalWrite === true ? "; possibleExternalWrite=true" : ""}`;
         case "missing-span": return `${problem.runId} missing span root`;
         case "malformed": return `${problem.runId} malformed in ${problem.table}`;
         case "malformed-authority": return `${problem.recordKey} malformed in ${problem.source} authority`;

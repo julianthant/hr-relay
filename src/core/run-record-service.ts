@@ -363,7 +363,7 @@ export class RunRecordService {
             if (requested.state !== "applied") throw new Error("cancel tree lost anchor version fence");
             anchor = requested.run;
           }
-          this.recordJournal(repositories, journal.command, journalRun(anchor));
+          this.recordJournal(repositories, journal.command, journalRun(anchor), current.run.lifecycle);
           return { state: "applied" as const, run: anchor };
         }
       }
@@ -387,7 +387,7 @@ export class RunRecordService {
             displayName: request.displayName, now })
           : repositories.runs.bumpPriority({ runId: request.runId, expectedVersion: request.expectedVersion, now });
         if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
-        this.recordJournal(repositories, journal.command, journalRun(result.run));
+        this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
         return { state: "applied" as const, run: result.run };
       }
       if (runClaim(current.run) !== undefined) {
@@ -398,7 +398,7 @@ export class RunRecordService {
         const requested = repositories.runs.requestCancellation({ runId: request.runId,
           expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString() });
         if (requested.state !== "applied") throw new Error("cancel request lost its transaction-local version fence");
-        this.recordJournal(repositories, journal.command, journalRun(requested.run));
+        this.recordJournal(repositories, journal.command, journalRun(requested.run), current.run.lifecycle);
         return { state: "applied" as const, run: requested.run };
       }
       const isWriteResolution = "writeResolution" in request;
@@ -454,7 +454,7 @@ export class RunRecordService {
             now,
           });
       if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
-      this.recordJournal(repositories, journal.command, journalRun(result.run));
+      this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
       return { state: "applied" as const, run: result.run };
     });
   }
@@ -505,7 +505,7 @@ export class RunRecordService {
         expectedVersion: current.run.version, lifecycle: request.lifecycle,
         now: this.dependencies.clock.now().toISOString() });
       if (result.state === "conflict") return refused({ reason: "lost" });
-      this.recordJournal(repositories, journal.command, journalRun(result.run));
+      this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
       return { state: "applied", run: result.run };
     });
   }
@@ -1114,11 +1114,15 @@ export class RunRecordService {
     repositories: AuthorityRepositories,
     command: z.infer<typeof RunLifecycleCommandRecordSchema>,
     result: z.input<typeof RunLifecycleCommandAuditRecordSchema>["result"],
+    previousLifecycle?: RunRecord["lifecycle"],
   ): void {
     if (result.kind === "run") {
       const run = repositories.runs.get(result.runId);
       if (run === undefined) throw new Error("timeline-lifecycle-owner-missing");
-      this.recordLifecycleEvent(repositories, command.operation, command.commandId, run);
+      if (previousLifecycle === undefined
+        || canonicalJsonStringify(previousLifecycle) !== canonicalJsonStringify(run.lifecycle)) {
+        this.recordLifecycleEvent(repositories, command.operation, command.commandId, run);
+      }
     }
     repositories.lifecycleJournal.insertCommand(command);
     repositories.lifecycleJournal.insertAudit({

@@ -3,7 +3,7 @@
 ## Assignment and approval
 
 **Owner: `side/timeline-history`. T1 IN PROGRESS under the parallel execution amendment;
-accepted rename master is consumed; T1 candidate gates pass and R1 is pending.** This is a separate successor, not an amendment to
+accepted rename master is consumed; repaired candidate gates pass and fresh complete R1b review is pending.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -558,13 +558,106 @@ before termination was needed. The passing two-worker rerun completes those same
 | P5 Transitive readers | Worker/dashboard/scenario compositions use the SQLite emitter. `server/run-queue-projection.test.ts`, BFF flow, stream, logs/collision and read-scan-bound tests exercise current readers; stale JSONL is ignored. Current doctor/recovery tests cover same-snapshot fingerprint/generation checks, corrupted timeline refusal, root reconciliation and stopped root repair. Full parity and dashboard build are candidate gates. | Activity remains on the explicitly preserved compatibility source until T2. |
 | P9 Compatibility | Released migrations 1–37 and their immutable fingerprints are preserved; timeline migration38/floor37 is appended. Historical upgrade/admission, credentials/settings coupling, command groups, operation names, checkpoint/replay, proof/idempotency, archive/delete, notes/artifact/terminal outbox and unrelated workflow suites remain in complete coverage. Private SQLite boundary guards admit only the new repository/conversion modules; guard-inventory entries retain deciding negative-control evidence. | No ledger table or operation-outbox retirement is claimed. |
 
+### R1 blocked review and repair round — 2026-09-08
+
+Candidate `5cc60fa1626cd4069607b869904127b1fa593ab6` (tree
+`7842d98c2b18d7acc8270f233c568c28f910d3b9`) received **BLOCKED**, not acceptance, from
+`/root/sup_review_timeline_r1`. Automatic compaction ended the native review; no substantive review
+continued afterward. Its initial pass inspected the 95-path inventory (5 docs, 34 production,
+56 tests/fixtures), but final per-path/proof reconciliation, recovery counterexamples and some gate
+evidence checks remained open. No partial coverage is carried forward as PASS.
+
+| Finding | Evidence and repair disposition |
+| --- | --- |
+| R1-1 High: transitive retry deletion | Real service deletion in A→B→C removed A's checkpoint/operation while queued C survived. The temporary probe's before/after booleans are in `/tmp/timeline-events-R1-chain.json`; canonical service deletions both applied. Permanent keys/checkpoints are looked up by exact workflow/item, so collection now waits until no other retained run in that group can consume them. Owner/tombstone and peer identity checks remain strict. The three-generation regression confirms retention after B deletion and accurate collection on C deletion. |
+| R1-2 Medium: presentation rename emitted a duplicate gate opening | Real create/claim/park/rename changed persisted gate openings and the production fold from 1 to 2 (`/tmp/timeline-events-R1-rename.json`). Transition journaling now compares the previous and resulting lifecycle before emitting a state-change event. Rename/replay preserves one event and one projected gate. |
+| R1-3 P9 recovery concern, confirmed by supervisor | The prior changed M18 expected a healthy doctor after restoring a backup that lost a fenced run. No approved amendment retired §2.5/D332.7's warning. Its restored regression fails on `5cc60fa1`; current doctor now compares bounded, no-follow quarantined SQLite evidence with the same current authority snapshot. Missing runs and lost write attempts remain explicit warnings, without importing authority or reading retired JSONL. Unsafe, corrupt, changed or unsupported copies remain unavailable rather than healthy. |
+
+The first two temporary probes ran against clean pinned `5cc60fa1`, with 2 selected cases passing as
+measurements, not acceptance; the other copied cases were unselected. Lint on that pinned candidate
+passed (`/tmp/timeline-events-R1-probes-lint.log`). The role-policy command reported the unused retired
+`sup_terra.toml` definition; it did not pass globally. The dispatched `sup_review` itself matched
+Astra/high/read-only policy. No personal configuration changed.
+
+All three permanent regression assertions failed for the intended behavior before repair
+(`/tmp/timeline-events-R1-regressions-red.log`). Initial repair exposed SQLite's legitimate read-cache
+initialization and two eager-parse diagnostic regressions; those were corrected without suppressing
+malformed current authority. The subsequent eight-file batch passed **227/227**, 18.13 seconds
+(`/tmp/timeline-events-R1-focused-3.log`). The recovery family additionally covers a lost attempt while
+the original run survives at the same version, explicit deletion accounting, corrupt/symlinked and
+read-time-mutated copies, and file/database/byte bounds. First-read empty WAL/shared-memory cache
+initialization is distinguished from changes to authority-bearing database/WAL bytes.
+
+The first full repair coverage attempt on intermediate tree
+`afa948a478191cb7d6bde7d2a0ee594157c554bf` was deliberately interrupted (exit143;
+`/tmp/timeline-events-R1-coverage.log`) when a missing Settings wire consumer was found.
+Only the verified owned runner group was stopped; no result is claimed for that incomplete run.
+The strict dashboard wire union now accepts `restore-loss`, and both missing-run and restore-loss
+rows display the possible-external-write warning. Three wire/rendered-state regressions first failed
+(`/tmp/timeline-events-R1-settings-red.log`); the corrected three-file batch passed **60/60**
+(`/tmp/timeline-events-R1-settings-green.log`). No layout, primitive or reference snapshot changed.
+
+Typecheck/lint after the initial repair passed (`/tmp/timeline-events-R1-typecheck-3.log`,
+`/tmp/timeline-events-R1-lint-3.log`); this interim checkpoint preceded the final repair gates recorded below. No DDL, released migration
+fingerprint, note/artifact behavior, T2 ownership or integration authorization changes in this round.
+
+Full repair coverage on tree `0f5e3826a68c88ae7e615174c1a9429c93e6c6fb` finished with
+**5,836 passing / 1 failing** case, 450 files, exit1, 489.359 seconds
+(`/tmp/timeline-events-R1-coverage-final.log`). The remaining operation-rename fixture expected
+collection while another retained run shared the same workflow/item. Its updated regression now
+asserts preservation after the first deletion, collection of exactly two outboxes, five attempts and
+four operations at the last deletion, unchanged historical receipt names, and settled receipt tallies.
+The corrected two-file deletion/timeline batch passed **43/43**, 10.07 seconds
+(`/tmp/timeline-events-R1-deletion-neighbors-2.log`), and typecheck/lint passed
+(`/tmp/timeline-events-R1-typecheck-6.log`, `/tmp/timeline-events-R1-lint-6.log`). The first
+updated assertion exposed only tally array order; the final assertion retains exact order and counts.
+This is the same R1 repair round; no production behavior changed after that coverage run.
+
+Review sizing is reassessed before replacement: the complete working diff at this point measures
+498,258 UTF-8 bytes / 8,500 lines. The single complete review format remains required; it is not split
+into partial approvals. A fresh reviewer must independently cover the entire final inventory and
+P1–P5/P9, reconcile all three findings, and prioritize bounded semantic diffs plus exact callers.
+Historical progress prose and repeated fixture literals are not a reason to reread whole ledgers or
+monolithic files; unchanged fixture identities can be compared directly by script, with deciding
+assertions inspected at their sources. No prior partial verdict substitutes for unfinished scope.
+If complete review cannot fit under that reading allocation, it remains BLOCKED and the review
+arrangement must be reconsidered rather than repeating an unchanged oversized dispatch.
+
+### Repaired T1 candidate — awaiting fresh complete R1b
+
+The R1 repair candidate covers **98 paths** (36 production, 57 tests/fixtures and 5 documentation
+paths) from accepted base `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Runtime gates tested frozen tree
+`f4e381c82a7fb20b4b5164dca985bf3379be9d9f`. Only this evidence record changes afterward; source,
+tests, configuration, dependencies, generated artifacts and parity references remain unchanged.
+The exact implementation/evidence commit and resulting tree are pinned in the R1b inventory/dispatch.
+The complete P1–P5/P9 proof map above still applies, supplemented by all R1 regressions and the Settings
+wire/rendered warning tests. Acceptance remains open until a fresh complete verdict.
+
+| Gate | Result and evidence |
+| --- | --- |
+| Typecheck and lint | PASS, exit0; `/tmp/timeline-events-R1-typecheck-6.log`, `/tmp/timeline-events-R1-lint-6.log`. |
+| Full coverage and suite-size | PASS, exit0: **5,837 tests / 450 files**, 526.49 seconds; `/tmp/timeline-events-R1-coverage-final-2.log`. Statements 86.00%, branches 78.04% (report-only), functions 90.16%, lines 88.28%; configured floors pass. Membership remains 353 unit, 17 scenario and 80 architecture files. |
+| Full desktop parity | PASS, exit0: **262/262**, 68.998 seconds, zero skipped/unexpected/flaky; `/tmp/timeline-events-R1-parity.log`. No reference changes. |
+| Dashboard build | PASS, exit0; `/tmp/timeline-events-R1-build.log`. Existing nonfatal bundle-size warning remains. |
+| Generated freshness | Manifest, store catalog and roadmap checks all PASS, exit0; `/tmp/timeline-events-R1-manifest-check.log`, `/tmp/timeline-events-R1-catalog-check.log`, `/tmp/timeline-events-R1-roadmap-check.log`. Generation produced no changed artifact. |
+| Scoped evidence checks | Roadmap document-binding guard PASS **24/24** (`/tmp/timeline-events-R1-doc-guard.log`); 9 instruction pairs match, maximum chain 16,659 bytes, all 16 owner links/anchors resolve. Roadmap freshness and whitespace checks pass. |
+
+Coverage uses the same checked-in-config adapter and exact package-script command body recorded
+above. Two actual forks were observed, with no owned compiler/linter overlap; no assertions,
+membership, isolation, deadlines or floors changed. Runtime gates are reused only for subsequent
+pure evidence edits under D191, with scoped document/instruction/link/freshness/whitespace checks.
+The prior BLOCKED R1 is preserved without acceptance credit. R1b is fresh because R1 exhausted its
+context and the repairs affect recovery and lifecycle/evidence boundaries. Bounded semantic reads
+and primary-source proof reconciliation replace repeated whole-file/history dumps; the complete
+98-path and P1–P5/P9 review scope is unchanged.
+
 - Approval: the operator's 2026-09-08 instruction to make this separate plan, retaining two tables
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
 - Notification: `Process operation names` acknowledged unchanged scope; no integration window
   was assigned there at the time of coordination.
-- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Candidate gates pass; R1 acceptance remains open.
+- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Repaired candidate gates pass; fresh complete review remains open.
 - T2: **WAITING ON** accepted T1 integration. No base SHA is invented for either future result.
-- T1 implementation and candidate gates are complete; P1–P5/P9 await R1 acceptance. R1/R2, T2, integration, cleanup and real database application remain open.
+- T1 repairs and renewed candidate gates are complete; P1–P5/P9 independent acceptance remains open. R1/R2, T2, integration, cleanup and real database application remain open.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 24 tests;
   `npm run lint` exits 0 with zero warnings; `npm run roadmap:check` reports fresh output.
   Sixteen plan links/anchors and owning-contract backlinks resolve; all test selectors exist.
