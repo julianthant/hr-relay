@@ -74,6 +74,16 @@
     "Per-path before/after SHA-256 values read from the exact first-parent and commit blobs; 27 changed src/tests paths accounted, with no deletions. Independent review and production integration are pending.",
     "Final legacy candidate checks: unit 494 files / 4773 tests passed; serial 11 files / 20 tests passed when rerun with its configured single-worker behavior; legacy test-lint ratchet found zero new/replaced diagnostic fingerprints; typecheck:all and source lint passed. The initial four-worker environment override also parallelized the serial lane and exposed first-time worktree tracker-directory creation; those three checks passed in the configured serial rerun."
    ]
+  },
+  {
+   "id": "separation-standard-comments-audit-2026-09-08",
+   "closedAt": "2026-09-08",
+   "evidence": [
+    "D150 still retires this manifest. This append is archival accounting required by the operator-provided legacy standing instruction; it neither ports production workflow behavior into the rebuild nor reactivates retired cross-repository guards.",
+    "Before/after SHA-256 values and the exact three changed src/tests paths were verified against first-parent and commit blobs.",
+    "Legacy candidate: 69 focused separation tests passed; full unit, configured serial, architecture, source lint, and legacy test-lint ratchet passed. Logs: /tmp/sep-standard-comments-test.txt, /tmp/sep-standard-full-unit.txt, /tmp/sep-standard-serial.txt, /tmp/sep-standard-architecture.txt, /tmp/sep-standard-comments-lint.txt, /tmp/sep-standard-test-lint.txt.",
+    "Live operational verification: seven replacements and ten new separations were read back with correct jobs, dates and exact standard Comments plus Initiator Comments; Kuali Task 1 saves and dashboard plain/typed transaction IDs were independently read back. Candidate code remains pending independent review and integration."
+   ]
   }
  ],
  "commits": [
@@ -2166,6 +2176,51 @@
      "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
      "rebuildRecheckIds": [
       "separation-job-comments-audit-2026-09-08"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "0398201b759383f71be277916a5978cefc0b3a7d",
+   "parentCommit": "6c099be49a76a089187c5abef8f41cdd413ae9e2",
+   "changes": [
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "8ddc19a11f0d7706b4045be13672fdae6c3e5f916f664bec2b5ee62f13e0ae53",
+     "afterSha256": "4cbeb4d3cb1fb32ef8e66f4c182ec3c636f718ed946c196e961cf72e17e94077",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
+     "rebuildRecheckIds": [
+      "separation-standard-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "c6999e0160efa720d44840068b3b612247d744c793905dc196f4d5c073ce0b2a",
+     "afterSha256": "15280ca74dd845a8930589cdceeee6a1cd3fb53b146b7cccfdc3450a9e6d6f6c",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
+     "rebuildRecheckIds": [
+      "separation-standard-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "c3844b1a9d5dbccf4eeacab26e498a4811df092efb5408f0a6802e52cc7e626b",
+     "afterSha256": "9fa1d8bc3f77b8b3295ac6ab132f02804569ccf01723fa643a265efb58a69d70",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
+     "rebuildRecheckIds": [
+      "separation-standard-comments-audit-2026-09-08"
      ]
     }
    ]
