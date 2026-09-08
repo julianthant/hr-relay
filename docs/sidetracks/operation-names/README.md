@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task `side/operation-names`: candidate implemented and gated on an isolated parallel branch; independent review and assigned integration remain open.** This file owns the assignment, not a roadmap phase.
+**Task `side/operation-names`: candidate implemented, gated and independently reviewed on an isolated parallel branch; awaiting assigned integration and cleanup.** This file owns the assignment, not a roadmap phase.
 
 On 2026-09-08 the operator proposed `run_operations` and `operation_outbox`, discussed
 `run_attempts`, and accepted the recommendation `run_operation_attempts` with “okay do that”
@@ -182,8 +182,7 @@ or perform HR writes to verify a storage rename.
 ## Progress and handoff
 
 - Approved naming/planning: 2026-09-08, “okay do that.”
-- Launch prerequisite superseded by the operator execution amendment above. S1–S3 implemented on the recorded base; final gate/review acceptance and S5 remain open.
-- S1 admission, S2 implementation/focused conversion proof and S3 consumers/references are implemented on the isolated branch. S4 full candidate gates/review and S5 assigned integration/cleanup remain open.
+- Launch prerequisite superseded by the operator execution amendment above. S1–S4 are accepted on the recorded isolated branch. S5 assigned integration, migration-number reconciliation and cleanup remain open.
 - Relationship investigation at planning: initial source finding recorded above; no FK design selected,
   no relationship implementation authorized, and no populated case reproduced.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 23 tests;
@@ -327,8 +326,7 @@ this owner document. Final document-binding guard passed 23/23 tests
 Earlier product results above remain the initial candidate's evidence.
 
 The reviewer remains independent, has not compacted, and confirmed capacity for the bounded
-repair and neighboring recovery paths. Renewed review is pending on the repair commit containing
-this record. Both parallel peers independently report the same generalized refusal; assigned
+repair and neighboring recovery paths. Renewed review passed on the repair commit identified below. Both parallel peers independently report the same generalized refusal; assigned
 integration must coalesce it. The shared gate window was released back to command-groups after
 all owned processes exited. No operator data was used or modified.
 
@@ -343,4 +341,38 @@ complete retry with two workers and a shared gate window passed. Future executio
 all destination-version unions and pin the baseline trigger set before writing migration tests.
 No assignment resizing or supporting implementation worker was used. Initial R1 found the pending
 historical conversion boundary missing from the proof; the supervisor reproduced and repaired it.
-Repair gates passed; renewed independent review and assigned integration remain open.
+Repair gates and renewed independent review passed; assigned integration and cleanup remain open.
+The accepted correction retained original-build recovery, avoiding a new credential-resumption
+protocol. Future schema bumps should include unfinished prior-version upgrade journals in their
+historical fixture matrix, alongside same-version retry tests.
+
+
+### Accepted candidate and next assignment
+
+R1 reviewer `/root/sup_review_operation_names` returned **PASS** after bounded correction review:
+
+| Identity / acceptance | Verified evidence |
+| --- | --- |
+| Execution base | `35635a04e16e9c3cf1e99b16d4963752a18c616a` |
+| Accepted implementation HEAD | `353c579b103948475ed7d08e34e3f25b42c00057` |
+| Accepted tree | `efbc0f027008f3788c6f1facfd935c00c26e123e` |
+| Complete review scope | 42/42 paths: 12 production, 22 tests, 3 instructions, 4 docs/owner, 1 test configuration; P1–P6 satisfied. |
+| Finding disposition | Initial R1 pending-historical conversion finding resolved; no unresolved findings. Three repair paths and neighboring recovery boundaries re-reviewed; 39 unchanged paths retain verified initial inspection. |
+| Independence | Same read-only reviewer, uncompacted context, no implementation involvement. Supervisor executed gates/harnesses; reviewer inspected primary evidence. |
+| Stable review state | Accepted branch, HEAD and tree verified unchanged and clean on return; temporary adapter absent, all owned gates exited. |
+
+This acceptance record and current-reference status updates are documentation-only. They reuse
+the exact repair gate tree and accepted implementation above; no source, test, configuration,
+dependency or baseline changes accompany recording. Recording checks passed: document-binding guard 23/23, roadmap freshness, ten owner links/anchors,
+nine identical instruction pairs and chains below 32,768 bytes, and whitespace validation.
+Logs: `/tmp/operation-names-accepted-{doc-guard,doc-audit,roadmap}.log`. The original R1 rejection and repair evidence remain above.
+
+S5 remains **awaiting operator assignment**. Retain branch `codex/operation-names` and checkout
+`/Users/julianhein/Projects/hr-worktree-operation-names` until integration. The next assignment is
+to reconcile schema migration numbering with accepted parallel worker/command renames, preserve
+all released migration bytes and historical registries, coalesce the shared historical-pending
+upgrade refusal, integrate to current local master, run required integrated-tree gates and review
+material conflict repairs, then remove only the integrated owned branch/worktree. Recheck current
+primary ownership and coordinate its mutation window first. Never infer permission to push or to
+apply the migration to the operator database. No database application, HR write, push or primary
+integration occurred in this task.

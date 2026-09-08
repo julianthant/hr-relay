@@ -468,7 +468,7 @@ instrumentation failure.
 
 <a id="operation-table-names"></a>
 
-**2026-09-08 operation names — implemented in the side-task candidate; awaiting review/integration.** The current SQL tables are renamed
+**2026-09-08 operation names — independently reviewed side-task candidate; awaiting assigned integration.** The current SQL tables are renamed
 `write_intents` → `run_operations`, `write_attempts` → `run_operation_attempts`, and
 `durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../../sidetracks/operation-names/README.md)
 owns execution; the operator authorized isolated parallel implementation on 2026-09-08. The names change no write,
