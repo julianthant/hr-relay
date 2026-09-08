@@ -1,79 +1,70 @@
-# Exact execution prompts
+# Launch one prerequisite, then three parallel tasks
 
-These prompts accompany approved plan commit `004da4f3e388c939f3639dd41ce131b0d6a83bef`. They do not launch tasks.
-The four currently running plans are unchanged. Current launch status is **WAITING ON** the
-prerequisites below; future accepted execution SHAs do not exist yet and must not be invented.
+All plans are in this folder. Approved plan commit: `4045ef4f77d1622ef5a3bdc584a60acd58eb63a7`.
 
-Run **1**, integrate/accept it, then run **2** and integrate/accept it. Once B's release is recorded,
-**3, 4 and 5 can run in parallel** in separate Astra/high supervisor tasks, subject to verified capacity
-and test slots. Their implementation and test results do not depend on each other. The operator
-opens tasks; the integration-owner designation is not permission for automatic merges.
+1. Launch **00 — prerequisites** once. It completes A then B, with their separate reviews, gates,
+   explicitly assigned local integration and cleanup. Do not separately launch A or B.
+2. After its release record says **READY**, launch **01, 02 and 03 together**, subject to capacity.
+   They use the same accepted B SHA, without dependencies on one another.
+3. Assign peer integration to the existing provider task with the last prompt when candidates are ready.
 
-## 1. Run completion — first prerequisite
+That means **one prerequisite supervisor first; three implementation supervisors afterward**.
+Each peer uses one independent reviewer when needed (up to six active agents across the three tasks,
+subject to capacity). Test-process workers are a separate resource budget; coverage windows remain
+scheduled. There is no fourth coordinator. Existing running tasks are excluded from this count.
 
-```text
-/supervise side/run-completion
-Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/run-completion/README.md
-Approved plan commit: 004da4f3e388c939f3639dd41ce131b0d6a83bef.
-Execution binding: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md.
-Read the committed approved scope with git show, then read the owning plan's current progress and
-accepted prerequisite evidence. Do not treat later progress-only records as a scope amendment.
-This is an approved side-work assignment. The side plan is the task owner wherever /supervise refers
-to a task/phase section. Record progress, review, gate evidence and completion there. Do not create
-a phase number or mark roadmap tasks complete. Preserve repository contracts, independent review,
-required gates and the authorized integration/cleanup conditions.
-Use GPT-6 Astra/high; execution workers, if admitted, use sup_astra. Obtain fresh read-only sup_review
-on Astra/high against the complete pinned candidate. Send Done / Now / Remaining at start/resume
-and after each verified step. Respect exact ownership, test-resource slots, D191, compact accepted
-handoffs and no idle observer loops. Return a reviewed candidate for operator-chosen integration;
-do not merge automatically, push, launch sibling tasks, modify the four in-flight assignments or
-apply an upgrade to the operator database.
-Create branch codex/run-completion at /Users/julianhein/Projects/hr-worktree-run-completion only after verifying prerequisites,
-ref/path ownership and worktree capacity. Reuse only this exact task's verified interrupted checkout.
-WAITING ON accepted local-master integration of side/timeline-history-2 and all of its unchanged
-prerequisites. Resolve and record that actual full commit SHA from accepted evidence before creating
-the checkout. Implement the complete run-completion plan and P1–P6. It no longer waits for provider
-usage. Its accepted integration and cleanup release only side/database-foundation.
-```
+Current launch status: **WAITING ON timeline T2 and verified prerequisite release**, as applicable.
+No future execution SHA is invented; resolve it from the accepted record before checkout creation.
 
-## 2. Shared database foundation — second prerequisite
+## 00 — Prerequisites: launch once
 
 ```text
-/supervise side/database-foundation
-Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md
-Approved plan commit: 004da4f3e388c939f3639dd41ce131b0d6a83bef.
-Execution binding: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md.
-Read the committed approved scope with git show, then read the owning plan's current progress and
-accepted prerequisite evidence. Do not treat later progress-only records as a scope amendment.
-This is an approved side-work assignment. The side plan is the task owner wherever /supervise refers
-to a task/phase section. Record progress, review, gate evidence and completion there. Do not create
-a phase number or mark roadmap tasks complete. Preserve repository contracts, independent review,
-required gates and the authorized integration/cleanup conditions.
-Use GPT-6 Astra/high; execution workers, if admitted, use sup_astra. Obtain fresh read-only sup_review
-on Astra/high against the complete pinned candidate. Send Done / Now / Remaining at start/resume
-and after each verified step. Respect exact ownership, test-resource slots, D191, compact accepted
-handoffs and no idle observer loops. Return a reviewed candidate for operator-chosen integration;
-do not merge automatically, push, launch sibling tasks, modify the four in-flight assignments or
-apply an upgrade to the operator database.
-Create branch codex/database-foundation at /Users/julianhein/Projects/hr-worktree-database-foundation only after verifying prerequisites,
-ref/path ownership and worktree capacity. Reuse only this exact task's verified interrupted checkout.
-WAITING ON accepted local-master integration and cleanup of side/run-completion. Resolve and record
-that actual full commit SHA, containing timeline T2 and the approved plans. Execute prerequisite B
-at this owner. Implement the shared schema/conversion/interfaces/real adapters, complete former
-artifacts T1, and prove the allocated provider/diagnostic/generated-storage requirements. Do not
-launch side/artifacts-1 separately. Keep shared contracts local until stable; use at most the one
-bounded test worker admitted in the plan. Complete review and gates before returning the candidate.
-After operator-assigned integration, record the exact B release SHA, frozen paths/APIs, standalone
-production flows, pairwise independence proof and available resources. Missing release proof keeps
-all peers waiting; do not release them with stub APIs or postponed shared migrations.
+/supervise side/database-prerequisites
+Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/00-prerequisites.md
+Approved plan commit: 4045ef4f77d1622ef5a3bdc584a60acd58eb63a7
+Execution binding: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md
+Use GPT-6 Astra at high reasoning. This is one approved side-work assignment: execute units A then B
+locally in this supervisor task. The side plans own scope, progress, proof and completion wherever
+/supervise refers to a task/phase section. Do not create a phase number or mark roadmap tasks complete.
+Read the pinned committed plans and current accepted prerequisite evidence before effects.
+
+WAITING ON accepted local-master integration of side/timeline-history-2 and its existing prerequisites.
+Resolve and verify that actual full base SHA; planning HEAD or an unmerged branch is not a substitute.
+Leave all four running plans/tasks unchanged. Verify free worktree capacity and exact ref/path ownership.
+
+A: execute the complete /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/00a-run-completion.md specification.
+Create codex/run-completion at /Users/julianhein/Projects/hr-worktree-run-completion from the verified
+timeline T2 integration. Preserve all P1–P6 and gates; obtain fresh independent read-only sup_review
+on Astra/high, fix/re-review, then integrate and clean up A before beginning B.
+
+B: execute the full shared-foundation unit and release criteria in /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md.
+Create codex/database-foundation at /Users/julianhein/Projects/hr-worktree-database-foundation from A's
+actual accepted local-master integration. Complete the assigned shared storage, migration, real adapters,
+former artifacts T1, frozen interfaces and all allocated proof. Use only the optional bounded sup_astra
+worker admitted there, after stable inputs; finish it before fresh independent sup_review. Preserve
+A/B's separate commit-bound reviews and all implementation/integration gates. No nested supervisors.
+Reuse only this exact task/unit's verified interrupted checkout; do not reserve both worktrees at once.
+
+I explicitly assign this prerequisite task local integration and cleanup of A, then B, after independent
+review PASS and required gates. Target is local master at /Users/julianhein/Projects/hr-automation-rebuild. Verify target ownership and serialize
+its updates; isolate shared/dirty integration as the plan requires. Review behavioral conflict fixes
+independently and gate every materially changed integration tree. Remove only exact accepted owned
+branches/worktrees from a safe checkout. Do not push or apply migrations to the operator database.
+
+Complete the release record in 00-prerequisites.md only after B's accepted integration, gates, cleanup,
+real-interface/independence proof and resource admission. Return three copy-ready peer prompts pinned
+to the actual accepted B release SHA. Do not launch peers or an extra prerequisite task. If no real B
+release exists, say exactly what remains; do not mark this prerequisite complete from a reviewed branch.
+Send Done / Now / Remaining at start/resume and after every verified step. Preserve D191, test slots,
+compact durable handoffs, all contracts and no idle observer loops. End after the complete release.
 ```
 
-## 3. Provider accounting — parallel peer P and later integration owner
+## 01 — Provider accounting: parallel
 
 ```text
 /supervise side/provider-usage
-Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/provider-usage/README.md
-Approved plan commit: 004da4f3e388c939f3639dd41ce131b0d6a83bef.
+Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/01-provider-usage.md
+Approved plan commit: 4045ef4f77d1622ef5a3bdc584a60acd58eb63a7.
 Execution binding: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md.
 Read the committed approved scope with git show, then read the owning plan's current progress and
 accepted prerequisite evidence. Do not treat later progress-only records as a scope amendment.
@@ -90,7 +81,7 @@ apply an upgrade to the operator database.
 Create branch codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage only after verifying prerequisites,
 ref/path ownership and worktree capacity. Reuse only this exact task's verified interrupted checkout.
 WAITING ON accepted prerequisite B and its complete release record. Resolve the exact accepted B
-release commit from the database-parallel owner, verify it is integrated into local master, and use
+release commit from 00-prerequisites.md#release-record, verify it is integrated into local master, and use
 that same pinned B base as D/G even if a peer subsequently merges. Implement only peer P's generic
 provider-neutral accounting behavior and proof allocation. No actual key/provider wiring. Do not
 edit frozen schema/migration/composition or D/G files. Prove this peer on B without either sibling.
@@ -100,12 +91,12 @@ end the turn if no local work remains. Resume later for a concrete operator inte
 or an accepted actionable handoff, not status polling.
 ```
 
-## 4. Diagnostic resolution — parallel peer D
+## 02 — Diagnostic resolution: parallel
 
 ```text
 /supervise side/diagnostics
-Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/diagnostics/README.md
-Approved plan commit: 004da4f3e388c939f3639dd41ce131b0d6a83bef.
+Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/02-diagnostics.md
+Approved plan commit: 4045ef4f77d1622ef5a3bdc584a60acd58eb63a7.
 Execution binding: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md.
 Read the committed approved scope with git show, then read the owning plan's current progress and
 accepted prerequisite evidence. Do not treat later progress-only records as a scope amendment.
@@ -122,7 +113,7 @@ apply an upgrade to the operator database.
 Create branch codex/diagnostics at /Users/julianhein/Projects/hr-worktree-diagnostics only after verifying prerequisites,
 ref/path ownership and worktree capacity. Reuse only this exact task's verified interrupted checkout.
 WAITING ON accepted prerequisite B and its complete release record. Resolve the exact accepted B
-release commit from the database-parallel owner, verify local-master integration, and pin the same
+release commit from 00-prerequisites.md#release-record, verify local-master integration, and pin the same
 base as P/G. Implement peer D: admitted Mark resolved/Reopen command, atomic annotation/audit/timeline,
 readback and usable failure/archive controls. B already owns renames, retirement and shared storage;
 do not redo them or edit frozen files. Prove the complete command/UI flow on B without P/G. Use /ui
@@ -131,12 +122,12 @@ owner when its actual task ID is known; otherwise return it to the operator with
 recipient. Retain responsibility until transfer is accepted, then end if no local work remains.
 ```
 
-## 5. Generated artifacts — parallel peer G
+## 03 — Generated artifacts: parallel
 
 ```text
 /supervise side/artifacts-2
-Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/artifacts/README.md
-Approved plan commit: 004da4f3e388c939f3639dd41ce131b0d6a83bef.
+Plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/03-artifacts.md
+Approved plan commit: 4045ef4f77d1622ef5a3bdc584a60acd58eb63a7.
 Execution binding: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md.
 Read the committed approved scope with git show, then read the owning plan's current progress and
 accepted prerequisite evidence. Do not treat later progress-only records as a scope amendment.
@@ -162,21 +153,17 @@ candidate with proof to the provider-usage integration owner when its actual tas
 otherwise return it to the operator. No observer loop or unaccepted responsibility transfer.
 ```
 
-## 6. Integrate the parallel candidates — send to the existing provider-usage task
-
-Use only when choosing integration. This prompt explicitly assigns integration to the existing
-implementing owner; it does not create a coordinator task. If candidate identities are missing,
-the owner returns the exact missing evidence instead of guessing a branch or inspecting tasks in a loop.
+## Later — Integration: resume the existing provider task
 
 ```text
 /supervise side/provider-usage — peer-batch integration
 I assign you integration of the reviewed database peers that have accepted handoffs. You are the
 existing implementing integration owner; do not create another task or dispatch siblings.
-Approved plan commit: 004da4f3e388c939f3639dd41ce131b0d6a83bef
+Approved plan commit: 4045ef4f77d1622ef5a3bdc584a60acd58eb63a7
 Execution owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/README.md
-Product owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/provider-usage/README.md
+Product owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/sidetracks/database-parallel/01-provider-usage.md
 Use GPT-6 Astra/high and preserve fresh independent sup_review, D191 and all product gates.
-Read the current B release and accepted P/D/G handoffs. Verify each exact base/head/tree, actual task
+Read 00-prerequisites.md#release-record and the accepted P/D/G handoffs. Verify each exact base/head/tree, actual task
 identity, full proof/gate/review verdict and clean/dirty state. Integrate only candidates with complete
 accepted evidence; list any missing candidate as unfinished, not a reason to watch it in an idle loop.
 Verify pairwise merge-order independence against B for available candidates. Serialize target changes
@@ -192,23 +179,4 @@ checkout and verify registration, path and ref cleanup. Do not remove dirty evid
 Mark product completion only when all allocated proof, review, integration and cleanup are verified.
 Send Done / Now / Remaining after each verified step. Use compact accepted handoffs and actionable
 resumes; end when no local work remains. No push, live database conversion or automatic task archival.
-```
-
-## Accept either prerequisite before continuing
-
-If a prerequisite supervisor has returned a reviewed candidate, send this to that same task to
-explicitly assign its integration. It resolves only its own pinned candidate; never a sibling by title.
-
-```text
-/supervise — integrate this task's reviewed prerequisite
-I assign you local integration and cleanup of this task's exact independently reviewed prerequisite
-candidate under its approved plan and the database-parallel execution binding. Verify the recorded
-base/head/tree, review PASS and all required gates. Verify local-master target ownership and isolate
-integration if shared/dirty. Do not push or convert the operator database. Gate every materially changed
-integration tree, independently review behavioral conflict fixes, and remove only the exact accepted
-owned branch/worktree from a safe checkout. Record the accepted full SHA and cleanup in the owner.
-For run-completion, release only the foundation. For database-foundation, release peers only after the
-complete frozen-contract, real-flow, both-order independence and resource proof. Do not launch them.
-Keep Astra/high, fresh sup_review, Done / Now / Remaining and all required gates. End when finished;
-use a compact durable return for a concrete missing input, without polling unrelated tasks.
 ```
