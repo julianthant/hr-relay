@@ -235,7 +235,7 @@ export const ProjectionStorageRecordSchema = z.strictObject({
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "authority_meta">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
-  // Ref dashboard-surfaces §2.3 names `workflow_runs` and `leases` the task/claim store. Schema v4 gave
+  // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row
   // that predates the typing fails validation at boot rather than being
   // reinterpreted as a run or a worker it was never written as.
@@ -257,7 +257,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   ledger_projections: LedgerProjectionRecordSchema,
   provider_budget_counters: ProviderBudgetCounterSchema,
   provider_admissions: ProviderAdmissionRecordSchema,
-  leases: WorkerLeaseRecordSchema,
+  workflow_workers: WorkerLeaseRecordSchema,
   dependencies: DependencyRecordSchema,
   delegation_manifests: DelegationManifestSchema,
   // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
@@ -271,7 +271,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
   run_checkpoints: RunCheckpointRecordSchema,
-  start_plans: StartPlanRecordSchema,
+  workflow_run_requests: StartPlanRecordSchema,
   ocr_approvals: OpaqueAuthorityRecordSchema,
   write_intents: WriteIntentRecordSchema,
   write_attempts: WriteAttemptRecordSchema,
@@ -290,7 +290,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   archived_runs: ArchivedRunStorageRecordSchema,
   archive_relaunches: ArchiveRelaunchStorageRecordSchema,
   /** D267 / ref execution-and-sessions §10 — the per-credential Duo ceremony lease. */
-  duo_ceremony_leases: DuoCeremonyLeaseRecordSchema,
+  worker_auth: DuoCeremonyLeaseRecordSchema,
   /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */
   worker_pools: WorkerPoolRecordSchema,
   workflow_run_batches: RunSessionRecordSchema,

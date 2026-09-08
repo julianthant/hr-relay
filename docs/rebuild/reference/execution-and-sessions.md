@@ -191,6 +191,15 @@ registered and poisoned — §7.1 row C6/C7 execute both.
 ---
 
 ## 3. Worker lifecycle and claiming
+
+**Worker-table naming amendment (2026-09-08; [side/worker-names](../../sidetracks/worker-names/README.md)).**
+Schema 35 names the worker lifecycle authority `workflow_workers` (formerly `leases`)
+and the credential-scoped Duo lock `worker_auth` (formerly `duo_ceremony_leases`).
+`worker_pools` retains its name and declaration/CAS role. Worker repository interfaces,
+lease generations, heartbeats, directives, authentication scope and timings are unchanged.
+`worker_auth` holds one expiring authentication lock per credential across workers and
+systems; it stores no password. Historical schema, trigger names and dated evidence retain
+released names. D267 and D269's behavior below is unchanged.
 <!-- roadmap: p1-kernel -->
 
 <!-- roadmap-status: p1-kernel -->
@@ -923,7 +932,7 @@ counter as a cloned key — which BURNS the profile (D243: three further logins 
 more than a thousand ahead; only a fresh directory recovered). So the lease's job is to stop the
 FIRST refusal; its correctness bar is that no two ceremonies for one credential ever overlap.
 
-**1. The lease is per CREDENTIAL** (`src/domain/duo-ceremony-lease.ts`, table `duo_ceremony_leases`,
+**1. The lease is per CREDENTIAL** (`src/domain/duo-ceremony-lease.ts`, table `worker_auth` since schema 35; originally `duo_ceremony_leases` in
 schema v16). The key is `duoCeremonyCredentialKey(config)` (`src/core/duo-ceremony-gate.ts`): with
 `features.duoWebAuthn` on (the shipped default) it is `resolveSecretFileIdentity("duoWebauthnCredential")`
 (`src/domain/secrets.ts`) — a SHA-256 over the credential file's PUBLIC `(rpId, credentialId)` pairs,

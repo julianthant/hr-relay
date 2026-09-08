@@ -1805,6 +1805,19 @@ command below against one state root; its `upgradeId` is minted at plan time (§
 
 ##### D332.1 — one command, stopped system, never at boot
 
+**Schema-35 naming amendment (2026-09-08; [side/worker-names](../../sidetracks/worker-names/README.md)).**
+The stopped-upgrade threshold is schema 34: every existing version through 34 requires
+verified backup and the stopped upgrade route; ordinary startup cannot apply schema 35.
+The new migration renames `leases` → `workflow_workers`, `duo_ceremony_leases` →
+`worker_auth`, and `start_plans` → `workflow_run_requests`, preserving complete rows,
+keys, generations, versions and reference identities. `worker_pools` and `config_snapshots`
+are unchanged. Released schema 33/34 backups retain their original table names,
+fingerprint ordering and strict record/invariant validation. An unfinished earlier
+schema-32/33/34 conversion must settle with its original build before a newer conversion.
+These names apply to current-table references below; pre-floor examples and historical
+migration/trigger identifiers retain their original spellings. This amendment authorizes
+no operator database application.
+
 The upgrade is **`npm run cli -- storage upgrade [--plan] [--json]`**, a fourth `storage` subcommand
 beside `backup`, `doctor` and `restore`. `--plan` runs the whole preflight (§D332.2) and prints the plan
 without writing a byte; without it the command executes §D332.3. It runs against a STOPPED system under

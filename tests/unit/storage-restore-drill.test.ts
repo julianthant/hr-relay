@@ -1,3 +1,4 @@
+import { upgradeStorage } from "../../src/server/storage/upgrade.js";
 /**
  * The 2j restore drill, driven through the OPERATOR'S OWN COMMAND (D181).
  *
@@ -376,7 +377,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     });
   });
 
-  it.each([29, 30, 31, 32, 33])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
     const paths = drillPaths();
     const credentialPath = join(paths.stateRoot, "credentials", "protected.json");
     const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
@@ -452,6 +453,19 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(projectionRebuildCalls, 0);
     assert.equal(readFileSync(credentialPath).equals(credentialBytes), true);
     assert.equal(inspectAuthorityBackupReadOnly(paths.authorityPath, version).schemaVersion, version);
+    if (version >= 33) {
+      assert.equal((await upgradeStorage({ stateRoot: paths.stateRoot, processLockRoot: paths.processLockRoot,
+        environmentFile: join(paths.stateRoot, ".env"), plan: false }, CLOCK)).state, "converted");
+      const upgraded = open(paths);
+      try {
+        const names = upgraded.inspectSchema().tables.map(({ name }) => name);
+        assert.ok(names.includes("workflow_workers"));
+        assert.ok(names.includes("worker_auth"));
+        assert.ok(names.includes("workflow_run_requests"));
+        assert.deepEqual(upgraded.authority.workerLeases.listLive(), []);
+      } finally { upgraded.close(); }
+      assert.deepEqual(readFileSync(credentialPath), credentialBytes);
+    }
   });
 
   it("refuses while a live process holds a runtime lock, and touches nothing", async () => {

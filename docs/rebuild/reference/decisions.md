@@ -2231,3 +2231,9 @@ storage renames with unchanged identities, write safety, replay and deletion beh
 after accepted command/delegation integration. Stronger linkage to workflow runs remains
 a separate investigation; no relationship/deletion redesign or database application is
 approved by this naming decision.
+
+
+**2026-09-08 worker/request naming amendment:** D267/D269's [execution authority](execution-and-sessions.md#3-worker-lifecycle-and-claiming)
+uses `workflow_workers` and `worker_auth`; the [Start proposal](frontend-backend-integration.md#511-run-modal--plan-confirm-enqueue)
+uses `workflow_run_requests`. [D332's schema-35 stopped upgrade](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
+preserves historical names/readers, rows, settings and credentials. [Approved assignment and evidence](../../sidetracks/worker-names/README.md).

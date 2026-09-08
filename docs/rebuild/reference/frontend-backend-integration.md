@@ -1215,6 +1215,13 @@ is a true sentence about a stale basis rather than a partial re-offer.
 
 #### 5.1.1 Run modal — plan, confirm, enqueue
 
+**Request-table naming amendment (2026-09-08; [side/worker-names](../../sidetracks/worker-names/README.md)).**
+Schema 35 stores the saved proposal in `workflow_run_requests` (formerly `start_plans`).
+A request can produce zero or several runs. Confirmation uses the existing Start command
+and audit; successful consumption retains the request with `consumedBy`. `startPlans`,
+`startPlanId`, stored record fields, expiry, fingerprints, refusal behavior and transactional
+fan-out remain unchanged. No confirmation table or move into `workflow_runs` is introduced.
+
 <!-- roadmap: dash-defaults -->
 
 1. The descriptor projection determines which start doors exist and serves the real timeline with each
