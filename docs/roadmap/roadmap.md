@@ -432,8 +432,8 @@ builds:
 - [x] PROOF all four surfaces agree from one projection
 
 ### 1.6 · Implement canonical run and settings authorities {#p1-authority-implementation}
-status: active
-date: after 0.3 (closed 2026-09-04)
+status: done
+date: 2026-09-08
 size: XL
 doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §9.2 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2 · ref:frontend-backend-integration §4
 
@@ -441,15 +441,16 @@ doc: 1.6 §1.6 · Implement canonical run and settings authorities · ref:dashbo
 
 builds:
 - [x] BE one canonical SQLite-backed run-record service with typed CRUD/CAS lifecycle operations
-- [ ] BE one settings catalog and protected `.tracker/settings/` root for every non-provider-key setting
-- [ ] BE migrate lifecycle/configuration writers and core runtime consumers; Phase 2.6 owns downstream read models and Phase 3.1 owns Settings UI behavior
-- [ ] PROOF upgrade, rollback, recovery, compatibility deletion, and full foundation regression
+- [x] BE one settings catalog with ordinary settings in SQLite, independent credentials (D336), and private canary inputs outside Settings (D341)
+- [x] BE migrate lifecycle/configuration writers and core runtime consumers; Phase 2.6 owns downstream read models and Phase 3.1 owns Settings UI behavior
+- [x] PROOF upgrade, rollback, recovery and full foundation regression; compatibility isolated with explicit A0/A1/A2/A3 deletion handoff to 2.6
 
 needs:
 - phase0-authority-design-close
 - p1-exit
 
 log:
+- 2026-09-08 | Task 1.6.7 close | complete R3 PASS, no-ff integration `9b12f2e8`, all full integration/live gates passed; settings restored at revision 8 and owned cleanup verified. Phase 1.6 complete; downstream 2.6 unstarted.
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | bound every task to one seam/gate/order/proof set/deletion test in doc 01 §1.6; re-sliced into serial floor + wave 2 (`2-1`/`2-2`) + serial 3–7 after the cross-contract review proved the schema coupling · left: the coordinator's `cancel`-of-a-running-run ruling before Task 4 (R04 report, NEEDS COORDINATOR)
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 (later) | the `cancel`-of-a-claimed-run ruling landed (option A, §D330.5 request arm, §D330.11 #27); no open ruling remains before Task 4 · left: implementation from Task 1
 - 2026-09-04 | phase-1-6 run-record Task 2-1 | canonical service candidate `bc82fe47` accepted, evidence commit `bb98dabc` merged `--no-ff` as `49120609`, and integration gates/cleanup passed; v31 preserves relaunch lineage across archived-source deletion · left: Task 2-2 and serial Tasks 3–7
@@ -592,20 +593,21 @@ log:
 - 2026-09-07 | direct supervisor close | Steps 1.6.6.1–1.6.6.7 complete. Original complete standalone Sol/high PASS plus fresh sup_review R11 PASS; final integration 440013f193d7f3451828cbc740591248139db077. Candidate/integration typecheck, lint, 5,461 coverage tests, 827 architecture tests, 259 desktop parity cases and freshness gates pass. Merged-code backup/plan/upgrade/repeat/doctor converted operator v29/g91 to v32/g94, preserving prior rows, evidence, backup and .env; nine cleanup names reported, no runtime startup. Assigned worktree/ref and 27 dead owned test roots removed; exact review task archived. No push, legacy change, cutover or next-task dispatch.
 
 #### 7 · Close the rebuilt foundation {#p1f-close}
-status: active
+status: done
 doc: 1.6/task-7-close-the-rebuilt-foundation · 1.6 §1.6 · Implement canonical run and settings authorities · 2.6 §2.6 · 3.1 §Reopened completion tasks
 
 > D341 prerequisite: the approved test-data foundation detour completed 2026-09-07 (accepted review, `--no-ff` integration `bc6dc9b54`, private conversion; `ref guards-and-tests` §10.5); no new phase number. Use the fresh operator-reset root and shared synthetic recovery fixtures.
 
 builds:
 - [x] PROOF typecheck, lint, coverage, architecture, manifest, stores-catalog, parity (only the approved D343 generated-fingerprint refresh), storage-doctor on the fresh root after the D341 detour, and both workflows' T1b live manifests with exact zero write-authority deltas
-- [ ] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
+- [x] PROOF adversarial review finds no second run/settings lifecycle authority or secret-value leak, and the `no-lifecycle-sql` negative control intact
 - [x] DOCS record the migration and hand 2.6 only verified contracts, the reproducible synthetic fresh/migrated fixture pair, the named adapter deletions (A0/A1 → 2.6 Task 2; A2 + its unit test and A3 → 2.6 Task 1-3; A8/P40 → 3.1 Task 9-2), residuals, and exact gates
 
 needs:
 - p1f-migration-proof
 
 log:
+- 2026-09-08 | Task 1.6.7 complete | R3-standalone-complete PASS on frozen `c4fa2ba4`, all 503 paths/1912 inputs; local no-ff merge `9b12f2e8`. Integration typecheck/lint, 5546 coverage tests, 833 architecture checks, 261 unchanged parity cases and freshness/audit gates pass. Both T1b proofs retain 0/0/0 writes. Canonical revision-8 restoration activated defaults; final doctor healthy schema33/g839, zero pending/unresolved/HR outbox. Owned 18 profiles/18 smoke locks/worktree/ref removed; independent review record and failed evidence preserved. No Task-7 deferral, push, production transaction or Phase-2.6 implementation.
 - 2026-09-08 | Task 1.6.7 standalone review approved | operator authorized one independent Astra/high review task with checkpoint/resume through compaction. Full candidate/proof scope and complete PASS before integration remain required; R1/R2 have no acceptance credit. Settings restoration remains separately deferred.
 - 2026-09-08 | Task 1.6.7 review capacity blocked | frozen evidence `d9ccb0c2`: R1 and R2 complete native reviews stopped after automatic compaction, no confirmed findings and no PASS. R2 used measured bounded retrieval; a resumable standalone complete review is proposed in the owner, awaiting approval. No merge; settings restoration remains separately deferred.
 - 2026-09-08 | Task 1.6.7 Step 5 accepted | final candidate gates pass: 5546 coverage tests, 833 architecture checks, 261 unchanged parity cases. Both accepted T1b proofs and the schema-33 handoff are recorded; awaiting complete independent review. Integration gates and cleanup remain, with settings restoration explicitly operator-deferred.

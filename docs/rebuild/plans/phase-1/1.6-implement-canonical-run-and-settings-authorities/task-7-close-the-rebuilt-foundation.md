@@ -1,24 +1,23 @@
 # Task 7 · Close the rebuilt foundation
 
-**Current supervisor checkpoint (2026-09-08).** Steps 1–5 are accepted; the standalone complete review is approved and awaiting its verdict. Executable candidate
-`4a2421285ba013fae6743412f50e85c19c62ca60` passed full gates (5546 coverage tests, 833 architecture
-checks, 261 unchanged desktop parity cases) and the complete headed Separations T1b rehearsal:
-all eight assertions, fifteen fresh checkpoints and exact 0/0/0 write-authority deltas. Person
-Lookup's accepted seven-assertion result was read back unchanged after schema-33 migration, with
-unchanged descriptor sources, manifest and runtime. The final acceptance section below binds both
-proofs and all earlier failures remain preserved.
+**Current supervisor checkpoint (2026-09-08): COMPLETE.** All six steps are accepted. Independent
+`R3-standalone-complete` returned PASS with no actionable findings over the exact 503-path candidate
+and all 1,912 gated inputs. Frozen evidence `c4fa2ba4d75e4fc51362c6476210aa7160bf65b5` was integrated
+locally with no conflicts as `9b12f2e8b89f58b781e120908ef39c396247c33d`; their trees are identical.
+Integration typecheck, lint, 5,546 coverage tests, 833 architecture checks, 261 unchanged desktop parity
+cases and freshness/audit gates passed. Both complete T1b proofs retain exact 0/0/0 write-authority
+deltas. See [final acceptance](#step-6-final-review-integration-and-closure-2026-09-08) and the
+[complete independent verdict](../../../history/superseded/2026-09-08-task-1-6-7-standalone-review.md).
 
-Primary is restored clean to accepted master `f75e24a57e6494e2846af248539c819c9223e53e`; owned
-runtime/browser processes stopped. Latest doctor at 2026-09-08T07:29:41.609Z is healthy schema 33 /
-generation 836, twelve reconciled runs, zero pending commands/unresolved writes/durable outbox,
-two historical leases and two local terminal-result projection handoffs. The public subject metadata
-now records this accepted observation, with no operational input or private-source change.
-Final candidate gates passed. Both native complete reviewers stopped after context compaction;
-neither provides acceptance credit. The operator approved the resumable standalone arrangement below. Settings
-revision 7 and its three temporary overrides remain deliberately deferred until a separate operator
-signal; no restoration, scheduling or availability polling is authorized by this checkpoint.
-Step 6, independent review, integration gates and owned cleanup remain open. No push or Phase-2.6
-implementation is authorized.
+The operator's “don't defer it” lifted the temporary-settings hold. Canonical restoration applied
+revision 8 and restart verified headless/default 15,000 ms navigation and 60,000 ms acquisition,
+with every unrelated setting preserved. Final doctor is healthy schema 33/generation 839 on the
+same primary root, with twelve reconciled runs, zero pending commands/unresolved writes/HR durable
+outbox, two historical leases and two retained local terminal-result projection handoffs. Owned
+runtime processes are stopped; 18 diagnostic profiles, 18 smoke-lock directories and the assigned
+merged worktree/ref are removed. The standalone user-owned review workspace remains its review
+record. No Task-7 action is deferred; Phase 2.6 remains unstarted. No push or production transaction
+occurred. Dated checkpoints below retain their original failed/blocked evidence and are historical.
 
 **Earlier checkpoint (2026-09-07, protected-reread correction authorized).** The operator
 said to get started after the remaining protected-reread correction was identified. This authorizes
@@ -1970,3 +1969,136 @@ or settings command is part of dispatch. The separately deferred settings restor
 The exact consumed recovery file `docs/handoffs/2026-09-08-task-1-6-7-review-capacity.md` is
 preserved byte-for-byte as `consumed-task-1-6-7-review-capacity.md` in the task scratch. Its pending
 approval wording is historical; this approved owner and the new frozen dispatch are authoritative.
+
+
+### Step 6 final review, integration and closure (2026-09-08)
+
+All six committed steps are accepted. This completion supersedes prior open checkpoints and the
+operator's temporary-settings deferral; their dated evidence remains intact. The approved plan SHA
+is `3bb9abdb35396250fc260351a05ca9f1c82be41d`, with implementation prerequisite
+`2875f4e315f8bc56abc4e9dd7574f169cfaae5c2` and Task-6 integration ancestor
+`440013f193d7f3451828cbc740591248139db077`. The advanced accepted review/integration base is
+`f75e24a57e6494e2846af248539c819c9223e53e`; all required ancestry was verified before integration.
+
+**Independent review.** The explicitly approved standalone Astra/high review returned
+`R3-standalone-complete — PASS`, no actionable findings. It independently covered B1–B7, all 503
+changed paths, all 1,912 input hashes, authority/secret negative controls, both complete live proofs,
+failed chronology, and every generated group. Neither incomplete R1 nor R2 contributes acceptance
+credit. The [full verdict](../../../history/superseded/2026-09-08-task-1-6-7-standalone-review.md)
+contains the exact ledger and proof; its original body SHA-256 is
+`65113462c1c7f2ee1255b35197d7a55573fe659639475d382f170891c71f3c1b`. Only the history header was added.
+The review binds implementation `4a2421285ba013fae6743412f50e85c19c62ca60` and frozen evidence
+`c4fa2ba4d75e4fc51362c6476210aa7160bf65b5`. Parent acceptance rechecked exact ledger membership,
+hashes, clean candidate/target and ancestry. `foundation-r3-accepted.json` retains that reconciliation.
+
+**Integration.** Local master merged the reviewed candidate `--no-ff` as
+`9b12f2e8b89f58b781e120908ef39c396247c33d`, without conflicts or behavior changes. Merge and reviewed
+evidence trees are identical. The fresh integration runner finished exit 0 in session 15700:
+
+| Integration gate | Result | Measured wall time |
+| --- | --- | --- |
+| `npm run typecheck` | exit 0 | 20,342 ms |
+| `npm run lint` | exit 0, zero warnings | 43,278 ms |
+| Full coverage through actual-config two-worker adapter | 440 files / 5,546 tests; 85.91% statements, 77.57% branches, 89.89% functions, 88.03% lines | 359,429 ms |
+| `node --import tsx scripts/suite-size.ts` | exit 0 | 244 ms |
+| Standalone architecture through the same adapter | 833 tests, exit 0 | 65,197 ms |
+| `npm run test:parity` | 261 desktop cases, unchanged references/assertions | 65,948 ms |
+| Manifest / catalog / roadmap freshness | exit 0 each | 2,311 / 942 / 434 ms |
+| Instruction twins/chain audit / diff check | exit 0 each | 143 / 9 ms |
+
+Exact commands/results are `foundation-integration-gate-results.json`, with matching
+`foundation-integration-*.log` files and `foundation-integration-tested-state.json` in the existing
+supervisor scratch directory. `integration-two-workers.config.mts` SHA-256 is
+`e78b67697168a42a07064cab44f017aff2acc8026c880add48583ed44d3dd6c5`; it imports the actual primary
+configuration (SHA-256 `1f9122bf9bbcf1fcab9e01b5aec3428bcde7f9b10b47f0f91aab41775bdbf68f`) and
+asserts that only root/project maxWorkers differ. Typecheck/lint overlapped; coverage had neither
+compiler nor linter contention; architecture and parity were serial. Runner completion verified
+all 1,912 inputs and a clean merge tree. Completion prose changes no executable, configuration,
+test, dependency, fixture, assertion or review requirement; D191 reuses these exact full gates,
+with affected documentation/generated checks recorded below.
+
+**Live acceptance retained.** No workflow was rerun during integration or settings restoration.
+
+| Workflow | Accepted result / run | Deciding proof |
+| --- | --- | --- |
+| Person Lookup | `bcc1d548-6e1e-40e6-a683-cc7492d99d73` / `c19cae5a-8529-413b-968f-2b6d95675832` | Seven assertions; three fresh attempt-3 checkpoints; headed transaction-free live-read; exact schema-33 readback and 59-source/runtime/manifest equivalence; 0/0/0 writes. |
+| Separations | `3a1b9d6a-32f3-4ea3-886d-d049c0eec191` / `feaa9141-9a99-44ba-80e7-5131ae7e6096` | Eight assertions; fifteen fresh attempt-1 checkpoints on explicit reread 2; headed dry-run preview; 0/0/0 writes. |
+
+The preview receipt's partial/unknown confidence is the required preview outcome, not an UNKNOWN
+submit. Every prior failure, result, receipt and checkpoint remains. Final presence-only admission
+again validated the unchanged private source and provider source, with Person Lookup and composed
+Separations ready. The separately registered finalization leaf still correctly refuses missing
+transaction-derived fields; it is outside this transaction-free closure and was not run.
+
+**Settings restoration and actual root.** The operator's latest “don't defer it” expressly ended
+the restoration hold. From revision 7, canonical settings command
+`41cb18be-92a4-43a8-aa06-1fc6921ccdce` cleared only `browser.headless`, `timeouts.navigationMs`
+and `timeouts.sessionAcquireMs`; HTTP 200, applied revision 8, restart required. Before/after reads
+authenticated the canonical journal/audit and proved the whole expected ordinary-settings
+fingerprint `4c71f7a9e1684556d23cc5ab43f2571afcb5cfba85b2824915a6278c22352cc5`, preserving every
+unrelated setting. BFF-only restart activated revision 8, headless true, 15,000/60,000 ms defaults;
+bootstrap and Explorer matched current descriptor-set hash
+`4651f4c1376e0e39446cae9b906368b8943449ffa8ca2b0dd85eb6863d4676f7`. No browser or worker launched.
+Whole-table counts and deltas for `write_intents`, `write_attempts`, `durable_outbox` remain 0/0/0.
+Evidence: `token-diagnostic-settings-restore.json`, `foundation-settings-{before,after}.json`,
+`foundation-restored-activation.log`, and the two stopped BFF logs.
+
+Final stopped-root `storage doctor --json`, exit 0, at `2026-09-08T09:16:18.954Z`:
+healthy schema 33/generation 839, source identity
+`35ae66fbb575adebdc61b4018fb4d9153d53bbb8d0f38e0b45cba410c459f54a`, twelve reconciled runs,
+zero pending commands, unresolved write intents, durable HR outbox, provider reservations and
+artifact outbox. The two historical stopped leases and two local terminal-result projection
+handoffs are preserved; they are distinct from the empty HR write outbox. The externally created
+generation-632 backup remains verified-compatible but stale. Task 7 performed no authority upgrade,
+backup creation or restoration. `foundation-final-doctor.{log,json}` records the check.
+
+**Owned cleanup.** Process-start identity checks found all 18 diagnostic smoke owners stopped,
+server/workers stopped, and no browser process using any selected profile. Removed exactly the 18
+profiles and 18 smoke-lock directories enumerated in `foundation-owned-cleanup-inventory.json`;
+`foundation-cleanup-lock-check.json` and `foundation-owned-cleanup-result.json` prove liveness and
+absence. Ports 3938/5174 are free. The clean fully merged assigned checkout
+`/Users/julianhein/Projects/hr-worktree-foundation-close` was removed with `git worktree remove`,
+and `codex/phase-1-6-foundation-close` with `git branch -d`; both path and ref are absent. Primary
+remains master. Unrelated `hr-worktree-parallel-policy` and shared profiles are untouched.
+
+The explicitly created standalone review workspace
+`/Users/julianhein/.codex/worktrees/4190/hr-automation-rebuild` is retained as the user-owned review
+record. App listing did not expose its ready thread ID; no ID was guessed and no duplicate review
+was dispatched. Its complete verdict is now also committed here. Private configuration, credential
+store, `.env` reference, `.env.providers`, all authority evidence and failed-test diagnostics remain
+preserved. Consumed handoffs are preserved in scratch; no active Task-7 handoff remains. No deferred
+Task-7 work, push, sibling/next-task dispatch, Phase-2.6 implementation or production transaction.
+
+**Delivery assessment.** The D343 reference-file/provider-source separation and resulting narrowly
+approved fingerprint refresh were new operator scope. The D341 reset/private-source conversion and
+later accepted-master schema-33 batching change were external prerequisites; Task 7 consumed them
+and reran affected proofs. At least three later implementation repair seams are directly evidenced:
+SmartHR callback serialization (`09436a49`), protected reread identity/admission (`23b7935b`), and
+pending-set observation/provenance (`4a242128`). Each has discriminating red/green or failed-live
+proof and verified neighboring behavior. Earlier auth/provider repairs are retained above; no
+unsupported total repair count is inferred from this lower bound.
+
+R1 and R2 were incomplete initial complete-review attempts, not accepted reviews or code-fix rounds.
+Both stopped on compaction; R2 had already bounded retrieval. The measured non-parity diff was
+2,815,615 bytes, including 2,491,594 generated HTML bytes; this justified retrieval sizing but does
+not establish the sole cause of context exhaustion. The operator-approved resumable standalone R3
+completed every boundary independently. This is a review-feasibility/sizing gap; exact compaction
+count, aggregate elapsed work/wait cost and hypothetical savings are unknown. Earlier full-path
+serialized callback and actual observation-finalizer proofs, plus an explicit generated-artifact
+review strategy, could have exposed those gaps sooner. Full candidate and integration reruns were
+mandatory gates; their measured durations above are not all avoidable rework. No confirmed R3
+finding or unresolved implementation defect is transferred downstream. A0/A1/A2/A3 deletions and
+A8/P40 presentation remain their already assigned later-phase work, not missing Task-7 acceptance.
+
+
+**Completion-record checks.** On the documentation-only successor of integration `9b12f2e8`,
+`npm run test:architecture -- --config <scratch>/integration-two-workers.config.mts
+ tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/test-target-registry.test.ts`
+passed 39 tests in two files, exit 0, runner 2,115 ms (session 39272). `npm run lint` passed with
+zero warnings (29814). Roadmap generation/freshness, manifest/catalog freshness, existing instruction
+twins/chain audit and `git diff --check` passed (6874); all eight newly introduced Markdown links
+resolve, including the new completion anchor. `foundation-completion-{architecture,lint}.log` and
+`foundation-completion-validation.json` retain the scoped results and exact 1,912-input comparison.
+The full review body remains byte-identical to the accepted verdict. No test was added for this
+evidence-only record; the affected existing guards ran. The integration full gates above are reused
+under D191, not claimed as rerun for this completion commit.

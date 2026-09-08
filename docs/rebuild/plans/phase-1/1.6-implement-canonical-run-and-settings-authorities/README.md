@@ -8,18 +8,19 @@ Read the [phase overview](../README.md) for shared context, decisions and phase-
 normal startup uses only `.env.providers` for the existing five provider families. The operator also
 approved only the resulting generated-fingerprint parity refresh, including displayed hash pixels,
 with all other semantics/layout and zero tolerance preserved. Task 7's owner records the classified
-refresh and candidate gates; live proof, review and integration remain open.
+refresh, live proof, accepted independent review and verified local integration.
 
-**Task 7 current evidence (2026-09-08).** Steps 1–5 are accepted; executable candidate `4a242128`:
-5546 coverage tests, 833 architecture checks and 261 unchanged desktop parity cases pass. Person
-Lookup's headed live-read meets all seven assertions; Separations' complete fresh headed preview
-meets all eight with fifteen current-run checkpoints. Both have exact 0/0/0 write-authority deltas.
-The healthy primary root is schema 33/generation 836 with twelve reconciled runs; primary master
-is restored clean to f75e24a5 and owned runtime/browser processes stopped. The Task-7 owner retains
-all prior failures and binds the accepted proof and final gates. Two complete native reviews stopped
-after context compaction without PASS. The operator approved the owner’s resumable standalone complete
-review arrangement; its verdict remains before integration. Integration gates and cleanup remain; temporary-settings restoration
-stays operator-deferred. Phase 1.6 is not closed.
+**Task 7 complete (2026-09-08).** All six steps are accepted. Complete standalone R3 review passed
+with no actionable findings over frozen evidence `c4fa2ba4`; local no-ff integration `9b12f2e8`
+passed typecheck, lint, 5,546 coverage tests, 833 architecture checks and 261 unchanged desktop parity
+cases. Person Lookup's seven-assertion live-read and Separations' eight-assertion, fifteen-checkpoint
+preview both retain exact 0/0/0 write deltas. Final doctor is healthy schema 33/generation 839,
+twelve reconciled runs and zero pending commands/unresolved writes/HR durable outbox. Revision 8
+restores the three temporary settings; restart verified defaults and preserved all unrelated settings.
+Owned diagnostic profiles/locks and the merged task worktree/ref are removed. The complete review
+record and all failed evidence remain. [Task 7](task-7-close-the-rebuilt-foundation.md#step-6-final-review-integration-and-closure-2026-09-08)
+owns exact gates, identities, retained resources and delivery assessment. Phase 1.6 is closed;
+Phase 2.6 remains unstarted, with its original adapter/read-model ownership intact.
 
 **D341 detour (approved 2026-09-07; accepted, integrated into local `master` as `bc6dc9b54` and the
 private conversion performed the same day — see `ref guards-and-tests` §10.5 completion record).** It

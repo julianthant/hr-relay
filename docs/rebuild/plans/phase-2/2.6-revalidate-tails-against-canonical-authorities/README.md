@@ -17,7 +17,7 @@ This reopened part starts only after 1.6 closes. It changes downstream read mode
 operator services that consume run/settings authority; it does not change the canonical stores,
 rewrite append-only evidence, repeat D135's controlled write, or improvise a new contract.
 
-**Task 1.6.7 deterministic handoff (2026-09-07; live/closure acceptance still pending).**
+**Task 1.6.7 deterministic handoff (recorded 2026-09-07; accepted at closure 2026-09-08).**
 At base `da85e5d1d`, the nine-file upgrade/restore/doctor/settings set passed 139 tests and the five
 focused authority/secrecy guards passed 60 tests, including their injected violations. Exact commands
 and the reproducible two-worker adapter are in the [Task-7 owner](../../phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md#gate-schedule-and-review-coverage).
@@ -35,19 +35,23 @@ and the reproducible two-worker adapter are in the [Task-7 owner](../../phase-1/
 
 At reset, the primary operator root had schema 32/generation 0 and one fresh baseline marker; the
 historical generation-94 database and generation-91 backup are not fixture inputs or restore targets.
-This handoff does not mark Phase 1.6 or Phase 2.6 complete.
+The final acceptance below closes Phase 1.6 only; Phase 2.6 remains unstarted.
 
-**Current closure residuals (2026-09-08).** Task 7 consumes accepted schema-33 master and the
-combined fresh/v29 fixture proofs. Executable candidate `4a242128` passed 5546 coverage tests and
-261 parity cases. Both T1b workflows are accepted with exact 0/0/0 write-authority deltas; complete
-Separations proof has fifteen fresh current-run checkpoints and all eight assertions met. Latest
-doctor at 2026-09-08T07:29:41.609Z is healthy schema 33/generation 836 with twelve reconciled runs.
-Preserve the two local terminal-result projection handoffs for the successful runs, along with all
-failed evidence; they are distinct from the empty HR write outbox. Preserve `workflow_runs` and
-`workflow_run_batches`; the schema-32 reset remains historical, not a restoration target. The
-protected reread and pending-set recording defects are repaired and live-verified. No unresolved
-implementation defect is transferred by this record. Task 7 still owns fresh complete review,
-integration gates, operator-deferred settings restoration and cleanup. Phase 2.6 remains unstarted.
+**Accepted foundation handoff (2026-09-08).** Task 7 consumed accepted schema-33 master and
+combined fresh/v29 fixture proofs. Complete R3 review passed frozen evidence `c4fa2ba4`; local
+integration `9b12f2e8` passed typecheck/lint, 5,546 coverage tests, 833 architecture tests and
+261 unchanged parity cases. Both T1b workflows retain exact 0/0/0 write deltas; Separations has
+fifteen fresh checkpoints and all eight assertions met. Final stopped-root doctor at
+2026-09-08T09:16:18.954Z is healthy schema 33/generation 839 with twelve reconciled runs and zero
+pending commands/unresolved writes/HR durable outbox. Preserve two historical leases, two local
+terminal-result projection handoffs, all failed evidence and the externally created compatible but
+stale backup. Preserve `workflow_runs` and `workflow_run_batches`; schema-32 reset is history, not
+a restoration target. Revision 8 clears exactly the three temporary browser/timeout overrides;
+restart verified defaults and all unrelated settings remain. Owned Task-7 runtime resources and
+merged worktree/ref are cleaned; its user-owned standalone review record remains. No unresolved
+implementation defect or Task-7 acceptance is deferred. Phase 2.6 remains unstarted and retains
+only its originally assigned downstream/adapter work; no implementation or dispatch is authorized
+by this handoff.
 
 **Execution order and wave ruling (2026-09-04).** The part runs as wave 1
 (`1-1` ∥ `1-2` ∥ `1-3`) → Task 2 → Task 3. The three wave members consume the same frozen

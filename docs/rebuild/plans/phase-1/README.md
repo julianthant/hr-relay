@@ -12,7 +12,7 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 - [x] the three presentation defects the live run exposed were closed the SAME day — D123 skipped-arm, D124 terminal duration, D126 accessible-name channel
 - [x] the one liveness defect it exposed was root-caused and fixed — a dead CRM session cost 262.9 s to surface → `timeouts.sessionAcquireMs` (D125)
 - [x] historical Parts **1.1–1.5** and their original exit criteria remain evidenced
-- [ ] **1.6** waits for 0.3, then implements the canonical run/settings authorities and migrates only lifecycle/configuration writers plus core runtime consumers; 2.6 owns downstream read models and 3.1 owns dashboard behavior
+- [x] **1.6** closed 2026-09-08: canonical run/settings authorities, lifecycle/configuration writers and core runtime consumers independently reviewed and integrated as `9b12f2e8`, with full integration and live proof; 2.6 retains downstream read models and 3.1 retains dashboard behavior
 > 2026-09-03 | D326/D327 authority reset | reopening 1.6 does not invalidate the live spine proof; it prevents Phase 2/3 consumers from continuing on authorities 0.3 is about to supersede
 - [ ] residuals that trace back to spine contracts, all owned in LATER nodes — `src/dashboard/state/` never built its cache half (Track D row D6) · five of six stream topics have no producer and the notes stream has no emitter (`{#track-c}` / `{#observed-logs}`) · `ref:dashboard-surfaces` §3.2's three declaration shapes unimplemented · D71's type BUDGET unmeasured
 > 2026-08-29 | D75 authority close | verified one BFF request-identity checkpoint and pre-effect command attribution matching; left: nothing IN this phase — every open line above is a named residual whose owner is a later node
