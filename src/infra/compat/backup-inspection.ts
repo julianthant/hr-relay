@@ -17,7 +17,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33,
+  27, 28, 29, 30, 31, 32, 33, 34,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -49,6 +49,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "provider_budget_counters",
   "provider_admissions",
   "leases",
+  "workflow_workers",
   "dependencies",
   "delegation_manifests",
   "commands",
@@ -62,6 +63,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "checkpoint_payloads",
   "run_checkpoints",
   "start_plans",
+  "workflow_run_requests",
   "ocr_approvals",
   "capture_sessions",
   "capture_photo_order",
@@ -78,6 +80,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "archived_runs",
   "archive_relaunches",
   "duo_ceremony_leases",
+  "worker_auth",
   "worker_pools",
   "run_sessions",
   "workflow_run_batches",
@@ -335,7 +338,9 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>) 
   return Object.freeze({
     pendingCommands: count(database, "SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count(database, "SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
-    leases: count(database, "SELECT count(*) AS count FROM leases"),
+    leases: count(database, tableNames.has("workflow_workers")
+      ? "SELECT count(*) AS count FROM workflow_workers"
+      : "SELECT count(*) AS count FROM leases"),
     durableOutbox: count(database, "SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
     runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
@@ -348,6 +353,9 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
     tasks: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_runs,
+    leases: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_workers,
+    duo_ceremony_leases: AUTHORITY_RECORD_SCHEMA_REGISTRY.worker_auth,
+    start_plans: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_run_requests,
     run_sessions: HistoricalRunSessionRecordSchema,
     ...(schemaVersion < 32 ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   };

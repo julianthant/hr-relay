@@ -82,8 +82,8 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   const from = inspection?.schemaVersion ?? 0;
   let pending: z.infer<typeof AuthorityUpgradeRecordSchema> | undefined;
   let historicalPath: string | undefined;
-  if (from === 32 && readLatestSettingsUpgrade(path)?.phase === "committed") {
-    throw new Error("upgrade-pending: finish the interrupted schema-32 settings conversion with its original build before upgrading this database");
+  if (from >= 32 && from < CURRENT_AUTHORITY_SCHEMA_VERSION && readLatestSettingsUpgrade(path)?.phase === "committed") {
+    throw new Error(`upgrade-pending: finish the interrupted schema-${String(from)} settings conversion with its original build before upgrading this database`);
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION) {
     pending = readLatestSettingsUpgrade(path);

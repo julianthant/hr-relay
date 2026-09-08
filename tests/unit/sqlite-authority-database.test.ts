@@ -476,7 +476,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -887,14 +887,17 @@ afterEach(() => {
 });
 
 describe("native SQLite authority schema", () => {
-  it("requires stopped conversion through v32 and admits v33 directly", () => {
+  it("requires stopped conversion through v34 and admits v35 directly", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(29), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(30), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(31), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(32), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(33), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(34), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(35), false);
   });
 
-  it("creates a fresh authority at v34 with one v34 baseline journal row", () => {
+  it("creates a fresh authority at v35 with one v35 baseline journal row", () => {
     const path = databasePath("fresh-v32.sqlite");
     openDatabase(path).close();
 
@@ -947,8 +950,9 @@ describe("native SQLite authority schema", () => {
     const before = raw.prepare("SELECT record_json FROM workflow_runs").all();
     assert.ok(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'runs_view'").get());
     raw.close();
+    applyReleasedMigrationChainForTest(path, 33);
     const migrated = openDatabase(path);
-    assert.equal(migrated.getMeta().schemaVersion, 34);
+    assert.equal(migrated.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(migrated.getMeta().authorityGeneration, 0);
     assert.equal(migrated.inspectSchema().tables.some(({ name }) => String(name) === "runs_view"), false);
     assert.deepEqual(migrated.authority.runs.get(run.envelope.runId), run);
@@ -1110,7 +1114,7 @@ describe("native SQLite authority schema", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /upgrade-required \{ schemaVersion: 29, floor: 32 \}/u,
+      /upgrade-required \{ schemaVersion: 29, floor: 34 \}/u,
     );
     assert.deepEqual(readFileSync(path), before);
   });
@@ -1152,7 +1156,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), corruptBytes);
   });
 
-  it.each([27, 28, 29, 30, 31, 32, 33] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
+  it.each([27, 28, 29, 30, 31, 32, 33, 34] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
     const path = databasePath(`integrated-v${String(version)}.sqlite`);
     createExactReleasedDatabase(path, version);
     const before = readFileSync(path);
@@ -2068,9 +2072,9 @@ describe("authority generation accounting", () => {
     },
     { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
-    { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
+    { table: "workflow_workers", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
     {
-      table: "duo_ceremony_leases",
+      table: "worker_auth",
       mutate: (db) => {
         db.authority.duoCeremonyLeases.acquire({
           credentialKey: "ab".repeat(32), workerId: "worker-a", system: "ucpath",
@@ -2175,7 +2179,7 @@ describe("authority generation accounting", () => {
     },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
     { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
-    { table: "start_plans", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
+    { table: "workflow_run_requests", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
     { table: "write_intents", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
     { table: "write_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },

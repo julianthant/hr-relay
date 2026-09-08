@@ -402,7 +402,7 @@
       "file": "tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/dashboard-surfaces.md",
-      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover both workflow_runs and its historical tasks name.",
+      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover workflow_runs, its historical tasks name, and workflow_workers. The worker-name integration negative control failed before adding the renamed worker table to the SQL matcher.",
       "replacementRequired": true,
       "activationMilestone": "phase-1.6-task-4"
     },

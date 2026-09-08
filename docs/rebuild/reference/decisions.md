@@ -2246,3 +2246,8 @@ distinct from retained transaction history. This records planning approval, not 
 permission to apply the migration to the operator database, or an amendment of the running renames.
 
 **2026-09-08 amendment to D323 — Phase 4 numbering.** The operator replaced 4A with 4.1 Background Check and requested concrete tasks under 4.1. Phase 4 now uses decimal subphases; discovery/preparation may be recorded before admission, while Phase 3 prerequisites and D319 implementation approval remain unchanged. Authority: [workflow-model §1.6.2](workflow-model.md#162-workflow-admission-before-a-phase-4-part-d319d323-2026-09-03) and [roadmap naming amendment](../../roadmap/roadmap.md#phase-4-decimal-naming-amendment--2026-09-08).
+
+**2026-09-08 worker/request naming amendment:** D267/D269's [execution authority](execution-and-sessions.md#3-worker-lifecycle-and-claiming)
+uses `workflow_workers` and `worker_auth`; the [Start proposal](frontend-backend-integration.md#511-run-modal--plan-confirm-enqueue)
+uses `workflow_run_requests`. [D332's schema-35 stopped upgrade](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
+preserves historical names/readers, rows, settings and credentials. [Approved assignment and evidence](../../sidetracks/worker-names/README.md).

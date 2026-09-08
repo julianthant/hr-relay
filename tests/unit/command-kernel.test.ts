@@ -519,6 +519,8 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     assert.equal(plan.planned.length, 2);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), [], "saving a request creates no runs");
+    assert.deepEqual(harness.database.authority.runSessions.list(), [], "saving a request creates no batch");
 
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -529,6 +531,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
 
     const consumed = harness.database.authority.startPlans.get(plan.startPlanId);
     assert.ok(consumed?.consumedBy !== undefined);
+    assert.equal(consumed.consumedBy.commandId, result.commandId);
     assert.equal(consumed.version, plan.version + 1);
     for (const [index, planned] of plan.planned.entries()) {
       const runId = runIds[index];

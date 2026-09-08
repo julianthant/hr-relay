@@ -1642,11 +1642,11 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "duo-ceremony-lease-columns-match-record",
-    sql: "SELECT count(*) AS count FROM duo_ceremony_leases WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
+    sql: "SELECT count(*) AS count FROM worker_auth WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
   },
   {
     name: "worker-lease-columns-match-record",
-    sql: "SELECT count(*) AS count FROM leases WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
+    sql: "SELECT count(*) AS count FROM workflow_workers WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
   },
   {
     // One worker owns at most one active run (ref execution-and-sessions §0.3). This is the
@@ -1866,6 +1866,11 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
+        if (version < 35) {
+          sql = sql.replaceAll("workflow_workers", "leases")
+            .replaceAll("worker_auth", "duo_ceremony_leases")
+            .replaceAll("workflow_run_requests", "start_plans");
+        }
         if (entry.name === "run-columns-match-record") {
           if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
           if (!taskColumns.has("session_id")) sql = sql.replace(" OR session_id IS NOT json_extract(record_json, '$.sessionId')", "");
@@ -1889,6 +1894,9 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    ...(presentTables?.has("leases") === true ? { leases: WorkerLeaseRecordSchema } : {}),
+    ...(presentTables?.has("duo_ceremony_leases") === true ? { duo_ceremony_leases: DuoCeremonyLeaseRecordSchema } : {}),
+    ...(presentTables?.has("start_plans") === true ? { start_plans: StartPlanRecordSchema } : {}),
     ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
     ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
     ...(presentTables?.has("protected_settings_current") === true
@@ -1951,7 +1959,7 @@ function pendingCounts(database: DatabaseSync) {
   return {
     pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count("SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
-    leases: count("SELECT count(*) AS count FROM leases"),
+    leases: count("SELECT count(*) AS count FROM workflow_workers"),
     durableOutbox: count("SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
     runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
@@ -7442,10 +7450,10 @@ export class AuthorityDatabase implements Disposable {
 
   #writeStartPlan(record: StartPlanRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("start_plans", () => {
+    this.#authorityWrite("workflow_run_requests", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO start_plans (
+          INSERT INTO workflow_run_requests (
             record_key, workflow, consumed_by, expires_at, version, record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -7453,7 +7461,7 @@ export class AuthorityDatabase implements Disposable {
           record.expiresAt, record.version, json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE start_plans SET consumed_by = ?, expires_at = ?, version = ?, record_json = ?
+          UPDATE workflow_run_requests SET consumed_by = ?, expires_at = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
         `).run(
           record.consumedBy?.commandId ?? null, record.expiresAt, record.version, json,
@@ -7474,7 +7482,7 @@ export class AuthorityDatabase implements Disposable {
         }
         const json = canonicalJsonStringify(record);
         return this.withAuthorityTransaction(() => {
-          const existing = this.#readRecord("start_plans", record.startPlanId, StartPlanRecordSchema);
+          const existing = this.#readRecord("workflow_run_requests", record.startPlanId, StartPlanRecordSchema);
           if (existing !== undefined) {
             if (canonicalJsonStringify(existing) !== json) {
               throw new Error(`start plan id ${record.startPlanId} already exists with different content`);
@@ -7485,11 +7493,11 @@ export class AuthorityDatabase implements Disposable {
           return Object.freeze({ state: "inserted" as const, record });
         });
       },
-      get: (startPlanId: string) => this.#readRecord("start_plans", startPlanId, StartPlanRecordSchema),
+      get: (startPlanId: string) => this.#readRecord("workflow_run_requests", startPlanId, StartPlanRecordSchema),
       consume: (input: unknown) => {
         const request = StartPlanConsumeRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
-          const plan = this.#readRecord("start_plans", request.startPlanId, StartPlanRecordSchema);
+          const plan = this.#readRecord("workflow_run_requests", request.startPlanId, StartPlanRecordSchema);
           if (plan === undefined) throw new Error(`start plan ${request.startPlanId} does not exist`);
           const mismatched = [
             ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
@@ -7552,16 +7560,16 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readWorkerLease(workerId: string): WorkerLeaseRecord | undefined {
-    return this.#readRecord("leases", workerId, WorkerLeaseRecordSchema);
+    return this.#readRecord("workflow_workers", workerId, WorkerLeaseRecordSchema);
   }
 
   #writeWorkerLease(record: WorkerLeaseRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
     const heartbeatAt = "heartbeatAt" in record.lifecycle ? record.lifecycle.heartbeatAt : null;
-    this.#authorityWrite("leases", () => {
+    this.#authorityWrite("workflow_workers", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO leases (
+          INSERT INTO workflow_workers (
             record_key, worker_id, workflow, lease_generation, state, directive,
             heartbeat_at, version, record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -7571,7 +7579,7 @@ export class AuthorityDatabase implements Disposable {
           json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE leases SET
+          UPDATE workflow_workers SET
             workflow = ?, lease_generation = ?, state = ?, directive = ?,
             heartbeat_at = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
@@ -7587,15 +7595,15 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readDuoCeremonyLease(credentialKey: string): DuoCeremonyLeaseRecord | undefined {
-    return this.#readRecord("duo_ceremony_leases", credentialKey, DuoCeremonyLeaseRecordSchema);
+    return this.#readRecord("worker_auth", credentialKey, DuoCeremonyLeaseRecordSchema);
   }
 
   #writeDuoCeremonyLease(record: DuoCeremonyLeaseRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("duo_ceremony_leases", () => {
+    this.#authorityWrite("worker_auth", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO duo_ceremony_leases (
+          INSERT INTO worker_auth (
             record_key, generation, holder_worker_id, holder_system, state, expires_at,
             version, record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -7604,7 +7612,7 @@ export class AuthorityDatabase implements Disposable {
           record.state, record.expiresAt, record.version, json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE duo_ceremony_leases SET
+          UPDATE worker_auth SET
             generation = ?, holder_worker_id = ?, holder_system = ?, state = ?, expires_at = ?,
             version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
@@ -7817,10 +7825,10 @@ export class AuthorityDatabase implements Disposable {
         const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
         const rows = workflow === undefined
           ? this.#database.prepare(`
-            SELECT record_json FROM leases WHERE state IN (${states}) ORDER BY record_key
+            SELECT record_json FROM workflow_workers WHERE state IN (${states}) ORDER BY record_key
           `).all(...LIVE_WORKER_STATES)
           : this.#database.prepare(`
-            SELECT record_json FROM leases WHERE state IN (${states}) AND workflow = ? ORDER BY record_key
+            SELECT record_json FROM workflow_workers WHERE state IN (${states}) AND workflow = ? ORDER BY record_key
           `).all(...LIVE_WORKER_STATES, WorkflowIdSchema.parse(workflow));
         return Object.freeze(rows.map((row) => parseJsonRecord(WorkerLeaseRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
@@ -7880,7 +7888,7 @@ export class AuthorityDatabase implements Disposable {
         return this.withAuthorityTransaction(() => {
           const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
           const rows = this.#database.prepare(`
-            SELECT record_json FROM leases
+            SELECT record_json FROM workflow_workers
             WHERE state IN (${states}) AND heartbeat_at IS NOT NULL AND heartbeat_at < ?
             ORDER BY record_key
           `).all(...LIVE_WORKER_STATES, request.staleBefore);
