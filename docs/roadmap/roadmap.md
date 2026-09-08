@@ -2622,11 +2622,11 @@ log:
 phase: Phase 4
 status: you
 when: after Phase 3 closes | one candidate at a time
-chip: 4.1 Background Check · workbook review pending
+chip: 4.1 Background Check · new dashboard workflow
 doc: 4 §Phase summary · ref:workflow-model §1.6.2 · ref:charter §Migration strategy
 open: yes
 
-> Phase 4 is the workflow-migration program. Its subphases use decimal numbering: **4.1 Background Check**, then **4.2**, **4.3**, and onward. Discovery and operator preparation tasks are visible under 4.1 now. Migration implementation still requires Phase 3 completion and a verified, operator-approved D319 admission packet.
+> Phase 4 is the workflow-migration program. Its subphases use decimal numbering: **4.1 Background Check**, then **4.2**, **4.3**, and onward. The reusable Background Check dashboard workflow and its implementation tasks are planned under 4.1. Migration implementation still requires Phase 3 completion and a verified, operator-approved D319 admission packet.
 
 builds:
 - [ ] DOCS Phase 3 stops only after 3.5's attributed cooperation proof (D326)
@@ -2646,73 +2646,79 @@ log:
 - 2026-09-02 | prior candidate intake | Person Lookup/I-9 evidence at `b1b36349` is preserved, but only Person Lookup is already admitted; I-9 remains an unnumbered candidate
 
 ### 4.1 · Background Check {#workflow-admission}
-status: you
-chip: 87 applicants prepared · awaiting workbook review
+status: planned
+chip: new dashboard workflow · not implemented
 doc: 4.1 §Admission · ref:workflow-model §1.6.2
 open: yes
 
-> The operator selected Background Check and assigned it to 4.1. Tasks 4.1.1–4.1.2 record verified preparation; 4.1.3 awaits review, 4.1.4 requires explicit submission authorization, and 4.1.5 completes admission before automation implementation.
+> Build a reusable dashboard workflow that selects applicants from a roster, generates a background-check workbook, gates the reviewed request, submits through UCSD Human Resources and retains verified receipt/recovery evidence. Counts, names, dates and request settings belong to each run. The initial path is multiple applicants; Task 4.1.1 resolves remaining scope before implementation.
 
 builds:
-- [x] DOCS record the selected Background Check workflow and current batch evidence
-- [ ] DOCS complete the admission packet and approve migration implementation scope
+- [ ] DOCS approve the workflow contract, request identity and proof targets
+- [ ] BOTH deliver roster intake, workbook generation and dashboard review
+- [ ] BE deliver verified ServiceNow submission, receipt and no-repeat-write recovery
+- [ ] PROOF prove and enable the registered workflow through the dashboard
 
 log:
-- 2026-09-08 | Background Check walkthrough | live batch form verified; original roster yields 87 yellow Date Background Entered cells (85 Residential/Retail, 2 Catering); separate review copy reformatted to the operator's compact example, verified in browser Excel, and attached on explicit instruction; operator review and applicant-specific clarifications pending; shared originals unchanged, no submission or implementation admission claimed
+- 2026-09-08 | Background Check discovery | operator demonstrated the multiple-applicant form and template-copy workflow; reusable requirements captured in the internal workflow resource; manual preparation is not automated acceptance
+- 2026-09-08 | Operator scope correction | 4.1 is a new dashboard workflow; replace individual-run tracking with implementation tasks and remove run-specific detail from the roadmap
 
-#### 4.1.1 · Record the batch workflow {#background-check-discovery}
-status: done
-doc: 4.1 §4.1.1 · Record the batch workflow
-
-builds:
-- [x] PROOF verify the HR catalog path, Background Check Request and Multiple Applicants option
-- [x] DOCS record the PDF settings, required fields, copy procedure and no-submit boundary
-
-#### 4.1.2 · Prepare and attach the review workbook {#background-check-workbook}
-status: done
-doc: 4.1 §4.1.2 · Prepare and attach the review workbook
+#### 4.1.1 · Define the workflow contract and admission packet {#background-check-discovery}
+status: planned
+doc: 4.1 §4.1.1 · Define the workflow contract and admission packet
 
 builds:
-- [x] PROOF select 87 applicants using the original roster's yellow Date Background Entered cells
-- [x] PROOF create a separate workbook matching the compact example and verify all values and service markers
-- [x] PROOF open the review copy in browser Excel and attach the exact revised workbook without submitting
+- [ ] DOCS define supported request units, inputs, selection rules, settings and terminal result
+- [ ] DOCS approve ordered entries, external write boundaries, permanent identity and the nine-field admission packet
+- [ ] DOCS bind implementation ownership, prerequisites, controlled targets and proof gates
+
+needs:
+- migrations
+
+#### 4.1.2 · Build roster intake and request workbook generation {#background-check-workbook}
+status: planned
+doc: 4.1 §4.1.2 · Build roster intake and request workbook generation
+
+builds:
+- [ ] BE preserve source formatting, validate applicants and freeze deterministic cohort membership
+- [ ] BE generate a separate template-based workbook with validated settings and visible service markers
+- [ ] PROOF verify membership, artifact integrity and unchanged source/template on synthetic fixtures
 
 needs:
 - background-check-discovery
 
-#### 4.1.3 · Review the applicants and workbook {#background-check-review}
-status: you
-chip: operator review pending
-doc: 4.1 §4.1.3 · Review the applicants and workbook
+#### 4.1.3 · Build dashboard preview and approval {#background-check-review}
+status: planned
+doc: 4.1 §4.1.3 · Build dashboard preview and approval
 
 builds:
-- [ ] DOCS confirm workbook contents, compound-name splits and the blank Accept Terms field
-- [ ] PROOF reconcile any reviewed online edits and verify the matching attachment
+- [ ] BOTH declare start inputs and project applicant validation, request settings and workbook preview
+- [ ] BOTH bind approval to the exact cohort, settings and artifact; edits invalidate approval
+- [ ] PROOF exercise review, corrections, cancellation and parked states through dashboard scenarios
 
 needs:
 - background-check-workbook
 
-#### 4.1.4 · Verify submission and receipt with the operator {#background-check-receipt}
-status: you
-chip: do not submit · explicit authorization required
-doc: 4.1 §4.1.4 · Verify submission and receipt with the operator
+#### 4.1.4 · Implement ServiceNow submission and recovery {#background-check-receipt}
+status: planned
+doc: 4.1 §4.1.4 · Implement ServiceNow submission and recovery
 
 builds:
-- [ ] PROOF review Summary, applicant count, attachment, service and recipients with the operator
-- [ ] PROOF submit only on explicit authorization and capture the request identifier and receipt
-- [ ] DOCS record resulting status and UNKNOWN-submit reconciliation boundary
+- [ ] BE implement verified session, catalog/form navigation and approved-artifact attachment
+- [ ] BE implement transaction boundaries, request read-back, permanent identity and UNKNOWN reconciliation
+- [ ] PROOF verify live read-only selectors and fixture-backed preview, mismatch refusal and request recovery
 
 needs:
 - background-check-review
 
-#### 4.1.5 · Complete and approve the automation admission packet {#background-check-admission}
+#### 4.1.5 · Register, prove and enable the dashboard workflow {#background-check-admission}
 status: planned
-doc: 4.1 §4.1.5 · Complete and approve the automation admission packet · ref:workflow-model §1.6.2
+doc: 4.1 §4.1.5 · Register, prove and enable the dashboard workflow · ref:workflow-model §1.6.2
 
 builds:
-- [ ] DOCS verify the nine admission fields, including batch/single scope, ordered entries and task/store reuse
-- [ ] DOCS define input, evidence, recovery, no-repeat-write and structural/live proof requirements
-- [ ] DOCS obtain operator approval before assigning migration implementation tasks
+- [ ] BOTH register the compiled workflow and generic dashboard projections
+- [ ] PROOF pass structural, dry-run, dashboard and controlled-write acceptance
+- [ ] DOCS refresh the hr-manage workflow resource and record verified migration evidence
 
 needs:
 - background-check-receipt

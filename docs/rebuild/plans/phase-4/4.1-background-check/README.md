@@ -1,139 +1,109 @@
 # Phase 4.1 · Background Check
 
-Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
+Read the [phase overview](../README.md) for sequencing. This subphase creates a reusable dashboard
+workflow; its tasks are implementation outcomes, not steps or results from an individual hiring batch.
 
 ## Admission
 <!-- roadmap: workflow-admission -->
 
-The operator selected Background Check and explicitly assigned it to **4.1** on 2026-09-08.
-The tasks below record the collaborative walkthrough, workbook preparation and remaining admission
-work. This numbering does not authorize automated implementation or submission. Phase 3 completion
-and the verified, operator-approved D319 packet still gate migration implementation.
+**Target workflow id:** `background-check`. **Current state:** not implemented or registered.
+The internal [workflow resource](../../../../../.agents/skill-library/hr-background-check/REFERENCE.md)
+owns the reusable operational description, evidence limits and run/test guidance for `hr-manage`.
+This phase owns delivery scope and tasks. Requirements remain in
+[workflow-model §1.6.2](../../../reference/workflow-model.md).
 
-Follow [workflow-model §1.6.2](../../../reference/workflow-model.md) and the
-[roadmap's 4.1 node](../../../../roadmap/roadmap.md#workflow-admission).
+**Outcome.** An operator starts Background Check from the dashboard, supplies an applicant roster
+and request settings, reviews the selected applicants and generated request workbook, then approves
+a request for submission to UCSD Human Resources. The workflow retains the exact reviewed artifact,
+submission receipt and recovery evidence. A submitted request does not mean an applicant's background
+check has cleared.
 
-## 4.1.1 · Record the batch workflow
+**Initial scope.** Implement the multiple-applicant path demonstrated in the walkthrough. Source
+selection must preserve spreadsheet formatting when highlight color determines membership. The
+single-applicant path, handling cohorts below the portal's batch minimum, source-roster writeback
+and background-result monitoring require explicit scope decisions in Task 4.1.1. They are not inferred
+from the portal offering those features. Applicant counts, names, workbook filenames, dates, job
+numbers, funding and contact values are run data or validated request-profile settings, not constants
+in the workflow graph or roadmap.
+
+**Feasibility established so far.** The generic start surface is declaration-driven. ServiceNow and
+SharePoint store shells exist but expose no tasks and declare unwired drivers. There is no Background
+Check definition, registry entry, scenario or approved test subject. The manual walkthrough proves
+navigation and workbook preparation observations only; it is not automated workflow acceptance.
+Phase 3 prerequisites and D319 approval gate implementation. The tasks below are planned scope,
+not launchable supervisor briefs until Task 4.1.1 resolves the admission packet and bindings.
+
+## 4.1.1 · Define the workflow contract and admission packet
 <!-- roadmap: background-check-discovery -->
 
-**Complete for the batch preparation path.** Record the live HR catalog navigation, multiple-applicant
-choice, required fields, template-copy procedure and supplied PDF settings. Evidence is below.
-The single-applicant branch and final Summary/receipt remain outside this completed task.
+**Planned.** Define the request unit, supported cohort sizes, applicant input schema, highlight-based
+selection rule, configurable request profile, optional steps and terminal result. Map the proposed
+ordered timeline groups and entries to task, gate and transaction contracts. Classify every external
+mutation, including attachments, draft creation and optional cloud review copies. Establish task/store
+reuse versus new work, permanent request identity, receipt/read-back contracts and controlled test
+targets. Resolve the nine D319 packet fields and obtain operator approval before implementation.
 
-## 4.1.2 · Prepare and attach the review workbook
+**Acceptance:** one complete approved boundary and tuple model, no guessed defaults or hidden scope
+choices, with bounded implementation assignments, dependencies, isolation and proof targets.
+
+## 4.1.2 · Build roster intake and request workbook generation
 <!-- roadmap: background-check-workbook -->
 
-**Complete.** Select the 87 yellow Date Background Entered cells from the original formatted roster,
-prepare a separate workbook, match the operator's compact example, verify values and service markers,
-open the copy in browser Excel and attach it to Choose Options. Shared originals remain unchanged.
-This task does not include operator acceptance or submission.
+**Planned; requires 4.1.1.** Read a versioned source artifact, preserve selection-relevant cell fills,
+validate explicit applicant fields and freeze the selected cohort. Reject missing formatting when
+selection depends on color, ambiguous names, invalid addresses and duplicate applicants with clear
+row-level findings. Generate a separate workbook from the approved template, with configured job,
+funding, supervisor, recipient and service values. Preserve the template's layout and browser-visible
+selection markers; never overwrite the source or shared template. Retain source provenance, selected
+row identities, artifact digest and validation results for review and safe resume.
 
-## 4.1.3 · Review the applicants and workbook
+**Acceptance:** deterministic membership and workbook content on synthetic fixtures, exact template
+formatting and selected-service verification, no source mutation and no unnecessary sensitive columns.
+
+## 4.1.3 · Build dashboard preview and approval
 <!-- roadmap: background-check-review -->
 
-**Waiting for the operator.** Review the browser workbook, confirm the two compound-name splits and
-resolve the selected applicant's blank Accept Terms field. Reconcile any online edits into the local
-workbook and replace the attachment with that exact reviewed version before a later submission.
-Do not infer consent or treat a formatting correction as approval to submit.
+**Planned; requires 4.1.2.** Declare the workflow's start inputs through the generic dashboard surface.
+Show selected/excluded applicants and reasons, validation issues, request settings and a downloadable
+workbook preview. Provide an explicit review gate bound to the cohort, settings, source version and
+exact artifact digest. An edit regenerates the preview and invalidates prior approval. Resolve how
+external spreadsheet edits are reconciled; an online edit must not silently leave an older attachment
+approved. Wire timeline, parked/review states, cancellation and evidence through existing projections.
 
-## 4.1.4 · Verify submission and receipt with the operator
+**Acceptance:** dashboard scenarios prove input validation, artifact inspection, approval, edit-after-
+approval invalidation and cancellation. The frontend does not fabricate membership or approval state.
+
+## 4.1.4 · Implement ServiceNow submission and recovery
 <!-- roadmap: background-check-receipt -->
 
-**Pending explicit submission authorization.** After workbook review, inspect Summary together,
-verify the exact applicant count, service, attachment and recipients, and submit only when the
-operator explicitly authorizes it. Capture the request identifier, receipt and resulting status.
-If a submit result is unknown, stop and reconcile it; never retry an UNKNOWN submit.
-The current instruction remains **do not submit**.
+**Planned; requires 4.1.3.** Implement the ServiceNow store's verified authentication, HR catalog
+navigation, multiple-applicant form, request settings and recipient read-back. Attach only the reviewed
+artifact and bind Summary to that approved request. Put all externally persistent writes behind the
+admitted transaction boundaries. Verify the resulting request identifier and source-system receipt;
+checkpoint resumable reads without replaying uploads or submits blindly. Probe and reconcile prior
+requests using the approved permanent identity. UNKNOWN results park for resolution, never retry.
 
-## 4.1.5 · Complete and approve the automation admission packet
+**Acceptance:** read-only live selector verification and fixture-backed proof of commit-free preview,
+subject/artifact mismatch refusal, receipt validation, already-present replay and crash recovery.
+Controlled submission is proved in Task 4.1.5 after the complete workflow is registered. A harmless,
+reconcilable test target is required; an ordinary applicant batch is not an implied canary.
+
+## 4.1.5 · Register, prove and enable the dashboard workflow
 <!-- roadmap: background-check-admission -->
 
-**Planned; not an implementation assignment.** Complete workflow-model §1.6.2's nine packet fields:
-exact batch/single scope, inputs and omissions, ordered timeline entries and kinds, task/store reuse,
-system contracts, evidence, resume/restart/write safety and structural/live proof targets. Use the
-walkthrough evidence and inspect current source rather than guessing. Resolve gaps, obtain operator
-approval, then define the bounded migration implementation tasks here after Phase 3 prerequisites.
+**Planned; requires 4.1.4 and Phase 3 completion.** Author the workflow with the current definition
+compiler and store bindings; register it through the composition root. Complete T1 structural and
+dry-run scenarios, T2 dashboard review/submission scenarios, pure-fold tests and controlled-write
+proof. Verify workflow discovery, start, timeline, receipt, Archive and resume from the real dashboard.
+Refresh the generated manifest and the internal workflow resource from the implemented definition.
 
-### Background Check workflow discovery — 2026-09-08
-
-The operator requested a live, collaborative walkthrough of the **Background Check** workflow,
-and asked that it be recorded in the timeline as **Phase 4.1**. This is the canonical Background
-Check subphase. The discovery does not yet establish the complete D319 admission packet,
-change Phase 3 prerequisites, or authorize product implementation.
-
-**Requested outcome.** Prepare a multiple-applicant background-check request for every applicant
-whose **Date Background Entered** cell is highlighted yellow in the supplied student roster. Show
-the completed submission workbook to the operator before submitting. Blank dates or accepted terms
-alone must not be substituted for the operator's color-based selection.
-
-**Sources.** The operator supplied `Background Check Request Form.pdf` (four pages),
-`26-27 Student Applicants(Sept 28).csv`, and a SharePoint link to the original workbook. The CSV
-contains 121 applicant records and no cell formatting; selection requires the original workbook.
-Applicant data and authenticated browser artifacts remain outside committed documentation.
-
-**Procedure described by the operator and PDF pages 1–2; batch preparation verified:**
-
-1. Open `https://support.ucsd.edu/services` in headed Chrome, choose Human Resources, and search
-   for `background check request`.
-2. Choose **Human Resources Catalog → Talent Management → Talent Support Services – Request
-   Forms**, described as requesting background checks, online reference checks, and/or skills
-   assessments.
-3. Select **Background Check Request**, then **Multiple Applicants (10 or more)** under
-   **Background Check Request is for**. Advance to the workbook attachment step.
-4. Download the current **Background Check Request for Multiple Users Workbook** and populate it
-   with only the selected applicants. Inspect the current template before assigning fields.
-5. Present the completed workbook to the operator for review before submission. The PDF's later
-   attachment, Next, and Submit instructions describe the workflow; they do not override this
-   session's review boundary.
-
-| Workbook field | Value described in the supplied PDF |
-| --- | --- |
-| Job number | Catering: `10022932`; Residential & Retail: `10000954` (PDF says these vary) |
-| Job title | Culinary & Market Services Residential & Retail |
-| Department | HOUSING/ DINING/ HOSPITALITY |
-| Project / Task | `1500819` / `1` |
-| Hiring supervisor | Careen Cumper |
-| Hiring supervisor email | `person@example.edu` |
-| Selected service | Universal Background Check: Any Position Posted On Or After 12/1/24 (SB791 Compliance) |
-| Report results to | Careen Cumper, `person@example.edu` |
-
-**Current evidence and remaining discovery (updated 2026-09-08).** After operator sign-in, headed
-Chrome session `background-check` reached the live Talent Support Services order guide, selected
-Background Check Request and Multiple Applicants (10 or more), and advanced to Choose Options.
-The expanded item requires a workbook attachment. Submitted By is the authenticated operator;
-item-level Report Results to was set to the PDF's recipient and read back. The page has not advanced
-to Summary or Submit.
-
-The original SharePoint roster was downloaded with its formatting. Its Sept 28 sheet contains 121
-applicants, of whom 87 have solid yellow (`FFFFFF00`) Date Background Entered cells. Their dates
-are blank. Three orange cells contain prior-entry dates and are excluded. Color, rather than
-visibility under the source table's current filter, determines membership. The selected cohort has
-85 Residential/Retail applicants and two Catering applicants; the PDF's corresponding job numbers
-were applied. There are no duplicate selected email addresses. One selected applicant has a blank
-Accept Terms field, and two compound-name splits await operator confirmation in the private review.
-
-The portal's current 19-column workbook was downloaded through **Create a Copy → Download a Copy**.
-The operator explicitly required a copy and no edits to the shared original. The first separate
-87-applicant copy retained native checkboxes, but Excel for the web did not display those controls.
-The operator then supplied a compact example and requested matching cell sizes. The revised copy
-uses that example's 18-column layout, exact column widths, 60-point blue header, 15-point body rows,
-and alternating blue/white fills. It marks only the post-December-1-2024 SB791 service with a visible
-`Y` for each of the 87 applicants, as in the example; other service cells are blank. All applicant
-and fixed values were reconciled to the preceding verified copy, and the revised formatting and
-visible selections were inspected in Excel for the web. Both shared originals remain unchanged.
-Applicant-specific review notes and artifacts remain outside committed documentation.
-
-The operator explicitly authorized uploading a browser review copy and attaching it without
-submission. The revised copy is in the operator's OneDrive; its 14.2 KB workbook replaced the earlier
-attachment in Choose Options. Operator review remains pending. No request was submitted; final
-Summary state and receipt remain unverified. The PDF's two batch
-pages were extracted and visually inspected.
-The single-applicant branch (PDF pages 3–4), automated task/store boundaries, ordered tuple model,
-resume/no-repeat-write mechanics and controlled proof targets remain outside this completed evidence.
+**Acceptance:** required code and live gates pass against the reviewed candidate; tests prove zero
+write-intent/attempt/outbox deltas during dry run, no external upload/submit in preview and no duplicate
+request after a retry or uncertain outcome. Record reusable acceptance evidence in the workflow's
+migration record. Do not mark a delivery task complete because a manual request was prepared.
 
 ## Shared capabilities awaiting an admitted consumer
 <!-- roadmap: cross-cutting -->
 
-Keep the current capability inventory and its dated evidence on the roadmap's `cross-cutting` node.
-Assign implementation only through the verified admission packet under workflow-model §1.6.3;
-creating this file does not change that scope, its completion claims, or its prerequisites.
+The roadmap's existing capability inventory remains unassigned until a verified workflow admission
+packet names it as necessary. It is not Background Check implementation scope by proximity.
