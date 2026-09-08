@@ -447,6 +447,7 @@ describe("test target registry architecture", () => {
       label: "finalization-canary",
       canonicalInput: {
         documentNumber: "4999",
+        reRead: { ordinal: 1, reason: "Task 1.6.7 full rehearsal after verified callback repair; prior failures retained." },
       },
       protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
         name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],

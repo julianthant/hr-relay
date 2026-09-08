@@ -27,6 +27,10 @@
                 "reference": {
                   "name": "separationsKualiFinalizationCanaryDocumentNumber"
                 }
+              },
+              "reRead": {
+                "ordinal": 1,
+                "reason": "Task 1.6.7 full rehearsal after verified callback repair; prior failures retained."
               }
             }
           },

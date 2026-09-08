@@ -1,9 +1,32 @@
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../domain/config/protected-settings.js";
-import { JsonValueSchema, type JsonValue } from "../../domain/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../domain/canonical-json.js";
+import { PositiveIntSchema } from "../../domain/ids.js";
 import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../domain/protected-input.js";
 import type { SchemaBoundCanonicalValue } from "../../domain/schema-bound-value.js";
 import type { ProtectedSecretSource } from "../../domain/secrets.js";
+
+/**
+ * D341's closed subject binding replaces the private part of item identity.
+ * Preserve the existing document reread ordinal after canonical ingress validation:
+ * the same decision resumes its item, while a new decision gets fresh checkpoints.
+ * Reason text and other execution settings never become match-key material.
+ * Omission retains the exact historical protected key; permanent write keys are
+ * derived elsewhere from the transaction's business facts and are unaffected.
+ */
+export function protectedSubjectMatchKey(bindings: readonly ProtectedInputBinding[], canonicalInput: unknown): string {
+  const base = `protected-input:${canonicalJsonStringify(bindings)}`;
+  if (!bindings.some(({ inputPath }) => inputPath === "documentNumber")) return base;
+  if (canonicalInput === null || typeof canonicalInput !== "object" || Array.isArray(canonicalInput))
+    throw new Error("protected document input must be a canonical object");
+  const reRead: unknown = Reflect.get(canonicalInput, "reRead");
+  if (reRead === undefined) return base;
+  if (reRead === null || typeof reRead !== "object" || Array.isArray(reRead))
+    throw new Error("protected document reread must be a canonical object");
+  const ordinal = PositiveIntSchema.safeParse(Reflect.get(reRead, "ordinal"));
+  if (!ordinal.success) throw new Error("protected document reread ordinal is invalid");
+  return `${base}#re-read-${String(ordinal.data)}`;
+}
 
 /** Server-only admission before ingress parsing or identity creation. No caller override is compared. */
 export function admitProtectedInput(

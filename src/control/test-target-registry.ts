@@ -177,7 +177,10 @@ export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state
 
 export const SeparationsChainArmSchema = z.strictObject({
   kind: SeparationsChainSubjectKindSchema,
-  publicInput: z.strictObject({ document: SeparationsChainSubjectDocumentSchema }),
+  publicInput: z.strictObject({
+    document: SeparationsChainSubjectDocumentSchema,
+    reRead: SeparationsInput.pick({ reRead: true }).shape.reRead,
+  }),
 });
 
 /**
@@ -255,7 +258,7 @@ export const SeparationsReadyTestTargetSchema = z.strictObject({
   state: z.literal("ready"),
   label: z.string().min(1),
   // Protected workflow fields and ingress defaults are admitted once by the server planner.
-  canonicalInput: SeparationsInput.pick({ documentNumber: true }),
+  canonicalInput: SeparationsInput.pick({ documentNumber: true, reRead: true }),
   protectedBindings: ProtectedInputBindingsSchema,
 });
 export const SeparationsTestTargetResolutionSchema = z.discriminatedUnion("state", [
@@ -536,7 +539,8 @@ export function resolveSeparationsKualiFinalizationTestTarget(
  * finalization resolver must. It feeds the registry's document number through
  * the descriptor's OWN `inputRun` parser — the same code path the dashboard's
  * start box uses — and parses the resulting submission through the descriptor's
- * own server admission. The ready value contains only the start-box submission:
+ * own server admission. The ready value preserves that submission and any explicit
+ * reread decision already admitted by the descriptor's canonical input:
  * `timekeeperName` is bound once from protected settings by the planner, which
  * then applies the ingress defaults and canonical validation. Readiness never
  * manufactures a protected default or accepts a protected caller override.
@@ -580,10 +584,12 @@ export function resolveSeparationsTestTarget(
   if (entries.length !== 1 || entry === undefined) {
     registryDefect(target, `document number parsed into ${String(entries.length)} start-box entries; exactly one is required`);
   }
+  const submission = SeparationsReadyTestTargetSchema.shape.canonicalInput.parse(toRawSubmission(entry));
   return SeparationsReadyTestTargetSchema.parse({
     state: "ready",
     label,
-    canonicalInput: toRawSubmission(entry),
+    canonicalInput: { ...submission,
+      ...(arm.publicInput.reRead === undefined ? {} : { reRead: arm.publicInput.reRead }) },
     protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber", name: reference.name, sourceId: documentNumber.valueId }],
   });
 }

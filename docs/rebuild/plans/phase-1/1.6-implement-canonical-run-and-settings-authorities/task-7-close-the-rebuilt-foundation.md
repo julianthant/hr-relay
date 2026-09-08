@@ -1,6 +1,47 @@
 # Task 7 · Close the rebuilt foundation
 
-**Current supervisor checkpoint (2026-09-07, operator-directed offline continuation).** Steps 1–3
+**Current supervisor checkpoint (2026-09-07, protected-reread correction authorized).** The operator
+said to get started after the remaining protected-reread correction was identified. This authorizes
+the narrow repair described here: preserve the exact no-reread protected key, append the existing
+explicit document reread ordinal, retain the same opaque source bindings and unchanged permanent
+transaction keys, and admit the existing canonical `reRead` metadata through the public registry.
+No new workflow identity API, authority schema, checkpoint deletion, source-identity rotation,
+retry policy or weaker proof is introduced. The control instruction twins are aligned with the
+already-admitted canonical reread input; document resolution still uses the real start-box parser.
+
+The registry selects explicit reread ordinal 1 with a value-free repair reason. This is one named
+decision, never an incrementing retry. Before live execution, the frozen primary candidate must
+prove this exact item has zero prior runs/checkpoints and next attempt 1. The full-path manifest
+then expects fifteen current-run attempt-1 checkpoints; any existing history blocks that start.
+All prior item attempts/checkpoints and failed results remain immutable. Settings restoration still
+waits for a separate operator signal. Full gates and exact-candidate live proof remain required.
+
+**Repair proof before consuming the advanced target.** The production planner regression was red
+with the same item returned for an explicit protected reread (13 passed, one failed); the registry
+regression was red on unrecognized `reRead` (51 passed, one failed). The fixed production start
+command proves separate first-attempt items, unchanged captured bindings, original-run retention
+and duplicate-active-reread refusal. Focused neighboring tests passed 134 tests in six files.
+The selected registry fixtures were then updated to assert the explicit metadata; selected unit
+and architecture checks passed. Final typecheck (30482) and lint (51604) passed. Full runner 15351
+passed coverage: 438 files / 5526 tests, 328932 ms, statements 85.87%, branches 77.52%, functions
+89.87%, lines 87.99%; suite size 177 ms; standalone architecture 62526 ms; unchanged assertion parity
+259 cases / 64808 ms. Manifest, catalog, instruction audit and diff checks passed. The unchanged
+two-worker adapter and all 1908 exact inputs are recorded in `reread-gated-inputs.json`; logs and
+commands are in `reread-candidate-gate-results.json` and the `reread-*` scratch files. No live run
+has started, and these gates do not yet cover the advanced integration target.
+
+**Advanced target preflight (2026-09-08T06:50:37.345Z).** Another accepted task advanced clean
+local master to `f75e24a57e6494e2846af248539c819c9223e53e`, merging workflow batch/table changes
+after independent review. Read-only doctor on that actual checkout passed schema 33/generation 634,
+the same source database identity, ten reconciled runs/results, zero pending commands, unresolved
+write intents and durable outbox rows. The two historical leases and one local terminal outbox
+remain. Task 7 did not perform this database upgrade. Its schema-32 executable must not run on the
+advanced root. Consume accepted master into the assigned task branch, preserve its table names and
+batch behavior, and rerun the combined gates and affected fresh/migrated fixture proofs. The live
+route must record/restore f75e24a5 (or revalidate a later accepted target), never reset master to f0b1cf92.
+The final review base advances to that accepted target while retaining the entire Task-7 diff.
+
+The prior checkpoint follows as dated evidence. Steps 1–3
 remain accepted for executable repair `09436a49eccdd3a1f577c83576ff7b8de33092d3`; the latest prior
 evidence commit is `b89235c6604814b0a8076765898d3aa8515ea851`. Primary remains on the original
 integration base `f0b1cf92195897e56e4917384b512c45d7b4d41a`; the assigned branch/worktree is retained.

@@ -1,6 +1,5 @@
 import { type ProtectedInputBinding } from "../../domain/protected-input.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { admitProtectedInput } from "./protected-input.js";
+import { admitProtectedInput, protectedSubjectMatchKey } from "./protected-input.js";
 import type { ProtectedSecretSource } from "../../domain/secrets.js";
 import type { SchemaBoundCanonicalValue } from "../../domain/schema-bound-value.js";
 /**
@@ -201,7 +200,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     const bindings = admittedSubmissions[index].bindings;
     const protectedSubject = bindings.some(({ inputPath }) => inputPath !== "timekeeperName");
-    const matchKey = protectedSubject ? `protected-input:${canonicalJsonStringify(bindings)}` : planning.matchKey(parsed);
+    const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(parsed);
     const itemId = deriveItemId(descriptor.id, matchKey);
     if (seenItemIds.has(itemId)) {
       refuse("active-run-exists", `entry ${String(entry)} repeats ${matchKey}, which is already in this plan`);
