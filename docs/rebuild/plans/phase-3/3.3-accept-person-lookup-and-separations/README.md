@@ -101,11 +101,11 @@ Task 3 can discharge the controlled-commit criterion for the frozen candidate.
 |---|---|
 | former 3.2 Task 10 A2–A5 | Tasks 1–3 |
 | former 3.2 Task 10 A8 | Task 4 |
-| former 3.2 Task 12 strict live remainder | Phase 3.2 Task 6, then Task 1 confirmation |
+| former 3.2 Task 12 strict live remainder | Phase 3.2 Task 5, then Task 1 confirmation |
 | former 3.2 Task 13 | Tasks 1–4 |
-| former 3.3 Task 4 close evidence | Task 4, after Phase 3.2 Task 5-1 accepts Person Lookup |
+| former 3.3 Task 4 close evidence | Task 4, after Phase 3.2 Task 4.1 accepts Person Lookup |
 | former 3.3 Task 5 controlled-write exclusion | Tasks 2–3 now own the real proof explicitly |
-| former 3.3 Task 6 lifecycle close | Phase 3.2 Task 7 for freeze; Task 4 for final acceptance close |
+| former 3.3 Task 6 lifecycle close | Phase 3.2 Task 6 for freeze; Task 4 for final acceptance close |
 
 ## Exit criteria
 

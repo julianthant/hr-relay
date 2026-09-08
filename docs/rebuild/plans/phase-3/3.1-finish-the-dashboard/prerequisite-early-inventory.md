@@ -1,8 +1,11 @@
 # Prepare dashboard inventory during tail revalidation
 <!-- roadmap: dash-early-inventory -->
 
+**Current assignment: 3.1.20.** Standalone prerequisite or individual task; follow its explicit dependencies.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+
 Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract) and
-[shared foundations](subphase-8-shared-foundations.md) before a focused assignment.
+[current task identities](README.md#current-task-identities) before a focused assignment.
 
 Optional read-only preparation while 2.6 recovery and closure continue. This produces a provisional inventory only; it does not freeze acceptance, authorize dashboard implementation or satisfy Task 8.
 
@@ -12,4 +15,5 @@ Optional read-only preparation while 2.6 recovery and closure continue. This pro
 This is roadmap scope, not a launch-ready execution brief. Before implementation, the operator
 approves exact paths, base, branch/worktree, proof commands and resource ownership through
 `/phase-plan`. Preserve D191, independent review, vertical-slice acceptance and all source safety
-contracts. No agent-to-agent coordination, sibling dispatch or automatic merge.
+contracts. Work independently by default; coordinate with relevant peers when necessary under D344. No
+automatic sibling dispatch or merge.

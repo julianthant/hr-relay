@@ -1,9 +1,9 @@
 # Task 17 · Build the complete dashboard proof infrastructure
 <!-- roadmap: dash-proof-infrastructure -->
 
-**Current assignment: 3.1.10.4.** Former task 3.1.17; stable node `dash-proof-infrastructure`.
-Read [Integrated acceptance](subphase-10-integrated-acceptance.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.18.** Standalone prerequisite or individual task; follow its explicit dependencies.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

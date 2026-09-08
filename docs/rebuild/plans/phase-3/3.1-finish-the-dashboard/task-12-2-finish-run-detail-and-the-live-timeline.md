@@ -1,9 +1,9 @@
 # Task 12-2 · Finish run detail and the live timeline
 <!-- roadmap: dash-run-detail -->
 
-**Current assignment: 3.1.9-3.1.** Former task 3.1.12-2; stable node `dash-run-detail`.
-Read [Run detail and evidence](subphase-9-3-run-detail-and-evidence.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.14.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

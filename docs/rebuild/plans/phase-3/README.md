@@ -17,6 +17,6 @@ Each subphase owns its existing tasks, evidence and exit criteria. Phase 3.3 con
 - [Phase 3.4 · Optional document tools and AI assistance](3.4-optional-document-tools/README.md)
 - [Phase 3.5 · Codex and Claude cooperation](3.5-co-operate-with-claude/README.md)
 
-D344 divides the remaining 3.1 work into six [nested subphases](3.1-finish-the-dashboard/README.md#parallel-execution-and-worktree-contract).
-They overlap by explicit accepted prerequisites; the operator coordinates independent worktrees.
-The optional early inventory is read-only preparation, not a waiver of the 2.6 implementation gate.
+D344 uses actual prerequisite tasks with independent decimal children: `3.P.N` completes before
+`3.P.N.1`, `3.P.N.2`, etc. launch in separate worktrees. See the [3.1 task map](3.1-finish-the-dashboard/README.md#current-task-identities)
+and 3.2 plan. Sequential tasks keep separate numbers; the operator chooses launches and integration.

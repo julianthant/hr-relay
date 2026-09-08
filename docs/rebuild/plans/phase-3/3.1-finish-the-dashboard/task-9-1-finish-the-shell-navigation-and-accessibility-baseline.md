@@ -1,9 +1,9 @@
 # Task 9-1 · Finish the shell, navigation, and accessibility baseline
 <!-- roadmap: dash-shell -->
 
-**Current assignment: 3.1.9-1.1.** Former task 3.1.9-1; stable node `dash-shell`.
-Read [Shell and configuration](subphase-9-1-shell-and-configuration.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.9.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

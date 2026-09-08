@@ -28,10 +28,11 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
   implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 workflow authoring/read-only
   acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
-  Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. One coordinator owns each decimal part;
-  each task is one supervisor session. D328 makes admitted parallel waves visible: peers share the
-  ordinal and use consecutive numeric members (`3.1.9-1`, `3.1.9-2`, ...), while serial tasks keep
-  `N`; the coordinator run plan still owns their exact worktree lifecycle.
+  Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
+  prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
+  Parents complete before children launch; sequential consumers receive separate numbers. The
+  operator chooses launches and integration under Authorized orchestration below. D328's numeric
+  wave members remain valid for Phase 0–2 and preserved in-flight briefs.
   Phase 4
   admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
   readiness plus the one cutover, and Phase 6 is the desktop app. D329 retires the old 03a–03d
@@ -317,9 +318,11 @@ canary from `.env`, expose its value, silently substitute another target, or inf
 ## Authorized orchestration
 
 For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
-supersedes automatic integration and shared-agent coordination below. The operator launches tasks
+supersedes automatic integration and required coordinator orchestration below. The operator launches tasks
 from accepted prerequisites and assigns serial integration. Agents return independently reviewed
-candidates without messaging siblings, taking shared files or launching other tasks. Existing
+candidates; targeted peer coordination is permitted when necessary to resolve blockers, overlap or
+duplicate effort within approved boundaries. Plan changes return to the operator; no taking shared
+files, automatic merging or launching other tasks. Existing
 in-flight ownership/gates/integration permissions remain unchanged. The four-worktree ceiling
 includes unrelated work; an additional lane requires explicit capacity approval.
 

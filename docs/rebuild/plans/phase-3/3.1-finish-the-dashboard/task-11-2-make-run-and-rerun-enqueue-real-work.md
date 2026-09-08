@@ -1,9 +1,9 @@
 # Task 11-2 · Make Run and Rerun enqueue real work
 <!-- roadmap: dash-run-modal -->
 
-**Current assignment: 3.1.9-2.2.** Former task 3.1.11-2; stable node `dash-run-modal`.
-Read [Run operations](subphase-9-2-run-operations.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.11.2.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

@@ -1,9 +1,9 @@
 # Task 12-1 · Finish queue rows, commands, and deletion
 <!-- roadmap: dash-queue -->
 
-**Current assignment: 3.1.9-2.3.** Former task 3.1.12-1; stable node `dash-queue`.
-Read [Run operations](subphase-9-2-run-operations.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.13.** Standalone prerequisite or individual task; follow its explicit dependencies.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

@@ -1,9 +1,9 @@
 # Task 9-2 · Finish Settings over the canonical settings authority
 <!-- roadmap: dash-settings -->
 
-**Current assignment: 3.1.9-1.2.** Former task 3.1.9-2; stable node `dash-settings`.
-Read [Shell and configuration](subphase-9-1-shell-and-configuration.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.9.2.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 **D341 (approved 2026-09-07).** Consume the detour’s application-only 86-row catalog. Test subjects,
