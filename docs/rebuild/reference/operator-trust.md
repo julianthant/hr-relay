@@ -2804,3 +2804,27 @@ facts, wire fields, or implementation claims.
 contract" needs a place to enter, and for the Explorer that place is §5.2 — where §5.2.1 now admits
 six named extras as a closed list. An Explorer fact that is neither in §5.2's bullets nor in
 §5.2.1's six is minted vocabulary and does not ship.
+
+## Diagnostic evidence and resolution
+
+**2026-09-08 — approved, pending implementation.**
+[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) combines the approved renames
+`diagnostic_bundles` → `diagnostic_snapshots`, `diagnostic_attachments` → `diagnostic_files`, and
+`evidence_receipts` → `run_receipts` with retirement of `knowledge_records` and `fix_records`.
+The operator superseded the earlier suggested lesson/fix renames with removal: workflow/module and
+agent guidance belongs in existing linked documentation, not an automatically populated database
+lesson or repair ledger. §4's unwired database projection/search obligations are retired by this
+assignment; unrelated roadmap completion is not implied and authored lesson files are preserved.
+
+Keep immutable diagnostic/receipt evidence and its exact identities, shared artifacts, sensitivity
+and pin/retention semantics. Historical knowledge/fix pins must not silently become purgeable.
+Retiring nonempty tables requires verified preservation bound to the stopped pre-upgrade backup;
+historical references are not fabricated resolution or automatically published agent guidance.
+
+Failure follow-up is a separately versioned resolution annotation on the same `run_failures` row,
+with status, admitted actor/time and optional short note. Original failure bytes/fingerprint and
+all receipt derivation bindings remain unchanged. Resolution records an operator assertion that the
+problem was addressed; it does not prove a fix, change the failed outcome or resolve uncertain
+external writes. [Dashboard surfaces](dashboard-surfaces.md#failure-resolution) owns explicit actions
+and live/archived presentation. This amendment is approved design, not implementation or permission
+to apply a database upgrade. The side plan follows accepted run-completion integration.

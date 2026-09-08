@@ -2251,3 +2251,40 @@ permission to apply the migration to the operator database, or an amendment of t
 uses `workflow_workers` and `worker_auth`; the [Start proposal](frontend-backend-integration.md#511-run-modal--plan-confirm-enqueue)
 uses `workflow_run_requests`. [D332's schema-35 stopped upgrade](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
 preserves historical names/readers, rows, settings and credentials. [Approved assignment and evidence](../../sidetracks/worker-names/README.md).
+
+### 2026-09-08 — provider-neutral request and usage storage (pending implementation)
+
+Operator approved `provider_requests` and `provider_usage`, then explicitly limited the assignment
+to generic tables and storage behavior so providers can be added later. Real keys, provider-specific
+wiring, pool selection, quota discovery and UI/reporting are excluded. Existing capability admission
+continues through a compatibility mapping. Usage supports tracked cumulative totals, current windows,
+reservations and locally calculated remaining amounts with honest attribution and unknown values;
+run deletion preserves aggregate usage. Requirements live at
+[execution and sessions, provider storage foundation](execution-and-sessions.md#provider-storage-foundation);
+[side task `side/provider-usage`](../../sidetracks/provider-usage/README.md) owns execution after
+accepted timeline/history T2 integration. This records planning approval, not implementation or
+permission to migrate the operator database.
+
+### 2026-09-08 — completion evidence on workflow runs (pending implementation)
+
+Operator approved moving completion authorization evidence onto `workflow_runs`, renaming `failures`
+to `run_failures`, and removing the unused `run_terminal_outbox`. Current assignment and immutable
+accepted completion remain distinct; claim/version fencing, exact replay, result/failure authority
+and atomic timeline persistence survive the consolidation. Requirements live at
+[dashboard surfaces, run completion storage](dashboard-surfaces.md#run-completion-storage);
+[side task `side/run-completion`](../../sidetracks/run-completion/README.md) owns execution after
+accepted provider-usage integration (and its timeline T2 prerequisite). No running plan is amended.
+This records planning approval, not implementation, database application or a new delivery consumer.
+
+### 2026-09-08 — diagnostic evidence and lightweight resolution (pending implementation)
+
+Operator approved `diagnostic_snapshots`, `diagnostic_files` and `run_receipts`, then replaced the
+proposed lesson/fix renames with removal of their unused database tables. Useful agent guidance stays
+in linked workflow/module documentation. A separate annotation on `run_failures` records explicit
+resolution/reopening, actor/time and optional note without rewriting the original failure, completion,
+receipt or archive. The operator requested both parts in one diagnostic plan; the earlier names were
+chat-only, so [side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) is the single
+persisted owner, following accepted run-completion integration. Requirements live in
+[operator trust](operator-trust.md#diagnostic-evidence-and-resolution) and
+[dashboard surfaces](dashboard-surfaces.md#failure-resolution). No prior running plan is amended;
+this is planning approval, not implementation or operator-database conversion.
