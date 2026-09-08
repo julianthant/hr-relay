@@ -1007,7 +1007,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
-        work(repositories.bulkCommandAcceptances)),
+        work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
     },
     startPlans,
     intake,

@@ -9,7 +9,7 @@ import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
  * semantics, the registered `separations` descriptor and all three of its
  * transaction nodes are the production ones; only the browsers, the clock, the
  * id source, the timer and the span sink are fakes. That is what lets a scenario
- * say "zero rows in `write_intents`" about the real authority database.
+ * say "zero rows in `run_operations`" about the real authority database.
  *
  * It is ONE harness rather than two because §4c's arm is a claim about a single
  * run: the UCPath termination commits for real, the Kuali save lands nothing,

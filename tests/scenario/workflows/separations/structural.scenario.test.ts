@@ -16,7 +16,7 @@
  *   runs. They walk no graph path and correctly claim none.
  * - **Sequencer walks** drive the REAL write sequencer over a REAL authority
  *   database and BOTH deterministic browsers, which is the only way to say
- *   "zero rows in `write_intents`" about anything. They produce the three
+ *   "zero rows in `run_operations`" about anything. They produce the three
  *   transaction nodes' twelve coverage points, plus §4c's park.
  * - **A pure graph walk** runs every one of the descriptor's real binds and its
  *   real terminal derive, so it falsifies the PATH and produces the gate's two

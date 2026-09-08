@@ -3035,7 +3035,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     recordSchemaDatabase.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     recordSchemaDatabase.close();
     const badRecordSchema = new DatabaseSync(recordSchemaPath);
-    badRecordSchema.prepare("UPDATE write_intents SET record_json = ? WHERE record_key = ?")
+    badRecordSchema.prepare("UPDATE run_operations SET record_json = ? WHERE record_key = ?")
       .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
     badRecordSchema.close();
     paths.push([recordSchemaPath, "authority-record-invalid"]);

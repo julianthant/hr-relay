@@ -85,7 +85,7 @@ export const SEPARATIONS_IDENTITY_CHECK_CLAIMS: readonly ScenarioCoverageClaim[]
  *
  * Six of them are claimed by scenarios that drive the REAL write sequencer over
  * a REAL authority database, so `dry-run` and `subject-mismatch` are backed by
- * "zero rows in `write_intents`" rather than by a function returning. The
+ * "zero rows in `run_operations`" rather than by a function returning. The
  * gate's two are claimed by the graph walk, which runs the descriptor's own
  * binds and terminal derive.
  */
@@ -149,7 +149,7 @@ export const SEPARATIONS_KUALI_FINALIZATION_CLAIMS: readonly ScenarioCoverageCla
  *
  * Twelve of them are claimed by scenarios that drive the REAL write sequencer
  * over a REAL authority database and BOTH deterministic browsers, so `dry-run`
- * and `subject-mismatch` are backed by "zero rows in `write_intents`" rather
+ * and `subject-mismatch` are backed by "zero rows in `run_operations`" rather
  * than by a function returning. The gate's two are claimed by the graph walk,
  * which runs every one of the descriptor's binds and its terminal derive.
  *

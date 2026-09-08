@@ -17,8 +17,8 @@
  * through the ordinary path under `dryRun: false`: the runtime refuses this
  * manifest before any browser if a transaction node ever appears in the graph
  * (the manifest must then convert to the preview arm), and the positive
- * no-write proof is the exact zero delta over `write_intents`,
- * `write_attempts` and `durable_outbox`, counted by THIS run's intent set.
+ * no-write proof is the exact zero delta over `run_operations`,
+ * `run_operation_attempts` and `operation_outbox`, counted by THIS run's intent set.
  * A no-op transaction added only to enter the preview arm is forbidden.
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and

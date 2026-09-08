@@ -19,7 +19,7 @@
  *    this table so a root whose run was deleted is classified as deleted, not
  *    reported as missing authority forever.
  * 3. **The idempotency key is gone with the ledger.** `removed` records how
- *    many `write_intents` rows left with the run, so the fact that a permanent
+ *    many `run_operations` rows left with the run, so the fact that a permanent
  *    write key was released is visible in authority even though the key is not.
  */
 import { z } from "zod";
@@ -39,6 +39,10 @@ export const DeletedRunOriginSchema = z.enum(["queue", "archive"]);
 /** Every table the cascade may touch, so a count can never name a table it did not read. */
 export const DeletedRunTableSchema = z.enum([
   "ledger_projections",
+  "operation_outbox",
+  "run_operation_attempts",
+  "run_operations",
+  // Historical receipts retain their original names and bytes.
   "durable_outbox",
   "write_attempts",
   "write_intents",
@@ -55,8 +59,10 @@ export const DeletedRunTableSchema = z.enum([
   "checkpoint_payloads",
   "run_checkpoints",
   "notifications",
-  "dependencies",
-  "delegation_manifests",
+  "dependencies", // Historical deletion receipts.
+  "delegation_dependencies",
+  "delegation_manifests", // Historical deletion receipts.
+  "run_delegations",
   "archive_relaunches",
   "archived_runs",
   "tasks", // Historical deletion receipts retain their original table name.

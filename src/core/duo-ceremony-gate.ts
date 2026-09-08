@@ -3,7 +3,7 @@
  * recipe takes, holds and releases the per-credential ceremony lease
  * (ref execution-and-sessions §10, D267).
  *
- * The lease ROW lives in authority (`duo_ceremony_leases`); the TOKEN is minted
+ * The lease ROW lives in authority (`worker_auth`); the TOKEN is minted
  * only by that store; this module is the WAITER and the HOLDER logic around
  * them, kernel-scheduled on the same monotonic clock that arms the acquisition
  * envelope (D125):

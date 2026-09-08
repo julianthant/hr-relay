@@ -54,7 +54,7 @@
  *   `docs/rebuild/migrations/separations.md` §9.27 addendum 7 — run
  *   `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`, trace `sp-053429-fd41`, terminal
  *   `done` at the D215 preview terminal stopped at `clear-pending`, and
- *   `write_intents` 0 / `write_attempts` 0 / `durable_outbox` 0 read over the
+ *   `run_operations` 0 / `run_operation_attempts` 0 / `operation_outbox` 0 read over the
  *   whole database. Its fifteen checkpoint rows remain historical evidence of
  *   the superseded gate/resume path; the current fourteen-row declaration
  *   removes the gate-induced second `timecard-search`. Addendum 7 records only

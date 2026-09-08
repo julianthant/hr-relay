@@ -1,3 +1,5 @@
+import { deriveBulkChildCommandId } from "../../../src/domain/command-groups.js";
+import { createOperatorCommandIngress } from "../../../src/server/dashboard/commands/operator-command-ingress.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * W3 (ref execution-and-sessions §11, D271): the dashboard's REAL worker
@@ -47,7 +49,7 @@ import type {
   WorkerProcessSpawnRequest,
 } from "../../../src/server/dashboard/worker-supervisor.js";
 import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
-import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {
   NO_INTAKE_PROJECTIONS,
   UNSTORED_CONFIG_IDENTITY,
@@ -310,6 +312,70 @@ async function spawnPoolWorker(
 /* ── the composed seam, end to end ───────────────────────────────────────── */
 
 describe("the composed worker process control through the kernel pool door", () => {
+  it.each(["all-or-none", "best-effort"] as const)("holds %s bulk child identities until an in-flight worker effect is journaled", async (mode) => {
+    const harness = openControlHarness();
+    harness.database.authority.runs.enqueue(QUEUED_RUN);
+    const bulkCommandId = nextCommandId();
+    const commandId = deriveBulkChildCommandId(bulkCommandId, RUN_ID);
+    const ingress = createOperatorCommandIngress({
+      clock: harness.clock,
+      journal: harness.database.authority.commands,
+      protectedCommandAcceptedAt: () => undefined,
+      bulkAcceptances: {
+        withTransaction: (work) => harness.database.withAuthorityTransaction((repositories) => work({
+          get: repositories.commands.getBulk,
+          insert: repositories.commands.acceptBulk,
+        })),
+      },
+    });
+    const workerPending = ingress.submit({
+      ...envelope(harness, commandId),
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      payload: { workerId: WORKER_1 },
+    }, (request) => harness.kernel.executeWorkerPool(request));
+    await settleMicrotasks();
+    assert.equal(harness.spawnRequests.length, 1);
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+
+    let bulkSettled = false;
+    let bulkExecutions = 0;
+    const bulkPending = ingress.executeBulk({
+      commandId: bulkCommandId, bulkCommandId, requestedAt: NOW,
+      requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", mode,
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+    }, () => {
+      bulkExecutions += 1;
+      return { state: "refused", code: "capability-unavailable", message: "execution must not precede identity admission" };
+    }).then((result) => { bulkSettled = true; return result; });
+    await settleMicrotasks();
+    const settledBeforeBirth = bulkSettled;
+    const parentBeforeBirth = harness.database.authority.commands.getBulk(bulkCommandId);
+
+    // Complete the real supervisor acknowledgement even on a regression, so
+    // the pending command and its fake process cannot outlive the fixture.
+    const child = harness.children[0];
+    if (child?.pid === undefined) throw new Error("the fake spawner produced no child");
+    assert.equal(harness.database.authority.workerLeases.start({
+      workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+      processId: child.pid, requestedBy: "local-operator", now: NOW,
+    }).state, "started");
+    fireBirthPoll(harness);
+    const [workerResult, bulkResult] = await Promise.all([workerPending, bulkPending]);
+    child.emitExit(0, null);
+
+    assert.equal(settledBeforeBirth, false, "bulk acceptance must await the occupied derived identity");
+    assert.equal(parentBeforeBirth, undefined);
+    assert.equal(workerResult.state, "applied");
+    assert.equal(bulkResult.state, "refused");
+    if (bulkResult.state === "refused") assert.equal(bulkResult.code, "command-divergent");
+    assert.equal(bulkExecutions, 0);
+    assert.equal(harness.database.authority.commands.getBulk(bulkCommandId), undefined);
+    assert.equal(harness.database.authority.commands.get(commandId)?.family, "worker-browser");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId)?.request.family, "worker-browser");
+    assert.deepEqual(harness.database.authority.runs.get(RUN_ID)?.lifecycle, { state: "queued" });
+  });
+
   it("refuses async pool starts after settings make this runtime stale", async () => {
     const harness = openControlHarness();
     applySettingsRequiringRestart(harness);

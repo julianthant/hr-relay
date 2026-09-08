@@ -15,7 +15,7 @@ import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
-  BulkRunCommandAcceptanceRecordSchema,
+  BulkParentCommandRecordSchema,
 } from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
@@ -235,7 +235,7 @@ export const ProjectionStorageRecordSchema = z.strictObject({
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "authority_meta">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
-  // Ref dashboard-surfaces §2.3 names `workflow_runs` and `leases` the task/claim store. Schema v4 gave
+  // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row
   // that predates the typing fails validation at boot rather than being
   // reinterpreted as a run or a worker it was never written as.
@@ -257,13 +257,12 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   ledger_projections: LedgerProjectionRecordSchema,
   provider_budget_counters: ProviderBudgetCounterSchema,
   provider_admissions: ProviderAdmissionRecordSchema,
-  leases: WorkerLeaseRecordSchema,
-  dependencies: DependencyRecordSchema,
-  delegation_manifests: DelegationManifestSchema,
+  workflow_workers: WorkerLeaseRecordSchema,
+  delegation_dependencies: DependencyRecordSchema,
+  run_delegations: DelegationManifestSchema,
   // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
-  commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
+  commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
   command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
-  bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
   settings_current: SettingsCurrentRecordSchema,
@@ -271,11 +270,11 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
   run_checkpoints: RunCheckpointRecordSchema,
-  start_plans: StartPlanRecordSchema,
+  workflow_run_requests: StartPlanRecordSchema,
   ocr_approvals: OpaqueAuthorityRecordSchema,
-  write_intents: WriteIntentRecordSchema,
-  write_attempts: WriteAttemptRecordSchema,
-  durable_outbox: AtomicOutboxRecordSchema,
+  run_operations: WriteIntentRecordSchema,
+  run_operation_attempts: WriteAttemptRecordSchema,
+  operation_outbox: AtomicOutboxRecordSchema,
   artifact_outbox: ArtifactOutboxStorageRecordSchema,
   /** Typed at D164, when the first sink projector landed. */
   artifact_sink_heads: ArtifactSinkHeadRecordSchema,
@@ -290,7 +289,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   archived_runs: ArchivedRunStorageRecordSchema,
   archive_relaunches: ArchiveRelaunchStorageRecordSchema,
   /** D267 / ref execution-and-sessions §10 — the per-credential Duo ceremony lease. */
-  duo_ceremony_leases: DuoCeremonyLeaseRecordSchema,
+  worker_auth: DuoCeremonyLeaseRecordSchema,
   /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */
   worker_pools: WorkerPoolRecordSchema,
   workflow_run_batches: RunSessionRecordSchema,

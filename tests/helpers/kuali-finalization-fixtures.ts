@@ -7,7 +7,7 @@ import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
  * the driver semantics, the descriptor and its ONE transaction node are the
  * REGISTERED production ones; only the browser (a deterministic Kuali document),
  * the clock, the id source, the timer and the span sink are fakes. That is what
- * lets a scenario say "zero rows in `write_intents`" about the real authority
+ * lets a scenario say "zero rows in `run_operations`" about the real authority
  * database rather than about a mock.
  *
  * The identity below is synthetic on purpose. The finalization surface was

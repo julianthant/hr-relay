@@ -1,5 +1,6 @@
+import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../domain/command-groups.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
-import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
 import { CommandIdentityConflictError } from "../../domain/commands.js";
 import { createCredentialStore } from "../config/credential-store.js";
 import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
@@ -33,6 +34,8 @@ import { systemClock } from "../../domain/clock.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
+  StoredAuthorityCommandRecordSchema,
+  BulkParentCommandRecordSchema,
   BulkRunCommandAcceptanceRecordSchema,
   CommandAuditRecordSchema,
   CommandRequestSchema,
@@ -417,8 +420,11 @@ type ReadRepository<RecordValue> = Readonly<{
 }>;
 
 type CommandRepository = Readonly<{
-  assertIdentity(input: unknown): void;
-  insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
+  assertIdentity(input: unknown, parentCommandId?: string): void;
+  insert(input: unknown, parentCommandId?: string): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
+  acceptBulk(input: unknown): ImmutableInsertResult<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
+  getBulk(commandId: string): z.infer<typeof BulkRunCommandAcceptanceRecordSchema> | undefined;
+  parentId(commandId: string): string | null | undefined;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
@@ -485,7 +491,7 @@ type WriteIntentRepository = Readonly<{
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
   /**
-   * Ref operator-trust §2.3/§2.5: what external writes did THIS run fence? `write_intents`
+   * Ref operator-trust §2.3/§2.5: what external writes did THIS run fence? `run_operations`
    * has no `run_id` column — an intent outlives the run that created it, which
    * is the point of a permanent key — so the run identity is read out of the
    * record itself. An `observed-present` row carries no `runId` at all and is
@@ -992,7 +998,6 @@ export type AuthorityRepositories = Readonly<{
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
   lifecycleJournal: RunLifecycleJournalRepository;
-  bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -1642,11 +1647,11 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "duo-ceremony-lease-columns-match-record",
-    sql: "SELECT count(*) AS count FROM duo_ceremony_leases WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
+    sql: "SELECT count(*) AS count FROM worker_auth WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
   },
   {
     name: "worker-lease-columns-match-record",
-    sql: "SELECT count(*) AS count FROM leases WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
+    sql: "SELECT count(*) AS count FROM workflow_workers WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
   },
   {
     // One worker owns at most one active run (ref execution-and-sessions §0.3). This is the
@@ -1666,7 +1671,7 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: `
       SELECT count(*) AS count FROM commands
       WHERE family IS NOT CASE
-        WHEN json_extract(record_json, '$.kind') = 'run-lifecycle' THEN 'run-lifecycle'
+        WHEN json_extract(record_json, '$.kind') IN ('run-lifecycle', 'bulk-parent') THEN json_extract(record_json, '$.kind')
         ELSE json_extract(record_json, '$.family')
       END
     `,
@@ -1676,24 +1681,24 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
   },
   {
-    name: "bulk-command-acceptance-columns-match-record",
-    sql: "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')",
+    name: "bulk-parent-columns-match-record",
+    sql: "SELECT count(*) AS count FROM commands WHERE family = 'bulk-parent' AND (parent_command_id IS NOT NULL OR record_key IS NOT json_extract(record_json, '$.commandId') OR created_at IS NOT json_extract(record_json, '$.acceptance.request.requestedAt') OR EXISTS (SELECT 1 FROM command_audits WHERE command_id = commands.record_key))",
   },
   {
     name: "dependency-manifest-column-matches-record",
-    sql: "SELECT count(*) AS count FROM dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
+    sql: "SELECT count(*) AS count FROM delegation_dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
   },
   {
     name: "write-intent-columns-match-record",
-    sql: "SELECT count(*) AS count FROM write_intents WHERE system <> json_extract(record_json, '$.system') OR idempotency_key <> json_extract(record_json, '$.idempotencyKey') OR idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
+    sql: "SELECT count(*) AS count FROM run_operations WHERE system <> json_extract(record_json, '$.system') OR idempotency_key <> json_extract(record_json, '$.idempotencyKey') OR idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
   },
   {
     name: "write-attempt-columns-match-record",
-    sql: "SELECT count(*) AS count FROM write_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
+    sql: "SELECT count(*) AS count FROM run_operation_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
   },
   {
     name: "durable-outbox-columns-match-record",
-    sql: "SELECT count(*) AS count FROM durable_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
+    sql: "SELECT count(*) AS count FROM operation_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
   },
   {
     name: "failure-fingerprint-column-matches-record",
@@ -1814,14 +1819,14 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "ledger-projection-binds-a-ledger-outbox",
     sql: `
       SELECT count(*) AS count FROM ledger_projections AS projection
-      LEFT JOIN durable_outbox AS outbox ON outbox.record_key = projection.record_key
+      LEFT JOIN operation_outbox AS outbox ON outbox.record_key = projection.record_key
       WHERE outbox.record_key IS NULL OR outbox.kind IS NOT 'ledger-entry'
     `,
   },
   {
     name: "projected-ledger-outbox-has-an-appended-line",
     sql: `
-      SELECT count(*) AS count FROM durable_outbox AS outbox
+      SELECT count(*) AS count FROM operation_outbox AS outbox
       LEFT JOIN ledger_projections AS projection ON projection.record_key = outbox.record_key
       WHERE outbox.kind = 'ledger-entry'
         AND json_extract(outbox.record_json, '$.projection.state') = 'projected'
@@ -1833,9 +1838,9 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "attempting-write-has-current-attempt",
     sql: `
-      SELECT count(*) AS count FROM write_intents AS intent
+      SELECT count(*) AS count FROM run_operations AS intent
       WHERE intent.status = 'attempting' AND NOT EXISTS (
-        SELECT 1 FROM write_attempts AS attempt
+        SELECT 1 FROM run_operation_attempts AS attempt
         WHERE attempt.record_key = json_extract(intent.record_json, '$.currentAttemptId')
           AND attempt.write_intent_id = intent.record_key
           AND attempt.generation = json_extract(intent.record_json, '$.generation')
@@ -1845,10 +1850,35 @@ const INVARIANT_QUERIES = Object.freeze([
 ] as const);
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
-  return INVARIANT_QUERIES.flatMap(({ name, sql }) => {
+  const violations = INVARIANT_QUERIES.flatMap(({ name, sql }) => {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
+  return [...violations, ...commandGroupLinkViolations(database)];
+}
+
+/** Validate both declared links and missing links from each immutable parent selection. */
+function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
+  const rowSchema = z.strictObject({ record_key: z.string(), record_json: z.string(), parent_command_id: z.string().nullable() });
+  const rows = database.prepare("SELECT record_key, record_json, parent_command_id FROM commands ORDER BY record_key").all()
+    .map((row) => rowSchema.parse(row));
+  const byId = new Map(rows.map((row) => [row.record_key, row]));
+  const expected = new Map<string, string>();
+  for (const row of rows) {
+    const raw: unknown = JSON.parse(row.record_json);
+    if (typeof raw !== "object" || raw === null || !("kind" in raw) || raw.kind !== "bulk-parent") continue;
+    const parent = BulkParentCommandRecordSchema.parse(raw);
+    for (const target of parent.acceptance.request.targets) {
+      const child = deriveBulkChildCommand(parent.acceptance.request, target);
+      const saved = byId.get(child.commandId);
+      if (saved === undefined) continue;
+      if (expected.has(child.commandId) && expected.get(child.commandId) !== parent.commandId) return ["command-group ambiguous child ownership"];
+      if (canonicalJsonStringify(JSON.parse(saved.record_json) as unknown) !== canonicalJsonStringify(child)) return ["command-group child request mismatch"];
+      expected.set(child.commandId, parent.commandId);
+    }
+  }
+  return rows.flatMap((row) => row.parent_command_id === (expected.get(row.record_key) ?? null)
+    ? [] : ["command-group child linkage mismatch"]);
 }
 
 const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
@@ -1866,6 +1896,20 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
+        if (version < 35) {
+          sql = sql.replaceAll("workflow_workers", "leases")
+            .replaceAll("worker_auth", "duo_ceremony_leases")
+            .replaceAll("workflow_run_requests", "start_plans");
+        }
+        if (version < 36) {
+          sql = sql.replaceAll("run_operations", "write_intents")
+            .replaceAll("run_operation_attempts", "write_attempts")
+            .replaceAll("operation_outbox", "durable_outbox");
+        }
+        if (version < 37) {
+          sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
+          if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
+        }
         if (entry.name === "run-columns-match-record") {
           if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
           if (!taskColumns.has("session_id")) sql = sql.replace(" OR session_id IS NOT json_extract(record_json, '$.sessionId')", "");
@@ -1889,6 +1933,16 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    ...(presentTables?.has("leases") === true ? { leases: WorkerLeaseRecordSchema } : {}),
+    ...(presentTables?.has("duo_ceremony_leases") === true ? { duo_ceremony_leases: DuoCeremonyLeaseRecordSchema } : {}),
+    ...(presentTables?.has("start_plans") === true ? { start_plans: StartPlanRecordSchema } : {}),
+    ...(presentTables?.has("write_intents") === true ? { write_intents: WriteIntentRecordSchema, write_attempts: WriteAttemptRecordSchema, durable_outbox: AtomicOutboxRecordSchema } : {}),
+    ...(presentTables?.has("dependencies") === true ? { dependencies: DependencyRecordSchema } : {}),
+    ...(presentTables?.has("delegation_manifests") === true ? { delegation_manifests: DelegationManifestSchema } : {}),
+    ...(presentTables?.has("bulk_command_acceptances") === true ? {
+      bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
+    } : {}),
+    ...(readIntPragma(database, "user_version") < 37 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]) } : {}),
     ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
     ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
     ...(presentTables?.has("protected_settings_current") === true
@@ -1930,10 +1984,11 @@ function authorityContentFingerprint(database: DatabaseSync): string {
     } else {
       hash.update("[");
       let rowIndex = 0;
+      const schema = name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json FROM ${name} ORDER BY record_key
+        SELECT record_key, record_json${name === "commands" ? ", parent_command_id" : ""} FROM ${name} ORDER BY record_key
       `).iterate()) {
-        const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
+        const row = schema.parse(rawRow);
         if (rowIndex > 0) hash.update(",");
         hash.update(canonicalJsonStringify(row));
         rowIndex += 1;
@@ -1949,10 +2004,10 @@ function authorityContentFingerprint(database: DatabaseSync): string {
 function pendingCounts(database: DatabaseSync) {
   const count = (sql: string): number => CountRowSchema.parse(database.prepare(sql).get()).count;
   return {
-    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
-    unresolvedWriteIntents: count("SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
-    leases: count("SELECT count(*) AS count FROM leases"),
-    durableOutbox: count("SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
+    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
+    unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
+    leases: count("SELECT count(*) AS count FROM workflow_workers"),
+    durableOutbox: count("SELECT count(*) AS count FROM operation_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
     runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
@@ -2804,9 +2859,32 @@ export class AuthorityDatabase implements Disposable {
     return this.#withTransaction("authority", () => work(this.authority));
   }
 
-  #assertCommandIdentity(record: z.infer<typeof AuthorityCommandRecordSchema>): void {
+  #assertCommandIdentity(record: z.infer<typeof StoredAuthorityCommandRecordSchema>, parentCommandId?: string): void {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
+    }
+    const parent = "kind" in record && record.kind === "bulk-parent";
+    if (parentCommandId !== undefined) {
+      const acceptance = this.authority.commands.getBulk(parentCommandId);
+      if (acceptance === undefined || !("family" in record) || record.family !== "run"
+        || !acceptance.request.targets.some((target) => canonicalJsonStringify(deriveBulkChildCommand(acceptance.request, target)) === canonicalJsonStringify(record))) {
+        throw new CommandIdentityConflictError("command-group invalid parent membership");
+      }
+    }
+    const existingParentId = this.authority.commands.parentId(record.commandId);
+    if (existingParentId !== undefined && existingParentId !== (parentCommandId ?? null)) throw new CommandIdentityConflictError("command-group different-parent replay");
+    // A reserved derived child cannot enter through the standalone door, even before journaling.
+    for (const row of this.#database.prepare("SELECT record_json FROM commands WHERE family = 'bulk-parent'").all()) {
+      const accepted = BulkParentCommandRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)).acceptance;
+      if (accepted.request.targets.some((target) => deriveBulkChildCommandId(accepted.bulkCommandId, target.runId) === record.commandId)
+        && parentCommandId !== accepted.bulkCommandId) throw new CommandIdentityConflictError("command-group child identity requires its parent");
+    }
+    if (parent && this.authority.commands.parentId(record.commandId) === undefined) {
+      for (const target of record.acceptance.request.targets) {
+        const childId = deriveBulkChildCommandId(record.commandId, target.runId);
+        if (childId === record.commandId || this.#credentialCommandIds(childId)
+          || this.authority.commands.parentId(childId) !== undefined) throw new CommandIdentityConflictError("command-group parent reserves an existing command identity");
+      }
     }
     const protectedCommand = "family" in record && record.family === "settings" && record.type === "apply-protected-settings";
     if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
@@ -3161,7 +3239,7 @@ export class AuthorityDatabase implements Disposable {
   commitWriteAttempt(input: unknown): AtomicWriteCommitReport {
     const parsed = AtomicWriteCommitInputSchema.parse(input);
     return this.withAuthorityTransaction(() => {
-      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
+      const currentIntent = this.#readRecord("run_operations", parsed.writeIntentId, WriteIntentRecordSchema);
       if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
       if (currentIntent.status !== "attempting") {
         throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
@@ -3169,7 +3247,7 @@ export class AuthorityDatabase implements Disposable {
       if (currentIntent.generation !== parsed.generation) {
         throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
       }
-      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
+      const currentAttempt = this.#readRecord("run_operation_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
       if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
       if (currentAttempt.outcome.state !== "attempting") {
         throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
@@ -4147,7 +4225,7 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({
       listPendingOutbox: () => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM durable_outbox
+          SELECT record_json FROM operation_outbox
           WHERE kind = 'ledger-entry'
             AND json_extract(record_json, '$.projection.state') = 'pending'
           ORDER BY created_at, record_key
@@ -4158,7 +4236,7 @@ export class AuthorityDatabase implements Disposable {
         )));
       },
       getOutbox: (outboxId: string) => this.#readRecord(
-        "durable_outbox",
+        "operation_outbox",
         OutboxIdSchema.parse(outboxId),
         AtomicOutboxRecordSchema,
       ),
@@ -4168,14 +4246,14 @@ export class AuthorityDatabase implements Disposable {
        * This is what lets the archive name the ledger LINES a run filed
        * without copying them: the sweep walks the run's intents, this walks
        * each intent's outbox rows, and `getProjection` turns each into a
-       * `(system, date, seq)` pointer. `durable_outbox_intent_id_idx` is the
+       * `(system, date, seq)` pointer. `operation_outbox_intent_id_idx` is the
        * index it rides. `kind` is filtered here rather than by the caller
        * because a `write-committed-span` row is not a ledger line and a
        * pointer to one would name a partition that does not exist.
        */
       listLedgerOutboxByWriteIntent: (writeIntentId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM durable_outbox
+          SELECT record_json FROM operation_outbox
           WHERE write_intent_id = ? AND kind = 'ledger-entry'
           ORDER BY created_at, record_key
         `).all(WriteIntentIdSchema.parse(writeIntentId));
@@ -4267,7 +4345,7 @@ export class AuthorityDatabase implements Disposable {
             }
             return { result: existing, changes: 0 };
           }
-          const outbox = this.#readRecord("durable_outbox", request.outboxId, AtomicOutboxRecordSchema);
+          const outbox = this.#readRecord("operation_outbox", request.outboxId, AtomicOutboxRecordSchema);
           if (outbox === undefined || outbox.payload.kind !== "ledger-entry") {
             throw new Error(`ledger outbox ${request.outboxId} is not a durable ledger-entry row`);
           }
@@ -4339,7 +4417,7 @@ export class AuthorityDatabase implements Disposable {
           // Marking the outbox is separate and separately idempotent: the crash
           // window between the line landing and the outbox flipping is exactly
           // what recovery has to be able to close without re-appending.
-          const outbox = this.#readRecord("durable_outbox", request.outboxId, AtomicOutboxRecordSchema);
+          const outbox = this.#readRecord("operation_outbox", request.outboxId, AtomicOutboxRecordSchema);
           if (outbox === undefined) throw new Error(`ledger outbox ${request.outboxId} disappeared before projection`);
           if (outbox.projection.state === "projected") {
             if (outbox.projection.projectionFingerprint !== request.lineDigest) {
@@ -4356,7 +4434,7 @@ export class AuthorityDatabase implements Disposable {
             },
           });
           const marked = this.#database.prepare(`
-            UPDATE durable_outbox SET record_json = ? WHERE record_key = ?
+            UPDATE operation_outbox SET record_json = ? WHERE record_key = ?
           `).run(canonicalJsonStringify(projected), request.outboxId);
           if (sqliteChanges(marked.changes) !== 1) {
             throw new Error(`ledger outbox ${request.outboxId} projection marking affected no rows`);
@@ -4860,24 +4938,28 @@ export class AuthorityDatabase implements Disposable {
       workerPools: this.#buildWorkerPoolRepository(),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
-        assertIdentity: (input: unknown) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input)),
-        insert: (input: unknown) => {
+        assertIdentity: (input: unknown, parentCommandId?: string) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input), parentCommandId),
+        insert: (input: unknown, parentCommandId?: string) => {
           const record = CommandRequestSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("commands", () => {
-            this.#assertCommandIdentity(record);
+            this.#assertCommandIdentity(record, parentCommandId);
             const existing = this.#readRecord("commands", record.commandId, CommandRequestSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command id ${record.commandId} was reused with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO commands (record_key, family, record_json, created_at) VALUES (?, ?, ?, ?)
-            `).run(record.commandId, record.family, json, record.requestedAt);
+              INSERT INTO commands (record_key, family, record_json, created_at, parent_command_id) VALUES (?, ?, ?, ?, ?)
+            `).run(record.commandId, record.family, json, record.requestedAt, parentCommandId ?? null);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
+        get: (commandId: string) => {
+          const record = this.#readRecord("commands", commandId, z.union([CommandRequestSchema, BulkParentCommandRecordSchema]));
+          if (record !== undefined && "kind" in record) throw new CommandIdentityConflictError();
+          return record;
+        },
         getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema, HistoricalProtectedSettingsCommandSchema])),
         findProtectedSettingsCommandIdByWriteId: (input: unknown) => {
           const { writeId, excludingCommandId } = ProtectedSettingsWriteIdLookupSchema.parse(input);
@@ -4894,46 +4976,29 @@ export class AuthorityDatabase implements Disposable {
             ? undefined
             : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).record_key);
         },
-      }),
-      bulkCommandAcceptances: Object.freeze({
-        insert: (input: unknown) => {
-          const record = BulkRunCommandAcceptanceRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("bulk_command_acceptances", () => {
-            const existing = this.#readRecord(
-              "bulk_command_acceptances",
-              record.bulkCommandId,
-              BulkRunCommandAcceptanceRecordSchema,
-            );
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(
-                  `bulk command id ${record.bulkCommandId} was reused with different accepted content`,
-                );
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO bulk_command_acceptances
-                (record_key, request_fingerprint, record_json, created_at)
-              VALUES (?, ?, ?, ?)
-            `).run(
-              record.bulkCommandId,
-              record.requestFingerprint,
-              json,
-              record.request.requestedAt,
-            );
-            return {
-              result: Object.freeze({ state: "inserted" as const, record }),
-              changes: sqliteChanges(result.changes),
-            };
+        parentId: (commandId: string) => {
+          const row = this.#database.prepare("SELECT parent_command_id FROM commands WHERE record_key = ?").get(commandId);
+          return row === undefined ? undefined : z.strictObject({ parent_command_id: z.string().nullable() }).parse(row).parent_command_id;
+        },
+        acceptBulk: (input: unknown) => {
+          const acceptance = BulkRunCommandAcceptanceRecordSchema.parse(input);
+          const parent = BulkParentCommandRecordSchema.parse({ kind: "bulk-parent", commandId: acceptance.bulkCommandId, acceptance });
+          return this.#authorityWrite("commands", () => {
+            this.#assertCommandIdentity(parent);
+            const existing = this.authority.commands.getBulk(parent.commandId);
+            if (existing !== undefined) return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            const result = this.#database.prepare("INSERT INTO commands(record_key, family, record_json, created_at) VALUES (?, 'bulk-parent', ?, ?)")
+              .run(parent.commandId, canonicalJsonStringify(parent), acceptance.request.requestedAt);
+            return { result: Object.freeze({ state: "inserted" as const, record: acceptance }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (bulkCommandId: string) => this.#readRecord(
-          "bulk_command_acceptances",
-          bulkCommandId,
-          BulkRunCommandAcceptanceRecordSchema,
-        ),
+        getBulk: (commandId: string) => {
+          const row = this.#database.prepare("SELECT family, record_json FROM commands WHERE record_key = ?").get(commandId);
+          if (row === undefined) return undefined;
+          const stored = z.strictObject({ family: z.string(), record_json: z.string() }).parse(row);
+          if (stored.family !== "bulk-parent") throw new CommandIdentityConflictError();
+          return parseJsonRecord(BulkParentCommandRecordSchema, stored.record_json).acceptance;
+        },
       }),
       commandAudits: Object.freeze({
         insert: (input: unknown) => {
@@ -5043,22 +5108,22 @@ export class AuthorityDatabase implements Disposable {
         insert: (input: unknown) => {
           const record = DependencyRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("dependencies", () => {
-            const existing = this.#readRecord("dependencies", record.dependencyId, DependencyRecordSchema);
+          return this.#authorityWrite("delegation_dependencies", () => {
+            const existing = this.#readRecord("delegation_dependencies", record.dependencyId, DependencyRecordSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`dependency ${record.dependencyId} already exists with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO dependencies (record_key, manifest_id, record_json, created_at) VALUES (?, ?, ?, ?)
+              INSERT INTO delegation_dependencies (record_key, manifest_id, record_json, created_at) VALUES (?, ?, ?, ?)
             `).run(record.dependencyId, record.manifestId, json, record.createdAt);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (dependencyId: string) => this.#readRecord("dependencies", dependencyId, DependencyRecordSchema),
+        get: (dependencyId: string) => this.#readRecord("delegation_dependencies", dependencyId, DependencyRecordSchema),
         listByParentRun: (parentRunId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM dependencies
+            SELECT record_json FROM delegation_dependencies
             WHERE json_extract(record_json, '$.parentRunId') = ?
             ORDER BY created_at, record_key
           `).all(RunIdSchema.parse(parentRunId));
@@ -5071,9 +5136,9 @@ export class AuthorityDatabase implements Disposable {
       delegationManifests: Object.freeze({
         insert: (input: unknown) => {
           const record = DelegationManifestSchema.parse(input);
-          return this.#insertSimpleRecord("delegation_manifests", record.manifestId, record, DelegationManifestSchema, record.createdAt);
+          return this.#insertSimpleRecord("run_delegations", record.manifestId, record, DelegationManifestSchema, record.createdAt);
         },
-        get: (manifestId: string) => this.#readRecord("delegation_manifests", manifestId, DelegationManifestSchema),
+        get: (manifestId: string) => this.#readRecord("run_delegations", manifestId, DelegationManifestSchema),
       }),
       gateResults: Object.freeze({
         insert: (input: unknown) => {
@@ -5608,7 +5673,7 @@ export class AuthorityDatabase implements Disposable {
       writeIntents: Object.freeze({
         listByBusinessKey: (system: unknown, digest: unknown) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_intents WHERE system = ? AND
+            SELECT record_json FROM run_operations WHERE system = ? AND
               (json_extract(record_json, '$.idempotencyKeyDigest') = ? OR
                json_extract(record_json, '$.occurrence.businessKeyDigest') = ?)
             ORDER BY record_key
@@ -5783,7 +5848,7 @@ export class AuthorityDatabase implements Disposable {
             return attempting;
           });
         },
-        get: (writeIntentId: string) => this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema),
+        get: (writeIntentId: string) => this.#readRecord("run_operations", writeIntentId, WriteIntentRecordSchema),
         findByPermanentKey: (system: unknown, idempotencyKey: unknown) => this.#findPermanentWriteIntent(
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
@@ -5791,7 +5856,7 @@ export class AuthorityDatabase implements Disposable {
         listAttemptingByItem: (input: unknown) => {
           const request = z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema }).parse(input);
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_intents
+            SELECT record_json FROM run_operations
             WHERE status = 'attempting'
               AND json_extract(record_json, '$.workflowId') = ?
               AND json_extract(record_json, '$.itemId') = ?
@@ -5805,7 +5870,7 @@ export class AuthorityDatabase implements Disposable {
         },
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_intents
+            SELECT record_json FROM run_operations
             WHERE json_extract(record_json, '$.runId') = ?
             ORDER BY created_at, record_key
           `).all(RunIdSchema.parse(runId));
@@ -5821,27 +5886,27 @@ export class AuthorityDatabase implements Disposable {
           ).count;
           return DryRunWriteSafetyCountsSchema.parse({
             writeIntents: count(`
-              SELECT count(*) AS count FROM write_intents
+              SELECT count(*) AS count FROM run_operations
               WHERE json_extract(record_json, '$.runId') = ?
             `),
             writeAttempts: count(`
-              SELECT count(*) AS count FROM write_attempts AS attempt
-              JOIN write_intents AS intent ON intent.record_key = attempt.write_intent_id
+              SELECT count(*) AS count FROM run_operation_attempts AS attempt
+              JOIN run_operations AS intent ON intent.record_key = attempt.write_intent_id
               WHERE json_extract(intent.record_json, '$.runId') = ?
             `),
             durableOutbox: count(`
-              SELECT count(*) AS count FROM durable_outbox AS outbox
-              JOIN write_intents AS intent ON intent.record_key = outbox.write_intent_id
+              SELECT count(*) AS count FROM operation_outbox AS outbox
+              JOIN run_operations AS intent ON intent.record_key = outbox.write_intent_id
               WHERE json_extract(intent.record_json, '$.runId') = ?
             `),
           });
         },
       }),
       writeAttempts: Object.freeze({
-        get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
+        get: (writeAttemptId: string) => this.#readRecord("run_operation_attempts", writeAttemptId, WriteAttemptRecordSchema),
         listByIntent: (writeIntentId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM write_attempts WHERE write_intent_id = ? ORDER BY generation
+            SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ? ORDER BY generation
           `).all(WriteIntentIdSchema.parse(writeIntentId));
           return Object.freeze(rows.map((row) => parseJsonRecord(
             WriteAttemptRecordSchema,
@@ -5850,7 +5915,7 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       durableOutbox: Object.freeze({
-        get: (outboxId: string) => this.#readRecord("durable_outbox", outboxId, AtomicOutboxRecordSchema),
+        get: (outboxId: string) => this.#readRecord("operation_outbox", outboxId, AtomicOutboxRecordSchema),
       }),
       artifactOutbox: Object.freeze({
         insert: (input: unknown) => {
@@ -6180,7 +6245,7 @@ export class AuthorityDatabase implements Disposable {
           AND (? = 0 OR (
             NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
             AND NOT EXISTS (
-              SELECT 1 FROM dependencies d
+              SELECT 1 FROM delegation_dependencies d
               WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
                 AND json_extract(d.record_json, '$.state') <> 'satisfied'
             )
@@ -6195,7 +6260,7 @@ export class AuthorityDatabase implements Disposable {
             AND (? = 0 OR (
               NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
               AND NOT EXISTS (
-                SELECT 1 FROM dependencies d
+                SELECT 1 FROM delegation_dependencies d
                 WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
                   AND json_extract(d.record_json, '$.state') <> 'satisfied'
               )
@@ -6586,15 +6651,15 @@ export class AuthorityDatabase implements Disposable {
             const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
             if (rows > 0) removed.push({ table, rows });
           };
-          const intents = "SELECT record_key FROM write_intents WHERE json_extract(record_json, '$.runId') = ?";
+          const intents = "SELECT record_key FROM run_operations WHERE json_extract(record_json, '$.runId') = ?";
           // The ledger, leaves first: projection → outbox → attempts → intents.
           remove("ledger_projections", `
             DELETE FROM ledger_projections WHERE record_key IN (
-              SELECT outbox.record_key FROM durable_outbox AS outbox WHERE outbox.write_intent_id IN (${intents})
+              SELECT outbox.record_key FROM operation_outbox AS outbox WHERE outbox.write_intent_id IN (${intents})
             )`, runId);
-          remove("durable_outbox", `DELETE FROM durable_outbox WHERE write_intent_id IN (${intents})`, runId);
-          remove("write_attempts", `DELETE FROM write_attempts WHERE write_intent_id IN (${intents})`, runId);
-          remove("write_intents", "DELETE FROM write_intents WHERE json_extract(record_json, '$.runId') = ?", runId);
+          remove("operation_outbox", `DELETE FROM operation_outbox WHERE write_intent_id IN (${intents})`, runId);
+          remove("run_operation_attempts", `DELETE FROM run_operation_attempts WHERE write_intent_id IN (${intents})`, runId);
+          remove("run_operations", "DELETE FROM run_operations WHERE json_extract(record_json, '$.runId') = ?", runId);
           // Evidence and diagnostics.
           remove("diagnostic_attachments", `
             DELETE FROM diagnostic_attachments WHERE bundle_id IN (
@@ -6618,10 +6683,10 @@ export class AuthorityDatabase implements Disposable {
               SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
             )`, runId);
           // Delegation edges in either direction, then the manifests this run authored.
-          remove("dependencies", `
-            DELETE FROM dependencies
+          remove("delegation_dependencies", `
+            DELETE FROM delegation_dependencies
             WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
-          remove("delegation_manifests", "DELETE FROM delegation_manifests WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
+          remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
           // Relaunch lineage belongs to the new run; deleting its source preserves it.
           remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
           remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
@@ -6856,7 +6921,7 @@ export class AuthorityDatabase implements Disposable {
             // whole sweep unwinds rather than defaulting to "no unfinished
             // write".
             const intents = this.#database.prepare(`
-              SELECT record_json FROM write_intents
+              SELECT record_json FROM run_operations
               WHERE status = 'attempting'
                 AND json_extract(record_json, '$.workflowId') = ?
                 AND json_extract(record_json, '$.itemId') = ?
@@ -7442,10 +7507,10 @@ export class AuthorityDatabase implements Disposable {
 
   #writeStartPlan(record: StartPlanRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("start_plans", () => {
+    this.#authorityWrite("workflow_run_requests", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO start_plans (
+          INSERT INTO workflow_run_requests (
             record_key, workflow, consumed_by, expires_at, version, record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -7453,7 +7518,7 @@ export class AuthorityDatabase implements Disposable {
           record.expiresAt, record.version, json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE start_plans SET consumed_by = ?, expires_at = ?, version = ?, record_json = ?
+          UPDATE workflow_run_requests SET consumed_by = ?, expires_at = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
         `).run(
           record.consumedBy?.commandId ?? null, record.expiresAt, record.version, json,
@@ -7474,7 +7539,7 @@ export class AuthorityDatabase implements Disposable {
         }
         const json = canonicalJsonStringify(record);
         return this.withAuthorityTransaction(() => {
-          const existing = this.#readRecord("start_plans", record.startPlanId, StartPlanRecordSchema);
+          const existing = this.#readRecord("workflow_run_requests", record.startPlanId, StartPlanRecordSchema);
           if (existing !== undefined) {
             if (canonicalJsonStringify(existing) !== json) {
               throw new Error(`start plan id ${record.startPlanId} already exists with different content`);
@@ -7485,11 +7550,11 @@ export class AuthorityDatabase implements Disposable {
           return Object.freeze({ state: "inserted" as const, record });
         });
       },
-      get: (startPlanId: string) => this.#readRecord("start_plans", startPlanId, StartPlanRecordSchema),
+      get: (startPlanId: string) => this.#readRecord("workflow_run_requests", startPlanId, StartPlanRecordSchema),
       consume: (input: unknown) => {
         const request = StartPlanConsumeRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
-          const plan = this.#readRecord("start_plans", request.startPlanId, StartPlanRecordSchema);
+          const plan = this.#readRecord("workflow_run_requests", request.startPlanId, StartPlanRecordSchema);
           if (plan === undefined) throw new Error(`start plan ${request.startPlanId} does not exist`);
           const mismatched = [
             ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
@@ -7552,16 +7617,16 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readWorkerLease(workerId: string): WorkerLeaseRecord | undefined {
-    return this.#readRecord("leases", workerId, WorkerLeaseRecordSchema);
+    return this.#readRecord("workflow_workers", workerId, WorkerLeaseRecordSchema);
   }
 
   #writeWorkerLease(record: WorkerLeaseRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
     const heartbeatAt = "heartbeatAt" in record.lifecycle ? record.lifecycle.heartbeatAt : null;
-    this.#authorityWrite("leases", () => {
+    this.#authorityWrite("workflow_workers", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO leases (
+          INSERT INTO workflow_workers (
             record_key, worker_id, workflow, lease_generation, state, directive,
             heartbeat_at, version, record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -7571,7 +7636,7 @@ export class AuthorityDatabase implements Disposable {
           json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE leases SET
+          UPDATE workflow_workers SET
             workflow = ?, lease_generation = ?, state = ?, directive = ?,
             heartbeat_at = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
@@ -7587,15 +7652,15 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readDuoCeremonyLease(credentialKey: string): DuoCeremonyLeaseRecord | undefined {
-    return this.#readRecord("duo_ceremony_leases", credentialKey, DuoCeremonyLeaseRecordSchema);
+    return this.#readRecord("worker_auth", credentialKey, DuoCeremonyLeaseRecordSchema);
   }
 
   #writeDuoCeremonyLease(record: DuoCeremonyLeaseRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("duo_ceremony_leases", () => {
+    this.#authorityWrite("worker_auth", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO duo_ceremony_leases (
+          INSERT INTO worker_auth (
             record_key, generation, holder_worker_id, holder_system, state, expires_at,
             version, record_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -7604,7 +7669,7 @@ export class AuthorityDatabase implements Disposable {
           record.state, record.expiresAt, record.version, json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE duo_ceremony_leases SET
+          UPDATE worker_auth SET
             generation = ?, holder_worker_id = ?, holder_system = ?, state = ?, expires_at = ?,
             version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
@@ -7817,10 +7882,10 @@ export class AuthorityDatabase implements Disposable {
         const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
         const rows = workflow === undefined
           ? this.#database.prepare(`
-            SELECT record_json FROM leases WHERE state IN (${states}) ORDER BY record_key
+            SELECT record_json FROM workflow_workers WHERE state IN (${states}) ORDER BY record_key
           `).all(...LIVE_WORKER_STATES)
           : this.#database.prepare(`
-            SELECT record_json FROM leases WHERE state IN (${states}) AND workflow = ? ORDER BY record_key
+            SELECT record_json FROM workflow_workers WHERE state IN (${states}) AND workflow = ? ORDER BY record_key
           `).all(...LIVE_WORKER_STATES, WorkflowIdSchema.parse(workflow));
         return Object.freeze(rows.map((row) => parseJsonRecord(WorkerLeaseRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
@@ -7880,7 +7945,7 @@ export class AuthorityDatabase implements Disposable {
         return this.withAuthorityTransaction(() => {
           const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
           const rows = this.#database.prepare(`
-            SELECT record_json FROM leases
+            SELECT record_json FROM workflow_workers
             WHERE state IN (${states}) AND heartbeat_at IS NOT NULL AND heartbeat_at < ?
             ORDER BY record_key
           `).all(...LIVE_WORKER_STATES, request.staleBefore);
@@ -7909,7 +7974,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #requireWriteIntent(writeIntentId: string): WriteIntentRecord {
-    const current = this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema);
+    const current = this.#readRecord("run_operations", writeIntentId, WriteIntentRecordSchema);
     if (current === undefined) throw new Error(`write intent ${writeIntentId} does not exist`);
     return current;
   }
@@ -7933,7 +7998,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
-    const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
+    const attempt = this.#readRecord("run_operation_attempts", writeAttemptId, WriteAttemptRecordSchema);
     if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
     return attempt;
   }
@@ -7967,7 +8032,7 @@ export class AuthorityDatabase implements Disposable {
 
   #findPermanentWriteIntent(system: string, idempotencyKey: string): WriteIntentRecord | undefined {
     const row = this.#database.prepare(`
-      SELECT record_json FROM write_intents WHERE system = ? AND idempotency_key = ?
+      SELECT record_json FROM run_operations WHERE system = ? AND idempotency_key = ?
     `).get(system, idempotencyKey);
     if (row === undefined) return undefined;
     return parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
@@ -7975,17 +8040,17 @@ export class AuthorityDatabase implements Disposable {
 
   #insertWriteIntent(record: WriteIntentRecord): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("write_intents", () => {
-      const existingById = this.#readRecord("write_intents", record.writeIntentId, WriteIntentRecordSchema);
+    this.#authorityWrite("run_operations", () => {
+      const existingById = this.#readRecord("run_operations", record.writeIntentId, WriteIntentRecordSchema);
       if (existingById !== undefined) throw new Error(`write intent id ${record.writeIntentId} already exists with a different permanent key`);
       const digestCollision = this.#database.prepare(`
-        SELECT system, idempotency_key FROM write_intents WHERE idempotency_key_digest = ?
+        SELECT system, idempotency_key FROM run_operations WHERE idempotency_key_digest = ?
       `).get(record.idempotencyKeyDigest);
       if (digestCollision !== undefined) {
         throw new Error("write intent digest is already bound to a different permanent key");
       }
       const result = this.#database.prepare(`
-        INSERT INTO write_intents (
+        INSERT INTO run_operations (
           record_key, system, idempotency_key, idempotency_key_digest, status, record_json, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -8003,9 +8068,9 @@ export class AuthorityDatabase implements Disposable {
 
   #insertWriteAttempt(record: WriteAttemptRecord): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("write_attempts", () => {
+    this.#authorityWrite("run_operation_attempts", () => {
       const result = this.#database.prepare(`
-        INSERT INTO write_attempts (
+        INSERT INTO run_operation_attempts (
           record_key, write_intent_id, generation, record_json, created_at
         ) VALUES (?, ?, ?, ?, ?)
       `).run(record.writeAttemptId, record.writeIntentId, record.generation, json, record.recordedAt);
@@ -8015,7 +8080,7 @@ export class AuthorityDatabase implements Disposable {
 
   #replaceWriteIntent(record: WriteIntentRecord): void {
     const result = this.#database.prepare(`
-      UPDATE write_intents
+      UPDATE run_operations
       SET status = ?, record_json = ?
       WHERE record_key = ? AND idempotency_key_digest = ?
     `).run(record.status, canonicalJsonStringify(record), record.writeIntentId, record.idempotencyKeyDigest);
@@ -8026,7 +8091,7 @@ export class AuthorityDatabase implements Disposable {
 
   #replaceWriteAttempt(record: WriteAttemptRecord): void {
     const result = this.#database.prepare(`
-      UPDATE write_attempts SET record_json = ?
+      UPDATE run_operation_attempts SET record_json = ?
       WHERE record_key = ? AND write_intent_id = ? AND generation = ?
     `).run(canonicalJsonStringify(record), record.writeAttemptId, record.writeIntentId, record.generation);
     const changes = sqliteChanges(result.changes);
@@ -8037,7 +8102,7 @@ export class AuthorityDatabase implements Disposable {
   #insertDurableOutbox(record: z.infer<typeof AtomicOutboxRecordSchema>): void {
     const json = canonicalJsonStringify(record);
     const result = this.#database.prepare(`
-      INSERT INTO durable_outbox (
+      INSERT INTO operation_outbox (
         record_key, write_intent_id, generation, kind, record_json, created_at
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run(record.outboxId, record.aggregate.writeIntentId, record.aggregate.generation, record.payload.kind, json, record.createdAt);

@@ -67,7 +67,7 @@ const ROLE_PAIRS: readonly { id: string; fixtureRun?: string; seededRun?: string
   /*
     W2. The pair that matters most for this slice: the fixture adapter AUTHORS
     the parked-write section while the seeded one DERIVES it from a real fenced
-    and parked `write_intents` row, and the surface must take the same branch
+    and parked `run_operations` row, and the surface must take the same branch
     over both. A control the two adapters disagree about is a control one of
     them is inventing.
   */

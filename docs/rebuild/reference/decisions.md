@@ -2208,7 +2208,7 @@ and [execution-and-sessions §11](execution-and-sessions.md).
 | --- | --- | --- |
 | **D344** | **COMPLETE SHARED PREREQUISITES, THEN OPERATOR-LAUNCHED INDEPENDENT WORKTREES.** Phase 3 uses actual `3.P.N` prerequisites/tasks and independent `3.P.N.1`, `3.P.N.2` children; sequential consumers have separate numbers. The decimal amendment retires six non-executable 3.1 containers while preserving execution IDs. Agents work independently by default and coordinate when necessary to resolve blockers, overlap or duplicate effort; changed ownership/contracts/dependencies return to the operator. The operator chooses launches and serial integration; no automatic merge. Preserve in-flight plans, all gates, phase closure and the four-worktree limit. Further unverified splits remain proposed. | [roadmap D344](../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08) · [3.1 current identity map](../plans/phase-3/3.1-finish-the-dashboard/README.md#current-task-identities) |
 
-### 2026-09-08 — command parents and delegation table names (pending implementation)
+### 2026-09-08 — command parents and delegation table names (combined review accepted)
 
 Operator approved consolidating `bulk_command_acceptances` into non-executable parent
 records in `commands`, with individual commands linked through `parent_command_id`;
@@ -2217,18 +2217,18 @@ The same side assignment renames `dependencies` → `delegation_dependencies` an
 `delegation_manifests` → `run_delegations`, keeping those two tables separate.
 Requirements live at [dashboard surfaces, command-group storage](dashboard-surfaces.md#command-group-storage)
 and [workflow model, delegation table names](workflow-model.md#delegation-table-names).
-[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) owns execution
-after the accepted worker/request rename plan. This records approval, not implementation,
-phase completion, or permission to convert the operator database.
+[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) owns execution. The operator subsequently authorized parallel isolated implementation; the task
+records migration reconciliation, combined gates and review required at assigned integration.
+Candidate implementation does not imply phase completion or permission to convert the operator database.
 
-### 2026-09-08 — operation table names (pending implementation)
+### 2026-09-08 — operation table names (combined review accepted)
 
 Operator approved `write_intents` → `run_operations`, `write_attempts` →
 `run_operation_attempts`, and `durable_outbox` → `operation_outbox`. These are three
 storage renames with unchanged identities, write safety, replay and deletion behavior.
 [Write safety, operation names](write-safety.md#operation-table-names) owns the requirements;
 [side task `side/operation-names`](../../sidetracks/operation-names/README.md) owns execution
-after accepted command/delegation integration. Stronger linkage to workflow runs remains
+under the operator's subsequent isolated-parallel execution amendment. Stronger linkage to workflow runs remains
 a separate investigation; no relationship/deletion redesign or database application is
 approved by this naming decision.
 
@@ -2246,6 +2246,11 @@ distinct from retained transaction history. This records planning approval, not 
 permission to apply the migration to the operator database, or an amendment of the running renames.
 
 **2026-09-08 amendment to D323 — Phase 4 numbering.** The operator replaced 4A with 4.1 Background Check and requested concrete tasks under 4.1. Phase 4 now uses decimal subphases; discovery/preparation may be recorded before admission, while Phase 3 prerequisites and D319 implementation approval remain unchanged. Authority: [workflow-model §1.6.2](workflow-model.md#162-workflow-admission-before-a-phase-4-part-d319d323-2026-09-03) and [roadmap naming amendment](../../roadmap/roadmap.md#phase-4-decimal-naming-amendment--2026-09-08).
+
+**2026-09-08 worker/request naming amendment:** D267/D269's [execution authority](execution-and-sessions.md#3-worker-lifecycle-and-claiming)
+uses `workflow_workers` and `worker_auth`; the [Start proposal](frontend-backend-integration.md#511-run-modal--plan-confirm-enqueue)
+uses `workflow_run_requests`. [D332's combined schema-37 stopped upgrade](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
+preserves historical names/readers, rows, settings and credentials. [Approved assignment and evidence](../../sidetracks/worker-names/README.md).
 
 ### 2026-09-08 — provider-neutral request and usage storage (pending implementation)
 

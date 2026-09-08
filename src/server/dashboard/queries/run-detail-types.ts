@@ -180,7 +180,7 @@ export interface RunDetailQueryDeps {
       nodeId: string,
     ): RunCheckpointRecord | undefined;
     /**
-     * Ref write-safety §4.1: the durable `write_intents` row a `parked-write` run names.
+     * Ref write-safety §4.1: the durable `run_operations` row a `parked-write` run names.
      * Read at REQUEST time, never folded into the projection — the intent is
      * the write-safety authority, and a resolution CASes against the exact
      * generation this read returned. A stale copy would let a browser resolve
