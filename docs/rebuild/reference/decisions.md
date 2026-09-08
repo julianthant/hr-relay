@@ -2190,3 +2190,12 @@ _phase: detour before 1.6.7; approved and completed 2026-09-07 — accepted revi
 | # | Decision | Owning doc |
 | --- | --- | --- |
 | **D343** | **NORMAL STARTUP READS ONLY `.env.providers`; `.env` REMAINS OPERATOR REFERENCE.** Copy the five supported provider families once without altering the reference file. Preserve secure admission and existing credential/test-data authorities. No fallback, new OCR provider or Settings UI work. The operator also approved only the resulting generated-fingerprint parity refresh, with all other semantics/layout and zero tolerance preserved. | [clock-config-secrets §D343](clock-config-secrets.md#d343--preserve-the-reference-environment-isolate-runtime-provider-keys-2026-09-07) · [Task 1.6.7 amendment](../plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md#provider-reference-file-amendment-operator-approved-2026-09-07) |
+
+### 2026-09-07 — workflow run and batch names; optional queue grouping
+
+Operator approved `tasks` → `workflow_runs`, `run_sessions` → `workflow_run_batches`, and a
+batch-owned `group_in_queue` boolean. The same batch can appear as an expandable header or separate
+runs without changing execution or membership. New multi-run batches default to grouped; historical
+batches preserve their current display. Requirements live in
+[dashboard-surfaces, workflow batch presentation](dashboard-surfaces.md#workflow-batch-presentation)
+and [execution-and-sessions §11](execution-and-sessions.md).

@@ -231,7 +231,7 @@ describe("cli storage backup (D322)", () => {
     assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
     if (credentialState === "malformed") assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
     else assert.equal(existsSync(join(p.stateRoot, "credentials")), false);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.authorityPath).schemaVersion, 32);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.authorityPath).schemaVersion, 33);
   });
 
 });

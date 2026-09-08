@@ -57,7 +57,7 @@ function audit(fixtures = false): string[] {
       visited++;
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
-        && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:tasks|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
+        && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
         && !(relative === "src/infra/compat/settings-database-upgrade.ts" && ts.isStringLiteralLike(node) && node.text === BACKFILL_SQL)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) ? checker.getResolvedSignature(node)?.declaration : undefined;
@@ -76,6 +76,8 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);
+    assert.ok(found.some((entry) => entry.includes("UPDATE workflow_runs")), "renamed run table remains protected");
+    assert.ok(found.some((entry) => entry.includes("UPDATE tasks")), "historical run table remains protected");
     assert.ok(found.some((entry) => entry.includes("mutate({})")), "destructured mutator is still resolved");
   });
 });

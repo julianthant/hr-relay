@@ -1,3 +1,5 @@
+import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
+import type { QueueBatch } from "../surfaces/queue-model.js";
 /**
  * The composition root of the rebuild dashboard (ref frontend-backend-integration §2).
  *
@@ -1114,8 +1116,18 @@ function LoadedApp({
    * for a prop whose CONTENTS had not moved. The bodies are unchanged; only
    * where they are built has.
    */
+  const setBatchGrouping = useCallback(async (batch: QueueBatch, groupInQueue: boolean): Promise<void> => {
+    const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: nowIso,
+      requestedBy: boot.actor.id, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
+      target: { batchId: batch.id, expectedVersion: batch.version }, payload: { groupInQueue } });
+    const result = await client.executeCommand(request);
+    const settlement = settleCommandResult(result);
+    if (settlement.kind === "refused") throw new Error(settlement.message);
+  }, [boot.actor.id, client, nowIso]);
+
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
+      onSetBatchGrouping: setBatchGrouping,
       onSelect: selectRun,
       /*
         LIVE. `actionsOf` at the call site reads the row's own served
@@ -1160,7 +1172,7 @@ function LoadedApp({
         selectRun(String(link.runId));
       },
     }),
-    [selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
+    [setBatchGrouping, selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
   );
 
   const keyboardOrder = useMemo(

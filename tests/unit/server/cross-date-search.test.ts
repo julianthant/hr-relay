@@ -479,7 +479,7 @@ describe("cross-date search authority read", () => {
         limit: 1,
       }).totalMatches, 1, "the clean corpus must be read once before out-of-band corruption");
 
-      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
         .run("person-lookup", run.envelope.runId);
       assert.throws(
         () => search({
@@ -490,10 +490,10 @@ describe("cross-date search authority read", () => {
         }),
         /searchable workflow column.*durable workflow/,
       );
-      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
         .run("separations", run.envelope.runId);
 
-      raw.prepare("UPDATE tasks SET created_at = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET created_at = ? WHERE record_key = ?")
         .run("2026-08-27T15:00:00.000Z", run.envelope.runId);
       assert.throws(
         () => search({
@@ -509,11 +509,11 @@ describe("cross-date search authority read", () => {
         }),
         /authority order instant.*durable enqueue instant/,
       );
-      raw.prepare("UPDATE tasks SET created_at = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET created_at = ? WHERE record_key = ?")
         .run(run.createdAt, run.envelope.runId);
 
       raw.prepare(`
-        UPDATE tasks
+        UPDATE workflow_runs
         SET record_json = json_set(record_json, '$.envelope.traceId', ?)
         WHERE record_key = ?
       `).run("sp-sensitive-10873698-fragment", run.envelope.runId);
@@ -554,25 +554,25 @@ describe("cross-date search authority read", () => {
         limit: 1,
       });
 
-      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
         .run("person-lookup", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ workflow: "separations" }),
         /searchable workflow column.*durable workflow/,
       );
-      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
         .run("separations", run.envelope.runId);
 
-      raw.prepare("UPDATE tasks SET state = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET state = ? WHERE record_key = ?")
         .run("terminal", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ state: "parked-gate" }),
         /searchable state column.*durable state/,
       );
-      raw.prepare("UPDATE tasks SET state = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET state = ? WHERE record_key = ?")
         .run(run.lifecycle.state, run.envelope.runId);
 
-      raw.prepare("UPDATE tasks SET priority = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET priority = ? WHERE record_key = ?")
         .run("bulk", run.envelope.runId);
       assert.throws(
         () => searchExactRun({}),
@@ -600,7 +600,7 @@ describe("cross-date search authority read", () => {
         createdAt: "2026-08-28T15:01:00.000Z",
         updatedAt: "2026-08-28T15:01:00.000Z",
       });
-      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
         .run(canonicalJsonStringify(malformed), run.envelope.runId);
 
       assert.throws(

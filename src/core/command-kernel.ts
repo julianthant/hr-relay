@@ -116,6 +116,7 @@ import {
 /* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   "worker-browser": [
     "plan-worker-count",
@@ -3132,6 +3133,14 @@ function dispatchActive(
   now: string,
 ): CommandApplication {
   switch (request.family) {
+    case "workflow-batch": {
+      const batch = repositories.runSessions.get(request.target.batchId);
+      if (batch === undefined) reject(request, "target-not-found", "Workflow batch no longer exists.");
+      if (batch.version !== request.target.expectedVersion) conflict(request, batch.version, "Batch presentation changed; reload and try again.");
+      const updated = repositories.runSessions.setGrouping(batch.sessionId, batch.version, request.payload.groupInQueue);
+      const target = { family: "workflow-batch", batchId: batch.sessionId };
+      return applied(request, [target], [{ target, before: batch.version, after: updated.version }]);
+    }
     case "start":
       repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);

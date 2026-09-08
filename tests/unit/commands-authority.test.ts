@@ -22,6 +22,12 @@ import { COMMAND_FIXTURES, HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from "../fixtur
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
   {
+    commandId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard",
+    family: "workflow-batch", type: "set-batch-grouping",
+    target: { batchId: UUID_2, expectedVersion: 1 }, payload: { groupInQueue: false },
+  },
+  {
     commandId: UUID_2,
     requestedAt: NOW,
     requestedBy: "local-operator",

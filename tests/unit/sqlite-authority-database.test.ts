@@ -476,7 +476,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -887,14 +887,14 @@ afterEach(() => {
 });
 
 describe("native SQLite authority schema", () => {
-  it("requires stopped conversion through v31 and admits v32 directly", () => {
+  it("requires stopped conversion through v32 and admits v33 directly", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(29), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(30), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(31), true);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(32), false);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(32), true);
   });
 
-  it("creates a fresh authority at v32 with one v32 baseline journal row", () => {
+  it("creates a fresh authority at v33 with one v33 baseline journal row", () => {
     const path = databasePath("fresh-v32.sqlite");
     openDatabase(path).close();
 
@@ -919,7 +919,7 @@ describe("native SQLite authority schema", () => {
         upgradeId: "fresh",
         phase: "baseline",
         fromSchemaVersion: 0,
-        toSchemaVersion: 32,
+        toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
         by: "local-operator",
         recordedAt: NOW,
       });
@@ -994,7 +994,7 @@ describe("native SQLite authority schema", () => {
     try {
       assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
       const foreignKeys = upgraded.prepare("PRAGMA foreign_key_list(archive_relaunches)").all() as Array<{ from: string; table: string }>;
-      assert.deepEqual(foreignKeys.map(({ from, table }) => ({ from, table })), [{ from: "record_key", table: "tasks" }]);
+      assert.deepEqual(foreignKeys.map(({ from, table }) => ({ from, table })), [{ from: "record_key", table: "workflow_runs" }]);
       const tombstone = (run: typeof source) => upgraded.prepare(`
         INSERT INTO deleted_runs
           (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
@@ -1078,7 +1078,7 @@ describe("native SQLite authority schema", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /upgrade-required \{ schemaVersion: 29, floor: 31 \}/u,
+      /upgrade-required \{ schemaVersion: 29, floor: 32 \}/u,
     );
     assert.deepEqual(readFileSync(path), before);
   });
@@ -1871,7 +1871,7 @@ describe("authority generation accounting", () => {
   }>;
 
   const cases: readonly MutationCase[] = [
-    { table: "tasks", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
+    { table: "workflow_runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {
       table: "failures",
       prepare: (db) => { prepareRunning(db); },
@@ -2017,7 +2017,7 @@ describe("authority generation accounting", () => {
         });
       },
     },
-    { table: "run_sessions", mutate: (db) => { db.authority.runSessions.insert(RUN_SESSION); } },
+    { table: "workflow_run_batches", mutate: (db) => { db.authority.runSessions.insert(RUN_SESSION); } },
     {
       // D308 — the tombstone is written by the delete cascade and by nothing else.
       table: "deleted_runs",
@@ -2582,5 +2582,38 @@ describe("D230 run ordinals", () => {
     // are proven to agree rather than assumed to.
     database.close();
     openDatabase(path);
+  });
+});
+
+
+describe("workflow batch migration and presentation persistence", () => {
+  it("renames retained tables without inventing grouping, preserves foreign keys, and survives reopen", () => {
+    const path = databasePath("workflow-batches-v32.sqlite");
+    createExactReleasedDatabase(path, 32);
+    const raw = new DatabaseSync(path);
+    raw.prepare("INSERT INTO run_sessions(record_key,workflow,started_at,record_json,created_at) VALUES (?,?,?,?,?)")
+      .run(RUN_SESSION.sessionId, RUN_SESSION.workflow, RUN_SESSION.startedAt, JSON.stringify(RUN_SESSION), RUN_SESSION.createdAt);
+    raw.close();
+    applyReleasedMigrationChainForTest(path, 32);
+    const db = openDatabase(path);
+    const migrated = db.authority.runSessions.get(RUN_SESSION.sessionId);
+    assert.equal(migrated?.groupInQueue, false);
+    assert.equal(migrated?.version, 1);
+    assert.equal(migrated?.sessionId, RUN_SESSION.sessionId);
+    const before = db.getMeta().authorityGeneration;
+    db.authority.runSessions.setGrouping(RUN_SESSION.sessionId, 1, true);
+    assert.equal(db.getMeta().authorityGeneration, before + 1);
+    assert.throws(() => db.authority.runSessions.setGrouping(RUN_SESSION.sessionId, 1, false), /version conflict/u);
+    assert.throws(() => db.authority.runSessions.setGrouping(UUID_4, 1, false), /does not exist/u);
+    db.close();
+    const reopened = openDatabase(path);
+    assert.equal(reopened.authority.runSessions.get(RUN_SESSION.sessionId)?.groupInQueue, true);
+    assert.equal(reopened.authority.runSessions.get(RUN_SESSION.sessionId)?.version, 2);
+    const sql = new DatabaseSync(path);
+    assert.equal(sql.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('tasks','run_sessions')").get(), undefined);
+    assert.deepEqual(sql.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.throws(() => sql.exec("UPDATE workflow_run_batches SET workflow='other'"), /identity is immutable/u);
+    assert.throws(() => sql.exec("UPDATE workflow_run_batches SET group_in_queue=0"), /presentation must advance/u);
+    sql.close();
   });
 });

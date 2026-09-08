@@ -1,11 +1,11 @@
 /**
- * The run SESSION — a dashboard-started group of N runs (ref execution-and-sessions
+ * The workflow-run BATCH (historical API name: session) — a dashboard-started group of N runs (ref execution-and-sessions
  * §11, D269).
  *
  * It is not a browser session (§1), not a worker and not a workflow: it is what
  * an operator starts when they dispatch a batch — ten I-9 members, a
  * separations list — and it is the unit the dashboard reports progress
- * against. The row is DURABLE and insert-only: it has an id, a workflow, who
+ * against. The identity is DURABLE and immutable: it has an id, a workflow, who
  * started it, the instant, and its origin. What it deliberately does NOT have
  * is a member list. Membership is DERIVED from authority — every run row a
  * fan-out enqueues carries this id in `RunRecord.sessionId` — so the group
@@ -48,6 +48,9 @@ export const RunSessionRecordSchema = z.strictObject({
   /** The enqueue instant — the same `now` every member's `enqueuedAt` carries. */
   startedAt: IsoInstantSchema,
   createdAt: IsoInstantSchema,
+  /** Queue presentation only; membership and execution never depend on this flag. */
+  groupInQueue: z.boolean().default(false),
+  version: z.number().int().positive().default(1),
 }).superRefine((record, context) => {
   if (record.createdAt !== record.startedAt) {
     context.addIssue({
@@ -63,3 +66,7 @@ export type RunSessionRecord = z.infer<typeof RunSessionRecordSchema>;
 export function runSessionActorId(record: RunSessionRecord): string {
   return record.origin.actorId;
 }
+
+/** Strict reader for retained pre-v33 batch records; validates the original date invariant too. */
+export const HistoricalRunSessionRecordSchema = z.strictObject(RunSessionRecordSchema.shape)
+  .omit({ groupInQueue: true, version: true }).transform((record) => RunSessionRecordSchema.parse(record));

@@ -24,6 +24,7 @@ import {
 } from "../../domain/config/protected-settings-legacy.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentSchema } from "./d331-settings-current.js";
 import { SettingsRootAuthoritySchema } from "./d331-settings-root.js";
+import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { CommandRequestSchema, CommandAuditRecordSchema } from "../../domain/commands.js";
 import { ProtectedSettingsCurrentRecordSchema } from "../../domain/authority.js";
 import { requireJournaledProtectedSettings } from "./d331-protected-journal.js";
@@ -171,7 +172,7 @@ function authenticateProtected(record: ProtectedStoreRecord, database: DatabaseS
 }
 
 export interface UpgradeSources {
-  readonly ordinary: MigrationSettingsRecord;
+  readonly ordinary: Pick<MigrationSettingsRecord, "revision" | "settings">;
   readonly settings: z.infer<typeof EditableSettingsOverrideSchema>;
   readonly protectedRecord: ProtectedStoreRecord;
   readonly protectedPatch: ProtectedSettingsPatch;
@@ -182,6 +183,15 @@ export interface UpgradeSources {
 
 /** Strict source inventory and duplicate comparison precede every conversion effect. */
 export function readUpgradeSources(stateRoot: string, environmentFile: string, database: DatabaseSync | undefined, clock: Clock): UpgradeSources {
+  // Schema-only upgrades consume the SQLite singleton, never retired import files.
+  const version = database === undefined ? 0 : z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
+  if (version >= 32) {
+    const row = database?.prepare("SELECT record_json FROM settings_current WHERE record_key='current'").get();
+    const current = row === undefined ? undefined : SettingsCurrentRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json));
+    const ordinary = current ?? initialSettingsFileRecord();
+    return { ordinary, settings: ordinary.settings, protectedRecord: initialProtectedStoreRecord(),
+      protectedPatch: {}, sourceFiles: [], importedKeys: [], envKeysToRemove: [] };
+  }
   const files: string[] = [];
   const old = join(stateRoot, "settings.json");
   const oldAuthority = `${old}.authority.json`;

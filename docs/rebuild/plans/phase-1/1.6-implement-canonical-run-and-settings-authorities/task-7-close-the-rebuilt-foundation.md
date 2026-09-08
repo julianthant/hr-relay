@@ -41,6 +41,34 @@ batch behavior, and rerun the combined gates and affected fresh/migrated fixture
 route must record/restore f75e24a5 (or revalidate a later accepted target), never reset master to f0b1cf92.
 The final review base advances to that accepted target while retaining the entire Task-7 diff.
 
+**Combined schema-33 candidate gates (2026-09-08).** The task branch consumed accepted master
+`f75e24a57e6494e2846af248539c819c9223e53e` with no source conflict. The sole conflict in
+`ref decisions` retained both approved decision sections. Focused upgrade/restore/doctor/settings
+and real reread admission passed 177 tests in eleven files (20230, 25441 ms), including the current
+“plans a fresh root without files, creates v33 directly, and reruns without writes” and immutable
+v29-journal conversion case. Typecheck 42558 and lint 54791 passed; manifest/catalog, roadmap,
+instruction twins/size and diff checks passed. Serial runner 28092 passed coverage: 439 files /
+5542 tests, 334891 ms, statements 85.89%, branches 77.56%, functions 89.88%, lines 88.01%; suite size
+227 ms; standalone architecture 833 tests / 63006 ms; assertion parity 261 cases / 64378 ms.
+The two additional parity cases come from accepted master; no Task-7 reference or assertion changed.
+`reread-combined-candidate-gate-results.json` and its corresponding logs retain exact commands/results;
+`reread-combined-gated-inputs.json` binds all 1911 inputs, rechecked unchanged before recording.
+Evidence-only recording passed 39 scoped architecture tests (93173, 1763 ms) and lint (11160);
+logs are `reread-merge-recording-{architecture,lint}.log`. No executable input changed.
+The original two-worker adapter/imported config hashes remain unchanged. These gates reaccept
+Steps 2–3 on schema 33, not Step 4 or the task as a whole.
+
+Person Lookup's 59 descriptor sources, accepted manifest and production T1b runtime are byte-identical
+to accepted live candidate `145e50a32e6a817e67bdedb4963d8e240be86349`. The protected planner returns
+the exact previous key before document-only reread handling for its binding. Combined persistence
+and migration checks cover accepted master's renamed authority tables and batching. Before carrying
+that live observation forward, read its exact retained result/run/checkpoints/receipt and zero-write
+rows on schema 33. `person-lookup-combined-proof-reuse.json` records this comparison; no new Person
+Lookup attempt is implied. The single authorized next live workflow is the explicitly selected fresh
+Separations reread, after exact unused-item preflight on the frozen combined primary candidate.
+The advanced root has a compatible generation-632 backup reported stale at generation 634; it was
+created outside Task 7 and must be preserved. Task 7 creates no backup or authority upgrade.
+
 The prior checkpoint follows as dated evidence. Steps 1–3
 remain accepted for executable repair `09436a49eccdd3a1f577c83576ff7b8de33092d3`; the latest prior
 evidence commit is `b89235c6604814b0a8076765898d3aa8515ea851`. Primary remains on the original

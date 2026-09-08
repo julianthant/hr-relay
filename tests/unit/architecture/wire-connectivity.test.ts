@@ -400,6 +400,7 @@ function projectedRowCommands(): ReadonlySet<string> {
 }
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
+  "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
   "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",
   "plan-worker-count": "worker-browser commands target the worker pool, not a run row",
   "spawn-worker": "worker-browser commands target the worker pool, not a run row",

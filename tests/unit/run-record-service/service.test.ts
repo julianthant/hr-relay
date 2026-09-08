@@ -1558,7 +1558,7 @@ describe("canonical run-record service", () => {
     ]));
     for (const tombstone of outcome.tombstones) {
       assert.deepEqual(database.authority.deletedRuns.get(tombstone.runId), tombstone);
-      assert.deepEqual(tombstone.removed, [{ table: "tasks", rows: 1 }]);
+      assert.deepEqual(tombstone.removed, [{ table: "workflow_runs", rows: 1 }]);
     }
     assert.equal(database.getMeta().authorityGeneration, beforeDelete + 1);
     for (const run of [...members, anchor]) assert.equal(service.read(run.envelope.runId).state, "deleted");
@@ -1740,7 +1740,7 @@ describe("canonical run-record service", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
     const historical = {
       runId: run.envelope.runId, workflow: WORKFLOW_ID, traceId: run.envelope.traceId,
-      origin: "queue", commandId: UUID_1, deletedAt: NOW, removed: [{ table: "tasks", rows: 1 }],
+      origin: "queue", commandId: UUID_1, deletedAt: NOW, removed: [{ table: "workflow_runs", rows: 1 }],
     };
     const raw = new DatabaseSync(join(root, "authority.sqlite"));
     try {
@@ -1749,7 +1749,7 @@ describe("canonical run-record service", () => {
          item_id, attempt, run_number, ordinal_source)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'unknown')`)
         .run(historical.runId, WORKFLOW_ID, historical.traceId, "queue", UUID_1, NOW, JSON.stringify(historical), NOW);
-      raw.prepare("DELETE FROM tasks WHERE record_key = ?").run(historical.runId);
+      raw.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(historical.runId);
     } finally { raw.close(); }
     const before = database.getMeta().authorityGeneration;
     const answer = service.read(historical.runId);
@@ -1788,7 +1788,7 @@ describe("canonical run-record service", () => {
     const countTasks = () => {
       const sqlite = new DatabaseSync(authorityPath, { readOnly: true });
       try {
-        return (sqlite.prepare("SELECT count(*) AS count FROM tasks").get() as { count: number }).count;
+        return (sqlite.prepare("SELECT count(*) AS count FROM workflow_runs").get() as { count: number }).count;
       } finally {
         sqlite.close();
       }

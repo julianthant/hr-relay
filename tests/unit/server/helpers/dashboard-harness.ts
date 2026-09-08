@@ -1,3 +1,4 @@
+import { type RunSessionRecord } from "../../../../src/domain/run/session.js";
 /**
  * Shared harness for the 1g-spine projection/hub/route suites: a temp state
  * root, a real span writer chained into the real projection ("JSONL first,
@@ -129,6 +130,9 @@ export interface AuthorityFake {
   /** D269: the pool declarations the day wire's `workerPools` block serves; parsed insert. */
   readonly workerPools: Map<string, WorkerPoolRecord>;
   listWorkerPools(): readonly WorkerPoolRecord[];
+  readonly batches: Map<string, RunSessionRecord>;
+  listRunBatches(): readonly RunSessionRecord[];
+  getRunBatch(id: string): RunSessionRecord | undefined;
   putWorkerPool(record: unknown): void;
 }
 
@@ -182,6 +186,9 @@ export function authorityFake(): AuthorityFake {
       workerLeases.set(lease.workerId, lease);
     },
     workerPools,
+    batches: new Map<string, RunSessionRecord>(),
+    listRunBatches() { return [...this.batches.values()]; },
+    getRunBatch(id: string) { return this.batches.get(id); },
     listWorkerPools: () => [...workerPools.values()].sort((a, b) => a.workflow.localeCompare(b.workflow)),
     putWorkerPool: (record) => {
       const pool = WorkerPoolRecordSchema.parse(record);

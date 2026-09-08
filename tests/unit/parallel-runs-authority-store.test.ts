@@ -127,7 +127,7 @@ describe("worker_pools — the CAS basis the spawn control needs (§11.5)", () =
   });
 });
 
-describe("run_sessions — a durable group whose membership is the run table (§11.1)", () => {
+describe("workflow_run_batches — a durable group whose membership is the run table (§11.1)", () => {
   it("inserts immutably, and reads the actor off the origin", () => {
     const path = databasePath();
     const database = open(path);
@@ -145,8 +145,8 @@ describe("run_sessions — a durable group whose membership is the run table (§
     database.close();
 
     const raw = new DatabaseSync(path);
-    assert.throws(() => raw.prepare("UPDATE run_sessions SET workflow = 'x'").run(), /immutable/);
-    assert.throws(() => raw.prepare("DELETE FROM run_sessions").run(), /never deleted/);
+    assert.throws(() => raw.prepare("UPDATE workflow_run_batches SET workflow = 'x'").run(), /immutable/);
+    assert.throws(() => raw.prepare("DELETE FROM workflow_run_batches").run(), /never deleted/);
     raw.close();
   });
 
@@ -193,7 +193,7 @@ describe("run_sessions — a durable group whose membership is the run table (§
     database.authority.runs.enqueue(queuedRun(RUN_ID, {}));
     database.close();
     const raw = new DatabaseSync(path);
-    const row = raw.prepare("SELECT session_id FROM tasks WHERE record_key = ?").get(RUN_ID) as { session_id: string | null };
+    const row = raw.prepare("SELECT session_id FROM workflow_runs WHERE record_key = ?").get(RUN_ID) as { session_id: string | null };
     assert.equal(row.session_id, null);
     raw.close();
     const reopened = open(path);

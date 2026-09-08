@@ -74,25 +74,25 @@ function corruptRunConsequence(
     // Removing only the monotonic trigger lets each strict record mismatch stay
     // independent instead of forcing an unrelated version increment.
     raw.exec("DROP TRIGGER tasks_monotonic_counters_update");
-    const row = raw.prepare("SELECT record_json FROM tasks WHERE record_key = ?")
+    const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
       .get(RUN_ID) as { record_json: string } | undefined;
     if (row === undefined) throw new Error(`run ${RUN_ID} is absent from corruption fixture`);
     const current = RunRecordSchema.parse(JSON.parse(row.record_json));
     const corrupted = RunRecordSchema.parse(mutate(current));
     const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
     const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
-    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+    raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
       .run(JSON.stringify(corrupted), RUN_ID);
     if (corrupted.version !== current.version) {
-      raw.prepare("UPDATE tasks SET version = ? WHERE record_key = ?").run(corrupted.version, RUN_ID);
+      raw.prepare("UPDATE workflow_runs SET version = ? WHERE record_key = ?").run(corrupted.version, RUN_ID);
     }
     if (corrupted.claimGeneration !== current.claimGeneration) {
-      raw.prepare("UPDATE tasks SET claim_generation = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET claim_generation = ? WHERE record_key = ?")
         .run(corrupted.claimGeneration, RUN_ID);
     }
     if (corrupted.lifecycle.state !== current.lifecycle.state) {
       raw.prepare(`
-        UPDATE tasks SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
+        UPDATE workflow_runs SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
       `).run(corrupted.lifecycle.state, ownerWorkerId, heartbeatAt, RUN_ID);
     }
   } finally {

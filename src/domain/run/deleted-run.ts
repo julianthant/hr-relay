@@ -59,7 +59,8 @@ export const DeletedRunTableSchema = z.enum([
   "delegation_manifests",
   "archive_relaunches",
   "archived_runs",
-  "tasks",
+  "tasks", // Historical deletion receipts retain their original table name.
+  "workflow_runs",
 ]);
 
 export const DeletedRunRecordSchema = z.strictObject({

@@ -4091,8 +4091,31 @@ record it names are the ONLY inputs to "this run awaits approval"; `parked-write
 row is not `parked-gate`, or a `parked-gate` row with no gate record, is a doctor finding by run id,
 never a derived `awaiting-approval`.
 
+<a id="workflow-batch-presentation"></a>
+
+**Workflow batch presentation (operator-approved, 2026-09-07).** The SQL run table is
+`workflow_runs` (formerly `tasks`), and start-group authority is `workflow_run_batches`
+(formerly `run_sessions`). Existing run IDs and the stored `sessionId` membership remain unchanged.
+Each batch owns `group_in_queue` (boolean) and a presentation revision. New multi-run fan-outs
+start grouped; single-run fan-outs start separate. Migrated batches preserve their separate display.
+Schema 33 uses the stopped upgrade path with a verified backup. A schema-32 source keeps its
+settings journal and independent credentials unchanged; an interrupted earlier settings conversion
+must settle with its original build before the rename.
+The `workflow-batch/set-batch-grouping` command changes only the batch presentation, under its
+expected revision and the ordinary command/audit transaction. It never changes a run, claim,
+checkpoint, worker, approval, or parent edge.
+
+The queue can place loaded root runs from that batch under an expandable batch header. The header
+is presentation, not an executable parent run and not an additional countable run. Each member
+retains its own status/actions; the header summarizes the loaded scope and uses its highest-priority
+attention band. Status filters and the selected day still bound the visible members. Multiple
+attempts of one item in that scope count once in the header, with the latest attempt shown and
+previous attempts available in history. One-item batches display their run directly. Turning
+`group_in_queue` off displays individual run rows; membership survives. This presentation does not
+replace operation coordinators or their execution/deletion rules below.
+
 **Group/tree rule (normative here; no other doc states it).** A tree is the `parent` edge
-(§D330.1) — D14's operation/operation-member shape — never the `sessionId` group. A member's
+(§D330.1) — D14's operation/operation-member shape — not the presentation-only batch header. A member's
 lifecycle is its own row's state; there is no rollup state. Three edges are constrained by the tree:
 (1) an anchor may not settle `terminal` while any member is non-terminal — its `done`/`failed`
 waits, and `cancel` on an anchor first cancels every non-terminal member as N CAS transitions —

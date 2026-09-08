@@ -299,6 +299,8 @@ function harness(options: {
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
+      listRunBatches: () => database.authority.runSessions.list(),
+      getRunBatch: (id) => database.authority.runSessions.get(id),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
@@ -999,7 +1001,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const corrupted = corpusCase.mutate(run);
       const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
       try {
-        raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
+        raw.prepare("UPDATE workflow_runs SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
           .run(
             corrupted.envelope.workflow,
             corrupted.lifecycle.state,
@@ -1037,7 +1039,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     };
     const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
     try {
-      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
         .run(JSON.stringify({
           ...run,
           envelope: { ...run.envelope, injected: [sensitivePatch, sensitivePatch] },

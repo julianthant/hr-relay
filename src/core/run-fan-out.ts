@@ -128,6 +128,8 @@ export function fanOutQueuedRuns(
    */
   const session = repositories.runSessions.insert(RunSessionRecordSchema.parse({
     sessionId: envelope.session.sessionId,
+    groupInQueue: planned.length > 1,
+    version: 1,
     workflow: envelope.workflow,
     origin: envelope.session.origin,
     startedAt: now,
