@@ -1,3 +1,4 @@
+import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D144's current end-to-end proof.
@@ -314,6 +315,7 @@ function deriveReceipts(value: FinalizationHarness) {
   });
   const service = createReceiptService({
     database: value.database,
+    runReader: createTrustRunReader(value.database),
     descriptors: [separationsKualiFinalizationDescriptor],
   }).ensureReceipt(FINALIZATION_RUN_ID);
   return { run, result, direct, service };

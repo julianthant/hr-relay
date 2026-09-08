@@ -1,3 +1,6 @@
+import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
+import { buildTrustSection } from "../../src/server/dashboard/queries/run-trust.js";
+import { makeWorld } from "./server/helpers/dashboard-harness.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
@@ -219,6 +222,31 @@ function resolutionCommand(
 }
 
 describe("post-fence park → typed outcome arm → typed operator resolution", () => {
+  it("serves canonical parked-write evidence without a fold and refuses foreign intent membership", async () => {
+    const h = roundTrip(); await h.park();
+    const projection = makeWorld();
+    try {
+      const deps = { stateRoot: projection.stateRoot, projection: projection.projection,
+        runReader: createTrustRunReader(h.database, h.clock),
+        authority: { getRun: () => { throw new Error("raw lifecycle forbidden"); },
+          latestCheckpoint: () => undefined,
+          getWriteIntent: (id: string) => h.database.authority.writeIntents.get(id),
+          listGateResults: (id: string) => h.database.authority.gateResults.listByRun(id) },
+        descriptors: { resolve: () => undefined } };
+      assert.equal(projection.projection.runFold(WRITE_FIXTURE_RUN_ID), undefined);
+      const section = buildTrustSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
+      assert.equal(section.section, "parked-write");
+      const intent = parkedIntent(h.database);
+      assert.equal(intent.status, "parked"); if (intent.status !== "parked") throw new Error("not parked");
+      for (const changed of [{ workflowId: "person-lookup" }, { runAttempt: intent.runAttempt + 1 },
+        { itemId: "aaaaaaaa-0000-4000-8000-000000000001" }, { runId: "aaaaaaaa-0000-4000-8000-000000000002" }]) {
+        assert.throws(() => buildTrustSection({ ...deps, authority: { ...deps.authority,
+          getWriteIntent: () => ({ ...intent, ...changed }) as typeof intent } }, WRITE_FIXTURE_RUN_ID, "parked-write"),
+        /IDENTITY_MISMATCH|belongs to/);
+      }
+      assert.deepEqual(parkedIntent(h.database), intent);
+    } finally { projection.dispose(); }
+  });
   it("reports parked-write as a first-class outcome over the durable parked state", async () => {
     const harness = roundTrip();
     const report = await harness.park();

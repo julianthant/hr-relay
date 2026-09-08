@@ -95,8 +95,9 @@ describe("idempotency-key privacy across operator projections", () => {
     const runId = uuidOf(1);
     const writeIntentId = uuidOf(11);
     const currentAttemptId = uuidOf(12);
-    queuedEventOf(world, {
+    const queued = queuedEventOf(world, {
       seed: 1,
+      workflow: parked.workflowId,
       version: 4,
       lifecycle: {
         state: "parked-write",
@@ -107,12 +108,14 @@ describe("idempotency-key privacy across operator projections", () => {
         message: unsafeMessage,
       },
     });
-    const bindingProof = { ...parked.bindingProof, runId };
+    const bindingProof = { ...parked.bindingProof, runId, attempt: queued.attempt };
     world.authority.putWriteIntent(WriteIntentRecordSchema.parse({
       ...parked,
       writeIntentId,
       currentAttemptId,
       runId,
+      itemId: queued.itemId,
+      runAttempt: queued.attempt,
       bindingProof,
       bindingProofDigest: deriveWriteBindingProofDigest(bindingProof),
     }));
@@ -140,8 +143,9 @@ describe("idempotency-key privacy across operator projections", () => {
   it("withholds a seeded legacy receipt from run detail and Explain", () => {
     const world = makeWorld();
     worlds.push(world);
-    queuedEventOf(world, {
+    const queued = queuedEventOf(world, {
       seed: 2,
+      workflow: "separations-kuali-finalization",
       lifecycle: {
         state: "terminal",
         outcome: "done",
@@ -161,6 +165,10 @@ describe("idempotency-key privacy across operator projections", () => {
     });
     const legacy = RunEvidenceReceiptSchema.parse({
       ...current,
+      runId: queued.runId,
+      workflowId: queued.workflow,
+      traceId: queued.traceId,
+      attempt: queued.attempt,
       composition: 2,
       warnings: [{
         id: "20000000-0000-4000-8000-000000000001",

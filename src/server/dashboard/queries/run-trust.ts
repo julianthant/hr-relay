@@ -29,7 +29,8 @@ import {
   SectionUnavailableError,
 } from "../../failures.js";
 import type { RunDetailQueryDeps, RunDetailTrustDeps } from "./run-detail-types.js";
-import { requireRun, SectionNameSchema } from "./run-read.js";
+import { requireTrustRun, assertTrustEvidenceIdentity } from "../../trust/run-reader.js";
+import { SectionNameSchema } from "./run-read.js";
 import { buildRunLogsSection, type RunNoteScanCache } from "./run-logs.js";
 
 /**
@@ -122,7 +123,7 @@ function settledGateWire(
  * loudly rather than hides by not advertising.
  */
 export function availableSections(
-  _row: RunFoldRecord,
+  _row: RunFoldRecord | undefined,
   authority: RunRecord,
   trust?: RunDetailTrustDeps,
   captures?: RunCaptureAvailabilityWire,
@@ -156,30 +157,25 @@ export function availableSections(
 export function buildRunGate(
   deps: RunDetailQueryDeps,
   runId: string,
-  row: RunFoldRecord,
+  row: RunFoldRecord | undefined,
   authority: RunRecord,
 ): unknown {
-  const openGate = row.openGates.at(-1);
-  const lastResolved = row.resolvedGates.at(-1);
-  let gate: unknown;
-  if (openGate !== undefined) {
-    gate = {
+  const run = requireTrustRun(deps.runReader, runId);
+  if (run.version !== authority.version) throw new Error(`TRUST_RUN_CHANGED: ${runId}`);
+  const stored = deps.authority.listGateResults(runId);
+  for (const result of stored) {
+    if (result.runId !== runId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: gate for ${runId}`);
+  }
+  if (run.lifecycle.state === "parked-gate") {
+    return {
       state: "open",
-      gateId: deterministicUuid(`gate:${runId}:${openGate.gate}`),
-      label: openGate.gate,
-      openedAt: openGate.openedAt,
+      gateId: deterministicUuid(`gate:${runId}:${run.lifecycle.gateId}`),
+      label: run.lifecycle.gateId,
+      openedAt: run.lifecycle.parkedAt,
       revision: 1,
     };
-  } else {
-    gate = settledGateWire(
-      runId,
-      authority.envelope.workflow,
-      deps.authority.listGateResults(runId).at(-1),
-      lastResolved,
-    );
   }
-
-  return gate;
+  return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1));
 }
 
 export function buildTrustSection(
@@ -191,7 +187,8 @@ export function buildTrustSection(
   noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
-  const { row, authority } = requireRun(deps, runId);
+  const authority = requireTrustRun(deps.runReader, runId);
+  const row = section === "logs" ? deps.projection.runFold(runId) : undefined;
   const served = availableSections(row, authority, deps.trust);
   if (!served.includes(section as (typeof served)[number])) {
     if (section === "receipt") {
@@ -222,7 +219,9 @@ export function buildTrustSection(
   };
 
   if (section === "receipt") {
-    const receipt = projectReceiptForOperator(requireTrust().ensureReceipt(runId));
+    const storedReceipt = requireTrust().ensureReceipt(runId);
+    assertTrustEvidenceIdentity(authority, storedReceipt, "receipt");
+    const receipt = projectReceiptForOperator(storedReceipt);
     if (receipt.state === "withheld") {
       return RunDetailSectionResponseSchema.parse({
         section,
@@ -249,7 +248,7 @@ export function buildTrustSection(
   if (section === "identity-gate") {
     return RunDetailSectionResponseSchema.parse({
       section,
-      payload: buildIdentityGatePayload(deps, row, authority),
+      payload: buildIdentityGatePayload(deps, authority),
     });
   }
 
@@ -268,6 +267,8 @@ export function buildTrustSection(
       `run ${runId} terminalized failed against failure ${failureId}, which authority does not hold`,
     );
   }
+  assertTrustEvidenceIdentity(authority, failure, "failure");
+  if (failure.failureId !== failureId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: failure ${failureId}`);
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
     payload: { state: "available", value: failureDetailWire(runId, failure, trust, retainedRunProtectedBindings(authority).length > 0) },
@@ -434,7 +435,6 @@ function parkedWriteActions(
  */
 function buildIdentityGatePayload(
   deps: RunDetailQueryDeps,
-  row: RunFoldRecord,
   authority: RunRecord,
 ): unknown {
   const { lifecycle } = authority;
@@ -456,9 +456,13 @@ function buildIdentityGatePayload(
     );
   }
   const evidence = gate.dependsOn
-    .map((nodeId) => deps.authority.latestCheckpoint(row.queued.workflow, authority.envelope.itemId, nodeId))
+    .map((nodeId) => deps.authority.latestCheckpoint(authority.envelope.workflow, authority.envelope.itemId, nodeId))
     .flatMap((stored) => {
       if (stored === undefined) return [];
+      if (stored.workflowId !== authority.envelope.workflow || stored.itemId !== authority.envelope.itemId
+        || stored.attempt > authority.envelope.attempt) {
+        throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: gate checkpoint for ${runId}`);
+      }
       // `stored.output` is the schema-BOUND envelope; the packet is its value.
       const parsed = MatchIdentityOutputSchema.safeParse(stored.output.value);
       return parsed.success ? [parsed.data] : [];
@@ -602,6 +606,11 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       `run ${runId} is parked on write intent ${lifecycle.writeIntentId}, but that intent belongs to `
       + `run ${intent.runId}`,
     );
+  }
+  if (intent.workflowId !== authority.envelope.workflow || intent.itemId !== authority.envelope.itemId
+    || intent.runAttempt !== authority.envelope.attempt
+    || intent.bindingProof.runId !== runId || intent.bindingProof.attempt !== intent.runAttempt) {
+    throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: parked write for ${runId}`);
   }
   if (intent.generation !== lifecycle.intentGeneration) {
     throw new Error(

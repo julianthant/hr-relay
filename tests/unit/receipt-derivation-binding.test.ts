@@ -1,3 +1,4 @@
+import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
 /**
  * D199 — a settled run's receipt is bound to the semantic surfaces its
  * derivation consumes, not to the descriptor's whole source closure.
@@ -313,7 +314,7 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
     });
     authority.evidenceReceipts.insert(legacy);
 
-    const service = createReceiptService({ database, descriptors: [personLookupDescriptor] });
+    const service = createReceiptService({ database, runReader: createTrustRunReader(database), descriptors: [personLookupDescriptor] });
     let refusal: unknown;
     try {
       service.ensureReceipt(runId);

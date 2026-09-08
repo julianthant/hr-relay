@@ -4,10 +4,10 @@ import { readRunSection } from "../queries/run-detail.js";
 import {
   readDiagnosticBundle,
   readDiagnosticBundleAttachment,
+  prepareLiveDiagnosticArtifactLease,
 } from "../queries/diagnostic-bundle.js";
 import {
   IndexedArtifactBytesMissingError,
-  prepareDiagnosticArtifactLease,
 } from "../queries/artifact-bytes.js";
 
 
@@ -86,10 +86,11 @@ export function registerTrustRoutes(app: DashboardApp, deps: DashboardAppDeps): 
         "diagnostic artifact readback is not available: no diagnostic attachment authority is composed",
       );
     }
-    let artifact: Awaited<ReturnType<typeof prepareDiagnosticArtifactLease>>;
+    let artifact: Awaited<ReturnType<typeof prepareLiveDiagnosticArtifactLease>>;
     try {
-      artifact = await prepareDiagnosticArtifactLease(
+      artifact = await prepareLiveDiagnosticArtifactLease(
         {
+          runReader: deps.diagnosticBundles.runReader,
           authority: deps.diagnosticBundles.authority,
           artifactReader: deps.diagnosticBundles.artifactReader,
         },

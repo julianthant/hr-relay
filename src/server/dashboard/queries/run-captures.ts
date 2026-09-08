@@ -18,7 +18,7 @@ import { readDiagnosticBundle } from "./diagnostic-bundle.js";
 import { createArtifactVerificationPass } from "./artifact-bytes.js";
 import { VerifiedArtifactOperationalError } from "../../../infra/artifacts/server-verified-artifact-reader.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
-import { requireRun } from "./run-read.js";
+import { requireTrustRun } from "../../trust/run-reader.js";
 
 export interface VerifiedRunCaptures {
   readonly state: "available";
@@ -93,9 +93,10 @@ export async function verifyRunCaptures(
   for (const bundle of listed) {
     let readback: Awaited<ReturnType<typeof readDiagnosticBundle>>;
     try {
-      readback = await readDiagnosticBundle(deps.captures, bundle.bundleId, verificationPass, signal);
+      readback = await readDiagnosticBundle({ ...deps.captures, runReader: deps.runReader }, bundle.bundleId, verificationPass, signal);
     } catch (error: unknown) {
       if (signal?.aborted === true && error === signal.reason) throw error;
+      requireTrustRun(deps.runReader, runId);
       if (error instanceof VerifiedArtifactOperationalError) throw error;
       if (error instanceof DiagnosticBundleBytesMissingError) throw error;
       captureCorrupt(runId, `bundle ${bundle.bundleId} failed exact verification`, error);
@@ -133,7 +134,7 @@ export async function readRunCaptureAvailability(
   signal?: AbortSignal,
 ): Promise<RunCaptureAvailabilityWire> {
   RunIdSchema.parse(runId);
-  requireRun(deps, runId);
+  requireTrustRun(deps.runReader, runId);
   let inspected: RunCaptureInspection;
   try {
     inspected = await verifyRunCaptures(deps, runId, signal);
@@ -151,6 +152,7 @@ export async function readRunCaptureAvailability(
     }
     throw error;
   }
+  requireTrustRun(deps.runReader, runId);
   const captures: RunCaptureAvailabilityWire = inspected.state === "available"
     ? { state: "available", artifactCount: inspected.artifacts.length }
     : inspected;
@@ -159,8 +161,9 @@ export async function readRunCaptureAvailability(
 
 /** Read one capture section through its trust-owned admission and verification. */
 export async function readRunCaptureSection(deps:RunDetailQueryDeps,runId:string,signal?:AbortSignal):Promise<RunDetailSectionResponse> {
-  requireRun(deps, runId);
+  requireTrustRun(deps.runReader, runId);
   const inspected = await verifyRunCaptures(deps, runId, signal);
+  requireTrustRun(deps.runReader, runId);
   if (inspected.state === "absent") {
     throw new SectionUnavailableError(`section captures is not available for run ${runId}: ${inspected.reason}`);
   }

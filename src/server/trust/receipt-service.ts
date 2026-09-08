@@ -21,7 +21,7 @@ import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import type { RunEvidenceReceipt } from "../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../domain/trust/failure.js";
 import type { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { TargetNotFoundError } from "../failures.js";
+import { requireTrustRun, assertTrustEvidenceIdentity } from "./run-reader.js";
 
 export interface ReceiptServiceDeps {
   readonly runReader?: Pick<RunRecordService, "read">;
@@ -43,8 +43,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
 
   const store: EvidenceReceiptStore = Object.freeze({
     getRun: (runId: string) => {
-      const run = authority.runs.get(runId);
-      if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist in authority`);
+      const run = requireTrustRun(deps.runReader, runId);
       return run;
     },
     getResult: (runId: string) => {
@@ -54,6 +53,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
         // terminal transition (D110/D114). Its absence is a storage fault.
         throw new Error(`run ${runId} is terminal done but authority holds no run result`);
       }
+      if (result.runId !== runId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: result for ${runId}`);
       return result;
     },
     getFailure: (failureId: string) => {
@@ -64,8 +64,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       return failure;
     },
     listCheckpointsByRun: (runId: string) => {
-      const run = authority.runs.get(runId);
-      if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist in authority`);
+      const run = requireTrustRun(deps.runReader, runId);
       return authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
     },
     listWritesByRun: (runId: string): readonly ReceiptWriteEvidence[] => authority.writeIntents
@@ -82,8 +81,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   });
 
   const descriptorFor = (runId: string): AnyWorkflowDescriptor => {
-    const run = authority.runs.get(runId);
-    if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist in authority`);
+    const run = requireTrustRun(deps.runReader, runId);
     const descriptor = byId.get(String(run.envelope.workflow));
     if (descriptor === undefined) {
       throw new Error(
@@ -94,9 +92,19 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     return descriptor;
   };
 
+  const ensure = (runId: string): EnsureReceiptOutcome => deps.database.withAuthorityTransaction(() => {
+    const run = requireTrustRun(deps.runReader, runId);
+    if (run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined) {
+      const failure = store.getFailure(run.lifecycle.failureId) as FailureRecord;
+      assertTrustEvidenceIdentity(run, failure, "failure");
+    }
+    const outcome = ensureRunEvidenceReceipt(store, descriptorFor(runId), runId);
+    assertTrustEvidenceIdentity(run, outcome.receipt, "receipt");
+    return outcome;
+  });
   return Object.freeze({
-    ensure: (runId: string) => ensureRunEvidenceReceipt(store, descriptorFor(runId), runId),
-    ensureReceipt: (runId: string) => ensureRunEvidenceReceipt(store, descriptorFor(runId), runId).receipt,
+    ensure,
+    ensureReceipt: (runId: string) => ensure(runId).receipt,
     getFailure: (failureId: string) => authority.failures.get(failureId),
     countFailuresByFingerprint: (fingerprint: string) => authority.failures.countByFingerprint(fingerprint),
   });

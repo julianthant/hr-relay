@@ -18,6 +18,8 @@ import { systemClock, type Clock } from "../../domain/clock.js";
 import { descriptorRuntimeNodes } from "../../base/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../domain/ids.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { createTrustRunReader } from "../trust/canonical-reader.js";
+import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from "../trust/run-reader.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import {
   buildExplainRunView,
@@ -78,6 +80,10 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
 
 /** Resolve either identity form, then assemble the view from authority. */
 export function explainRunFrom(database: AuthorityDatabase, identity: string): ReturnType<typeof buildExplainRunView> {
+  return database.withAuthorityTransaction(() => explainRunSnapshot(database, identity));
+}
+
+function explainRunSnapshot(database: AuthorityDatabase, identity: string): ReturnType<typeof buildExplainRunView> {
   const { authority } = database;
   const asRun = RunIdSchema.safeParse(identity);
   const asTrace = TraceIdSchema.safeParse(identity);
@@ -87,10 +93,12 @@ export function explainRunFrom(database: AuthorityDatabase, identity: string): R
       + "refusing to guess which one was meant",
     );
   }
-  const run = asRun.success
-    ? authority.runs.get(asRun.data)
-    : authority.runs.findByTrace(asTrace.data ?? identity);
-  if (run === undefined) throw new Error(`no run matches "${identity}" in this authority database`);
+  const runReader = createTrustRunReader(database);
+  const matches = asRun.success ? [] : listLiveTrustRuns(runReader).filter(run => run.envelope.traceId === identity);
+  if (!asRun.success && matches.length !== 1) throw new Error(`no unique live run matches "${identity}" in this authority database; archived runs use Archive`);
+  const runId = asRun.success ? asRun.data : matches[0]?.envelope.runId;
+  if (runId === undefined) throw new Error(`no run matches "${identity}" in this authority database`);
+  const run = requireTrustRun(runReader, runId);
 
   const descriptor = DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow);
   if (descriptor === undefined) {
@@ -102,10 +110,12 @@ export function explainRunFrom(database: AuthorityDatabase, identity: string): R
   const failure = run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined
     ? authority.failures.get(run.lifecycle.failureId)
     : undefined;
+  if (failure !== undefined) assertTrustEvidenceIdentity(run, failure, "Explain failure");
   const result = authority.runResults.get(run.envelope.runId);
+  if (result !== undefined && result.runId !== run.envelope.runId) throw new Error("TRUST_EVIDENCE_IDENTITY_MISMATCH: Explain result");
   const settled = run.lifecycle.state === "terminal" && run.lifecycle.outcome !== "interrupted";
   const receipt = settled
-    ? createReceiptService({ database, descriptors: DESCRIPTORS }).ensureReceipt(run.envelope.runId)
+    ? createReceiptService({ database, descriptors: DESCRIPTORS, runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
   const evidence: ExplainRunEvidence = {

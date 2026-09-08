@@ -1,3 +1,4 @@
+import { requireTrustRun } from "../../trust/run-reader.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
 /** D137 diagnostic-bundle readback: exact id, verified authority row, verified artifacts. */
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
@@ -19,12 +20,13 @@ import {
 } from "../../../infra/artifacts/server-verified-artifact-reader.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../infra/sqlite/storage-records.js";
-import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, TargetNotFoundError } from "../../failures.js";
+import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, TargetNotFoundError, SectionUnavailableError } from "../../failures.js";
 import {
   ArtifactBytesCorruptError,
   createArtifactVerificationPass,
   IndexedArtifactBytesMissingError,
   prepareVerifiedArtifactLease,
+  prepareDiagnosticArtifactLease,
   verifyArtifactBytes,
   type ArtifactVerificationPass,
 } from "./artifact-bytes.js";
@@ -48,6 +50,27 @@ function normalizeCorruption(bundleId: string, message: string, error: unknown):
     `diagnostic bundle ${bundleId} is corrupt: ${message}`,
     { cause: error },
   );
+}
+
+function verifyContentIdentity(bundle: DiagnosticBundle): void {
+  const bundleId = bundle.bundleId;
+  let expectedDigest: string;
+  try {
+    expectedDigest = deriveDiagnosticContentDigest({
+      runId: bundle.runId,
+      origin: bundle.origin,
+      capturedAt: bundle.createdAt,
+      configFingerprint: bundle.configFingerprint,
+      descriptorFingerprint: bundle.descriptorFingerprint,
+      redaction: bundle.redaction,
+      attachments: bundle.attachments,
+    });
+  } catch (error: unknown) {
+    normalizeCorruption(bundleId, "the content identity could not be verified", error);
+  }
+  if (bundle.contentDigest !== expectedDigest) {
+    corrupt(bundleId, "the content identity does not match the durable record");
+  }
 }
 
 function throwOwnedFailure(error: unknown, message: string): never {
@@ -88,6 +111,7 @@ async function verifyArtifact(
   } catch (error: unknown) {
     if (pass.isAbort(error)) throw error;
     if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof TargetNotFoundError || error instanceof SectionUnavailableError) throw error;
     if (error instanceof IndexedArtifactBytesMissingError) {
       throw new DiagnosticBundleBytesMissingError(
         `diagnostic bundle ${bundleId}: ${attachmentLabel} has no stored bytes`, { cause: error },
@@ -163,23 +187,8 @@ export async function readDiagnosticBundle(
   if (bundle.bundleId !== bundleId) {
     corrupt(bundleId, "durable authority identity mismatch");
   }
-  let expectedDigest: string;
-  try {
-    expectedDigest = deriveDiagnosticContentDigest({
-      runId: bundle.runId,
-      origin: bundle.origin,
-      capturedAt: bundle.createdAt,
-      configFingerprint: bundle.configFingerprint,
-      descriptorFingerprint: bundle.descriptorFingerprint,
-      redaction: bundle.redaction,
-      attachments: bundle.attachments,
-    });
-  } catch (error: unknown) {
-    normalizeCorruption(bundleId, "the content identity could not be verified", error);
-  }
-  if (bundle.contentDigest !== expectedDigest) {
-    corrupt(bundleId, "the content identity does not match the durable record");
-  }
+  requireTrustRun(deps.runReader, bundle.runId);
+  verifyContentIdentity(bundle);
   try {
     verifyAttachmentIndex(bundle, deps.authority.listAttachments(bundleId));
   } catch (error: unknown) {
@@ -225,6 +234,10 @@ export async function readDiagnosticBundle(
     );
   }
 
+  requireTrustRun(deps.runReader, bundle.runId);
+  const current = deps.authority.get(bundleId);
+  if (current === undefined) throw new TargetNotFoundError(`diagnostic bundle ${bundleId} was removed during verification`);
+  if (canonicalJsonStringify(current) !== canonicalJsonStringify(bundle)) corrupt(bundleId, "authority changed during verification");
   let byteSize = 0;
   for (const attachment of bundle.attachments) {
     byteSize += attachment.byteLength;
@@ -289,13 +302,26 @@ export async function readDiagnosticBundleAttachment(
     normalizeCorruption(bundleId, `attachment ${artifactId} could not be bound to its exact bundle index`, error);
   }
   try {
-    return Object.freeze({
-      ref,
-      lease: await prepareVerifiedArtifactLease(deps.artifactReader, ref, signal),
-    });
+    const lease = await prepareVerifiedArtifactLease(deps.artifactReader, ref, signal);
+    try {
+      const manifest = DiagnosticBundleSchema.parse(JSON.parse(bundle.manifest));
+      requireTrustRun(deps.runReader, manifest.runId);
+      const current = deps.authority.get(bundleId);
+      if (current === undefined) throw new TargetNotFoundError(`diagnostic bundle ${bundleId} was removed during attachment preparation`);
+      if (canonicalJsonStringify(current) !== bundle.manifest) corrupt(bundleId, "authority changed during attachment preparation");
+      return Object.freeze({ ref, lease });
+    } catch (error) {
+      const failures: unknown[] = [error];
+      try { await lease.dispose(); } catch (cleanup) { failures.push(cleanup); }
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "diagnostic attachment admission and lease cleanup failed", { cause: error });
+      }
+      throw error;
+    }
   } catch (error: unknown) {
     if (signal?.aborted === true && error === signal.reason) throw error;
     if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof TargetNotFoundError || error instanceof SectionUnavailableError) throw error;
     if (error instanceof IndexedArtifactBytesMissingError) {
       throw new DiagnosticBundleBytesMissingError(
         `diagnostic bundle ${bundleId}: attachment ${artifactId} (${content.kind}) has no stored bytes`, { cause: error },
@@ -305,5 +331,76 @@ export async function readDiagnosticBundleAttachment(
       corrupt(bundleId, `attachment ${artifactId} ${error.detail}`, error);
     }
     normalizeCorruption(bundleId, `attachment ${artifactId} could not be prepared`, error);
+  }
+}
+
+
+/** Generic byte URLs still need a live run membership; shared bytes alone grant nothing. */
+export async function prepareLiveDiagnosticArtifactLease(
+  deps: DiagnosticBundleQueryDeps & Readonly<{
+    authority: DiagnosticBundleQueryDeps["authority"] & Pick<AuthorityRepositories["diagnosticBundles"], "findByArtifact">;
+  }>,
+  artifactIdInput: unknown,
+  signal?: AbortSignal,
+): Promise<DiagnosticBundleAttachmentReadback> {
+  const artifactId = ArtifactIdSchema.parse(artifactIdInput);
+  const inspectMemberships = () => {
+    if (deps.runReader === undefined) throw new Error("TRUST_RUN_READER_NOT_CONFIGURED");
+    const indexed = deps.authority.findByArtifact(artifactId);
+    const live: typeof indexed[number][] = [];
+    let sharedRef: ArtifactRef | undefined;
+    for (const input of indexed) {
+      const member = DiagnosticAttachmentStorageRecordSchema.parse(input);
+      const bundle = deps.authority.get(member.bundleId);
+      if (bundle === undefined) corrupt(member.bundleId, "artifact membership names a missing bundle");
+      const parsed = DiagnosticBundleSchema.parse(bundle);
+      verifyContentIdentity(parsed);
+      if (parsed.bundleId !== member.bundleId) corrupt(member.bundleId, "artifact membership names a foreign bundle");
+      const attachment = parsed.attachments.find(candidate => candidate.artifactId === artifactId);
+      if (attachment === undefined || canonicalJsonStringify(attachment) !== canonicalJsonStringify(member.attachment)
+        || member.createdAt !== parsed.createdAt) corrupt(member.bundleId, "artifact membership disagrees with its bundle");
+      const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest,
+        bytes: attachment.byteLength, mediaType: attachment.mediaType });
+      if (sharedRef !== undefined && canonicalJsonStringify(sharedRef) !== canonicalJsonStringify(ref)) {
+        corrupt(member.bundleId, "shared artifact metadata disagrees across live/archive memberships");
+      }
+      sharedRef = ref;
+      const existence = deps.runReader.read(parsed.runId);
+      if (existence.state !== "present") {
+        throw new TargetNotFoundError(`diagnostic artifact ${artifactId} links to ${existence.state} run ${parsed.runId}`);
+      }
+      if (existence.run.envelope.runId !== parsed.runId) throw new Error(`TRUST_RUN_IDENTITY_MISMATCH: ${parsed.runId}`);
+      if (existence.disposition === "live") live.push(member);
+    }
+    if (indexed.length > 0 && live.length === 0) {
+      throw new SectionUnavailableError(`diagnostic artifact ${artifactId} belongs only to archived runs; use its immutable Archive resource`);
+    }
+    return live;
+  };
+  const liveMemberships = () => {
+    try { return inspectMemberships(); } catch (error) {
+      if (signal?.aborted === true && error === signal.reason) throw error;
+      if (error instanceof TargetNotFoundError || error instanceof SectionUnavailableError) throw error;
+      normalizeCorruption(artifactId, "attachment authority could not be verified", error);
+    }
+  };
+  const initial = liveMemberships();
+  const lease = await prepareDiagnosticArtifactLease({ authority: { findByArtifact: () => initial },
+    artifactReader: deps.artifactReader }, artifactId, signal);
+  try {
+    const current = liveMemberships();
+    if (current.length === 0) throw new TargetNotFoundError(`diagnostic artifact ${artifactId} membership was removed during preparation`);
+    for (const { attachment } of current) {
+      if (attachment.artifactId !== lease.ref.id || attachment.digest !== lease.ref.sha256
+        || attachment.byteLength !== lease.ref.bytes || attachment.mediaType !== lease.ref.mediaType) {
+        throw new DiagnosticBundleCorruptError(`diagnostic artifact ${artifactId} membership changed during preparation`);
+      }
+    }
+    return lease;
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try { await lease.lease.dispose(); } catch (cleanup) { failures.push(cleanup); }
+    if (failures.length > 1) throw new AggregateError(failures, "generic artifact admission and lease cleanup failed", { cause: error });
+    throw error;
   }
 }

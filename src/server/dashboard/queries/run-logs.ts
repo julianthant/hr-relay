@@ -75,16 +75,18 @@ export type RunNoteScanEntry = RunLogScanEntry;
  */
 export function runNotePartitionScope(
   runId: string,
-  row: RunFoldRecord,
+  row: RunFoldRecord | undefined,
   authority: RunRecord,
 ): EventStreamScope {
   const instants: RunNoteScopeInstant[] = [
     ...runRecordNoteScopeInstants(authority),
-    { label: "run.queued span", at: row.queued.ts },
-    { label: "fold lastEventAt", at: row.lastEventAt },
+    ...(row === undefined ? [] : [
+      { label: "run.queued span", at: row.queued.ts },
+      { label: "fold lastEventAt", at: row.lastEventAt },
+    ]),
   ];
-  if (row.ended !== undefined) instants.push({ label: "fold endedAt", at: row.ended.endedAt });
-  return sharedNotePartitionScope({ runId, workflow: row.queued.workflow, instants });
+  if (row?.ended !== undefined) instants.push({ label: "fold endedAt", at: row.ended.endedAt });
+  return sharedNotePartitionScope({ runId, workflow: authority.envelope.workflow, instants });
 }
 
 /**
@@ -187,7 +189,7 @@ function assertRunLogIdentity(
   identity: Readonly<{ runId: string; workflow: string; traceId: string; attempt: number }>,
   line: EventStreamLine,
   runId: string,
-  row: RunFoldRecord,
+  _row: RunFoldRecord | undefined,
   authority: RunRecord,
 ): void {
   const location = `${source}s line ${line.file.path}:${String(line.lineNumber)}`;
@@ -204,8 +206,10 @@ function assertRunLogIdentity(
       `${location} for run ${runId} names ${source} trace ${identity.traceId}, but authority trace is ${authority.envelope.traceId}`,
     );
   }
-  const firstAttempt = row.queued.attempt;
-  const lastAttempt = Math.min(row.attempt, authority.envelope.attempt);
+  // Attempts are item-scoped and requeues advance them. The canonical row
+  // bounds history; a missing/stale fold cannot reduce the admitted range.
+  const firstAttempt = 1;
+  const lastAttempt = authority.envelope.attempt;
   if (identity.attempt < firstAttempt || identity.attempt > lastAttempt) {
     throw new Error(
       `${location} for run ${runId} names attempt ${String(identity.attempt)}, outside the run's legal attempts `
@@ -251,7 +255,7 @@ function producerOf(
 
 function logLinesForRun(
   deps: RunDetailQueryDeps,
-  row: RunFoldRecord,
+  row: RunFoldRecord | undefined,
   authority: RunRecord,
   runId: string,
 ): readonly RunLogScanEntry[] {
@@ -367,7 +371,7 @@ function logRowOf(
 export function buildRunLogsSection(
   deps: RunDetailQueryDeps,
   runId: string,
-  row: RunFoldRecord,
+  row: RunFoldRecord | undefined,
   authority: RunRecord,
   cursorInput?: string,
   /** D5/L3: immutable combined-log snapshots across a page walk. */

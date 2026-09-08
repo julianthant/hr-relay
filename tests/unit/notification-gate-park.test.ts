@@ -1,3 +1,6 @@
+import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
+import { personLookupQueuedRun } from "../helpers/phase1f-executor-harness.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 /**
  * D262: the needs-you watch — ref dashboard-surfaces §2.6's open operator gate, produced.
  *
@@ -68,7 +71,13 @@ function realWorld() {
     clock,
   );
   disposers.push(() => database.close());
+  for (const park of [PARK_A, PARK_B]) {
+    const record = RunRecordSchema.parse(personLookupQueuedRun({ runId: park.runId }));
+    database.authority.runs.enqueue(RunRecordSchema.parse({ ...record,
+      envelope: { ...record.envelope, workflow: park.workflowId } }));
+  }
   const inbox = createNotificationInbox({
+    runReader: createTrustRunReader(database),
     authority: database,
     clock,
     ids: sequentialIdFactory(),
