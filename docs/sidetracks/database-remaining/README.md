@@ -17,7 +17,7 @@ undecided design. Use clear vocabulary consistent with the decisions already mad
 | Group | Current tables / relationship | Decision |
 | --- | --- | --- |
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
-| Settings and version changes | `settings_current`, `runtime_config`, `version_plans`, `version_bump_applications` | Open |
+| Settings and version changes | `settings_current`, `runtime_config`, `version_plans`, `version_bump_applications` | Settings behavior directed: activate saved configuration for new runs without restart; existing runs retain theirs. Names and version-change design remain open. |
 | Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Open |
 | Messages and notes | `notifications`, `notes` | Open |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
@@ -128,4 +128,65 @@ the unused placeholder; it does not implement OCR dispatch or erase its requirem
   final-validation session. No master integration or final acceptance before those gates and review.
 
 Status: two table removals approved for planning; implementation, migration policy, parallel
-allocation and launch prompts remain pending. All other discussion groups remain open.
+allocation and launch prompts remain pending. The settings direction below is also recorded; other
+discussion groups remain open.
+
+## Group 2: immediate configuration activation for new runs
+
+On 2026-09-08 the operator corrected the proposed restart-based settings behavior: “it should
+active the new configuration for new runs. old runs keep thier own config. but new ones will take
+the new config without restart.” Record this as the required product behavior for the new batch,
+not as behavior already implemented. No table names in this group have been approved.
+
+### Required behavior
+
+- Saving valid run configuration activates it for subsequently created runs without requiring the
+  operator to restart the dashboard or workers. An unsuccessful save must not partially activate it.
+- Each run remains bound to an immutable configuration snapshot. Existing running, queued and
+  paused runs keep their snapshot when settings change; they must remain executable/resumable.
+- Example: run A is created with a 60-second task timeout. The operator saves 90 seconds. Run B
+  created after the successful save uses 90 seconds. Run A keeps 60 seconds, including if it was
+  queued or paused when the save happened. This is an illustrative value change, not a new default.
+- Settings save/activation and run creation need a transactional boundary so concurrent requests
+  choose one complete configuration, never mixed values. Define handling for reviewed but not yet
+  accepted start requests; do not silently change reviewed execution semantics during acceptance.
+
+### Inspected implementation and planning implications
+
+- `src/domain/config/settings-current.ts` and `src/server/settings-runtime.ts`: current SQLite
+  settings include actual ordinary values plus revision/command/audit identity. Settings reads
+  authenticate the durable journal. Preserve that consistency when removing restart requirements.
+- `src/server/dashboard/compose.ts` currently creates a configuration snapshot and activates
+  `runtime_config` during dashboard boot. The settings result/runtime status currently requires a
+  restart. Activation must become available on successful settings application, with read paths and
+  UI status reflecting the new semantics.
+- `src/server/dashboard/commands/start-plan-service.ts` currently receives configuration identity
+  through composition-time dependencies. New requests must resolve the appropriate current identity
+  after saves rather than retaining boot-time values.
+- `src/core/run-executor.ts` already reads the retained snapshot named by the run envelope.
+  However, `src/server/worker/compose.ts` captures runtime tokens and several resource/time-limit
+  settings at composition, while `src/core/run-record-service.ts` and claim storage bind eligibility
+  to active runtime configuration. Merely changing the active row would strand older work or leave
+  effective settings stale. Inspect and update the complete execution/resource path.
+- Separate current worker authorization/ownership checks from the run's retained configuration.
+  Preserve stale-owner rejection, lease fencing and command replay protection; do not remove these
+  checks wholesale to permit multiple configuration snapshots.
+- Resolve retry/new-attempt, relaunch and delegated-child inheritance rules before execution
+  admission. Distinguish resuming an existing run from creating a new run; the current retry path
+  also compares its source configuration with the active runtime. Inventory process-wide settings
+  separately from run-bound settings and specify how updates take effect without operator restarts.
+  Credentials retain their separate protected-storage rules; no secret values enter snapshots.
+
+### Proof and allocation required before launch
+
+Focused tests must cover a settings save followed by a new run without restart, unchanged execution
+configuration for existing running/queued/paused runs, mixed-snapshot worker execution, concurrent
+save/create ordering, invalid saves/rollback, restart recovery, and preserved ownership fencing.
+Assert effective execution settings as well as stored fingerprints. Add proof for the resolved
+retry/relaunch/start-request rules and affected command/UI contracts.
+
+This crosses settings application, run creation, worker execution and shared authority contracts;
+it is a behavior change, not a mechanical table rename. Resolve shared prerequisites and existing
+batch ownership before allocating parallel work. Carry the agreed final-session heavy gates and
+independent review cadence. No implementation, contract ratification or launch prompt is authorized
+by this discussion record alone; execution admission remains pending the complete batch plan.
