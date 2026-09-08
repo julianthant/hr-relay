@@ -206,13 +206,33 @@ or authority-schema work to hide a failure.
 
 ## Current execution state
 
-P is **awaiting independent review**. T remains unstarted. The candidate enclosing
-this record is on `codex/tail-readers` at
-`/Users/julianhein/Projects/hr-worktree-tail-readers`, based on approved plan
-`6e0d05183ba9427e23af4427b62265389fc12281`. No wave peer has begun implementation.
-The review brief pins this commit and the base by full SHA; no writer or gate
-mutates the checkout during review. Candidate inventory: 51 paths, comprising
-21 production, 28 test/fixture and two documentation files.
+P is **accepted and integrated**. T remains unstarted. Independent complete review
+P-R1 by `sup_review_tail_readers` passed all 51 candidate paths with no findings:
+base `6e0d05183ba9427e23af4427b62265389fc12281`, candidate
+`249d96edf1cf0007e93f6313fc85d37a1dee4878` (tree
+`c20f792990b4b148e9c66c26f587f92241d8999e`). The reviewer independently checked
+inventory, exports/body equivalence, whitespace, instruction twins and all eight
+final gate-log digests; gate execution/input binding remained supplied supervisor
+evidence, not a reviewer rerun. No pre-run input manifest was captured.
+
+Integration `826cae74414e84fcd8559bbb34a43f2d68e4678e` merged P without behavioral
+conflicts onto `d9f0977908943ca94a258ae12f08216650dad16d`. The intervening D344
+instruction/planning changes explicitly preserve this in-flight P/T ownership,
+gates, peer communication and integration authorization. All runtime, test,
+script, configuration and dependency inputs match the reviewed candidate:
+Git input-list SHA-256 `0f251e5800a69e6652410f889f9fa9190942672bf1f88d758ac8a7ea08693068`.
+`/tmp/hr-tail-readers-evidence/integration-input-identity.json` records both full
+SHAs and all differing documentation paths. Typecheck, full coverage, web build,
+unchanged-reference parity, manifest and catalog results below are reused under
+D191, not rerun. The affected roadmap binding guard passed 23 tests; integration
+lint, roadmap generation/freshness, document links, nine instruction pairs/chains
+and whitespace are recording gates. The common wave base is the completion
+record commit enclosing this paragraph; the supervisor publishes its resolved
+full SHA to the existing approved peer tasks before any wave edits.
+
+The owned P worktree and branch were removed after clean-state verification.
+Its consumed planning handoff was removed; the unrelated 1-3 handoff remains.
+There are no owned P gate/browser processes. No push or live operation occurred.
 
 P preserves lifecycle derivations and payloads; it only exposes canonical ports.
 The fixed shared seam consists of `queries/run-detail-types.ts`, the
@@ -284,4 +304,4 @@ The worker is finished; the independent reviewer did not participate in that wor
 
 All failed logs are retained beside the final evidence. No production runtime,
 operator database, live transaction or push was used. Prerequisite integration,
-review acceptance and cleanup remain open; all T proof and completion remain open.
+review acceptance and cleanup are complete; all T proof and completion remain open.

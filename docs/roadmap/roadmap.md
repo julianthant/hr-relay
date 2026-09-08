@@ -941,16 +941,16 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
 
 ##### 1 · Complete shared-reader prerequisite {#p2f-readers}
-status: planned
+status: done
 date: D344 · operator-coordinated prerequisites
 doc: 2.6/task-1-1-revalidate-trust-and-evidence-consumers §P — shared-reader prerequisite
 
 > A separate accepted gate, displayed under its existing in-flight owner to preserve the approved 2026-09-08 P/T execution brief. No trust/data/operator peer implementation starts before this extraction is reviewed and integrated.
 
 builds:
-- [ ] BOTH separate run query/read ports, trust/data/operator composition and route registration without changing behavior
-- [ ] PROOF pass the prerequisite candidate and integration gates plus independent review
-- [ ] DOCS record the exact common integration SHA and exclusive peer ownership in the existing owner; the operator starts the peers
+- [x] BOTH separate run query/read ports, trust/data/operator composition and route registration without changing behavior
+- [x] PROOF pass the prerequisite candidate and integration gates plus independent review
+- [x] DOCS record the exact common integration SHA and exclusive peer ownership in the existing owner; the operator starts the peers
 
 needs:
 - p1f-close
@@ -958,6 +958,7 @@ needs:
 
 log:
 - 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
+- 2026-09-08 | P C249d96edf P-R1 PASS · integrated 826cae744 | 5,549 tests and 261 parity cases; identical integration code inputs, scoped recording checks; owned worktree/ref removed · trust/data/operator implementation remains open
 
 #### 1-2 · Revalidate data, intake, and prior-run value consumers {#p2f-data}
 status: planned
