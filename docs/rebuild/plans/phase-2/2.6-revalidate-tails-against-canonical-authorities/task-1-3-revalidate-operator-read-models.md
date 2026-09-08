@@ -4,16 +4,16 @@
 
 The operator requested `/phase-plan` for exactly **2.6.1-3**, followed by implementation in the same task, on 2026-09-08. The delayed continuation ran and its one-time heartbeat is paused. The operator subsequently approved the shared-reader prerequisite before the three parallel tasks. This overrides the routine fresh-session/prompt boundary, not contracts, independent review, gates or isolation.
 
-**WAITING ON the independently reviewed shared-reader prerequisite.** Task 2.6.1-1's session owns that prerequisite and the shared overview/roadmap ledger. Its inspected starting master is `2dd3048f8d5d223f3eb1347353c83c3d07297cfe`, which contains accepted Phase-1.6 closure. Its actual integration SHA, extracted interfaces and reviewed file ownership must be verified before this task creates its implementation worktree. This file is the task's detailed plan; the phase overview retains shared wave governance. Implementation and completion remain open.
+**S1–S4 implemented; full candidate gates pass; awaiting independent review.** Task 2.6.1-1's session owned that prerequisite and the shared overview/roadmap ledger; its window is now released. Its inspected starting master is `2dd3048f8d5d223f3eb1347353c83c3d07297cfe`, which contains accepted Phase-1.6 closure. P candidate `249d96edf1cf0007e93f6313fc85d37a1dee4878` passed complete independent P-R1; integration `826cae74414e84fcd8559bbb34a43f2d68e4678e` and completion base `64db38e017f585014173bae3c428e6c2a1f63099` were verified before worktree creation. This file is the task's detailed plan; the phase overview retains shared wave governance. Independent review, integration and completion remain open.
 
 | Assignment | Binding |
 | --- | --- |
 | Supervisor | Current task `01a08043-6490-7181-a040-736db353cb68`, GPT-6 Astra/high; local implementation, no supporting workers |
 | Shared prerequisite owner | Existing task `01a08042-bb76-7131-844a-872dd909a835`; extraction and shared wiring only, with independent review and gates before wave admission |
-| Implementation mode | Dedicated worktree and branch; proposed `/Users/julianhein/Projects/hr-worktree-operator-reads`, `codex/operator-reads`; neither reserved at planning |
-| Implementation base | Exact shared-prerequisite integration commit recorded in the phase overview, descended from the verified foundation close; resolve and record full SHA before effects |
+| Implementation mode | Dedicated worktree and branch; created `/Users/julianhein/Projects/hr-worktree-operator-reads`, `codex/operator-reads`, exclusively owned by this task |
+| Implementation base | `64db38e017f585014173bae3c428e6c2a1f63099`; accepted P integration and plan `8af59c63e5d06d1b746d50c214b6f2bf4eb6059d` verified ancestors |
 | Plan availability | Commit and inspect this entire file after prerequisite interface verification; verify its reachability and availability from the task checkout |
-| Integration | Local `master` in `/Users/julianhein/Projects/hr-automation-rebuild`; independently accepted wave peers may integrate in either order; serialize shared-target mutation/gates and combined generated output with the recorded integration owner |
+| Integration | Local `master` in `/Users/julianhein/Projects/hr-automation-rebuild`; T (Task 1-1) and Task 1-2 must now be accepted before Task 1-3; their mutual order remains independent; serialize shared-target mutation/gates and combined generated output with the recorded integration owner |
 | Merge condition | Candidate gates, complete independent PASS, clean owned checkout, verified target/plan/base, mergeability and unchanged peer ownership; `--no-ff`, required integration gates, renewed review for behavioral conflict fixes |
 | Review | One fresh complete `sup_review`, no implementation history; full candidate and all proof rows below, including migration/historical admission, operator reads, status UI and protected readback |
 
@@ -81,11 +81,138 @@ Worktree-local test scratch is owned by `scripts/test-runner.ts`; coverage and p
 
 ## Evidence and completion ledger
 
-- Planning inspection baseline: `2dd3048f8d5d223f3eb1347353c83c3d07297cfe`; no product changes or gates executed yet by this task.
-- The user approved the shared prerequisite in this session on 2026-09-08. Task 1-1 confirmed ownership and the operator/trust/data split through cross-task coordination. Actual prerequisite integration and exports remain to be verified at S1.
-- S1 plan/base binding, S2 canonical reads, S3 A3/history, S4 archive/settings/UI, S5 gates/review, and S6 integration/cleanup are all open.
-- Keep this ledger current with exact tested inputs, commands/results/logs, findings and next discriminating check; do not duplicate plans or infer completion from design.
-- Planning checks on 2026-09-08: docs audit PASS (9 identical instruction pairs; all chains below 32,768 bytes), all links in this file resolve, unique transferred `p2f-operator` tag, whitespace/diff check PASS. Source/test/script/config/dependency diff from foundation-close `2dd3048f8` to pre-plan HEAD `a57ecae8` is empty; no code gate was rerun or newly claimed. Shared README/roadmap generation and its final binding/freshness check belong to the prerequisite owner. This conditional plan commit does not satisfy S1's integrated-prerequisite verification.
+### Current checkpoint — 2026-09-08
+
+**Awaiting independent review.** Implementation candidate `8abb4cbaca50420e18b735d816ea05b93ab9c992`
+is committed on `codex/operator-reads` at `/Users/julianhein/Projects/hr-worktree-operator-reads`.
+Review base is `46892ab3704526feb2c8af80e2317e39e97bde36`. S1–S4 implementation/proof and all
+candidate gates pass; S5 independent review and S6 integration/cleanup remain open. The evidence
+commit following this implementation changes only this owner and does not change acceptance.
+
+The base contains accepted T candidate `98305e1bccf3f4c1db80735496060bbcbfc68855`, integration
+`5a07b329ec8a935535ee34935fc05717bbc4f0c1` and completion `393d5da75e96ae431ac0fa9d73d07176d924a3d7`;
+and accepted Task 1-2 candidate `75e3fb655b438bcf2c97f2d1d9df3582ccdf7f15`, evidence
+`00a80682b48b0b72898798722cff023170d47047`, integration `b2302c057836254067845c95b75ec9edaca78ef5`
+and completion `4fd479d8ad3599879cac342a6900549e6532cd05`. T-R1 and 2.6.1-2-R1 passed complete
+independent review. Their optional-evidence readers are consumed. Exact owned-path preservation
+was verified for the BFF, redaction audit and intake test overlaps; all exact temporary stashes
+were removed. The base also preserves the separate approved future command-group/delegation
+naming plan; it changes no current implementation or this assignment's scope.
+
+The operator approved the shared-reader prerequisite and same-session implementation. D344
+preserves this in-flight local integration authorization. The primary checkout remains
+shared/integration-only; all earlier primary writers released their windows, subject to fresh
+pre-integration inspection. Its exact task-owned wait handoff remains for closure cleanup.
+No supporting writer, push, live HR write, operator database conversion or credential mutation
+has occurred. The temporary two-worker adapter is removed from the review tree and retained at
+`/tmp/hr-operator-reads-vitest-adapter.mts`; copying it back as `.operator-vitest.mts` reproduces
+the approved gate command below. It imports the repository configuration and asserts only root/
+project worker counts differ. Projects, assertions, isolation, timeouts and floors are unchanged.
+
+### Frozen candidate gates
+
+All following code/test/build gates ran on the exact source/test/config/dependency inputs committed
+as `8abb4cbaca50420e18b735d816ea05b93ab9c992`. Only this evidence owner changes afterward.
+`/tmp/hr-operator-reads-candidate-inputs.json` binds all 79 changed implementation paths by SHA-256.
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| `npm run typecheck` | PASS | `/tmp/hr-operator-reads-typecheck-repairs.log` |
+| `npm run lint` | PASS | `/tmp/hr-operator-reads-lint-repairs.log` |
+| `npm exec -- tsx scripts/test-runner.ts run --coverage --config .operator-vitest.mts` | PASS: 447 files, 5,635 tests, all configured floors; 337.75 seconds | `/tmp/hr-operator-reads-coverage-final-2.log`; exactly two observed fork workers; no concurrent compiler/linter |
+| `npm exec -- tsx scripts/suite-size.ts` | PASS: unit 350, architecture 80, scenario 17 files | `/tmp/hr-operator-reads-suite-size-final.log` |
+| `npm run test:parity` | PASS: 262 desktop cases; runner 62.432 seconds | `/tmp/hr-operator-reads-parity-final.log`; required body/digest JSON evidence passed |
+| `npm run web:build` | PASS; existing large-chunk advisory only | `/tmp/hr-operator-reads-web-build-final.log`; ran after parity |
+| Manifest/catalog/roadmap freshness | PASS | `/tmp/hr-operator-reads-manifest-final.log`, `/tmp/hr-operator-reads-catalog-final.log`, `/tmp/hr-operator-reads-roadmap-final.log` |
+| Instruction pairs/chains, links and whitespace | PASS; evidence recording rechecks below | `/tmp/hr-operator-reads-docs-audit-final.log`; `git diff --check` |
+
+Evidence-only recording checks passed: 23 roadmap binding cases (`/tmp/hr-operator-reads-evidence-binding.log`), lint (`/tmp/hr-operator-reads-evidence-lint.log`), roadmap freshness, nine instruction pairs/chains, task-owner local links, and whitespace. The inspected diff changes only this owner; all 79 implementation hashes remain identical.
+
+P1–P7 proofs are present; the complete independent reviewer must inspect them and the new Cancelling
+reference. No PASS or task completion is inferred from these gates. Initial plan and prerequisite
+identities remain in the binding table and accepted dependency record.
+
+### Necessary reader dependency amendment
+
+Accepted P still required a span fold for asynchronous capture admission and Context Data. Those
+seams belong to T and Task 1-2. Both owners confirmed their optional-evidence repairs. P1/P4 final
+acceptance must consume only their independently accepted commits. The initial either-order claim
+for Task 1-3 is withdrawn: final acceptance/integration order is **{T, 1-2} → 1-3**; T and 1-2 remain
+mutually independent. This necessary shared-reader prerequisite stays within the operator-approved
+scope and adds no feature or external action. Record exact accepted SHAs and the resulting review
+base before final acceptance.
+
+The new real-SQLite archive proof is authored for both a standalone run and an operation member.
+It calls asynchronous detail, freezes genuine missing evidence, archives through `RunRecordService`,
+checks queue/workflow/status/month/Activity counts, reads immutable archive content, verifies a
+member's direct-delete refusal, and deletes through the canonical root. Both cases pass on the accepted readers, with no synthetic span or skipped acceptance. `/tmp/hr-operator-reads-accepted-data-proof.log`: all eight canonical cases and 21 intake cases passed (29/29, 3.34 seconds).
+
+### Verified evidence and remaining checks
+
+| Area | Evidence | Status / next check |
+| --- | --- | --- |
+| S2 canonical reads/status | `/tmp/hr-operator-reads-s2-sixth.log`: 96/96 in four files. `/tmp/hr-operator-reads-focused-archive-3.log`: canonical no-span, real cursor-stale, heartbeat/cancellation/rename and member-delete cases passed within its 124/127 result. | Accepted-T rerun `/tmp/hr-operator-reads-s2-accepted-trust.log`: 245/245 in four files (11.42 seconds); `/tmp/hr-operator-reads-async-requeue.log`: asynchronous spanless detail and requeue 2/2 passed. All canonical/archive and combined intake cases now pass, 29/29, on accepted 1-2. New recovery-requeue test initially assumed a new attempt; canonical service test #6/#7 proves recovery preserves it. Corrected focused proof passed in `/tmp/hr-operator-reads-requeue-status-fix.log` (two selected tests total, not full-suite evidence). |
+| S3 migration/history | `/tmp/hr-operator-reads-focused-storage.log`: 254/257. New A3 byte/generation preservation, populated v30/v31 settings metadata, v29–v33 restore/admission and doctor/privacy cases all passed; three unrelated new fixture/expected-version faults were corrected. | CLI corruption/restore now also proves the restored canonical run renders as Running without span evidence, preserves authority generation/write intents, and causes no unchanged snapshot churn. `/tmp/hr-operator-reads-restored-reader-2.log`: one selected test passed (2.69 seconds), with scoped lint exit 0; the initial expectation of a change notification for already-present authority was corrected to require no churn. Final full suite passed. Released SQL/digest pins are unchanged; only schema 34's `DROP TABLE runs_view` and its digest are appended. |
+| S4 archive boundaries | `/tmp/hr-operator-reads-focused-archive-2.log`: 114/118; remaining four fixture faults were corrected with valid canonical admission/refusal behavior. `/tmp/hr-operator-reads-focused-ui-4.log`: affected archive-route and Activity cases 52/52, 4.87 seconds. | Both standalone and operation-member spanless freeze/readback/delete proofs now pass on accepted 1-2. Foreign-record controls now use a fully valid foreign identity/digest, so refusal cannot pass through unrelated schema failure. |
+| P6 safe readback | Four upgrade phases are projected without private journal identities, paths, digests, settings entries or environment names. Doctor/API/preflight privacy and no-mutation cases passed in the storage run; corrupt journal is explicitly unavailable. | Final suite also retains existing Settings runtime/presence/refusal checks. Explorer trace is descriptor/manifest/override-only; no lifecycle migration was invented there. |
+| P7 behavior | Cancelling queue band/action/count/filter and rendered Activity checks passed. Its filter appears when served or selected and retains a selected empty bucket; the original eight empty-state controls remain reachable. | Launcher/rail count wording now names Cancelling when it contributes; focused wording/count proof and scoped lint passed. Final full browser recheck passed on accepted peer provenance. |
+| Targeted architecture | `/tmp/hr-operator-reads-architecture-focus.log`: 47/47, five suites, 17.95 seconds; lifecycle SQL, archive invariants, immutable migration history, strict schemas and injected redaction violations. | Final full coverage includes these guards; no extra duplicate whole architecture run required. |
+| Typecheck / lint | `/tmp/hr-operator-reads-typecheck-9.log` and `/tmp/hr-operator-reads-lint-5.log`: exit 0 on accepted T plus current operator changes, including valid gate fixture, async detail, archive/member proof types and active-count wording. | Final candidate typecheck/lint passed in the frozen-candidate table. Earlier iteration failures are not passing gate evidence. |
+| Browser references | New Cancelling PNG/a11y/metadata trio generated deliberately; `/tmp/hr-operator-reads-parity-cancelling-2.log`: 1/1 plus JSON evidence verification, 4.7 seconds. Image inspected: static CircleStop, readable label and explicit unsettled-worker meaning. | Initial wrapper correctly refused missing statically declared body-backed evidence; test now declares and digest-binds it. Existing reference files remain untouched by this task. Accepted-peer provenance update `/tmp/hr-operator-reads-cancelling-peer-provenance.log` passed 1/1 (6.0 seconds); PNG bytes and accessibility body match the earlier new reference exactly, and metadata uses accepted descriptor hash `3e459f4b09a28d4992efe712a98310053030f263ac11d9c0610234142f2c8df9`. Independent reference review remains open. |
+| Full parity iteration | `/tmp/hr-operator-reads-parity-full-1.log`: 260/262, 1.2 minutes. Both populated-receipt failures came from a fixture that emitted gate evidence while leaving authority Running. | Fixture now performs the real fenced `parked-gate` transition. `/tmp/hr-operator-reads-parity-receipt-fix.log`: both unchanged receipt references plus Cancelling passed, 3/3, 6.9 seconds, including JSON evidence verification. No reference was changed for the defect; final parity passed 262/262. |
+| Documentation | `/tmp/hr-operator-reads-docs-audit.log`: nine matching instruction pairs, largest chain 16,650 bytes; whitespace check passes. | Final freshness/audit passed; integration rechecks remain. Server twins clarify canonical archive membership admission versus immutable evidence content, as approved D330 requires. |
+
+### Full-candidate iteration
+
+The first complete coverage run, `/tmp/hr-operator-reads-coverage-final-1.log`, finished with
+439/447 files and 5,613/5,635 tests passing in 337.13 seconds; it is failed evidence, not a
+coverage PASS. Its 22 failures were stale fixture/expectation boundaries exposed by canonical
+reads: old claim dates preceding the harness enqueue date, archived or gated fixtures without
+matching lifecycle authority, schema 33/current+1 pins after migration 34, a counter instrumenting
+the retired raw run reader, and an old assertion that orphan spans must make current counts throw.
+Repairs preserve complete lifecycle sweeps, corruption/missing-state refusals, count membership,
+performance bounds and all tests. The orphan case now proves canonical exclusion while retaining
+its evidence; storage doctor's discrepancy proofs remain. The performance fixture parks through
+its real fenced transition. Read-count proof measures one canonical admission and one list per
+preview, zero raw run reads, and unchanged bounded checkpoint reads for four versus forty members.
+
+`/tmp/hr-operator-reads-coverage-repairs-1.log`: seven corrected suites passed; only the newly
+instrumented frozen reader failed. The harness now exposes an instrumentable forwarding port over
+the unchanged canonical reader. `/tmp/hr-operator-reads-canonical-read-bounds.log`: all 48 cases
+in read bounds and canonical operator reads pass (2.32 seconds). Full typecheck/lint and complete coverage subsequently passed; the frozen-candidate table above is the accepted gate record. The host showed exactly two Vitest fork workers, with no own
+compiler/linter during coverage. The other primary writers have released their windows; committed
+future plans remain out of this task's implementation scope.
+
+### Gate and shared-file coordination
+
+Heavy windows are serialized after observed compiler/linter contention and a shared bundle race.
+Coverage uses the temporary adapter that imports the real configuration and asserts that only
+root/project worker counts differ (two); projects, assertions, floors, timeouts and isolation are
+unchanged. Own parity and production build are sequential. T's repaired coverage (443 files/5,566
+tests) and parity (261 tests) passed; T is independently accepted and integrated. Task 1-2 passed reference assertion (261/261) and
+has passed combined typecheck/lint, coverage (446 files/5,613 tests) and parity (261/261), and is
+independently accepted and integrated. This task completed its released stable-gate window with all processes
+exited. This task has no active test/compiler/browser
+process while those windows are held. Its corrected receipt/requeue checks passed in the released
+short slot; final combined gates still await accepted reader commits.
+
+- T owns the missed failure-advisory repair: `queries/advisory.ts`, its tests, only the advisory
+  binding in root `compose.ts`, and two advisory blocks in `bff-flow.test.ts`. This task's BFF
+  projector/date-fixture hunks do not overlap; preserve their union when consuming accepted T.
+- Task 1-2 owns only new Rerun registrations in `redaction-surface-audit.ts`; this task owns exactly
+  two doctor leaf origins (`authorityUpgrades.cause.code/summary`). T has no audit edits. This task
+  wires three existing archived-capture scanner calls without weakening their controls.
+- Task 1-2 owns existing reference updates for its approved descriptor provenance change, including
+  exact displayed short hashes where present, with text/pixel classification and independent review.
+  This task owns only the new Cancelling trio and will reconcile its metadata to accepted 1-2.
+  Preserving this task's existing visual behavior does not pin obsolete peer provenance.
+- Shared phase overview/roadmap generation belongs to T until serialized integration. Never hand-edit
+  generated output. Record final manifest/catalog/roadmap freshness and exact implementation,
+  reviewer and integration identities before marking this task complete.
+
+Initial planning verification on 2026-09-08 passed docs/link/tag/whitespace checks. Source/test/script/
+config/dependency inputs were unchanged from foundation close `2dd3048f8` to planning HEAD `a57ecae8`;
+that evidence applied only to planning, not this implementation.
 
 ## Original task acceptance
 
