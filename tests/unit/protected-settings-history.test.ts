@@ -111,7 +111,7 @@ describe("pre-D341 marked protected-settings commands", () => {
     assert.deepEqual(HistoricalProtectedSettingsAuditSchema.parse(audit), audit);
     const raw = new DatabaseSync(path);
     try {
-      raw.prepare("INSERT INTO commands VALUES (?,?,?,?)").run(command.commandId, "settings", canonicalJsonStringify(command), now);
+      raw.prepare("INSERT INTO commands(record_key,family,record_json,created_at) VALUES (?,?,?,?)").run(command.commandId, "settings", canonicalJsonStringify(command), now);
       raw.prepare("INSERT INTO command_audits VALUES (?,?,?,?)").run(auditId, command.commandId, canonicalJsonStringify(audit), now);
     } finally { raw.close(); }
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);

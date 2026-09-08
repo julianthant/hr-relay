@@ -42,8 +42,8 @@ import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
-  constructor() {
-    super("command-divergent: command identity belongs to a different command");
+  constructor(message = "command-divergent: command identity belongs to a different command") {
+    super(message);
     this.name = "CommandIdentityConflictError";
   }
 }
@@ -657,6 +657,22 @@ export const BulkRunCommandAcceptanceRecordSchema = z.strictObject({
     });
   }
 });
+
+/** Stored acceptance only; never an executable command or lifecycle record. */
+export const BulkParentCommandRecordSchema = z.strictObject({
+  kind: z.literal("bulk-parent"),
+  commandId: CommandIdSchema,
+  acceptance: BulkRunCommandAcceptanceRecordSchema,
+}).superRefine((record, context) => {
+  if (record.commandId !== record.acceptance.bulkCommandId) {
+    context.addIssue({ code: "custom", message: "bulk parent command identity must match acceptance" });
+  }
+});
+
+export const StoredAuthorityCommandRecordSchema = z.union([
+  AuthorityCommandRecordSchema,
+  BulkParentCommandRecordSchema,
+]);
 
 /**
  * D235 — what ONE target's child command settled as. A bulk request is N real

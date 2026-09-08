@@ -2207,7 +2207,7 @@ at-floor root because A1 settles or refuses it inside the upgrade before COMMIT.
 
 | Authority | Row / file kind | Rule after the floor | Mechanism |
 |---|---|---|---|
-| SQLite | `tasks`, `archived_runs`, `archive_relaunches`, `run_sessions`, `start_plans`, `intake_*`, `write_*`, `durable_outbox`, `run_checkpoints`, `run_results`, `failures`, `run_terminal_*`, `evidence_receipts`, `diagnostic_*`, `dry_run_scenario_results`, `activity_person_*`, `commands`, `command_audits`, `bulk_command_acceptances`, `runtime_config`, `notifications`, ledger tables | **superset-readable** — same strict record schema, no transform, no adapter | the D330 service and every repository read the rows as they are |
+| SQLite | `tasks`, `archived_runs`, `archive_relaunches`, `run_sessions`, `start_plans`, `intake_*`, `write_*`, `durable_outbox`, `run_checkpoints`, `run_results`, `failures`, `run_terminal_*`, `evidence_receipts`, `diagnostic_*`, `dry_run_scenario_results`, `activity_person_*`, `commands`, `command_audits`, `runtime_config`, `notifications`, ledger tables | **superset-readable** — same strict record schema, no transform, no adapter | the D330 service and every repository read the rows as they are |
 | SQLite | `deleted_runs` (pre-floor) | **transform-once** for the three ordinals (§D332.7 item 2) with provenance; tally **read-forward** (item 3) | the backfill; `tallyVersion` |
 | SQLite | `checkpoint_payloads` | superset-readable; gains the relaxed trigger only | 1.6 schema step |
 | SQLite | `config_snapshots` | **read-forward, never transformed** — generation-gated absence for retired and post-baseline leaves; fingerprints verify over stored bytes | §4.1 + the retirement arm |
@@ -2970,7 +2970,7 @@ consumed by the shape change. What that bought is the SHAPE, not a running plann
 recursively strict schema over an immutable repository (`storage-records.ts:239`,
 `authority-database.ts:3098-3101`), and its only writer would be the same child-run delegation seam
 §4's opening says is unwired — `DelegationManifestRefSchema` is read at `run-executor.ts:1523`,
-inside the arm that refuses `capability-unavailable`. So `delegation_manifests` is a strict,
+inside the arm that refuses `capability-unavailable`. So `run_delegations` is a strict,
 writable table with no production row, which is the honest half-way state and is why the correction
 was worth making before the first writer rather than after it.
 
@@ -3929,7 +3929,7 @@ one door that settles a run.
 `evidence_receipts`, `dry_run_scenario_results`, `activity_person_pseudonyms`,
 `provider_admissions`, `failures`, `run_terminal_outbox`, `run_results`,
 `run_terminal_authorizations`, `run_checkpoints`, the inbox `notifications` whose links name the
-run, `dependencies` in either direction and the `delegation_manifests` the run authored,
+run, `delegation_dependencies` in either direction and the `run_delegations` the run authored,
 `archive_relaunches` and `archived_runs`, and last the `tasks` row itself. The tombstone's
 `removed` tally records rows per table.
 
@@ -4122,7 +4122,7 @@ waits, and `cancel` on an anchor first cancels every non-terminal member as N CA
 direct edges for queued/parked members, cancel REQUESTS for claimed ones (amended 2026-09-04, coordinator ruling on R04 item 1 — option A) — (`cancel-tree`), then the anchor's own request or edge, and the anchor settles only after every member has; (2) `terminal/interrupted → queued` refuses on a member whose
 anchor is already `terminal`; (3) `delete` refuses a member alone and an anchor cascades its members
 (§D330.8). No state of a member is derived from the anchor or vice-versa; the dependency edge lives
-in `dependencies` and is consulted by claim eligibility only. A projection may SUMMARIZE a tree,
+in `delegation_dependencies` and is consulted by claim eligibility only. A projection may SUMMARIZE a tree,
 but the summary is presentation and the service serves each row's own state. (As-built, every
 enqueue path stamps `shape: "single"`, so the group path is unexercised — §D330.11 names the tests
 1.6 owes before 3.1 draws a group.)
@@ -4256,7 +4256,7 @@ SQLite atomicity forbids) is a doctor finding, never repaired by a runtime write
 ###### D330.6 — queue ordering and first-eligible claim
 
 **Eligibility** of a row for a worker is the conjunction: state `queued` ∧ (`notBefore` absent or
-≤ now) ∧ `workflow` equals the worker's workflow ∧ every `dependencies` edge into the row is
+≤ now) ∧ `workflow` equals the worker's workflow ∧ every `delegation_dependencies` edge into the row is
 satisfied ∧ disposition `live`. Nothing else — not `priority`, not age — makes a row ineligible.
 As-built `claimNext` filters only `workflow`, `state` and `notBefore`; the dependency-satisfaction
 and disposition predicates are 1.6's change. The worker's runtime token is REQUIRED in full — there
@@ -4593,8 +4593,17 @@ Each item is also marked in place with a dated note; the owning section keeps it
 
 <a id="command-group-storage"></a>
 
-**2026-09-08 operator-approved storage consolidation — pending implementation.**
-[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) will move the
+The command-group candidate appends schema 35 against its isolated schema-34 base and requires
+stopped conversion through schema 34. Earlier command/audit JSON stays byte-identical; the old
+bulk acceptance table requires a data-aware transform into parents and validated direct-child
+links. This is not a superset-only schema read. Current backup fingerprints include relational
+`parent_command_id`; historical backups retain their original algorithms. Both delegation tables
+are renamed without rewriting records. Parallel integration must reconcile migration numbering
+and historical families before claiming a combined current schema.
+
+
+**2026-09-08 command-group storage — implemented candidate, pending independent acceptance.**
+[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) moves the
 exact accepted bulk envelope from `bulk_command_acceptances` into a non-executable parent
 row in `commands`, with direct individual commands linked by nullable `parent_command_id`.
 The parent retains original selection/order, versions, options, fingerprint and acceptance
@@ -4603,7 +4612,7 @@ execution audit and is excluded from unfinished executable-command counts. Exist
 IDs, command/audit evidence, per-target results, best-effort transactions and replay rules
 below remain binding. Historical migration must preserve evidence and refuse ambiguous
 identity/linkage; public command doors and envelopes do not change. This approved design
-does not claim the separate table has already been removed or authorize live conversion.
+requires candidate gates and independent review before integration; live conversion remains separately assigned.
 
 **Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are `cancel`
 and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change applied to a

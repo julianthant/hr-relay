@@ -1,3 +1,4 @@
+import { deriveBulkChildCommand } from "../../domain/command-groups.js";
 /** D336 temporary stopped SQLite conversion adapter; Phase 2.6 owns deletion. */
 import { DatabaseSync } from "node:sqlite";
 import { openSync, closeSync, lstatSync, unlinkSync } from "node:fs";
@@ -10,7 +11,7 @@ import { sha256Hex } from "../../domain/sha256.js";
 import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import { inspectSpanAuthorityCorpusReadOnly } from "../sqlite/storage-doctor.js";
 import { AuthorityUpgradeRecordSchema } from "../../domain/authority.js";
-import { CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../domain/commands.js";
+import { BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../domain/commands.js";
 import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../domain/config/settings.js";
 import { inspectConvertedAuthority } from "../sqlite/authority-database.js";
@@ -132,6 +133,43 @@ function writeOrdinaryConversion(database: DatabaseSync, sources: UpgradeSources
   return revision;
 }
 
+/** Validate every historical ownership relation before changing any schema or record. */
+function commandGroupLinks(database: DatabaseSync, ownsCredentialCommandId: (commandId: string) => boolean): readonly Readonly<{ commandId: string; parentId: string }>[] {
+  const rowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
+  const rows = database.prepare("SELECT record_key, record_json FROM commands").all()
+    .map((row) => rowSchema.parse(row));
+  const commands = new Map(rows.map((row) => [row.record_key, row.record_json]));
+  const parents = database.prepare("SELECT record_json FROM bulk_command_acceptances").all()
+    .map((row) => BulkRunCommandAcceptanceRecordSchema.parse(JSON.parse(RowSchema.parse(row).record_json)));
+  const parentIds = new Set(parents.map((record) => record.bulkCommandId));
+  const links = new Map<string, string>();
+  for (const parent of parents) {
+    if (commands.has(parent.bulkCommandId) || ownsCredentialCommandId(parent.bulkCommandId)) throw new Error("command-group migration parent identity collision");
+    for (const target of parent.request.targets) {
+      const child = deriveBulkChildCommand(parent.request, target);
+      if (parentIds.has(child.commandId) || ownsCredentialCommandId(child.commandId)) throw new Error("command-group migration parent/child identity collision");
+      const previous = links.get(child.commandId);
+      if (previous !== undefined && previous !== parent.bulkCommandId) throw new Error("command-group migration ambiguous child ownership");
+      const saved = commands.get(child.commandId);
+      if (saved === undefined) continue;
+      if (canonicalJsonStringify(JSON.parse(saved) as unknown) !== canonicalJsonStringify(child)) throw new Error("command-group migration child request mismatch");
+      links.set(child.commandId, parent.bulkCommandId);
+    }
+  }
+  return [...links].map(([commandId, parentId]) => ({ commandId, parentId }));
+}
+
+function applyCommandGroupLinks(database: DatabaseSync, links: ReturnType<typeof commandGroupLinks>): void {
+  if (links.length === 0) return;
+  const trigger = z.strictObject({ sql: z.string() }).parse(database.prepare("SELECT sql FROM sqlite_master WHERE name='commands_parent_immutable_update'").get()).sql;
+  database.exec("DROP TRIGGER commands_parent_immutable_update");
+  for (const link of links) {
+    if (database.prepare("UPDATE commands SET parent_command_id=? WHERE record_key=? AND parent_command_id IS NULL")
+      .run(link.parentId, link.commandId).changes !== 1) throw new Error("source-changed: command-group child linkage");
+  }
+  database.exec(trigger);
+}
+
 /** A disposable in-memory replay proves the entire post-conversion invariant set
  * before the stopped command creates a lock, directory, credential or SQLite write.
  * Source schema is already authenticated against immutable released DDL. */
@@ -162,6 +200,7 @@ function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
 }
 
 export function convertSettingsDatabase(args: Readonly<{
+  ownsCredentialCommandId: (commandId: string) => boolean;
   verifyOnly?: boolean;
   bindCredentials?: (upgradeId: string) => void;
   input: ConversionInput; path: string; existed: boolean; from: number;
@@ -189,12 +228,14 @@ export function convertSettingsDatabase(args: Readonly<{
         const currentTombstones = tombstoneBackfill(existed ? database : undefined, input.stateRoot);
         if (canonicalJsonStringify(currentTombstones) !== canonicalJsonStringify(tombstones)) throw new Error("source-changed: tombstone span evidence");
         for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > from)) {
+          const links = migration.version === 35 ? commandGroupLinks(database, args.ownsCredentialCommandId) : undefined;
           for (const [index, statement] of migration.statements.entries()) {
             if (migration.version === 32 && index === 2 && sources.ordinary.revision > 1) {
               database.prepare("UPDATE settings_current SET record_json=json_set(record_json,'$.settings',json(?)) WHERE record_key='current'").run(canonicalJsonStringify(sources.ordinary.settings));
             }
             database.exec(statement);
           }
+          if (links !== undefined) applyCommandGroupLinks(database, links);
           if (migration.version === 1) database.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,1,0,?)").run(now);
           database.prepare("UPDATE authority_meta SET schema_version=? WHERE singleton_id=1").run(migration.version);
           database.exec(`PRAGMA user_version=${String(migration.version)}`);

@@ -129,18 +129,18 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it("refuses to supersede an unfinished schema-32 settings conversion", async () => {
+  it.each([32, 33, 34])("refuses to supersede an unfinished schema-%s settings conversion", async (version) => {
     const seed = fixture(); await seed.run();
     const source = new DatabaseSync(seed.path, { readOnly: true });
     let pending: Record<string, unknown>;
     try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM authority_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
     finally { source.close(); }
-    const f = fixture(32);
+    const f = fixture(version);
     const raw = new DatabaseSync(f.path);
-    try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: 32 }), now); }
+    try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: version }), now); }
     finally { raw.close(); }
     const before = readFileSync(f.path);
-    await assert.rejects(f.run(true), /upgrade-pending: finish the interrupted schema-32/u);
+    await assert.rejects(f.run(true), new RegExp(`upgrade-pending: finish the interrupted schema-${String(version)}`, "u"));
     assert.deepEqual(readFileSync(f.path), before);
   });
   it("renames a v32 database without reimporting settings or touching independent credentials", async () => {
@@ -156,8 +156,8 @@ describe("D336 stopped SQLite upgrade", () => {
       for (const table of tables) {
         const rows = source.prepare(`SELECT * FROM ${table}`).all(); before.set(table, rows);
         for (const row of rows) {
-          const columns = Object.keys(row);
-          target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+          const columns = Object.keys(row).filter((column) => column !== "parent_command_id");
+          target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...columns.map((column) => row[column]));
         }
       }
     } finally { source.close(); target.close(); }

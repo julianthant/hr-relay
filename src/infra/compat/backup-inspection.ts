@@ -1,3 +1,5 @@
+import { BulkRunCommandAcceptanceRecordSchema, AuthorityCommandRecordSchema } from "../../domain/commands.js";
+import { PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema } from "../../domain/commands-history.js";
 import { HistoricalRunSessionRecordSchema } from "../../domain/run/session.js";
 import { createHash } from "node:crypto";
 import { existsSync, rmSync, statSync } from "node:fs";
@@ -17,7 +19,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33,
+  27, 28, 29, 30, 31, 32, 33, 34,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -50,7 +52,9 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "provider_admissions",
   "leases",
   "dependencies",
+  "delegation_dependencies",
   "delegation_manifests",
+  "run_delegations",
   "commands",
   "command_audits",
   "bulk_command_acceptances",
@@ -290,6 +294,7 @@ function authorityTableOrder(tableNames: ReadonlySet<string>): readonly string[]
 }
 
 function authorityContentFingerprint(database: DatabaseSync, tableNames: ReadonlySet<string>): string {
+  const groupedCommands = readIntPragma(database, "user_version") >= 35;
   const hash = createHash("sha256");
   hash.update("[");
   for (const [tableIndex, name] of authorityTableOrder(tableNames).entries()) {
@@ -308,10 +313,11 @@ function authorityContentFingerprint(database: DatabaseSync, tableNames: Readonl
     } else {
       hash.update("[");
       let rowIndex = 0;
+      const schema = name === "commands" && groupedCommands ? FingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : FingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json FROM ${quoteIdentifier(name)} ORDER BY record_key
+        SELECT record_key, record_json${name === "commands" && groupedCommands ? ", parent_command_id" : ""} FROM ${quoteIdentifier(name)} ORDER BY record_key
       `).iterate()) {
-        const row = FingerprintRowSchema.parse(rawRow);
+        const row = schema.parse(rawRow);
         if (rowIndex > 0) hash.update(",");
         hash.update(canonicalJsonStringify(row));
         rowIndex += 1;
@@ -333,7 +339,7 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>) 
     tableNames.has(tableName) ? count(database, sql) : 0
   );
   return Object.freeze({
-    pendingCommands: count(database, "SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
+    pendingCommands: count(database, `SELECT count(*) AS count FROM commands AS command WHERE ${readIntPragma(database, "user_version") >= 35 ? "command.family <> 'bulk-parent' AND " : ""}NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)`),
     unresolvedWriteIntents: count(database, "SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count(database, "SELECT count(*) AS count FROM leases"),
     durableOutbox: count(database, "SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
@@ -348,6 +354,10 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
     tasks: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_runs,
+    dependencies: AUTHORITY_RECORD_SCHEMA_REGISTRY.delegation_dependencies,
+    delegation_manifests: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_delegations,
+    bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
+    ...(schemaVersion < 35 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]) } : {}),
     run_sessions: HistoricalRunSessionRecordSchema,
     ...(schemaVersion < 32 ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   };

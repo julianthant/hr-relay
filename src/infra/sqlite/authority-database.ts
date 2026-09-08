@@ -1,5 +1,6 @@
+import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../domain/command-groups.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
-import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
 import { CommandIdentityConflictError } from "../../domain/commands.js";
 import { createCredentialStore } from "../config/credential-store.js";
 import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
@@ -33,6 +34,8 @@ import { systemClock } from "../../domain/clock.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
+  StoredAuthorityCommandRecordSchema,
+  BulkParentCommandRecordSchema,
   BulkRunCommandAcceptanceRecordSchema,
   CommandAuditRecordSchema,
   CommandRequestSchema,
@@ -417,8 +420,11 @@ type ReadRepository<RecordValue> = Readonly<{
 }>;
 
 type CommandRepository = Readonly<{
-  assertIdentity(input: unknown): void;
-  insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
+  assertIdentity(input: unknown, parentCommandId?: string): void;
+  insert(input: unknown, parentCommandId?: string): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
+  acceptBulk(input: unknown): ImmutableInsertResult<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
+  getBulk(commandId: string): z.infer<typeof BulkRunCommandAcceptanceRecordSchema> | undefined;
+  parentId(commandId: string): string | null | undefined;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
@@ -992,7 +998,6 @@ export type AuthorityRepositories = Readonly<{
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
   lifecycleJournal: RunLifecycleJournalRepository;
-  bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -1666,7 +1671,7 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: `
       SELECT count(*) AS count FROM commands
       WHERE family IS NOT CASE
-        WHEN json_extract(record_json, '$.kind') = 'run-lifecycle' THEN 'run-lifecycle'
+        WHEN json_extract(record_json, '$.kind') IN ('run-lifecycle', 'bulk-parent') THEN json_extract(record_json, '$.kind')
         ELSE json_extract(record_json, '$.family')
       END
     `,
@@ -1676,12 +1681,12 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
   },
   {
-    name: "bulk-command-acceptance-columns-match-record",
-    sql: "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')",
+    name: "bulk-parent-columns-match-record",
+    sql: "SELECT count(*) AS count FROM commands WHERE family = 'bulk-parent' AND (parent_command_id IS NOT NULL OR record_key IS NOT json_extract(record_json, '$.commandId') OR created_at IS NOT json_extract(record_json, '$.acceptance.request.requestedAt') OR EXISTS (SELECT 1 FROM command_audits WHERE command_id = commands.record_key))",
   },
   {
     name: "dependency-manifest-column-matches-record",
-    sql: "SELECT count(*) AS count FROM dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
+    sql: "SELECT count(*) AS count FROM delegation_dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
   },
   {
     name: "write-intent-columns-match-record",
@@ -1845,10 +1850,35 @@ const INVARIANT_QUERIES = Object.freeze([
 ] as const);
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
-  return INVARIANT_QUERIES.flatMap(({ name, sql }) => {
+  const violations = INVARIANT_QUERIES.flatMap(({ name, sql }) => {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
+  return [...violations, ...commandGroupLinkViolations(database)];
+}
+
+/** Validate both declared links and missing links from each immutable parent selection. */
+function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
+  const rowSchema = z.strictObject({ record_key: z.string(), record_json: z.string(), parent_command_id: z.string().nullable() });
+  const rows = database.prepare("SELECT record_key, record_json, parent_command_id FROM commands ORDER BY record_key").all()
+    .map((row) => rowSchema.parse(row));
+  const byId = new Map(rows.map((row) => [row.record_key, row]));
+  const expected = new Map<string, string>();
+  for (const row of rows) {
+    const raw: unknown = JSON.parse(row.record_json);
+    if (typeof raw !== "object" || raw === null || !("kind" in raw) || raw.kind !== "bulk-parent") continue;
+    const parent = BulkParentCommandRecordSchema.parse(raw);
+    for (const target of parent.acceptance.request.targets) {
+      const child = deriveBulkChildCommand(parent.acceptance.request, target);
+      const saved = byId.get(child.commandId);
+      if (saved === undefined) continue;
+      if (expected.has(child.commandId) && expected.get(child.commandId) !== parent.commandId) return ["command-group ambiguous child ownership"];
+      if (canonicalJsonStringify(JSON.parse(saved.record_json) as unknown) !== canonicalJsonStringify(child)) return ["command-group child request mismatch"];
+      expected.set(child.commandId, parent.commandId);
+    }
+  }
+  return rows.flatMap((row) => row.parent_command_id === (expected.get(row.record_key) ?? null)
+    ? [] : ["command-group child linkage mismatch"]);
 }
 
 const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
@@ -1866,6 +1896,10 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
+        if (version < 35) {
+          sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
+          if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
+        }
         if (entry.name === "run-columns-match-record") {
           if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
           if (!taskColumns.has("session_id")) sql = sql.replace(" OR session_id IS NOT json_extract(record_json, '$.sessionId')", "");
@@ -1889,6 +1923,12 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    ...(presentTables?.has("dependencies") === true ? { dependencies: DependencyRecordSchema } : {}),
+    ...(presentTables?.has("delegation_manifests") === true ? { delegation_manifests: DelegationManifestSchema } : {}),
+    ...(presentTables?.has("bulk_command_acceptances") === true ? {
+      bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
+    } : {}),
+    ...(readIntPragma(database, "user_version") < 35 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]) } : {}),
     ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
     ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
     ...(presentTables?.has("protected_settings_current") === true
@@ -1930,10 +1970,11 @@ function authorityContentFingerprint(database: DatabaseSync): string {
     } else {
       hash.update("[");
       let rowIndex = 0;
+      const schema = name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json FROM ${name} ORDER BY record_key
+        SELECT record_key, record_json${name === "commands" ? ", parent_command_id" : ""} FROM ${name} ORDER BY record_key
       `).iterate()) {
-        const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
+        const row = schema.parse(rawRow);
         if (rowIndex > 0) hash.update(",");
         hash.update(canonicalJsonStringify(row));
         rowIndex += 1;
@@ -1949,7 +1990,7 @@ function authorityContentFingerprint(database: DatabaseSync): string {
 function pendingCounts(database: DatabaseSync) {
   const count = (sql: string): number => CountRowSchema.parse(database.prepare(sql).get()).count;
   return {
-    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
+    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count("SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count("SELECT count(*) AS count FROM leases"),
     durableOutbox: count("SELECT count(*) AS count FROM durable_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
@@ -2804,9 +2845,32 @@ export class AuthorityDatabase implements Disposable {
     return this.#withTransaction("authority", () => work(this.authority));
   }
 
-  #assertCommandIdentity(record: z.infer<typeof AuthorityCommandRecordSchema>): void {
+  #assertCommandIdentity(record: z.infer<typeof StoredAuthorityCommandRecordSchema>, parentCommandId?: string): void {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
+    }
+    const parent = "kind" in record && record.kind === "bulk-parent";
+    if (parentCommandId !== undefined) {
+      const acceptance = this.authority.commands.getBulk(parentCommandId);
+      if (acceptance === undefined || !("family" in record) || record.family !== "run"
+        || !acceptance.request.targets.some((target) => canonicalJsonStringify(deriveBulkChildCommand(acceptance.request, target)) === canonicalJsonStringify(record))) {
+        throw new CommandIdentityConflictError("command-group invalid parent membership");
+      }
+    }
+    const existingParentId = this.authority.commands.parentId(record.commandId);
+    if (existingParentId !== undefined && existingParentId !== (parentCommandId ?? null)) throw new CommandIdentityConflictError("command-group different-parent replay");
+    // A reserved derived child cannot enter through the standalone door, even before journaling.
+    for (const row of this.#database.prepare("SELECT record_json FROM commands WHERE family = 'bulk-parent'").all()) {
+      const accepted = BulkParentCommandRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)).acceptance;
+      if (accepted.request.targets.some((target) => deriveBulkChildCommandId(accepted.bulkCommandId, target.runId) === record.commandId)
+        && parentCommandId !== accepted.bulkCommandId) throw new CommandIdentityConflictError("command-group child identity requires its parent");
+    }
+    if (parent && this.authority.commands.parentId(record.commandId) === undefined) {
+      for (const target of record.acceptance.request.targets) {
+        const childId = deriveBulkChildCommandId(record.commandId, target.runId);
+        if (childId === record.commandId || this.#credentialCommandIds(childId)
+          || this.authority.commands.parentId(childId) !== undefined) throw new CommandIdentityConflictError("command-group parent reserves an existing command identity");
+      }
     }
     const protectedCommand = "family" in record && record.family === "settings" && record.type === "apply-protected-settings";
     if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
@@ -4860,24 +4924,28 @@ export class AuthorityDatabase implements Disposable {
       workerPools: this.#buildWorkerPoolRepository(),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
-        assertIdentity: (input: unknown) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input)),
-        insert: (input: unknown) => {
+        assertIdentity: (input: unknown, parentCommandId?: string) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input), parentCommandId),
+        insert: (input: unknown, parentCommandId?: string) => {
           const record = CommandRequestSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("commands", () => {
-            this.#assertCommandIdentity(record);
+            this.#assertCommandIdentity(record, parentCommandId);
             const existing = this.#readRecord("commands", record.commandId, CommandRequestSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command id ${record.commandId} was reused with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO commands (record_key, family, record_json, created_at) VALUES (?, ?, ?, ?)
-            `).run(record.commandId, record.family, json, record.requestedAt);
+              INSERT INTO commands (record_key, family, record_json, created_at, parent_command_id) VALUES (?, ?, ?, ?, ?)
+            `).run(record.commandId, record.family, json, record.requestedAt, parentCommandId ?? null);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
+        get: (commandId: string) => {
+          const record = this.#readRecord("commands", commandId, z.union([CommandRequestSchema, BulkParentCommandRecordSchema]));
+          if (record !== undefined && "kind" in record) throw new CommandIdentityConflictError();
+          return record;
+        },
         getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema, HistoricalProtectedSettingsCommandSchema])),
         findProtectedSettingsCommandIdByWriteId: (input: unknown) => {
           const { writeId, excludingCommandId } = ProtectedSettingsWriteIdLookupSchema.parse(input);
@@ -4894,46 +4962,29 @@ export class AuthorityDatabase implements Disposable {
             ? undefined
             : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).record_key);
         },
-      }),
-      bulkCommandAcceptances: Object.freeze({
-        insert: (input: unknown) => {
-          const record = BulkRunCommandAcceptanceRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("bulk_command_acceptances", () => {
-            const existing = this.#readRecord(
-              "bulk_command_acceptances",
-              record.bulkCommandId,
-              BulkRunCommandAcceptanceRecordSchema,
-            );
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(
-                  `bulk command id ${record.bulkCommandId} was reused with different accepted content`,
-                );
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO bulk_command_acceptances
-                (record_key, request_fingerprint, record_json, created_at)
-              VALUES (?, ?, ?, ?)
-            `).run(
-              record.bulkCommandId,
-              record.requestFingerprint,
-              json,
-              record.request.requestedAt,
-            );
-            return {
-              result: Object.freeze({ state: "inserted" as const, record }),
-              changes: sqliteChanges(result.changes),
-            };
+        parentId: (commandId: string) => {
+          const row = this.#database.prepare("SELECT parent_command_id FROM commands WHERE record_key = ?").get(commandId);
+          return row === undefined ? undefined : z.strictObject({ parent_command_id: z.string().nullable() }).parse(row).parent_command_id;
+        },
+        acceptBulk: (input: unknown) => {
+          const acceptance = BulkRunCommandAcceptanceRecordSchema.parse(input);
+          const parent = BulkParentCommandRecordSchema.parse({ kind: "bulk-parent", commandId: acceptance.bulkCommandId, acceptance });
+          return this.#authorityWrite("commands", () => {
+            this.#assertCommandIdentity(parent);
+            const existing = this.authority.commands.getBulk(parent.commandId);
+            if (existing !== undefined) return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            const result = this.#database.prepare("INSERT INTO commands(record_key, family, record_json, created_at) VALUES (?, 'bulk-parent', ?, ?)")
+              .run(parent.commandId, canonicalJsonStringify(parent), acceptance.request.requestedAt);
+            return { result: Object.freeze({ state: "inserted" as const, record: acceptance }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (bulkCommandId: string) => this.#readRecord(
-          "bulk_command_acceptances",
-          bulkCommandId,
-          BulkRunCommandAcceptanceRecordSchema,
-        ),
+        getBulk: (commandId: string) => {
+          const row = this.#database.prepare("SELECT family, record_json FROM commands WHERE record_key = ?").get(commandId);
+          if (row === undefined) return undefined;
+          const stored = z.strictObject({ family: z.string(), record_json: z.string() }).parse(row);
+          if (stored.family !== "bulk-parent") throw new CommandIdentityConflictError();
+          return parseJsonRecord(BulkParentCommandRecordSchema, stored.record_json).acceptance;
+        },
       }),
       commandAudits: Object.freeze({
         insert: (input: unknown) => {
@@ -5043,22 +5094,22 @@ export class AuthorityDatabase implements Disposable {
         insert: (input: unknown) => {
           const record = DependencyRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("dependencies", () => {
-            const existing = this.#readRecord("dependencies", record.dependencyId, DependencyRecordSchema);
+          return this.#authorityWrite("delegation_dependencies", () => {
+            const existing = this.#readRecord("delegation_dependencies", record.dependencyId, DependencyRecordSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`dependency ${record.dependencyId} already exists with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO dependencies (record_key, manifest_id, record_json, created_at) VALUES (?, ?, ?, ?)
+              INSERT INTO delegation_dependencies (record_key, manifest_id, record_json, created_at) VALUES (?, ?, ?, ?)
             `).run(record.dependencyId, record.manifestId, json, record.createdAt);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (dependencyId: string) => this.#readRecord("dependencies", dependencyId, DependencyRecordSchema),
+        get: (dependencyId: string) => this.#readRecord("delegation_dependencies", dependencyId, DependencyRecordSchema),
         listByParentRun: (parentRunId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM dependencies
+            SELECT record_json FROM delegation_dependencies
             WHERE json_extract(record_json, '$.parentRunId') = ?
             ORDER BY created_at, record_key
           `).all(RunIdSchema.parse(parentRunId));
@@ -5071,9 +5122,9 @@ export class AuthorityDatabase implements Disposable {
       delegationManifests: Object.freeze({
         insert: (input: unknown) => {
           const record = DelegationManifestSchema.parse(input);
-          return this.#insertSimpleRecord("delegation_manifests", record.manifestId, record, DelegationManifestSchema, record.createdAt);
+          return this.#insertSimpleRecord("run_delegations", record.manifestId, record, DelegationManifestSchema, record.createdAt);
         },
-        get: (manifestId: string) => this.#readRecord("delegation_manifests", manifestId, DelegationManifestSchema),
+        get: (manifestId: string) => this.#readRecord("run_delegations", manifestId, DelegationManifestSchema),
       }),
       gateResults: Object.freeze({
         insert: (input: unknown) => {
@@ -6180,7 +6231,7 @@ export class AuthorityDatabase implements Disposable {
           AND (? = 0 OR (
             NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
             AND NOT EXISTS (
-              SELECT 1 FROM dependencies d
+              SELECT 1 FROM delegation_dependencies d
               WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
                 AND json_extract(d.record_json, '$.state') <> 'satisfied'
             )
@@ -6195,7 +6246,7 @@ export class AuthorityDatabase implements Disposable {
             AND (? = 0 OR (
               NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
               AND NOT EXISTS (
-                SELECT 1 FROM dependencies d
+                SELECT 1 FROM delegation_dependencies d
                 WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
                   AND json_extract(d.record_json, '$.state') <> 'satisfied'
               )
@@ -6618,10 +6669,10 @@ export class AuthorityDatabase implements Disposable {
               SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
             )`, runId);
           // Delegation edges in either direction, then the manifests this run authored.
-          remove("dependencies", `
-            DELETE FROM dependencies
+          remove("delegation_dependencies", `
+            DELETE FROM delegation_dependencies
             WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
-          remove("delegation_manifests", "DELETE FROM delegation_manifests WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
+          remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
           // Relaunch lineage belongs to the new run; deleting its source preserves it.
           remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
           remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);

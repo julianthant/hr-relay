@@ -82,8 +82,8 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   const from = inspection?.schemaVersion ?? 0;
   let pending: z.infer<typeof AuthorityUpgradeRecordSchema> | undefined;
   let historicalPath: string | undefined;
-  if (from === 32 && readLatestSettingsUpgrade(path)?.phase === "committed") {
-    throw new Error("upgrade-pending: finish the interrupted schema-32 settings conversion with its original build before upgrading this database");
+  if (from >= 32 && from < CURRENT_AUTHORITY_SCHEMA_VERSION && readLatestSettingsUpgrade(path)?.phase === "committed") {
+    throw new Error(`upgrade-pending: finish the interrupted schema-${String(from)} settings conversion with its original build before upgrading this database`);
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION) {
     pending = readLatestSettingsUpgrade(path);
@@ -120,7 +120,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
     throw new Error("credential-source-conflict: existing independent credentials must not be overwritten by legacy import");
   }
   if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-    const planned = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
+    const planned = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
     if (from < 32) store.verifyUpgradePreflight(planned.upgradeId, sources.protectedPatch);
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
@@ -133,7 +133,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   try {
     requireStopped(input, clock);
     if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-      pending = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure,
+      pending = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure,
         bindCredentials: (upgradeId) => { if (Object.keys(sources.protectedPatch).length > 0) store.bindUpgrade(upgradeId, sources.protectedPatch); } }, clock);
     }
     if (pending === undefined || !("format" in pending)) throw new Error("upgrade-evidence-missing");

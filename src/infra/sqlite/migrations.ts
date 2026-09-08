@@ -3,8 +3,8 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 32;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 34;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 34;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 35;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -21,7 +21,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view";
+type MigrationTableName = "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -642,7 +642,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
   runs_view: jsonRecordTable("runs_view"),
-} as const satisfies Record<Exclude<MigrationTableName, "workflow_runs" | "workflow_run_batches">, string>);
+} as const satisfies Record<Exclude<MigrationTableName, "workflow_runs" | "workflow_run_batches" | "delegation_dependencies" | "run_delegations">, string>);
 
 /** The tables migration 1 created, in dependency order. A released migration is never edited. */
 const V1_TABLE_ORDER = [
@@ -770,6 +770,7 @@ export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, rea
   30: V30_TABLES,
   31: [...V30_TABLES],
   32: V32_TABLES,
+  34: V32_TABLES.filter((name) => name !== "runs_view").map((name) => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name).sort(),
   33: V32_TABLES.map((name) => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name).sort(),
 });
 
@@ -1818,14 +1819,49 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     version: 34,
     statements: ["DROP TABLE runs_view"],
   },
+  {
+    // side/command-groups: data-aware preflight/linkage runs in the stopped adapter.
+    version: 35,
+    statements: [
+      "ALTER TABLE commands ADD COLUMN parent_command_id TEXT REFERENCES commands(record_key) ON DELETE RESTRICT",
+      "CREATE INDEX commands_parent_idx ON commands(parent_command_id)",
+      "ALTER TABLE delegation_manifests RENAME TO run_delegations",
+      "ALTER TABLE dependencies RENAME TO delegation_dependencies",
+      `INSERT INTO commands(record_key, family, record_json, created_at)
+        SELECT record_key, 'bulk-parent', json_object('kind', 'bulk-parent', 'commandId', record_key, 'acceptance', json(record_json)), created_at
+        FROM bulk_command_acceptances`,
+      "DROP TABLE bulk_command_acceptances",
+      `CREATE TRIGGER commands_bulk_immutable_update
+        BEFORE UPDATE ON commands WHEN OLD.family = 'bulk-parent'
+        BEGIN SELECT RAISE(ABORT, 'bulk parent acceptance is immutable'); END`,
+      `CREATE TRIGGER commands_bulk_never_deleted
+        BEFORE DELETE ON commands WHEN OLD.family = 'bulk-parent'
+        BEGIN SELECT RAISE(ABORT, 'bulk parent acceptance is never deleted'); END`,
+      `CREATE TRIGGER command_audits_no_bulk_parent_insert
+        BEFORE INSERT ON command_audits
+        WHEN EXISTS (SELECT 1 FROM commands WHERE record_key = NEW.command_id AND family = 'bulk-parent')
+        BEGIN SELECT RAISE(ABORT, 'bulk parent acceptance has no execution audit'); END`,
+      `CREATE TRIGGER commands_parent_immutable_update
+        BEFORE UPDATE OF parent_command_id ON commands
+        WHEN NEW.parent_command_id IS NOT OLD.parent_command_id
+        BEGIN SELECT RAISE(ABORT, 'command parent linkage is immutable'); END`,
+      `CREATE TRIGGER commands_parent_kind_insert
+        BEFORE INSERT ON commands
+        WHEN NEW.parent_command_id IS NOT NULL AND
+          (NEW.record_key = NEW.parent_command_id OR NEW.family <> 'run' OR
+           NOT EXISTS (SELECT 1 FROM commands WHERE record_key = NEW.parent_command_id
+             AND family = 'bulk-parent' AND parent_command_id IS NULL))
+        BEGIN SELECT RAISE(ABORT, 'command parent must be a direct bulk parent'); END`,
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
-  const renamed = (name: string): string => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name;
+  const renamed = (name: string): string => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name === "dependencies" ? "delegation_dependencies" : name === "delegation_manifests" ? "run_delegations" : name;
   const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view"];
+  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {

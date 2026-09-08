@@ -466,7 +466,7 @@ export interface CommandKernelDependencies {
 }
 
 export interface CommandKernel {
-  execute(input: unknown): CommandResult;
+  execute(input: unknown, parentCommandId?: string): CommandResult;
   /**
    * The ASYNC door for the worker-browser family (W3): request →
    * supervisor.execute → validated acknowledgement → settled reply. With a
@@ -3376,7 +3376,8 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       release();
     }
   };
-  const executeSync = (request: CommandRequest): CommandResult => {
+  const executeSync = (request: CommandRequest, parentCommandId?: string): CommandResult => {
+      if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
       if (request.family === "settings") return executeSettingsCommand(dependencies, request);
       if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
         // Computed purely: no journal row, no audit row, no generation advance.
@@ -3393,7 +3394,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       let finalizeAfterCommit: (() => void) | undefined;
       try {
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
-          repositories.commands.assertIdentity(request);
+          repositories.commands.assertIdentity(request, parentCommandId);
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           if (request.family === "explorer") {
             const executor = dependencies.explorerEdits;
@@ -3406,7 +3407,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             );
           }
           const journalRequest = request;
-          const journal = repositories.commands.insert(journalRequest);
+          const journal = repositories.commands.insert(journalRequest, parentCommandId);
           if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
           rollback = application.rollback;
@@ -3461,8 +3462,8 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
   };
   return Object.freeze({
-    execute(input: unknown): CommandResult {
-      return executeSync(CommandRequestSchema.parse(input));
+    execute(input: unknown, parentCommandId?: string): CommandResult {
+      return executeSync(CommandRequestSchema.parse(input), parentCommandId);
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
       const request = CommandRequestSchema.parse(input);

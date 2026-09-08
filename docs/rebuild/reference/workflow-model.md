@@ -1865,7 +1865,7 @@ cleanup resets the page”: they are separate contracts/spans but one scheduling
 
 <a id="delegation-table-names"></a>
 
-**2026-09-08 operator-approved names — pending implementation.**
+**2026-09-08 delegation names — implemented candidate, pending independent acceptance.**
 [Side task `side/command-groups`](../../sidetracks/command-groups/README.md) renames the
 current SQL tables `delegation_manifests` → `run_delegations` and `dependencies` →
 `delegation_dependencies`. They remain separate: an immutable delegation records the

@@ -34,11 +34,10 @@ export const AuthorityTableNameSchema = z.enum([
   "provider_budget_counters",
   "provider_admissions",
   "leases",
-  "dependencies",
-  "delegation_manifests",
+  "delegation_dependencies",
+  "run_delegations",
   "commands",
   "command_audits",
-  "bulk_command_acceptances",
   "notifications",
   "config_snapshots",
   "settings_current",
@@ -161,7 +160,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34)]),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -205,7 +204,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   tombstoneBackfill: TombstoneBackfillCountsSchema,
   upgradeId: FingerprintSchema,
   phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34)]),
+  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35)]),
   backupManifest: z.string().min(1),
   ordinaryRevision: PositiveIntSchema,
   ordinaryFingerprint: FingerprintSchema,

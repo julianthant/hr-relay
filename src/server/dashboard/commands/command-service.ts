@@ -1,3 +1,4 @@
+import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../domain/command-groups.js";
 /**
  * The dashboard command service: the kernel is the ONE command path (D113);
  * this wrapper adds exactly what ref dashboard-surfaces assigns to 1g around it —
@@ -48,8 +49,6 @@ import {
   type BulkRunCommandResponse,
   type CommandResult,
 } from "../../../domain/commands.js";
-import { deriveStableUuid } from "../../../domain/identifiers.js";
-import { CommandIdSchema } from "../../../domain/ids.js";
 import type { IntakePlanManifest } from "../../../domain/intake/manifest.js";
 import type { IntakeSession } from "../../../domain/intake/session.js";
 import { sha256Hex } from "../../../domain/sha256.js";
@@ -101,16 +100,7 @@ export interface DashboardCommandService {
  * than filing N new ones. `ids.uuid()` would satisfy the type and break that
  * sentence — D174's lesson, one family over.
  */
-const BULK_CHILD_COMMAND_NAMESPACE = "hrauto:bulk-run-child-command:v1";
-
-export function deriveBulkChildCommandId(
-  bulkCommandId: string,
-  runId: string,
-): z.infer<typeof CommandIdSchema> {
-  // Parsed rather than asserted: a derivation that stopped producing UUID shape
-  // would otherwise reach the kernel's journal as a key nothing can look up.
-  return CommandIdSchema.parse(deriveStableUuid(BULK_CHILD_COMMAND_NAMESPACE, `${bulkCommandId}\0${runId}`));
-}
+export { deriveBulkChildCommandId } from "../../../domain/command-groups.js";
 
 /**
  * Applied run commands that emit no span but DO change what the queue row
@@ -126,8 +116,8 @@ const SPANLESS_RUN_TYPES = new Set([
 ]);
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
-  function executeOne(input: unknown): CommandResult {
-      const result = deps.kernel.execute(input);
+  function executeOne(input: unknown, parentCommandId?: string): CommandResult {
+      const result = deps.kernel.execute(input, parentCommandId);
       if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse
       // only recovers the typed view the emission step dispatches on.
@@ -247,19 +237,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       const results: BulkRunCommandOutcome[] = [];
       for (const target of request.targets) {
         const commandId = deriveBulkChildCommandId(request.bulkCommandId, target.runId);
-        const child = {
-          commandId,
-          requestedAt: request.requestedAt,
-          requestedBy: request.requestedBy,
-          source: request.source,
-          ...(request.reason === undefined ? {} : { reason: request.reason }),
-          family: "run" as const,
-          type: request.type,
-          target,
-        };
+        const child = deriveBulkChildCommand(request, target);
         let result: CommandResult;
         try {
-          result = executeOne(child);
+          result = executeOne(child, request.bulkCommandId);
         } catch (error) {
           /*
            * An untyped throw is the authority or this service reporting that it
