@@ -96,6 +96,7 @@ import {
 } from "../surfaces/shell.js";
 import {
   activeCount,
+  activeStatusWords,
   parseWorkflows,
   useWorkflowPanelMode,
   workflowStatusCounts,
@@ -581,7 +582,7 @@ function LoadedApp({
 
   const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
   /**
-   * ACTIVE across every workflow today — queued + running, off the day's OWN
+   * ACTIVE across every workflow today — queued + running + cancelling, off the day's OWN
    * served `statusCounts`, which is already day-scoped across workflows. The
    * launcher and the rail's orange column are then the same quantity at two
    * scopes and cannot disagree (D81, R2 D3/D4).
@@ -1724,6 +1725,7 @@ function LoadedApp({
                 activeWorkflowLabel={workflowLabelOf(activeWorkflowId)}
                 activeWorkflowCode={workflowCodeOf(activeWorkflowId)}
                 dayActive={dayActive}
+                dayActiveWords={activeStatusWords(dayWire?.statusCounts ?? [])}
                 dayCount={dayCount}
               />
             }

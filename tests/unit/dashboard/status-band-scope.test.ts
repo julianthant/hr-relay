@@ -18,8 +18,10 @@ import { describe, expect, it } from "vitest";
 import { WorkflowCountWireSchema } from "../../../src/domain/dashboard/projection.js";
 import {
   activeCount,
+  activeStatusWords,
   needsYouCount,
   statusCount,
+  statusPillOrder,
   totalCount,
   workflowStatusCounts,
 } from "../../../src/dashboard/surfaces/shell-model.js";
@@ -75,6 +77,21 @@ describe("workflowStatusCounts — the band's scope selector", () => {
 });
 
 describe("totalCount — the `All` segment (R4-2)", () => {
+  it("keeps Cancelling active and selectable, including after its selected bucket empties", () => {
+    const counts = z.array(WorkflowCountWireSchema).parse([{
+      workflowId: "person-lookup", count: 4,
+      statusCounts: [{ status: "cancelling", count: 3 }, { status: "done", count: 1 }],
+    }])[0].statusCounts;
+    expect(activeCount(counts)).toBe(3);
+    expect(activeStatusWords(counts)).toBe("queued, running or cancelling");
+    expect(activeStatusWords([])).toBe("queued or running");
+    expect(needsYouCount(counts)).toBe(0);
+    expect(totalCount(counts)).toBe(4);
+    expect(statusPillOrder(counts, "all")).toContain("cancelling");
+    expect(statusPillOrder([], "cancelling")).toContain("cancelling");
+    expect(statusPillOrder([], "all")).toHaveLength(8);
+  });
+
   it("folds the SAME array the pills render, and matches the served row total", () => {
     for (const entry of WORKFLOW_COUNTS) {
       expect(totalCount(entry.statusCounts)).toBe(entry.count);

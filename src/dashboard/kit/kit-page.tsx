@@ -249,14 +249,15 @@ const QUEUE_SAMPLE: { name: string; trace: string; status: DsStatus; age?: strin
 ];
 
 function StatusSection() {
+  const showCancelling = new URLSearchParams(window.location.search).get("status") === "cancelling";
   return (
     <Section
       id="status"
-      title="The eight statuses"
+      title={showCancelling ? "Run statuses" : "The eight statuses"}
       note="Four separating channels per status: hue, emphasis tier, icon and label. Review and Failed are the loudest solids. Done is solid green — word only. Cancelled is the same solid pill in gray. Yellow Done carries a △ count chip beside it."
     >
       <div className="grid grid-cols-2 gap-[var(--ds-space-base)]">
-        {DS_STATUS_ORDER.map((status) => (
+        {DS_STATUS_ORDER.filter((status) => status !== "cancelling" || showCancelling).map((status) => (
           <div
             key={status}
             className="flex items-start gap-[var(--ds-space-cozy)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border-subtle)] p-[var(--ds-space-base)]"

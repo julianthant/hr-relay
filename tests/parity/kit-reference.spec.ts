@@ -26,6 +26,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 import { captureParityPair } from "./helpers/capture.js";
@@ -108,4 +109,29 @@ test("ds-kit specimen page", async ({ page }) => {
     },
     { fullPage: true },
   );
+});
+
+
+test("ds-kit Cancelling state is distinct and nonterminal", {
+  annotation: [{ type: "required-a11y-evidence", description: "ds-kit-cancelling.a11y.yml" }],
+}, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${server.baseUrl}${KIT_ENTRY}?status=cancelling`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Run statuses", exact: true })).toBeVisible();
+  await expect(page.getByText("Cancelling", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Foundations", level: 2 })).toBeVisible();
+  expect(errors).toEqual([]);
+  await captureParityPair(page, REFERENCES, {
+    stateId: "ds-kit-cancelling", viewport: "1440x900", theme: KIT_THEME.name,
+    adapter: "none", fixtureId: "ds-kit-cancelling", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
+  }, { fullPage: true });
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Cancelling");
+  expect(tree).toContain("Cancellation requested. The worker has not settled the run yet.");
+  test.info().annotations.push({ type: "a11y-attachment-sha256:ds-kit-cancelling.a11y.yml",
+    description: createHash("sha256").update(tree).digest("hex") });
+  await test.info().attach("ds-kit-cancelling.a11y.yml", { body: tree, contentType: "text/yaml" });
 });

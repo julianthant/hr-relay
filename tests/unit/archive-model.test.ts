@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
@@ -481,6 +482,7 @@ function emptyRegistryDeps(world: World): Parameters<typeof buildArchivedRunDeta
     clock: manualClock(new Date(NOW)),
     appVersion: "0.1.0",
     authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+    reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
     descriptors: { list: () => [] },
     ledger: createLedgerReadThrough(world.stateRoot),
   } as unknown as Parameters<typeof buildArchivedRunDetail>[0];
@@ -508,6 +510,8 @@ describe("the D80 archive model", () => {
       assert.equal(archivedRunContentDigest(content), contentDigest);
       world.database.withAuthorityTransaction((repositories) => {
         repositories.runs.enqueue(QUEUED_RUN);
+      repositories.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: 1, now: NOW,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
         repositories.versionPlans.insert(VERSION_PLAN_ROW);
         repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
         repositories.archivedRuns.insert(corrupt);
@@ -531,6 +535,8 @@ describe("the D80 archive model", () => {
     const fingerprint = archivedRunReferenceFingerprint(ARCHIVED_RUN);
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
+      repositories.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: 1, now: NOW,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
       repositories.versionPlans.insert(VERSION_PLAN_ROW);
       repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
       repositories.archivedRuns.insert({ ...ARCHIVED_RUN, row: { ...ARCHIVED_RUN.row, status: "failed" } });
@@ -718,6 +724,8 @@ describe("the D80 archive model", () => {
     });
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
+      repositories.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: 1, now: NOW,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
       repositories.versionPlans.insert(VERSION_PLAN_ROW);
       repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
       repositories.archivedRuns.insert(historical);
@@ -752,6 +760,8 @@ describe("the D80 archive model", () => {
     const world = createWorld();
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
+      repositories.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: 1, now: NOW,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
       repositories.versionPlans.insert(VERSION_PLAN_ROW);
       repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
       repositories.archivedRuns.insert(ARCHIVED_RUN);
@@ -796,6 +806,8 @@ describe("the D80 archive model", () => {
     assert.equal(QueueSurfaceWireSchema.safeParse(preD269Row).success, false, "the live queue wire still requires session");
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
+      repositories.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: 1, now: NOW,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
       repositories.versionPlans.insert(VERSION_PLAN_ROW);
       repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
       repositories.archivedRuns.insert(preD269Record);
@@ -1029,6 +1041,7 @@ describe("the D80 archive model", () => {
       clock: manualClock(new Date(NOW)),
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
       descriptors: { list: () => [] },
       // The read-through over the SAME state root the world writes to, so a
       // pointer this test archived resolves the way production would.
@@ -1063,6 +1076,7 @@ describe("the D80 archive model", () => {
       clock: manualClock(new Date(NOW)),
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
       descriptors: { list: () => [] },
       ledger: createLedgerReadThrough(world.stateRoot),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
@@ -1092,6 +1106,7 @@ describe("the D80 archive model", () => {
       clock: manualClock(new Date(NOW)),
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
       descriptors: { list: () => [] },
       ledger: createLedgerReadThrough(world.stateRoot),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
@@ -1117,6 +1132,7 @@ describe("the D80 archive model", () => {
       clock: manualClock(new Date(NOW)),
       appVersion: "0.1.0",
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
       descriptors: { list: () => [] },
       // The read-through over the SAME state root the world writes to, so a
       // pointer this test archived resolves the way production would.

@@ -192,7 +192,7 @@ export function RunProvenanceBar({
                   value: ranAppVersion ?? "unstamped",
                   tone: staleApp || ranAppVersion === undefined ? "warning" : "default",
                 },
-                { key: "Requested by", value: surface.actorId },
+                { key: "Requested by", value: surface.actorId ?? "Not recorded" },
                 /*
                   PRIORITY, in the ⓘ rather than as a chip — the demo's own
                   disposition, in its own words: *"`by` and `priority` are the

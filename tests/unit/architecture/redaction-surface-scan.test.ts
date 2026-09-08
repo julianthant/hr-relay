@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /**
  * Ref guards-and-tests §3.15 / D183 — the redaction surface scan.
  *
@@ -596,6 +597,8 @@ function seedCanaryArchive() {
   const database = openDatabase();
   database.withAuthorityTransaction((repositories) => {
     repositories.runs.enqueue({ ...personLookupQueuedRun({ runId: record.runId }), input: record.input });
+    repositories.runs.transition({ runId: record.runId, expectedVersion: 1, now: record.archivedAt,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: record.archivedAt } });
     repositories.versionPlans.insert(VERSION_PLAN_ROW);
     repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
     repositories.archivedRuns.insert(record);
@@ -649,7 +652,7 @@ describe("redaction surface scan — archived capture resource canaries (D183/DC
     const { database, record, bytes, ref } = seedCanaryArchive();
     const open = vi.fn(async () => Readable.from([bytes]));
 
-    const resource = await buildArchivedCaptureResource({ authority: database, artifactReader: canaryArtifactReader(open) }, record.runId, ARCHIVE_ARTIFACT_ID);
+    const resource = await buildArchivedCaptureResource({ authority: database, reader: sqliteRunReader(database, manualClock(new Date(NOW))), artifactReader: canaryArtifactReader(open) }, record.runId, ARCHIVE_ARTIFACT_ID);
 
     assert.deepEqual(open.mock.calls, [[ref]], "the real verifier must open precisely the sealed capture");
     assertNoArchiveResourceCanaries(resource);
@@ -672,7 +675,7 @@ describe("redaction surface scan — archived capture resource canaries (D183/DC
       assert.deepEqual(canariesIn(scenario.error.message), ALL_CANARY_NAMES, "the error must contain all nine sentinels");
       const open = vi.fn(async () => { throw scenario.error; });
 
-      const resource = await buildArchivedCaptureResource({ authority: database, artifactReader: canaryArtifactReader(open) }, record.runId, ARCHIVE_ARTIFACT_ID);
+      const resource = await buildArchivedCaptureResource({ authority: database, reader: sqliteRunReader(database, manualClock(new Date(NOW))), artifactReader: canaryArtifactReader(open) }, record.runId, ARCHIVE_ARTIFACT_ID);
 
       assert.deepEqual(open.mock.calls, [[ref]]);
       assertNoArchiveResourceCanaries(resource);
@@ -704,6 +707,7 @@ describe("redaction surface scan — archived capture resource canaries (D183/DC
       const { database, record, bytes } = seedCanaryArchive();
       const resource = await buildArchivedCaptureResource({
         authority: database,
+        reader: sqliteRunReader(database, manualClock(new Date(NOW))),
         artifactReader: canaryArtifactReader(async () => Readable.from([bytes])),
       }, record.runId, ARCHIVE_ARTIFACT_ID);
       assert.equal(resource.resource.state, "available");

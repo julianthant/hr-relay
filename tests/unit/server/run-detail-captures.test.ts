@@ -88,7 +88,7 @@ function bundleOf(bundleSeed: number, origin: BundleInput["origin"], options: {
 function harness() {
   const world = makeWorld();
   cleanups.push(() => world.dispose());
-  queuedEventOf(world, { seed: 1 });
+  queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
   const database = AuthorityDatabase.open({
     path: join(world.stateRoot, "capture-authority.db"), busyTimeoutMs: 1000,
     migrationOwner: "run-detail-captures-test",

@@ -258,10 +258,7 @@ function harness(options: {
   );
 
   seedSyntheticRuntimeConfig(database);
-  const projectionTransaction = database.withProjectionTransaction.bind(database);
-  database.withProjectionTransaction = (work) => projectionTransaction((repositories) => work({ ...repositories,
-    runsView: { ...repositories.runsView, get: () => { throw new Error("runs_view is not lifecycle authority"); } },
-  }));
+  assert.equal("runsView" in database.projections, false, "the retired mirror has no repository capability");
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
     artifactRoot: ".tracker/artifacts",
@@ -291,19 +288,19 @@ function harness(options: {
       : undefined,
   };
   const projection = createRunQueueProjection({
+    reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
     ledger: createLedgerReadThrough(stateRoot),
-    authority: { getRun: (runId) => database.authority.runs.get(runId),
+    authority: {
       listNotifications: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
       listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -311,7 +308,6 @@ function harness(options: {
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
-    projectionStore: database,
   });
   // D218: no in-process hook — the command service ticks the projection's
   // disk tail after emitting, exactly as production wires it.
@@ -608,11 +604,15 @@ function currentSeparationsRun(input: Readonly<{
   shape: "single" | "operation" | "operation-member";
   parent?: RunRecord;
   runId?: string;
+  enqueuedAt?: string;
 }>): RunRecord {
   return RunRecordSchema.parse({
     ...TERMINAL_SEPARATIONS_RUN,
+    createdAt: input.enqueuedAt ?? AT.toISOString(),
+    updatedAt: input.enqueuedAt ?? AT.toISOString(),
     envelope: {
       ...TERMINAL_SEPARATIONS_RUN.envelope,
+      enqueuedAt: input.enqueuedAt ?? AT.toISOString(),
       runId: input.runId ?? uuidOf(input.seed),
       itemId: uuidOf(input.seed + 5_000),
       traceId: traceOf(input.seed),
@@ -870,10 +870,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
     const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
     const secondMember = currentSeparationsRun({ seed: 313, shape: "operation-member", parent: operation });
-    // This persisted row deliberately has no current projection row. If the
+    // This persisted row is outside the canonical date range. If the
     // repository ignores its requested run ids, the route sees foreign
     // evidence and must become unavailable instead of returning this count.
-    const foreign = currentSeparationsRun({ seed: 314, shape: "single" });
+    const foreign = currentSeparationsRun({ seed: 314, shape: "single", enqueuedAt: "2026-08-02T17:00:00.000Z" });
 
     seedCurrentSeparationsRun(h, standalone, "10800000");
     seedCurrentSeparationsRun(h, operation, "10800000");

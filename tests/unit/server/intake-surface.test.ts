@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
@@ -163,20 +164,19 @@ function surface(): Surface {
   // proved to reach the surface an operator actually reads (D171).
   const stateRoot = join(root, ".tracker");
   const projection = createRunQueueProjection({
+    reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([intakeFixtureDescriptor.contractFingerprint]),
     ledger: createLedgerReadThrough(stateRoot),
     authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
       listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -184,7 +184,6 @@ function surface(): Surface {
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
-    projectionStore: database,
   });
   const spans = createSpanJsonlWriter({
     stateRoot,

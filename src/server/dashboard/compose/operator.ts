@@ -16,7 +16,7 @@ import type {
 } from "../queries/run-detail.js";
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "projectionStore"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }) {
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
     stateRoot,
@@ -24,15 +24,14 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     appVersion,
     descriptorSetHash,
     ledger,
+    reader: input.reader,
     authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
       listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -42,7 +41,6 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
-    projectionStore: database,
   });
 }
 
@@ -100,6 +98,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
 export function createOperatorArchive(input: Omit<ArchiveQueryDeps, "authority" | "descriptors"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }): ArchiveQueryDeps {
   const { clock, appVersion, database, ledger } = input;
   return {
+    reader: input.reader,
     clock,
     appVersion,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },

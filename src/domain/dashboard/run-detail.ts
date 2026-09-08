@@ -53,7 +53,7 @@ export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
   traceId: TraceIdSchema,
   workflowId: WorkflowIdSchema,
-  actorId: ActorIdSchema,
+  actorId: ActorIdSchema.optional(),
   title: z.string().min(1),
   status: QueueStatusSchema,
   attempt: z.number().int().positive(),

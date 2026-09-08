@@ -39,16 +39,9 @@
  *   `../run-status.ts`, shared with the queue projector's pipeline chip, whose
  *   own copy used to answer `blocked` for the same three outcomes.
  *
- * This query derives NEITHER the run's status NOR its panel kind on its own
- * (D268). `deriveRunStatus` and `panelKindOf` come from `../run-status.ts`, the
- * same functions the queue projection's row is built from. The private
- * `statusOf` they replaced was missing the fold's `ended` and `claimedBy`
- * arms — a real gap (a re-inlined private copy is exactly what D268 closes)
- * even though the ordering that would exploit it live never occurs:
- * `run-executor.ts` settles the terminal CAS before emitting the run's
- * `span.ended`, so authority leads and the fold only ever lags. The window
- * those arms cover is one the test harness can construct by writing spans
- * directly to the stream, not one the executor's own path produces.
+ * Queue and detail share authority-only deriveRunStatus and panelKindOf.
+ * Optional spans supply execution evidence; they never determine existence,
+ * lifecycle, membership or envelope identity.
  */
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
@@ -69,7 +62,7 @@ import {
   ProjectionDegradedError,
 } from "../../failures.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
-import { requireRun } from "./run-read.js";
+import { requireCanonicalRun } from "./run-read.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
@@ -340,9 +333,9 @@ export function buildRunDetail(
   runId: string,
   captures?: RunCaptureAvailabilityWire,
 ): RunDetailWire {
-  const { row, authority } = requireRun(deps, runId);
-  const status = deriveRunStatus(row, authority);
-  const descriptorView = deps.descriptors.resolve(row.queued.workflow);
+  const { row, authority } = requireCanonicalRun(deps, runId);
+  const status = deriveRunStatus(authority);
+  const descriptorView = deps.descriptors.resolve(authority.envelope.workflow);
   const omittedSteps = [...new Set(
     (authority.envelope.stepOmissions ?? []).map((entry) => String(entry.step)),
   )].sort();
@@ -365,7 +358,7 @@ export function buildRunDetail(
     state: "absent",
     reason: "a gate is not a task span; the executor measures no duration for it",
   } as const;
-  for (const span of row.taskSpans) {
+  for (const span of row?.taskSpans ?? []) {
     const state = taskStateOf(span.outcome);
     // A skip is not a cancellation, and a skip WITHOUT a recorded reason is
     // not a skip with a guessed one. Both absences stay named — and a reason
@@ -382,7 +375,7 @@ export function buildRunDetail(
     // failure yields two genuinely distinct folded spans that share a path — both
     // are real history and both must render, so the attempt has to reach the id.
     timelineEvents.push({
-      at: span.startedAt ?? span.endedAt ?? row.queued.ts,
+      at: span.startedAt ?? span.endedAt ?? authority.envelope.enqueuedAt,
       label: span.name,
       state,
       notRun,
@@ -391,10 +384,10 @@ export function buildRunDetail(
     });
   }
   const gateNotRun = { state: "absent", reason: "a gate is not a workflow step" } as const;
-  for (const gate of row.openGates) {
+  for (const gate of row?.openGates ?? []) {
     timelineEvents.push({ at: gate.openedAt, label: `gate:${gate.gate}`, state: "blocked", notRun: gateNotRun, durationMs: gateDuration, seed: `gate-open:${gate.gate}:${gate.openedAt}` });
   }
-  for (const gate of row.resolvedGates) {
+  for (const gate of row?.resolvedGates ?? []) {
     timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", notRun: gateNotRun, durationMs: gateDuration, seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
   }
   timelineEvents.sort((a, b) => a.at.localeCompare(b.at) || a.seed.localeCompare(b.seed));
@@ -476,12 +469,12 @@ export function buildRunDetail(
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
-    panelKind: panelKindOf(row.queued.shape),
+    panelKind: panelKindOf(authority.envelope.shape),
     header: {
       runId,
-      traceId: row.queued.traceId,
-      workflowId: row.queued.workflow,
-      actorId: row.queued.actorId,
+      traceId: authority.envelope.traceId,
+      workflowId: authority.envelope.workflow,
+      ...(row === undefined ? {} : { actorId: row.queued.actorId }),
       /**
        * The SAME title the queue row shows, through the same resolver (ref dashboard-surfaces
        * §1.2): the composed start-input title, replaced by the subject's name
@@ -493,19 +486,19 @@ export function buildRunDetail(
       title: authority.displayName
         ?? resolveSubjectTitle(
           descriptorView?.subjectProjection,
-          { workflowId: row.queued.workflow, itemId: authority.envelope.itemId },
+          { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },
           deps.authority,
         )
-        ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : row.queued.title),
+        ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : (row?.queued.title ?? authority.envelope.runId)),
       status,
-      attempt: row.attempt,
+      attempt: authority.envelope.attempt,
     },
     timeline: {
       events: timelineWire,
       // D225: absent only when no registered descriptor can say what the
       // graph's shape is (a replayed historical workflow) — the client then
       // keeps the per-event strip, exactly as it does for pre-D225 archives.
-      ...(descriptorView?.timeline === undefined
+      ...(descriptorView?.timeline === undefined || row === undefined
         ? {}
         : {
           steps: buildTimelineSteps(
@@ -521,9 +514,9 @@ export function buildRunDetail(
     context: {
       // Every done task recorded provenance-validated data (1f mandate); the
       // evidence service is 2g, so its count is genuinely zero today.
-      dataFacts: row.taskSpans.filter((span) => span.outcome === "done").length,
+      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done").length ?? 0,
       evidenceFacts: 0,
-      attempts: row.attempt,
+      attempts: authority.envelope.attempt,
     },
     ...(captures === undefined ? {} : { captures }),
     /*

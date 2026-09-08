@@ -509,6 +509,7 @@ const SUBLINE_TONE: Record<ProposedStatus, string> = {
   failed: "text-[color:var(--ds-status-failed-fg)]",
   parked: "text-[color:var(--ds-status-parked-fg)]",
   running: "text-[color:var(--ds-status-running-fg)]",
+  cancelling: "text-[color:var(--ds-status-running-fg)]",
   queued: "text-[color:var(--ds-fg-muted)]",
   verifiedDone: "text-[color:var(--ds-fg-muted)]",
   doneWarnings: "text-[color:var(--ds-fg-muted)]",

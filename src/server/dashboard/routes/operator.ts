@@ -48,7 +48,7 @@ export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps
       throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
     }
     return c.json(await buildArchivedCaptureResource(
-      { authority: deps.archive.authority, artifactReader: deps.diagnosticBundles.artifactReader },
+      { authority: deps.archive.authority, reader: deps.archive.reader, artifactReader: deps.diagnosticBundles.artifactReader },
       c.req.param("runId"),
       c.req.param("artifactId"),
       c.req.raw.signal,
@@ -64,7 +64,7 @@ export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps
       throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
     }
     const artifact = await prepareArchivedCaptureLease(
-      { authority: deps.archive.authority, artifactReader: deps.diagnosticBundles.artifactReader },
+      { authority: deps.archive.authority, reader: deps.archive.reader, artifactReader: deps.diagnosticBundles.artifactReader },
       c.req.param("runId"),
       c.req.param("artifactId"),
       c.req.raw.signal,

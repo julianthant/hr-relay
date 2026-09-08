@@ -130,12 +130,10 @@ function ms(value: number): string {
 }
 
 /**
- * The non-terminal wire statuses, in the demo's own OUTSTANDING_ORDER — which
- * is the ds status vocabulary (`waiting`, `parked`, `running`, `queued`) read
- * back through the ONE wire→ds map in `status.tsx`, so there is no second
- * ordering to drift from the one the queue renders.
+ * Nonterminal statuses retain the established attention-first order.
+ * Cancelling belongs beside Running until canonical settlement.
  */
-const OUTSTANDING_ORDER: readonly QueueStatus[] = ["awaiting-approval", "blocked", "running", "queued"];
+const OUTSTANDING_ORDER: readonly QueueStatus[] = ["awaiting-approval", "blocked", "running", "cancelling", "queued"];
 
 function statusRuns(report: ActivityReportWire, status: QueueStatus): number {
   return activityStatusRuns(report, status);

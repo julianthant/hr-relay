@@ -1,3 +1,4 @@
+import { IsoInstantSchema } from "../../../src/domain/ids.js";
 import { RunSessionRecordSchema } from "../../../src/domain/run/session.js";
 /**
  * THE run/queue projection (ref dashboard-surfaces §2.2-2.3, D81 §10.1): the emit → JSONL →
@@ -113,7 +114,7 @@ function seedWorld(w: DashboardWorld): void {
     version: 2,
   }));
 
-  queuedEventOf(w, { seed: 9 });
+  queuedEventOf(w, { seed: 9, lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: instantOffsetOf(0), resumeAt: "approval" } });
   w.writer.emit({
     t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
     runId: uuidOf(9), attempt: 1, traceId: traceOf(9), spanPath: traceOf(9), gate: "approval",
@@ -445,6 +446,7 @@ describe("THE run/queue projection (D81)", () => {
 
     const before = w.projection.buildDashboardDayWire(DAY);
     const fresh = createRunQueueProjection({
+      reader: w.runReader,
       stateRoot: w.stateRoot,
       clock: w.clock,
       appVersion: APP_VERSION,
@@ -452,7 +454,6 @@ describe("THE run/queue projection (D81)", () => {
       ledger: createLedgerReadThrough(w.stateRoot),
       authority: w.authority,
       descriptors: { resolve: () => undefined },
-      projectionStore: w.store,
     });
     fresh.rebuildFromJsonl();
     assert.equal(fresh.health().state, "live");
@@ -462,10 +463,13 @@ describe("THE run/queue projection (D81)", () => {
     );
   });
 
-  it("persists every folded row to the rebuildable runs_view table", () => {
+  it("rebuilds optional evidence in memory without changing canonical runs", () => {
     const w = world();
     seedWorld(w);
-    assert.equal(w.store.rows.size, 9); // all nine runs
+    const before = w.runReader.list({ disposition: "live", limit: 1000 });
+    w.projection.rebuildFromJsonl();
+    assert.deepEqual(w.runReader.list({ disposition: "live", limit: 1000 }), before);
+    assert.equal(w.projection.runFold(uuidOf(9))?.queued.runId, uuidOf(9));
   });
 
   it("rebuilds the identical day payload from nothing but the span JSONL", () => {
@@ -474,6 +478,7 @@ describe("THE run/queue projection (D81)", () => {
     const before = w.projection.buildDashboardDayWire(DAY);
 
     const fresh = createRunQueueProjection({
+      reader: w.runReader,
       stateRoot: w.stateRoot,
       clock: w.clock,
       appVersion: APP_VERSION,
@@ -481,7 +486,6 @@ describe("THE run/queue projection (D81)", () => {
       ledger: createLedgerReadThrough(w.stateRoot),
       authority: w.authority,
       descriptors: { resolve: () => undefined },
-      projectionStore: w.store,
     });
     fresh.rebuildFromJsonl();
     assert.equal(fresh.health().state, "live");
@@ -657,13 +661,15 @@ describe("THE run/queue projection (D81)", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
     w.authority.records.delete(uuidOf(1));
-    assert.throws(() => w.projection.buildDashboardDayWire(DAY), /not in authority/);
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).queueSurfaces, []);
+    assert.equal(w.projection.queueSurface(uuidOf(1)), undefined);
   });
 
   it("emits count-neutral patches and count-bearing snapshots on the right events", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 }); // new run: snapshot
-    claimEventOf(w, 1); // queued -> running: snapshot
+    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1 }));
+    claimEventOf(w, 1); // canonical queued -> running: snapshot
     taskEventsOf(w, 1, "searching"); // still running: patch
     const kinds = w.changes.map(({ kind }) => kind);
     assert.deepEqual(kinds, ["snapshot", "snapshot", "patch"]);
@@ -880,12 +886,11 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
     assert.equal(running.endedAt.state, "absent");
   });
 
-  it("falls back to the run span's end instant, and names the absence when neither exists", () => {
+  it("ignores a stale run end and leaves a nonterminal run undated", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
-    // Authority has not settled yet, so the status comes from the run span —
-    // and so must the instant a duration is measured against.
+    // The span contradicts canonical queued authority; neither status nor duration may follow it.
     w.writer.emit({
       t: "span.ended", kind: "run", ts: "2026-08-03T17:20:00.000Z", workflow: "person-lookup",
       runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), outcome: "cancelled",
@@ -893,8 +898,8 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
     const surface = w.projection.buildDashboardDayWire(DAY).queueSurfaces
       .find((row) => row.runId === uuidOf(1));
     assert.ok(surface);
-    assert.equal(surface.status, "cancelled");
-    assert.deepEqual(surface.endedAt, { state: "present", value: "2026-08-03T17:20:00.000Z" });
+    assert.equal(surface.status, "queued");
+    assert.deepEqual(surface.endedAt, { state: "absent", reason: "run is queued and has not ended" });
   });
 });
 
@@ -930,6 +935,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     const w = world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
+    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1 }));
     claimEventOf(w, 1);
     assert.equal(w.projection.queueSurface(uuidOf(1))?.status, "running");
     assert.deepEqual(
@@ -937,6 +943,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
       { state: "present", runId: uuidOf(1), traceId: traceOf(1) },
     );
 
+    w.authority.put(runRecordOf({ seed: 1, attempt: 2, lifecycle: { state: "queued" } }));
     w.writer.emit({
       t: "run.requeued", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1),
@@ -962,13 +969,14 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
 
   it("closes an open gate on resolution and records the key and digest that resolved it", () => {
     const w = world();
-    queuedEventOf(w, { seed: 1 });
+    queuedEventOf(w, { seed: 1, lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: instantOffsetOf(0), resumeAt: "approval" } });
     w.writer.emit({
       t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), gate: "approval",
     });
     assert.equal(w.projection.queueSurface(uuidOf(1))?.status, "awaiting-approval");
 
+    w.authority.put(runRecordOf({ seed: 1 }));
     const resolvedAt = w.clock.now().toISOString();
     w.writer.emit({
       t: "gate.resolved", ts: resolvedAt, workflow: "person-lookup",
@@ -1114,8 +1122,10 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     // the payload, and a patch could only describe a row that is no longer
     // there. Since D234 it is the ONLY way a run leaves the payload — the
     // hidden-run arm this case used to walk beside it is retired.
+    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0) } }));
     w.authority.archived.add(uuidOf(1));
     w.projection.refreshRun(uuidOf(1));
+    w.authority.put(runRecordOf({ seed: 2, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0) } }));
     w.authority.archived.add(uuidOf(2));
     w.projection.refreshRun(uuidOf(2));
     // A run the fold never saw is not a projection event at all.
@@ -1247,6 +1257,9 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
   it("D12: only an awaiting row dates its gate, and the instant is the GATE's own", () => {
     const w = world();
     seedWorld(w);
+    const record = w.authority.getRun(uuidOf(9));
+    assert.ok(record);
+    w.authority.put({ ...record, updatedAt: IsoInstantSchema.parse(instantOffsetOf(0, 1000)) });
     const gated = rowOf(w, 9);
     assert.equal(gated.status, "awaiting-approval");
     const openedAt = w.projection.runFold(uuidOf(9))?.openGates.at(-1)?.openedAt;

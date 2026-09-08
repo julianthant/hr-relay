@@ -46,7 +46,7 @@ const SECOND_AUDIT_ID = "44444444-4444-4444-8444-444444444444";
 const START_PLAN_ID = "55555555-5555-4555-8555-555555555555";
 const ADMITTED_HISTORICAL_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31,
+  27, 28, 29, 30, 31, 32, 33,
 ] as const);
 const REFUSED_GAP_VERSIONS = Object.freeze([19, 20, 21, 22, 23, 24, 25, 26] as const);
 const roots: string[] = [];
@@ -315,7 +315,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
       assert.deepEqual(plan, {
         state: "planned",
         fromSchemaVersion: version,
-        toSchemaVersion: 33,
+        toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
         importedKeys: [],
         sourceFiles: [],
         envKeysToRemove: [],
@@ -383,7 +383,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
     const before = readFileSync(fixture.path);
     await assert.rejects(
       upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-      /authority schema 34 is not an admitted backup schema/u,
+      new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)} is not an admitted backup schema`, "u"),
     );
     assert.deepEqual(readFileSync(fixture.path), before);
     assert.deepEqual(readMeta(fixture.path), {

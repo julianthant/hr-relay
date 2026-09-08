@@ -84,13 +84,23 @@ function terminalDone(w: DashboardWorld, seed: number, over: Record<string, unkn
 function countAuthorityReads<Result>(
   w: DashboardWorld,
   work: () => Result,
-): { value: Result; getRun: number; latestCheckpoint: number; getReceipt: number } {
+): { value: Result; getRun: number; canonicalRead: number; canonicalList: number; latestCheckpoint: number; getReceipt: number } {
   const original = {
+    canonicalRead: w.runReader.read.bind(w.runReader),
+    canonicalList: w.runReader.list.bind(w.runReader),
     getRun: w.authority.getRun.bind(w.authority),
     latestCheckpoint: w.authority.latestCheckpoint.bind(w.authority),
     getReceipt: w.authority.getReceipt.bind(w.authority),
   };
-  const counts = { getRun: 0, latestCheckpoint: 0, getReceipt: 0 };
+  const counts = { getRun: 0, canonicalRead: 0, canonicalList: 0, latestCheckpoint: 0, getReceipt: 0 };
+  w.runReader.read = (runId) => {
+    counts.canonicalRead += 1;
+    return original.canonicalRead(runId);
+  };
+  w.runReader.list = (input) => {
+    counts.canonicalList += 1;
+    return original.canonicalList(input);
+  };
   w.authority.getRun = (runId: string): RunRecord | undefined => {
     counts.getRun += 1;
     return original.getRun(runId);
@@ -110,6 +120,8 @@ function countAuthorityReads<Result>(
   try {
     return { value: work(), ...counts };
   } finally {
+    w.runReader.read = original.canonicalRead;
+    w.runReader.list = original.canonicalList;
     w.authority.getRun = original.getRun;
     w.authority.latestCheckpoint = original.latestCheckpoint;
     w.authority.getReceipt = original.getReceipt;
@@ -147,12 +159,13 @@ describe("D5 · the member preview slices before it joins (audit P2)", () => {
     const w = world();
     groupOf(w, 8);
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
-    // A group row joins its OWN authority record and resolves its OWN subject
-    // title once; the preview adds one `getRun` + one `latestCheckpoint` per
-    // NAMED member and no more. Before D5 it was one of each per MEMBER — 8
-    // here, 108 on the §7.4 fixture, to print three names.
+    // Canonical admission and one membership snapshot replace per-member run
+    // joins. Only the group's own title and the three named members read a
+    // checkpoint; a preview must not enumerate all runs once per member.
     assert.equal(counted.latestCheckpoint, 4);
-    assert.equal(counted.getRun, 4);
+    assert.equal(counted.getRun, 0);
+    assert.equal(counted.canonicalRead, 1);
+    assert.equal(counted.canonicalList, 1);
   });
 
   it("costs the same three joins whether the group has four members or forty", () => {
@@ -164,6 +177,8 @@ describe("D5 · the member preview slices before it joins (audit P2)", () => {
     const largeCount = countAuthorityReads(large, () => large.projection.queueSurface(uuidOf(1)));
     assert.equal(largeCount.latestCheckpoint, smallCount.latestCheckpoint);
     assert.equal(largeCount.getRun, smallCount.getRun);
+    assert.equal(largeCount.canonicalRead, smallCount.canonicalRead);
+    assert.equal(largeCount.canonicalList, smallCount.canonicalList);
   });
 
   it("still counts every member the fold has seen in the `+N more` tail", () => {

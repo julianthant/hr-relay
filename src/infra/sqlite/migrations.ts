@@ -4,7 +4,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 32;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 33;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 34;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -21,7 +21,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current";
+type MigrationTableName = "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -762,6 +762,16 @@ export const INTEGRATED_AUTHORITY_TABLES_BY_VERSION = deepFreeze({
     "version_bump_applications", "version_plans", "worker_pools", "write_attempts", "write_intents",
   ],
 } as const satisfies Readonly<Record<27 | 28 | 29, readonly string[]>>);
+
+/** Released v30–v33 layouts stay independent of the current registry. */
+const V30_TABLES = [...INTEGRATED_AUTHORITY_TABLES_BY_VERSION[29], "authority_upgrades", "protected_settings_current"].sort();
+const V32_TABLES = V30_TABLES.filter((name) => name !== "protected_settings_current");
+export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, readonly string[]>> = deepFreeze({
+  30: V30_TABLES,
+  31: [...V30_TABLES],
+  32: V32_TABLES,
+  33: V32_TABLES.map((name) => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name).sort(),
+});
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   {
@@ -1803,6 +1813,11 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN SELECT RAISE(ABORT, 'workflow batch identity is immutable; presentation must advance one version'); END`,
     ],
   },
+  {
+    // A3: canonical read/list replaced the write-only run projection mirror.
+    version: 34,
+    statements: ["DROP TABLE runs_view"],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
@@ -1810,7 +1825,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
   const renamed = (name: string): string => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name;
   const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current"];
+  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {

@@ -91,7 +91,7 @@ export function workflowStatusCounts(
 }
 
 /**
- * ACTIVE — queued PLUS running, the union of "accepted, not finished".
+ * ACTIVE — queued, running and cancelling, the union of "accepted, not finished".
  *
  * Ported from the demo's `railEntryCounts` / `attentionAcrossWorkflows`
  * (hr-automation@1bffbd65, DemoShell.tsx:200-235) with the fold removed: the
@@ -102,7 +102,12 @@ export function workflowStatusCounts(
  * question with a different answer surface (the Status Bar's `Needs you`).
  */
 export function activeCount(counts: readonly StatusCountWire[]): number {
-  return statusCount(counts, "queued") + statusCount(counts, "running");
+  return statusCount(counts, "queued") + statusCount(counts, "running") + statusCount(counts, "cancelling");
+}
+
+/** Name every active state contributing to the served count, preserving the established zero-state copy. */
+export function activeStatusWords(counts: readonly StatusCountWire[]): string {
+  return statusCount(counts, "cancelling") > 0 ? "queued, running or cancelling" : "queued or running";
 }
 
 /**
@@ -255,7 +260,7 @@ export function buildWorkflowRailGroups(
 /* ── Status Bar ──────────────────────────────────────────────────────────── */
 
 /**
- * `all`, the composite `needsYou`, and each of the eight served statuses. Every
+ * `all`, the composite `needsYou`, and the served status buckets. Every
  * status is reachable; none is folded away, and none is counted twice — each
  * row lands in exactly one status bucket, and `needsYou` is the only deliberate
  * overlap (it is a composite of two of them, labelled as such).
@@ -264,12 +269,13 @@ export type StatusBucket = "all" | "needsYou" | QueueStatus;
 
 /**
  * The demo's visual order, in the wire's vocabulary:
- * queued · running · waiting · parked · verified Done · Done-with-warnings ·
+ * queued · running · cancelling · waiting · parked · verified Done · Done-with-warnings ·
  * failed · cancelled.
  */
-export const STATUS_PILL_ORDER: QueueStatus[] = [
+const STATUS_PILL_ORDER: QueueStatus[] = [
   "queued",
   "running",
+  "cancelling",
   "awaiting-approval",
   "blocked",
   "done",
@@ -277,6 +283,12 @@ export const STATUS_PILL_ORDER: QueueStatus[] = [
   "failed",
   "cancelled",
 ];
+
+/** Retain the established empty-state bar; expose Cancelling whenever served or selected. */
+export function statusPillOrder(counts: readonly StatusCountWire[], active: StatusBucket): QueueStatus[] {
+  return STATUS_PILL_ORDER.filter((status) =>
+    status !== "cancelling" || active === status || statusCount(counts, status) > 0);
+}
 
 /** The two statuses that are stuck on a decision from the operator. */
 const NEEDS_YOU_STATUSES: QueueStatus[] = ["awaiting-approval", "blocked"];

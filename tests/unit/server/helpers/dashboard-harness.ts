@@ -5,8 +5,7 @@ import { type RunSessionRecord } from "../../../../src/domain/run/session.js";
  * root, a real span writer chained into the real projection ("JSONL first,
  * projection after"), a Map-backed authority read fake whose records are
  * REAL `RunRecordSchema` parses (no state a production transition could not
- * produce), and an in-memory projection store implementing the repository
- * surface.
+ * produce). Canonical readers admit lifecycle; spans supply optional evidence.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +34,6 @@ import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
 import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/events/types.js";
 import { createSpanJsonlWriter, type SpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
 import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
-import type { ProjectionRepositories } from "../../../../src/infra/sqlite/authority-database.js";
 import {
   createRunQueueProjection,
   RunQueueProjection,
@@ -201,58 +199,12 @@ export function authorityFake(): AuthorityFake {
   };
 }
 
-export interface ProjectionStoreFake {
-  readonly rows: Map<string, unknown>;
-  readonly clears: number[];
-  withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result;
-}
-
-export function projectionStoreFake(): ProjectionStoreFake {
-  const tables = new Map<string, Map<string, unknown>>([
-    ["spans", new Map()], ["gates", new Map()], ["notes", new Map()], ["runs_view", new Map()],
-  ]);
-  const clears: number[] = [];
-  const repository = (name: string): ProjectionRepositories["runsView"] => {
-    const table = tables.get(name);
-    if (table === undefined) throw new Error(`unknown projection table ${name}`);
-    return Object.freeze({
-      upsert: (input: unknown) => {
-        const record = z.strictObject({
-          projectionKey: z.string().length(64),
-          payload: z.strictObject({ schemaHash: z.string().length(64), value: z.unknown() }),
-          updatedAt: z.string().min(1),
-        }).parse(input);
-        table.set(record.projectionKey, record);
-        return record as never;
-      },
-      get: (projectionKey: string) => table.get(projectionKey) as never,
-      clear: () => {
-        clears.push(table.size);
-        const size = table.size;
-        table.clear();
-        return size;
-      },
-    });
-  };
-  return {
-    rows: tables.get("runs_view") as Map<string, unknown>,
-    clears,
-    withProjectionTransaction: (work) => work(Object.freeze({
-      spans: repository("spans"),
-      gates: repository("gates"),
-      notes: repository("notes"),
-      runsView: repository("runs_view"),
-    })),
-  };
-}
-
 export interface DashboardWorld {
   readonly stateRoot: string;
   readonly clock: TestClock;
   readonly authority: AuthorityFake;
   readonly runReader: CanonicalRunReader;
   readonly runReaderState: InMemoryRunReaderState;
-  readonly store: ProjectionStoreFake;
   readonly projection: RunQueueProjection;
   readonly writer: SpanJsonlWriter;
   readonly changes: RunQueueProjectionChange[];
@@ -261,6 +213,7 @@ export interface DashboardWorld {
 }
 
 export function makeWorld(input?: Readonly<{
+  reader?: CanonicalRunReader;
   collectRebuilds?: boolean;
   /**
    * The registry the projection resolves labels, categories and runtime nodes
@@ -274,10 +227,16 @@ export function makeWorld(input?: Readonly<{
   const clock = manualClock(AT);
   const authority = authorityFake();
   const runReaderState = { records: authority.records, archived: authority.archived, deleted: new Map(), generation: 0 };
-  const runReader = inMemoryRunReaderFake(runReaderState);
-  const store = projectionStoreFake();
+  const canonical = input?.reader ?? inMemoryRunReaderFake(runReaderState);
+  // Keep the consumed port instrumentable for structural read-count proofs;
+  // the underlying canonical reader retains its own frozen implementation.
+  const runReader: CanonicalRunReader = {
+    read: (runId) => canonical.read(runId),
+    list: (query) => canonical.list(query),
+  };
   const scheduledRebuilds: (() => void)[] = [];
   const projection = createRunQueueProjection({
+    reader: runReader,
     stateRoot,
     clock,
     appVersion: APP_VERSION,
@@ -289,7 +248,6 @@ export function makeWorld(input?: Readonly<{
     ledger: createLedgerReadThrough(stateRoot),
     authority,
     descriptors: input?.descriptors ?? { resolve: () => undefined },
-    projectionStore: store,
     ...(input?.collectRebuilds === true
       ? { scheduleRebuild: (rebuild: () => void): void => { scheduledRebuilds.push(rebuild); } }
       : {}),
@@ -316,7 +274,6 @@ export function makeWorld(input?: Readonly<{
     authority,
     runReader,
     runReaderState,
-    store,
     projection,
     writer,
     changes,
@@ -329,6 +286,7 @@ export function makeWorld(input?: Readonly<{
 
 export interface SeedRunInput {
   readonly seed: number;
+  readonly attempt?: number;
   readonly workflow?: string;
   readonly shape?: "single" | "preview" | "operation" | "operation-member";
   readonly parentSeed?: number;
@@ -393,7 +351,7 @@ export function workerLeaseOf(input: Readonly<{
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
-  const enqueuedAt = input.enqueuedAt ?? NOW;
+  const enqueuedAt = input.enqueuedAt ?? AT.toISOString();
   return RunRecordSchema.parse({
     envelope: {
       runId: uuidOf(input.seed),
@@ -416,7 +374,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       priority: input.priority ?? "interactive",
       dryRun: input.dryRun ?? false,
       ...(input.injected === undefined ? {} : { injected: input.injected }),
-      attempt: 1,
+      attempt: input.attempt ?? 1,
       enqueuedAt,
     },
     input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
@@ -432,7 +390,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
 }
 
 export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQueuedWire {
-  const record = runRecordOf(input);
+  const record = runRecordOf({ ...input, enqueuedAt: input.enqueuedAt ?? world.clock.now().toISOString() });
   world.authority.put(record);
   const event = {
     t: "run.queued",

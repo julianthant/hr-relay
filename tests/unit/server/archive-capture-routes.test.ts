@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA4: the real HTTP boundary over an immutable test archive repository. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -160,6 +161,8 @@ function fixture(options: {
   database.withAuthorityTransaction((repositories) => {
     repositories.runs.enqueue({ ...personLookupQueuedRun({ runId: record.runId }),
       input: options.retainedInput ?? record.input });
+    repositories.runs.transition({ runId: record.runId, expectedVersion: 1, now: record.archivedAt,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: record.archivedAt } });
     repositories.versionPlans.insert(VERSION_PLAN_ROW);
     repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
     repositories.archivedRuns.insert(record);
@@ -186,6 +189,7 @@ function fixture(options: {
     },
     archive: {
       authority,
+      reader: sqliteRunReader(database, clock),
       get descriptors() { throw new Error("forbidden current descriptor lookup"); },
     },
     ...(options.noStore ? {} : { diagnosticBundles: {
@@ -387,8 +391,14 @@ describe("DCA4 exact archived capture routes", () => {
       });
 
       it("refuses a foreign record returned by the repository", async () => {
-        const { app, open } = fixture({ lookup: () => recordWithTile() });
-        const error = await assertError(await app.request(url.replace(ARCHIVED_RUN_WITH_SECTIONS.runId, FOREIGN_ID)), 500, "ARCHIVED_CAPTURE_CORRUPT");
+        const original = recordWithTile();
+        const foreign = ArchivedRunRecordSchema.parse(JSON.parse(
+          JSON.stringify(original).replaceAll(original.runId, FOREIGN_ID),
+        ));
+        const { contentDigest: _digest, ...content } = foreign;
+        const authenticForeign = { ...content, contentDigest: archivedRunContentDigest(content) };
+        const { app, open } = fixture({ lookup: () => authenticForeign });
+        const error = await assertError(await app.request(url), 500, "ARCHIVED_CAPTURE_CORRUPT");
         assert.match(error.message, /foreign archived run identity/u);
         assert.equal(open.mock.calls.length, 0);
       });

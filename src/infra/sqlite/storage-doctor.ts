@@ -26,6 +26,7 @@ import {
   type SpanEventWire,
 } from "../../events/types.js";
 import { AuthorityDatabase } from "./authority-database.js";
+import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import {
@@ -1068,6 +1069,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
   const protectedSettings = inspectCredentialPresence(stateRoot);
+  const authorityUpgrades = inspectAuthorityUpgradeStatus(authorityPath, options.busyTimeoutMs, clock);
   const finalAuthorityRead = inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs);
   if (initialAuthorityRead.state !== finalAuthorityRead.state) {
     throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
@@ -1088,6 +1090,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
   }
   return StorageDoctorReportSchema.parse({
+    authorityUpgrades,
     kind: "authority-storage-doctor",
     tombstoneOrdinals: spanAuthorityRead.tombstoneOrdinalFindings === undefined
       ? { state: "unavailable", cause: { code: "authority-unavailable", summary: "tombstone ordinals could not be verified in the span authority snapshot" } }

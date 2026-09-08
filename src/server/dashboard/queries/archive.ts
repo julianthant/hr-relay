@@ -1,3 +1,7 @@
+import type { RunRecordService } from "../../../core/run-record-service.js";
+import { listCanonicalRuns } from "./canonical-runs.js";
+import { requireCanonicalRun } from "./run-read.js";
+import { deriveRunStatus } from "../run-status.js";
 import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 import { archivedRunReferenceFingerprint, authenticArchivedRunContent } from "../../../domain/archive/model.js";
 /**
@@ -7,7 +11,7 @@ import { archivedRunReferenceFingerprint, authenticArchivedRunContent } from "..
  * **Two halves with opposite rules, in one file so the difference is visible.**
  *
  * `buildArchivedRunDetail` reads ONE archived run and resolves NOTHING. No
- * descriptor, no projection, no live authority beyond the archive tables — the
+ * descriptor or projection. Canonical read admits archive membership; the
  * stored record already holds the row, the detail, the receipt, the failure
  * and the evidence pointers, which is what "self-contained" means. Ref frontend-backend-integration §8
  * guard #11 checks it the only way that proves anything: by reading a record
@@ -46,7 +50,7 @@ import { archiveRetention } from "../../../domain/archive/retention.js";
 import type { LedgerReadThrough } from "../../../infra/ledger/ledger-read-through.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import {
-  assessVersionBump,
+  assessVersionBumpFromRuns,
   type ArchiveRunSnapshot,
   type ArchiveSnapshotSource,
 } from "../../../services/archive/archive-service.js";
@@ -208,6 +212,7 @@ import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetail
 import { TargetNotFoundError } from "../../failures.js";
 
 export interface ArchiveQueryDeps {
+  readonly reader: Pick<RunRecordService, "read" | "list">;
   readonly clock: Clock;
   readonly appVersion: string;
   /**
@@ -242,6 +247,13 @@ export interface ArchiveQueryDeps {
   readonly ledger: LedgerReadThrough;
 }
 
+function requireArchivedRun(reader: ArchiveQueryDeps["reader"], runId: string): void {
+  const existence = reader.read(runId);
+  if (existence.state !== "present" || existence.disposition !== "archived") {
+    throw new TargetNotFoundError(`archived run ${runId} is ${existence.state === "present" ? existence.disposition : existence.state}`);
+  }
+}
+
 /** The immutable archived capture reference, resolved without attachment or run lookups. */
 export interface ArchivedCaptureLease {
   readonly ref: ArtifactRef;
@@ -261,7 +273,7 @@ export class ArchivedCaptureReadError extends Error {
 }
 
 function frozenArchivedCaptureRef(
-  deps: Pick<ArchiveQueryDeps, "authority">,
+  deps: Pick<ArchiveQueryDeps, "authority" | "reader">,
   runIdInput: unknown,
   artifactIdInput: unknown,
 ): ArtifactRef {
@@ -273,6 +285,7 @@ function frozenArchivedCaptureRef(
   };
   try {
     return deps.authority.withAuthorityTransaction((repositories) => {
+      requireArchivedRun(deps.reader, runId);
       const input = repositories.archivedRuns.get(runId);
       if (input === undefined) throw new TargetNotFoundError(`archived run ${runId} does not exist`);
       const record = ArchivedRunRecordSchema.parse(input);
@@ -316,7 +329,7 @@ function frozenArchivedCaptureRef(
  * exact archived tile. The HTTP response owns disposal after this function returns.
  */
 export async function prepareArchivedCaptureLease(
-  deps: Pick<ArchiveQueryDeps, "authority"> & {
+  deps: Pick<ArchiveQueryDeps, "authority" | "reader"> & {
     readonly artifactReader: ServerVerifiedArtifactReader;
   },
   runIdInput: unknown,
@@ -350,7 +363,7 @@ export async function prepareArchivedCaptureLease(
  * what the archived capture was.
  */
 export async function buildArchivedCaptureResource(
-  deps: Pick<ArchiveQueryDeps, "authority"> & {
+  deps: Pick<ArchiveQueryDeps, "authority" | "reader"> & {
     readonly artifactReader: ServerVerifiedArtifactReader;
   },
   runIdInput: unknown,
@@ -408,9 +421,10 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
       } as WorkflowVersionIdentity;
     };
 
+    const liveRuns = listCanonicalRuns(deps.reader, "live");
     const versionState = registered.map((descriptor) => {
-      const assessment = assessVersionBump(
-        { repositories, currentIdentity, appVersion: deps.appVersion },
+      const assessment = assessVersionBumpFromRuns(
+        { runs: liveRuns, currentIdentity, appVersion: deps.appVersion },
         VersionScopeSchema.parse({ kind: "workflows", workflowIds: [descriptor.id] }),
       );
       return {
@@ -427,13 +441,18 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
       };
     });
 
-    const archived = repositories.archivedRuns.list();
+    const canonical = listCanonicalRuns(deps.reader, "archived");
+    const archived = canonical.map((run) => {
+      const frozen = repositories.archivedRuns.get(run.envelope.runId);
+      if (frozen === undefined) throw new Error("canonical archived run has no frozen archive record");
+      return { record: frozen, run };
+    });
     return ArchiveIndexWireSchema.parse({
       wireVersion: 1,
       archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
       generatedAt: deps.clock.now().toISOString(),
       currentAppVersion: deps.appVersion,
-      entries: archived.map((record) => ({
+      entries: archived.map(({ record, run }) => ({
         runId: record.runId,
         traceId: record.traceId,
         workflowId: record.workflowId,
@@ -443,7 +462,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         workflowCode: archivedWorkflowCode(record),
         title: hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input })
           ? "Protected test subject" : record.row.title,
-        status: record.row.status,
+        status: deriveRunStatus(run),
         archivedIdentity: record.archivedIdentity,
         appVersion: record.appVersion,
         drift: record.drift,
@@ -490,8 +509,8 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
          */
         fromVersions: [...new Set(
           archived
-            .filter((record) => record.applicationId === application.applicationId)
-            .map((record) => record.archivedIdentity.descriptorVersion),
+            .filter(({ record }) => record.applicationId === application.applicationId)
+            .map(({ record }) => record.archivedIdentity.descriptorVersion),
         )].sort((left, right) => left - right),
       })),
       versionState,
@@ -523,6 +542,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
 export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: string): ArchivedRunDetailWire {
   const registered = deps.descriptors.list();
   return deps.authority.withAuthorityTransaction((repositories) => {
+    requireArchivedRun(deps.reader, runIdInput);
     const record = repositories.archivedRuns.get(runIdInput);
     if (record === undefined) {
       throw new TargetNotFoundError(`archived run ${runIdInput} does not exist`);
@@ -647,7 +667,7 @@ export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSn
       const row = deps.projection.queueSurface(runId);
       if (row === undefined) {
         throw new TargetNotFoundError(
-          `run ${runId} has no span fold; refusing to archive a run the projection cannot render, `
+          `run ${runId} has no live canonical row; refusing to archive a run the projection cannot render, `
           + "because an archived row that could not be built now can never be built later",
         );
       }
@@ -687,15 +707,17 @@ const FROZEN_LOG_PAGE_LIMIT = 500;
  * through this seam instead of reading authority a second time.
  */
 function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): ArchivedProjectionSections {
-  const fold = deps.projection.runFold(runId);
-  if (fold === undefined) {
-    throw new TargetNotFoundError(`run ${runId} has no span fold; its sections cannot be frozen`);
-  }
+  const { row: fold, authority } = requireCanonicalRun(deps, runId);
+  if (deps.runReader === undefined) throw new Error("archive snapshot requires canonical run reader");
+  const members = listCanonicalRuns(deps.runReader, "live").filter((run) =>
+    run.envelope.parent?.runId === authority.envelope.runId && run.envelope.shape === "operation-member");
   return ArchivedProjectionSectionsSchema.parse({
     logs: { state: "present", value: freezeLogs(deps, runId) },
     data: { state: "present", value: freezeData(deps, runId) },
-    people: freezePeople(deps, runId, fold.memberRunIds),
-    attempts: { state: "present", value: foldAttempts(fold) },
+    people: freezePeople(deps, runId, members.map((run) => run.envelope.runId)),
+    attempts: fold === undefined
+      ? { state: "absent", reason: "no execution span evidence was recorded" }
+      : { state: "present", value: foldAttempts(fold, authority.envelope.attempt) },
   });
 }
 
@@ -759,7 +781,7 @@ function freezeData(deps: RunDetailQueryDeps, runId: string): ContextDataSection
 }
 
 /**
- * The member rows, projected from the fold's OWN member ids.
+ * Member rows come from canonical parent/shape membership.
  *
  * There is no live `people` section in this composition (ref dashboard-surfaces D19's People
  * tab is a group-panel surface 2h left unbuilt), so this is not a freeze of a
@@ -776,8 +798,9 @@ function freezePeople(
   if (memberRunIds.length === 0) {
     return { state: "absent", reason: "this run fanned out no member runs" };
   }
+  const byId = new Map(deps.projection.queueSurfaces(memberRunIds).map((surface) => [String(surface.runId), surface]));
   const members = memberRunIds.map((memberRunId) => {
-    const surface = deps.projection.queueSurface(memberRunId);
+    const surface = byId.get(memberRunId);
     if (surface === undefined) {
       throw new Error(
         `run ${runId} names member ${memberRunId}, which the projection cannot render; refusing to archive a `
@@ -812,9 +835,9 @@ function freezePeople(
  * spans — a run that died before its first task still HAD a first attempt, and
  * an empty attempt list would say the run never started.
  */
-function foldAttempts(fold: RunFoldRecord): readonly ArchivedRunAttempt[] {
+function foldAttempts(fold: RunFoldRecord, currentAttempt: number): readonly ArchivedRunAttempt[] {
   const byAttempt = new Map<number, RunFoldRecord["taskSpans"][number][]>();
-  for (let attempt = 1; attempt <= fold.attempt; attempt += 1) byAttempt.set(attempt, []);
+  for (let attempt = 1; attempt <= currentAttempt; attempt += 1) byAttempt.set(attempt, []);
   for (const span of fold.taskSpans) {
     const bucket = byAttempt.get(span.attempt);
     if (bucket === undefined) byAttempt.set(span.attempt, [span]);

@@ -7,6 +7,7 @@ import {
   Ban,
   CheckCircle2,
   CircleAlert,
+  CircleStop,
   Clock,
   Loader2,
   PauseCircle,
@@ -19,9 +20,9 @@ import { DISPLAY_STATUS_LABELS } from "../../domain/dashboard/status-vocabulary.
 import type { displayStatusOf } from "../../domain/dashboard/status-vocabulary.js";
 
 /**
- * The eight ratified queue statuses.
+ * The shared queue status vocabulary.
  *
- * These eight values are the spine of the whole product: the queue, the rail
+ * These values are shared across the product: the queue, the rail
  * badges, the status bar, the notifications inbox, the archive and every
  * receipt all speak this vocabulary. Getting them distinguishable *at a glance
  * in a list of eighty rows* is the single highest-leverage visual decision in
@@ -195,6 +196,18 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     spin: true,
     meaning: "A worker owns it right now. Only cancel is offered.",
   },
+  cancelling: {
+    label: DISPLAY_STATUS_LABELS.cancelling,
+    tier: "tinted",
+    icon: CircleStop,
+    chip: "bg-[var(--ds-status-running-bg)] border-[color:var(--ds-status-running-border)]",
+    text: "text-[color:var(--ds-status-running-fg)]",
+    iconTone: "text-[color:var(--ds-status-running-fg)]",
+    soloTone: "text-[color:var(--ds-status-running-fg)]",
+    dot: "bg-[var(--ds-status-running-mark)]",
+    dotBorder: "border-[color:var(--ds-status-running-mark)]",
+    meaning: "Cancellation requested. The worker has not settled the run yet.",
+  },
   queued: {
     label: DISPLAY_STATUS_LABELS.queued,
     tier: "outline",
@@ -253,6 +266,7 @@ export const DS_STATUS_ORDER: DsStatus[] = [
   "parked",
   "doneWarnings",
   "running",
+  "cancelling",
   "queued",
   "cancelled",
   "verifiedDone",

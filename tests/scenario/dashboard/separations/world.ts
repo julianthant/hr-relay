@@ -163,20 +163,19 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
 
   const ledger = createLedgerReadThrough(stateRoot);
   const projection = createRunQueueProjection({
+    reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: descriptorSetHash([descriptor.contractFingerprint]),
     ledger,
     authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
       listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -184,7 +183,6 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors: descriptorResolver,
-    projectionStore: database,
   });
 
   const jsonlWriter = createSpanJsonlWriter({ stateRoot, clock, pid: 4242 });

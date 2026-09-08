@@ -15,7 +15,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { sortQueueBand, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
+import { bandOf, sortQueueBand, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -174,4 +174,14 @@ describe("member ordering (R3 finding 13)", () => {
       runId(5),
     ]);
   });
+});
+
+
+it("keeps Cancelling in the active band ahead of queued and completed work", () => {
+  const cancelling = surface({ runId: runId(1), status: "cancelling" });
+  assert.equal(bandOf("cancelling"), "active");
+  assert.deepEqual(sortQueueBand([
+    settled({ runId: runId(2), status: "done" }),
+    surface({ runId: runId(3), status: "queued" }), cancelling,
+  ], "attention", NOW).map(({ status }) => status), ["cancelling", "queued", "done"]);
 });

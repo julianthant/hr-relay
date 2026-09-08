@@ -307,7 +307,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
   const statesSwept = new Set<string>();
   for (const { lifecycle, claimGeneration } of lifecycleCases()) {
     const record: RunRecord = RunRecordSchema.parse({
-      ...runRecordOf({ seed: 1, ...(claimGeneration === undefined ? {} : { claimGeneration }) }),
+      ...runRecordOf({ seed: 1, enqueuedAt: PARK_INSTANT, ...(claimGeneration === undefined ? {} : { claimGeneration }) }),
       lifecycle,
     });
     statesSwept.add(record.lifecycle.state);

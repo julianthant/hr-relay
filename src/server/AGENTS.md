@@ -17,8 +17,9 @@ task starts at the repository root. Keep it byte-identical with `CLAUDE.md`.
   one reset-required response, not an unbounded stream-controller push path.
 - Production static serving validates the bundle before authority/locks/sockets, registers last,
   checks lexical and realpath containment, and uses the closed extension/cache policy.
-- Archived resources bind to the exact immutable run/digest and frozen capture metadata. Never
-  consult current-run authority or infer purge from a deadline; preserve safe download headers.
+- Archived resources first admit canonical archive membership through RunRecordService.read, then
+  bind evidence to the exact immutable run/digest and frozen capture metadata. Never reconstruct
+  archived evidence from current inputs or infer purge from a deadline; preserve safe download headers.
 - Boot/upgrade follows the current authority floor and D332. Old integration-lineage lessons are
   history, not permission to migrate an existing database during ordinary startup.
 

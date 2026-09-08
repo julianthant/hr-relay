@@ -1,3 +1,5 @@
+import type { RunRecordService } from "../../../core/run-record-service.js";
+import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
 import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 /**
@@ -10,18 +12,10 @@ import { hasProtectedTransactionInput } from "../../../domain/protected-input.js
  * `monthCounts` from that same in-memory array — a count literally cannot
  * take a second path because no second aggregation function exists.
  *
- * Sources, in the doc's arrow direction: the spans JSONL stream (identity,
- * claims, task spans, gates, ends) consumed FROM DISK (D218) — a boot
- * `rebuildFromJsonl` folds the whole history, and `ingestFromDisk` tails the
- * files by byte cursor for everything appended after, by ANY process. The
- * worker emits its task spans from its own OS process, so disk is the one
- * place every span exists; an in-process emit hook covered only this
- * process's half and served an empty timeline for every run enqueued after
- * boot. The fold is joined per-run against SQLite AUTHORITY facts (lifecycle
- * for parked/terminal, `version` as the row's CAS revision). The
- * folded rows are persisted to the rebuildable `runs_view` projection table;
- * deleting that table loses nothing — `rebuildFromJsonl` is the
- * `rebuild-from-native-jsonl` recovery class.
+ * Canonical RunRecordService read/list owns run existence, identity, membership
+ * and lifecycle. The JSONL fold contributes optional execution evidence only.
+ * Boot rebuilds that evidence in memory; disk tailing observes other processes.
+ * No runs_view table or persisted lifecycle mirror is used.
  *
  * Failure policy (ref dashboard-surfaces §2.3): JSONL append happens BEFORE any fold sees the
  * event — structurally, because the fold only reads the file. A failing fold
@@ -62,7 +56,6 @@ import {
 import { DashboardDayPatchSchema } from "../../../domain/dashboard/subscription.js";
 import {
   PositiveIntSchema,
-  FingerprintSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
   type Fingerprint,
@@ -79,8 +72,6 @@ import {
   projectFailureForOperator,
   type FailureRecord,
 } from "../../../domain/trust/failure.js";
-import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
-import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
@@ -89,13 +80,12 @@ import type { WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
-import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
 import { deriveRunStatus, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
-import { ProjectionDegradedError, TargetNotFoundError } from "../../failures.js";
+import { ProjectionDegradedError } from "../../failures.js";
 
-/* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
+/* ── the in-memory evidence fold shape ─ */
 
 const TaskSpanFoldSchema = z.strictObject({
   /**
@@ -163,6 +153,7 @@ interface WorkerFold {
 /* ── dependencies ────────────────────────────────────────────────────────── */
 
 export interface RunQueueProjectionDeps {
+  readonly reader: Pick<RunRecordService, "read" | "list">;
   readonly stateRoot: string;
   readonly clock: Clock;
   readonly appVersion: string;
@@ -185,7 +176,6 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
-    getRun(runId: string): RunRecord | undefined;
     /** 2i-B: the durable inbox rows the day wire serves. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     /**
@@ -201,16 +191,6 @@ export interface RunQueueProjectionDeps {
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
     getRunBatch(batchId: string): RunSessionRecord | undefined;
-    /**
-     * D179/D80: whether a version bump has archived this run. Ref dashboard-surfaces §10.1 is
-     * explicit that archived rows are excluded ONCE, inside the projection,
-     * alongside member containment — so an archived run leaves the queue, the
-     * workflow badge, the status pill, the month calendar and the Activity
-     * report at the same instant, by construction. Since D234 it is the ONLY
-     * exclusion of a whole run: there are runs and archived runs, and nothing
-     * else takes a row off the queue.
-     */
-    isArchived(runId: string): boolean;
     /** D180: the failure breakdown the Activity report aggregates. */
     getFailure(failureId: string): FailureRecord | undefined;
     /**
@@ -248,10 +228,6 @@ export interface RunQueueProjectionDeps {
     ): RunCheckpointRecord | undefined;
   };
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
-  /** The rebuildable projection tables (ref dashboard-surfaces §2.3). */
-  readonly projectionStore: {
-    withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result;
-  };
   /**
    * How a guarded rebuild is scheduled after an apply failure. The default
    * runs it immediately; tests inject a collector to observe scheduling.
@@ -284,16 +260,18 @@ export interface ProjectedRunLogSnapshot {
   readonly entries: readonly ProjectedRunLogEntry[];
 }
 
+interface CanonicalProjectionSnapshot {
+  readonly runs: readonly RunRecord[];
+  readonly byId: ReadonlyMap<string, RunRecord>;
+  readonly children: ReadonlyMap<string, readonly RunRecord[]>;
+}
+
 interface ParsedSpanLine {
   readonly line: EventStreamLine;
   readonly event: SpanEventWire;
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
-
-function deterministicProjectionKey(runId: string): Fingerprint {
-  return FingerprintSchema.parse(sha256Hex(`hrauto:runs-view-key:v1\0${runId}`));
-}
 
 function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "operation" | "member" {
   if (shape === "operation") return "operation";
@@ -349,6 +327,7 @@ const ACTIVITY_STATUS_BUCKET = {
   partial: "partial",
   queued: "open",
   running: "open",
+  cancelling: "open",
   blocked: "open",
   "awaiting-approval": "open",
 } as const satisfies Record<QueueSurfaceWire["status"], string>;
@@ -525,7 +504,6 @@ export class RunQueueProjection {
   readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedStatus = new Map<string, string>();
-  readonly #foldSchemaHash: Fingerprint;
   /**
    * The D218 tail state: how far into each `spans/` file this projection has
    * folded, in bytes-through-the-last-newline. Seeded by `rebuildFromJsonl`
@@ -549,7 +527,6 @@ export class RunQueueProjection {
   constructor(deps: RunQueueProjectionDeps) {
     this.#deps = deps;
     this.#generationValue = Math.max(1, Math.trunc(deps.clock.nowMs()));
-    this.#foldSchemaHash = deriveSchemaHash(RunFoldRecordSchema, "output");
     this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
   }
 
@@ -607,7 +584,6 @@ export class RunQueueProjection {
     try {
       const affected = this.#fold(event);
       this.#cursorValue += 1;
-      this.#persist(affected.runIds);
       this.#notify(affected);
     } catch (error) {
       this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
@@ -630,12 +606,12 @@ export class RunQueueProjection {
       this.#spanCursors = tail.cursors;
       if (tail.lines.length === 0) return;
       const events = this.#parseSpanLines(tail.lines);
+      const snapshot = this.#canonicalSnapshot();
       for (const { event, line } of events) {
         const affected = this.#fold(event);
         this.#cursorValue += 1;
         this.#recordRunLog(event, line);
-        this.#persist(affected.runIds);
-        this.#notify(affected);
+        this.#notify(affected, snapshot);
       }
     } catch (error) {
       this.#degrade(`span tail ingest failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -714,18 +690,12 @@ export class RunQueueProjection {
       this.#workers.clear();
       this.#runLogs.clear();
       this.#notifiedStatus.clear();
-      const touched = new Set<string>();
       this.#cursorValue = 0;
       for (const { event, line } of events) {
-        for (const runId of this.#fold(event).runIds) touched.add(runId);
+        this.#fold(event);
         this.#cursorValue += 1;
         this.#recordRunLog(event, line);
       }
-      this.#deps.projectionStore.withProjectionTransaction((repositories) => {
-        repositories.runsView.clear();
-        return undefined;
-      });
-      this.#persist([...touched]);
       // The tail resumes from exactly what this rebuild consumed — set
       // together with `live` so the two ingest paths can never overlap.
       this.#spanCursors = whole.cursors;
@@ -750,8 +720,6 @@ export class RunQueueProjection {
    * not a second projection.
    */
   refreshRun(runId: string): void {
-    const row = this.#rows.get(runId);
-    if (row === undefined) return;
     this.#cursorValue += 1;
     this.#notify({ runIds: [runId], workerChanged: false });
   }
@@ -763,9 +731,23 @@ export class RunQueueProjection {
    * disagree with the row the operator was looking at.
    */
   queueSurface(runId: string): QueueSurfaceWire | undefined {
-    const row = this.#rows.get(runId);
-    if (row === undefined) return undefined;
-    return this.#surface(row, this.#authorityRun(runId));
+    const existence = this.#deps.reader.read(runId);
+    if (existence.state !== "present" || existence.disposition !== "live") return undefined;
+    return this.queueSurfaces([runId])[0];
+  }
+
+  /** Bulk frozen-member reads share one canonical enumeration. */
+  queueSurfaces(runIds: readonly string[]): readonly QueueSurfaceWire[] {
+    const snapshot = this.#canonicalSnapshot();
+    return runIds.flatMap((runId) => {
+      const run = snapshot.byId.get(runId);
+      return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, snapshot.children.get(runId) ?? [])];
+    });
+  }
+
+  #canonicalSnapshot(): CanonicalProjectionSnapshot {
+    const runs = listCanonicalRuns(this.#deps.reader, "live");
+    return { runs, byId: new Map(runs.map((run) => [run.envelope.runId, run])), children: canonicalRunChildren(runs) };
   }
 
   /* ── folding ───────────────────────────────────────────────────────────── */
@@ -783,7 +765,7 @@ export class RunQueueProjection {
       if (this.#rows.has(event.runId)) {
         throw new Error(`run.queued replayed for ${event.runId}; identity attributes are write-once`);
       }
-      this.#rows.set(event.runId, {
+      this.#rows.set(event.runId, RunFoldRecordSchema.parse({
         queued: event,
         attempt: event.attempt,
         requeues: 0,
@@ -793,7 +775,7 @@ export class RunQueueProjection {
         memberRunIds: [],
         lastEventAt: event.ts,
         eventCount: 1,
-      });
+      }));
       const affected = [event.runId];
       if (event.parentRunId !== undefined) {
         const parent = this.#rows.get(event.parentRunId);
@@ -1003,22 +985,6 @@ export class RunQueueProjection {
     return { runIds: [], workerChanged: true };
   }
 
-  #persist(runIds: readonly string[]): void {
-    if (runIds.length === 0) return;
-    this.#deps.projectionStore.withProjectionTransaction((repositories) => {
-      for (const runId of runIds) {
-        const row = this.#rows.get(runId);
-        if (row === undefined) continue;
-        repositories.runsView.upsert({
-          projectionKey: deterministicProjectionKey(runId),
-          payload: { schemaHash: this.#foldSchemaHash, value: RunFoldRecordSchema.parse(row) },
-          updatedAt: this.#deps.clock.now().toISOString(),
-        });
-      }
-      return undefined;
-    });
-  }
-
   /**
    * The landed 1b patch union replaces queue surfaces but carries no count
    * tuples, and D81 forbids the client from re-deriving a count. So a change
@@ -1029,27 +995,27 @@ export class RunQueueProjection {
    * "snapshot + any valid patch sequence equals a fresh snapshot" invariant
    * holds exactly instead of approximately.
    */
-  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }): void {
+  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, snapshot = this.#canonicalSnapshot()): void {
     const changes: RunQueueProjectionChange[] = [];
     let snapshotNeeded = affected.workerChanged;
     let batchPresentationChanged = false;
+    const { byId, children } = snapshot;
     for (const runId of affected.runIds) {
       const row = this.#rows.get(runId);
-      if (row === undefined) continue;
-      const day = localDatePart(new Date(row.queued.ts));
-      const authority = this.#authorityRun(runId);
+      const authority = byId.get(runId);
       const previousStatus = this.#notifiedStatus.get(runId);
       // Archiving is count-bearing: the row leaves the payload, so the client
       // is handed a fresh snapshot rather than a patch that could only describe
       // a row that is no longer there.
-      if (this.#deps.authority.isArchived(runId)) {
+      if (authority === undefined) {
         if (previousStatus !== undefined) {
           this.#notifiedStatus.delete(runId);
           snapshotNeeded = true;
         }
         continue;
       }
-      const replacement = this.#surface(row, authority);
+      const day = localDatePart(new Date(authority.envelope.enqueuedAt));
+      const replacement = this.#surface(row, authority, children.get(runId) ?? []);
       const batch = replacement.session;
       if (batch.state === "present" && batch.presentation !== undefined
         && this.#publishedBatchVersions.get(batch.sessionId) !== batch.presentation.version) {
@@ -1077,7 +1043,7 @@ export class RunQueueProjection {
         }),
       });
     }
-    if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+    if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
     if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
     const publications: readonly RunQueueProjectionChange[] = batchPresentationChanged
       ? [{ kind: "snapshot", cursor: this.cursor() }]
@@ -1118,7 +1084,7 @@ export class RunQueueProjection {
   }
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
-  #captureSharedAuthorityFingerprint(): string {
+  #captureSharedAuthorityFingerprint(canonicalRuns = listCanonicalRuns(this.#deps.reader, "live")): string {
     const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
       workflowId: pool.workflow,
       desiredWorkers: pool.desiredWorkers,
@@ -1127,52 +1093,37 @@ export class RunQueueProjection {
       plannedAt: pool.plannedAt,
     }));
     const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-    const fingerprint = JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools, batches });
+    const runs = canonicalRuns.map((run) => ({
+      envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
+      sessionId: run.sessionId, appVersion: run.appVersion,
+      lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
+        ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
+      cancelRequested: run.cancelRequested,
+    }));
+    const fingerprint = JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools, batches, runs });
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
 
   /* ── the authority join ────────────────────────────────────────────────── */
 
-  #authorityRun(runId: string): RunRecord {
-    const record = this.#deps.authority.getRun(runId);
-    if (record === undefined) {
-      throw new TargetNotFoundError(
-        `run ${runId} exists in the span stream but not in authority; the projection refuses to render an unaccounted run`,
-      );
-    }
-    return record;
-  }
-
-  #status(row: RunFoldRecord, authority: RunRecord): z.infer<typeof QueueSurfaceWireSchema>["status"] {
-    return deriveRunStatus(row, authority);
+  #status(authority: RunRecord): z.infer<typeof QueueSurfaceWireSchema>["status"] {
+    return deriveRunStatus(authority);
   }
 
   /**
    * D124: the terminal instant a finished row's duration is measured against.
    *
-   * Authority is preferred because the terminal-authority contract writes
-   * `lifecycle.endedAt` as the commit marker; the run's own `span.ended` is
-   * the fallback for a row whose status came from the span stream while
-   * authority had not settled yet. When neither exists the row says so — a
-   * terminal run with no end instant is a real (if rare) state, and naming it
-   * is the only honest option. The client never fills the gap with `now`.
+   * Only a canonical terminal lifecycle supplies the end instant. Evidence
+   * cannot settle a run or manufacture a duration endpoint.
    */
   #endedAt(
-    row: RunFoldRecord,
     authority: RunRecord,
     status: QueueSurfaceWire["status"],
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
-    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
-      return { state: "absent", reason: `run is ${status} and has not ended` };
-    }
-    const { lifecycle } = authority;
-    if (lifecycle.state === "terminal") return { state: "present", value: lifecycle.endedAt };
-    if (row.ended !== undefined) return { state: "present", value: row.ended.endedAt };
-    return {
-      state: "absent",
-      reason: `run reads ${status} but neither authority nor its run span recorded an end instant`,
-    };
+    return TERMINAL_QUEUE_STATUSES.has(status) && authority.lifecycle.state === "terminal"
+      ? { state: "present", value: authority.lifecycle.endedAt }
+      : { state: "absent", reason: `run is ${status} and has not ended` };
   }
 
   /**
@@ -1192,14 +1143,14 @@ export class RunQueueProjection {
    * that off every gate's age.
    */
   #gateOpenedAt(
-    row: RunFoldRecord,
+    row: RunFoldRecord | undefined,
     authority: RunRecord,
     status: QueueSurfaceWire["status"],
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
     if (status !== "awaiting-approval") {
       return { state: "absent", reason: `run is ${status} and is not waiting on a gate` };
     }
-    const open = row.openGates.at(-1);
+    const open = row?.openGates.find((gate) => authority.lifecycle.state === "parked-gate" && gate.gate === authority.lifecycle.gateId);
     if (open !== undefined) return { state: "present", value: open.openedAt };
     if (authority.lifecycle.state === "parked-gate") {
       return { state: "present", value: authority.lifecycle.parkedAt };
@@ -1329,8 +1280,9 @@ export class RunQueueProjection {
     );
   }
 
-  #pipeline(row: RunFoldRecord): QueueSurfaceWire["pipeline"] {
-    const descriptor = this.#deps.descriptors.resolve(row.queued.workflow);
+  #pipeline(row: RunFoldRecord | undefined, workflow: string): QueueSurfaceWire["pipeline"] {
+    if (row === undefined) return [];
+    const descriptor = this.#deps.descriptors.resolve(workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
     /**
      * Every execution of each node, not just the last one. `spanByNode` above
@@ -1432,14 +1384,14 @@ export class RunQueueProjection {
    * How this row is contained by its parent.
    *
    * The whole decision is the run's own SHAPE plus its lineage, both of which
-   * are write-once identity attributes on the `run.queued` span — never the
+   * are canonical envelope attributes — never the
    * workflow id, which ref frontend-backend-integration §1.1 names as the inference this must not be.
    * A parented run whose shape is `operation-member` is the row a group counts;
    * any other parented run keeps its own row in its own panel and its parent
    * shows a chip.
    */
-  #containment(queued: RunQueuedWire): "root" | "member" | "linked" {
-    if (queued.parentRunId === undefined) return "root";
+  #containment(queued: RunRecord["envelope"]): "root" | "member" | "linked" {
+    if (queued.parent === undefined) return "root";
     return queued.shape === "operation-member" ? "member" : "linked";
   }
 
@@ -1447,36 +1399,17 @@ export class RunQueueProjection {
    * The runs this row delegated to and is waiting on — the parent's half of
    * `containment: "linked"`.
    *
-   * Read from the SAME child set the member rollup reads (`row.memberRunIds`,
-   * folded from each child's `run.queued.parentRunId`), partitioned by the
-   * child's own shape, so the two lists are disjoint by construction: a row a
-   * group counts is never also a chip on that group, and a chip is never also
-   * counted. Each entry carries the target's live status, resolved through the
-   * SAME `#status` every row's own status comes from — the client re-deriving
-   * it from the day payload would be the second status path D81 deletes, and it
-   * would go blank the moment the target sat on another day.
-   *
-   * A child the fold has not seen yet is skipped rather than guessed at: a chip
-   * that named a run and could not say what it was doing would be a link to a
-   * status nobody computed.
+   * Partition the canonical child snapshot by shape. Every linked status uses
+   * the same lifecycle derivation as its own row, including spanless children.
    */
-  #linkedRuns(row: RunFoldRecord): readonly LinkedRunView[] {
-    const linked: LinkedRunView[] = [];
-    for (const childId of row.memberRunIds) {
-      const child = this.#rows.get(childId);
-      if (child === undefined || child.queued.shape === "operation-member") continue;
-      const childDescriptor = this.#deps.descriptors.resolve(child.queued.workflow);
-      linked.push({
-        runId: child.queued.runId,
-        workflowId: child.queued.workflow,
-        // The workflow id is the honest stand-in when this build cannot resolve
-        // the descriptor: it is what the run IS, not a guessed pretty name.
-        label: childDescriptor?.label ?? child.queued.workflow,
-        panelKind: panelKindOf(child.queued.shape),
-        status: this.#status(child, this.#authorityRun(childId)),
-      });
-    }
-    return linked;
+  #linkedRuns(children: readonly RunRecord[]): readonly LinkedRunView[] {
+    return children.filter((child) => child.envelope.shape !== "operation-member").map((child) => ({
+      runId: child.envelope.runId,
+      workflowId: child.envelope.workflow,
+      label: this.#deps.descriptors.resolve(child.envelope.workflow)?.label ?? child.envelope.workflow,
+      panelKind: panelKindOf(child.envelope.shape),
+      status: this.#status(child),
+    }));
   }
 
   /**
@@ -1487,45 +1420,18 @@ export class RunQueueProjection {
    * never name somebody the group does not contain or spell a subject two ways.
    * The count in the `+N more` tail comes off the same list as the rollup.
    *
-   * D5 (ref frontend-backend-integration §7.4, audit P2): the SLICE happens before the JOIN.
-   * Deciding which members exist is a Map lookup per id and costs nothing;
-   * NAMING one is an authority `getRun` plus a checkpoint read, and a
-   * 108-member operation resolved all 108 to print three — 216 SQLite
-   * statements per group row, on every day wire and every resnapshot. Only the
-   * members that can appear are named; the `+N more` tail still counts the
-   * whole seen set, because the count is what the rollup is about.
-   *
-   * One consequence is deliberate and worth naming: `#authorityRun` refuses a
-   * member the span stream knows and authority does not, and that refusal now
-   * fires for the named few rather than for all of them. Nothing is weakened —
-   * the member's OWN row runs the same join through `#surface`, so an
-   * unaccounted run is still refused where it is rendered; the preview simply
-   * stops re-proving it 108 times.
+   * Slice before checkpoint reads: only the three displayed names need a
+   * subject lookup. Membership and the remaining count come from the snapshot.
    */
   #memberPreview(
-    memberIds: readonly string[],
+    members: readonly RunRecord[],
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
-    if (memberIds.length === 0) {
-      return { state: "absent", reason: "this group has fanned out to no members yet" };
-    }
-    const seen: { readonly memberId: string; readonly member: RunFoldRecord }[] = [];
-    for (const memberId of memberIds) {
-      const member = this.#rows.get(memberId);
-      if (member !== undefined) seen.push({ memberId, member });
-    }
-    if (seen.length === 0) {
-      return {
-        state: "absent",
-        reason: `this group names ${String(memberIds.length)} member(s) the span fold has not seen, so none can be named`,
-      };
-    }
-    const shown = seen.slice(0, MEMBER_PREVIEW_LIMIT).map(({ memberId, member }) =>
-      this.#subjectTitle(member.queued.workflow, this.#authorityRun(memberId)) ?? member.queued.title);
-    const remaining = seen.length - shown.length;
-    return {
-      state: "present",
-      value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", "),
-    };
+    if (members.length === 0) return { state: "absent", reason: "this group has fanned out to no members yet" };
+    const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) =>
+      this.#subjectTitle(member.envelope.workflow, member)
+        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId);
+    const remaining = members.length - shown.length;
+    return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
   }
 
   /**
@@ -1588,10 +1494,10 @@ export class RunQueueProjection {
     return { state: "present", value: chips };
   }
 
-  #surfaceFold(row: RunFoldRecord, authority: RunRecord): SurfaceFold {
-    const { queued } = row;
+  #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): SurfaceFold {
+    const queued = authority.envelope;
     const shape = queued.shape;
-    const status = this.#status(row, authority);
+    const status = this.#status(authority);
     /**
      * D5: ONE receipt read per row, for the two consumers that need it.
      * A non-terminal row reads none at all — neither consumer has anything to
@@ -1606,30 +1512,27 @@ export class RunQueueProjection {
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     /**
      * The children a group COUNTS, which is not every child it spawned. The
-     * fold links a child to its parent on `run.queued.parentRunId` regardless
+     * fold links a child to its parent on `run.queued.parent?.runId` regardless
      * of shape, and `containment` splits that set in two: an `operation-member`
      * is counted in this rollup and never at top level, and everything else
      * keeps its own row and appears on `linkedRuns` instead. Partitioning here
      * is what makes the two lists disjoint rather than merely intended to be —
      * a child on both would be counted once and chipped once for the same work.
      */
-    const memberChildIds = row.memberRunIds.filter((memberId) =>
-      this.#rows.get(memberId)?.queued.shape === "operation-member");
-    const failedTerminalMembers = memberChildIds.filter((memberId) => {
-      const member = this.#rows.get(memberId);
-      return member?.ended?.outcome === "failed";
-    });
-    const terminalMembers = memberChildIds.filter((memberId) => this.#rows.get(memberId)?.ended !== undefined);
+    const members = children.filter((member) => member.envelope.shape === "operation-member");
+    const memberChildIds = members.map((member) => member.envelope.runId);
+    const failedTerminalMembers = members.filter((member) => member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
+    const terminalMembers = members.filter((member) => member.lifecycle.state === "terminal");
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
       workflowId: queued.workflow,
       traceId: queued.traceId,
-      attempt: row.attempt,
-      lineage: queued.parentRunId === undefined
+      attempt: queued.attempt,
+      lineage: queued.parent?.runId === undefined
         ? { state: "root" }
-        : { state: "child", parentRunId: queued.parentRunId },
-      actorId: queued.actorId,
+        : { state: "child", parentRunId: queued.parent?.runId },
+      ...(row === undefined ? {} : { actorId: row.queued.actorId }),
       /**
        * D179: the build THIS RUN was enqueued under, read from authority.
        * Serving `deps.appVersion` here made every row claim the build that
@@ -1661,11 +1564,11 @@ export class RunQueueProjection {
       runNumber: this.#runNumber(authority),
       session: this.#session(authority),
       containment: this.#containment(queued),
-      linkedRuns: this.#linkedRuns(row),
+      linkedRuns: this.#linkedRuns(children),
       facts: this.#facts(status, receipt),
-      startedAt: queued.ts,
+      startedAt: queued.enqueuedAt,
       updatedAt: authority.updatedAt,
-      endedAt: this.#endedAt(row, authority, status),
+      endedAt: this.#endedAt(authority, status),
       gateOpenedAt: this.#gateOpenedAt(row, authority, status),
       /**
        * Ref dashboard-surfaces §1.2: the document number the plan composed, REPLACED once the
@@ -1678,19 +1581,19 @@ export class RunQueueProjection {
        * `displayName` beside this, so a renamed row can still state the subject
        * it was renamed away from.
        */
-      title: this.#subjectTitle(queued.workflow, authority) ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : queued.title),
+      title: this.#subjectTitle(queued.workflow, authority) ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : (row?.queued.title ?? queued.runId)),
       displayName: authority.displayName === undefined
         ? { state: "absent", reason: "the operator has not renamed this run" }
         : { state: "present", value: authority.displayName },
-      subtitle: queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+      subtitle: row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
-        : { state: "present", value: queued.subtitle },
+        : { state: "present", value: row?.queued.subtitle },
       status,
       liveMessage: this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
-      pipeline: this.#pipeline(row),
+      pipeline: this.#pipeline(row, queued.workflow),
       panelKind: panelKindOf(shape),
       availableSections: [
         "logs",
@@ -1738,7 +1641,7 @@ export class RunQueueProjection {
             terminal: terminalMembers.length,
             failed: failedTerminalMembers.length,
           },
-          memberPreview: this.#memberPreview(memberChildIds),
+          memberPreview: this.#memberPreview(members),
         }),
       };
     }
@@ -1748,8 +1651,8 @@ export class RunQueueProjection {
     };
   }
 
-  #surface(row: RunFoldRecord, authority: RunRecord): QueueSurfaceWire {
-    return this.#surfaceFold(row, authority).surface;
+  #surface(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): QueueSurfaceWire {
+    return this.#surfaceFold(row, authority, children).surface;
   }
 
   /* ── THE payload (D81) ─────────────────────────────────────────────────── */
@@ -1762,19 +1665,20 @@ export class RunQueueProjection {
     const surfaces: QueueSurfaceWire[] = [];
     const monthPrefix = parsedDay.slice(0, 7);
     const monthCounts = new Map<string, number>();
-    for (const row of this.#rows.values()) {
-      const rowDay = localDatePart(new Date(row.queued.ts));
-      const authority = this.#authorityRun(row.queued.runId);
+    const runs = listCanonicalRuns(this.#deps.reader, "live");
+    const children = canonicalRunChildren(runs);
+    for (const authority of runs) {
+      const row = this.#rows.get(authority.envelope.runId);
+      const rowDay = localDatePart(new Date(authority.envelope.enqueuedAt));
       // D80: a prior-version run has left every active surface. It is excluded
       // here — before the month count, before the day filter, before the row
       // is pushed — so no count can disagree about whether it is still live.
-      if (this.#deps.authority.isArchived(row.queued.runId)) continue;
-      const countsAtTopLevel = row.queued.shape !== "operation-member";
+      const countsAtTopLevel = authority.envelope.shape !== "operation-member";
       if (rowDay.startsWith(monthPrefix) && countsAtTopLevel) {
         monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
       }
       if (rowDay !== parsedDay) continue;
-      surfaces.push(this.#surface(row, authority));
+      surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
     }
     surfaces.sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
 
@@ -1820,7 +1724,10 @@ export class RunQueueProjection {
               ...(fold.currentRunId === undefined ? {} : { currentRunId: fold.currentRunId }),
               browsers: [...fold.browsers.values()],
             },
-          resolveTrace: (runId) => this.#rows.get(runId)?.queued.traceId,
+          resolveTrace: (runId) => {
+            const read = this.#deps.reader.read(runId);
+            return read.state === "present" && read.disposition === "live" ? read.run.envelope.traceId : undefined;
+          },
         });
       });
 
@@ -1891,19 +1798,20 @@ export class RunQueueProjection {
 
     const inRange: { day: string; fold: SurfaceFold; authority: RunRecord }[] = [];
     const personRows: RunRecord[] = [];
-    for (const row of this.#rows.values()) {
-      const day = localDatePart(new Date(row.queued.ts));
+    const runs = listCanonicalRuns(this.#deps.reader, "live");
+    const children = canonicalRunChildren(runs);
+    for (const authority of runs) {
+      const row = this.#rows.get(authority.envelope.runId);
+      const day = localDatePart(new Date(authority.envelope.enqueuedAt));
       if (day < start || day > end) continue;
-      const authority = this.#authorityRun(row.queued.runId);
-      if (this.#deps.authority.isArchived(row.queued.runId)) continue;
       // An operation is the counted container, not another person. Its member
       // rows are excluded from run totals below but INCLUDED on this axis: a
       // 50-person operation touches 50 people and still counts as one run.
-      if (row.queued.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
+      if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.
-      if (row.queued.shape === "operation-member") continue;
-      inRange.push({ day, fold: this.#surfaceFold(row, authority), authority });
+      if (authority.envelope.shape === "operation-member") continue;
+      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? []), authority });
     }
 
     const people = activityPeopleOf(

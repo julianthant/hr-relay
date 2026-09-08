@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
@@ -98,12 +99,12 @@ describe("D336 stopped SQLite upgrade", () => {
     } finally { await runtime.stop(); }
     assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=3\n");
   });
-  it("plans a fresh root without files, creates v33 directly, and reruns without writes", async () => {
+  it("plans a fresh root without files, creates v34 directly, and reruns without writes", async () => {
     const f = fixture(); const before = readdirSync(f.root);
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(readdirSync(f.root), before);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, 33);
+    assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(read(f).settings.revision, 1);
     assert.equal(existsSync(join(f.root, "credentials")), false);
     const bytes = readFileSync(f.path);
@@ -116,7 +117,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal(existsSync(f.path), false);
     assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 1);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, 33);
+    assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
   it.each([29, 30, 31, 32])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
@@ -126,7 +127,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run(true)).fromSchemaVersion, version);
     assert.deepEqual(readFileSync(f.path), before);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, 33);
+    assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
   it("refuses to supersede an unfinished schema-32 settings conversion", async () => {
     const seed = fixture(); await seed.run();

@@ -1,6 +1,6 @@
 import { ProtectedSettingsPresenceEntriesSchema } from "../../domain/config/protected-settings.js";
 import { z } from "zod";
-import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
+import { AuthorityTableNameSchema, ProjectionTableNameSchema, AuthorityUpgradePhaseSchema } from "../../domain/authority.js";
 import {
   ActorIdSchema,
   CommandIdSchema,
@@ -26,7 +26,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const HistoricalBackupSchemaVersionSchema = z.number().int().refine(
-  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 32,
+  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 33,
   "schema version is not an admitted historical authority layout",
 );
 const BackupSchemaVersionSchema = z.number().int().refine(
@@ -111,11 +111,11 @@ export const AuthorityBackupManifestV1Schema = AuthorityBackupManifestBaseSchema
   manifestVersion: z.literal(1),
 }).superRefine((manifest, context) => {
   requireObservedBackupIdentity(manifest, context);
-  if (!HistoricalBackupSchemaVersionSchema.safeParse(manifest.schemaVersion).success) {
+  if (!HistoricalBackupSchemaVersionSchema.safeParse(manifest.schemaVersion).success || manifest.schemaVersion > 32) {
     context.addIssue({
       code: "custom",
       path: ["schemaVersion"],
-      message: "manifest v1 is readable only for admitted schema versions 1-18 and 27-31",
+      message: "manifest v1 is readable only for admitted schema versions 1-18 and 27-32",
     });
   }
 });
@@ -436,7 +436,19 @@ export const ProtectedSettingsInspectionSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unavailable"), cause: StorageHealthCauseSchema }),
 ]);
 
+export const AuthorityUpgradeInspectionSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), phases: z.array(z.strictObject({
+    phase: AuthorityUpgradePhaseSchema,
+    fromSchemaVersion: z.number().int().nonnegative(),
+    toSchemaVersion: PositiveIntSchema,
+    recordedAt: IsoInstantSchema,
+  })).min(1) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.enum(["pre-journal-schema", "journal-empty"]) }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageHealthCauseSchema }),
+]);
+
 export const StorageDoctorReportSchema = z.strictObject({
+  authorityUpgrades: AuthorityUpgradeInspectionSchema,
   tombstoneOrdinals: TombstoneOrdinalInspectionSchema,
   kind: z.literal("authority-storage-doctor"),
   mode: z.literal("read-only"),

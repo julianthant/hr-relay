@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { randomUUID } from "node:crypto";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
@@ -231,7 +232,7 @@ describe("cli storage backup (D322)", () => {
     assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
     if (credentialState === "malformed") assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
     else assert.equal(existsSync(join(p.stateRoot, "credentials")), false);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.authorityPath).schemaVersion, 33);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.authorityPath).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
 
 });

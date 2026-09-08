@@ -589,6 +589,13 @@ function seedClaimedRuns(context: SeedContext, tally: SeedTally): void {
       spanPath: `${run.envelope.traceId}/cross-verify#1`,
       gate: "identity-review",
     });
+    const parked = context.database.authority.runs.transition({
+      runId: run.envelope.runId, expectedVersion: run.version, claim: claimOf(run),
+      now: run.envelope.enqueuedAt,
+      lifecycle: { state: "parked-gate", gateId: "identity-review", resumeAt: "cross-verify",
+        parkedAt: run.envelope.enqueuedAt },
+    });
+    if (parked.state !== "applied") throw new Error(`perf gate fixture did not park: ${parked.state}`);
     remember(tally, run, day);
   }
 
@@ -716,20 +723,19 @@ export function seedDashboardPerfFixture(): PerfFixture {
       (workflowId === PERF_FIXTURE_WORKFLOW ? personLookupDescriptor : undefined),
   };
   const projection = createRunQueueProjection({
+    reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
     ledger: createLedgerReadThrough(stateRoot),
     authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
       listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -737,7 +743,6 @@ export function seedDashboardPerfFixture(): PerfFixture {
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
-    projectionStore: database,
   });
   // D218: the production feed is the disk tail. Every span above is already on
   // disk, so ONE ingest folds the whole corpus through the same path a booting
@@ -766,6 +771,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
     trust,
   };
   const archive: ArchiveQueryDeps = {
+    reader: sqliteRunReader(database, clock),
     clock,
     appVersion: APP_VERSION,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },

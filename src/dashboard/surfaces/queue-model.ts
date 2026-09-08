@@ -184,7 +184,7 @@ export const BAND_LABEL: Record<QueueBandKey, string> = {
  */
 export function bandOf(status: ProposedStatus): QueueBandKey {
   if (status === "waiting" || status === "parked") return "attention";
-  if (status === "running") return "active";
+  if (status === "running" || status === "cancelling") return "active";
   if (status === "queued") return "queued";
   return "finished";
 }
@@ -204,6 +204,7 @@ const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
   failed: 1,
   parked: 2,
   running: 3,
+  cancelling: 3,
   queued: 4,
   doneWarnings: 5,
   verifiedDone: 6,
@@ -376,6 +377,7 @@ const MEMBER_TIER: Record<ProposedStatus, number> = {
   doneWarnings: 2,
   parked: 2,
   running: 3,
+  cancelling: 3,
   queued: 4,
   cancelled: 5,
   verifiedDone: 6,

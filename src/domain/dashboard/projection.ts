@@ -45,7 +45,7 @@ export const ResolvedInstanceSchema = z.strictObject({
 });
 
 export const QueueStatusSchema = z.enum([
-  "queued", "running", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial",
+  "queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial",
 ]);
 
 const PipelineStepWireSchema = z.strictObject({
@@ -195,7 +195,7 @@ const QueueBaseFields = {
   traceId: TraceIdSchema,
   attempt: z.number().int().positive(),
   lineage: ParentRunSchema,
-  actorId: ActorIdSchema,
+  actorId: ActorIdSchema.optional(),
   /**
    * The app build THIS RUN was enqueued under (D179) — not the build serving
    * the page. Before D179 the projection stamped its own `deps.appVersion`

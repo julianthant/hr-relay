@@ -1917,6 +1917,8 @@ const OUTCOME_TONE: Record<DsStatus, string> = {
     "border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]",
   running:
     "border-[color:var(--ds-status-running-border)] bg-[var(--ds-status-running-bg)] text-[color:var(--ds-status-running-fg)]",
+  cancelling:
+    "border-[color:var(--ds-status-running-border)] bg-[var(--ds-status-running-bg)] text-[color:var(--ds-status-running-fg)]",
   queued:
     "border-[color:var(--ds-status-queued-border)] bg-[var(--ds-status-queued-bg)] text-[color:var(--ds-status-queued-fg)]",
   cancelled:
