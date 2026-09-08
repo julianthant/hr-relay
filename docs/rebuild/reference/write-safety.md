@@ -466,6 +466,24 @@ a post-fence `WriteParkedError` carries the `PostFenceWriteFailure` and that agg
 cause chain. This keeps parking fail-loud without rewriting a real browser/task failure as an
 instrumentation failure.
 
+<a id="operation-table-names"></a>
+
+**2026-09-08 approved names — pending implementation.** Rename the current SQL tables
+`write_intents` → `run_operations`, `write_attempts` → `run_operation_attempts`, and
+`durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../../sidetracks/operation-names/README.md)
+owns execution after accepted command/delegation integration. The names change no write,
+retry, outbox, deletion or retention behavior. Operations can span workflow retries;
+operation generations and workflow attempt numbers remain distinct. Preserve stored JSON
+fields, identities, proof/fingerprint algorithms and historical records. Current deletion
+receipts name current tables; historical receipts retain their original names and bytes.
+The following as-built account retains existing names until implementation is accepted.
+
+Attempts/outbox currently have SQL foreign keys to their operation. The attempt's run ID
+and workflow-attempt ordinal are stored in JSON, copied from the execution envelope, and
+checked against the operation/binding proof in `WriteFenceInputSchema`; they are not a SQL
+foreign key to `workflow_runs`. Stronger run linkage is a separate design investigation,
+including cross-run retry and D308 deletion compatibility, not an approved fourth change.
+
 **The durable shape, as built.** The three tables are JSON-record tables, not the wide-column sketch
 Phase 0 drew (`src/infra/sqlite/migrations.ts:300-327`). What carries the invariants is the schema
 the `record_json` is parsed with plus two SQL constraints:

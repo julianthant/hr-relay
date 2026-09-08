@@ -2220,3 +2220,14 @@ and [workflow model, delegation table names](workflow-model.md#delegation-table-
 [Side task `side/command-groups`](../../sidetracks/command-groups/README.md) owns execution
 after the accepted worker/request rename plan. This records approval, not implementation,
 phase completion, or permission to convert the operator database.
+
+### 2026-09-08 — operation table names (pending implementation)
+
+Operator approved `write_intents` → `run_operations`, `write_attempts` →
+`run_operation_attempts`, and `durable_outbox` → `operation_outbox`. These are three
+storage renames with unchanged identities, write safety, replay and deletion behavior.
+[Write safety, operation names](write-safety.md#operation-table-names) owns the requirements;
+[side task `side/operation-names`](../../sidetracks/operation-names/README.md) owns execution
+after accepted command/delegation integration. Stronger linkage to workflow runs remains
+a separate investigation; no relationship/deletion redesign or database application is
+approved by this naming decision.
