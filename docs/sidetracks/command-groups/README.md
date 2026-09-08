@@ -663,3 +663,11 @@ recording reuses those code gates under D191, with scoped documentation/diff che
 the commit body binds the tested tree and confirms the changed-input inspection.
 The candidate is awaiting a fresh complete read-only integration reviewer, not yet accepted
 for primary integration. No operator database conversion or push occurred.
+
+The final review base advances to primary
+`ad159128b44926408babf02126941ba782052192`, whose four artifact-planning Markdown
+additions merge without conflicts. They explicitly preserve running predecessor plans
+and remain unimplemented here. This planning-only merge and the owner evidence append
+change no source, tests, configuration, dependencies, runtime artifacts or generator inputs;
+D191 reuses the exact combined code gates above, with expanded seven-owner links/anchors,
+nine instruction pairs/chain caps and diff checks. Original primary additions remain intact.

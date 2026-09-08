@@ -2353,3 +2353,31 @@ The rejected B/C arms respectively flatten or hide refusals, advertise a known k
 invent producer-owned fields, or defer already-served review states. Detailed item-by-item wording
 and alternatives are in `ref dashboard-surfaces` §10; nothing here changes intake/edit authority or
 claims a port is implemented.
+
+## Artifact storage model
+
+**2026-09-08 — approved, pending implementation.**
+[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) consolidates the artifact naming
+and lifecycle decisions: `intake_sessions` plus `intake_manifests` become `imported_artifacts`,
+`ocr_extractions` becomes `extracted_artifacts`, and `artifact_outbox` plus `artifact_sink_heads`
+become `generated_artifacts`. It follows accepted diagnostics integration in two sequential units:
+T1 import/extraction, then T2 managed outputs. Existing running plans remain unchanged.
+
+Every imported-artifact row represents one whole import: mutable preparation then frozen submitted
+data on the same row, atomically bound to enqueue. Preserve source versions, explicit row dispositions,
+old session/manifest identities, command replay and run origins. Do not merge imports by source hash.
+Extracted artifacts retain page/form admission and uniqueness without new OCR persistence wiring.
+
+Every generated-artifact row represents one logical output file across creation and updates. Store
+state, pending update identities, completion receipts and current/version-history references together;
+multiple queued updates cannot overwrite each other. Preserve checkpoint/update atomicity, stable-key
+upserts, exact replay, exclusive file-writer fences and file/DB failure handling. Old bytes remain
+immutable and old run/import/export references never resolve to a newer head. File-write uncertainty
+or external edits cannot be treated as a successful acknowledgement. Actual bytes stay in existing
+artifact storage; no new queue/head table or automatic artifact GC.
+
+T2 registers existing explicit XLSX outputs while retaining their export receipts and protected shape;
+it does not activate I-9 projections or invent a workbook path/column layout. Internal diagnostic and
+extraction file references retain their existing owners. Populated historical conversion requires
+verified stopped DB/file source preservation and exact identity checks. This records approved design,
+not implemented behavior, provider/workflow activation or permission to convert the operator database.

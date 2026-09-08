@@ -7073,3 +7073,20 @@ current resolution separately with canonical archive admission; they must not re
 snapshot bytes/digests or infer that resolution was known at capture time. Capture-only snapshots
 have no failure-resolution control. Resolution never overrides retry/UNKNOWN-write safety or purges
 evidence. This records approved scope, not a current feature or database application authorization.
+
+## Artifact storage model
+
+**2026-09-08 — approved, pending implementation.**
+[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) owns one-row `imported_artifacts`,
+`extracted_artifacts` and `generated_artifacts`; [data intake](data-intake-and-edit-data.md#artifact-storage-model)
+owns their lifecycle/identity rules. Preserve intake mapping/validation/correction/exclusion, frozen
+submission, batch origin/grouping, command replay and current duplicate/re-upload behavior. Historical
+session/manifest IDs remain resolvable without separate live tables or altered issued fingerprints.
+
+Generated-file state replaces separate output-update/head authority while preserving durable pending
+work and verified file-version references. Storage Doctor counts pending updates accurately even when
+several belong to one file. Existing explicit XLSX export selection/contents/download headers/receipts
+remain unchanged, with generated-file registration and receipt settlement consistent before success.
+No artifact-management page, new automatic export, diagnostic-catalog duplication or activation of
+unwired workflow projections is assigned. Frozen archives and exact referenced file versions retain
+their meaning. This is pending approved scope; two sequential units follow diagnostics integration.
