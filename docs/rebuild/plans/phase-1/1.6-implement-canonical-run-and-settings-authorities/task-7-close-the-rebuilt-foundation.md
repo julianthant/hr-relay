@@ -1,4 +1,40 @@
 # Task 7 · Close the rebuilt foundation
+
+**Current supervisor checkpoint (2026-09-07, operator-directed offline continuation).** Steps 1–3
+remain accepted for executable repair `09436a49eccdd3a1f577c83576ff7b8de33092d3`; the latest prior
+evidence commit is `b89235c6604814b0a8076765898d3aa8515ea851`. Primary remains on the original
+integration base `f0b1cf92195897e56e4917384b512c45d7b4d41a`; the assigned branch/worktree is retained.
+Person Lookup's full proof and the repaired Separations scanner are accepted only as detailed below.
+Step 4's full Separations proof is still blocked by protected reread identity/admission. Partial
+Step 5 consolidation updates the migration, phase overview, downstream handoff and roadmap without
+marking any dependent step complete or refreshing unobserved subject availability.
+
+The operator explicitly deferred temporary-settings restoration until their next signal. Do not
+poll for runtime availability or restore merely because a port becomes free. The accidentally
+scheduled follow-up was deleted; the app reported it absent and its local automation file was
+verified absent. No new runtime, workflow or settings command is part of this continuation.
+
+Read-only boundary assessment confirms two coupled correction sites: the protected match-key
+override in `src/services/start/plan.ts`, and the strict document-only ready input in
+`src/control/test-target-registry.ts`. D341 requires opaque captured-input identity to survive
+resume/rerun without a value-derived identifier; descriptor identity distinguishes an explicitly
+requested reread. A proposed repair must preserve the existing no-reread key, give an explicit
+ordinal a stable separate item, retain checkpoint and transaction-key safety, admit the reread
+through the canonical test-target path, and prove non-disclosure with synthetic inputs. No such
+identity/admission change is implemented or approved by this evidence update. Resolve its scope
+under the existing Task-7 contract-redesign rule before another full workflow candidate. Steps 4–6,
+fresh complete review, integration gates, settings restoration and owned cleanup remain open.
+
+**Offline recording validation.** All 1908 entries in `smart-gated-inputs.json` match unchanged;
+only the six listed documentation/generated-roadmap paths changed. D191 therefore reuses the full
+09436a49 code gates. Scoped architecture passed 39 tests in two files (session 64940, exit 0,
+3909 ms); registry unit tests passed 50 tests (69819, exit 0, 1934 ms); lint passed (8381, exit 0).
+Commands use the same `two-workers.config.mts` and npm wrappers specified below; their full output
+is retained as `offline-consolidation-{architecture,registry,lint}.log` in the existing Task-7
+scratch directory. Roadmap generation/freshness, instruction-pair/size audit and diff checks passed.
+No new Markdown link was introduced. Read-only inventory of base f0b1cf92 through prior evidence
+HEAD b89235c6 contains 494 changed paths (`offline-review-inventory.tsv`); this is review preparation,
+not independent review credit. All mandatory missing proof and unspent restoration remain open.
 <!-- roadmap: p1f-close -->
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

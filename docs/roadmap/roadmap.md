@@ -606,6 +606,7 @@ needs:
 - p1f-migration-proof
 
 log:
+- 2026-09-07 | Task 1.6.7 current residuals | callback repair `09436a49` passed 5522 coverage tests, 259 desktop parity cases and a production read-only scan; Person Lookup full live-read met with exact 0/0/0 writes. Separations full T1b remains blocked by protected reread identity/admission. Temporary-settings restoration waits for the operator's signal; final review, integration and cleanup remain open.
 - 2026-09-07 | Task 1.6.7 Steps 1–3 | source checkpoint `9316abc6` preserves `.env` as reference and admits only `.env.providers` (D343); operator-approved fingerprint-only reference refresh classified. Typecheck/lint, 5513 coverage tests, 833 architecture tests and 259 assertion-mode parity cases pass. Live pair, complete independent review, integration and cleanup remain open.
 - 2026-09-07 | D341 detour complete | accepted review (rounds 2–4 + conversion addendum), `--no-ff` merge `bc6dc9b54`, integration gates green, private conversion performed (credentials v2 revision 3, private file 0600, doctor exit 0); person-lookup input and retired-env cleanup remain Task-7 prerequisites.
 - 2026-09-07 | D341 approved detour | test-only configuration and complete shared-fixture consolidation precede Task 7; operator database reset verified, credentials preserved; implementation remains pending and the paused Task-7 worktree must consume the new base.

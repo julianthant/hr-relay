@@ -30,12 +30,19 @@ and the reproducible two-worker adapter are in the [Task-7 owner](../../phase-1/
 | A2/A3 | Task 1-3 removes the `row.ended` and `row.claimedBy` lifecycle arms in `src/server/dashboard/run-status.ts` and lands `run-status-fold-contributes-no-lifecycle-arm` in the same commit. It removes `runs_view` with projector rewire; the existing lifecycle-SQL guard's reader violation remains red-capable. No deletion occurs in Task 7. |
 | Gate records | `checkpoint_payloads` is written only through `gateResults.insert`, keyed by run/gate and parsed as `GateResultRecordSchema` in `src/infra/sqlite/authority-database.ts`. D330.11 #22 is exercised in `tests/unit/run-record-service/service.test.ts`; M23 is the tombstoned-gate removal/retention/trigger case in `tests/unit/storage-upgrade.test.ts`. No non-gate writer is admitted. |
 | D183 | Preserve `D331_SERVED_LEAF_DISPOSITIONS` and the schema-driven audit in `tests/unit/architecture/redaction-surface-scan.test.ts`: closed literals/identifier-free presence, revision, opaque value identities, runtime status and refusal facts; no protected values. Missing/wrong/unreviewed dispositions are injected negative controls. D341 test inputs remain private config, outside Settings and evidence values. |
-| Environment | `migrated-refused` means startup refusal by name, not an inert or fallback environment value. Task 7 verified all original nine retired names plus the person-lookup name absent; repeat current admission before live work. |
+| Environment | `migrated-refused` means startup refusal by name, not an inert or fallback environment value. Under approved D343, Task 7 preserves `.env` as operator reference and admits only `.env.providers` at normal startup. Retired names remain refused in the runtime source and inherited process environment; repeat current admission before live work. |
 | A8/P40 | Task 6 already changed the immediate Settings source presentation to `Saved` and accepted its parity references. Phase 3.1 Task 9-2 owns the remaining catalog-driven editor/Settings expansion and any deliberate parity refreeze. Neither this phase nor Task 7 restores the obsolete `settings.json: not set` copy. |
 
-The primary operator-reset root has schema 32/generation 0 and one fresh baseline marker; the
+At reset, the primary operator root had schema 32/generation 0 and one fresh baseline marker; the
 historical generation-94 database and generation-91 backup are not fixture inputs or restore targets.
 This handoff does not mark Phase 1.6 or Phase 2.6 complete.
+
+**Current closure residuals (2026-09-07).** Task 7's latest dated doctor passed schema 32/generation
+632 at 2026-09-08T04:13:01.307Z; generation 0 above describes the reset, not current runtime state.
+Person Lookup's full live-read is accepted. Separations' repaired production scanner is verified,
+but complete T1b proof still requires resolution of protected reread identity/admission. Task 7 owns
+that blocker disposition and its deferred temporary-settings restoration; neither is transferred
+to Phase 2.6. Final independent review, integration gates and owned cleanup remain outstanding.
 
 **Execution order and wave ruling (2026-09-04).** The part runs as wave 1
 (`1-1` ∥ `1-2` ∥ `1-3`) → Task 2 → Task 3. The three wave members consume the same frozen

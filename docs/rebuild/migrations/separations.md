@@ -7570,3 +7570,12 @@ blocker remains: the current-run T1b manifest cannot count replayed checkpoints,
 admission currently suppresses the workflow's explicit reread item identity. The Task-7 owner records
 the isolated synthetic reproduction and required decision boundary. No fresh-read identity was
 invented, no checkpoint deleted, no assertion reduced, and no next workflow attempt started.
+
+The callback repair in `09436a49eccdd3a1f577c83576ff7b8de33092d3` subsequently passed its production
+reader on clean primary at evidence candidate `26adc63773e6e8317d4a6018924a8e0ca79f0c04`.
+On 2026-09-08 UTC, production login completed at 04:12:11.099Z and the exact retained subject's
+scan completed at 04:12:28.324Z: subject matched, three rows, zero eligible and three protected.
+Independent whole-table write counts stayed exactly **0/0/0**; no workflow attempt or transaction
+was started. The browser closed and post-doctor passed at 04:13:01.307Z, schema 32/generation 632,
+with zero pending commands, unresolved write intents and durable outbox rows. This is live repair
+proof only; the failed full-workflow result and protected reread blocker above remain unchanged.
