@@ -4602,7 +4602,7 @@ are renamed without rewriting records. Parallel integration must reconcile migra
 and historical families before claiming a combined current schema.
 
 
-**2026-09-08 command-group storage — implemented candidate, pending independent acceptance.**
+**2026-09-08 command-group storage — independently reviewed candidate; integration pending.**
 [Side task `side/command-groups`](../../sidetracks/command-groups/README.md) moves the
 exact accepted bulk envelope from `bulk_command_acceptances` into a non-executable parent
 row in `commands`, with direct individual commands linked by nullable `parent_command_id`.

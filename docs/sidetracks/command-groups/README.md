@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task: `side/command-groups`. R1 repair gated; awaiting independent repair review.** This file is the single
+**Task: `side/command-groups`. S1–S5 complete: independently reviewed candidate ready for assigned integration. S6 integration and cleanup remain unassigned.** This file is the single
 task owner; it does not create a roadmap phase or change phase completion.
 
 The operator approved consolidating bulk requests into parent/child rows in `commands`,
@@ -278,7 +278,7 @@ only for execution admission and migration sequencing by this amendment.
 
 S1 is admitted under the parallel amendment. S2 storage/conversion and S3 command integration
 are implemented; S4 regression/reference work and S5 candidate gates are complete.
-S5 independent review remains open. S6 integration and cleanup are not assigned.
+S5 independent review is complete. S6 integration and cleanup are not assigned.
 No real operator database was read or converted in this implementation session.
 
 The candidate uses a strict `bulk-parent` stored variant while preserving the public command
@@ -459,3 +459,57 @@ scheduling-only two-worker adapters and no compiler/linter overlap during covera
 Coverage: statements 86.01%, branches 77.88%, functions 90.01%, lines 88.23%.
 `worker-processes-r1.log` verifies two owned forks. All owned gate children exited. R1 repair
 is awaiting commit-bound independent recheck; S6 integration/cleanup remains separately assigned.
+
+
+## Accepted candidate and delivery assessment
+
+The same independent reviewer, `/root/sup_review_command_groups`, completed the bounded repair
+recheck **without compaction** and returned **PASS — complete candidate** for
+`e779bdcce22bd498d0b8321d7bde9b75cf82c6d6` (tree
+`8db91452f13470bd5533d33142548163c8ea0d17`) against base
+`35635a04e16e9c3cf1e99b16d4963752a18c616a` and the approved plan/parallel amendment.
+All 29 paths are accounted for: 15 source, ten test/fixture and four documentation paths.
+S2–S5 and P1–P8 are reconciled; **R1 is independently verified fixed, with no unresolved findings
+or unreviewed boundaries**. The reviewer inspected the new full gate logs and independently
+reran inventory, frozen identity/clean-state checks, whitespace and document audit. Runtime
+checks were supervisor-run, not independently rerun by the reviewer.
+
+Implementation commits:
+
+- `92ba918741f138ec9bfd7698e9858775ab657db5`: command authority consolidation, delegation
+  renames, historical conversion/recovery and P1–P8 proof.
+- `e779bdcce22bd498d0b8321d7bde9b75cf82c6d6`: R1 ingress serialization repair and permanent
+  async worker concurrency regressions.
+
+Final recording changes only this owner and the two owning contracts' candidate-acceptance
+status sentences. Requirements, source, tests, dependencies, configuration, generated artifacts
+and parity references are unchanged from accepted HEAD. The recording commit therefore reuses
+that exact review and the final gates on tree `b6417a7164945395efbe766f378fb08810721d90`
+under D191, with the three-file prose-only delta verified, document/link/instruction audit,
+roadmap freshness and whitespace checks rerun. All owned gate processes exited; logs and
+synthetic diagnostic evidence are retained under `/tmp/hr-command-groups-*`.
+
+Delivery assessment:
+
+- **New operator execution direction:** “no do in parallel” removed the original serial
+  prerequisite. Independent schema-34 bases and later migration reconciliation were recorded
+  before implementation. Scope stayed at the approved three storage changes.
+- **External resource constraint:** overlapping heavy gates caused measured architecture
+  timeouts. Peers queued only heavy gates; bounded implementation and focused proofs continued.
+  No assertions, membership, isolation, coverage floors or deadlines were weakened.
+- **Implementation defects:** initial schema/fixture assumptions and browser import reachability
+  were corrected before review. R1 found one missing async identity/concurrency case already
+  within P4/P5; one repair round added the red/green proof and corrected ingress ordering.
+  This was one complete independent review followed by one bounded repair recheck, with no
+  reviewer exhaustion or assignment resizing. Supervisor compaction count was not recorded.
+- **Preventable rework:** enumerate async preflight/effect/journal boundaries when moving
+  identity ownership, and run the browser import-closure guard when relocating a shared helper.
+  The plan already required these identity and transitive-consumer proofs; no separate planning
+  omission is established. Mandatory gate reruns are retained separately from failed iterations;
+  no estimated elapsed-time savings or quality score is claimed.
+
+S1–S5 are complete for the isolated candidate. S6 remains unassigned: operator-chosen integration
+must reconcile the peer candidates' still-unreleased migrations, run combined gates and review
+behavioral conflict resolutions before worktree/branch cleanup. Actual operator database
+application remains a separate explicit assignment. No merge, push or real database conversion
+was performed by this task.
