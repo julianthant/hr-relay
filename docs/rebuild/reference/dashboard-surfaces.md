@@ -7023,3 +7023,22 @@ replacement queue or dual authority. Failure references and D308 deletion remain
 the current terminal-outbox pending count from Storage Doctor CLI/BFF/dashboard with reviewed parity;
 historical backup formats retain explicit versioned inspection. This is approved design, not an
 implementation claim or authorization to convert the operator database.
+
+## Failure resolution
+
+**2026-09-08 — approved, pending implementation.**
+[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md), following run-completion,
+adds Mark resolved and Reopen to existing failure details. The current annotation is stored on the
+owning `run_failures` row separately from immutable occurrence evidence, with its own version,
+operator actor/time and optional bounded note. It needs no fix/lesson table, required commit or
+verification report. Historical failures start unresolved; matching fingerprints or later successful
+runs do not resolve them automatically.
+
+Commands use existing identity/actor/Host-Origin admission, exact run/failure ownership and annotation
+version fences. Annotation, command/audit result and timeline event commit atomically; exact replay
+is a no-op and divergent/stale/deleted targets refuse. Do not mutate original failure JSON/fingerprints,
+run outcome/completion/logical version, receipts or frozen archive content. Archived views may display
+current resolution separately with canonical archive admission; they must not rewrite historical
+snapshot bytes/digests or infer that resolution was known at capture time. Capture-only snapshots
+have no failure-resolution control. Resolution never overrides retry/UNKNOWN-write safety or purges
+evidence. This records approved scope, not a current feature or database application authorization.

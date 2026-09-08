@@ -2270,3 +2270,16 @@ and atomic timeline persistence survive the consolidation. Requirements live at
 [side task `side/run-completion`](../../sidetracks/run-completion/README.md) owns execution after
 accepted provider-usage integration (and its timeline T2 prerequisite). No running plan is amended.
 This records planning approval, not implementation, database application or a new delivery consumer.
+
+### 2026-09-08 — diagnostic evidence and lightweight resolution (pending implementation)
+
+Operator approved `diagnostic_snapshots`, `diagnostic_files` and `run_receipts`, then replaced the
+proposed lesson/fix renames with removal of their unused database tables. Useful agent guidance stays
+in linked workflow/module documentation. A separate annotation on `run_failures` records explicit
+resolution/reopening, actor/time and optional note without rewriting the original failure, completion,
+receipt or archive. The operator requested both parts in one diagnostic plan; the earlier names were
+chat-only, so [side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) is the single
+persisted owner, following accepted run-completion integration. Requirements live in
+[operator trust](operator-trust.md#diagnostic-evidence-and-resolution) and
+[dashboard surfaces](dashboard-surfaces.md#failure-resolution). No prior running plan is amended;
+this is planning approval, not implementation or operator-database conversion.
