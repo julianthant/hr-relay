@@ -1433,6 +1433,28 @@ that parsed them can drift apart. There is no unchecked cast from the generic ca
   merely discovers an existing external transaction produces `write.skipped-existing` audit state and
   **no ledger entry** — discovering a transaction is not evidence this automation filed it.
 
+<a id="sqlite-operation-history"></a>
+
+**2026-09-08 — approved database-history successor, pending implementation.**
+[Side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) follows the
+accepted operation-name assignment without amending that assignment. Its first unit introduces
+SQLite timeline events and atomically records required state/event facts while retaining existing
+operation outboxes temporarily. Its second unit replaces ledger-file Activity/archive consumers,
+freezes archive transaction presentation, provides on-demand exports and retires
+`ledger_partitions`, `ledger_projections` and `operation_outbox` after verified conversion.
+
+Keep pre-click fencing, permanent operation identity, attempt generations, proof validation,
+checkpoint freshness, parked/UNKNOWN handling and external callback settlement unchanged. The
+required confirmed-operation event commits in the same SQLite transaction as operation/attempt/
+checkpoint settlement; a UI wakeup may occur later. Retain actor, instance, timestamps, completion
+kind, proof source and exact evidence references needed to reconstruct every historical ledger and
+committed-span payload. A timeline label is not new proof that an external write succeeded.
+Normal timeline retention cannot remove confirmed transaction history; D308 still governs its
+authorized owner deletion. Do not retire evidence or delivery paths until historical outbox/file/
+archive sources are accounted for, conflicting identities fail loudly, and the replacement readers
+are verified. This does not retire artifact or run-terminal outboxes, activate the unwired ledger
+projector, authorize another live submission or implement stronger run-reference foreign keys.
+
 ### 6.1 As-built — the projector exists, and nothing in production runs it (D134, 2026-08-04)
 <!-- roadmap: p2-2g -->
 

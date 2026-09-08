@@ -607,6 +607,37 @@ every tick, and it holds today because the span half is real.
 
 The **timeline** row is the one that changed meaning since the 1g draft, and the change is worth
 reading twice. The draft said *"run span tree's notes ⊕ the owning worker span's lifecycle events"*.
+<a id="sqlite-timeline-history"></a>
+
+**2026-09-08 — approved successor design, pending implementation.**
+[Side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) owns a SQLite
+timeline, database-derived transaction Activity/exports and frozen archive transaction sections.
+It follows accepted `side/operation-names` integration; that running rename plan remains unchanged.
+The current span/ledger behavior described below remains as-built until the successor is accepted.
+
+`timeline_events` becomes event-history authority, separate from `run_checkpoints` and subordinate
+to canonical run lifecycle for membership/state. Related state changes and required events commit
+together; observational events append independently. Cross-process readers use durable database
+cursors, not an in-process notification as evidence. Preserve event kinds/identity/time, replay,
+omission, worker scope, protected-data rules and explicit missing evidence. Notes are outside this move.
+
+Activity reads retained database facts, counting confirmed automation operations once, including
+retained archived runs and excluding deleted owners. Exports are generated on explicit request;
+daily ledger files and their sequence/writer tables cease to be current authority. New ordinary
+timeline records retain the 30-day policy; confirmed-operation history persists until authorized
+D308 owner deletion. Database run-owned events leave in that deletion transaction, with accurate
+tombstone tallies. Archiving keeps the original run and related records and preserves its display
+snapshot; it does not delete transaction history or change the existing archive door.
+
+Archive transaction presentation is frozen in the same `archived_runs` row. Historical enrichment
+must retain original immutable JSON, content digests and command-reference identities, with separate
+integrity binding for the added transaction snapshot. Preserve protected projections and reasoned
+absence; never reconstruct old labels from changed workflow inputs. Convert and verify historical
+file references before retirement. The side plan binds source backups, lossless import, retention,
+atomicity, deletion and current/historical compatibility proof. No source is silently discarded or
+treated as a fallback authority after conversion. These requirements amend the affected D218/D236/
+D301/D308 storage paths only upon the corresponding successor unit's accepted implementation.
+
 The timeline folds SPANS — that is what makes it derivable at all, since spans are bounded per run
 (§1.1) — and the notes half is a separate lazy section that reads a stream nothing writes. A reader
 who took the old sentence literally would look for the timeline's bug in the fold; the gap is one
