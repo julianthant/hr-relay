@@ -1522,3 +1522,35 @@ confirm Person Lookup next ordinal 4 with three checkpoints and Separations next
 fourteen checkpoints; these ordinals are observations, not permission to launch or reset anything.
 `smart-blocked-next-attempts.json` records only those counts. The untracked owned recovery handoff
 records the unspent restoration command, foreign runtime and prepared-but-unrun reader check.
+
+
+### Repaired reader verified live (2026-09-07)
+
+The foreign server released port 5174 before the next preflight. Primary detached to frozen
+`26adc63773e6e8317d4a6018924a8e0ca79f0c04`, matched all 1908 gated inputs/dependencies, unchanged
+master, production provider/private-source admission and healthy doctor. Both dashboard ports and
+CLI browser inventory were clear. A fresh headed `task7-smart-hr-diagnostic` browser (PID 5508)
+used the unchanged production UCPath login, returning logged-in at `2026-09-08T04:12:11.099Z`.
+The repaired production transaction scan then read the exact retained attempt-4 subject and matched
+the independently retained displayed name: **read**, three transactions, zero eligible and three
+protected rows, completed `04:12:28.324Z`. `smart-live-read-success.json` records only statuses,
+counts and equality facts. No workflow, attempt, checkpoint, receipt or HR transaction was started.
+Independent whole-table write-intent/write-attempt/durable-outbox counts remained **0/0/0**.
+
+The browser closed. Post-doctor at `04:13:01.307Z` passed healthy schema 32/generation 632, same root
+identity, ten reconciled runs/results, zero pending commands/unresolved writes/durable outbox, with
+the two historical leases and one retained local run-terminal outbox unchanged. This proves the
+callback repair live; it does not satisfy the separately blocked full T1b case. All failures remain.
+
+Before settings restoration, the foreign worktree restarted Vite on shared port 5174 (PID 5944,
+parent 5922, started `04:12:48Z`, after this read completed). No BFF was started against that foreign
+frontend. Primary master was again restored clean and unchanged. Revision-7 temporary settings
+remain until the shared runtime lane is available for the unspent canonical restoration command.
+
+
+This live-reader evidence recording changes only the owner, with all 1908 full-gate inputs unchanged
+from 09436a49; full gates are reused under D191. Scoped roadmap/registry guards passed 39 tests in
+two files (4464), lint 24582 passed, and roadmap freshness/instruction twins/size/diff checks passed.
+No new link or executable input changed. The repaired scanner is live-verified, while complete T1b
+acceptance and revision-7 settings restoration remain explicitly open. The foreign Vite server was
+still present on port 5174 at the final process check; all owned browser/BFF/worker processes stopped.
