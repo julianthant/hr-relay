@@ -2,7 +2,7 @@
 
 ## Approved assignment and status
 
-**Task: `side/command-groups`. Implemented and gated; awaiting independent review.** This file is the single
+**Task: `side/command-groups`. R1 repair gated; awaiting independent repair review.** This file is the single
 task owner; it does not create a roadmap phase or change phase completion.
 
 The operator approved consolidating bulk requests into parent/child rows in `commands`,
@@ -392,3 +392,70 @@ unchanged. Coverage ran without this task's compiler/linter/parity contention.
 All owned gate processes exited. S2–S4 and S5 gates are complete; one fresh complete read-only R1
 review is pending. S6 integration and cleanup still require operator assignment. A standalone PASS
 will not resolve the parallel candidates' combined migration numbering or authorize database use.
+
+
+## R1 review and bounded repair
+
+Reviewer `/root/sup_review_command_groups` independently inspected the complete 28-path
+candidate `92ba918741f138ec9bfd7698e9858775ab657db5` against the recorded base/plan and
+returned **CHANGES REQUIRED**, with one high-severity finding (R1). No paths were unreviewed;
+all P1–P8 boundaries were inspected. R1 affects P4 identity concurrency and P5 audit truth.
+The inspected gate logs were supervisor-run evidence, not reviewer reruns. The reviewer
+independently rechecked identity, inventory, whitespace and document audit.
+
+R1: bulk ingress serialized only the parent ID. A single async worker command using a prospective
+child ID could spawn, wait for birth acknowledgement, then lose its journal/audit when a bulk
+parent accepted during the await reserved that ID. An all-or-none request caused the worker to
+return `command-divergent` without a command/audit despite spawning; a best-effort request could
+cancel a run under that same identity before the worker settled. Evidence at the reviewed SHA:
+`operator-command-ingress.ts:323`, `authority-database.ts:2868`, `command-kernel.ts:2513`.
+
+The external synthetic probe ran on unchanged reviewed HEAD with the real ingress/service/kernel,
+composed worker supervisor, fake process edge and real temporary authority/birth lease:
+`npm exec -- tsx scripts/test-runner.ts run --config /tmp/hr-command-groups-r1/vitest.mts`.
+`/tmp/hr-command-groups-r1-probe.log` contains two passing assertions demonstrating the defect.
+The initial scratch-only assertion typo (`cancelled` versus terminal/cancelled lifecycle) was
+corrected; its failed log is retained separately. No real processes or operator state were used.
+
+Repair: ingress atomically reserves the parent and every derived child identity in its existing
+in-process lane map before awaiting prior owners, then holds those lanes through acceptance,
+effects and journaling. Every reservation waits only on earlier promises, avoiding nested-lock
+cycles. Stable IDs, envelopes, storage/replay semantics and the async worker kernel remain
+unchanged. An already executing single command settles first; the colliding bulk then refuses
+before parent acceptance or child execution.
+
+Permanent regression cases in `worker-pool-composition.test.ts` cover both bulk modes through
+real ingress, async kernel and supervisor. They prove the parent stays absent until the fake
+worker's durable birth acknowledgement; its command and audit remain worker-owned; bulk refuses
+before execution; the run stays queued. Both cases failed against the reviewed implementation
+(`r1-red.log`, exit 1), then passed with neighboring composed bulk and command-group cases
+(`r1-green.log`, 15 tests across three files, exit 0). Logs use `/tmp/hr-command-groups-`.
+
+R1 disposition: repair implemented, awaiting final gates and independent verification. This is
+one repair round for one finding. The bounded recheck may use the same independent reviewer
+only with uncompacted capacity; no author participated as reviewer. S6 remains separately assigned.
+
+
+### R1 repair candidate gates
+
+Frozen tested tree: `b6417a7164945395efbe766f378fb08810721d90`. The repair changes only
+`operator-command-ingress.ts`, `worker-pool-composition.test.ts` and this owner relative to
+reviewed commit `92ba918741f138ec9bfd7698e9858775ab657db5`. The complete base-to-candidate
+inventory is now 29 paths. Only this evidence record changes after the tested tree; all gate
+inputs and parity references remain unchanged.
+
+The exact commands in the frozen-candidate gate table were rerun for the repair, with the same
+scheduling-only two-worker adapters and no compiler/linter overlap during coverage. All exited 0:
+
+| Gate | Result | `/tmp/hr-command-groups-` log suffix |
+| --- | --- | --- |
+| Typecheck / lint | Both passed; zero lint warnings | `typecheck-r1.log`, `lint-r1.log` |
+| Full coverage | 448 files, 5,656 tests passed; all floors met | `coverage-r1.log` |
+| Suite-size constituent | Unit 351/127,126 lines; scenario 17/7,411; architecture 80/30,885 | `suite-size-r1.log` |
+| Parity | 262/262 passed; unchanged baselines | `parity-r1.log` |
+| Manifest / catalog / roadmap freshness | All current | `manifest-check-r1.log`, `catalog-check-r1.log`, `roadmap-check-r1.log` |
+| Documents / whitespace | Nine instruction pairs, chain cap and 13 links passed; diff check clean | `doc-audit-r1.log`, terminal evidence |
+
+Coverage: statements 86.01%, branches 77.88%, functions 90.01%, lines 88.23%.
+`worker-processes-r1.log` verifies two owned forks. All owned gate children exited. R1 repair
+is awaiting commit-bound independent recheck; S6 integration/cleanup remains separately assigned.
