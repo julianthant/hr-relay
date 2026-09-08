@@ -7001,3 +7001,25 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — reconcile before `{#separations-compiled-acceptance}` closes
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
+
+## Run completion storage
+
+**2026-09-08 — approved, pending implementation.**
+[Side task `side/run-completion`](../../sidetracks/run-completion/README.md) amends D110/D114 and
+D330 storage: move `run_terminal_authorizations` evidence into a strict immutable completion record
+on `workflow_runs`, rename `failures` to `run_failures`, and retire the unused `run_terminal_outbox`.
+It follows accepted provider-usage integration and leaves running predecessor plans unchanged.
+
+Active ownership remains the run's worker/claim generation and expected-version protocol. Completion
+preserves the exact accepted worker, generation, version, timestamp and result/failure identity after
+active ownership ends. It is historical evidence, not a live claim. Initial factory/checkpoint/failure
+validation and exact replay/divergence protection remain required. The run completion, result/failure
+and required SQLite timeline event commit atomically. Assignment history uses timeline events, never
+a newest-event ownership lookup. Existing cancellation/interruption and retry semantics remain intact.
+
+Historical conversion preserves exact settlement identities, immutable archive content/digests and
+supported old replay, with inert legacy receipts only where required. No invented completion evidence,
+replacement queue or dual authority. Failure references and D308 deletion remain consistent. Remove
+the current terminal-outbox pending count from Storage Doctor CLI/BFF/dashboard with reviewed parity;
+historical backup formats retain explicit versioned inspection. This is approved design, not an
+implementation claim or authorization to convert the operator database.

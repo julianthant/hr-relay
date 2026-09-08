@@ -2259,3 +2259,14 @@ run deletion preserves aggregate usage. Requirements live at
 [side task `side/provider-usage`](../../sidetracks/provider-usage/README.md) owns execution after
 accepted timeline/history T2 integration. This records planning approval, not implementation or
 permission to migrate the operator database.
+
+### 2026-09-08 — completion evidence on workflow runs (pending implementation)
+
+Operator approved moving completion authorization evidence onto `workflow_runs`, renaming `failures`
+to `run_failures`, and removing the unused `run_terminal_outbox`. Current assignment and immutable
+accepted completion remain distinct; claim/version fencing, exact replay, result/failure authority
+and atomic timeline persistence survive the consolidation. Requirements live at
+[dashboard surfaces, run completion storage](dashboard-surfaces.md#run-completion-storage);
+[side task `side/run-completion`](../../sidetracks/run-completion/README.md) owns execution after
+accepted provider-usage integration (and its timeline T2 prerequisite). No running plan is amended.
+This records planning approval, not implementation, database application or a new delivery consumer.
