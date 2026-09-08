@@ -2207,3 +2207,16 @@ and [execution-and-sessions §11](execution-and-sessions.md).
 | Decision | Ruling | Owner |
 | --- | --- | --- |
 | **D344** | **COMPLETE SHARED PREREQUISITES, THEN OPERATOR-LAUNCHED INDEPENDENT WORKTREES.** Phase 3 uses actual `3.P.N` prerequisites/tasks and independent `3.P.N.1`, `3.P.N.2` children; sequential consumers have separate numbers. The decimal amendment retires six non-executable 3.1 containers while preserving execution IDs. Agents work independently by default and coordinate when necessary to resolve blockers, overlap or duplicate effort; changed ownership/contracts/dependencies return to the operator. The operator chooses launches and serial integration; no automatic merge. Preserve in-flight plans, all gates, phase closure and the four-worktree limit. Further unverified splits remain proposed. | [roadmap D344](../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08) · [3.1 current identity map](../plans/phase-3/3.1-finish-the-dashboard/README.md#current-task-identities) |
+
+### 2026-09-08 — command parents and delegation table names (pending implementation)
+
+Operator approved consolidating `bulk_command_acceptances` into non-executable parent
+records in `commands`, with individual commands linked through `parent_command_id`;
+acceptance remains distinct from execution and existing replay/audit guarantees remain.
+The same side assignment renames `dependencies` → `delegation_dependencies` and
+`delegation_manifests` → `run_delegations`, keeping those two tables separate.
+Requirements live at [dashboard surfaces, command-group storage](dashboard-surfaces.md#command-group-storage)
+and [workflow model, delegation table names](workflow-model.md#delegation-table-names).
+[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) owns execution
+after the accepted worker/request rename plan. This records approval, not implementation,
+phase completion, or permission to convert the operator database.

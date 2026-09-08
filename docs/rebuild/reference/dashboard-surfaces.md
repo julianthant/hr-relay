@@ -4591,6 +4591,20 @@ Each item is also marked in place with a dated note; the owning section keeps it
 
 #### D235 — a bulk command is N children and one vector
 
+<a id="command-group-storage"></a>
+
+**2026-09-08 operator-approved storage consolidation — pending implementation.**
+[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) will move the
+exact accepted bulk envelope from `bulk_command_acceptances` into a non-executable parent
+row in `commands`, with direct individual commands linked by nullable `parent_command_id`.
+The parent retains original selection/order, versions, options, fingerprint and acceptance
+time. Parent acceptance is not child execution or aggregate success: it gets no fabricated
+execution audit and is excluded from unfinished executable-command counts. Existing child
+IDs, command/audit evidence, per-target results, best-effort transactions and replay rules
+below remain binding. Historical migration must preserve evidence and refuse ambiguous
+identity/linkage; public command doors and envelopes do not change. This approved design
+does not claim the separate table has already been removed or authorize live conversion.
+
 **Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are `cancel`
 and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change applied to a
 selection is a re-ordering nobody asked for). Every bulk action is many REAL CAS-bound transitions, so

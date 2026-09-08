@@ -1863,6 +1863,16 @@ cleanup resets the page”: they are separate contracts/spans but one scheduling
 
 ### 3.2 Delegation contract — one standard for every workflow
 
+<a id="delegation-table-names"></a>
+
+**2026-09-08 operator-approved names — pending implementation.**
+[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) renames the
+current SQL tables `delegation_manifests` → `run_delegations` and `dependencies` →
+`delegation_dependencies`. They remain separate: an immutable delegation records the
+complete child set and original policy, while each dependency records one relationship
+and its state. Preserve IDs, row JSON, foreign keys, policies, replay/join behavior, and
+zero-child manifests. This changes neither internal `manifestId`/`dependencyId` vocabulary
+nor workflow capability; it does not activate the unwired child-run seam described below.
 
 - [x] the delegation CONTRACT below is built and guarded end to end: `planDelegationFanOut`, `assertDelegationReplayMatches`, `joinDelegationOutcomes`, the one D102 policy vocabulary, and the `delegation-manifest` guard over edge-id uniqueness, the plan fingerprint and the complete-outcome-set join
 - [ ] **no registered workflow declares a `child-run` node**, so the first operation fan-out arrives with this migration. The executor's child-run arm is a typed seam answering `capability-unavailable` today
