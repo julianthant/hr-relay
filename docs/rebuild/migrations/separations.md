@@ -7537,3 +7537,17 @@ acceptance rows remain open until the new exact-ordinal candidate passes its gat
 
 Task 1.6.7 headed proof on candidate `145e50a32e6a817e67bdedb4963d8e240be86349`: result `78ff3c7c-013c-4b7b-b5de-6460187d561d` **failed**, run `11078b76-e4dd-4e2e-9c73-250e28b6f8e6` / `sp-182240-1107`, dry-run-preview, attempt 2. Manifest `265a4325296541ba0c8036b862eca91674276c4b8ea5088a6c8a23fbcecba94e`; evaluator 30904 ms. Independent run-scoped write counts and evaluator deltas are exactly **0/0/0**. Three assertions met and five failed; no checkpoint. The Kuali entry-page application script exceeded the 30-second navigation bound. A separate unchanged-recipe login subsequently passed with measured 60-second navigation configuration; exact next workflow attempt is 3. This failed result remains retained.
 The Task-7 owner records full command, receipt, doctor, canonical configuration and recovery evidence.
+
+
+Task 1.6.7 current blocker: candidate `bcd60b35607554af6812e6cb5c9b50e67a42eebb`, result
+`47f3519e-e5f4-4824-9056-0eaff71c9aea` **failed**, run `08fa51f4-56f2-4922-b4fc-c05936320cdf`
+/ `sp-183748-08fa`, headed dry-run-preview attempt 3. Kuali completed four checkpoints; UCPath
+`name-search` then refused at `verify-landing` because the required `PS_TOKEN` cookie was absent.
+This is not a timeout or an UNKNOWN external submit. The non-transient failure, failed/unknown
+receipt and attempt-3 checkpoints are retained. Evaluator 232052 ms; command 233922 ms / exit 1;
+manifest `5497832debae867babf4b4174b74bd04f6bd9fcf840c8351c70e9a542d28dbcd`.
+Independent counts and evaluator write deltas are exactly **0/0/0**. Temporary ordinary settings
+were restored through their canonical command, post-doctor was healthy at schema 32/generation 536,
+and primary master was restored clean and unchanged. Exact next attempt is 4 only after a diagnosed
+correction or recovered prerequisite; no identity/checkpoint reset or automatic retry is authorized.
+The Task-7 owner records full failure/receipt/doctor/recovery bindings and the remaining acceptance.

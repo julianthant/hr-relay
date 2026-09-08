@@ -1286,3 +1286,79 @@ Post-live doctor at `2026-09-08T01:27:58.129Z` was healthy schema 32/generation 
 reconciled retained runs, zero pending commands/unresolved writes/durable outbox, two stopped worker
 leases, and one retained pending run-terminal outbox row. That local terminal row is recorded
 separately from the exact zero transaction-write tables; it is not deleted to manufacture zeroes.
+
+
+### Current blocker: Separations UCPath session-token proof (2026-09-07)
+
+Candidate `bcd60b35607554af6812e6cb5c9b50e67a42eebb` matched all 1908 gated inputs and installed
+dependencies on clean detached primary; master stayed unchanged. Production provider/private-input
+admission and pre-doctor passed. The exact retained Person Lookup result remains **met**; it was
+not rerun. Settings revision 5 was active with explicit headed mode, 60000 ms navigation and
+120000 ms acquisition. Ran only the Separations command from the approved live pair.
+
+| Separations proof | Observed evidence |
+| --- | --- |
+| Command / session | `npm run cli -- dry-run-scenario separations --subject finalization-canary` / 91069 |
+| Result / verdict | `47f3519e-e5f4-4824-9056-0eaff71c9aea` / **failed** |
+| Run / trace | `08fa51f4-56f2-4922-b4fc-c05936320cdf` / `sp-183748-08fa` |
+| Arm / attempt / mode | dry-run-preview / 3 / headed; `dryRun=true` |
+| Manifest digest | `5497832debae867babf4b4174b74bd04f6bd9fcf840c8351c70e9a542d28dbcd` |
+| Evaluator / command / exit | 232052 / 233922 ms / 1 |
+| Retained checkpoints | resolve-action, document, plan, termination-type; all attempt 3 / claim generation 1 |
+| Failure / bundle | `b2c8a90f-b372-400a-b161-b12963e9cf88` / `388c5194-eecf-4858-890c-442cf15be0c1` |
+| Receipt | `12546fd4-6d66-51f4-97df-555e6e8cb422`, failed / unknown |
+| Assertions | nodes-excluded, gate-results and write-safety-deltas met; other five failed |
+| Exact deltas and independent run-scoped write-intents / write-attempts / durable-outbox | **0/0/0** |
+
+The non-transient `UNHANDLED` failure is at `name-search`, `writeState=not-attempted`.
+Static-source-matched failure facts identify `verify-landing`: the login could not prove the
+authenticated application because UCPath PeopleSoft never issued its required `PS_TOKEN` session
+cookie. The route had passed the necessary application-URL predicate; URL alone did not pass the
+positive authentication proof. This failure is not an acquisition timeout, does not prove an expired
+Duo key, and cannot be treated as transient. No protected cookie value, canary, credential or raw
+failure message was printed or copied into evidence. The cause behind the missing cookie remains
+unresolved; no guard weakening, longer proof wait, fabricated cookie or workflow retry is admitted.
+
+**Recovery verified.** Canonical command `8ee05f83-062a-4449-904e-7eed8b426a37` cleared exactly
+the three temporary ordinary overrides, revision 5 → 6. Restart activation verified the original
+headless/default-timeout configuration. BFFs 32417/14525 stopped. Post-doctor at
+`2026-09-08T01:43:22.622Z` passed healthy schema 32/generation 536 on the same primary root, nine
+reconciled retained runs/results, zero pending commands/unresolved writes/durable outbox/provider
+reservations/artifact outbox, two retained stopped worker leases and one retained pending local
+run-terminal outbox row. Whole transaction-write tables are **0/0/0**. No listener remained on
+3938/5174 and no matching primary browser process remained. Primary master was restored clean to
+`f0b1cf92195897e56e4917384b512c45d7b4d41a`; no merge or push occurred. `.env`, credentials and
+private source metadata stayed unchanged. `kuali-live-post-doctor.json`, `kuali-live-restored.json`,
+`kuali-restored-activation.jsonl`, `kuali-timed-settings-restore.json`, `kuali-post-attempts.json`
+and `separations-kuali-{command,readback}.json` retain safe recovery/result evidence.
+
+**Resume boundary.** Steps 1–3 are accepted. Person Lookup's seven-assertion result is accepted;
+Separations attempt 3 is failed and spent, with four checkpoints preserved. The next Separations
+ordinal is 4, not a fresh identity; the committed manifest intentionally continues to describe the
+failed attempt 3 until a diagnosed correction or recovered prerequisite justifies another proof.
+Person Lookup next ordinal 4 is not an instruction to rerun its accepted attempt 3. Inspect the
+retained authentication evidence and use an isolated login-only diagnostic to distinguish a genuine
+failed application session from navigation/readiness ordering before proposing a repair. The
+existing required cookie/content proof stays intact. No further operator identifier or key is
+currently needed. Steps 4–6, final handoff consolidation, complete independent review, integration
+gates and owned worktree/ref cleanup remain open. A complete reviewer was not dispatched with a
+known missing mandatory live acceptance row.
+
+**Provisional delivery assessment.** Measured service/resource delays required bounded ordinary
+configuration trials, distinct from product/test defaults; their exact failed and passed timings are
+above. The headed-mode mismatch was an implementation defect exposed by the operator-visible run:
+a configured value was mistaken for actual immutable run/factory mode. The new red-capable composition
+proof would have caught that mismatch before the failed live pair. The new missing-token refusal is
+an unresolved authentication prerequisite, not evidence that the strict proof should be relaxed.
+All mandatory full-gate reruns and failed attempts are retained; no final review or completion totals
+are claimed. Owned profiles/locks and diagnostic scratch remain stopped and preserved for diagnosis;
+only integrated resources may be removed at final closure.
+
+
+The blocked-evidence commit changes only this owner and the Separations migration record. All
+1908 hashes in `kuali-gated-inputs.json` still match executable candidate bcd60b356, so its full
+candidate gate evidence is reused under D191. Scoped roadmap-binding/target-registry checks passed
+39 tests in two files (session 52677); lint 25623 passed. Roadmap freshness, nine instruction twins/
+size and diff checks passed. No new links or runtime inputs were introduced. Read-only canonical
+Settings readback confirmed revision 6 and absence of all three temporary overrides. No full review,
+integration or completion is claimed while the mandatory Separations proof is failed.
