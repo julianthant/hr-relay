@@ -2658,6 +2658,9 @@ builds:
 needs:
 - migrations
 
+log:
+- 2026-09-08 | Background Check walkthrough (operator label: Phase 4.1) | collaborative batch discovery recorded in 4A Admission; select yellow Date Background Entered cells from the original workbook, use the portal's batch template, and show the completed workbook before submission; current PDF reviewed, live form and cohort verification pending; no implementation admission or submission claimed
+
 #### Shared capabilities assigned with 4A {#cross-cutting}
 status: planned
 doc: ref:workflow-model §1.6.3 · ref:clock-config-secrets §3 · ref:clock-config-secrets §6.2 · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §8
