@@ -923,14 +923,14 @@ log:
 - 2026-09-04 | 2.6 parallelism ruling | wave 1 is `1-1` trust/evidence ∥ `1-2` intake/data ∥ `1-3` operator read models, each from the same verified 1.6-close base in a dedicated worktree; serial Task 2 converges the migration/recovery proof and Task 3 closes · left: coordinator ledger binds exact paths, gates and peer integration order before dispatch
 
 #### 1-1 · Revalidate trust and evidence consumers {#p2f-trust}
-status: planned
-date: parallel wave 1 · dedicated worktree
+status: done
+date: 2026-09-08 · reviewed and integrated locally
 doc: 2.6/task-1-1-revalidate-trust-and-evidence-consumers · ref:operator-trust · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] BOTH migrate notifications, receipts, failures, captures, logs, gates, and parked-write views
-- [ ] PROOF every row remains linked to the canonical run id through retry, archive, and tombstone
-- [ ] PROOF notification delivery never races ahead of the durable run-linked inbox row
+- [x] BOTH migrate notifications, receipts, failures, captures, logs, gates, and parked-write views
+- [x] PROOF every row remains linked to the canonical run id through retry, archive, and tombstone
+- [x] PROOF notification delivery never races ahead of the durable run-linked inbox row
 
 needs:
 - p1f-close
@@ -938,6 +938,7 @@ needs:
 - p2f-readers
 
 log:
+- 2026-09-08 | 2.6.1-1 complete | candidate 98305e1bc, complete T-R1 PASS after bounded repair; local merge 5a07b329e; 443 files / 5,566 tests, parity 261, typecheck/lint PASS; integration inputs verified and owned worktree/ref removed · peer tasks remain open
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.9 evidence linkage by stable `runId`, §D330.2 existence, §D330.8 tombstone (no redesign) · left: the notification inbox row stays run-linked
 
 ##### 1 · Complete shared-reader prerequisite {#p2f-readers}

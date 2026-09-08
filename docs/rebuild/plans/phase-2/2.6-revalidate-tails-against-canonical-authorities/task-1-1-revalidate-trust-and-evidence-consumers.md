@@ -7,9 +7,9 @@ in [operator trust](../../../reference/operator-trust.md) and
 ### Task 1-1 · Revalidate trust and evidence consumers
 <!-- roadmap: p2f-trust -->
 
-- [ ] Rewire notification, receipt, failure, capture, log, gate, and parked-write run joins.
-- [ ] Prove durable linkage through retry, archive, and tombstone without rewriting evidence.
-- [ ] Stay behind the stable run/evidence boundary; do not edit intake data projections or generic
+- [x] Rewire notification, receipt, failure, capture, log, gate, and parked-write run joins.
+- [x] Prove durable linkage through retry, archive, and tombstone without rewriting evidence.
+- [x] Stay behind the stable run/evidence boundary; do not edit intake data projections or generic
   lifecycle status/count/archive projections owned by Tasks 1-2 and 1-3.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D330.9's evidence-linkage invariants:
@@ -206,7 +206,13 @@ or authority-schema work to hide a failure.
 
 ## Current execution state
 
-P is **accepted and integrated**. T is **in progress**, bound before edits to
+P and T are **complete, independently accepted and integrated locally**. The final
+T acceptance, integration and cleanup record below governs current status; earlier
+candidate and repair sections retain their historical state. No peer task is closed.
+
+### Historical P completion and T launch
+
+P was accepted and integrated. T was bound before edits to
 `codex/tail-trust` at `/Users/julianhein/Projects/hr-worktree-tail-trust`, from
 common base `64db38e017f585014173bae3c428e6c2a1f63099`. The supervisor implements
 T locally; its separate complete independent reviewer remains required. Independent complete review
@@ -312,7 +318,8 @@ review acceptance and cleanup are complete; all T proof and completion remain op
 
 ## T implementation and proof record
 
-T remains open until its complete independent review, integration gates and cleanup.
+Historical implementation record: T was pending independent review, integration
+gates and cleanup at this point; final acceptance is recorded below.
 The dedicated checkout is based on `64db38e017f585014173bae3c428e6c2a1f63099`.
 The supervisor implemented T locally. No peer-owned source, fixture, contract,
 authority schema or generated runtime input was edited.
@@ -476,7 +483,7 @@ The added source/test inputs require fresh final gates. This is an external
 prerequisite change, not an accepted test waiver or peer implementation merge.
 
 
-## T candidate gates — awaiting independent review
+## T candidate gates — historical pre-review evidence
 
 The complete T candidate is the implementation commit containing this record,
 reviewed against base `a3c73c8039508ea307db70f9c2f01228c689435c`. All T checkboxes
@@ -547,7 +554,7 @@ full base-to-candidate whitespace will be verified after the repair commit.
 Findings remain open until repaired gates and independent renewed acceptance.
 
 
-### T-R1 repair candidate gates — awaiting renewed acceptance
+### T-R1 repair candidate gates — historical pre-acceptance evidence
 
 The repair commit containing this record addresses the three findings above and
 keeps the original candidate as history. One test initially emitted a duplicate
@@ -575,3 +582,94 @@ SQL guards passed in 20.663 / 20.381 seconds. Owned compiler/linter/build/parity
 not overlap coverage; peers confirmed release. Their next gate window was
 released after repaired parity. Review findings remain pending independent
 verification; integration and all task completion checkboxes remain open.
+
+
+## Final T acceptance, integration and cleanup — 2026-09-08
+
+Task **2.6.1-1 is complete**. The approved plan is commit
+`6e0d05183ba9427e23af4427b62265389fc12281`. Complete reviewer
+`/root/sup_review_trust_tail` renewed T-R1 against base
+`a3c73c8039508ea307db70f9c2f01228c689435c` and candidate
+`98305e1bccf3f4c1db80735496060bbcbfc68855`: **PASS, no unresolved findings**.
+The same read-only reviewer completed this bounded repair round without
+compaction: nine repair paths inspected, nineteen previously reviewed paths
+verified byte-identical, all 28 paths and all eight proof rows reconciled.
+All three original findings are closed. The reviewer independently checked the
+complete committed-range whitespace and all 2,176 input hashes, and inspected
+fresh gate logs; it did not rerun write-producing gates.
+
+The accepted candidate merged without conflicts as
+`5a07b329ec8a935535ee34935fc05717bbc4f0c1`, onto primary
+`44460e2b65051a23d1a9584ac350c665d2da9985`. Both existing peers released the
+primary integration/roadmap target before integration. The only difference
+between accepted candidate and merged tree is the upstream planning document
+`docs/sidetracks/worker-names/README.md`. Every one of the 2,176 candidate-bound
+inputs matches the integration tree. D191 therefore reuses accepted candidate
+typecheck, lint, full coverage, parity, build and generated-input gates; no
+behavioral merge or changed executable/test input requires renewed review.
+
+| Completion gate | Verified evidence |
+| --- | --- |
+| Candidate typecheck / lint | Both exit 0; final `review-repair-` logs above. |
+| Candidate full coverage | 443 files / 5,566 tests pass; all coverage floors pass. |
+| Candidate parity | 261/261 pass, no refreeze. |
+| Integration scope | 2,176 matching input hashes, zero mismatches; `integration-input-proof.json`. |
+| Fresh integration checks | Roadmap freshness and both roadmap test files (29 tests) pass; documentation audit has nine equal instruction pairs, chains below 32,768 bytes and no issues; complete base-to-merge whitespace passes. |
+| Cleanup | Ordinary worktree removal and `git branch -d codex/tail-trust` succeeded. Registered worktree, physical path and exact branch ref are absent. Generated ignored test/build artifacts and dependencies were checked before removal; no owned process remained. |
+
+Evidence files are under `/tmp/hr-tail-trust-evidence`, including
+`integration-roadmap-tests.log`, `integration-roadmap.log`,
+`integration-docs.json`, `integration-whitespace.log`, `cleanup-audit.json` and
+`cleanup-result.json`. Peer worktrees and the 1-3 handoff remain untouched. This
+is the calling Codex task, so sidebar archival is not applicable. Completion
+recording changes only this owner, the bound roadmap node and generated roadmap;
+its fresh scoped checks are recorded below. No push, production write, live HR
+run or live advisory-provider invocation occurred.
+
+### Delivery assessment
+
+The shared P prerequisite removed the mixed query/composition boundary and
+provided canonical fixture ports. One mechanical extraction worker contributed
+within assigned ownership; P received one complete independent review and was
+accepted. T was implemented locally and received one complete independent review
+followed by one bounded repair round with the same reviewer. These are observed
+review/worker counts, not a claim about total elapsed work or every edit cycle.
+
+Planning missed the existing advisory consumer in explicit file ownership; the
+first review exposed that omission, and a coordinated ownership amendment kept
+the repair within the approved failure-consumer requirement. The promised
+contradictory-fold gate/write proof was an implementation verification gap,
+closed with real SQLite and actual folded events. P's proposed either-order
+independence did not hold for one 1-3 capture-availability path: T supplies that
+reader, and the peer owns recording and satisfying its dependency. Acceptance
+here makes no claim that 1-2 or 1-3 is complete.
+
+Implementation iterations exposed an archive import-closure violation,
+incorrect fixture identities and typed results, a duplicate immutable queue
+event, generic artifact admission/content-digest gaps and a corruption
+normalization regression. Existing and new discriminating tests caught these;
+repairs retained assertions, authority boundaries, coverage floors and deadlines.
+Precommit whitespace initially omitted untracked files; complete committed-range
+checking caught and closed both trailing-blank-line findings.
+
+An independently accepted upstream task-naming change altered the generator and
+roadmap tests during T verification. The old-base coverage was stopped and not
+claimed as passing; the accepted base was consumed and final gates rerun. Heavy
+checks were coordinated with peers, coverage used the verified two-worker-only
+adapter, and build/parity were serialized after their shared-output collision.
+Future planning should enumerate every ingress consumer and prove prerequisite
+independence against the exact acceptance paths before claiming either merge
+order. No new product requirement or follow-on task is authorized by this assessment.
+
+
+### Completion recording gates
+
+Fresh `npm run roadmap:check` and both roadmap test files passed (29/29).
+The documentation audit passed: nine equal instruction pairs, maximum project
+instruction chain 16,650 bytes, no issues. Working and staged whitespace checks
+pass. Logs use `completion-` under the evidence directory. Input comparison
+finds only the roadmap source and generated HTML changed among the 2,176 bound
+inputs; this evidence owner is the documented exclusion. D191 reuses candidate
+full lint, typecheck, coverage, parity, build, manifest and catalog results for
+unchanged executable/configuration inputs, and runs fresh roadmap/documentation
+checks for the recording changes. No test or lint policy is waived.
