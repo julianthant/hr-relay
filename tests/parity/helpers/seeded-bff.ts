@@ -583,7 +583,7 @@ function seed(world: SeedWorld): Record<string, string> {
   if (gatedTransition.state !== "applied") throw new Error("fixture gate transition failed");
 
   // blocked — a real parked-write lifecycle transition, over a real fenced
-  // and parked `write_intents` row.
+  // and parked `run_operations` row.
   //
   // THE ROW IS NOT OPTIONAL, and its absence was a live defect (W2). This
   // adapter has transitioned run 6 to `parked-write` since the seed was

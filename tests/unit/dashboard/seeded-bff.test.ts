@@ -139,7 +139,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
   /**
    * W2. The seed has transitioned this run to `parked-write` since it was
    * written, and `availableSections` advertises the section from that lifecycle
-   * ALONE — while the serving arm re-reads the `write_intents` row the park
+   * ALONE — while the serving arm re-reads the `run_operations` row the park
    * names and throws by design when authority does not hold it. Nothing in the
    * corpus had ever opened this run, so the 500 sat there unmet. This case is
    * what makes the fenced row a requirement of the seed rather than a detail.

@@ -849,9 +849,9 @@ describe("dry-run scenario production composition boundary", () => {
     const raw = new DatabaseSync(settings.path, { readOnly: true });
     try {
       assert.deepEqual({
-        intents: raw.prepare("SELECT count(*) AS n FROM write_intents").get()?.n,
-        attempts: raw.prepare("SELECT count(*) AS n FROM write_attempts").get()?.n,
-        outbox: raw.prepare("SELECT count(*) AS n FROM durable_outbox").get()?.n,
+        intents: raw.prepare("SELECT count(*) AS n FROM run_operations").get()?.n,
+        attempts: raw.prepare("SELECT count(*) AS n FROM run_operation_attempts").get()?.n,
+        outbox: raw.prepare("SELECT count(*) AS n FROM operation_outbox").get()?.n,
       }, { intents: 0, attempts: 0, outbox: 0 });
     } finally {
       raw.close();

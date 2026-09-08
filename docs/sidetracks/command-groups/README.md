@@ -245,3 +245,57 @@ prerequisite/base-resolution rule, gates/review, and operator-assigned integrati
 > completion there. Do not create a phase number or mark roadmap tasks complete. Preserve
 > repository contracts, independent review, required gates and authorized integration/cleanup
 > conditions.
+
+## Assigned combined integration — 2026-09-08
+
+The operator's **“do it”** after reviewed candidate delivery authorizes this task to
+integrate all three parallel candidates, reconcile their unreleased migration numbers,
+run required integration gates and independent review, and clean up their owned worktrees.
+The worker-names and operation-names tasks also received this instruction and explicitly
+yielded shared-target ownership to this task. This does not authorize a push or conversion
+of the operator database.
+
+| Binding | Verified value |
+| --- | --- |
+| Integration owner | Command-groups task `01a08248-5b6c-7360-99a6-78a2c0da3f19`, Local |
+| Integration checkout / branch | `/Users/julianhein/Projects/hr-worktree-command-merge` / `codex/command-groups-integration` |
+| Primary base / target | `121df12e817c3e19708217d1b9e22d50b8787477` / local `master` |
+| Worker candidate → schema | `0a0edb10b3a9f0852727d584ab1cd8164383a5ed` → 35 |
+| Operation candidate → schema | `394bf4c631b5f01207cb3a3dd1aaaf06b1eb714c` → 36 |
+| Command candidate → schema | `aff7f5656bdf13af509620f1ee4b1ebd0451dba7` → 37 |
+| Integration condition | Serialized `--no-ff` merges; each material tree typecheck, lint and full coverage; required parity/freshness/docs checks; fresh independent combined review before primary integration; verified cleanup afterward |
+
+Released migrations 1–34 retain their statement bytes and digests. Worker, operation and
+command compatibility boundaries remain distinct at 35, 36 and 37. The final current
+schema is 37 with stopped-upgrade floor 36. The read-only migration audit by
+`/root/sup_scout_migration_merge` identified these boundaries; it did not edit files or
+provide acceptance review. No implementation worker was dispatched.
+
+Worker integration commit `5aef718` has tested tree
+`4aeed73242c02b043d2f7e1afef5b0e68e020bf2`. Typecheck, lint, full coverage
+(447 files / 5,658 tests; all floors), suite-size, 262 parity cases, manifest/catalog/roadmap
+freshness and documentation checks passed. Logs are
+`/tmp/hr-command-merge-worker-{typecheck-2,lint-2,coverage-2,suite-size,parity,manifest,catalog,roadmap,doc-audit}.log`.
+The only initial merge conflict was additive decision-index text; both sides were preserved.
+Primary drift included roadmap parser/tests, so candidate code gates were not reused.
+
+Integration discovered a worker P6 guard escape: the lifecycle SQL matcher retained `leases`
+but omitted `workflow_workers`. A new violating fixture failed before the matcher repair;
+the corrected guard passed both cases. The existing guard inventory records this evidence.
+This is an implementation/review escape, not a new product requirement, and remains within
+the fresh combined review scope. The first two-worker full run separately failed one
+unchanged 30-second architecture deadline at 30.94 seconds, with 5,657 other tests passing.
+The one-worker retry passed; its formerly failing case took 24.61 seconds. No assertion,
+member, isolation setting, deadline or coverage floor was relaxed.
+
+Later gate scheduling uses the installed runner's explicit project groups: architecture
+at one worker, then unit/scenario together at two. The temporary adapter asserts that only
+worker counts and execution groups differ from the repository configuration. Timeline work
+runs in a separate operator-authorized checkout and is excluded from this integration and
+cleanup; heavy-gate windows are coordinated with its exact task
+`01a082a8-92ac-7031-8eb2-31708e7b0aad`. Primary untracked `docs/handoffs/` is preserved.
+
+Current state: worker merged into the isolated integration branch; operation reconciliation
+is in verification. Command merge, remaining gates, combined review, primary integration and
+owned cleanup are still open. Existing independent candidate review and repair provenance
+in each owner remains authoritative for its original frozen candidate.

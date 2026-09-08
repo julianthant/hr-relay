@@ -3,8 +3,8 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 34;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 35;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 35;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 36;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -21,7 +21,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view";
+type MigrationTableName = "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -642,7 +642,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
   runs_view: jsonRecordTable("runs_view"),
-} as const satisfies Record<Exclude<MigrationTableName, "workflow_runs" | "workflow_run_batches" | "workflow_workers" | "worker_auth" | "workflow_run_requests">, string>);
+} as const satisfies Record<Exclude<MigrationTableName, "workflow_runs" | "workflow_run_batches" | "workflow_workers" | "worker_auth" | "workflow_run_requests" | "run_operations" | "run_operation_attempts" | "operation_outbox">, string>);
 
 /** The tables migration 1 created, in dependency order. A released migration is never edited. */
 const V1_TABLE_ORDER = [
@@ -763,7 +763,7 @@ export const INTEGRATED_AUTHORITY_TABLES_BY_VERSION = deepFreeze({
   ],
 } as const satisfies Readonly<Record<27 | 28 | 29, readonly string[]>>);
 
-/** Released v30–v34 layouts stay independent of the current registry. */
+/** Historical v30–v35 layouts stay independent of the current registry. */
 const V30_TABLES = [...INTEGRATED_AUTHORITY_TABLES_BY_VERSION[29], "authority_upgrades", "protected_settings_current"].sort();
 const V32_TABLES = V30_TABLES.filter((name) => name !== "protected_settings_current");
 const V33_TABLES = V32_TABLES.map((name) => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name).sort();
@@ -773,6 +773,7 @@ export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, rea
   32: V32_TABLES,
   33: V33_TABLES,
   34: V33_TABLES.filter((name) => name !== "runs_view"),
+  35: V33_TABLES.filter((name) => name !== "runs_view").map((name) => name === "leases" ? "workflow_workers" : name === "duo_ceremony_leases" ? "worker_auth" : name === "start_plans" ? "workflow_run_requests" : name).sort(),
 });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
@@ -1828,12 +1829,34 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       "ALTER TABLE start_plans RENAME TO workflow_run_requests",
     ],
   },
+  {
+    // Operation names preserve row bytes, keys, foreign keys and tombstone admission.
+    version: 36,
+    statements: [
+      "ALTER TABLE write_intents RENAME TO run_operations",
+      "ALTER TABLE write_attempts RENAME TO run_operation_attempts",
+      "ALTER TABLE durable_outbox RENAME TO operation_outbox",
+      "DROP INDEX durable_outbox_intent_id_idx",
+      "CREATE INDEX operation_outbox_intent_id_idx ON operation_outbox(write_intent_id)",
+      "DROP INDEX durable_outbox_kind_idx",
+      "CREATE INDEX operation_outbox_kind_idx ON operation_outbox(kind, created_at)",
+      "DROP INDEX write_attempts_intent_id_idx",
+      "CREATE INDEX run_operation_attempts_intent_id_idx ON run_operation_attempts(write_intent_id)",
+      "DROP TRIGGER write_intents_require_permanent_key_insert",
+      "CREATE TRIGGER run_operations_require_permanent_key_insert\n        BEFORE INSERT ON run_operations\n        WHEN NEW.system IS NULL OR NEW.idempotency_key IS NULL\n        BEGIN\n          SELECT RAISE(ABORT, 'run_operations requires system and idempotency_key');\n        END",
+      "DROP TRIGGER write_intents_require_permanent_key_update",
+      "CREATE TRIGGER run_operations_require_permanent_key_update\n        BEFORE UPDATE OF system, idempotency_key ON run_operations\n        WHEN NEW.system IS NULL OR NEW.idempotency_key IS NULL\n        BEGIN\n          SELECT RAISE(ABORT, 'run_operations requires system and idempotency_key');\n        END",
+      "DROP INDEX write_intents_system_idempotency_key_idx",
+      "CREATE UNIQUE INDEX run_operations_system_idempotency_key_idx ON run_operations(system, idempotency_key)",
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
   const renamed = (name: string): string => {
     const renames: Readonly<Record<string, string>> = {
+      write_intents: "run_operations", write_attempts: "run_operation_attempts", durable_outbox: "operation_outbox",
       tasks: "workflow_runs", run_sessions: "workflow_run_batches",
       leases: "workflow_workers", duo_ceremony_leases: "worker_auth", start_plans: "workflow_run_requests",
     };

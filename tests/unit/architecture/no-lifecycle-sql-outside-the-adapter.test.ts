@@ -37,6 +37,18 @@ function audit(fixtures = false): string[] {
   host.readFile = (file) => fixtures && extras.has(file) ? extras.get(file) : original(file);
   const files = [...roots.map((file) => resolve(REPO_ROOT, file)), ...(fixtures ? extras.keys() : [])];
   const program = ts.createProgram(files, options, host); const checker = program.getTypeChecker();
+  // Resolving every call also infers its arguments. Only calls whose callable
+  // declarations can own a lifecycle mutation need that overload resolution.
+  // Keep the final resolved declaration check so a safe overload stays safe.
+  const possibleMutators = new WeakMap<ts.Type, boolean>();
+  function mayCallMutator(expression: ts.Expression): boolean {
+    const type = checker.getApparentType(checker.getNonNullableType(checker.getTypeAtLocation(expression)));
+    const cached = possibleMutators.get(type);
+    if (cached !== undefined) return cached;
+    const possible = type.getCallSignatures().some((signature) => mutator(signature.declaration));
+    possibleMutators.set(type, possible);
+    return possible;
+  }
   function fromView(expression: ts.Expression, seen = new Set<ts.Node>()): boolean {
     if (seen.has(expression)) return false; seen.add(expression);
     if (ts.isPropertyAccessExpression(expression) && expression.name.text === "runsView") return true;
@@ -60,7 +72,8 @@ function audit(fixtures = false): string[] {
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
         && !(relative === "src/infra/compat/settings-database-upgrade.ts" && ts.isStringLiteralLike(node) && node.text === BACKFILL_SQL)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
-      const signature = ts.isCallExpression(node) ? checker.getResolvedSignature(node)?.declaration : undefined;
+      const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
+        ? checker.getResolvedSignature(node)?.declaration : undefined;
       const symbol = ts.isPropertyAccessExpression(node) ? checker.getSymbolAtLocation(node.name) : undefined;
       if (mutator(signature) || symbol?.declarations?.some(mutator)) report("mutator");
       if (ts.isPropertyAccessExpression(node) && ["get", "list"].includes(node.name.text) && fromView(node.expression)) report("runs-view");
@@ -80,5 +93,9 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.ok(found.some((entry) => entry.includes("UPDATE tasks")), "historical run table remains protected");
     assert.ok(found.some((entry) => entry.includes("UPDATE workflow_workers")), "renamed worker table remains protected");
     assert.ok(found.some((entry) => entry.includes("mutate({})")), "destructured mutator is still resolved");
+    assert.ok(!found.some((entry) => entry.includes('overloaded("safe")')), "safe selected overload remains allowed");
+    for (const call of ["facade.move({})", 'indexed["continue"]({})', "overloaded({})", "optional?.({})", "generic({})", "union({})"]) {
+      assert.ok(found.some((entry) => entry.includes(call)), `indirect mutator remains protected: ${call}`);
+    }
   });
 });

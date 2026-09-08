@@ -12,7 +12,7 @@ import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fix
  *   → the evidence receipt derives, and says `unknown` / `none` where it must.
  *
  * The zero-write claims here are asserted against the authority DATABASE — no
- * `write_intents` row for the permanent key, no `run_checkpoints` row for the
+ * `run_operations` row for the permanent key, no `run_checkpoints` row for the
  * transaction node, no `run_terminal_outbox` beyond the one the settlement
  * itself writes — because "nothing was committed" is a statement about durable
  * rows, and a function that returned proves nothing.

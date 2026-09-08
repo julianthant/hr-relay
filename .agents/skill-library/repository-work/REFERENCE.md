@@ -287,7 +287,7 @@ canary from `.env`, expose its value, silently substitute another target, or inf
   nodes and proves exact zero deltas in all three write-authority tables; never add a no-op
   transaction to qualify for preview. The live half may write
   ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
-  `write_intents`, `write_attempts`, and `durable_outbox`.
+  `run_operations`, `run_operation_attempts`, and `operation_outbox`.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`

@@ -476,7 +476,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -887,17 +887,17 @@ afterEach(() => {
 });
 
 describe("native SQLite authority schema", () => {
-  it("requires stopped conversion through v34 and admits v35 directly", () => {
+  it("requires stopped conversion through v35 and admits v36 directly", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(29), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(30), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(31), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(32), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(33), true);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(34), true);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(35), false);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(35), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(36), false);
   });
 
-  it("creates a fresh authority at v35 with one v35 baseline journal row", () => {
+  it("creates a fresh authority at the current schema with one baseline journal row", () => {
     const path = databasePath("fresh-v32.sqlite");
     openDatabase(path).close();
 
@@ -1114,7 +1114,7 @@ describe("native SQLite authority schema", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /upgrade-required \{ schemaVersion: 29, floor: 34 \}/u,
+      /upgrade-required \{ schemaVersion: 29, floor: 35 \}/u,
     );
     assert.deepEqual(readFileSync(path), before);
   });
@@ -1156,7 +1156,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), corruptBytes);
   });
 
-  it.each([27, 28, 29, 30, 31, 32, 33, 34] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
+  it.each([27, 28, 29, 30, 31, 32, 33, 34, 35] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
     const path = databasePath(`integrated-v${String(version)}.sqlite`);
     createExactReleasedDatabase(path, version);
     const before = readFileSync(path);
@@ -2181,10 +2181,10 @@ describe("authority generation accounting", () => {
     { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
     { table: "workflow_run_requests", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
-    { table: "write_intents", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
-    { table: "write_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
+    { table: "run_operations", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
+    { table: "run_operation_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
     {
-      table: "durable_outbox",
+      table: "operation_outbox",
       prepare: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); },
       mutate: (db) => { db.commitWriteAttempt(ATOMIC_WRITE_COMMIT); },
     },
@@ -2288,7 +2288,7 @@ describe("authority generation accounting", () => {
     database.withAuthorityTransaction(() => {
       assert.throws(
         () => database.authority.writeIntents.fenceAttempt({ intent: competingIntent, attempt: competingAttempt }),
-        /UNIQUE constraint failed: write_attempts.record_key/,
+        /UNIQUE constraint failed: run_operation_attempts.record_key/,
       );
     });
 

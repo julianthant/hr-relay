@@ -1,0 +1,183 @@
+import assert from "node:assert/strict";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, it } from "vitest";
+import { manualClock } from "../../src/domain/clock.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { NOW, WRITE_INTENT_ATTEMPTING } from "../fixtures/phase1c-contract-fixtures.js";
+import { createOperationRenameSource, operationFixtureId, OPERATION_TABLE_RENAMES } from "./helpers/operation-names-fixture.js";
+
+const clock = manualClock(new Date(NOW));
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function fixture(version = 34) {
+  const root = mkdtempSync(join(tmpdir(), "operation-names-")); roots.push(root);
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(root, name));
+  const stateRoot = join(root, ".tracker"); mkdirSync(stateRoot);
+  const path = join(stateRoot, "state.db"); createOperationRenameSource(path, version);
+  const input = { stateRoot, processLockRoot: join(stateRoot, "locks"), environmentFile: join(root, ".env"), plan: false };
+  return { path, input, backup: () => backupStoppedAuthority(stateRoot, clock), run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+}
+function rows(path: string, table: string) {
+  const db = new DatabaseSync(path, { readOnly: true });
+  try { return db.prepare(`SELECT * FROM ${table} ORDER BY record_key`).all(); }
+  finally { db.close(); }
+}
+async function currentFixture() {
+  const f = fixture(); await f.backup(); await f.run(); return f;
+}
+function open(path: string) {
+  return AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "operation-names-test" }, clock);
+}
+
+describe("operation table names", () => {
+  it("retains the populated v34 fingerprint produced by the accepted baseline reader", () => {
+    const f = fixture();
+    // Captured with the unmodified reader at 35635a04e16e9c3cf1e99b16d4963752a18c616a.
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint,
+      "2fc06e2ed8866535acad0ba9850200dbc34d2ea28e67fea2126f764f2c0ad71b");
+  });
+
+  it("deletes current operation children with accurate tallies while retaining another run's operation history", async () => {
+    const f = await currentFixture(); const db = open(f.path);
+    try {
+      const receipt = db.authority.runs.delete({ runId: WRITE_INTENT_ATTEMPTING.runId,
+        origin: "queue", commandId: operationFixtureId(80), now: NOW });
+      assert.deepEqual(receipt.removed.filter(({ table }) => OPERATION_TABLE_RENAMES.some(([, current]) => current === table)), [
+        { table: "operation_outbox", rows: 2 }, { table: "run_operation_attempts", rows: 3 }, { table: "run_operations", rows: 3 },
+      ]);
+      // An operation's current run owns deletion. A prior run's attempt is retained with it.
+      assert.equal(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).length, 2);
+      assert.equal(db.authority.writeIntents.get(operationFixtureId(2))?.status, "attempting");
+      assert.equal(db.authority.deletedRuns.get(receipt.runId)?.removed[0]?.table, "operation_outbox");
+      assert.equal(db.authority.deletedRuns.get(operationFixtureId(70))?.removed[0]?.table, "durable_outbox");
+    } finally { db.close(); }
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).counts.unresolvedWriteIntents, 1);
+  });
+
+  it.each([33, 34, 35])("preserves populated v%s rows, old receipts and pending counts through stopped conversion", async (version) => {
+    const f = fixture(version);
+    const prior = OPERATION_TABLE_RENAMES.map(([old]) => rows(f.path, old));
+    const receipts = rows(f.path, "deleted_runs");
+    const historical = inspectAuthorityBackupReadOnly(f.path);
+    assert.equal(historical.counts.unresolvedWriteIntents, 3);
+    assert.equal(historical.counts.durableOutbox, 1);
+    const bytes = readFileSync(f.path);
+    await f.backup();
+    assert.equal((await f.run(true)).state, "planned");
+    assert.deepEqual(readFileSync(f.path), bytes, "backup and rehearsal must not change the source");
+    assert.equal((await f.run()).state, "converted");
+    for (const [index, [, current]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, current), prior[index]);
+    assert.deepEqual(rows(f.path, "deleted_runs"), receipts);
+    const after = inspectAuthorityBackupReadOnly(f.path);
+    assert.equal(after.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(after.counts, historical.counts);
+    assert.equal(after.tables.some(({ name }) => OPERATION_TABLE_RENAMES.some(([old]) => old === name)), false);
+    const db = open(f.path);
+    try {
+      assert.equal(db.authority.writeIntents.get(operationFixtureId(1))?.status, "observed-present");
+      assert.deepEqual(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).map((r) => [r.generation, r.runAttempt]), [[1, 1], [2, 3]]);
+      assert.equal(db.authority.ledgerProjection.listPendingOutbox().length, 1);
+      assert.equal(db.authority.deletedRuns.get(operationFixtureId(70))?.removed[2]?.table, "write_intents");
+
+    } finally { db.close(); }
+    const settled = readFileSync(f.path);
+    assert.equal((await f.run()).state, "already-upgraded");
+    assert.deepEqual(readFileSync(f.path), settled);
+  });
+
+  it.each(["beforeCommit", "afterCommit"] as const)("recovers populated conversion interrupted at %s", async (boundary) => {
+    const f = fixture();
+    const prior = OPERATION_TABLE_RENAMES.map(([old]) => rows(f.path, old));
+    await f.backup();
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { [boundary]: () => { throw new Error("injected-operation-rename"); } } }, clock), /injected-operation-rename/u);
+    const version = new DatabaseSync(f.path, { readOnly: true });
+    try { assert.equal(version.prepare("PRAGMA user_version").get()?.user_version, boundary === "beforeCommit" ? 34 : CURRENT_AUTHORITY_SCHEMA_VERSION); }
+    finally { version.close(); }
+    if (boundary === "beforeCommit") {
+      for (const [index, [old]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, old), prior[index]);
+    }
+    assert.equal((await f.run()).state, "converted");
+    for (const [index, [, current]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, current), prior[index]);
+  });
+
+  it("rolls all three DDL renames back together on an interrupted transaction", () => {
+    const f = fixture(35);
+    const db = new DatabaseSync(f.path);
+    try {
+      const migration = SQLITE_MIGRATIONS.find(({ version }) => version === 36); assert.ok(migration);
+      db.exec("BEGIN IMMEDIATE");
+      const [first, second] = migration.statements; assert.ok(first); assert.ok(second);
+      db.exec(first); db.exec(second);
+      assert.throws(() => db.exec("SELECT * FROM deliberately_missing_conversion_table"), /no such table/u);
+      db.exec("ROLLBACK");
+    } finally { db.close(); }
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 35);
+  });
+
+  it.each([33, 34, 35, 36])("validates SQL mirrors and strict records at schema %s without skipping old operation queries", (version) => {
+    const f = fixture(version);
+    const names = version < 36 ? OPERATION_TABLE_RENAMES.map(([old]) => old) : OPERATION_TABLE_RENAMES.map(([, current]) => current);
+    const db = new DatabaseSync(f.path);
+    try { db.prepare(`UPDATE ${names[1]} SET generation=8 WHERE record_key=?`).run(operationFixtureId(12)); }
+    finally { db.close(); }
+    assert.throws(() => inspectAuthorityBackupReadOnly(f.path), /write-attempt-columns-match-record/u);
+  });
+
+  it.each([34, 35, 36])("refuses corrupt records in every operation family at schema %s", (version) => {
+    for (const [old, current] of OPERATION_TABLE_RENAMES) {
+      const f = fixture(version);
+      const table = version < 36 ? old : current;
+      const db = new DatabaseSync(f.path);
+      try { db.exec(`UPDATE ${table} SET record_json=json_set(record_json,'$.unexpectedField',true)`); }
+      finally { db.close(); }
+      const bytes = readFileSync(f.path);
+      assert.throws(() => inspectAuthorityBackupReadOnly(f.path), /authority-record-invalid/u);
+      assert.throws(() => AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250,
+        migrationOwner: "corrupt-historical-record", openMode: "storage-doctor-read-only-no-migrate" }, clock),
+      /failed strict record schema validation/u);
+      assert.deepEqual(readFileSync(f.path), bytes);
+    }
+  });
+
+  it("preserves every v35 trigger through the isolated operation migration", () => {
+    const f = fixture(35);
+    const triggers = () => {
+      const db = new DatabaseSync(f.path, { readOnly: true });
+      try { return db.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger'").all().map((row) => {
+        assert.equal(typeof row.name, "string"); assert.equal(typeof row.sql, "string");
+        return [String(row.name), String(row.sql).replace(/"([a-z_]+)"/gu, "$1")];
+      }); } finally { db.close(); }
+    };
+    const expected = triggers().map((row) => row.map((value) => OPERATION_TABLE_RENAMES.reduce<string>(
+      (sql, [old, current]) => sql.replaceAll(old, current), value))).sort();
+    const raw = new DatabaseSync(f.path);
+    try {
+      const migration = SQLITE_MIGRATIONS.find(({ version }) => version === 36); assert.ok(migration);
+      for (const statement of migration.statements) raw.exec(statement);
+      raw.exec("UPDATE authority_meta SET schema_version=36; PRAGMA user_version=36");
+    } finally { raw.close(); }
+    assert.deepEqual(triggers().sort(), expected);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 36);
+  });
+
+  it("retains foreign keys, generation uniqueness, permanent keys and immutable tombstones", async () => {
+    const f = await currentFixture();
+    const db = new DatabaseSync(f.path);
+    try {
+      assert.equal(db.prepare("PRAGMA foreign_key_list(run_operation_attempts)").get()?.table, "run_operations");
+      assert.equal(db.prepare("PRAGMA foreign_key_list(operation_outbox)").get()?.table, "run_operations");
+      assert.throws(() => db.prepare("UPDATE run_operation_attempts SET write_intent_id=? WHERE record_key=?").run(operationFixtureId(99), operationFixtureId(12)), /FOREIGN KEY/u);
+      assert.throws(() => db.exec("INSERT INTO run_operation_attempts SELECT 'duplicate-generation',write_intent_id,generation,record_json,created_at FROM run_operation_attempts LIMIT 1"), /UNIQUE/u);
+      assert.throws(() => db.exec("UPDATE run_operations SET system=NULL"), /requires system/u);
+      assert.throws(() => db.exec("DELETE FROM run_operations"), /FOREIGN KEY/u);
+      assert.throws(() => db.exec("DELETE FROM deleted_runs"), /never deleted/u);
+      assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { db.close(); }
+  });
+});

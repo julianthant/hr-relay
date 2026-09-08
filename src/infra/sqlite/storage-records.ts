@@ -273,9 +273,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   run_checkpoints: RunCheckpointRecordSchema,
   workflow_run_requests: StartPlanRecordSchema,
   ocr_approvals: OpaqueAuthorityRecordSchema,
-  write_intents: WriteIntentRecordSchema,
-  write_attempts: WriteAttemptRecordSchema,
-  durable_outbox: AtomicOutboxRecordSchema,
+  run_operations: WriteIntentRecordSchema,
+  run_operation_attempts: WriteAttemptRecordSchema,
+  operation_outbox: AtomicOutboxRecordSchema,
   artifact_outbox: ArtifactOutboxStorageRecordSchema,
   /** Typed at D164, when the first sink projector landed. */
   artifact_sink_heads: ArtifactSinkHeadRecordSchema,
