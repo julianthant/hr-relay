@@ -1,6 +1,6 @@
 # Task 7 · Close the rebuilt foundation
 
-**Current supervisor checkpoint (2026-09-08).** Steps 1–5 are accepted; awaiting independent review. Executable candidate
+**Current supervisor checkpoint (2026-09-08).** Steps 1–5 are accepted; integration is blocked on complete independent review capacity. Executable candidate
 `4a2421285ba013fae6743412f50e85c19c62ca60` passed full gates (5546 coverage tests, 833 architecture
 checks, 261 unchanged desktop parity cases) and the complete headed Separations T1b rehearsal:
 all eight assertions, fifteen fresh checkpoints and exact 0/0/0 write-authority deltas. Person
@@ -13,7 +13,8 @@ runtime/browser processes stopped. Latest doctor at 2026-09-08T07:29:41.609Z is 
 generation 836, twelve reconciled runs, zero pending commands/unresolved writes/durable outbox,
 two historical leases and two local terminal-result projection handoffs. The public subject metadata
 now records this accepted observation, with no operational input or private-source change.
-Final candidate gates passed; fresh complete `sup_review` remains before integration. Settings
+Final candidate gates passed. Both native complete reviewers stopped after context compaction;
+neither provides acceptance credit. A revised review arrangement requires operator approval. Settings
 revision 7 and its three temporary overrides remain deliberately deferred until a separate operator
 signal; no restoration, scheduling or availability polling is authorized by this checkpoint.
 Step 6, independent review, integration gates and owned cleanup remain open. No push or Phase-2.6
@@ -1874,3 +1875,63 @@ The exact consumed untracked recovery file
 `docs/handoffs/2026-09-07-task-1-6-7-reread-blocker.md` is preserved byte-for-byte as
 `scratch/consumed-task-1-6-7-reread-blocker.md`, where scratch is the absolute evidence directory
 above. Current actionable facts now live in this owner; older snapshots remain historical.
+
+
+### Independent review capacity blocker (2026-09-08)
+
+Frozen implementation `4a2421285ba013fae6743412f50e85c19c62ca60` and evidence candidate
+`d9ccb0c2dc843c91ffab2a03fb028d69ca2fcc56` were submitted against accepted base
+`f75e24a57e6494e2846af248539c819c9223e53e`. Both native reviewers were independent Astra/high,
+read-only and complete assignments; neither authored a fix or supplied acceptance credit.
+
+| Review | Disposition | Open coverage at stop |
+| --- | --- | --- |
+| R1-complete, `/root/sup_review_foundation_close` | BLOCKED after automatic context compaction; no confirmed finding | Final forty-path/proof reconciliation; permanent transaction-key and authority consumers; generated roadmap accounting; final identity check. |
+| R2-complete, `/root/sup_review_foundation_complete_r2` | BLOCKED after automatic context compaction; no confirmed finding; final frozen identity clean | Remaining protected input/replay/archive/transaction-key consumers, authority/fixture/negative-control closure, provider/session/finalizer consumers, generated artifacts, remaining live/evaluator evidence and historical claim reconciliation. |
+
+Before R2, the supervisor measured 2,815,615 non-parity diff bytes: 2,491,594 were the generated
+roadmap HTML alone, leaving 324,021 bytes in the remaining source/test/document diff. R2 therefore
+used bounded source/contract reads, programmatic generated-data/reference checks and an incremental
+coverage ledger. This changed retrieval, not the complete assigned scope. It still exhausted context.
+The actual cause of token growth beyond that evidence is unknown; configured capacity is not measured
+remaining usage. Do not dispatch the same complete native assignment a third time, combine partial
+reviews into PASS, or integrate on these reports. `foundation-review-r1-blocked.json`,
+`foundation-review-r2-blocked.json`, `foundation-review-size-map.json` and
+`foundation-review-resizing.json` preserve the boundaries in the existing task scratch.
+
+R2 requested exact frozen-HEAD freshness evidence. The supervisor ran read-only checks on clean
+`d9ccb0c2`, verified unchanged before/after: manifest 2376 ms, catalog 1082 ms, roadmap 411 ms,
+instruction twins/size 104 ms and diff 7 ms, all exit 0. Exact commands are in
+`foundation-r2-requested-checks.json` with per-check logs. R2 did not inspect this supplied output
+before its stop; it is supervisor evidence, not independent acceptance. No implementation changed.
+
+**Proposed standalone review amendment — WAITING ON operator approval.** Preserve one complete
+independent review of the entire Task-7 candidate, rather than partitioning or reusing partial credit.
+Authorize one separately opened Codex review task on Astra/high, with automatic context compaction
+and durable checkpoint/resume explicitly permitted. This would be the sole exception to the original
+no-additional-task dispatch boundary, only for this review; no sibling implementation or next task.
+Do not create that task or claim this arrangement approved until the operator explicitly accepts it.
+
+The reviewer receives the approved plan/amendments, exact accepted base, implementation SHA and
+then-frozen evidence SHA, strict 503-path inventory and complete proof map. It independently inspects
+all changed production boundaries and consumers, all source/tests/docs/generated artifacts, live and
+fixture proof, authority/secrecy negative controls and the full R1/R2 disposition ledger. No boundary
+is delegated, omitted or credited from either partial review. The complete verdict replaces neither
+a missing scope nor a required gate: PASS requires complete per-path/proof reconciliation with no
+unresolved required finding. Settings restoration and post-PASS integration/cleanup remain open
+supervisor duties and must not be falsely represented as complete.
+
+Candidate checkout remains read-only. No runtime/browser/live workflow, private-source or raw HR
+evidence access, code change, push, integration, instruction/model modification or further delegation
+is allowed. Only its own review checkpoint and verdict artifacts may be written outside the candidate,
+in the existing task scratch. Before each compaction it checkpoints pinned identities, every path/proof
+disposition with deciding evidence, findings and unreviewed scope. After resume it verifies exact
+checkout/branch/SHAs/dirty state before source reads, reconciles inventory and prior findings, and
+reopens uncertain deciding evidence. A summary alone cannot support PASS. Final identity must be clean
+and unchanged. Only the original supervisor performs fixes, gates, reviewed integration and cleanup.
+
+This proposal changes review execution/recovery, not the approved product scope, proof obligations or
+merge condition. All code gates and both live proofs remain accepted at their recorded identities;
+the current blocker is absence of a complete independent verdict. Primary remains clean on f75e24a5.
+No integration or settings restoration occurred. Settings revision 7 and its unspent restoration
+script remain under the separate operator deferral.

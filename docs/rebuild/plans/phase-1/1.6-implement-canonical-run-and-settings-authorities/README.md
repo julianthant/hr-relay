@@ -16,8 +16,10 @@ Lookup's headed live-read meets all seven assertions; Separations' complete fres
 meets all eight with fifteen current-run checkpoints. Both have exact 0/0/0 write-authority deltas.
 The healthy primary root is schema 33/generation 836 with twelve reconciled runs; primary master
 is restored clean to f75e24a5 and owned runtime/browser processes stopped. The Task-7 owner retains
-all prior failures and binds the accepted proof and final gates. Fresh complete review, integration
-and cleanup remain; temporary-settings restoration stays operator-deferred. Phase 1.6 is not closed.
+all prior failures and binds the accepted proof and final gates. Two complete native reviews stopped
+after context compaction without PASS; integration is blocked pending approval of the owner’s proposed
+standalone review arrangement. Integration gates and cleanup remain; temporary-settings restoration
+stays operator-deferred. Phase 1.6 is not closed.
 
 **D341 detour (approved 2026-09-07; accepted, integrated into local `master` as `bc6dc9b54` and the
 private conversion performed the same day — see `ref guards-and-tests` §10.5 completion record).** It
