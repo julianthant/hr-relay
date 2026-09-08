@@ -7579,3 +7579,46 @@ Independent whole-table write counts stayed exactly **0/0/0**; no workflow attem
 was started. The browser closed and post-doctor passed at 04:13:01.307Z, schema 32/generation 632,
 with zero pending commands, unresolved write intents and durable outbox rows. This is live repair
 proof only; the failed full-workflow result and protected reread blocker above remain unchanged.
+
+
+### Fresh protected reread: observation-contract failure (2026-09-08)
+
+Frozen candidate `7eb62eea84c2d0fcb284c3f4c6144737f92e36a2` matched all 1911 gated inputs and
+installed dependencies on clean detached primary; original master f75e24a5 remained unchanged.
+Provider/parent admission and unchanged private-source metadata passed; both protected inputs were
+ready. Read-only pre-doctor at 07:04:13.485Z passed healthy schema 33/generation 634, same root
+identity. Settings revision 7 was active, headed, and served descriptors matched. The explicit
+reread item had next attempt 1, zero runs and zero checkpoints; the original item retained next
+attempt 5 and fourteen checkpoints. The planner used the same captured source bindings.
+
+| Proof | Observed evidence |
+| --- | --- |
+| Result / verdict | `da596650-6e02-4d43-ba6f-a1290307a579` / failed, three met and five failed assertions |
+| Run / trace | `28272e44-bbc8-4c6c-a8c8-ed49a579def5` / `sp-000455-2827` |
+| Arm / attempt / browser | dry-run-preview / 1 on explicit reread ordinal 1 / headed; dryRun=true |
+| Manifest | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 100126 / 101790 ms / 1 |
+| Failure / diagnostic bundle | `4fb2b7e5-7752-45da-a2d3-57652404ee73` / `5a253a91-16e0-4e00-8bea-1865a791fbcf` |
+| Receipt | `4e426672-a324-5964-82e6-b17a7df704e7`, failed / unknown |
+| Evaluator deltas, independent run-scoped counts and whole transaction tables | **0/0/0** write intents / write attempts / durable outbox |
+
+The run read Kuali, UCPath identity/employment/department and the New Kronos timecard, then reached
+approval, writing fourteen current-run attempt-1/claim-generation-1 checkpoints without replay.
+`pending-set` failed `UNHANDLED`, non-transient, writeState `not-attempted`. Static-source matching
+identified the exact failure: no declared evidence classification for
+`task-output:ucpath/read-pending-termination-set` field `eligibleCount`. The task records count
+aliases instead of its `eligible`/`protected` array output fields and omits `source`. The real
+provenance collector also requires every recorded point to exist in output and every output leaf
+to have provenance. Merely adding count classifications would hide the first boundary failure
+and then fail finalization. The correction belongs in the task's recording, retaining existing
+population/count redaction and strict finalization. No protected value or raw failure text was
+copied into this evidence. No UNKNOWN submit or HR transaction occurred.
+
+`separations-reread-{command,readback}.json`, `pending-count-safe-failure.json`,
+`reread-live-unused-item-preflight.json`, `reread-live-{pre-doctor,post-doctor,write-counts}.json`
+retain the sanitized facts in the existing task scratch. Post-doctor at 07:07:58.681Z passed schema
+33/generation 733, same identity, eleven reconciled runs, zero pending commands/unresolved writes/
+durable outbox/provider reservations/artifact outbox. Two historical leases and the one local
+terminal outbox remain. The owned BFF (session 35232) stopped; no primary browser or CLI session
+remained. Primary master was restored clean to f75e24a5. Revision-7 settings remain deliberately
+unrestored, and no failure/checkpoint/result was removed. This proof is failed, not acceptance.

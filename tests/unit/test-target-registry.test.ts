@@ -239,7 +239,7 @@ describe("the committed test target registry", () => {
         sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: COMMITTED_DOCUMENT_NUMBER,
-        reRead: { ordinal: 1, reason: "Task 1.6.7 full rehearsal after verified callback repair; prior failures retained." },
+        reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
       },
     });
     assert.deepEqual(read, ["separationsKualiFinalizationCanaryDocumentNumber"]);
@@ -253,7 +253,7 @@ describe("the committed test target registry", () => {
     assert.deepEqual(result, {
       state: "blocked",
       label: "finalization-canary",
-      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-07",
+      reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-08",
     });
     // Since D300 this resolver cannot spend a credential because it cannot be
     // HANDED one: it takes the registry and the label, and nothing else.

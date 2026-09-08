@@ -115,7 +115,7 @@ function workflowsRegisteredByManifestRegistry(): ReadonlyMap<string, string> {
 
 /** The one separations subject D284 left; its number is private configuration (D300). */
 const SOLE_SUBJECT_LABEL = "finalization-canary";
-const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-07";
+const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-08";
 
 /**
  * The ONE test-target reference the registry may commit (D300). The chain arm
@@ -447,7 +447,7 @@ describe("test target registry architecture", () => {
       label: "finalization-canary",
       canonicalInput: {
         documentNumber: "4999",
-        reRead: { ordinal: 1, reason: "Task 1.6.7 full rehearsal after verified callback repair; prior failures retained." },
+        reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
       },
       protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
         name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],

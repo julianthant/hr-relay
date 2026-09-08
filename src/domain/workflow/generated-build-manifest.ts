@@ -7151,7 +7151,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "72e7f4c423c48cb1aab0ce42d3b617ced1d28bd958c26fb47940f9d9e4e679fc",
+      "fingerprint": "4f8915f134a75312a3e99e6e6ba3878ff18cf1dade54c7cb6528604c23ad4ba3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7419,7 +7419,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/tasks/read-pending-termination-set.ts",
-          "sha256": "bd9ef0db0b26c8f57b5bb61c484cb2cc97934ef0ff29d41019320b2d856fafe4"
+          "sha256": "54fada97d735e15499381ac8c20db628d5d0afa8e9621e4dbfe9969a83e794d6"
         },
         {
           "path": "src/stores/ucpath/termination-verdict.ts",

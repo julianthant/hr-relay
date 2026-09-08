@@ -1,6 +1,29 @@
 # Task 7 · Close the rebuilt foundation
 
-**Current supervisor checkpoint (2026-09-07, protected-reread correction authorized).** The operator
+**Current supervisor checkpoint (2026-09-08).** Combined candidate
+`7eb62eea84c2d0fcb284c3f4c6144737f92e36a2` passed all required offline gates against accepted
+master `f75e24a57e6494e2846af248539c819c9223e53e` and schema 33. Its new protected reread was
+independently unused (next attempt 1, zero runs/checkpoints); old item history remained intact.
+The headed Separations full rehearsal failed at `pending-set` after fourteen new checkpoints;
+all evaluator and independent write deltas are 0/0/0. The exact result and cause are recorded in
+“Fresh protected reread: observation-contract failure” below. Person Lookup's accepted result,
+run, receipt, three checkpoints and zero-write rows were read back unchanged on schema 33.
+
+The failure is deterministic and pre-write. The actual pending-set task's `recordData`
+fields now match its existing output contract, exercising real redaction and provenance finalization;
+do not add undeclared count aliases to the classification table or relax either guard. The real collector/redaction regression was red on the exact recorded failure and passes the
+repaired task through output finalization. The supervisor explicitly selects reread ordinal 2 for
+the complete repaired rehearsal; this one named decision never increments automatically. Require
+zero runs/checkpoints and next attempt 1 for ordinal 2, preserving ordinal 1 with fourteen failed
+checkpoints and the original item with fourteen earlier checkpoints. No workflow starts until all
+candidate gates pass. Failed reread ordinal 1 is spent and remains evidence.
+Primary is restored clean to master f75e24a5; the owned BFF/browser stopped. Latest healthy doctor:
+2026-09-08T07:07:58.681Z, schema 33/generation 733, eleven reconciled runs, zero pending commands,
+unresolved writes and durable outbox, two historical leases and one retained local terminal outbox.
+Settings revision 7 and its three overrides remain unchanged at the operator's explicit deferral.
+Steps 4–6, final evidence, complete independent review, integration and cleanup remain open.
+
+**Earlier checkpoint (2026-09-07, protected-reread correction authorized).** The operator
 said to get started after the remaining protected-reread correction was identified. This authorizes
 the narrow repair described here: preserve the exact no-reread protected key, append the existing
 explicit document reread ordinal, retain the same opaque source bindings and unchanged permanent
@@ -1659,3 +1682,103 @@ two files (4464), lint 24582 passed, and roadmap freshness/instruction twins/siz
 No new link or executable input changed. The repaired scanner is live-verified, while complete T1b
 acceptance and revision-7 settings restoration remain explicitly open. The foreign Vite server was
 still present on port 5174 at the final process check; all owned browser/BFF/worker processes stopped.
+
+
+### Fresh protected reread: observation-contract failure (2026-09-08)
+
+Frozen candidate `7eb62eea84c2d0fcb284c3f4c6144737f92e36a2` matched all 1911 gated inputs and
+installed dependencies on clean detached primary; original master f75e24a5 remained unchanged.
+Provider/parent admission and unchanged private-source metadata passed; both protected inputs were
+ready. Read-only pre-doctor at 07:04:13.485Z passed healthy schema 33/generation 634, same root
+identity. Settings revision 7 was active, headed, and served descriptors matched. The explicit
+reread item had next attempt 1, zero runs and zero checkpoints; the original item retained next
+attempt 5 and fourteen checkpoints. The planner used the same captured source bindings.
+
+| Proof | Observed evidence |
+| --- | --- |
+| Result / verdict | `da596650-6e02-4d43-ba6f-a1290307a579` / failed, three met and five failed assertions |
+| Run / trace | `28272e44-bbc8-4c6c-a8c8-ed49a579def5` / `sp-000455-2827` |
+| Arm / attempt / browser | dry-run-preview / 1 on explicit reread ordinal 1 / headed; dryRun=true |
+| Manifest | `59539bd777e4ef108c188d152275ad3649ffca756768b9420cb9d0c1a3851978` |
+| Evaluator / command / exit | 100126 / 101790 ms / 1 |
+| Failure / diagnostic bundle | `4fb2b7e5-7752-45da-a2d3-57652404ee73` / `5a253a91-16e0-4e00-8bea-1865a791fbcf` |
+| Receipt | `4e426672-a324-5964-82e6-b17a7df704e7`, failed / unknown |
+| Evaluator deltas, independent run-scoped counts and whole transaction tables | **0/0/0** write intents / write attempts / durable outbox |
+
+The run read Kuali, UCPath identity/employment/department and the New Kronos timecard, then reached
+approval, writing fourteen current-run attempt-1/claim-generation-1 checkpoints without replay.
+`pending-set` failed `UNHANDLED`, non-transient, writeState `not-attempted`. Static-source matching
+identified the exact failure: no declared evidence classification for
+`task-output:ucpath/read-pending-termination-set` field `eligibleCount`. The task records count
+aliases instead of its `eligible`/`protected` array output fields and omits `source`. The real
+provenance collector also requires every recorded point to exist in output and every output leaf
+to have provenance. Merely adding count classifications would hide the first boundary failure
+and then fail finalization. The correction belongs in the task's recording, retaining existing
+population/count redaction and strict finalization. No protected value or raw failure text was
+copied into this evidence. No UNKNOWN submit or HR transaction occurred.
+
+`separations-reread-{command,readback}.json`, `pending-count-safe-failure.json`,
+`reread-live-unused-item-preflight.json`, `reread-live-{pre-doctor,post-doctor,write-counts}.json`
+retain the sanitized facts in the existing task scratch. Post-doctor at 07:07:58.681Z passed schema
+33/generation 733, same identity, eleven reconciled runs, zero pending commands/unresolved writes/
+durable outbox/provider reservations/artifact outbox. Two historical leases and the one local
+terminal outbox remain. The owned BFF (session 35232) stopped; no primary browser or CLI session
+remained. Primary master was restored clean to f75e24a5. Revision-7 settings remain deliberately
+unrestored, and no failure/checkpoint/result was removed. This proof is failed, not acceptance.
+
+
+**Pending-set recording regression.** Parent changed only the task's observation fields: actual
+`eligible`/`protected` arrays pass through the existing population/count transform, and `source`
+receives its existing declaration. The shared classification table, provenance collector, driver,
+transaction keys and safety guards are unchanged. Native `sup_astra` worker
+`/root/sup_astra_pending_count_regression` owned only the new
+`tests/unit/ucpath-pending-set-observation.test.ts`; the supervisor inspected it and owns the source
+repair and candidate. The actual task, registered descriptor, real collector and redaction boundary
+were red on the exact `eligibleCount` failure (`pending-count-red.log`). Four cases pass after
+repair (`pending-count-protected-green.log`): empty and mixed sets, exact typed rows/provenance,
+count-only observations, protected identifier suppression, and undeclared-neighbor refusal.
+The test substitutes only a deterministic external driver scan. No live proof is claimed by it.
+
+Neighboring focused tests initially found one stale committed-registry observation date; its exact
+expectation was updated, preserving standalone finalization refusal. Final six-file focused command
+passed 120 tests (54547); typecheck 43612 and lint 51105 passed. The earlier failed fixture log is
+retained in `pending-count-focused.log`; final output is `pending-count-focused-fixed.log`.
+Only one task implementation fingerprint/source hash changed in the generated manifest. The
+selected registry now names explicit reread ordinal 2, with a repair-specific reason and the
+September 8 observation. No private source or value identity changed. The manifest still requires
+fifteen current-run attempt-1 checkpoints; unused ordinal-2 history and preservation of both prior
+items are mandatory independent preflight checks. Full candidate gates and the renewed live proof
+remain open; this is an identified repair, never a transient retry or automatic ordinal increment.
+
+
+**Provisional delivery assessment: observation boundary.** The pending-set failure is an
+implementation defect inside the already required live path. Earlier scan/verdict tests exercised
+the browser reader and returned value, while the task's real recordData → redaction → provenance
+finalization boundary remained unexercised. The new production-task regression exposes that seam
+before a browser run; the first proposed declaration-only correction was rejected during source
+inspection because finalization would still refuse the count aliases and missing output fields.
+No weakening or declaration-only patch was shipped. Accepted master's schema-33 changes were an
+external prerequisite change, requiring combined migration and full gates before using the actual
+root. Gate timings above measure required reruns; they do not estimate avoidable savings. Final
+review/integration totals remain unclaimed.
+
+
+**Step 3 reaccepted for pending-set observation repair.** Final typecheck 23045 and lint 63058
+passed. Scoped architecture passed 39 tests (10289, 1481 ms) after retaining the complete historical
+failure reason and updating the sole-subject observation-date constant; the failed first scoped
+run is preserved in `pending-count-scoped-architecture.log`. Generated manifest/catalog/roadmap,
+instruction twins/size and diff checks passed (45814). Serial runner 69063 passed coverage: 440
+files / 5546 tests, 334597 ms; statements 85.91%, branches 77.57%, functions 89.89%, lines 88.03%.
+Suite size passed in 230 ms, standalone architecture in 62535 ms (833 tests), and unchanged-reference
+desktop parity in 65135 ms (261 cases). No parity reference was edited for this repair.
+`pending-count-candidate-gate-results.json` records exact commands and results; corresponding
+logs and `pending-count-gated-inputs.json` retain all 1912 inputs. Their exact hashes still match.
+The approved resource-only two-worker adapter and its imported config remain unchanged. Only the
+selected ordinal-2 unused item may be rehearsed after frozen-primary preflight; all prior attempts
+remain spent. No Step-4 acceptance, independent review, integration or completion is claimed.
+
+
+This gate-recording update passed 39 scoped architecture tests (51737) and lint (26255), with
+all 1912 executable/test/configuration inputs unchanged from the full gated tree. Logs are
+`pending-count-recording-{architecture,lint}.log`. D191 reuses that exact full-gate evidence;
+no Markdown link, implementation or parity reference changed during recording.

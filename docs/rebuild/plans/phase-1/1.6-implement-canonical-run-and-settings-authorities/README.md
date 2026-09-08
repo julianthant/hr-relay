@@ -10,13 +10,14 @@ approved only the resulting generated-fingerprint parity refresh, including disp
 with all other semantics/layout and zero tolerance preserved. Task 7's owner records the classified
 refresh and candidate gates; live proof, review and integration remain open.
 
-**Task 7 current evidence (2026-09-07).** Steps 1–3 are accepted through callback repair
-`09436a49`: 5522 coverage tests and 259 desktop parity cases passed. Person Lookup's headed
-live-read met all seven assertions with exact 0/0/0 write deltas. Separations attempt 4 remains
-failed; its callback repair subsequently passed the production read-only scanner, but complete T1b
-proof is blocked by protected reread identity/admission. The Task-7 owner retains the exact results,
-gates and residuals. Settings restoration is deferred until the operator explicitly signals readiness;
-it is independent of the identity blocker. No final review, integration or completion is claimed.
+**Task 7 current evidence (2026-09-08).** Combined candidate `7eb62eea` passed 5542 coverage tests,
+833 architecture checks and 261 desktop parity cases against accepted schema-33 master. Person
+Lookup's headed live-read still has all seven assertions met and exact 0/0/0 writes; its retained
+result was read back unchanged. The protected reread repair produced a distinct unused item, but
+its full Separations rehearsal failed at pending-set observation recording after fourteen new
+checkpoints. Task 7 is repairing the actual task's recordData/output mismatch and retains every
+failed result. Settings restoration remains deferred until the operator signals readiness. The
+Task-7 owner binds exact proof and remaining gates; no review, integration or completion is claimed.
 
 **D341 detour (approved 2026-09-07; accepted, integrated into local `master` as `bc6dc9b54` and the
 private conversion performed the same day — see `ref guards-and-tests` §10.5 completion record).** It

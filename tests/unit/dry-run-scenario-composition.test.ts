@@ -1060,7 +1060,7 @@ describe("dry-run scenario target dispatch", () => {
 
     assert.deepEqual(capturedCanonicalInput, {
       documentNumber: "4999",
-      reRead: { ordinal: 1, reason: "Task 1.6.7 full rehearsal after verified callback repair; prior failures retained." },
+      reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
     });
     // D341 P5: the start record binds the private input by NAME and opaque source identity,
     // never by value, so resume/rerun/archive compare identities the value can't leak through.

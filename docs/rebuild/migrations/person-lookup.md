@@ -250,3 +250,13 @@ acceptance rows remain open until the new exact-ordinal candidate passes its gat
 
 Task 1.6.7 headed proof on candidate `145e50a32e6a817e67bdedb4963d8e240be86349`: result `bcc1d548-6e1e-40e6-a683-cc7492d99d73` **met**, run `c19cae5a-8529-413b-968f-2b6d95675832` / `pl-181857-c19c`, live-read, attempt 3. Manifest `a68d9f65f403c9faacf4b8174a7b0374484fa9205da6916d69fe68f045c1ed6c`; evaluator 211335 ms. Independent run-scoped write counts and evaluator deltas are exactly **0/0/0**. All seven assertions and the verified-done/verified receipt passed; three exact attempt-3 checkpoints. This accepted proof remains bound to its immutable settings snapshot.
 The Task-7 owner records full command, receipt, doctor, canonical configuration and recovery evidence.
+
+
+Task 1.6.7 schema-33 evidence reuse (2026-09-08): all 59 descriptor sources, the live manifest and
+production T1b runtime are unchanged from the accepted candidate above. The protected start planner
+retains the exact non-document key. On primary candidate `7eb62eea84c2d0fcb284c3f4c6144737f92e36a2`,
+exact result `bcc1d548-6e1e-40e6-a683-cc7492d99d73`, run, three checkpoints, receipt and independent
+0/0/0 counts matched the earlier readback byte-for-byte after parsing. Combined migration/persistence
+gates passed against accepted master f75e24a5. No new Person Lookup attempt or live observation was
+made; its dated accepted observation is retained. `person-lookup-combined-proof-reuse.json` and
+`person-lookup-schema33-readback.json` preserve the comparison in Task-7 scratch.

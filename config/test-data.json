@@ -7,12 +7,12 @@
         "label": "finalization-canary",
         "availability": {
           "state": "available",
-          "lastObserved": "2026-09-07",
-          "reason": "Operator-selected replacement applied to the D341 private source on 2026-09-07. Presence and complete production input admission were verified without exposing the value. Current live acceptance and preserved prior failures are recorded in the Task 1.6.7 owner; this availability entry authorizes read-only verification only. Historical prior-selection result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 and retained result 05ec70d9-1286-4582-acd6-2378b487e112 failed EMPLOYEE_NOT_FOUND with exact write-intent/attempt/durable-outbox deltas 0/0/0; neither establishes this replacement\u2019s outcome."
+          "lastObserved": "2026-09-08",
+          "reason": "The unchanged operator-selected private source was admitted on 2026-09-08. The full headed rehearsal read Kuali, UCPath identity/employment and the New Kronos timecard, then failed at the pending-set observation contract before any write. Exact deltas remained 0/0/0; the failed result and prior failures remain in the Task 1.6.7 owner. This available subject authorizes read-only verification only; no full acceptance is claimed. Historical prior-selection result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 and retained result 05ec70d9-1286-4582-acd6-2378b487e112 failed EMPLOYEE_NOT_FOUND with exact write-intent/attempt/durable-outbox deltas 0/0/0; neither establishes this replacement\u2019s outcome."
         },
         "provenance": {
           "document": "docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
-          "section": "Network recovery and current live acceptance"
+          "section": "Fresh protected reread: observation-contract failure"
         },
         "usagePolicy": "read-only",
         "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
@@ -29,8 +29,8 @@
                 }
               },
               "reRead": {
-                "ordinal": 1,
-                "reason": "Task 1.6.7 full rehearsal after verified callback repair; prior failures retained."
+                "ordinal": 2,
+                "reason": "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained."
               }
             }
           },
