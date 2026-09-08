@@ -1219,23 +1219,23 @@ describe the analogy, not the model.
 <!-- roadmap-status: migrations -->
 - [ ] Phase 4 starts only after Phase 3.5 closes; optional 3.4 features do not block it (D342)
 - [ ] one complete current-behavior and proposed-definition packet is verified at a time
-- [!] the operator approves the exact candidate boundary before a lettered part is created
+- [!] the operator approves the exact candidate boundary before migration implementation is assigned
 > 2026-09-04 | D329 authority move | future-workflow admission remains here; the former active 03c candidate-order narrative is superseded history
 <!-- /roadmap-status -->
 
 <!-- roadmap: workflow-admission -->
 
 <!-- roadmap-status: workflow-admission -->
-- [ ] select one candidate after Phase 3 closes
+- [x] record Background Check as the selected candidate; migration implementation waits for Phase 3 close
 - [ ] verify all nine packet fields without guessing
-- [!] approve the exact boundary and tuple model before creating 4A
+- [!] approve the exact boundary and tuple model before assigning 4.1 migration implementation
 > 2026-09-04 | D329 authority move | this section, not the archived 03c plan, owns the next-workflow admission gate
 <!-- /roadmap-status -->
 
 A legacy workflow name, old implementation folder, proposed order row, or partially verified intake
 record is a **workflow candidate**, not a rebuilt workflow and not an admitted Phase 4 part.
-Candidates stay outside Phase 4's active lettered sequence until the operator approves one complete
-admission packet.
+Candidates may have operator-requested decimal discovery tasks in Phase 4. They receive no
+migration implementation authority until the operator approves one complete admission packet.
 
 The packet must establish, from current legacy code and live verification:
 
@@ -1251,13 +1251,16 @@ The packet must establish, from current legacy code and live verification:
 
 Missing or uncertain facts remain named in the candidate packet. They are not filled from an old
 order label or treated as implementation details. The operator approves the exact boundary and tuple
-model before promotion. Promotion then creates the next lettered Phase 4 part, its migration doc and
-its coordinator plan. That part owns only the approved workflow or explicitly approved workflow
+model before promotion. Promotion then authorizes that decimal Phase 4 subphase's migration tasks
+and migration doc. That part owns only the approved workflow or explicitly approved workflow
 family plus shared task-store or generic-surface work it is the first verified consumer to require.
 
 **D323 numbering amendment.** D319's verification and operator-approval gate is unchanged. What
-changes is the container: remaining migrations all belong to Phase 4, admitted in order as 4A, 4B,
-4C and onward rather than consuming a new numbered phase per workflow.
+changes is the container: remaining migrations all belong to Phase 4 rather than consuming a new
+numbered phase per workflow. **Operator amendment, 2026-09-08:** use decimal subphases 4.1, 4.2,
+4.3 and onward; 4.1 is Background Check. Explicitly requested discovery and manual preparation
+may be recorded as tasks beneath the selected subphase before admission. The migration implementation
+gate and Phase 3 prerequisites are unchanged; numbered discovery tasks do not claim admission.
 
 Admission verification and phase completion are different gates. Admission proves that the planned
 workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
@@ -1279,7 +1282,7 @@ A shared task-store, dashboard, intake, secret, export, notification, or operato
 does not receive a free-standing migration task merely because an old inventory listed it. The first
 approved workflow whose verified packet needs that capability owns its implementation and proof.
 Cross-workflow infrastructure may be separated into its own supervisor task inside that workflow's
-lettered Phase 4 part, but its admission, dependencies, and exit evidence remain explicit there.
+decimal Phase 4 subphase, but its admission, dependencies, and exit evidence remain explicit there.
 
 ---
 

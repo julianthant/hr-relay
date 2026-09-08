@@ -45,7 +45,7 @@ is unchanged. Node IDs, task labels, recorded statuses and append-only evidence 
 | [Phase 1](phase-1/README.md) | 1.1–1.6 |
 | [Phase 2](phase-2/README.md) | 2.1–2.6 |
 | [Phase 3](phase-3/README.md) | 3.1–3.5 |
-| [Phase 4](phase-4/README.md) | 4A (admission placeholder) |
+| [Phase 4](phase-4/README.md) | 4.1 Background Check |
 | [Phase 5](phase-5/README.md) | 5A–5B |
 | [Phase 6](phase-6/README.md) | 6A–6F |
 

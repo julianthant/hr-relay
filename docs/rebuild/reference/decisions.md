@@ -2231,3 +2231,5 @@ storage renames with unchanged identities, write safety, replay and deletion beh
 after accepted command/delegation integration. Stronger linkage to workflow runs remains
 a separate investigation; no relationship/deletion redesign or database application is
 approved by this naming decision.
+
+**2026-09-08 amendment to D323 — Phase 4 numbering.** The operator replaced 4A with 4.1 Background Check and requested concrete tasks under 4.1. Phase 4 now uses decimal subphases; discovery/preparation may be recorded before admission, while Phase 3 prerequisites and D319 implementation approval remain unchanged. Authority: [workflow-model §1.6.2](workflow-model.md#162-workflow-admission-before-a-phase-4-part-d319d323-2026-09-03) and [roadmap naming amendment](../../roadmap/roadmap.md#phase-4-decimal-naming-amendment--2026-09-08).

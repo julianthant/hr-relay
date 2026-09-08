@@ -43,7 +43,7 @@ export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
  */
 export const DocRefSchema = z
   .object({
-    doc: z.string().regex(/^(?:[0-6]|(?:[0-3]\.[1-9]\d*|[4-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?|ref:[a-z][a-z0-9-]*)$/),
+    doc: z.string().regex(/^(?:[0-6]|(?:[0-4]\.[1-9]\d*|[5-6][A-Z])(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)?|ref:[a-z][a-z0-9-]*)$/),
     kind: z.enum(["phase", "reference"]),
     section: z.string().min(1).optional(),
     raw: z.string().min(1),

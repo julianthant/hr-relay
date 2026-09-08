@@ -1,22 +1,64 @@
-# Phase 4A · Next approved workflow
+# Phase 4.1 · Background Check
 
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
 ## Admission
 <!-- roadmap: workflow-admission -->
 
-Record one selected candidate, verify its complete current-behavior and proposed-workflow admission
-packet, and obtain operator approval before defining its migration tasks. This existing roadmap
-placeholder does not admit a candidate. Later approved workflows receive 4B, 4C and onward.
+The operator selected Background Check and explicitly assigned it to **4.1** on 2026-09-08.
+The tasks below record the collaborative walkthrough, workbook preparation and remaining admission
+work. This numbering does not authorize automated implementation or submission. Phase 3 completion
+and the verified, operator-approved D319 packet still gate migration implementation.
 
 Follow [workflow-model §1.6.2](../../../reference/workflow-model.md) and the
-[roadmap's 4A node](../../../../roadmap/roadmap.md#workflow-admission).
+[roadmap's 4.1 node](../../../../roadmap/roadmap.md#workflow-admission).
+
+## 4.1.1 · Record the batch workflow
+<!-- roadmap: background-check-discovery -->
+
+**Complete for the batch preparation path.** Record the live HR catalog navigation, multiple-applicant
+choice, required fields, template-copy procedure and supplied PDF settings. Evidence is below.
+The single-applicant branch and final Summary/receipt remain outside this completed task.
+
+## 4.1.2 · Prepare and attach the review workbook
+<!-- roadmap: background-check-workbook -->
+
+**Complete.** Select the 87 yellow Date Background Entered cells from the original formatted roster,
+prepare a separate workbook, match the operator's compact example, verify values and service markers,
+open the copy in browser Excel and attach it to Choose Options. Shared originals remain unchanged.
+This task does not include operator acceptance or submission.
+
+## 4.1.3 · Review the applicants and workbook
+<!-- roadmap: background-check-review -->
+
+**Waiting for the operator.** Review the browser workbook, confirm the two compound-name splits and
+resolve the selected applicant's blank Accept Terms field. Reconcile any online edits into the local
+workbook and replace the attachment with that exact reviewed version before a later submission.
+Do not infer consent or treat a formatting correction as approval to submit.
+
+## 4.1.4 · Verify submission and receipt with the operator
+<!-- roadmap: background-check-receipt -->
+
+**Pending explicit submission authorization.** After workbook review, inspect Summary together,
+verify the exact applicant count, service, attachment and recipients, and submit only when the
+operator explicitly authorizes it. Capture the request identifier, receipt and resulting status.
+If a submit result is unknown, stop and reconcile it; never retry an UNKNOWN submit.
+The current instruction remains **do not submit**.
+
+## 4.1.5 · Complete and approve the automation admission packet
+<!-- roadmap: background-check-admission -->
+
+**Planned; not an implementation assignment.** Complete workflow-model §1.6.2's nine packet fields:
+exact batch/single scope, inputs and omissions, ordered timeline entries and kinds, task/store reuse,
+system contracts, evidence, resume/restart/write safety and structural/live proof targets. Use the
+walkthrough evidence and inspect current source rather than guessing. Resolve gaps, obtain operator
+approval, then define the bounded migration implementation tasks here after Phase 3 prerequisites.
 
 ### Background Check workflow discovery — 2026-09-08
 
 The operator requested a live, collaborative walkthrough of the **Background Check** workflow,
-calling it **Phase 4.1**, and asked that it be recorded in the timeline. This discovery is recorded
-under the existing 4A admission owner. It does not yet establish the complete D319 admission packet,
+and asked that it be recorded in the timeline as **Phase 4.1**. This is the canonical Background
+Check subphase. The discovery does not yet establish the complete D319 admission packet,
 change Phase 3 prerequisites, or authorize product implementation.
 
 **Requested outcome.** Prepare a multiple-applicant background-check request for every applicant
@@ -29,7 +71,7 @@ alone must not be substituted for the operator's color-based selection.
 contains 121 applicant records and no cell formatting; selection requires the original workbook.
 Applicant data and authenticated browser artifacts remain outside committed documentation.
 
-**Procedure described by the operator and PDF pages 1–2; live verification pending:**
+**Procedure described by the operator and PDF pages 1–2; batch preparation verified:**
 
 1. Open `https://support.ucsd.edu/services` in headed Chrome, choose Human Resources, and search
    for `background check request`.
@@ -89,7 +131,7 @@ pages were extracted and visually inspected.
 The single-applicant branch (PDF pages 3–4), automated task/store boundaries, ordered tuple model,
 resume/no-repeat-write mechanics and controlled proof targets remain outside this completed evidence.
 
-## Shared capabilities assigned with 4A
+## Shared capabilities awaiting an admitted consumer
 <!-- roadmap: cross-cutting -->
 
 Keep the current capability inventory and its dated evidence on the roadmap's `cross-cutting` node.

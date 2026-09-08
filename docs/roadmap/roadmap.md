@@ -2622,18 +2622,18 @@ log:
 phase: Phase 4
 status: you
 when: after Phase 3 closes | one candidate at a time
-chip: 4A is the next admitted workflow
+chip: 4.1 Background Check · workbook review pending
 doc: 4 §Phase summary · ref:workflow-model §1.6.2 · ref:charter §Migration strategy
 open: yes
 
-> Phase 4 is the workflow-migration program. Each approved workflow becomes one lettered part: **4A**, then **4B**, **4C**, and so on. The next letter is created only after that workflow's current behavior, proposed definition, proof target, and migration boundary are verified and approved.
+> Phase 4 is the workflow-migration program. Its subphases use decimal numbering: **4.1 Background Check**, then **4.2**, **4.3**, and onward. Discovery and operator preparation tasks are visible under 4.1 now. Migration implementation still requires Phase 3 completion and a verified, operator-approved D319 admission packet.
 
 builds:
 - [ ] DOCS Phase 3 stops only after 3.5's attributed cooperation proof (D326)
-- [ ] DOCS record the operator's selected candidate after Phase 3 closes
+- [x] DOCS record Background Check as the operator-selected 4.1 candidate; implementation waits for Phase 3 close
 - [ ] DOCS verify its complete admission packet with no guessed workflow boundary or hidden open choice
 - [ ] DOCS record the operator's approval of the exact workflow definition and scope
-- [ ] DOCS create the next lettered Phase 4 part, migration doc and coordinator plan
+- [ ] DOCS define the admitted decimal Phase 4 migration tasks and migration record
 
 needs:
 - claude-operator
@@ -2645,24 +2645,80 @@ log:
 - 2026-09-02 | D319 | retired the assumed remaining-migration sequence as build authority; old rows remain evidence leads until Phase 3 close extracts or deletes them
 - 2026-09-02 | prior candidate intake | Person Lookup/I-9 evidence at `b1b36349` is preserved, but only Person Lookup is already admitted; I-9 remains an unnumbered candidate
 
-### 4A · Next approved workflow {#workflow-admission}
+### 4.1 · Background Check {#workflow-admission}
 status: you
-chip: one candidate only · operator approval required
-doc: 4A §Admission · ref:workflow-model §1.6.2
+chip: 87 applicants prepared · awaiting workbook review
+doc: 4.1 §Admission · ref:workflow-model §1.6.2
+open: yes
 
-> This is the only next workflow shown in the plan. Its task list expands only after the current behavior and proposed workflow packet are verified and approved. Later approved workflows become 4B, 4C, and onward.
+> The operator selected Background Check and assigned it to 4.1. Tasks 4.1.1–4.1.2 record verified preparation; 4.1.3 awaits review, 4.1.4 requires explicit submission authorization, and 4.1.5 completes admission before automation implementation.
 
 builds:
-- [ ] DOCS record one selected candidate and its complete verified admission packet
-- [ ] DOCS record operator approval and define the 4A migration tasks
-
-needs:
-- migrations
+- [x] DOCS record the selected Background Check workflow and current batch evidence
+- [ ] DOCS complete the admission packet and approve migration implementation scope
 
 log:
-- 2026-09-08 | Background Check walkthrough (operator label: Phase 4.1) | live batch form verified; original roster yields 87 yellow Date Background Entered cells (85 Residential/Retail, 2 Catering); separate review copy reformatted to the operator's compact example, verified in browser Excel, and attached on explicit instruction; operator review and applicant-specific clarifications pending; shared originals unchanged, no submission or implementation admission claimed
+- 2026-09-08 | Background Check walkthrough | live batch form verified; original roster yields 87 yellow Date Background Entered cells (85 Residential/Retail, 2 Catering); separate review copy reformatted to the operator's compact example, verified in browser Excel, and attached on explicit instruction; operator review and applicant-specific clarifications pending; shared originals unchanged, no submission or implementation admission claimed
 
-#### Shared capabilities assigned with 4A {#cross-cutting}
+#### 4.1.1 · Record the batch workflow {#background-check-discovery}
+status: done
+doc: 4.1 §4.1.1 · Record the batch workflow
+
+builds:
+- [x] PROOF verify the HR catalog path, Background Check Request and Multiple Applicants option
+- [x] DOCS record the PDF settings, required fields, copy procedure and no-submit boundary
+
+#### 4.1.2 · Prepare and attach the review workbook {#background-check-workbook}
+status: done
+doc: 4.1 §4.1.2 · Prepare and attach the review workbook
+
+builds:
+- [x] PROOF select 87 applicants using the original roster's yellow Date Background Entered cells
+- [x] PROOF create a separate workbook matching the compact example and verify all values and service markers
+- [x] PROOF open the review copy in browser Excel and attach the exact revised workbook without submitting
+
+needs:
+- background-check-discovery
+
+#### 4.1.3 · Review the applicants and workbook {#background-check-review}
+status: you
+chip: operator review pending
+doc: 4.1 §4.1.3 · Review the applicants and workbook
+
+builds:
+- [ ] DOCS confirm workbook contents, compound-name splits and the blank Accept Terms field
+- [ ] PROOF reconcile any reviewed online edits and verify the matching attachment
+
+needs:
+- background-check-workbook
+
+#### 4.1.4 · Verify submission and receipt with the operator {#background-check-receipt}
+status: you
+chip: do not submit · explicit authorization required
+doc: 4.1 §4.1.4 · Verify submission and receipt with the operator
+
+builds:
+- [ ] PROOF review Summary, applicant count, attachment, service and recipients with the operator
+- [ ] PROOF submit only on explicit authorization and capture the request identifier and receipt
+- [ ] DOCS record resulting status and UNKNOWN-submit reconciliation boundary
+
+needs:
+- background-check-review
+
+#### 4.1.5 · Complete and approve the automation admission packet {#background-check-admission}
+status: planned
+doc: 4.1 §4.1.5 · Complete and approve the automation admission packet · ref:workflow-model §1.6.2
+
+builds:
+- [ ] DOCS verify the nine admission fields, including batch/single scope, ordered entries and task/store reuse
+- [ ] DOCS define input, evidence, recovery, no-repeat-write and structural/live proof requirements
+- [ ] DOCS obtain operator approval before assigning migration implementation tasks
+
+needs:
+- background-check-receipt
+- migrations
+
+#### Shared capabilities awaiting an admitted consumer {#cross-cutting}
 status: planned
 doc: ref:workflow-model §1.6.3 · ref:clock-config-secrets §3 · ref:clock-config-secrets §6.2 · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §8
 
@@ -3094,6 +3150,14 @@ The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
 
+### Phase 4 decimal naming amendment — 2026-09-08
+
+The operator replaced the former 4A placeholder with **4.1 · Background Check** and requested its
+concrete tasks beneath that subphase. Phase 4 uses decimal parts and task labels (`4.1.1`, etc.).
+Discovery and manual preparation may be recorded before migration admission; they do not bypass
+Phase 3 prerequisites, D319's nine-field packet or operator approval of implementation. The stable
+`workflow-admission` anchor is retained. Phases 5–6 retain their existing labels.
+
 ### The one-plan rule
 
 Per charter §"One master plan": the owning design docs (now `reference/task-contract`,
@@ -3102,8 +3166,9 @@ Per charter §"One master plan": the owning design docs (now `reference/task-con
 `reference/write-safety` through `reference/frontend-backend-integration`) are the binding detail;
 THE PLAN - this file, the tree, plus the admitted phase docs under `docs/rebuild/plans/` - is the authoritative
 build order. No second plan, no per-workflow "alt plan," no execution doc that re-sequences
-phases. A candidate has no Phase 4 letter or migration plan. After D319/D323 admission, its lettered
-Phase 4 part and workflow migration doc become children of this plan; they answer `ref workflow-model`
+phases. Operator-selected candidates may have decimal Phase 4 discovery tasks, as in 4.1 Background
+Check. Those records do not authorize implementation. After D319/D323 admission, their migration
+tasks and workflow migration doc become implementation authority; they answer `ref workflow-model`
 §1.6.2's admission packet and record what the workflow reuses/adds.
 
 **D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
@@ -3361,7 +3426,7 @@ _D326 (2026-09-03) fixes one visible hierarchy for Phases 0–3: numbered phases
 numbered supervisor tasks, and checklist subtasks. D328 (2026-09-04) renders admitted parallel
 waves as consecutive numeric task members (`N-1`, `N-2`, ...). Their strict active order is 0.3 → 1.6 → 2.6 →
 3.1 → 3.2 → 3.3 → 3.5, with optional 3.4 outside the required path (D342). D319 still requires verification and operator approval before a
-candidate receives its next Phase 4 letter._
+candidate receives migration implementation scope in its decimal Phase 4 subphase._
 
 | Phase | Headline deliverable | Gate to exit | Size |
 |---|---|---|---|
@@ -3369,7 +3434,7 @@ candidate receives its next Phase 4 letter._
 | **1** | 1.1–1.5 historical spine · **1.6 canonical authority implementation** | historical live spine proof remains MET; 1.6 waits for 0.3, then stores/writers/core resolution and compatibility deletion must pass | **XL** |
 | **2** | 2.1–2.5 historical write/tails proof · **2.6 downstream revalidation** | D135 remains the controlled-write evidence; 2.6 waits for 1.6, then read models/joins/services must reconcile without rewriting evidence | **XL** |
 | **3** | 3.1 shared dashboard · 3.2 authoring and freeze · 3.3 controlled acceptance · optional 3.4 document tools · 3.5 Codex/Claude cooperation | 3.1 waits for 2.6; 3.2 freezes the unchanged 3.3 candidate; 3.5 closes Phase 3 without requiring optional 3.4 | **XL** |
-| **4** | Remaining workflow migrations, one verified workflow per lettered part: 4A, 4B, 4C and onward | each candidate's current behavior and proposed workflow are verified; operator approves the D319 packet before implementation scope is assigned | **per workflow** |
+| **4** | Remaining workflow migrations: 4.1 Background Check, then 4.2, 4.3 and onward | each candidate's current behavior and proposed workflow are verified; operator approves the D319 packet before implementation scope is assigned | **per workflow** |
 | **5** | 5A cutover readiness · 5B one all-at-once production authority switch (D89) | every admitted workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; launcher switches atomically; rollback verified | **L** |
 | **6** | Ship the rebuild as a Mac and Windows desktop application (`doc 06`) | installable on both systems; signed upgrade preserves state; installed-app live proof; credentials remain protected | **L** |
 

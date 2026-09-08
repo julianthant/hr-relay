@@ -645,9 +645,26 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
     expect(resolveDocFile(ref, files)).toHaveProperty("reason", expect.stringContaining("matches 2 phase docs"));
     expect(resolveDocFile(ref, new Map([["docs/rebuild/plans/phase-2/3.1-misplaced/README.md", "# Wrong phase"]])))
       .toHaveProperty("reason", expect.stringContaining("names no"));
-    for (const label of ["03.1", "0A", "4.1", "7A", "1.0", "3/task-1", "3.1/../escape", "3.1/task-1/extra", "3.1/Task-1"]) {
+    for (const label of ["03.1", "0A", "4A", "4.0", "7A", "1.0", "3/task-1", "3.1/../escape", "3.1/task-1/extra", "3.1/Task-1"]) {
       expect(() => parsePlan(tree.planText.replace(/^doc: .+$/m, `doc: ${label}`))).toThrow("a doc: ref");
     }
+  });
+
+  it("binds decimal Phase 4 Background Check tasks beneath their subphase", () => {
+    const plan = RoadmapSchema.parse(parsePlan(tree.planText));
+    const phase = plan.spine.find((entry) => entry.kind === "phase" && entry.id === "migrations");
+    if (phase === undefined || phase.kind !== "phase") throw new Error("missing Phase 4");
+    const workflow = phase.items.find((entry) => entry.id === "workflow-admission");
+    expect(workflow?.title).toBe("4.1 · Background Check");
+    expect(workflow?.docs?.some((ref) => ref.doc === "4.1")).toBe(true);
+    expect(workflow?.items?.filter((entry) => entry.title.startsWith("4.1.")).map((entry) => entry.id)).toEqual([
+      "background-check-discovery", "background-check-workbook", "background-check-review",
+      "background-check-receipt", "background-check-admission",
+    ]);
+    expect(resolveDocFile({ kind: "phase", doc: "4.1", raw: "4.1" }, tree.files)).toEqual({
+      path: "docs/rebuild/plans/phase-4/4.1-background-check/README.md",
+    });
+    expect(DocRefSchema.safeParse({ kind: "phase", doc: "4A", raw: "4A" }).success).toBe(false);
   });
 
   it("resolves task and topic bindings only inside their named subphase", () => {
