@@ -21,13 +21,23 @@ describe("roadmap desktop interaction", () => {
     const code = (key: string): string | null => document.querySelector(`.nd[data-key="${key}"] .task-code`)?.textContent ?? null;
     expect(code("dash-defaults")).toBe("3.1");
     expect(code("track-b")).toBe("3.1.1");
-    expect(code("dash-shell")).toBe("3.1.9-1");
-    expect(code("dash-settings")).toBe("3.1.9-2");
-    expect(code("dash-storage")).toBe("3.1.9-3");
-    expect(code("dash-explorer")).toBe("3.1.9-4");
+    expect(code("dash-boundary-foundation")).toBe("3.1.9");
+    expect(code("dash-shell")).toBe("3.1.9.1");
+    expect(code("dash-settings")).toBe("3.1.9.2");
+    expect(code("dash-storage")).toBe("3.1.9.3");
+    expect(code("dash-explorer")).toBe("3.1.9.4");
+    expect(code("dash-sessions")).toBe("3.1.11");
+    expect(code("dash-setup")).toBe("3.1.11.1");
+    expect(code("dash-detail-foundation")).toBe("3.1.14");
+    expect(code("dash-gates")).toBe("3.1.14.5");
     expect(code("workflow-authoring-core")).toBe("3.2.1");
-    expect(code("workflow-guide-proof")).toBe("3.2.4-2");
-    expect(code("separations-compiled-acceptance")).toBe("3.2.5-2");
+    expect(code("workflow-guide-proof")).toBe("3.2.3.2");
+    expect(code("workflow-acceptance-foundation")).toBe("3.2.4");
+    expect(code("separations-compiled-acceptance")).toBe("3.2.4.2");
+    expect(code("claude-mcp")).toBe("3.5.2");
+    expect(code("claude-monitor")).toBe("3.5.2.1");
+    expect(code("claude-clients")).toBe("3.5.2.2");
+    expect(code("claude-proof")).toBe("3.5.3");
     expect(code("def-byte-path")).toBe("5A.1");
 
     const node = document.querySelector<SVGAElement>('.nd[data-key="track-b"]');
@@ -52,7 +62,11 @@ describe("roadmap desktop interaction", () => {
     expect(document.querySelector("#drawer-body")?.textContent).toContain("Outputs landed at the roadmap's recorded HEAD");
     expect(document.querySelector("#drawer-body")?.textContent).toContain("3.1.1 is serial task 1 inside part 3.1");
     expect(document.querySelector("#drawer-body")?.textContent).toContain(
-      "3.1.9-1 and 3.1.9-2 are separate supervisor tasks executed together in wave 9",
+      "3.1.9 is a prerequisite task: complete and merge it before its independent parallel children 3.1.9.1 and 3.1.9.2 start",
+    );
+
+    expect(document.querySelector("#drawer-body")?.textContent).toContain(
+      "agents work independently and coordinate when necessary",
     );
 
     node?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));

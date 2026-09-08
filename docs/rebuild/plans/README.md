@@ -80,10 +80,11 @@ D342 (2026-09-07) moves `phase-3/3.4-co-operate-with-claude/README.md` to
 `phase-3/3.5-co-operate-with-claude/README.md`; historical 03.4 cooperation citations resolve there.
 Phase 3.4 now owns optional document tools, with distinct node IDs.
 
-## Nested dashboard subphases (D344)
+## Phase 3 prerequisite tasks (D344)
 
-Phase 3.1 retains historical Tasks 1–7 and groups remaining leaves under 8, 9-1–9-4 and 10.
-Their `subphase-*.md` files live inside the existing 3.1 folder; leaf files and stable anchors
-retain their paths for citation compatibility. The [3.1 identity map](phase-3/3.1-finish-the-dashboard/README.md#current-task-identities)
-owns current labels. Bind nested groups as `3.1/subphase-…`, and leaves to their existing task
-file stems. Group numbers organize scope; named prerequisite edges determine admission.
+`3.P.N` names an actual standalone task or prerequisite; `3.P.N.1`, `3.P.N.2`, etc. name
+independent parallel children unlocked by the completed parent. Sequential consumers get separate
+numbers. The [3.1 identity map](phase-3/3.1-finish-the-dashboard/README.md#current-task-identities)
+and [3.2 plan](phase-3/3.2-finish-workflow-authoring/README.md) own current assignments.
+Existing execution files and stable anchors remain citation targets. Former organizational group
+files redirect to the 3.1 map; they no longer create non-executable roadmap tasks.

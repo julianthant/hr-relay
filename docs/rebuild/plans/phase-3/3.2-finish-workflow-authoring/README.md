@@ -18,6 +18,30 @@ D329 replaces the former `03b`/`03c`, 3c-A/3c-B, and Separations-before-authorin
 documents remain verbatim in `history/superseded/`; their commits and observations are evidence to
 reverify, not current completion authority. The current source wins over every carried claim.
 
+## Current assignment names (D344)
+
+| Current task | Outcome | Historical task alias |
+| --- | --- | --- |
+| 3.2.1 | Authoring platform | 1 |
+| 3.2.2 | Read/store substrate | 2 |
+| 3.2.3 | Safety mechanics and shared proof prerequisite | 3 |
+| 3.2.3.1 | Runtime inheritance proof | 4-1 |
+| 3.2.3.2 | Clean-context guide proof | 4-2 |
+| 3.2.4 | Independent workflow acceptance base | new prerequisite |
+| 3.2.4.1 | Person Lookup acceptance | 5-1 |
+| 3.2.4.2 | Compiled Separations acceptance | 5-2 |
+| 3.2.5 | Current Separations read-only acceptance | 6 |
+| 3.2.6 | Candidate audit and freeze | 7 |
+
+Complete and merge 3.2.3 before launching 3.2.3.1/3.2.3.2. Both proofs feed 3.2.4;
+complete that prerequisite before launching 3.2.4.1/3.2.4.2. Each pair is independent and
+supports either merge order. Parent acceptance excludes its children's unfinished work. Exact
+shared ownership, independent gates and private runtime/live-session resources must be settled
+before launch under [D344](../../../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08).
+The operator chooses launches and integration. Agents work independently by default and coordinate
+when necessary under D344 to resolve blockers, overlap or duplicate effort; no automatic merge.
+Historical headings below are citation aliases. Current assignments use the table above.
+
 ## Phase 3 chronology
 <!-- roadmap: phase-3 -->
 
@@ -36,10 +60,10 @@ reverify, not current completion authority. The current source wins over every c
 
 <!-- roadmap-status: workflow-authoring-model -->
 - [~] Tasks 1–3 carry substantial landed implementation, but each remains current-verification pending
-- [ ] Tasks 4-1 and 4-2 prove runtime inheritance and the author guide in one parallel wave
-- [ ] Tasks 5-1 and 5-2 accept Person Lookup and the compiled Separations workflow without real writes in one parallel wave
-- [ ] Task 6 records a current-source Separations dry-run preview with exact 0/0/0 write-authority evidence
-- [ ] Task 7 independently audits and freezes the acceptance candidate
+- [ ] Tasks 3.1 and 3.2 prove runtime inheritance and the author guide independently after Task 3
+- [ ] Task 4 establishes the independent acceptance base; Tasks 4.1 and 4.2 accept the workflows in parallel without real writes
+- [ ] Task 5 records a current-source Separations dry-run preview with exact 0/0/0 write-authority evidence
+- [ ] Task 6 independently audits and freezes the acceptance candidate
 > 2026-09-04 | D329 replan | consolidated nineteen old tasks into nine current seams with a complete crosswalk; historical completion no longer substitutes for proof at current HEAD
 <!-- /roadmap-status -->
 
@@ -50,7 +74,7 @@ expose selector, runtime, compiler, workflow, or target defects before the candi
 revalidation supervisor may repair a defect wholly inside its assigned seam. A cross-seam defect
 creates a newly numbered remediation task.
 
-Task 7 is audit-only. It fixes nothing. Any failure returns to a focused Phase 3.2 remediation task,
+Task 6 (historical Task 7) is audit-only. It fixes nothing. Any failure returns to a focused Phase 3.2 remediation task,
 invalidates the candidate, and requires the audit to restart. The frozen record names:
 
 - the exact git commit and generated build manifest;
@@ -96,8 +120,14 @@ touches a live write.
 > 2026-09-04 | D329 carry-forward | absorbs former 3.2 Tasks 4–5, Task 9, and the software portions of Task 10
 <!-- /roadmap-status -->
 
+Before closing current 3.2.3, settle the runtime-proof/guide-proof ownership boundary. Complete
+shared compiler/runtime/fixture changes; bind separate proof artifacts and exact gates. Demonstrate
+both children can pass from this base and integrate in either order without an unmerged sibling.
+
 ## Task 4-1 · Prove automatic runtime inheritance
 <!-- roadmap: workflow-runtime-inheritance -->
+
+**Current assignment: 3.2.3.1.** The heading is a historical citation alias.
 
 <!-- roadmap-status: workflow-runtime-inheritance -->
 - [ ] prove a compiled workflow inherits worker/session acquisition, authentication, checkpoints, semantic logs, screenshots, receipts, notifications, and Archive without workflow-specific glue
@@ -105,11 +135,13 @@ touches a live write.
 > 2026-09-04 | D329 move | former 3.3 Task 2 now runs before either acceptance workflow can freeze
 <!-- /roadmap-status -->
 
-Task 4-1 may run in parallel with Task 4-2 only through the coordinator plan's exact worktree and
-integration ledger.
+Current 3.2.3.1 and 3.2.3.2 run independently after their accepted parent prerequisite 3.2.3.
+Use the operator-approved ownership and integration conditions above.
 
 ## Task 4-2 · Prove the workflow-author guide from clean contexts
 <!-- roadmap: workflow-guide-proof -->
+
+**Current assignment: 3.2.3.2.** The heading is a historical citation alias.
 
 <!-- roadmap-status: workflow-guide-proof -->
 - [ ] follow the canonical guide for Person Lookup and Separations without undocumented steps, extra authored files, or escape hatches
@@ -117,8 +149,23 @@ integration ledger.
 > 2026-09-04 | D329 move | former 3.3 Task 3 now runs before workflow acceptance and candidate freeze
 <!-- /roadmap-status -->
 
+## Task 4 · Establish the independent workflow acceptance base
+<!-- roadmap: workflow-acceptance-foundation -->
+
+- [ ] accept the integrated runtime-inheritance and clean-context guide proofs on an exact base
+- [ ] complete shared registration, fixture, generated-product or contract changes needed by both workflow acceptance tasks
+- [ ] bind disjoint paths, private runtime/live-session resources, generated-output ownership and independently passing gate commands for 3.2.4.1/3.2.4.2
+- [ ] verify either-order integration and record the reviewed, merged prerequisite; do not claim workflow acceptance or freeze here
+
+This is a prerequisite scope, not a launch-ready brief. Use `/phase-plan` before implementation.
+If a workflow later exposes a shared defect outside its assignment, return it to the operator for
+focused remediation. Peers may clarify the defect and propose a resolution; changed contracts or
+ownership require an operator-approved plan amendment before affected writes resume.
+
 ## Task 5-1 · Complete and accept Person Lookup
 <!-- roadmap: person-lookup-acceptance -->
+
+**Current assignment: 3.2.4.1.** The heading is a historical citation alias.
 
 <!-- roadmap-status: person-lookup-acceptance -->
 - [~] the final workflow conversion and one historical `live-read` result exist; Search/Match and current authority must be reconciled before completion
@@ -128,10 +175,12 @@ integration ledger.
 > 2026-09-04 | D329 carry-forward | absorbs former 3.3 Task 4 and its nested dashboard evidence
 <!-- /roadmap-status -->
 
-Task 5-1 may run in parallel with Task 5-2 after Tasks 4-1 and 4-2 integrate.
+Current 3.2.4.1 and 3.2.4.2 run independently after their accepted parent prerequisite 3.2.4.
 
 ## Task 5-2 · Accept the final compiled Separations workflow without writes
 <!-- roadmap: separations-compiled-acceptance -->
+
+**Current assignment: 3.2.4.2.** The heading is a historical citation alias.
 
 <!-- roadmap-status: separations-compiled-acceptance -->
 - [~] composition, dashboard scenarios, workflow layout, final `workflow.ts`, and public-equivalence proofs landed historically; current verification is required
@@ -145,9 +194,11 @@ Task 5-1 may run in parallel with Task 5-2 after Tasks 4-1 and 4-2 integrate.
 ## Task 6 · Record current-source Separations read-only acceptance
 <!-- roadmap: separations-readonly-acceptance -->
 
+**Current assignment: 3.2.5.** The heading is a historical citation alias.
+
 <!-- roadmap-status: separations-readonly-acceptance -->
 - [~] historical previews remain evidence; the 2026-09-03 replacement run failed at New Kronos with 0/0/0 write authority and did not meet the strict T1b gate
-- [ ] reverify the selected closed Kuali document and every live read against the integrated Task 5-2 workflow
+- [ ] reverify the selected closed Kuali document and every live read against the integrated 3.2.4.2 workflow
 - [ ] reach the declared dry-run preview terminal and record a fresh `met` T1b result with exact-run 0/0/0 intents/attempts/outbox
 - [ ] route any software defect to a new Phase 3.2 remediation task; do not weaken or waive the gate
 > 2026-09-04 | D329 carry-forward | absorbs former 3.2 Tasks 7–8 and the live remainder of Task 12
@@ -156,13 +207,15 @@ Task 5-1 may run in parallel with Task 5-2 after Tasks 4-1 and 4-2 integrate.
 ## Task 7 · Audit and freeze the acceptance candidate
 <!-- roadmap: workflow-candidate-freeze -->
 
+**Current assignment: 3.2.6.** The heading is a historical citation alias.
+
 > **D339 (2026-09-06):** verify the required shipped workflow journeys and recorded optional-screen
 > deferrals from 3.1. Deferred generic pages and advanced recovery UI do not reopen the candidate;
 > missing workflow-required UI does. Every existing write-safety and exact-candidate obligation remains.
 
 
 <!-- roadmap-status: workflow-candidate-freeze -->
-- [ ] independently verify every Task 1–6 claim against current source and durable evidence
+- [ ] independently verify every prerequisite, parallel and read-only acceptance claim against current source and durable evidence
 - [ ] run the complete integrated gate family and verify generated artifacts are current
 - [ ] record the exact candidate identity and prove no parked write remains against a closure that will change
 - [ ] close every Phase 3.2 worktree, branch, task, and coordinator residue before unlocking Phase 3.3
@@ -174,25 +227,25 @@ Task 5-1 may run in parallel with Task 5-2 after Tasks 4-1 and 4-2 integrate.
 Old task numbers are historical lookup keys only. This table is the complete bridge from the two
 superseded plans to the new authoritative task structure.
 
-| Superseded task | New owner | Carried evidence |
+| Superseded task | Current owner | Carried evidence |
 |---|---|---|
 | former 3.2 Tasks 1–3 | 3.2 Task 2 | New Kronos, Kuali, and UCPath reads plus the Separations mini-store |
 | former 3.2 Tasks 4–5 | 3.2 Task 3 | UCPath termination/pending-sweep and Kuali finalization transaction mechanics |
-| former 3.2 Task 6 | 3.2 Task 5-2 | composed Separations behavior |
-| former 3.2 Tasks 7–8 | 3.2 Task 6 | historical dry-run and preview-terminal observations |
-| former 3.2 Task 9 | 3.2 Tasks 2–3 and 5-2 | task/runtime defects exposed by the first live pass, routed by current owner |
+| former 3.2 Task 6 | 3.2 Task 4.2 | composed Separations behavior |
+| former 3.2 Tasks 7–8 | 3.2 Task 5 | historical dry-run and preview-terminal observations |
+| former 3.2 Task 9 | 3.2 Tasks 2–3 and 4.2 | task/runtime defects exposed by the first live pass, routed by current owner |
 | former 3.2 Task 10 | 3.2 Task 3; 3.3 Tasks 1–4 | software recovery mechanics here; controlled evidence and close in Phase 3.3 |
-| former 3.2 Tasks 11–12 | 3.2 Tasks 5-2–6 | dashboard/T1/layout evidence and the still-open strict live result |
+| former 3.2 Tasks 11–12 | 3.2 Tasks 4.2 and 5 | dashboard/T1/layout evidence and the still-open strict live result |
 | former 3.2 Task 13 | 3.3 Tasks 1–4 | target decisions, controlled proofs, and close |
 | former 3.3 Task 1 | 3.2 Task 1 | workflow-definition/compiler core and deletion acceptance |
-| former 3.3 Tasks 2–3 | 3.2 Tasks 4-1–4-2 | runtime inheritance and clean-context guide proof |
-| former 3.3 Task 4 | 3.2 Task 5-1 | Person Lookup acceptance |
-| former 3.3 Task 5 | 3.2 Task 5-2 | compiled Separations acceptance |
-| former 3.3 Task 6 | 3.2 Tasks 1, 5-1, 5-2, 6, and 7; 3.3 Task 4; 3.5 Task 5 | shared test infrastructure and T1–T3 implementation in 3.2; candidate audit/freeze in 3.2 Task 7; final evidence/lifecycle close in 3.3; T4 remains with the cooperation proof |
+| former 3.3 Tasks 2–3 | 3.2 Tasks 3.1–3.2 | runtime inheritance and clean-context guide proof |
+| former 3.3 Task 4 | 3.2 Task 4.1 | Person Lookup acceptance |
+| former 3.3 Task 5 | 3.2 Task 4.2 | compiled Separations acceptance |
+| former 3.3 Task 6 | 3.2 Tasks 1, 4.1, 4.2, 5, and 6; 3.3 Task 4; 3.5 Task 3 | shared test infrastructure and T1–T3 implementation in 3.2; candidate audit/freeze in 3.2 Task 6; final evidence/lifecycle close in 3.3; T4 remains with the cooperation proof |
 
 ## Exit criteria
 
-Phase 3.2 closes only when all nine supervisor tasks are current-source verified, Person Lookup has a current
+Phase 3.2 closes only when all ten supervisor tasks are current-source verified, Person Lookup has a current
 `live-read`, Separations has a fresh green dry-run preview, the exact acceptance candidate is frozen,
 all integrated gates pass, and every owned execution row is closed. A historical commit, green test
 from an earlier fingerprint, or old task checkbox is never sufficient by itself.

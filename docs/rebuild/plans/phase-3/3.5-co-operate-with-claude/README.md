@@ -10,9 +10,25 @@ not create a permission tier. Direct HTTP access is sufficient; an MCP wrapper i
 
 **Execution order.** D342 renumbers this part from 3.4 to 3.5; stable node IDs and D338 scope
 remain unchanged. Begin after 3.3 closes; optional Phase 3.4 does not block entry. Task 1 → Task 2 →
-Tasks 3/4 (parallel only with recorded independent ownership) → Task 5. This part closes Phase 3
+Tasks 2.1/2.2 (independent parallel children) → Task 3. This part closes Phase 3
 before Phase 4. Desktop attachment remains Phase 6. Existing D75 solo request admission is built;
 the agent capability and attribution changes below are not yet implemented.
+
+## Current assignment names (D344)
+
+| Current task | Outcome | Historical task alias |
+| --- | --- | --- |
+| 3.5.1 | Actor identity and capability parity | 1 |
+| 3.5.2 | Existing API and shared client prerequisite | 2 |
+| 3.5.2.1 | Monitoring and actor inbox | 3 |
+| 3.5.2.2 | Actor-aware clients | 4 |
+| 3.5.3 | Integrated cooperation proof and closure | 5 |
+
+The parent completes its own accepted, merged scope before either child starts. Its focused plan
+must settle shared interface/fixture changes, exact disjoint paths, gate resources and either-order
+integration. Both children consume the completed observed-log producer. Agents work independently
+by default and coordinate only when necessary under [D344](../../../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08).
+The operator chooses launches and merges. Historical headings below remain citation aliases.
 
 ## Track summary
 <!-- roadmap: claude-operator -->
@@ -82,8 +98,14 @@ journal, approval state, policy registry or execution engine. The existing sourc
 flow and duplicate-submission warning apply unchanged; source-run editing and retired Capture
 commands do not return. A stale or unavailable action is equally unavailable to any caller.
 
+Before closing current 3.5.2, complete shared interface/fixture changes needed by both children;
+bind disjoint paths and private gate resources, and prove independent candidates can merge in either
+order. Coordinate when necessary to clarify overlap; operator-approved plan changes precede affected writes.
+
 ## Task 3 · Add cursor-based monitoring and the actor inbox
 <!-- roadmap: claude-monitor -->
+
+**Current assignment: 3.5.2.1.** The heading is a historical citation alias.
 
 <!-- roadmap-status: claude-monitor -->
 - [ ] expose a resumable stream using Last-Event-ID; report reset-required, missing history and degraded monitoring explicitly
@@ -100,6 +122,8 @@ that an HR action was performed. This task depends on Task 2 and the observed-lo
 ## Task 4 · Make existing clients actor-aware
 <!-- roadmap: claude-clients -->
 
+**Current assignment: 3.5.2.2.** The heading is a historical citation alias.
+
 <!-- roadmap-status: claude-clients -->
 - [ ] preserve one BFF elected by the server-role lock; web and agent clients attach to that host
 - [ ] render the actual actor on approvals, archive plans, receipts, commands and notifications
@@ -114,6 +138,8 @@ an action the shared API would reject or impose an extra agent-only confirmation
 
 ## Task 5 · Prove attributed cooperation and close Phase 3
 <!-- roadmap: claude-proof -->
+
+**Current assignment: 3.5.3.** The heading is a historical citation alias.
 
 <!-- roadmap-status: claude-proof -->
 - [ ] drive a Separations dry run through direct API calls: start, monitor, resolve a required identity gate, resume and reach its terminal preview

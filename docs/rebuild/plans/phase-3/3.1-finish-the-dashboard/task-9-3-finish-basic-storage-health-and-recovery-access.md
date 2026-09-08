@@ -1,9 +1,9 @@
 # Task 9-3 · Finish basic storage health and recovery access
 <!-- roadmap: dash-storage -->
 
-**Current assignment: 3.1.9-1.3.** Former task 3.1.9-3; stable node `dash-storage`.
-Read [Shell and configuration](subphase-9-1-shell-and-configuration.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.9.3.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

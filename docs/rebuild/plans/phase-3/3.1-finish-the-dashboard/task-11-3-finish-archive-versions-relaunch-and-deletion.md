@@ -1,9 +1,9 @@
 # Task 11-3 · Finish Archive, versions, relaunch, and deletion
 <!-- roadmap: dash-archive -->
 
-**Current assignment: 3.1.9-4.4.** Former task 3.1.11-3; stable node `dash-archive`.
-Read [Standing surfaces](subphase-9-4-standing-surfaces.md) for dependencies and operator-controlled integration.
-The existing filename and historical task heading remain citation aliases, not another assignment.
+**Current assignment: 3.1.9.7.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Historical filenames and headings remain citation aliases, not another assignment.
 
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.

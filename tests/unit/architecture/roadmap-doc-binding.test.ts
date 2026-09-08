@@ -886,18 +886,18 @@ describe("roadmap-doc-binding (D263 — roadmap §Governance)", () => {
 
     const skippedMember = RoadmapSchema.parse(parsePlan(tree.planText));
     const skippedMemberPhase = skippedMember.spine.find(
-      (entry) => entry.kind === "phase" && entry.id === "phase-3",
+      (entry) => entry.kind === "phase" && entry.id === "phase-1",
     );
     if (skippedMemberPhase === undefined || skippedMemberPhase.kind !== "phase") {
-      throw new Error("test fixture has no Phase 3");
+      throw new Error("test fixture has no Phase 1");
     }
     const waveMember = skippedMemberPhase.items
-      .find((item) => item.id === "dash-defaults")
-      ?.items?.find((item) => item.title.startsWith("9-2 · "));
-    if (waveMember === undefined) throw new Error("test fixture has no Phase 3.1 wave-9 member 2");
-    waveMember.title = waveMember.title.replace(/^9-2 · /, "9-3 · ");
+      .find((item) => item.id === "p1-authority-implementation")
+      ?.items?.find((item) => item.title.startsWith("2-2 · "));
+    if (waveMember === undefined) throw new Error("test fixture has no Phase 1.6 wave-2 member 2");
+    waveMember.title = waveMember.title.replace(/^2-2 · /, "2-3 · ");
     expect(auditPhaseThreeExecutionOrder(skippedMember).join("\n")).toContain(
-      "parallel task members for ordinal 9 must be consecutive from -1; expected 9-2, found 9-3",
+      "parallel task members for ordinal 2 must be consecutive from -1; expected 2-2, found 2-3",
     );
   });
 });
