@@ -1293,7 +1293,9 @@ authority/pool distinction and D181/D200 recovery/identity rules remain unchange
 D112's two storage tables: `provider_admissions` → `provider_requests` and
 `provider_budget_counters` → `provider_usage`. The operator explicitly limited this assignment to
 provider-neutral tables/storage logic and compatibility; real API keys, provider-specific adapters,
-pool selection, quota retrieval and presentation remain future work.
+pool selection, quota retrieval and presentation remain future work. The
+[parallel execution binding](../../sidetracks/database-parallel/README.md) assigns shared schema/conversion and legacy adapters to
+prerequisite B, then generic accounting to the independently testable provider-usage peer.
 
 Request records retain exact execution/config/request identity, budgets, reservations, lifecycle
 and evidence, with explicit legacy/unattributed/attributed scope. Generic storage accepts opaque

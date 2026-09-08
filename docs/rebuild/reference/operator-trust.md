@@ -2827,4 +2827,5 @@ all receipt derivation bindings remain unchanged. Resolution records an operator
 problem was addressed; it does not prove a fix, change the failed outcome or resolve uncertain
 external writes. [Dashboard surfaces](dashboard-surfaces.md#failure-resolution) owns explicit actions
 and live/archived presentation. This amendment is approved design, not implementation or permission
-to apply a database upgrade. The side plan follows accepted run-completion integration.
+to apply a database upgrade. The [parallel execution binding](../../sidetracks/database-parallel/README.md) assigns shared diagnostic
+storage/retirement to prerequisite B and operator resolution to an independent peer after B.

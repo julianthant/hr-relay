@@ -7008,7 +7008,8 @@ dropped, and this table is how a citation to the old flat list resolves.
 [Side task `side/run-completion`](../../sidetracks/run-completion/README.md) amends D110/D114 and
 D330 storage: move `run_terminal_authorizations` evidence into a strict immutable completion record
 on `workflow_runs`, rename `failures` to `run_failures`, and retire the unused `run_terminal_outbox`.
-It follows accepted provider-usage integration and leaves running predecessor plans unchanged.
+It follows accepted timeline T2 integration, before the shared database foundation, under the
+[parallel execution binding](../../sidetracks/database-parallel/README.md). Running predecessor plans remain unchanged.
 
 Active ownership remains the run's worker/claim generation and expected-version protocol. Completion
 preserves the exact accepted worker, generation, version, timestamp and result/failure identity after
@@ -7027,8 +7028,9 @@ implementation claim or authorization to convert the operator database.
 ## Failure resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md), following run-completion,
-adds Mark resolved and Reopen to existing failure details. The current annotation is stored on the
+[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) adds Mark resolved and Reopen
+after the shared foundation supplies run completion and annotation storage. Its independent parallel
+assignment follows the [parallel execution binding](../../sidetracks/database-parallel/README.md). The actions appear in existing failure details. The current annotation is stored on the
 owning `run_failures` row separately from immutable occurrence evidence, with its own version,
 operator actor/time and optional bounded note. It needs no fix/lesson table, required commit or
 verification report. Historical failures start unresolved; matching fingerprints or later successful

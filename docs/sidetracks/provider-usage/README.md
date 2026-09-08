@@ -2,9 +2,11 @@
 
 ## Assignment and approval
 
-**Owner: `side/provider-usage`. Approved planning; implementation WAITING ON accepted integration
-of `side/timeline-history-2`.** This is a separate side assignment, not a roadmap phase or an
-amendment to the running worker, command, operation or timeline plans.
+**Product owner: `side/provider-usage`. Parallel peer P in the [parallel execution plan](../database-parallel/README.md).**
+Implementation is **WAITING ON the accepted `side/database-foundation` release**. The operator's
+2026-09-08 amendment moves shared schema, migration and existing-runtime adapters into that
+prerequisite. This peer owns generic accounting behavior and retains the provider-neutral restriction.
+The four running worker, command, operation and timeline plans remain unchanged.
 
 On 2026-09-08 the operator chose `provider_requests` and `provider_usage`, with request budget
 details and usage totals/current windows/remaining quota. They accepted application-only accounting
@@ -21,7 +23,8 @@ Three outcomes:
 3. Supply a safe migration and preserve existing capability-level admission behavior. Prove the
    future attributed path with synthetic providers; do not connect actual keys or providers.
 
-This session persists the plan only. A fresh supervisor implements the storage foundation. Real
+This session persists the plan only. Shared storage lands in prerequisite B; this supervisor completes
+the generic accounting behavior. Real
 per-key attribution, provider configuration, selection, adapters and presentation belong to later work.
 
 ## Authorities and ownership
@@ -36,17 +39,18 @@ per-key attribution, provider configuration, selection, adapters and presentatio
 - [Dashboard surfaces](../../rebuild/reference/dashboard-surfaces.md), D308, and
   [operator trust](../../rebuild/reference/operator-trust.md) own deletion and truthful evidence.
 - [Guards and tests](../../rebuild/reference/guards-and-tests.md), §3.14 D191, owns gates.
-- [Timeline history](../timeline-history/README.md) is the predecessor because migration,
-  authority integrity, run deletion and their consumer tests share implementation ownership.
-  Consume its accepted T2 result; do not amend, duplicate or reactivate its retired tables.
+- The [parallel execution plan](../database-parallel/README.md) owns the completed prerequisites: timeline T2, run completion,
+  then shared database foundation B. B owns migration, integrity and shared deletion composition.
+  This peer consumes that accepted base and must not reactivate retired tables.
 - [Worker names](../worker-names/README.md), [command groups](../command-groups/README.md) and
   [operation names](../operation-names/README.md) keep their existing scope and order.
 
-Owned implementation seams are `src/domain/provider-admission.ts`, the relevant IDs/repository
-contracts, `src/infra/sqlite/migrations.ts`, `authority-database.ts` and related upgrade/integrity
-registries; minimal name/shape adaptation in existing admission callers; generated catalog inputs;
-focused tests and these owning references. Inspect current equivalents after the predecessors land.
-Read nearest instructions before edits, including `src/server/AGENTS.md` for server/upgrade changes.
+Product scope includes the schemas and behavior below, but execution ownership is split explicitly.
+B owns physical schema/IDs/global repository types, migrations, upgrade/recovery/integrity, shared
+retention hooks and minimal legacy adapters. P owns only `src/infra/sqlite/provider-accounting.ts`,
+`src/core/provider-admission.ts`, the exclusive provider tests and this plan/evidence as bound by B.
+No migration, global type, composition, catalog-input or sibling-file edits in P. The [parallel execution plan](../database-parallel/README.md)
+owns the exact write set, release proof, resource slots and handoff controls. Read nearest instructions.
 
 Do not change pool rotation, key/model selection, secret readers or `.env.providers`; add real
 provider registrations, key fingerprints, price schedules, quota discovery, token extraction, API
@@ -161,14 +165,15 @@ the generic repository contract once separately implemented; absent key attribut
 
 ## Ordered work, proof and execution
 
-1. **S1 Admit and bind:** verify accepted predecessor, actual base, ownership, nearest instructions
-   and supported upgrade floor; record the exact schema/identity map and compatibility mapping here.
-2. **S2 Implement foundation:** add generic schemas, transactional storage and read methods, migrate
-   old tables and adapt existing callers minimally. Prove request/usage behavior with synthetic IDs.
-3. **S3 Prove compatibility:** complete populated migration/restore, race, reset and deletion cases;
-   regenerate affected catalogs and update owning contract status only to verified behavior.
-4. **S4 Gate and review:** commit/freeze the candidate, obtain independent review, fix and re-review
-   findings, then hand back for operator-assigned integration, integration gates and owned cleanup.
+1. **S1 Admit and bind:** verify accepted B release, full base SHA, frozen types/schema, real legacy
+   adapters, exact owned paths and independent test-resource slots. No unmerged peer inputs.
+2. **S2 Generic accounting:** implement generic scope/meter reservation, settlement, expiry, rollover,
+   uncertainty and read models within the accepted schemas. Preserve the existing capability path.
+3. **S3 Prove the vertical slice:** complete P1–P4/P6 and the generic-specific P5 cases on B alone.
+   Link B's exact historical-migration proof without claiming all of P5 from an empty fixture.
+4. **S4 Gate and review:** complete required gates, freeze candidate, obtain fresh independent review,
+   fix/re-review and return a compact candidate handoff. As the designated peer integration owner,
+   resume only for the operator's concrete integration assignment; do not idle watching siblings.
 
 | Proof | Required result / negative control |
 | --- | --- |
@@ -179,22 +184,24 @@ the generic repository contract once separately implemented; absent key attribut
 | P5 Historical conversion | Populated historical fixtures include every lifecycle, active leases, blocked budgets, midnight boundaries and incomplete history. IDs/evidence/replay survive; no invented key or all-time history. Failure before commit, interruption after commit, exact resume, repeated no-write upgrade, verified backup/restore, fresh creation and supported old generations pass. |
 | P6 Existing runtime | Composed admission, advisory exhaustion and pool tests preserve current calls, budget refusals, retry times, one remote invocation and UNKNOWN behavior. Old table readers/writers are retired; real key selection and adapter behavior remain unchanged. Existing storage diagnostics remain valid. |
 
-One GPT-6 Astra/high supervisor implements this cohesive storage/compatibility unit locally, with
-zero implementation workers. One fresh read-only `sup_review` on Astra/high reviews the complete
-candidate and all P1–P6, migration, deletion, privacy and unchanged-runtime claims. At most two active
-agents. Review receives pinned base/head/tree, complete diff, plan and evidence, not the author's
-conversation. It never implements or delegates. No planning delegation or automatic task creation.
+One Astra/high supervisor implements this independent peer locally with zero implementation workers.
+One fresh read-only `sup_review` on Astra/high reviews the complete candidate, P1–P6 allocation,
+unchanged-runtime proof and frozen-schema boundary. It receives pinned base/head/tree, full diff,
+plan and gate evidence, never the author's working conversation; it does not implement or delegate.
 
-| Assignment | Branch and checkout | Base and merge condition |
+| Assignment | Branch and checkout | Base and integration condition |
 | --- | --- | --- |
-| `side/provider-usage` | Create `codex/provider-usage` at `/Users/julianhein/Projects/hr-worktree-provider-usage`; recheck name/path/capacity first. | Start from the actual accepted local-master integration of `side/timeline-history-2`, containing this approved plan. Record its full SHA before edits; do not start from planning HEAD or an unfinished peer branch. |
+| `side/provider-usage` | Create `codex/provider-usage` at `/Users/julianhein/Projects/hr-worktree-provider-usage`; verify availability. | Exact accepted B release SHA, also used by D and G. Record it before edits; no dependency on either peer. |
 
-Integration target is local master at `/Users/julianhein/Projects/hr-automation-rebuild`. The
-operator assigns integration after review PASS and gates. Recheck target ownership/changes, integrate
-in the assigned serialized window, gate the combined tree and independently re-review behavioral
-conflict fixes. Remove only this accepted task's branch/worktree from a safe checkout. Do not push
-or auto-dispatch follow-up provider work. New tables, real provider wiring, quota policy or other
-material scope changes require an amendment; routine schema/index/test choices remain local.
+The [parallel execution plan](../database-parallel/README.md) names this implementing supervisor the **one peer-batch integration owner**,
+with an actual task ID recorded at launch. This role does not authorize an automatic merge. Return
+reviewed candidates for operator-chosen integration; accept exact handoffs and resume for assigned
+integration. The shared plan owns serialized target operations, combined gates, conflict review and
+safe owned cleanup. No peer has to wait for P's feature implementation to test or be reviewed.
+
+B supplies final schema and adapters plus provider P1/P5/P6 foundation proof. P supplies generic
+P1–P4/P6 and changed-input regression proof; no requirement is waived. Shared contract/index status
+changes belong to this task only during the assigned integration stage, not concurrent feature edits.
 
 ## Gates and application boundaries
 
@@ -229,19 +236,19 @@ before/after counts, identities and totals. This plan does not authorize that ap
 
 ## Progress and launch status
 
-- Planning: scope approved; source/target metadata inspected. Scoped validation on 2026-09-08
-  passed: `npm run roadmap:check`, 13 plan links, 10 existing test-selector paths, nine instruction
-  pairs (largest chain 16,648 bytes), four preceding plans byte-unchanged, and `git diff --check`.
-  Changes are limited to this plan and two authored contract/index additions. No runtime gates
-  were run or reused as proof of the planned behavior; implementation remains unverified.
-- S1–S4, P1–P6, product gates, independent review, integration and cleanup: **not started**.
-- Launch: **WAITING ON accepted integration of `side/timeline-history-2`**, then verification that
-  the base contains this plan and the assigned implementation checkout is available.
-- Future per-key wiring/provider changes: intentionally excluded, not an unfinished step here.
+- Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
+  the remaining plans for parallel execution, including their ownership, prerequisites and gates.
+- Earlier inspection/check records are historical planning evidence. This amendment's validation
+  is recorded in the [parallel execution plan](../database-parallel/README.md); no product tests are claimed from planning.
+- B-owned storage prerequisites and this peer's S1–S4/P1–P6 proof allocation: **not started**. Required product proof, gates, independent review, accepted integration
+  and cleanup remain unfinished until linked to exact evidence.
+- Launch: **WAITING ON accepted B release and its recorded independence/resource evidence**. Verify the committed plan revision, base, branch/path ownership
+  and capacity. Do not substitute a planning commit or unmerged sibling for the prerequisite.
 
-The operator opens `/supervise side/provider-usage` with this absolute plan path and verified plan
-SHA once the prerequisite is accepted. This is an approved side-work assignment: this side plan
-owns task progress, review, gate evidence and completion wherever `/supervise` refers to a task/phase
-section. Do not invent a phase number or mark roadmap tasks complete. Preserve repository contracts,
-independent review and assigned integration/cleanup. Send Done / Now / Remaining at start/resume
-and after each verified step, keeping every unfinished proof, gate, review and cleanup visible.
+The operator opens `/supervise side/provider-usage` using this absolute plan path and the approved plan SHA.
+This is an approved side-work assignment. This side plan is the task owner wherever `/supervise`
+refers to a task/phase section. Record progress, review, gate evidence and completion here; do not
+create a phase number or mark roadmap tasks complete. Preserve repository contracts, Astra/high,
+fresh read-only `sup_review`, all required gates and the linked integration/cleanup conditions.
+Send Done / Now / Remaining at start/resume and after each verified step. No automatic task launch,
+push or application to the operator database.
