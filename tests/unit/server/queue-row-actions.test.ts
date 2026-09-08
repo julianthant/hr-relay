@@ -124,6 +124,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     // named — which is the whole reason a rename is safe to offer (D233).
     queued: ["bump", "cancel", "rename"],
     running: ["cancel", "rename"],
+    cancelling: ["cancel", "rename"],
     blocked: ["cancel", "rename"],
     "awaiting-approval": ["cancel", "rename"],
     // Terminal: nothing to cancel, nothing to bump, a re-run is possible — and

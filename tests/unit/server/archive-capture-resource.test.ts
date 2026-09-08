@@ -1,3 +1,6 @@
+import { inMemoryRunReaderFake } from "../../helpers/canonical-run-reader.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 /** DCA4: archived evidence can only read bytes through its frozen tile. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -114,7 +117,7 @@ function fixtureLease(ref: ArtifactRef, bytes: Uint8Array): VerifiedByteLease {
   });
 }
 
-function deps(record: ArchivedRunRecord | undefined, open: (ref: ArtifactRef) => Promise<Readable>) {
+function deps(record: ArchivedRunRecord | undefined, open: (ref: ArtifactRef) => Promise<Readable>, canonicalId: string = ARCHIVED_RUN_WITH_SECTIONS.runId) {
   const artifactReader: ServerVerifiedArtifactReader = Object.freeze({
     async verify(ref: ArtifactRef) {
       await readFixtureBytes(open, ref);
@@ -123,7 +126,14 @@ function deps(record: ArchivedRunRecord | undefined, open: (ref: ArtifactRef) =>
       return fixtureLease(ref, await readFixtureBytes(open, ref));
     },
   });
+  const run = RunRecordSchema.parse({ ...QUEUED_RUN,
+    envelope: { ...QUEUED_RUN.envelope, runId: canonicalId },
+    lifecycle: { state: "terminal", outcome: "done", endedAt: ARCHIVED_RUN_WITH_SECTIONS.archivedAt },
+  });
   return {
+    reader: inMemoryRunReaderFake({ records: new Map(record === undefined ? [] : [[run.envelope.runId, run]]),
+      archived: new Set([run.envelope.runId]), deleted: new Map(), generation: 1,
+    }),
     authority: {
       withAuthorityTransaction: <Result>(work: (repositories: AuthorityRepositories) => Result): Result => work({
         archivedRuns: { get: () => record },
@@ -237,7 +247,7 @@ describe("DCA4 archived capture resource", () => {
       it("refuses a foreign archive returned by the repository before opening bytes", async () => {
         const record = archivedRecordWithCapture();
         const open = vi.fn(async () => Readable.from([BYTES]));
-        await assert.rejects(() => read(deps(record, open), BUNDLE_ID, ARTIFACT_ID), /foreign archived run identity/u);
+        await assert.rejects(() => read(deps(record, open, BUNDLE_ID), BUNDLE_ID, ARTIFACT_ID), /foreign archived run identity/u);
         assert.equal(open.mock.calls.length, 0);
       });
 
@@ -285,7 +295,7 @@ describe("DCA4 archived capture resource", () => {
 
       it("names absent archives without opening arbitrary stored objects", async () => {
         const open = vi.fn(async () => Readable.from([BYTES]));
-        await assert.rejects(() => read(deps(undefined, open), BUNDLE_ID, ARTIFACT_ID), /archived run .* does not exist/u);
+        await assert.rejects(() => read(deps(undefined, open), BUNDLE_ID, ARTIFACT_ID), /archived run .* is absent/u);
         assert.equal(open.mock.calls.length, 0);
       });
 

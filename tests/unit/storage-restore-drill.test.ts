@@ -36,7 +36,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { manualClock } from "../../src/domain/clock.js";
+import { localDatePart, manualClock } from "../../src/domain/clock.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsApplyInputSchema,
@@ -75,6 +75,8 @@ import {
   WRITE_INTENT_ATTEMPTING,
 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
+import { makeWorld } from "./server/helpers/dashboard-harness.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
@@ -323,6 +325,22 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
         WRITE_INTENT_ATTEMPTING,
       );
       assert.equal(reopened.getMeta().authorityGeneration, generation);
+      const world = makeWorld({ reader: sqliteRunReader(reopened, CLOCK) });
+      try {
+        assert.equal(world.projection.runFold(seeded.runId), undefined);
+        assert.equal(world.projection.queueSurface(seeded.runId)?.status, "running",
+          "restored canonical authority renders without replaying execution spans or writes");
+        const day = world.projection.buildDashboardDayWire(localDatePart(new Date(run.envelope.enqueuedAt)));
+        assert.equal(day.queueSurfaces.find((row) => row.runId === seeded.runId)?.status, "running");
+        assert.deepEqual(day.statusCounts, [{ status: "running", count: 1 }]);
+        world.projection.reconcileWorkerAuthority();
+        assert.equal(world.changes.length, 0, "an unchanged restored authority must not churn snapshots");
+        assert.equal(reopened.getMeta().authorityGeneration, generation);
+        assert.deepEqual(reopened.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
+          WRITE_INTENT_ATTEMPTING);
+      } finally {
+        world.dispose();
+      }
       // The post-backup row is gone — the restore restored the BACKUP, not a merge.
       assert.equal(reopened.authority.notifications.get(NOTIFICATION.notificationId), undefined);
     } finally {
@@ -358,7 +376,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     });
   });
 
-  it("restores exact historical SQLite bytes without projection rebuild or credential changes", async () => {
+  it.each([29, 30, 31, 32, 33])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
     const paths = drillPaths();
     const credentialPath = join(paths.stateRoot, "credentials", "protected.json");
     const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
@@ -378,8 +396,8 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     const live = open(paths);
     live.close();
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(paths.authorityPath);
-    const historicalPath = join(paths.stateRoot, "historical-v30.sqlite");
-    createHistoricalAuthority(historicalPath, 30);
+    const historicalPath = join(paths.stateRoot, `historical-v${String(version)}.sqlite`);
+    createHistoricalAuthority(historicalPath, version);
     const rawSource = openAuthorityBackupSourceReadOnly(historicalPath);
     let manifestPath: string;
     try {
@@ -429,11 +447,11 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
 
     const report = await restore.restore({ manifestPath, stoppedSystemProof });
 
-    assert.equal(report.schemaVersion, 30);
+    assert.equal(report.schemaVersion, version);
     assert.equal(report.projectionRebuilt, false);
     assert.equal(projectionRebuildCalls, 0);
     assert.equal(readFileSync(credentialPath).equals(credentialBytes), true);
-    assert.equal(inspectAuthorityBackupReadOnly(paths.authorityPath, 30).schemaVersion, 30);
+    assert.equal(inspectAuthorityBackupReadOnly(paths.authorityPath, version).schemaVersion, version);
   });
 
   it("refuses while a live process holds a runtime lock, and touches nothing", async () => {

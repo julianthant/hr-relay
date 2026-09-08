@@ -1364,6 +1364,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/capture-pointer", path: "dimensions.reason", origin: "repository-authored" },
 
+  { surface: "wire/storage-doctor", path: "authorityUpgrades.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor", path: "authorityUpgrades.cause.summary", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "protectedSettings.cause.code", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "protectedSettings.cause.summary", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "authority.cause.code", origin: "repository-authored" },

@@ -1,3 +1,4 @@
+import { RunRecordService } from "../../core/run-record-service.js";
 /**
  * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
  * §2.5).
@@ -143,6 +144,9 @@ function formatReport(report: StorageDoctorReport): string {
   lines.push(report.protectedSettings.state === "available"
     ? `protected settings: ${report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(" · ")}`
     : `protected settings: unavailable — ${report.protectedSettings.cause.summary}`);
+  lines.push(report.authorityUpgrades.state === "available"
+    ? `authority upgrades: ${report.authorityUpgrades.phases.map(({ phase, fromSchemaVersion, toSchemaVersion }) => `${phase} v${String(fromSchemaVersion)} → v${String(toSchemaVersion)}`).join(" · ")}`
+    : `authority upgrades: ${report.authorityUpgrades.state}`);
   if (report.counts.state === "available") {
     const values = report.counts.values;
     lines.push(
@@ -267,13 +271,9 @@ function messageChain(error: unknown): string {
 }
 
 /**
- * Fold the staged copy's span history back into its projection tables.
- *
- * It runs against the STAGED database, never the live one, and it touches only
- * `runs_view`/`spans`/`gates`/`notes` — `OfflineAuthorityRestoreService`
- * re-inspects afterwards and aborts the whole restore if the authority
- * fingerprint or generation moved, so a projector that reached an authority
- * table would fail the restore rather than corrupt it.
+ * Rebuild and verify optional span evidence against the staged canonical runs.
+ * This never persists a run mirror. The restore service re-inspects authority
+ * fingerprint and generation afterwards and refuses any authority mutation.
  */
 function rebuildStagedProjections(
   stateRoot: string,
@@ -288,20 +288,22 @@ function rebuildStagedProjections(
     );
     try {
       const projection = createRunQueueProjection({
+        reader: new RunRecordService({ database: staged, clock,
+          ids: { uuid: () => { throw new Error("restore projector cannot mint ids"); } },
+          publishQueued: () => { throw new Error("restore projector cannot publish runs"); },
+        }),
         stateRoot,
         clock,
         appVersion,
         descriptorSetHash: setHash,
         ledger: createLedgerReadThrough(stateRoot),
         authority: {
-          getRun: (runId) => staged.authority.runs.get(runId),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),
           getWorkerLease: (workerId) => staged.authority.workerLeases.get(workerId),
           listWorkerPools: () => staged.authority.workerPools.list(),
           listRunBatches: () => staged.authority.runSessions.list(),
           getRunBatch: (id) => staged.authority.runSessions.get(id),
-          isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
           listActivityPersonPseudonyms: (runIds) => staged.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -309,7 +311,6 @@ function rebuildStagedProjections(
             staged.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
         },
         descriptors: { resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor },
-        projectionStore: staged,
       });
       projection.rebuildFromJsonl();
       const health = projection.health();

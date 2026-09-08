@@ -2791,6 +2791,9 @@ function executeVersionBumpApply(
   }));
 
   const affectedTargets: TargetReference[] = [versionPlanTarget(plan.versionPlanId)];
+  // Freeze the complete batch while every candidate is still live. UUID order
+  // must not erase a child from its parent's immutable archived membership.
+  const snapshots = dependencies.archiveSnapshots.snapshotBatch(archivedRunIds);
   for (const candidate of effect.candidates) {
     const run = repositories.runs.get(candidate.runId);
     if (run === undefined) {
@@ -2804,12 +2807,14 @@ function executeVersionBumpApply(
     // would let a registry that moved between the two calls freeze a label
     // beside a blank code — a half-resolved descriptor the record refuses.
     const registered = dependencies.descriptors.resolve(candidate.workflowId);
+    const snapshot = snapshots.get(candidate.runId);
+    if (snapshot === undefined) throw new Error(`archive batch omitted candidate ${candidate.runId}`);
     lifecycleRun(request, dependencies.lifecycle.archive({
       commandId: lifecycleCommandId("operator-archive", { commandId: request.commandId, runId: run.envelope.runId }),
       expectedVersion: run.version, archive: deriveArchivedRunRecord({
       repositories,
       run,
-      snapshot: dependencies.archiveSnapshots.snapshot(candidate.runId),
+      snapshot,
       applicationId,
       drift,
       archivedBy: request.requestedBy,

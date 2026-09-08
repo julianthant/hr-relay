@@ -1,3 +1,4 @@
+import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
 import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorSettingsCommandSchema } from "../../domain/commands-history.js";
 import { CommandIdentityConflictError } from "../../domain/commands.js";
 import { createCredentialStore } from "../config/credential-store.js";
@@ -18,6 +19,7 @@ import type { ProviderAdmissionRepository } from "../../base/providers.js";
 import {
   AUTHORITY_TABLE_REGISTRY,
   AuthorityUpgradeRecordSchema,
+  ProtectedSettingsCurrentRecordSchema,
   AuthorityTableNameSchema,
   ProjectionTableNameSchema,
   type AuthorityTableName,
@@ -298,6 +300,7 @@ import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   INTEGRATED_AUTHORITY_TABLES_BY_VERSION,
+  POST_FLOOR_AUTHORITY_TABLES_BY_VERSION,
   SQLITE_MIGRATIONS,
   UPGRADE_FLOOR_SCHEMA_VERSION,
   auditMigrationTableCoverage,
@@ -1030,7 +1033,6 @@ export type ProjectionRepositories = Readonly<{
   spans: ProjectionRepository;
   gates: ProjectionRepository;
   notes: ProjectionRepository;
-  runsView: ProjectionRepository;
 }>;
 
 const OpaqueAuthorityTableSchema = z.enum([
@@ -1889,6 +1891,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
     ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
     ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
+    ...(presentTables?.has("protected_settings_current") === true
+      ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   })) {
     if (presentTables !== undefined && !presentTables.has(table)) continue;
     const rows = database.prepare(`
@@ -2712,6 +2716,24 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  /** Read-only D332 phase projection. No private journal fields escape this adapter. */
+  readUpgradePhases() {
+    return this.withAuthorityReadSnapshot(() => {
+      if (this.getMeta().schemaVersion < 30) return { state: "absent" as const, reason: "pre-journal-schema" as const };
+      const rows = this.#database.prepare("SELECT phase, record_json FROM authority_upgrades ORDER BY rowid").all();
+      const phases = rows.map((raw) => {
+        const row = z.strictObject({ phase: z.string(), record_json: z.string() }).parse(raw);
+        const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(row.record_json));
+        if (record.phase !== row.phase) throw new Error("authority upgrade phase differs from its record");
+        return { phase: record.phase, fromSchemaVersion: record.fromSchemaVersion,
+          toSchemaVersion: record.toSchemaVersion, recordedAt: record.recordedAt };
+      });
+      return phases.length === 0
+        ? { state: "absent" as const, reason: "journal-empty" as const }
+        : { state: "available" as const, phases };
+    });
   }
 
   static inspectAuthorityReadIdentityReadOnly(
@@ -3628,7 +3650,10 @@ export class AuthorityDatabase implements Disposable {
     `).all().map((row) => TableNameRowSchema.parse(row).name);
     const expected = schemaVersion === 27 || schemaVersion === 28 || schemaVersion === 29
       ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[schemaVersion]
-      : AUTHORITY_TABLE_REGISTRY.map(({ name }) => schemaVersion < 33 ? name === "workflow_runs" ? "tasks" : name === "workflow_run_batches" ? "run_sessions" : name : name).sort();
+      : schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION
+        ? AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort()
+        : POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[schemaVersion];
+    if (expected === undefined) throw new Error(`no released layout for authority schema ${String(schemaVersion)}`);
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(
         `authority database tables do not match admitted v${String(schemaVersion)} registry: `
@@ -8099,7 +8124,6 @@ export class AuthorityDatabase implements Disposable {
       spans: repository("spans"),
       gates: repository("gates"),
       notes: repository("notes"),
-      runsView: repository("runs_view"),
     });
   }
 }

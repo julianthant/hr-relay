@@ -75,11 +75,12 @@ export type FailureSection =
 
 export interface ArchiveSnapshotSource {
   /**
-   * Throws, loudly, when the run has no projected fold. An archive built from
-   * a run the projection cannot render would be an archive of nothing, and
-   * inventing an empty row would be worse than refusing the bump.
+   * Requires a live canonical row. Missing spans remain explicit missing
+   * evidence in the frozen snapshot; they do not erase the run's existence.
    */
   snapshot(runId: string): ArchiveRunSnapshot;
+  /** Freeze every candidate before any archival changes live membership. */
+  snapshotBatch(runIds: readonly string[]): ReadonlyMap<string, ArchiveRunSnapshot>;
 }
 
 export interface VersionBumpAssessment {
@@ -98,21 +99,30 @@ export interface VersionBumpAssessmentDeps {
   readonly appVersion: string;
 }
 
-/**
- * `workflows` scope reaches exactly the named workflows. `application` scope
- * reaches every workflow that has runs at all — including RETIRED ones, whose
- * runs are prior-version by definition and would otherwise be the only rows a
- * dashboard update could never sweep.
- */
-function scopedWorkflowIds(deps: VersionBumpAssessmentDeps, scope: VersionScope): readonly string[] {
-  if (scope.kind === "workflows") return [...new Set(scope.workflowIds)].sort();
-  return [...new Set(deps.repositories.runs.listWorkflows())].sort();
-}
-
+/** Mutation callers assess their transaction-local repository state. */
 export function assessVersionBump(
   deps: VersionBumpAssessmentDeps,
   scope: VersionScope,
 ): VersionBumpAssessment {
+  const workflows = scope.kind === "workflows" ? scope.workflowIds : deps.repositories.runs.listWorkflows();
+  return assessVersionBumpFromRuns({
+    currentIdentity: deps.currentIdentity, appVersion: deps.appVersion,
+    runs: [...new Set(workflows)].flatMap((workflow) => deps.repositories.runs.listByWorkflow(workflow)),
+  }, scope);
+}
+
+/** The same assessment over an admitted canonical read snapshot. */
+export function assessVersionBumpFromRuns(
+  deps: Omit<VersionBumpAssessmentDeps, "repositories"> & { readonly runs: readonly RunRecord[] },
+  scope: VersionScope,
+): VersionBumpAssessment {
+  const byWorkflow = new Map<string, RunRecord[]>();
+  for (const run of deps.runs) {
+    const rows = byWorkflow.get(run.envelope.workflow) ?? [];
+    rows.push(run);
+    byWorkflow.set(run.envelope.workflow, rows);
+  }
+  const workflowIds = [...new Set(scope.kind === "workflows" ? scope.workflowIds : byWorkflow.keys())].sort();
   const identities: WorkflowVersionIdentity[] = [];
   const candidates: VersionBumpCandidate[] = [];
   const blockers: VersionBumpBlocker[] = [];
@@ -125,7 +135,7 @@ export function assessVersionBump(
    */
   const expectedAppVersion = scope.kind === "application" ? deps.appVersion : undefined;
 
-  for (const workflowId of scopedWorkflowIds(deps, scope)) {
+  for (const workflowId of workflowIds) {
     const current = deps.currentIdentity(workflowId);
     if (current === undefined) {
       if (scope.kind === "workflows") {
@@ -137,13 +147,13 @@ export function assessVersionBump(
       // Application scope: a retired workflow's runs are all prior-version.
       // There is no current identity to record, so the sweep archives them
       // under the identity they carry and the plan lists no identity row.
-      for (const run of deps.repositories.runs.listByWorkflow(workflowId)) {
+      for (const run of byWorkflow.get(workflowId) ?? []) {
         record(run, ["app-version"], candidates, blockers, driftByRunId);
       }
       continue;
     }
     identities.push(current);
-    for (const run of deps.repositories.runs.listByWorkflow(workflowId)) {
+    for (const run of byWorkflow.get(workflowId) ?? []) {
       const drift = versionDrift(
         {
           descriptorVersion: run.envelope.descriptorVersion,

@@ -476,7 +476,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -894,7 +894,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(32), true);
   });
 
-  it("creates a fresh authority at v33 with one v33 baseline journal row", () => {
+  it("creates a fresh authority at v34 with one v34 baseline journal row", () => {
     const path = databasePath("fresh-v32.sqlite");
     openDatabase(path).close();
 
@@ -928,6 +928,38 @@ describe("native SQLite authority schema", () => {
     } finally {
       raw.close();
     }
+  });
+
+  it("A3 drops only the dead v33 mirror and preserves canonical bytes and generation across reopen", () => {
+    const path = databasePath("a3-v33.sqlite");
+    createExactReleasedDatabase(path, 33);
+    const raw = new DatabaseSync(path);
+    const run = QUEUED_RUN;
+    raw.prepare(`INSERT INTO workflow_runs (
+      record_key, workflow, item_id, state, priority, attempt, not_before,
+      owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, session_id,
+      version, record_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`).run(
+      run.envelope.runId, run.envelope.workflow, run.envelope.itemId, run.lifecycle.state,
+      run.envelope.priority, run.envelope.attempt, run.claimGeneration, run.version,
+      JSON.stringify(run), run.createdAt,
+    );
+    const before = raw.prepare("SELECT record_json FROM workflow_runs").all();
+    assert.ok(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'runs_view'").get());
+    raw.close();
+    const migrated = openDatabase(path);
+    assert.equal(migrated.getMeta().schemaVersion, 34);
+    assert.equal(migrated.getMeta().authorityGeneration, 0);
+    assert.equal(migrated.inspectSchema().tables.some(({ name }) => String(name) === "runs_view"), false);
+    assert.deepEqual(migrated.authority.runs.get(run.envelope.runId), run);
+    migrated.close();
+    const reopened = openDatabase(path);
+    assert.equal(reopened.getMeta().authorityGeneration, 0);
+    reopened.close();
+    const verify = new DatabaseSync(path, { readOnly: true });
+    assert.deepEqual(verify.prepare("SELECT record_json FROM workflow_runs").all(), before);
+    assert.equal(verify.prepare("SELECT name FROM sqlite_master WHERE name = 'runs_view'").get(), undefined);
+    verify.close();
   });
 
   it("upgrades v30 lineage so source deletion preserves it and only the new run tombstone removes it", () => {
@@ -1083,7 +1115,44 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), before);
   });
 
-  it.each([27, 28, 29] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
+  it.each([30, 31] as const)("reads populated v%s ordinary/protected metadata with the released schemas and refuses corruption", (version) => {
+    const path = databasePath(`historical-settings-v${String(version)}.sqlite`);
+    createExactReleasedDatabase(path, version);
+    const raw = new DatabaseSync(path);
+    const command = SETTINGS_CURRENT_COMMAND;
+    const audit = SETTINGS_CURRENT_AUDIT;
+    raw.prepare("INSERT INTO commands (record_key, family, record_json, created_at) VALUES (?, ?, ?, ?)")
+      .run(command.commandId, command.family, JSON.stringify(command), command.requestedAt);
+    raw.prepare("INSERT INTO command_audits (record_key, command_id, record_json, created_at) VALUES (?, ?, ?, ?)")
+      .run(audit.auditId, command.commandId, JSON.stringify(audit), audit.completedAt);
+    const common = { revision: 2, commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command), auditId: audit.auditId, committedAt: NOW };
+    const settings = { ...common, settingsFingerprint: derivePersistedSettingsFingerprint({}) };
+    const protectedSettings = { ...common, entries: [] };
+    raw.prepare("INSERT INTO settings_current (record_key, revision, settings_fingerprint, command_id, command_fingerprint, audit_id, record_json, created_at) VALUES ('current', 2, ?, ?, ?, ?, ?, ?)")
+      .run(settings.settingsFingerprint, common.commandId, common.commandFingerprint, common.auditId, JSON.stringify(settings), NOW);
+    raw.prepare("INSERT INTO protected_settings_current (record_key, revision, command_id, command_fingerprint, audit_id, record_json, created_at) VALUES ('current', 2, ?, ?, ?, ?, ?)")
+      .run(common.commandId, common.commandFingerprint, common.auditId, JSON.stringify(protectedSettings), NOW);
+    raw.close();
+    const before = readFileSync(path);
+    for (const openMode of ["storage-backup-read-only-no-migrate", "storage-doctor-read-only-no-migrate", "storage-upgrade-preflight-read-only-no-migrate"] as const) {
+      const admitted = openDatabaseWithoutMigration(path, openMode);
+      assert.equal(admitted.getMeta().schemaVersion, version);
+      admitted.close();
+      assert.deepEqual(readFileSync(path), before);
+    }
+    const corrupt = new DatabaseSync(path);
+    // The legacy update trigger is deliberately obeyed: invalid metadata must
+    // fail the reader even when SQL's revision fence accepts the row.
+    corrupt.prepare("UPDATE protected_settings_current SET revision = 3, record_json = ?")
+      .run(JSON.stringify({ ...protectedSettings, revision: 3, privateUnknown: "must-refuse" }));
+    corrupt.close();
+    const corruptBytes = readFileSync(path);
+    assert.throws(() => openDatabaseWithoutMigration(path, "storage-doctor-read-only-no-migrate"), /strict record schema validation/u);
+    assert.deepEqual(readFileSync(path), corruptBytes);
+  });
+
+  it.each([27, 28, 29, 30, 31, 32, 33] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
     const path = databasePath(`integrated-v${String(version)}.sqlite`);
     createExactReleasedDatabase(path, version);
     const before = readFileSync(path);
@@ -2276,7 +2345,6 @@ describe("authority generation accounting", () => {
       database.projections.spans,
       database.projections.gates,
       database.projections.notes,
-      database.projections.runsView,
     ]) {
       repository.upsert(PROJECTION_RECORD);
       assert.deepEqual(repository.get(HASH_A), PROJECTION_RECORD);

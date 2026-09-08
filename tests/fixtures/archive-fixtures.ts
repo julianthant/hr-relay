@@ -256,6 +256,9 @@ export const ARCHIVE_RELAUNCH: ArchiveRelaunchRecord = ArchiveRelaunchRecordSche
  * reaches the archive path must fail loudly, not archive a blank row.
  */
 export const UNWIRED_ARCHIVE_SNAPSHOTS = Object.freeze({
+  snapshotBatch(runIds: readonly string[]): never {
+    throw new Error(`this harness composed no archive snapshot source; ${String(runIds.length)} runs cannot be archived here`);
+  },
   snapshot(runId: string): never {
     throw new Error(`this harness composed no archive snapshot source; run ${runId} cannot be archived here`);
   },

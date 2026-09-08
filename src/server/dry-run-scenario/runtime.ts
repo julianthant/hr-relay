@@ -104,7 +104,10 @@ function createScenarioKernel(input: Readonly<{
     },
     intakeParser: { parse: () => unavailable("intake parsing") },
     intakeProjections: { resolve: () => undefined },
-    archiveSnapshots: { snapshot: () => unavailable("archive snapshots") },
+    archiveSnapshots: {
+      snapshot: () => unavailable("archive snapshots"),
+      snapshotBatch: () => unavailable("archive snapshots"),
+    },
   });
 }
 

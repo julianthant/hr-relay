@@ -72,71 +72,35 @@ function statusPair(w: DashboardWorld, seed: number): { row: string; panel: stri
   return { row: surface?.status ?? "<no row>", panel: detailOf(w, seed).header.status };
 }
 
-describe("D268 — one run-status derivation", () => {
-  it("agrees on `done` when the run's span ended before authority settled", () => {
-    // The C1 case, and the ordinary one: the worker emits `span.ended` before
-    // its terminal transaction commits. The row read `done` off the fold; the
-    // panel, with no `ended` arm, read `queued` off the still-unsettled
-    // lifecycle.
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    claimEventOf(w, 1);
-    runEndedEventOf(w, 1, "done");
-
-    const { row, panel } = statusPair(w, 1);
-    assert.equal(row, panel);
-    assert.equal(panel, "done");
-  });
-
-  it("agrees on `cancelled` for a run whose span ended `discarded` before authority settled", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 2 });
-    runEndedEventOf(w, 2, "discarded");
-
-    const { row, panel } = statusPair(w, 2);
-    assert.equal(row, panel);
-    assert.equal(panel, "cancelled");
-  });
-
-  it("agrees on `blocked` for a run whose span ended `interrupted` — no verdict is claimed", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 3 });
-    runEndedEventOf(w, 3, "interrupted");
-
-    const { row, panel } = statusPair(w, 3);
-    assert.equal(row, panel);
-    assert.equal(panel, "blocked");
-  });
-
-  it("agrees on `running` when a claim span folded before the claiming transaction was visible", () => {
-    // The second missing arm: authority still reads `queued` because the
-    // reader has not seen the claim's CAS, and the fold already names a worker.
-    const w = world();
-    queuedEventOf(w, { seed: 4 });
-    claimEventOf(w, 4);
-
-    const { row, panel } = statusPair(w, 4);
-    assert.equal(row, panel);
-    assert.equal(panel, "running");
-  });
-
-  it("agrees on `awaiting-approval` for an open gate span with a queued lifecycle", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 5 });
-    w.writer.emit({
-      t: "gate.opened",
-      ts: w.clock.now().toISOString(),
-      workflow: "person-lookup",
-      runId: uuidOf(5),
-      attempt: 1,
-      traceId: `pl-100005-${uuidOf(5).slice(0, 4)}`,
-      spanPath: `pl-100005-${uuidOf(5).slice(0, 4)}`,
-      gate: "identity-approval",
-    });
-
-    const { row, panel } = statusPair(w, 5);
-    assert.equal(row, panel);
-    assert.equal(panel, "awaiting-approval");
+describe("D330 — authority-only run status", () => {
+  it("run-status-fold-contributes-no-lifecycle-arm", () => {
+    const cases = [
+      { state: "claimed" as const, fold: "done" as const, expected: "running" },
+      { state: "queued" as const, fold: "claim" as const, expected: "queued" },
+      { state: "queued" as const, fold: "gate" as const, expected: "queued" },
+      { state: "parked-gate" as const, fold: "none" as const, expected: "awaiting-approval" },
+      { state: "claimed" as const, fold: "done" as const, cancelRequested: true as const, expected: "cancelling" },
+      { state: "validating" as const, fold: "gate" as const, cancelRequested: true as const, expected: "cancelling" },
+      { state: "running" as const, fold: "none" as const, cancelRequested: true as const, expected: "cancelling" },
+    ];
+    for (const [index, entry] of cases.entries()) {
+      const w = world();
+      const seed = index + 1;
+      queuedEventOf(w, { seed });
+      if (entry.fold === "done") runEndedEventOf(w, seed, "done");
+      if (entry.fold === "claim") claimEventOf(w, seed);
+      if (entry.fold === "gate") w.writer.emit({
+        t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+        runId: uuidOf(seed), attempt: 1, traceId: `pl-100005-${uuidOf(seed).slice(0, 4)}`,
+        spanPath: `pl-100005-${uuidOf(seed).slice(0, 4)}`, gate: "identity-approval",
+      });
+      const lifecycle = entry.state === "queued" ? { state: entry.state }
+        : entry.state === "parked-gate" ? { state: entry.state, gateId: "identity-approval", parkedAt: instantOffsetOf(0), resumeAt: "search-person" }
+        : { state: entry.state, workerId: "worker-a", claimedAt: instantOffsetOf(0), heartbeatAt: instantOffsetOf(0) };
+      const record = runRecordOf({ seed, lifecycle, claimGeneration: 1 });
+      w.authority.put({ ...record, ...(entry.cancelRequested === true ? { cancelRequested: true } : {}) });
+      assert.deepEqual(statusPair(w, seed), { row: entry.expected, panel: entry.expected }, JSON.stringify(entry));
+    }
   });
 
   it("lets AUTHORITY outrank the fold when the two disagree", () => {
@@ -182,8 +146,8 @@ describe("D268 — one run-status derivation", () => {
     if (fold === undefined || record === undefined) return;
 
     const { row, panel } = statusPair(w, 7);
-    assert.equal(deriveRunStatus(fold, record), row);
-    assert.equal(deriveRunStatus(fold, record), panel);
+    assert.equal(deriveRunStatus(record), row);
+    assert.equal(deriveRunStatus(record), panel);
   });
 });
 

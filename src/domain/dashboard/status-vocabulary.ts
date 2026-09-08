@@ -12,6 +12,7 @@ type QueueStatus = z.infer<typeof QueueStatusSchema>;
 type DisplayStatus =
   | "queued"
   | "running"
+  | "cancelling"
   | "waiting"
   | "parked"
   | "verifiedDone"
@@ -22,6 +23,7 @@ type DisplayStatus =
 export const DISPLAY_STATUS_LABELS: Readonly<Record<DisplayStatus, string>> = Object.freeze({
   queued: "Queued",
   running: "Running",
+  cancelling: "Cancelling",
   waiting: "Review",
   parked: "Write parked",
   verifiedDone: "Done",
@@ -33,6 +35,7 @@ export const DISPLAY_STATUS_LABELS: Readonly<Record<DisplayStatus, string>> = Ob
 const WIRE_TO_DISPLAY_STATUS: Readonly<Record<QueueStatus, DisplayStatus>> = Object.freeze({
   queued: "queued",
   running: "running",
+  cancelling: "cancelling",
   blocked: "parked",
   "awaiting-approval": "waiting",
   done: "verifiedDone",
@@ -54,6 +57,7 @@ export function displayStatusProseLabelOf(status: QueueStatus): string {
   switch (displayStatusOf(status)) {
     case "queued": return "queued";
     case "running": return "running";
+    case "cancelling": return "cancelling";
     case "waiting": return "waiting on you";
     case "parked": return "write parked";
     case "verifiedDone": return "done";

@@ -352,6 +352,21 @@ describe("D336 DB-only authority backups", () => {
     const v1Path = writeManifest(directory, v1, "authority-v29.v1.manifest.json");
     assert.equal((await verifyBackupManifestAtPath(v1Path)).manifest.manifestVersion, 1);
 
+    const v33Name = "authority-v33.sqlite";
+    const v33Path = join(directory, v33Name);
+    createHistoricalAuthority(v33Path, 33);
+    const v33 = verificationFor(v33Path, 33);
+    const v3 = AuthorityBackupManifestSchema.parse({ ...v1, manifestVersion: 3,
+      backupFileName: v33Name, schemaVersion: 33, pageCount: v33.inspection.pageCount,
+      authorityGeneration: v33.inspection.authorityGeneration,
+      authorityContentFingerprint: v33.inspection.authorityContentFingerprint,
+      ...fileIdentity(v33Path), verification: v33.verification,
+    });
+    const v3Path = writeManifest(directory, v3, "authority-v33.v3.manifest.json");
+    assert.equal((await verifyBackupManifestAtPath(v3Path)).manifest.schemaVersion, 33);
+    assert.equal(AuthorityBackupManifestSchema.safeParse({ ...v3, manifestVersion: 1 }).success, false,
+      "new historical admission must not extend the released v1 format");
+
     const v31Name = "authority-v31.sqlite";
     const v31Path = join(directory, v31Name);
     createHistoricalAuthority(v31Path, 31);

@@ -562,7 +562,7 @@ function seed(world: SeedWorld): Record<string, string> {
   note(world, running, "step", "opened UCPath person search");
   note(world, running, "warn", "two candidates matched; narrowing by department");
 
-  // awaiting-approval — a real gate.opened span (row.openGates).
+  // awaiting-approval — canonical parking plus the matching gate evidence.
   const gated = startRunning(world, { seed: 5, title: "EID 10001573" }, "person-lookup-worker-3", "cross-verify");
   taskSpan(world, gated, "searching", "done");
   world.spans.emit({
@@ -575,6 +575,12 @@ function seed(world: SeedWorld): Record<string, string> {
     spanPath: `${gated.envelope.traceId}/cross-verify#1`,
     gate: "identity-review",
   });
+  const gatedTransition = world.database.authority.runs.transition({
+    runId: gated.envelope.runId, expectedVersion: gated.version, claim: claimOf(gated),
+    lifecycle: { state: "parked-gate", gateId: "identity-review", resumeAt: "cross-verify", parkedAt: SEEDED_NOW },
+    now: SEEDED_NOW,
+  });
+  if (gatedTransition.state !== "applied") throw new Error("fixture gate transition failed");
 
   // blocked — a real parked-write lifecycle transition, over a real fenced
   // and parked `write_intents` row.
@@ -742,20 +748,19 @@ export async function startSeededServer(
     resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
   };
   const projection = createRunQueueProjection({
+    reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
     appVersion: SEEDED_APP_VERSION,
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
     ledger: createLedgerReadThrough(stateRoot),
     authority: {
-      getRun: (runId) => database.authority.runs.get(runId),
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
-      isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
       listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
@@ -763,7 +768,6 @@ export async function startSeededServer(
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
     descriptors,
-    projectionStore: database,
   });
   const jsonlWriter = createSpanJsonlWriter({
     stateRoot,

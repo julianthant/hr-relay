@@ -142,8 +142,20 @@ export const ProtectedSettingsInspectionWireSchema = z.discriminatedUnion("state
   z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
 ]);
 
+const AuthorityUpgradeInspectionWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), phases: z.array(z.strictObject({
+    phase: z.enum(["baseline", "planned", "committed", "settled"]),
+    fromSchemaVersion: NonNegativeIntSchema,
+    toSchemaVersion: z.number().int().positive(),
+    recordedAt: IsoInstantSchema,
+  })).min(1) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.enum(["pre-journal-schema", "journal-empty"]) }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
+]);
+
 export const StorageDoctorWireSchema = z.strictObject({
   mode: z.literal("read-only"),
+  authorityUpgrades: AuthorityUpgradeInspectionWireSchema,
   protectedSettings: ProtectedSettingsInspectionWireSchema,
   checkedAt: IsoInstantSchema,
   authority: z.discriminatedUnion("state", [

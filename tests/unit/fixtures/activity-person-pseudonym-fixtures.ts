@@ -130,7 +130,7 @@ export function seedSeparationsRunAuthority(
     ...run,
     lifecycle: baseline.lifecycle,
     version: baseline.version,
-    updatedAt: baseline.updatedAt,
+    updatedAt: run.envelope.enqueuedAt,
   });
   database.authority.runs.enqueue(queued);
   const raw = new DatabaseSync(path);

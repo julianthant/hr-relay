@@ -70,7 +70,7 @@ import {
 } from "./workflow-category.js";
 import {
   ALWAYS_TALLIED,
-  STATUS_PILL_ORDER,
+  statusPillOrder,
   type StatusBucket,
   type StatusCountWire,
   WORKER_STATE_ORDER,
@@ -87,6 +87,7 @@ import {
   type QueueSurfaceWire,
   type WorkflowPanelMode,
   activeCount,
+  activeStatusWords,
   buildWorkflowRailGroups,
   buildSessionPanelView,
   canStopWorker,
@@ -154,7 +155,7 @@ function WorkflowPanelControls({ mode, onMode }: PanelModeProps) {
 /**
  * The launcher, and the one control present in all three modes.
  *
- * ONE NUMBER, AND IT IS THE DEMAND. It carries ACTIVE — queued + running —
+ * ONE NUMBER, AND IT IS THE DEMAND. It carries ACTIVE — queued + running + cancelling —
  * across EVERY workflow on the selected day, the same quantity as the rail's
  * orange `active` column summed down its length, so the collapsed badge and the
  * open list cannot disagree. It used to carry the day's row TOTAL, which lit
@@ -162,7 +163,7 @@ function WorkflowPanelControls({ mode, onMode }: PanelModeProps) {
  *
  * The demo derived both from a row array; here they are read off the day's
  * served `statusCounts`, which is day-scoped across workflows and therefore
- * gives `queued + running` exactly — no second fold, no second corpus (D81).
+ * gives `queued + running + cancelling` exactly — no second fold, no second corpus (D81).
  *
  * The scope survives in the tooltip and the accessible name, both of which say
  * the count spans every workflow, and the control carries the workflow's 2-char
@@ -176,18 +177,20 @@ export function WorkflowPanelToggle({
   activeWorkflowLabel,
   activeWorkflowCode,
   dayActive,
+  dayActiveWords,
   dayCount,
 }: PanelModeProps & {
   activeWorkflowLabel: string;
   /** the active workflow's served 2-char code — the prefix of its trace ids */
   activeWorkflowCode: string;
-  /** queued + running across every workflow on the selected day */
+  /** queued + running + cancelling across every workflow on the selected day */
   dayActive: number;
+  dayActiveWords: string;
   /** the selected day's served row total — the denominator of the sentence */
   dayCount: number;
 }) {
   const showing = mode !== "icon";
-  const scope = `${dayActive} of ${plural(dayCount, "row")} across every workflow are queued or running today`;
+  const scope = `${dayActive} of ${plural(dayCount, "row")} across every workflow are ${dayActiveWords} today`;
   return (
     <button
       id={WORKFLOW_PANEL_TOGGLE_ID}
@@ -219,7 +222,7 @@ export function WorkflowPanelToggle({
           the whole day. It sits on the control's OWN surface, where
           `--ds-border` against a white card is not a line anybody sees. */}
       <span aria-hidden className={cn("mx-[var(--ds-space-hair)] h-4 w-px shrink-0", "bg-[var(--ds-border-loud)]")} />
-      {/* ACTIVE (queued + running) across every workflow — same orange as the
+      {/* ACTIVE (queued + running + cancelling) across every workflow — same orange as the
           rail's left column, and the same total when you add that column down. */}
       <span
         className={cn(
@@ -291,7 +294,7 @@ function WorkflowEntryList({
         </span>
         {/* `active │ all`, PER WORKFLOW, and it is the ONLY badge on the row —
             both numbers off the SAME served projection the Status Bar and the
-            queue read. `active` is queued + running, so the column says what
+            queue read. `active` is queued + running + cancelling, so the column says what
             the panel is DOING rather than what it has not begun: `queued`
             alone empties the moment a run starts, and every panel wearing a
             run then read `0`.
@@ -300,7 +303,7 @@ function WorkflowEntryList({
             zero each arm DIMS rather than disappearing so the eye does not
             have to re-scan an idle panel. */}
         <span
-          title={`${workflow.label}: ${active} active (queued or running) of ${plural(total, "row")} today`}
+          title={`${workflow.label}: ${active} active (${activeStatusWords(workflowStatusCounts(counts, id))}) of ${plural(total, "row")} today`}
           aria-label={`${active} active of ${total} in ${workflow.label}`}
           className={cn(
             dsText.meta,
@@ -684,7 +687,7 @@ export function StatusFilters({
           "end",
         )}
       </div>
-      {STATUS_PILL_ORDER.map(statusPill)}
+      {statusPillOrder(statusCounts, active).map(statusPill)}
     </div>
   );
 }

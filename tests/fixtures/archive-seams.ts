@@ -1,3 +1,4 @@
+import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 /**
  * The archive dependency blocks, built ONCE and shared by every harness that
  * needs them (D179) — the same reason `explorer-seams.ts` exists: two harnesses
@@ -39,6 +40,7 @@ export function archiveQueryDeps(input: Readonly<{
   stateRoot?: string;
 }>): ArchiveQueryDeps {
   return {
+    reader: sqliteRunReader(input.database, input.clock),
     clock: input.clock,
     appVersion: input.appVersion,
     authority: { withAuthorityTransaction: (work) => input.database.withAuthorityTransaction(work) },

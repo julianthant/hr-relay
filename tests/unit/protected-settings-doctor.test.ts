@@ -8,6 +8,10 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { AuthorityUpgradeRecordSchema } from "../../src/domain/authority.js";
+import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
+import { systemClock } from "../../src/domain/clock.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -179,5 +183,70 @@ describe("D336 credential presence doctor", () => {
     assert.equal(unavailable.state, "unhealthy");
     assert.ok(unavailable.summary.includes("could not be verified read-only"));
     assert.equal(unavailable.summary.includes(f.root), false);
+  });
+});
+
+
+describe("D332 read-only upgrade phase reporting", () => {
+  it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {
+    const f = fixture();
+    const baseline = await doctorAuthorityStorage(f.options);
+    assert.equal(baseline.authorityUpgrades.state, "available");
+    if (baseline.authorityUpgrades.state !== "available") throw new Error("baseline missing");
+    assert.deepEqual(baseline.authorityUpgrades.phases.map(({ phase }) => phase), ["baseline"]);
+    const expected: { phase: string; fromSchemaVersion: number; toSchemaVersion: number; recordedAt: string }[] = [...baseline.authorityUpgrades.phases];
+    for (const [index, phase] of (["planned", "committed", "settled"] as const).entries()) {
+      const record = AuthorityUpgradeRecordSchema.parse({
+        recordKey: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12, "0")}`,
+        upgradeId: "a".repeat(64), planDigest: "b".repeat(64),
+        phase, fromSchemaVersion: 29, toSchemaVersion: 34, by: "local-operator",
+        recordedAt: "2026-09-06T20:00:00.000Z",
+        backup: { manifestPath: `${f.root}/private-manifest.json`, sha256: "c".repeat(64), authorityGeneration: 7 },
+        settings: { ordinaryRevisionBefore: 1, ordinaryRevisionAfter: 2,
+          settingsFingerprintAfter: "d".repeat(64), settingsSchemaHashAfter: "e".repeat(64),
+          protectedRevisionAfter: 1, protectedEntryNames: ["private-entry-name"] },
+        tombstoneBackfill: { fromRoots: 0, fromReconstructedRoots: 0, unknown: 0 },
+        orphanGateRecordsRemoved: 0, historicalExposure: [], envKeysToRemove: ["PRIVATE_ENV_NAME"],
+      });
+      const raw = new DatabaseSync(f.options.authorityPath);
+      raw.prepare("INSERT INTO authority_upgrades (record_key, upgrade_id, phase, record_json, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(record.recordKey, record.upgradeId, phase, JSON.stringify(record), record.recordedAt);
+      raw.close();
+      const before = snapshot(f.root);
+      const meta = f.database.getMeta();
+      const report = await doctorAuthorityStorage(f.options);
+      const wire = await buildStorageDoctor({ doctorOptions: f.options, clock: systemClock,
+        serviceState: () => ({ state: "never-run", reason: "No backup requested" }),
+      });
+      const observation = await new AuthorityHealthPreflightRunner(f.options).run({
+        signal: new AbortController().signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only",
+      });
+      expected.push({ phase, fromSchemaVersion: record.fromSchemaVersion, toSchemaVersion: record.toSchemaVersion, recordedAt: record.recordedAt });
+      assert.deepEqual(report.authorityUpgrades, { state: "available", phases: expected });
+      assert.deepEqual(wire.authorityUpgrades, report.authorityUpgrades);
+      assert.ok(observation.summary.includes(`authority upgrade phase ${phase}`));
+      assert.equal(observation.state, phase === "settled" ? "healthy" : "unhealthy");
+      const publicOutput = JSON.stringify({ wire, observation, upgrade: report.authorityUpgrades });
+      for (const privateValue of [f.root, record.recordKey, "private-entry-name", "PRIVATE_ENV_NAME", ...["a", "b", "c", "d", "e"].map((value) => value.repeat(64))]) {
+        assert.equal(publicOutput.includes(privateValue), false, "private upgrade field escaped");
+      }
+      assert.deepEqual(snapshot(f.root), before);
+      assert.deepEqual(f.database.getMeta(), meta);
+    }
+  });
+
+  it("keeps a corrupt journal explicitly unavailable without exposing its payload or mutating it", async () => {
+    const f = fixture();
+    const raw = new DatabaseSync(f.options.authorityPath);
+    raw.prepare("INSERT INTO authority_upgrades (record_key, upgrade_id, phase, record_json, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run("broken", "private-upgrade-identity", "planned", JSON.stringify({ private: "private-journal-payload" }), "2026-09-06T20:00:00.000Z");
+    raw.close();
+    const before = snapshot(f.root);
+    const report = await doctorAuthorityStorage(f.options);
+    assert.deepEqual(report.authorityUpgrades, { state: "unavailable", cause: {
+      code: "authority-unavailable", summary: "authority upgrade journal could not be verified",
+    } });
+    assert.equal(JSON.stringify(report.authorityUpgrades).includes("private-journal-payload"), false);
+    assert.deepEqual(snapshot(f.root), before);
   });
 });

@@ -401,16 +401,19 @@ describe("storage doctor span/authority reconciliation", () => {
     },
   );
 
-  it("preserves the queue projection's exact refusal for a span-only run", () => {
+  it("never renders a span-only run as current canonical authority", () => {
     const world = makeWorld();
     try {
       queuedEventOf(world, { seed: 91 });
+      assert.equal(world.projection.buildDashboardDayWire(DAY).queueSurfaces.length, 1);
       world.authority.records.delete(uuidOf(91));
-      assert.throws(
-        () => world.projection.buildDashboardDayWire(DAY),
-        (error: unknown) => error instanceof Error
-          && error.message === `run ${uuidOf(91)} exists in the span stream but not in authority; the projection refuses to render an unaccounted run`,
-      );
+      assert.notEqual(world.projection.runFold(uuidOf(91)), undefined, "the orphan evidence is retained");
+      assert.equal(world.projection.queueSurface(uuidOf(91)), undefined);
+      const day = world.projection.buildDashboardDayWire(DAY);
+      assert.deepEqual(day.queueSurfaces, []);
+      assert.deepEqual(day.workflowCounts, []);
+      assert.deepEqual(day.statusCounts, []);
+      assert.deepEqual(day.monthCounts, []);
     } finally {
       world.dispose();
     }

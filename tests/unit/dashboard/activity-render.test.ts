@@ -68,6 +68,25 @@ function rendered(value: ActivityReportWire): HTMLElement {
 }
 
 describe("the rendered Activity axes (DCR1)", () => {
+  it("shows cancellation requests as outstanding work rather than completed runs", () => {
+    const value = ActivityReportWireSchema.parse({
+      ...report(), terminalRuns: 0, inFlightRuns: 2,
+      completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+      workflows: report().workflows.map((workflow) => ({
+        ...workflow, open: 2, completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+      })),
+      statuses: [{ status: "cancelling", runs: 2, sample: [
+        "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333",
+      ] }], outcomes: [],
+      durations: { measuredRuns: 0, unmeasuredRuns: 0,
+        medianMs: { state: "absent", reason: "no measured runs" },
+        longestMs: { state: "absent", reason: "no measured runs" }, totalMs: 0 },
+    });
+    const table = rendered(value).querySelector('table[aria-label="Outstanding runs by what they are waiting on"]');
+    assert.ok(table instanceof HTMLTableElement);
+    assert.match(table.textContent ?? "", /Cancelling.*2/u);
+  });
+
   it("shows distinct people while retaining Unread as its own workflow column", () => {
     const host = rendered(report());
     const text = host.textContent ?? "";

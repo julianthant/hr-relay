@@ -26,11 +26,16 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     const protectedSummary = report.protectedSettings.state === "available"
       ? report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(", ")
       : report.protectedSettings.cause.summary;
+    const latestUpgrade = report.authorityUpgrades.state === "available" ? report.authorityUpgrades.phases.at(-1) : undefined;
+    const upgradeSummary = latestUpgrade === undefined
+      ? `authority upgrade journal ${report.authorityUpgrades.state}`
+      : `authority upgrade phase ${latestUpgrade.phase}`;
+    const upgradeSettled = latestUpgrade?.phase === "baseline" || latestUpgrade?.phase === "settled";
     // D322: the backup arm is REPORTED, never gated — a backup exists only after
     // `cli storage backup`, so its absence is the operator's choice, not a fault.
     if (report.authority.state === "healthy"
       && report.spanAuthority.state === "reconciled"
-      && report.protectedSettings.state === "available") {
+      && report.protectedSettings.state === "available" && upgradeSettled) {
       const backupState = report.backup.state === "current" || report.backup.state === "stale"
         ? `${report.backup.state} verified backup at generation ${String(report.backup.latest.authorityGeneration)}`
         : `backup ${report.backup.state}`;
@@ -39,7 +44,7 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
         state: "healthy",
         summary: `authority schema ${String(report.authority.inspection.schemaVersion)}, ${backupState}, `
           + `and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`
-          + ` (${String(report.spanAuthority.archived.length)} archived, ${String(report.spanAuthority.deleted.length)} deleted); ${protectedSummary}`,
+          + ` (${String(report.spanAuthority.archived.length)} archived, ${String(report.spanAuthority.deleted.length)} deleted); ${protectedSummary}; ${upgradeSummary}`,
       });
     }
     const authorityState = report.authority.state === "healthy"
@@ -51,7 +56,7 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     return PreflightObservationSchema.parse({
       check: this.check,
       state: "unhealthy",
-      summary: `${authorityState}; backup state is ${report.backup.state}; span authority is ${spanState}; ${protectedSummary}`,
+      summary: `${authorityState}; backup state is ${report.backup.state}; span authority is ${spanState}; ${protectedSummary}; ${upgradeSummary}`,
       impact: "authority mutations remain blocked until storage health and exact span authority reconcile",
     });
   }

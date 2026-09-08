@@ -36,6 +36,7 @@ const SECTIONS = SettingsSectionPrimitiveSchema.array().parse([
 const REPORT_BASE = {
   protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "protected settings fixture is unavailable" } },
   mode: "read-only",
+  authorityUpgrades: { state: "absent", reason: "journal-empty" },
   checkedAt: "2026-08-31T16:01:00.000Z",
   authority: {
     state: "healthy",

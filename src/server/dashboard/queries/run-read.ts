@@ -4,16 +4,13 @@ import { TargetNotFoundError } from "../../failures.js";
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 
-export function requireRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldRecord; authority: RunRecord } {
-  const row = deps.projection.runFold(runId);
-  if (row === undefined) {
-    throw new TargetNotFoundError(`run ${runId} has no span fold; it was never enqueued through this projection`);
-  }
-  const authority = deps.authority.getRun(runId);
-  if (authority === undefined) {
-    throw new TargetNotFoundError(`run ${runId} exists in the span stream but not in authority`);
-  }
-  return { row, authority };
+/** Admit lifecycle before optional evidence; retained spans never resurrect an absent/deleted run. */
+export function requireCanonicalRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldRecord | undefined; authority: RunRecord } {
+  if (deps.runReader === undefined) throw new Error("canonical run reader is required");
+  const existence = deps.runReader.read(runId);
+  if (existence.state !== "present") throw new TargetNotFoundError(`run ${runId} is ${existence.state}`);
+  if (existence.disposition !== "live") throw new TargetNotFoundError(`run ${runId} is archived; use its frozen resource`);
+  return { row: deps.projection.runFold(runId), authority: existence.run };
 }
 
 export const SectionNameSchema = z.enum([

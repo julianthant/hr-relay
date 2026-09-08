@@ -162,6 +162,7 @@ function seedActivityWorld(w: DashboardWorld): void {
     runEndedEventOf(w, seed, "failed", { workflow: kuali, failureId: uuidOf(9000 + seed) });
     w.authority.put(runRecordOf({
       seed,
+      enqueuedAt: instantOffsetOf(1),
       workflow: kuali,
       lifecycle: {
         state: "terminal",
@@ -173,7 +174,7 @@ function seedActivityWorld(w: DashboardWorld): void {
     }));
   }
 
-  queuedEventOf(w, { seed: 6, workflow: kuali });
+  queuedEventOf(w, { seed: 6, workflow: kuali, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(1) } });
   w.authority.archived.add(uuidOf(6));
 
   atDayOffset(w, 2);
@@ -182,6 +183,7 @@ function seedActivityWorld(w: DashboardWorld): void {
   queuedEventOf(w, { seed: 7, workflow: "retired-flow" });
   w.authority.put(runRecordOf({
     seed: 7,
+    enqueuedAt: instantOffsetOf(2),
     workflow: "retired-flow",
     lifecycle: { state: "terminal", outcome: "interrupted", endedAt: instantOffsetOf(2, 30_000) },
     version: 3,
@@ -190,8 +192,9 @@ function seedActivityWorld(w: DashboardWorld): void {
   queuedEventOf(w, { seed: 8, workflow: fixtureDescriptor.id });
   w.authority.put(runRecordOf({
     seed: 8,
+    enqueuedAt: instantOffsetOf(2),
     workflow: fixtureDescriptor.id,
-    lifecycle: { state: "running", ...CLAIM },
+    lifecycle: { state: "running", ...CLAIM, claimedAt: instantOffsetOf(2), heartbeatAt: instantOffsetOf(2) },
     claimGeneration: 1,
     version: 2,
   }));
@@ -206,6 +209,7 @@ function seedActivityWorld(w: DashboardWorld): void {
   runEndedEventOf(w, 12, "done");
   w.authority.put(runRecordOf({
     seed: 12,
+    enqueuedAt: instantOffsetOf(3),
     lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(3, 1_000) },
     version: 3,
   }));
@@ -739,7 +743,7 @@ describe("the Activity report refuses rather than inventing a window", () => {
     // make an unrelated week unanswerable.
     w.authority.records.delete(uuidOf(12));
     assert.equal(w.projection.buildActivityReportWire(D0, D2).totalRuns, 8);
-    assert.throws(() => w.projection.buildActivityReportWire(D3, D3), /not in authority/);
+    assert.equal(w.projection.buildActivityReportWire(D3, D3).totalRuns, 0);
   });
 });
 

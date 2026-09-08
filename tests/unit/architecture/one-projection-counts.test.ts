@@ -212,6 +212,9 @@ describe("one-projection-counts (D81)", () => {
     // SAME pass member containment is applied, which is why adding it here
     // moves no count on its own — that agreement is the whole property.
     queuedEventOf(world, { seed: 9 });
+    world.authority.put(runRecordOf({ seed: 9,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: world.clock.now().toISOString() },
+    }));
     world.authority.archived.add(uuidOf(9));
     queuedEventOf(world, { seed: 8 }); // parked on an operator gate
     world.writer.emit({
@@ -219,6 +222,10 @@ describe("one-projection-counts (D81)", () => {
       runId: uuidOf(8), attempt: 1, traceId: `pl-100008-${uuidOf(8).slice(0, 4)}`,
       spanPath: `pl-100008-${uuidOf(8).slice(0, 4)}`, gate: "approval",
     });
+
+    world.authority.put(runRecordOf({ seed: 8, lifecycle: { state: "parked-gate",
+      gateId: "approval", resumeAt: "searching", parkedAt: world.clock.now().toISOString() },
+    }));
 
     const payload = world.projection.buildDashboardDayWire(DAY);
 
