@@ -119,15 +119,15 @@ describe("storage doctor span/authority reconciliation", () => {
     f.emit(rootEvent(currentRun(UUID_4, UUID_1, "pl-120003-0000")));
     const raw = new DatabaseSync(f.authorityPath);
     try {
-      const corrupt = raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?");
+      const corrupt = raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?");
       for (const runId of [UUID_1, UUID_2]) corrupt.run(JSON.stringify({ malformed: true }), runId);
     } finally { raw.close(); }
     const report = await f.read();
     assert.equal(report.state, "degraded");
     if (report.state !== "degraded") throw new Error("malformed authority must degrade");
     assert.deepEqual(report.problems, [
-      { state: "malformed", runId: UUID_1, table: "tasks", summary: "tasks authority failed its strict record or identity validation" },
-      { state: "malformed-authority", source: "current", recordKey: UUID_2, summary: "tasks record failed its strict authority schema" },
+      { state: "malformed", runId: UUID_1, table: "workflow_runs", summary: "workflow_runs authority failed its strict record or identity validation" },
+      { state: "malformed-authority", source: "current", recordKey: UUID_2, summary: "workflow_runs record failed its strict authority schema" },
     ]);
     // UUID_3 lacks a queued root and UUID_4 lacks authority, but neither is
     // classified absent while this authority snapshot contains malformed rows.
@@ -308,7 +308,7 @@ describe("storage doctor span/authority reconciliation", () => {
     mkdirSync(join(f.root, "spans"));
     const raw = new DatabaseSync(f.authorityPath);
     try {
-      raw.prepare("UPDATE tasks SET record_json = '{}' WHERE record_key = ?").run(UUID_1);
+      raw.prepare("UPDATE workflow_runs SET record_json = '{}' WHERE record_key = ?").run(UUID_1);
     } finally {
       raw.close();
     }
@@ -317,12 +317,12 @@ describe("storage doctor span/authority reconciliation", () => {
     if (report.state !== "degraded") throw new Error("malformed authority must degrade");
     assert.deepEqual(report.problems, [{
       state: "malformed-authority", source: "current", recordKey: UUID_1,
-      summary: "tasks record failed its strict authority schema",
+      summary: "workflow_runs record failed its strict authority schema",
     }]);
   });
 
   /**
-   * D308: the delete cascade removes the `tasks` row, and span files are never
+   * D308: the delete cascade removes the `workflow_runs` row, and span files are never
    * rewritten (D301) — so the run's queued root outlives its run. The tombstone
    * is what accounts for it.
    */

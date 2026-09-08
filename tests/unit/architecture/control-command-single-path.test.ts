@@ -62,6 +62,12 @@ import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
   {
+    commandId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard",
+    family: "workflow-batch", type: "set-batch-grouping",
+    target: { batchId: UUID_2, expectedVersion: 1 }, payload: { groupInQueue: false },
+  },
+  {
     commandId: UUID_2,
     requestedAt: NOW,
     requestedBy: "local-operator",
@@ -81,6 +87,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 
 const EXPECTED_ACTIVE = {
   start: ["start-run"],
+  "workflow-batch": ["set-batch-grouping"],
   "worker-browser": [
     "plan-worker-count", "spawn-worker", "stop-worker", "pause-worker",
     "resume-worker", "refresh-browser", "reopen-browser",

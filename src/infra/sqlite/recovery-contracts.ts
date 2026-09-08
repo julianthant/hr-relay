@@ -26,7 +26,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const HistoricalBackupSchemaVersionSchema = z.number().int().refine(
-  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 31,
+  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 32,
   "schema version is not an admitted historical authority layout",
 );
 const BackupSchemaVersionSchema = z.number().int().refine(
@@ -291,7 +291,7 @@ const MissingSpanAuthorityRunSchema = z.strictObject({ state: z.literal("missing
 const MalformedSpanAuthorityRunSchema = z.strictObject({
   state: z.literal("malformed"),
   runId: RunIdSchema,
-  table: z.enum(["span_stream", "tasks", "archived_runs", "deleted_runs"]),
+  table: z.enum(["span_stream", "workflow_runs", "archived_runs", "deleted_runs"]),
   summary: z.string().min(1),
 });
 

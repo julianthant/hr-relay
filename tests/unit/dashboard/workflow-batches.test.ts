@@ -1,0 +1,100 @@
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, it } from "vitest";
+import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/domain/dashboard/projection.js";
+import { QueuePanel, type QueueHandlers } from "../../../src/dashboard/surfaces/queue.js";
+import { queueBatches, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
+import { FIXTURE_DAY, FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../parity/helpers/fixture-day.js";
+
+const base = FIXTURE_DAY_WIRE.queueSurfaces.find((row) => row.surfaceKind === "single" && row.status === "queued");
+if (base === undefined) throw new Error("batch fixture requires a queued single run");
+function row(n: number, grouped = true, item = n, attempt = 1): QueueSurfaceWire {
+  return QueueSurfaceWireSchema.parse({ ...base, runId: uuidOf(900 + n), itemId: uuidOf(800 + item), attempt,
+    title: ["Alice", "Ben", "Cara", "Ben retry"][n - 1],
+    session: { state: "present", sessionId: uuidOf(700), presentation: { groupInQueue: grouped, version: 1, startedAt: base?.startedAt } },
+  });
+}
+let root: Root | undefined;
+afterEach(async () => { if (root !== undefined) await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });
+async function render(rows: readonly QueueSurfaceWire[], handlers: QueueHandlers = { onSelect: () => undefined }, selectedRunId?: string): Promise<void> {
+  if (root === undefined) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); }
+  await act(async () => root?.render(createElement(QueuePanel, { surfaces: rows, handlers,
+    state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), ...(selectedRunId === undefined ? {} : { selectedRunId }) },
+    workflowLabelOf: () => "Separations", panelLabel: "Separations", day: FIXTURE_DAY,
+  })));
+}
+function button(text: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll("button")].find((element) => element.textContent?.includes(text));
+  assert.ok(found, `missing button ${text}`); return found;
+}
+async function press(text: string): Promise<void> { await act(async () => button(text).click()); }
+
+describe("workflow batches in the queue", () => {
+  it("shows one expandable batch for three runs and sends its exact persisted setting on ungroup", async () => {
+    const rows = [row(1), row(2), row(3)];
+    const changes: unknown[] = [];
+    await render(rows, { onSelect: () => undefined, onSetBatchGrouping: async (batch, grouped) => { changes.push([batch.id, batch.version, grouped]); } });
+    assert.equal(document.querySelectorAll('section[aria-label="Separations batch"]').length, 1);
+    assert.ok(!document.body.textContent?.includes("Alice"));
+    await press("Separations · 3 items");
+    assert.ok(document.body.textContent?.includes("Alice"));
+    assert.ok(document.body.textContent?.includes("Ben"));
+    assert.ok(document.body.textContent?.includes("Cara"));
+    await press("Show separately");
+    assert.deepEqual(changes, [[uuidOf(700), 1, false]]);
+  });
+  it("shows separate runs with a regroup control and leaves single-item batches flat", async () => {
+    const changes: boolean[] = [];
+    await render([row(1, false), row(2, false), row(3, false)], { onSelect: () => undefined, onSetBatchGrouping: async (_, grouped) => { changes.push(grouped); } });
+    assert.equal(document.querySelectorAll('section[aria-label="Separations batch"]').length, 0);
+    assert.ok(document.body.textContent?.includes("Alice"));
+    await press("Group batch");
+    assert.deepEqual(changes, [true]);
+    await render([row(1)]);
+    assert.equal(document.querySelectorAll('section[aria-label="Separations batch"]').length, 0);
+    assert.ok(document.body.textContent?.includes("Alice"));
+  });
+  it("counts a retry once and preserves the old run in previous attempts, including a selected historical run", async () => {
+    const rows = [row(1), row(2), row(3), row(4, true, 2, 2)];
+    const batch = queueBatches(rows)[0];
+    assert.ok(batch);
+    assert.equal(batch.members.length, 3);
+    assert.deepEqual(batch.history.map((entry) => entry.runId), [row(2).runId]);
+    await render(rows, undefined, row(2).runId);
+    assert.ok(document.body.textContent?.includes("3 items"));
+    assert.ok(document.body.textContent?.includes("Previous attempts (1)"));
+    assert.ok(document.body.textContent?.includes("Ben retry"));
+  });
+  it("allows collapsing a selected batch and opens it for another selected run", async () => {
+    const rows = [row(1), row(2)];
+    await render(rows, undefined, row(1).runId);
+    assert.equal(button("Separations · 2 items").getAttribute("aria-expanded"), "true");
+    await press("Separations · 2 items");
+    assert.equal(button("Separations · 2 items").getAttribute("aria-expanded"), "false");
+    await render(rows, undefined, row(2).runId);
+    assert.equal(button("Separations · 2 items").getAttribute("aria-expanded"), "true");
+  });
+  it("keeps the served grouping when saving fails and exposes the error", async () => {
+    await render([row(1), row(2)], { onSelect: () => undefined, onSetBatchGrouping: async () => { throw new Error("Batch presentation changed; reload."); } });
+    await press("Show separately");
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Batch presentation changed/u);
+    assert.equal(document.querySelectorAll('section[aria-label="Separations batch"]').length, 1);
+    await render([row(1, false), row(2, false)], { onSelect: () => undefined, onSetBatchGrouping: async () => { throw new Error("Connection lost"); } });
+    await press("Group batch");
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Connection lost/u);
+  });
+  it("navigates through the displayed batch before the next standalone row", () => {
+    const first = row(1);
+    const standalone = QueueSurfaceWireSchema.parse({ ...row(3), session: { state: "absent", reason: "historical run" } });
+    const second = QueueSurfaceWireSchema.parse({ ...row(2), status: "failed" });
+    assert.deepEqual(visibleRunIds([first, standalone, second]), [second.runId, first.runId, standalone.runId]);
+  });
+  it("keeps unavailable historical grouping separate and refuses conflicting batch facts", () => {
+    const old = QueueSurfaceWireSchema.parse({ ...row(1), session: { state: "present", sessionId: uuidOf(700) } });
+    assert.equal(queueBatches([old]).length, 0);
+    assert.throws(() => queueBatches([row(1), row(2, false)]), /disagree/u);
+    assert.throws(() => queueBatches([row(1), row(2, true, 1)]), /duplicate item attempt/u);
+  });
+});

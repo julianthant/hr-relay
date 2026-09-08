@@ -170,6 +170,8 @@ function surface(): Surface {
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
+      listRunBatches: () => database.authority.runSessions.list(),
+      getRunBatch: (id) => database.authority.runSessions.get(id),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),

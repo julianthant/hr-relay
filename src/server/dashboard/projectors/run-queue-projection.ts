@@ -61,6 +61,7 @@ import {
 } from "../../../domain/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../domain/dashboard/subscription.js";
 import {
+  PositiveIntSchema,
   FingerprintSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
@@ -83,6 +84,7 @@ import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
+import type { RunSessionRecord } from "../../../domain/run/session.js";
 import type { WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
@@ -197,6 +199,8 @@ export interface RunQueueProjectionDeps {
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
     /** D269: every workflow's pool declaration — the spawn control's CAS basis, served from authority. */
     listWorkerPools(): readonly WorkerPoolRecord[];
+    listRunBatches(): readonly RunSessionRecord[];
+    getRunBatch(batchId: string): RunSessionRecord | undefined;
     /**
      * D179/D80: whether a version bump has archived this run. Ref dashboard-surfaces §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
@@ -1108,7 +1112,8 @@ export class RunQueueProjection {
       plannedBy: pool.plannedBy,
       plannedAt: pool.plannedAt,
     }));
-    return JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools });
+    const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    return JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools, batches });
   }
 
   /* ── the authority join ────────────────────────────────────────────────── */
@@ -1399,10 +1404,12 @@ export class RunQueueProjection {
   }
 
   /** D269: membership is the run row's own field — never a lookup in a stored member list. */
-  #session(authority: RunRecord): { state: "present"; sessionId: string } | { state: "absent"; reason: string } {
-    return authority.sessionId === undefined
-      ? { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" }
-      : { state: "present", sessionId: authority.sessionId };
+  #session(authority: RunRecord): QueueSurfaceWire["session"] {
+    if (authority.sessionId === undefined) return { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" };
+    const batch = this.#deps.authority.getRunBatch(authority.sessionId);
+    if (batch === undefined || batch.workflow !== authority.envelope.workflow) throw new Error(`workflow batch ${authority.sessionId} is missing or belongs to another workflow`);
+    return { state: "present", sessionId: batch.sessionId,
+      presentation: { groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
   }
 
   /**

@@ -3,8 +3,8 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 31;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 32;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 32;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 33;
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -21,7 +21,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = TableName | RetiredPhoneCaptureTable | "protected_settings_current";
+type MigrationTableName = "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -642,7 +642,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
   runs_view: jsonRecordTable("runs_view"),
-} as const satisfies Record<MigrationTableName, string>);
+} as const satisfies Record<Exclude<MigrationTableName, "workflow_runs" | "workflow_run_batches">, string>);
 
 /** The tables migration 1 created, in dependency order. A released migration is never edited. */
 const V1_TABLE_ORDER = [
@@ -1781,11 +1781,34 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       "DROP TABLE protected_settings_current",
     ],
   },
+  {
+    // Workflow batches own queue presentation; run identity and membership survive unchanged.
+    version: 33,
+    statements: [
+      "ALTER TABLE tasks RENAME TO workflow_runs",
+      "ALTER TABLE run_sessions RENAME TO workflow_run_batches",
+      "DROP TRIGGER run_sessions_never_updated",
+      "ALTER TABLE workflow_run_batches ADD COLUMN group_in_queue INTEGER NOT NULL DEFAULT 0 CHECK (group_in_queue IN (0, 1))",
+      "ALTER TABLE workflow_run_batches ADD COLUMN version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)",
+      `UPDATE workflow_run_batches SET record_json = json_set(record_json, '$.groupInQueue', json('false'), '$.version', 1)`,
+      `CREATE TRIGGER workflow_run_batches_presentation_only
+        BEFORE UPDATE ON workflow_run_batches
+        WHEN NEW.record_key IS NOT OLD.record_key OR NEW.workflow IS NOT OLD.workflow
+          OR NEW.started_at IS NOT OLD.started_at OR NEW.created_at IS NOT OLD.created_at
+          OR EXISTS (SELECT fullkey, type, atom FROM json_tree(json_remove(NEW.record_json, '$.groupInQueue', '$.version')) EXCEPT SELECT fullkey, type, atom FROM json_tree(json_remove(OLD.record_json, '$.groupInQueue', '$.version')))
+          OR EXISTS (SELECT fullkey, type, atom FROM json_tree(json_remove(OLD.record_json, '$.groupInQueue', '$.version')) EXCEPT SELECT fullkey, type, atom FROM json_tree(json_remove(NEW.record_json, '$.groupInQueue', '$.version')))
+          OR NEW.version <> OLD.version + 1
+          OR NEW.version IS NOT json_extract(NEW.record_json, '$.version')
+          OR NEW.group_in_queue IS NOT json_extract(NEW.record_json, '$.groupInQueue')
+        BEGIN SELECT RAISE(ABORT, 'workflow batch identity is immutable; presentation must advance one version'); END`,
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
-  const ddlNames = Object.keys(SQLITE_TABLE_DDL);
+  const renamed = (name: string): string => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name;
+  const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
@@ -1795,7 +1818,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
     }
   }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
-  for (const name of registeredNames) if (!TABLE_ORDER.includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of registeredNames) if (!TABLE_ORDER.map(renamed).includes(name)) violations.push(`registered table ${name} is absent from migration order`);
   for (const name of retiredNames) {
     if (!TABLE_ORDER.some((migrationName) => migrationName === name)) {
       violations.push(`retired table ${name} is absent from migration history`);

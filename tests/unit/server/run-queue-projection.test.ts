@@ -1,3 +1,4 @@
+import { RunSessionRecordSchema } from "../../../src/domain/run/session.js";
 /**
  * THE run/queue projection (ref dashboard-surfaces §2.2-2.3, D81 §10.1): the emit → JSONL →
  * fold → DashboardDayWire round-trip over a seeded world with
@@ -1380,20 +1381,39 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
 
   it("D269: serves the run's session off its own row, and names the absence of one", () => {
     const w = world();
+    w.authority.batches.set(uuidOf(70), RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 }));
     queuedEventOf(w, { seed: 1, sessionId: uuidOf(70) });
     queuedEventOf(w, { seed: 2, sessionId: uuidOf(70) });
     queuedEventOf(w, { seed: 3 });
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
     // Membership is the row's own field — two rows naming one session ARE that
     // session's membership, with no stored list consulted.
-    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70) });
-    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70) });
+    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70), presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
+    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70), presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
     assert.deepEqual(rows[2].session, {
       state: "absent",
       reason: "this run predates D269 session grouping, or retries a run that does",
     });
   });
 
+  it("publishes batch presentation changes without new run spans and ignores an unchanged tick", () => {
+    const w = world();
+    const batch = RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });
+    w.authority.batches.set(batch.sessionId, batch);
+    queuedEventOf(w, { seed: 1, sessionId: batch.sessionId });
+    queuedEventOf(w, { seed: 2, sessionId: batch.sessionId });
+    w.projection.reconcileWorkerAuthority();
+    const before = w.changes.filter((change) => change.kind === "snapshot").length;
+    w.authority.batches.set(batch.sessionId, RunSessionRecordSchema.parse({ ...batch, groupInQueue: false, version: 2 }));
+    w.projection.reconcileWorkerAuthority();
+    assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
+    for (const row of w.projection.buildDashboardDayWire(DAY).queueSurfaces) {
+      assert.equal(row.session.state, "present");
+      if (row.session.state === "present") assert.deepEqual(row.session.presentation, { groupInQueue: false, version: 2, startedAt: batch.startedAt });
+    }
+    w.projection.reconcileWorkerAuthority();
+    assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
+  });
   it("D269: serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
     const w = world();
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, []);

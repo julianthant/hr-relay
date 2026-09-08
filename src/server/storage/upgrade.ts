@@ -22,7 +22,7 @@ import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "converted", "already-upgraded"]),
   fromSchemaVersion: z.number().int().nonnegative(),
-  toSchemaVersion: z.literal(32),
+  toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   importedKeys: z.array(z.string()), sourceFiles: z.array(z.string()),
   envKeysToRemove: z.array(z.string()),
   backupManifest: z.string().optional(),
@@ -82,11 +82,14 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   const from = inspection?.schemaVersion ?? 0;
   let pending: z.infer<typeof AuthorityUpgradeRecordSchema> | undefined;
   let historicalPath: string | undefined;
+  if (from === 32 && readLatestSettingsUpgrade(path)?.phase === "committed") {
+    throw new Error("upgrade-pending: finish the interrupted schema-32 settings conversion with its original build before upgrading this database");
+  }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION) {
     pending = readLatestSettingsUpgrade(path);
     if (pending === undefined || pending.phase === "settled") {
       const credentials = createCredentialStore({ stateRoot: input.stateRoot }).read();
-      return StorageUpgradeReportSchema.parse({ state: "already-upgraded", fromSchemaVersion: from, toSchemaVersion: 32,
+      return StorageUpgradeReportSchema.parse({ state: "already-upgraded", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
         historicalExposure: pending !== undefined && "format" in pending ? pending.historicalExposure : [],
         tombstoneBackfill: pending !== undefined && "format" in pending ? pending.tombstoneBackfill : { fromRoots: 0, fromReconstructedRoots: 0, unknown: 0, missingRunNumber: 0 },
         orphanGateRecordsRemoved: pending !== undefined && "format" in pending ? pending.orphanGateRecordsRemoved : 0,
@@ -99,36 +102,37 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
       historicalPath = original.backupPath;
     }
   }
-  const sources = readSettingsUpgradeSources(input.stateRoot, input.environmentFile, from === 32 ? historicalPath : existed ? path : undefined, clock);
+  const sources = readSettingsUpgradeSources(input.stateRoot, input.environmentFile, from === CURRENT_AUTHORITY_SCHEMA_VERSION ? historicalPath : existed ? path : undefined, clock);
   if (pending !== undefined && "format" in pending
     && (pending.ordinaryFingerprint !== derivePersistedSettingsFingerprint(sources.settings)
       || canonicalJsonStringify(pending.importedKeys) !== canonicalJsonStringify(sources.importedKeys))) throw new Error("source-changed: committed SQLite conversion requires its original import sources");
-  const backupEvidence = inspection !== undefined && from !== 32
+  const backupEvidence = inspection !== undefined && from !== CURRENT_AUTHORITY_SCHEMA_VERSION
     ? await requiredBackup(input.stateRoot, inspection.authorityGeneration, inspection.authorityContentFingerprint) : undefined;
-  const orphanGateRecords = from === 32 && pending !== undefined && "format" in pending ? pending.orphanGateRecordsRemoved : countOrphanGateRecords(existed ? path : undefined);
-  const tombstones = inspectTombstoneBackfill(from === 32 ? undefined : existed ? path : undefined, input.stateRoot);
+  const orphanGateRecords = from === CURRENT_AUTHORITY_SCHEMA_VERSION && pending !== undefined && "format" in pending ? pending.orphanGateRecordsRemoved : countOrphanGateRecords(existed ? path : undefined);
+  const tombstones = inspectTombstoneBackfill(from === CURRENT_AUTHORITY_SCHEMA_VERSION ? undefined : existed ? path : undefined, input.stateRoot);
   const historicalExposure = pending !== undefined && "format" in pending ? pending.historicalExposure : inspectHistoricalSettingsExposure(existed ? path : undefined);
-  const report = StorageUpgradeReportSchema.parse({ historicalExposure, tombstoneBackfill: pending !== undefined && "format" in pending ? pending.tombstoneBackfill : tombstones.counts, orphanGateRecordsRemoved: orphanGateRecords, state: "planned", fromSchemaVersion: from, toSchemaVersion: 32,
+  const report = StorageUpgradeReportSchema.parse({ historicalExposure, tombstoneBackfill: pending !== undefined && "format" in pending ? pending.tombstoneBackfill : tombstones.counts, orphanGateRecordsRemoved: orphanGateRecords, state: "planned", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
     importedKeys: sources.importedKeys, sourceFiles: sources.sourceFiles, envKeysToRemove: sources.envKeysToRemove,
     ...(backupEvidence === undefined ? {} : { backupManifest: basename(backupEvidence.manifestPath) }), credentials: Object.keys(sources.protectedPatch).length === 0 ? "empty" : "pending" });
   const store = createCredentialStore({ stateRoot: input.stateRoot, hooks: { afterRename: input.hooks?.afterCredentialRename } });
   const priorCredentials = store.read();
-  if (from !== 32 && Object.keys(sources.protectedPatch).length > 0 && priorCredentials.revision !== 1) {
+  if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION && Object.keys(sources.protectedPatch).length > 0 && priorCredentials.revision !== 1) {
     throw new Error("credential-source-conflict: existing independent credentials must not be overwritten by legacy import");
   }
-  if (from !== 32) {
+  if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
     const planned = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
-    store.verifyUpgradePreflight(planned.upgradeId, sources.protectedPatch);
+    if (from < 32) store.verifyUpgradePreflight(planned.upgradeId, sources.protectedPatch);
   }
-  if (from === 32 && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
+  if (from === CURRENT_AUTHORITY_SCHEMA_VERSION && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
     store.verifyUpgradeBinding(pending.upgradeId, sources.protectedPatch);
   }
-  if (input.plan) return report;
+  const credentialState = Object.keys(sources.protectedPatch).length === 0 && priorCredentials.revision > 1 ? "verified" : report.credentials;
+  if (input.plan) return { ...report, credentials: credentialState };
   mkdirSync(input.stateRoot, { recursive: true, mode: 0o700 });
   const admission = acquireRuntimeRestoreAdmission({ processLockRoot: input.processLockRoot, pid: process.pid }, clock);
   try {
     requireStopped(input, clock);
-    if (from !== 32) {
+    if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
       pending = convertSettingsDatabase({ input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure,
         bindCredentials: (upgradeId) => { if (Object.keys(sources.protectedPatch).length > 0) store.bindUpgrade(upgradeId, sources.protectedPatch); } }, clock);
     }
@@ -147,6 +151,6 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
       database.close();
       settleSettingsUpgrade(path, pending, clock.now().toISOString());
     } finally { database.close(); }
-    return { ...report, state: "converted", credentials: Object.keys(sources.protectedPatch).length === 0 ? "empty" : "verified" };
+    return { ...report, state: "converted", credentials: Object.keys(sources.protectedPatch).length === 0 ? credentialState : "verified" };
   } finally { admission.release(); }
 }

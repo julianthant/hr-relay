@@ -315,7 +315,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
       assert.deepEqual(plan, {
         state: "planned",
         fromSchemaVersion: version,
-        toSchemaVersion: 32,
+        toSchemaVersion: 33,
         importedKeys: [],
         sourceFiles: [],
         envKeysToRemove: [],
@@ -383,7 +383,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
     const before = readFileSync(fixture.path);
     await assert.rejects(
       upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-      /authority schema 33 is not an admitted backup schema/u,
+      /authority schema 34 is not an admitted backup schema/u,
     );
     assert.deepEqual(readFileSync(fixture.path), before);
     assert.deepEqual(readMeta(fixture.path), {

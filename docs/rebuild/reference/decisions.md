@@ -2184,3 +2184,13 @@ _phase: detour before 1.6.7; approved and completed 2026-09-07 — accepted revi
 | # | Decision | Owning doc |
 | --- | --- | --- |
 | **D342** | **PHASE 3.4 IS AN OPTIONAL DOCUMENT-FEATURE MENU; CODEX/CLAUDE COOPERATION MOVES TO 3.5.** Local OCR, PDF viewing/search/export, document classification/extraction, rereading, semantic search/reranking, cited questions, focused advice, provider controls, fine-tuning and public-instruction search are independently selectable proposals. None blocks 3.5, migrations or cutover. Stable cooperation IDs, D338 parity, mandatory intake obligations and the immutable 3.3 candidate remain unchanged. Historical 3.4 cooperation references resolve to 3.5. | [roadmap §D342](../../roadmap/roadmap.md#d342--optional-document-features-and-cooperation-renumbering-2026-09-07) (order/optionality owner) · [Phase 3.4](../plans/phase-3/3.4-optional-document-tools/README.md) (feature scope) · [Phase 3.5](../plans/phase-3/3.5-co-operate-with-claude/README.md) (cooperation) |
+
+
+### 2026-09-07 — workflow run and batch names; optional queue grouping
+
+Operator approved `tasks` → `workflow_runs`, `run_sessions` → `workflow_run_batches`, and a
+batch-owned `group_in_queue` boolean. The same batch can appear as an expandable header or separate
+runs without changing execution or membership. New multi-run batches default to grouped; historical
+batches preserve their current display. Requirements live in
+[dashboard-surfaces, workflow batch presentation](dashboard-surfaces.md#workflow-batch-presentation)
+and [execution-and-sessions §11](execution-and-sessions.md).

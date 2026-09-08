@@ -136,7 +136,7 @@ export function seedSeparationsRunAuthority(
   const raw = new DatabaseSync(path);
   try {
     raw.prepare(`
-      UPDATE tasks SET state = ?, version = ?, record_json = ? WHERE record_key = ?
+      UPDATE workflow_runs SET state = ?, version = ?, record_json = ? WHERE record_key = ?
     `).run("terminal", run.version, canonicalJsonStringify(run), run.envelope.runId);
     if (result !== undefined) {
       raw.prepare(`

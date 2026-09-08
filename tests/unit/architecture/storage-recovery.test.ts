@@ -319,25 +319,25 @@ function corruptTerminalRun(
     // Model offline corruption after write-time guards have run while keeping
     // each strict record mismatch independent of an artificial version bump.
     raw.exec("DROP TRIGGER tasks_monotonic_counters_update");
-    const row = raw.prepare("SELECT record_json FROM tasks WHERE record_key = ?")
+    const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
       .get(runId) as { record_json: string } | undefined;
     if (row === undefined) throw new Error(`run ${runId} is absent from corruption fixture`);
     const current = RunRecordSchema.parse(JSON.parse(row.record_json));
     const corrupted = RunRecordSchema.parse(mutate(current));
     const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
     const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
-    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+    raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
       .run(JSON.stringify(corrupted), runId);
     if (corrupted.version !== current.version) {
-      raw.prepare("UPDATE tasks SET version = ? WHERE record_key = ?").run(corrupted.version, runId);
+      raw.prepare("UPDATE workflow_runs SET version = ? WHERE record_key = ?").run(corrupted.version, runId);
     }
     if (corrupted.claimGeneration !== current.claimGeneration) {
-      raw.prepare("UPDATE tasks SET claim_generation = ? WHERE record_key = ?")
+      raw.prepare("UPDATE workflow_runs SET claim_generation = ? WHERE record_key = ?")
         .run(corrupted.claimGeneration, runId);
     }
     if (corrupted.lifecycle.state !== current.lifecycle.state) {
       raw.prepare(`
-        UPDATE tasks SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
+        UPDATE workflow_runs SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
       `).run(corrupted.lifecycle.state, ownerWorkerId, heartbeatAt, runId);
     }
   } finally {
@@ -863,7 +863,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       sql: string,
     ) {
       if (sql.includes("SELECT record_json FROM archived_runs WHERE record_key = ?")
-        || sql.includes("SELECT record_json FROM tasks WHERE record_key = ?")
+        || sql.includes("SELECT record_json FROM workflow_runs WHERE record_key = ?")
         || sql.includes("SELECT record_json FROM deleted_runs WHERE record_key = ?")) {
         rootLookupPrepares += 1;
       }
@@ -963,7 +963,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
     const raw = new DatabaseSync(authorityPath);
     raw.exec("PRAGMA foreign_keys = OFF");
-    raw.prepare("DELETE FROM tasks WHERE record_key = ?").run(sourceRun.envelope.runId);
+    raw.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(sourceRun.envelope.runId);
     raw.close();
 
     const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
@@ -977,7 +977,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       state: "malformed",
       runId: sourceRun.envelope.runId,
       table: "archived_runs",
-      summary: "archived_runs authority is missing its required retained tasks authority",
+      summary: "archived_runs authority is missing its required retained workflow_runs authority",
     }]);
   });
 
@@ -994,7 +994,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       return undefined;
     });
     const raw = new DatabaseSync(authorityPath);
-    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+    raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
       .run(JSON.stringify({ family: "run" }), sourceRun.envelope.runId);
     raw.close();
 
@@ -1006,9 +1006,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const resolution = snapshot.resolutions[0];
     assert.equal(resolution?.state, "malformed");
     if (resolution?.state !== "malformed") throw new Error("malformed retained archive task must be diagnosed");
-    assert.equal(resolution.table, "tasks");
+    assert.equal(resolution.table, "workflow_runs");
     assert.equal(resolution.summary,
-      "archived_runs authority has retained tasks authority that failed strict record or identity validation");
+      "archived_runs authority has retained workflow_runs authority that failed strict record or identity validation");
   });
 
   it("returns one authority identity when a commit lands between metadata and fingerprint reads", () => {
@@ -1786,7 +1786,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem.table, "archived_runs");
     assert.equal(
       problem.summary,
-      "archived_runs authority requires terminal retained tasks authority; retained lifecycle is queued",
+      "archived_runs authority requires terminal retained workflow_runs authority; retained lifecycle is queued",
     );
   });
 
@@ -1925,7 +1925,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (problem?.state !== "malformed") throw new Error("expected frozen failure attempt diagnosis");
     assert.equal(problem.table, "archived_runs");
     assert.match(problem.summary, /archived failure\.attempt 2/);
-    assert.match(problem.summary, /retained tasks envelope\.attempt 1/);
+    assert.match(problem.summary, /retained workflow_runs envelope\.attempt 1/);
     assert.match(problem.summary, /archive row\.attempt 1/);
   });
 
@@ -1954,7 +1954,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (problem?.state !== "malformed") throw new Error("expected frozen failure workflow diagnosis");
     assert.equal(problem.table, "archived_runs");
     assert.match(problem.summary, /archived failure\.workflowId "foreign-workflow"/);
-    assert.match(problem.summary, /retained tasks envelope\.workflow "person-lookup"/);
+    assert.match(problem.summary, /retained workflow_runs envelope\.workflow "person-lookup"/);
     assert.match(problem.summary, /archive workflowId "person-lookup"/);
   });
 
@@ -1994,9 +1994,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected terminal outcome contradiction");
     assert.equal(problem.table, "archived_runs");
-    assert.match(problem.summary, /retained tasks terminal status "cancelled"/);
+    assert.match(problem.summary, /retained workflow_runs terminal status "cancelled"/);
     assert.match(problem.summary, /archived_runs row\.status "done"/);
-    assert.match(problem.summary, /retained tasks terminal detail outcome/);
+    assert.match(problem.summary, /retained workflow_runs terminal detail outcome/);
     assert.match(problem.summary, /archived_runs detail\.outcome/);
   });
 
@@ -2036,9 +2036,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected terminal end-instant contradiction");
     assert.equal(problem.table, "archived_runs");
-    assert.match(problem.summary, /retained tasks terminal row endedAt/);
+    assert.match(problem.summary, /retained workflow_runs terminal row endedAt/);
     assert.match(problem.summary, /archived_runs row\.endedAt/);
-    assert.match(problem.summary, /retained tasks terminal detail outcome/);
+    assert.match(problem.summary, /retained workflow_runs terminal detail outcome/);
     assert.match(problem.summary, /archived_runs detail\.outcome/);
   });
 
@@ -2120,7 +2120,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       assert.equal(problem.table, "archived_runs");
       assert.equal(
         problem.summary,
-        `archived_runs authority requires terminal retained tasks authority; retained lifecycle is ${fixture.state}`,
+        `archived_runs authority requires terminal retained workflow_runs authority; retained lifecycle is ${fixture.state}`,
       );
     });
   }
@@ -2142,7 +2142,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       envelope: { ...sourceRun.envelope, priority: "bulk" },
     });
     const raw = new DatabaseSync(authorityPath);
-    raw.prepare("UPDATE tasks SET priority = ?, record_json = ? WHERE record_key = ?")
+    raw.prepare("UPDATE workflow_runs SET priority = ?, record_json = ? WHERE record_key = ?")
       .run("bulk", JSON.stringify(contradictoryRun), contradictoryRun.envelope.runId);
     raw.close();
     emitQueuedSpan(root, sourceRun);
@@ -2163,8 +2163,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected duplicate live/archive diagnosis");
     assert.equal(problem.table, "archived_runs");
-    assert.match(problem.summary, /archived_runs authority's required retained tasks tuple contradicts the span root/);
-    assert.match(problem.summary, /priority "interactive" does not match tasks authority "bulk"/);
+    assert.match(problem.summary, /archived_runs authority's required retained workflow_runs tuple contradicts the span root/);
+    assert.match(problem.summary, /priority "interactive" does not match workflow_runs authority "bulk"/);
   });
 
   it("classifies priority drift in the exact live task tuple", async () => {
@@ -2191,8 +2191,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const problem = report.spanAuthority.problems[0];
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected live priority mismatch diagnosis");
-    assert.equal(problem.table, "tasks");
-    assert.match(problem.summary, /priority "interactive" does not match tasks authority "bulk"/);
+    assert.equal(problem.table, "workflow_runs");
+    assert.match(problem.summary, /priority "interactive" does not match workflow_runs authority "bulk"/);
   });
 
   it("classifies priority drift in the exact archived tuple", async () => {
@@ -2264,10 +2264,10 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const problem = report.spanAuthority.problems[0];
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected malformed full-tuple diagnosis");
-    assert.equal(problem.table, "tasks");
+    assert.equal(problem.table, "workflow_runs");
     assert.match(problem.summary, /workflow.*foreign-workflow.*person-lookup/);
     assert.match(problem.summary, /traceId.*fw-170001-1111.*pl-170000-2222/);
-    assert.match(problem.summary, /finalAttempt 2.*tasks authority 1/);
+    assert.match(problem.summary, /finalAttempt 2.*workflow_runs authority 1/);
   });
 
   it("classifies a queued root whose span path is not its frozen trace root", async () => {
@@ -2606,7 +2606,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     database.authority.runs.enqueue(QUEUED_RUN);
     emitQueuedSpan(root);
     const raw = new DatabaseSync(authorityPath);
-    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+    raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
       .run(JSON.stringify({ malformed: true }), QUEUED_RUN.envelope.runId);
     raw.close();
 
@@ -2629,8 +2629,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected exact malformed task diagnosis");
     assert.equal(problem.runId, QUEUED_RUN.envelope.runId);
-    assert.equal(problem.table, "tasks");
-    assert.equal(problem.summary, "tasks authority failed its strict record or identity validation");
+    assert.equal(problem.table, "workflow_runs");
+    assert.equal(problem.summary, "workflow_runs authority failed its strict record or identity validation");
   });
 
   it("rejects NULL/nonterminal partial authorization, failure, result, and outbox settlements read-only", () => {
@@ -2901,7 +2901,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         name: "failed-run-error-summary",
         violation: /terminal-authorization-binds-exact-terminal-authority/,
         mutate: (raw) => {
-          const row = raw.prepare("SELECT record_json FROM tasks WHERE record_key = ?")
+          const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
             .get(UUID_1) as { record_json: string } | undefined;
           if (row === undefined) throw new Error("failed run is absent from summary corruption fixture");
           const run = RunRecordSchema.parse(JSON.parse(row.record_json));
@@ -2912,7 +2912,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
             ...run,
             lifecycle: { ...run.lifecycle, errorSummary: "Different display-safe failure summary" },
           });
-          raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+          raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
             .run(JSON.stringify(corrupted), UUID_1);
         },
       },
@@ -3883,7 +3883,7 @@ describe("offline exact-backup restore", () => {
     // is exactly what record-schema validation exists to catch — a shape check
     // at the column level would wave this row through.
     corruptBackup.prepare(`
-      INSERT INTO tasks (
+      INSERT INTO workflow_runs (
         record_key, workflow, item_id, state, priority, attempt,
         claim_generation, version, record_json, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -3905,7 +3905,7 @@ describe("offline exact-backup restore", () => {
     );
     await assert.rejects(
       restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
-      /authority-record-invalid \{ table: tasks, record:/,
+      /authority-record-invalid \{ table: workflow_runs, record:/,
     );
     assert.equal(existsSync(suspects), false);
   });

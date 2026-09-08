@@ -90,7 +90,7 @@ export function startEffects(path: string) {
   try {
     // These repositories deliberately have no general list API. Compare complete
     // rows on a read-only test connection, in addition to public exact-id reads.
-    return ["start_plans", "tasks", "run_sessions", "commands", "command_audits", "config_snapshots"]
+    return ["start_plans", "workflow_runs", "workflow_run_batches", "commands", "command_audits", "config_snapshots"]
       .map((table) => ({ table, rows: raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all() }));
   } finally {
     raw.close();

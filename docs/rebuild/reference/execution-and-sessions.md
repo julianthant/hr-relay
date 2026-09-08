@@ -1129,6 +1129,15 @@ membership. Membership is DERIVED from authority — a run row carries its sessi
 a supervisor's memory, because a supervisor's memory does not survive the process and a session an
 operator can see after a restart is the entire point.
 
+**2026-09-07 naming and presentation amendment:** SQL `run_sessions` is renamed to
+`workflow_run_batches`; `tasks` is renamed to `workflow_runs`. The batch identity, origin and
+membership remain durable and immutable. Only `group_in_queue` and its monotonically advancing
+presentation version may change, through the journaled batch command. The queue presentation,
+new-batch defaults, historical migration behavior and retry display are owned by
+[dashboard-surfaces](dashboard-surfaces.md#workflow-batch-presentation)
+in the workflow-batch paragraph immediately before D330.4. References below to the original schema
+and session terminology describe the released implementation.
+
 _As-built (D269):_ `run_sessions` (schema v17, `93b7b18e`) is the row — `RunSessionRecord
 {sessionId, workflow, origin, startedAt, createdAt}`, insert-only by trigger (UPDATE and DELETE
 abort, the archive tables' shape), and it holds **no member list**: `RunRecord.sessionId` (the
