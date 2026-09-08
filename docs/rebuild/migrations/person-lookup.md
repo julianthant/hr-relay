@@ -246,3 +246,7 @@ activated `browser.headless=false` did not override the mode inserted by scenari
 The task owner records the immutable-envelope/profile readback, the correction, and a separate
 successful bounded headed login. No failed workflow verdict is relabeled. Both required live
 acceptance rows remain open until the new exact-ordinal candidate passes its gates and live proof.
+
+
+Task 1.6.7 headed proof on candidate `145e50a32e6a817e67bdedb4963d8e240be86349`: result `bcc1d548-6e1e-40e6-a683-cc7492d99d73` **met**, run `c19cae5a-8529-413b-968f-2b6d95675832` / `pl-181857-c19c`, live-read, attempt 3. Manifest `a68d9f65f403c9faacf4b8174a7b0374484fa9205da6916d69fe68f045c1ed6c`; evaluator 211335 ms. Independent run-scoped write counts and evaluator deltas are exactly **0/0/0**. All seven assertions and the verified-done/verified receipt passed; three exact attempt-3 checkpoints. This accepted proof remains bound to its immutable settings snapshot.
+The Task-7 owner records full command, receipt, doctor, canonical configuration and recovery evidence.

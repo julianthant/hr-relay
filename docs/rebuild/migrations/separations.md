@@ -7533,3 +7533,7 @@ activated `browser.headless=false` did not override the mode inserted by scenari
 The task owner records the immutable-envelope/profile readback, the correction, and a separate
 successful bounded headed login. No failed workflow verdict is relabeled. Both required live
 acceptance rows remain open until the new exact-ordinal candidate passes its gates and live proof.
+
+
+Task 1.6.7 headed proof on candidate `145e50a32e6a817e67bdedb4963d8e240be86349`: result `78ff3c7c-013c-4b7b-b5de-6460187d561d` **failed**, run `11078b76-e4dd-4e2e-9c73-250e28b6f8e6` / `sp-182240-1107`, dry-run-preview, attempt 2. Manifest `265a4325296541ba0c8036b862eca91674276c4b8ea5088a6c8a23fbcecba94e`; evaluator 30904 ms. Independent run-scoped write counts and evaluator deltas are exactly **0/0/0**. Three assertions met and five failed; no checkpoint. The Kuali entry-page application script exceeded the 30-second navigation bound. A separate unchanged-recipe login subsequently passed with measured 60-second navigation configuration; exact next workflow attempt is 3. This failed result remains retained.
+The Task-7 owner records full command, receipt, doctor, canonical configuration and recovery evidence.

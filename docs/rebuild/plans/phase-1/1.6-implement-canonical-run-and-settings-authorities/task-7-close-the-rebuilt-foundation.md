@@ -1223,3 +1223,66 @@ roadmap freshness and instruction/diff checks passed. `headed-candidate-gate-res
 `headed-gated-inputs.json` bind the exact commands and 1908 unchanged-at-freeze inputs; the same
 reviewed two-worker adapter imports the actual task config. No reference image was changed by this
 repair. This commit is the next repaired-candidate live input, not Task-7 acceptance.
+
+
+### Headed live acceptance and Kuali navigation recovery (2026-09-07)
+
+Frozen candidate `145e50a32e6a817e67bdedb4963d8e240be86349` matched all 1908 gated inputs and
+installed dependency bytes on clean detached primary. Master remained at its original full HEAD.
+Production input admission, unchanged private source, exact ordinals 3/2 and pre-doctor passed.
+Revision-4 ordinary settings were active. The corrected official `--headed` production smoke
+(`task7-headed-production`, session 29998) passed login, neutral reset and session closure in
+116210 ms; its profile was explicitly headed. No new credential was enrolled.
+
+| Proof | Person Lookup | Separations |
+| --- | --- | --- |
+| Result | `bcc1d548-6e1e-40e6-a683-cc7492d99d73` | `78ff3c7c-013c-4b7b-b5de-6460187d561d` |
+| Verdict | **met**, all 7 assertions | **failed**, 3 met / 5 failed |
+| Run / trace | `c19cae5a-8529-413b-968f-2b6d95675832` / `pl-181857-c19c` | `11078b76-e4dd-4e2e-9c73-250e28b6f8e6` / `sp-182240-1107` |
+| Arm / attempt / browser | live-read / 3 / headed | dry-run-preview / 2 / headed |
+| Manifest digest | `a68d9f65f403c9faacf4b8174a7b0374484fa9205da6916d69fe68f045c1ed6c` | `265a4325296541ba0c8036b862eca91674276c4b8ea5088a6c8a23fbcecba94e` |
+| Evaluator / command / exit | 211335 / 213316 ms / 0 | 30904 / 32788 ms / 1 |
+| Checkpoints | searching, cross-verify, active-status, each attempt 3 | none |
+| Receipt | `a7fa26d2-7a41-5e8e-9c29-3bf88cb9e8e0`, verified-done / verified | `6e4745d8-39a5-51c4-bc62-243f495dce6a`, failed / unknown |
+| Independent exact write-intent / attempt / durable-outbox counts and evaluator deltas | **0/0/0** | **0/0/0** |
+
+Person Lookup is accepted for this unchanged executable/manifest boundary. Separations failure
+`ea91e02a-f019-4b88-bd00-bf908ccb9285` is non-transient `UNHANDLED` at `resolve-action`, before
+any checkpoint, with static reason `navigate-login-entry`: Kuali's entry route did not load.
+Attempt 2 is retained and spent. No UNKNOWN external submit occurred and none is retried.
+The `*-headed-command.json` and `*-headed-readback.json` files retain safe exact-result evidence.
+
+A fresh headed login-only diagnostic reproduced the Kuali 30000 ms failure: main HTML returned
+200 in 364 ms, while one application script from `d2qxjspa0v9y79.cloudfront.net` remained pending.
+Without another navigation, that script completed and the application redirected to SSO at about
+39 seconds. The original failed diagnostic stayed failed. Canonical command
+`f55962d1-17f0-4534-9c8b-95a5255c11c2` then changed only `timeouts.navigationMs` to 60000,
+revision 4 → 5, with restart activation. The acquisition envelope remains 120000 ms.
+A separate fresh headed profile (`task7-kuali-timed`) using the unchanged production Kuali recipe
+passed `logged-in` at `2026-09-08T01:27:25.331Z`: seven application-chrome controls, no sign-in form,
+completed DOMContentLoaded and zero pending requests. Its initial application script took about
+52 seconds. This is measured bounded configuration, not a product readiness fallback or a test
+relaxation. Safe evidence is `kuali-entry-observation.json`, `kuali-entry-later-observation.json`,
+`kuali-timed-observation.json`, `kuali-timed-success.json` and the canonical command receipt.
+
+Both diagnostic browsers and BFFs stopped; post-doctor passed, and primary master was restored
+clean and unchanged (`headed-live-restored.json`). Temporary ordinary settings revision 5 is
+retained only for the next proof and still requires canonical restoration afterward. Fresh complete
+protected-input readback observes Person Lookup next ordinal 4 with its three accepted checkpoints
+(do not rerun it) and Separations next ordinal 3 with zero checkpoints. The only next gate-input
+change is Separations' exact checkpoint ordinal 2 → 3. Person Lookup implementation, protected
+input, live manifest, receipt and accepted snapshot are unchanged; its accepted proof is retained.
+Steps 4–6 remain open until Separations meets every assertion and final review/integration complete.
+
+
+**Step 3 reaccepted for exact Separations attempt 3.** Typecheck 69083, lint 6616, manifest,
+catalog and roadmap freshness, instruction audit and diff checks passed. Serial runner 65984 passed
+full coverage (438 files / 5521 tests, 317194 ms, unchanged floors), suite size (235 ms), standalone
+architecture (60150 ms) and unchanged desktop parity (58874 ms). `kuali-candidate-gate-results.json`
+and `kuali-gated-inputs.json` retain commands/results and all 1908 input hashes, verified again at
+freeze. Against accepted Person Lookup candidate 145e50a32, the only changed gate input is the
+Separations manifest's checkpoint ordinal; no Person Lookup behavior or manifest changed.
+Post-live doctor at `2026-09-08T01:27:58.129Z` was healthy schema 32/generation 413 with eight
+reconciled retained runs, zero pending commands/unresolved writes/durable outbox, two stopped worker
+leases, and one retained pending run-terminal outbox row. That local terminal row is recorded
+separately from the exact zero transaction-write tables; it is not deleted to manufacture zeroes.
