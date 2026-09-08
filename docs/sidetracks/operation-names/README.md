@@ -195,7 +195,7 @@ or perform HR writes to verify a storage rename.
   Only this plan and its write-safety/decision amendments change. Typecheck, full coverage,
   parity and implementation review are unrun; no product-gate evidence is claimed or reused.
 
-### Execution evidence — current candidate
+### Execution evidence — initial candidate
 
 - Base: `35635a04e16e9c3cf1e99b16d4963752a18c616a`; original approved plan:
   `54cc017916f00db7e836999afdf261bd25b28b54`; parallel override: operator “no do in parallel”.
@@ -242,7 +242,7 @@ or perform HR writes to verify a storage rename.
   links/anchors, instruction-pair/chain audit and whitespace checks passed. Logs:
   `/tmp/operation-names-doc-guard.log`, `/tmp/operation-names-roadmap-final.log`,
   `/tmp/operation-names-doc-audit-final.log`.
-- Candidate status: **awaiting independent R1 review**. The implementation commit containing
+- Initial candidate status at submission: **awaiting independent R1 review**. The implementation commit containing
   this record is the pinned candidate; its parent is the recorded execution base. The reviewer
   receives the full base/head/tree and proof map. All owned gate processes have exited, the
   temporary configuration is removed, and the heavy-gate window is released to worker-names.
@@ -282,6 +282,56 @@ and operator-assigned integration condition, plus this side-work adaptation:
 > conditions.
 
 
+### R1 finding and bounded repair
+
+R1 reviewer `/root/sup_review_operation_names` returned **CHANGES REQUIRED** for complete
+candidate `b7a64659ff6a22d958db9c6a476f377430f10e8b`, tree
+`ce68bd1e4405c8cd004caf462c120ffaada62ae0`, against the recorded execution base.
+All 41 paths and P1–P6 were inspected. One required finding remained: increasing the current
+schema to 35 let an unfinished schema-34 settings conversion bypass both the historical
+schema-32 refusal and current-version resume. A new conversion could settle schema 35 while
+the original credential import remained unfinished. This violates P5 recovery acceptance.
+
+The supervisor reproduced this with the released baseline converter: a synthetic v29 source
+was interrupted after its v34 SQLite commit, before credential settlement. The candidate then
+reported `converted` with `credentials=empty`, appended a settled v35 journal, and left credential
+revision 1. Baseline source equality to the accepted base was asserted. Harness/output:
+`/tmp/operation-names-pending-repro.mjs`, `/tmp/operation-names-pending-repro.log`.
+
+The bounded repair extends the existing original-build recovery refusal to every admitted
+historical schema from 32 through the version before current. Current-version exact resume is
+unchanged. Regression cases for schemas 32/33/34 cover plan and apply refusal, unchanged database,
+credential and source bytes, and no runtime-lock creation. Before the repair, v33/v34 failed with
+`Missing expected rejection`; afterward all 39 upgrade/operation-name cases passed. Logs:
+`/tmp/operation-names-r1-red.log`, `/tmp/operation-names-r1-green.log`. The released-v34 harness
+also passes both refusals with byte preservation (`/tmp/operation-names-pending-fixed.mjs`,
+`/tmp/operation-names-pending-fixed.log`). No operator data was used.
+
+Repair gates passed on tree `1e3aa3d89489c7df9c825009260461748442b260`:
+
+| Gate | Result and evidence |
+| --- | --- |
+| `npm run typecheck` | Exit 0; `/tmp/operation-names-r1-typecheck.log`. |
+| `npm run lint` | Exit 0; `/tmp/operation-names-r1-lint.log`. |
+| Full coverage with the same two-worker adapter recorded above | Exit 0; 448 files, 5,683 tests; statements 85.97%, branches 77.79%, functions 89.96%, lines 88.19%; all thresholds pass. `/tmp/operation-names-r1-coverage.log`. |
+| `npm exec -- tsx scripts/suite-size.ts` | 351 unit, 17 scenario, 80 architecture files; `/tmp/operation-names-r1-suite-size.log`. |
+| `npm run test:parity -- --workers=2` | Exit 0; 262/262 cases; unchanged screenshot/a11y baselines. `/tmp/operation-names-r1-parity.log`. |
+| Manifest/catalog/roadmap freshness and instruction audit | Exit 0; `/tmp/operation-names-r1-{manifest,catalog,roadmap,doc-audit}.log`. |
+
+The full coverage command remains `npm exec -- tsx scripts/test-runner.ts run --coverage
+--config .operation-names-vitest.mts`; the adapter hash and unchanged effective settings are
+recorded with the initial gates. The adapter was removed after coverage. All product inputs
+were identical to the tested tree at gate completion; subsequent evidence recording changes only
+this owner document. Final document-binding guard passed 23/23 tests
+(`/tmp/operation-names-r1-doc-guard.log`); final instruction audit and whitespace checks passed.
+Earlier product results above remain the initial candidate's evidence.
+
+The reviewer remains independent, has not compacted, and confirmed capacity for the bounded
+repair and neighboring recovery paths. Renewed review is pending on the repair commit containing
+this record. Both parallel peers independently report the same generalized refusal; assigned
+integration must coalesce it. The shared gate window was released back to command-groups after
+all owned processes exited. No operator data was used or modified.
+
 ### Delivery assessment (candidate)
 
 The operator changed execution sequencing to parallel work; product scope and the one-author/
@@ -291,4 +341,6 @@ triggers. These are implementation/test repairs within the approved plan, not ad
 One full coverage attempt failed due to two deadlines under evidenced cross-task contention; one
 complete retry with two workers and a shared gate window passed. Future execution should inventory
 all destination-version unions and pin the baseline trigger set before writing migration tests.
-No assignment resizing or supporting implementation worker was used. R1 and integration remain open.
+No assignment resizing or supporting implementation worker was used. Initial R1 found the pending
+historical conversion boundary missing from the proof; the supervisor reproduced and repaired it.
+Repair gates passed; renewed independent review and assigned integration remain open.

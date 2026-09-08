@@ -129,19 +129,31 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it("refuses to supersede an unfinished schema-32 settings conversion", async () => {
+  it.each([32, 33, 34])("refuses to supersede an unfinished schema-%s settings conversion in plan and apply", async (version) => {
     const seed = fixture(); await seed.run();
     const source = new DatabaseSync(seed.path, { readOnly: true });
     let pending: Record<string, unknown>;
     try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM authority_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
     finally { source.close(); }
-    const f = fixture(32);
+    const f = fixture(version);
     const raw = new DatabaseSync(f.path);
-    try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: 32 }), now); }
+    try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: version }), now); }
     finally { raw.close(); }
+    writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=synthetic-unsettled-import\n", { mode: 0o600 });
+    const credentials = createCredentialStore({ stateRoot: f.root });
+    credentials.bindUpgrade(String(pending.upgradeId), { ucpathPassword: { set: "synthetic-unsettled-import" } });
+    const credentialPath = join(f.root, "credentials", "protected.json");
+    const credentialBytes = readFileSync(credentialPath);
+    const environmentBytes = readFileSync(f.input.environmentFile);
+    await f.backup();
     const before = readFileSync(f.path);
-    await assert.rejects(f.run(true), /upgrade-pending: finish the interrupted schema-32/u);
-    assert.deepEqual(readFileSync(f.path), before);
+    for (const plan of [true, false]) {
+      await assert.rejects(f.run(plan), new RegExp(`upgrade-pending: finish the interrupted schema-${String(version)}`, "u"));
+      assert.deepEqual(readFileSync(f.path), before);
+      assert.deepEqual(readFileSync(credentialPath), credentialBytes);
+      assert.deepEqual(readFileSync(f.input.environmentFile), environmentBytes);
+      assert.equal(existsSync(f.input.processLockRoot), false);
+    }
   });
   it("renames a v32 database without reimporting settings or touching independent credentials", async () => {
     const seed = fixture();
