@@ -2357,7 +2357,7 @@ claims a port is implemented.
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) consolidates the artifact naming
+[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) consolidates the artifact naming
 and lifecycle decisions: `intake_sessions` plus `intake_manifests` become `imported_artifacts`,
 `ocr_extractions` becomes `extracted_artifacts`, and `artifact_outbox` plus `artifact_sink_heads`
 become `generated_artifacts`. Under the [parallel execution binding](../../sidetracks/database-parallel/README.md), prerequisite B

@@ -2,7 +2,7 @@
 
 ## Assignment and approval
 
-**Owner: `side/run-completion`. Prerequisite A in the [parallel execution plan](../database-parallel/README.md). Implementation
+**Owner: `side/run-completion`. Prerequisite A in the [parallel execution plan](README.md). Implementation
 WAITING ON accepted integration of `side/timeline-history-2` and its unchanged prerequisites.**
 The operator's 2026-09-08 parallel-execution amendment removes the provider-usage dependency.
 Complete this whole assignment before the shared foundation; leave the four running plans unchanged.
@@ -40,7 +40,7 @@ No worker-history table, new run-attempt table, replacement outbox or separate c
   §3.14 D191, owns gates; [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md)
   owns wire shapes and parity.
 - [Timeline history](../timeline-history/README.md) T2 is the direct predecessor; consume its completed
-  event authority and retired operation outbox. The [parallel execution plan](../database-parallel/README.md) places this completion
+  event authority and retired operation outbox. The [parallel execution plan](README.md) places this completion
   assignment before all remaining shared-schema work. Provider, diagnostics and artifact peers cannot
   modify this assignment's shared files while it runs.
 
@@ -176,10 +176,10 @@ conversation. Review does not implement or delegate. No planning dispatch or imp
 The operator assigns integration into local master at `/Users/julianhein/Projects/hr-automation-rebuild`
 after review PASS and gates. Recheck target ownership and serialize the assigned integration; gate
 the combined tree and independently re-review behavioral conflict fixes. Remove only this accepted
-task's branch/worktree from a safe checkout. No push, automatic integration or next-task dispatch.
+task's branch/worktree from a safe checkout. No push, integration before review/gates, or next-task dispatch. The prerequisite launch assigns local integration.
 Material scope, evidence-loss or ownership conflicts return for amendment; routine fixes remain local.
 
-The [parallel execution plan](../database-parallel/README.md) owns the new batch's resource allocation, prerequisite release,
+The [parallel execution plan](README.md) owns the new batch's resource allocation, prerequisite release,
 compact handoffs and subsequent peer integration. This task is a sequential prerequisite, not one
 of those peers. Complete all P1–P6 locally; its accepted integration releases only the shared
 foundation, never the three peers directly. Record the accepted SHA and cleanup here.
@@ -222,13 +222,15 @@ completion identities, result/failure preservation, FK integrity and intended ru
 - Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
   the remaining plans for parallel execution, including their ownership, prerequisites and gates.
 - Earlier inspection/check records are historical planning evidence. This amendment's validation
-  is recorded in the [parallel execution plan](../database-parallel/README.md); no product tests are claimed from planning.
+  is recorded in the [parallel execution plan](README.md); no product tests are claimed from planning.
 - S1–S4 and P1–P6: **not started**. Required product proof, gates, independent review, accepted integration
   and cleanup remain unfinished until linked to exact evidence.
 - Launch: **WAITING ON accepted timeline T2 integration and its existing prerequisites**. Verify the committed plan revision, base, branch/path ownership
   and capacity. Do not substitute a planning commit or unmerged sibling for the prerequisite.
 
-The operator opens `/supervise side/run-completion` using this absolute plan path and the approved plan SHA.
+The operator launches [the prerequisite task](00-prerequisites.md) once. It executes this internal
+`side/run-completion` unit locally, then B after A's accepted integration and cleanup. Do not separately
+launch this file or a sibling supervisor. The prerequisite launch assigns this unit's local integration.
 This is an approved side-work assignment. This side plan is the task owner wherever `/supervise`
 refers to a task/phase section. Record progress, review, gate evidence and completion here; do not
 create a phase number or mark roadmap tasks complete. Preserve repository contracts, Astra/high,

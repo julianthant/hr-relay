@@ -2,7 +2,7 @@
 
 ## Assignment and approval
 
-**Product owner: `side/artifacts`. Revised execution follows the [parallel execution plan](../database-parallel/README.md).**
+**Product owner: `side/artifacts`. Revised execution follows the [parallel execution plan](README.md).**
 Former T1 import/extraction implementation and shared generated storage move to prerequisite B.
 T2 `side/artifacts-2` becomes parallel peer G, **WAITING ON accepted B release**. The operator
 approved this allocation amendment on 2026-09-08. The four currently running plans stay unchanged.
@@ -30,6 +30,10 @@ T2's physical storage, conversion and real adapters. T2 `side/artifacts-2` owns 
 publication and export behavior through those frozen seams. It can run independently alongside
 provider accounting and diagnostic resolution after B; neither peer is its prerequisite.
 
+The one [prerequisite task](00-prerequisites.md) must publish its verified B release before launch.
+Use that exact accepted release base, also used by both peers. Record this peer's detailed evidence
+only in `03-artifacts-evidence.md` in this folder; do not share an `implementation.md` or edit another peer's plan.
+
 ## Authorities and scope
 
 - [Root instructions](../../../AGENTS.md), [document routing](../../README.md),
@@ -39,7 +43,7 @@ provider accounting and diagnostic resolution after B; neither peer is its prere
   owns the pending amendment to intake/extraction and D164's output-maintenance tables.
 - [Dashboard surfaces: artifact storage model](../../rebuild/reference/dashboard-surfaces.md#artifact-storage-model)
   owns unchanged intake behavior, command replay, generated-file/export presentation and diagnostics.
-- The [parallel execution plan](../database-parallel/README.md) owns B, which provides diagnostic snapshot/file/receipt names
+- The [parallel execution plan](README.md) owns B, which provides diagnostic snapshot/file/receipt names
   and protection plus import/extraction and generated storage. Run completion and timeline T2 precede
   B. Diagnostic resolution and provider accounting are independent peers, not predecessors.
 - [Task contract](../../rebuild/reference/task-contract.md), [workflow model](../../rebuild/reference/workflow-model.md),
@@ -54,7 +58,7 @@ migration/source backups/integrity/retention, shared executor/export composition
 G owns generated-file publication, writer and immutable-version verification, exact checkpoint update
 consumption, and existing explicit XLSX export registration through B's real frozen interfaces.
 Only G's enumerated production/tests and this plan/evidence may change in parallel; no shared
-migration, IDs, global repository types, root composition or intake command edits. The [parallel execution plan](../database-parallel/README.md)
+migration, IDs, global repository types, root composition or intake command edits. The [parallel execution plan](README.md)
 owns exact file lists and integration. Read nearest instructions and lessons before module edits.
 
 Do not change workflow meaning, source coercion, sensitive-field rules, active-import reuse policy,
@@ -236,7 +240,7 @@ verified database backup/source manifest, following the timeline predecessor's s
 | P7 Output migration/retirement | Populated pending/completed/mixed updates, existing heads and files, old exports and unavailable history have exact conversion outcomes. Required stopped file copies and DB backup are identity-bound; changed/missing sources refuse. Old output tables/current consumers retire and pending counts remain accurate. |
 | P8 Upgrade/retention/compatibility | Fresh creation, supported old backups/upgrades, pre/postcommit interruption, exact resume, no-write repeat and full restore pass. D308/tombstones, shared file refs, diagnostics/pins, archive identity and schema/settings coupling remain correct. No new real provider/workflow activation. |
 
-B's implementation/review allocation lives in the [parallel execution plan](../database-parallel/README.md). G uses one Astra/high
+B's implementation/review allocation lives in the [parallel execution plan](README.md). G uses one Astra/high
 supervisor implementing locally, zero implementation workers, and one fresh complete read-only
 `sup_review` on Astra/high. The reviewer receives exact base/head/tree, full assigned diff, this product
 contract/proof allocation and gate evidence, not the author's conversation. It never implements or
@@ -294,7 +298,7 @@ No live HR submission, real OCR call or maintained production workbook is needed
 - Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
   the remaining plans for parallel execution, including their ownership, prerequisites and gates.
 - Earlier inspection/check records are historical planning evidence. This amendment's validation
-  is recorded in the [parallel execution plan](../database-parallel/README.md); no product tests are claimed from planning.
+  is recorded in the [parallel execution plan](README.md); no product tests are claimed from planning.
 - B/T1, B/T2 storage, G/T2 publication and P1–P8 allocated proof: **not started**. Required product proof, gates, independent review, accepted integration
   and cleanup remain unfinished until linked to exact evidence.
 - Launch: **WAITING ON accepted B release, including complete former T1 and shared generated-storage proof**. Verify the committed plan revision, base, branch/path ownership

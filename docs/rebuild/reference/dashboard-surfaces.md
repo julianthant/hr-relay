@@ -7005,7 +7005,7 @@ dropped, and this table is how a citation to the old flat list resolves.
 ## Run completion storage
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/run-completion`](../../sidetracks/run-completion/README.md) amends D110/D114 and
+[Side task `side/run-completion`](../../sidetracks/database-parallel/00a-run-completion.md) amends D110/D114 and
 D330 storage: move `run_terminal_authorizations` evidence into a strict immutable completion record
 on `workflow_runs`, rename `failures` to `run_failures`, and retire the unused `run_terminal_outbox`.
 It follows accepted timeline T2 integration, before the shared database foundation, under the
@@ -7028,7 +7028,7 @@ implementation claim or authorization to convert the operator database.
 ## Failure resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) adds Mark resolved and Reopen
+[Side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) adds Mark resolved and Reopen
 after the shared foundation supplies run completion and annotation storage. Its independent parallel
 assignment follows the [parallel execution binding](../../sidetracks/database-parallel/README.md). The actions appear in existing failure details. The current annotation is stored on the
 owning `run_failures` row separately from immutable occurrence evidence, with its own version,
@@ -7048,7 +7048,7 @@ evidence. This records approved scope, not a current feature or database applica
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) owns one-row `imported_artifacts`,
+[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) owns one-row `imported_artifacts`,
 `extracted_artifacts` and `generated_artifacts`; [data intake](data-intake-and-edit-data.md#artifact-storage-model)
 owns their lifecycle/identity rules. Preserve intake mapping/validation/correction/exclusion, frozen
 submission, batch origin/grouping, command replay and current duplicate/re-upload behavior. Historical

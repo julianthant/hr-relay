@@ -6,7 +6,11 @@ On 2026-09-08 the operator asked to revise the remaining database plans for inde
 implementation, testing and integration, explicitly including the plans themselves. This is the
 approved execution amendment. It changes allocation and dependencies, not the approved product
 requirements. Product requirements and their proof rows remain in the four linked owners below.
-This file owns only the shared prerequisite `side/database-foundation` and cross-plan execution controls.
+This file owns unit B (`side/database-foundation`) and cross-plan execution controls.
+[00-prerequisites.md](00-prerequisites.md) is the single prerequisite task entry point. It runs A
+and B sequentially in the same supervisor task; their separate scopes, branches, gates, reviews and
+accepted integration boundaries remain intact. On 2026-09-08 the operator asked to collect all plans
+in one folder and finish the prerequisite before launching every parallel peer.
 
 **Planning only. No implementation, product gates, independent implementation review or integration
 has occurred for these revised assignments. All launch prompts are WAITING ON their recorded inputs.**
@@ -20,7 +24,29 @@ Read [root instructions](../../../AGENTS.md), [routing](../../README.md),
 [D344 governance](../../roadmap/roadmap.md), [D191 gates](../../rebuild/reference/guards-and-tests.md)
 and the operating reference's Authorized orchestration section before execution. Use Astra/high for
 every supervisor and agent, `sup_astra` for execution workers and a fresh read-only `sup_review` for
-independent review. The operator opens each supervisor; this plan does not dispatch tasks or authorize push.
+independent review. The operator opens one prerequisite supervisor and later three peer supervisors; no automatic task
+dispatch or push is authorized. The prerequisite launch explicitly assigns its own A/B integration.
+
+## Start here and concurrency
+
+Everything for this batch lives in this folder. Launch **one prerequisite task**, then **three peer
+supervisor tasks together** after its verified release. Do not separately launch its internal A/B units.
+
+| File | Role |
+| --- | --- |
+| [00-prerequisites.md](00-prerequisites.md) | Start once: complete, review, integrate and clean up A, then B; publish the shared release base. |
+| [00a-run-completion.md](00a-run-completion.md) | Full unit A specification consumed by the prerequisite task, not an extra launch. |
+| [01-provider-usage.md](01-provider-usage.md) | Parallel task P; also the designated implementing integration owner. |
+| [02-diagnostics.md](02-diagnostics.md) | Parallel task D. |
+| [03-artifacts.md](03-artifacts.md) | Parallel task G; its import/storage prerequisites are completed by B. |
+| [PROMPTS.md](PROMPTS.md) | Exact prerequisite, three peer and later integration prompts. |
+
+During prerequisite work: one supervisor plus at most one bounded worker or independent reviewer
+at a time. After release: three implementation supervisors, each with one fresh independent reviewer
+when needed, so up to six active agents across the three tasks if capacity permits. There is no
+fourth coordinator task and no additional implementation workers in the peers. This count excludes
+the four unrelated in-flight tasks, which keep their current arrangements. Heavy test windows remain
+scheduled under the existing resource section; three tasks running does not mean three coverage runs.
 
 ## Dependency and responsibility map
 
@@ -39,14 +65,14 @@ they change the same migration authority and terminal/retention/composition code
 
 | Product owner | Work completed before peers launch | Work owned by its parallel supervisor |
 | --- | --- | --- |
-| [Run completion](../run-completion/README.md) | A completes all three changes and P1–P6, including terminal atomicity, migration and Storage Doctor removal. | None. Do not create an artificial second completion task. |
-| [Provider usage](../provider-usage/README.md) | B owns final physical schema, old-table conversion, IDs, shared repository contracts, real legacy-capability adapters, recovery and deletion hooks. | P implements the generic synthetic-provider accounting path, multi-scope reserve/settle/expiry, uncertainty, window and retention behavior within the frozen storage contract. No real key/provider wiring. |
-| [Diagnostics](../diagnostics/README.md) | B owns all three evidence renames, knowledge/fix retirement and backup protection, separate resolution columns/version, low-level annotation repository and preserved existing capture/readback behavior. | D owns the admitted resolution command, atomic command/audit/timeline transaction, read model and Mark resolved/Reopen UI with archive protection. |
-| [Artifacts](../artifacts/README.md) | B completes former T1 import/extraction work; also owns final generated-file schema, migration/source preservation, legacy storage adapters, pending counts, low-level ordered queue/CAS/receipt methods and shared checkpoint/export seams. | G owns immutable file publication, exclusive destination writer behavior, exact checkpoint replay consumption and registration of existing explicit XLSX exports. No new output format or workflow activation. |
+| [Run completion](00a-run-completion.md) | A completes all three changes and P1–P6, including terminal atomicity, migration and Storage Doctor removal. | None. Do not create an artificial second completion task. |
+| [Provider usage](01-provider-usage.md) | B owns final physical schema, old-table conversion, IDs, shared repository contracts, real legacy-capability adapters, recovery and deletion hooks. | P implements the generic synthetic-provider accounting path, multi-scope reserve/settle/expiry, uncertainty, window and retention behavior within the frozen storage contract. No real key/provider wiring. |
+| [Diagnostics](02-diagnostics.md) | B owns all three evidence renames, knowledge/fix retirement and backup protection, separate resolution columns/version, low-level annotation repository and preserved existing capture/readback behavior. | D owns the admitted resolution command, atomic command/audit/timeline transaction, read model and Mark resolved/Reopen UI with archive protection. |
+| [Artifacts](03-artifacts.md) | B completes former T1 import/extraction work; also owns final generated-file schema, migration/source preservation, legacy storage adapters, pending counts, low-level ordered queue/CAS/receipt methods and shared checkpoint/export seams. | G owns immutable file publication, exclusive destination writer behavior, exact checkpoint replay consumption and registration of existing explicit XLSX exports. No new output format or workflow activation. |
 
 The old standalone launch `side/artifacts-1` is retired before execution: its full product scope and
-proof transfer to B, recorded in the artifacts plan. Other task IDs remain stable with the narrowed
-execution ownership above. This does not retire or weaken any acceptance criterion.
+proof transfer to B, recorded in the artifacts plan. A/B unit IDs remain stable under the single
+`side/database-prerequisites` entry task; P/D/G task IDs also remain stable. This does not retire or weaken any acceptance criterion.
 
 ## Evidence behind the split
 
@@ -68,14 +94,16 @@ Do not call the peers READY merely because this plan has been committed.
 
 ## A — run completion prerequisite
 
-Execute `side/run-completion` at its existing product owner, with timeline T2 as its direct prerequisite.
+Execute unit `side/run-completion` locally within the prerequisite task, using
+[00a-run-completion.md](00a-run-completion.md), with timeline T2 as its direct prerequisite.
 Its full implementation, P1–P6, independent review, required gates, accepted local-master integration
 and owned cleanup must finish before B. Provider usage is no longer a prerequisite for completion.
 A owns its own migration sequence and shared consumer changes while no revised peer is running.
 
 ## B — shared database foundation
 
-Task ID: `side/database-foundation`. This section is its implementation owner. Read the complete
+Unit ID: `side/database-foundation`, executed locally after A in the same prerequisite task.
+This section is its implementation owner; do not open a separate supervisor. Read the complete
 provider, diagnostics and artifacts contracts and proof tables; the allocation below does not replace them.
 
 1. **Bind the base and current names.** Verify accepted A and timeline T2, source/target isolation,
@@ -104,8 +132,9 @@ provider, diagnostics and artifacts contracts and proof tables; the allocation b
    owner contract amendments, generated catalog/manifest inputs and guard-retirement inventory. The
    peer candidates must independently pass freshness checks without a later central regeneration fix.
 6. **Prove and release.** Complete the foundation proof map below, full gates and fresh independent
-   review. Record exact module/API/test ownership and release evidence. Return the candidate for operator
-   integration. Only after accepted integration, required combined gates and cleanup record base `B` and
+   review. Record exact module/API/test ownership and release evidence. Use the prerequisite task's explicitly assigned local integration after review PASS.
+   Only after accepted integration, required combined gates and cleanup record base `B` in
+   [the prerequisite release record](00-prerequisites.md#release-record) and
    release P/D/G. Do not launch them automatically.
 
 ### B proof allocation
@@ -132,7 +161,8 @@ negative controls and focused test command before dispatch; do not assign a whol
 The worker uses its own branch/worktree, no shared helper edits, and returns within one context.
 Tell it others share the filesystem and it must preserve their changes. If stable independent work or
 capacity is absent, keep that work local. A fresh complete `sup_review` reviews the final B candidate;
-the supporting test worker is never the reviewer. No nested supervisors or idle observers.
+the supporting test worker is never the reviewer. Finish the worker's assignment before independent
+review, keeping at most two active agents in this prerequisite task. No nested supervisors or idle observers.
 
 ## Frozen peer ownership and release proof
 
@@ -142,9 +172,9 @@ release. A necessary change to this allocation requires a plan amendment before 
 
 | Owner | Exclusive changing production scope after B | Exclusive tests and authored records |
 | --- | --- | --- |
-| P `side/provider-usage` | `src/infra/sqlite/provider-accounting.ts`; `src/core/provider-admission.ts`. B supplies immutable repository types and a real legacy implementation of this module before release. | Existing provider admission/pool/exhaustion tests, new `tests/unit/provider-accounting/`; provider plan and its new `implementation.md` evidence file. |
-| D `side/diagnostics` | `src/core/failure-resolution.ts`, `src/infra/sqlite/failure-resolution.ts`, `src/server/dashboard/queries/failure-resolution.ts`; resolution command admission/dispatch in `src/domain/commands.ts` and `src/core/command-kernel.ts`; `src/server/dashboard/queries/run-trust.ts`, `src/server/dashboard/queries/run-detail-types.ts`, `src/domain/dashboard/run-detail.ts`, `src/dashboard/surfaces/trust.tsx` and `trust-model.ts`; a new `src/server/dashboard/compose/failure-resolution.ts` factory. D alone may change these command/read/UI files. | New `tests/unit/failure-resolution/`, `tests/unit/dashboard/failure-record-render.test.ts`, `failure-record-model.test.ts`, and new resolution parity cases/references; diagnostics plan and its `implementation.md`. D alone owns any necessary post-B guard-inventory membership edit. |
-| G `side/artifacts-2` | `src/core/generated-artifact-projection.ts`, `src/infra/sqlite/generated-artifacts.ts`, existing `src/infra/artifacts/artifact-sink-projector.ts` and `xlsx-retention-sink.ts`; `src/server/dashboard/exports/operator-xlsx-export-service.ts` and a new `src/server/dashboard/compose/generated-exports.ts` factory. | Artifact projection/verified-reader/operator-XLSX tests and new `tests/unit/generated-artifacts/`; artifacts plan and its `implementation.md`. No failure-detail UI or command registration changes. |
+| P `side/provider-usage` | `src/infra/sqlite/provider-accounting.ts`; `src/core/provider-admission.ts`. B supplies immutable repository types and a real legacy implementation of this module before release. | Existing provider admission/pool/exhaustion tests, new `tests/unit/provider-accounting/`; provider plan and its new `01-provider-usage-evidence.md` file in this folder. |
+| D `side/diagnostics` | `src/core/failure-resolution.ts`, `src/infra/sqlite/failure-resolution.ts`, `src/server/dashboard/queries/failure-resolution.ts`; resolution command admission/dispatch in `src/domain/commands.ts` and `src/core/command-kernel.ts`; `src/server/dashboard/queries/run-trust.ts`, `src/server/dashboard/queries/run-detail-types.ts`, `src/domain/dashboard/run-detail.ts`, `src/dashboard/surfaces/trust.tsx` and `trust-model.ts`; a new `src/server/dashboard/compose/failure-resolution.ts` factory. D alone may change these command/read/UI files. | New `tests/unit/failure-resolution/`, `tests/unit/dashboard/failure-record-render.test.ts`, `failure-record-model.test.ts`, and new resolution parity cases/references; diagnostics plan and its `02-diagnostics-evidence.md` in this folder. D alone owns any necessary post-B guard-inventory membership edit. |
+| G `side/artifacts-2` | `src/core/generated-artifact-projection.ts`, `src/infra/sqlite/generated-artifacts.ts`, existing `src/infra/artifacts/artifact-sink-projector.ts` and `xlsx-retention-sink.ts`; `src/server/dashboard/exports/operator-xlsx-export-service.ts` and a new `src/server/dashboard/compose/generated-exports.ts` factory. | Artifact projection/verified-reader/operator-XLSX tests and new `tests/unit/generated-artifacts/`; artifacts plan and its `03-artifacts-evidence.md` in this folder. No failure-detail UI or command registration changes. |
 
 All other changing shared files must be completed by B: migration and storage records, IDs/global
 repository types, authority database, recovery/upgrade/integrity/deletion registries, common server
@@ -236,9 +266,9 @@ and owned output path. Product gates cannot be substituted with documentation ch
 
 **One peer-batch integration owner: the implementing `side/provider-usage` supervisor.** Its actual
 task ID is recorded when the operator launches it; do not infer a recipient from a title. A and B
-finish their own prerequisite acceptance through their existing operator-assigned integration steps.
-They are not peer-batch coordinators. P implements its accounting work first and may end its turn
-between actionable integration assignments.
+are units in the one prerequisite supervisor, whose launch assigns their sequential local integration
+and cleanup. That task ends after publishing the complete release; it is not a peer-batch coordinator.
+P implements its accounting work first and may end its turn between actionable integration assignments.
 
 Ready candidates return for **operator-chosen integration**, as D344 requires. Naming P does not
 automatically authorize a merge. The operator resumes P with the integration prompt and exact accepted
@@ -274,7 +304,7 @@ use a bounded worker only against completed inputs while its supervisor has usef
 Do not attach a future task to this running batch or change its boundaries without an approved amendment.
 No new global instruction or automatic future-work authorization is created here.
 
-## Planning validation
+## Earlier planning validation
 
 On 2026-09-08, documentation checks passed: `npm run roadmap:check`, 131 local document links,
 four in-flight plan byte comparisons, all 26 unchanged product proof rows and four unchanged product
@@ -282,3 +312,13 @@ contract sections, nine equal instruction pairs (largest chain 16,648 bytes), an
 The diff changes authored planning/contract text only; no runtime gates were run or reused as proof.
 Runtime independence remains subject to B's release proof; no migration, provider call or live database
 write is claimed by this plan.
+
+## Folder consolidation validation
+
+On 2026-09-08, the operator-approved consolidation passed `npm run roadmap:check`, 156 local
+links, all 26 preserved product proof rows, four unchanged in-flight plan byte comparisons,
+and nine equal instruction pairs (maximum chain 16,648 bytes), plus `git diff --check`.
+The four old plan folders were removed after moving their sole plan files here and updating current
+contract/index links. Detailed evidence filenames are distinct for each peer. No product code,
+implementation gates, operator database or running task was changed. Exact prompt bindings are
+verified against the committed consolidation separately before delivery.

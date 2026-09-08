@@ -2808,7 +2808,7 @@ six named extras as a closed list. An Explorer fact that is neither in §5.2's b
 ## Diagnostic evidence and resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) combines the approved renames
+[Side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) combines the approved renames
 `diagnostic_bundles` → `diagnostic_snapshots`, `diagnostic_attachments` → `diagnostic_files`, and
 `evidence_receipts` → `run_receipts` with retirement of `knowledge_records` and `fix_records`.
 The operator superseded the earlier suggested lesson/fix renames with removal: workflow/module and

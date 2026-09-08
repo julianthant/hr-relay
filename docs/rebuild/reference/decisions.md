@@ -2256,7 +2256,7 @@ continues through a compatibility mapping. Usage supports tracked cumulative tot
 reservations and locally calculated remaining amounts with honest attribution and unknown values;
 run deletion preserves aggregate usage. Requirements live at
 [execution and sessions, provider storage foundation](execution-and-sessions.md#provider-storage-foundation);
-[side task `side/provider-usage`](../../sidetracks/provider-usage/README.md) retains the product/proof scope; shared storage precedes its generic-accounting peer under the
+[side task `side/provider-usage`](../../sidetracks/database-parallel/01-provider-usage.md) retains the product/proof scope; shared storage precedes its generic-accounting peer under the
 [parallel execution binding](../../sidetracks/database-parallel/README.md). This records planning approval, not implementation or
 permission to migrate the operator database.
 
@@ -2267,7 +2267,7 @@ to `run_failures`, and removing the unused `run_terminal_outbox`. Current assign
 accepted completion remain distinct; claim/version fencing, exact replay, result/failure authority
 and atomic timeline persistence survive the consolidation. Requirements live at
 [dashboard surfaces, run completion storage](dashboard-surfaces.md#run-completion-storage);
-[side task `side/run-completion`](../../sidetracks/run-completion/README.md) owns execution after
+[side task `side/run-completion`](../../sidetracks/database-parallel/00a-run-completion.md) owns execution after
 accepted timeline T2 integration, before the shared database foundation. The
 [parallel execution binding](../../sidetracks/database-parallel/README.md) replaces the former provider-first ordering. No running plan is amended.
 This records planning approval, not implementation, database application or a new delivery consumer.
@@ -2279,7 +2279,7 @@ proposed lesson/fix renames with removal of their unused database tables. Useful
 in linked workflow/module documentation. A separate annotation on `run_failures` records explicit
 resolution/reopening, actor/time and optional note without rewriting the original failure, completion,
 receipt or archive. The operator requested both parts in one diagnostic plan; the earlier names were
-chat-only, so [side task `side/diagnostics`](../../sidetracks/diagnostics/README.md) is the single
+chat-only, so [side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) is the single
 persisted product owner. Shared storage is implemented in prerequisite B; operator resolution is an
 independent peer under the [parallel execution binding](../../sidetracks/database-parallel/README.md). Requirements live in
 [operator trust](operator-trust.md#diagnostic-evidence-and-resolution) and
@@ -2294,7 +2294,18 @@ and updates. This replaces two intake tables and consolidates output pending/hea
 logical-file row while retaining every pending update and exact historical file references. Requirements
 live at [data intake](data-intake-and-edit-data.md#artifact-storage-model) and
 [dashboard surfaces](dashboard-surfaces.md#artifact-storage-model).
-[Side task `side/artifacts`](../../sidetracks/artifacts/README.md) retains the combined product scope. The
+[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) retains the combined product scope. The
 [parallel execution binding](../../sidetracks/database-parallel/README.md) moves T1 and shared T2 storage into prerequisite B,
 then makes T2 publication/export an independent peer. The four running plans remain unchanged; this
 records planning approval, not implementation, new workflow activation or operator file/database conversion.
+
+### 2026-09-08 — one database prerequisite launch and three parallel peers
+
+The operator requested one folder for the remaining plans and one prerequisite entry point before
+launching all peers. [Database prerequisites](../../sidetracks/database-parallel/00-prerequisites.md)
+executes run completion (A), then the shared foundation (B), in one Astra/high supervisor task while
+preserving both units' separate review, gates, accepted integration and cleanup. The explicit
+prerequisite launch assigns its local integration. Only its verified B release permits the three
+independent provider/diagnostic/generated-artifact tasks to start. All plans and prompts now live in
+[the database batch folder](../../sidetracks/database-parallel/README.md); product contracts and the
+four in-flight plans remain unchanged. No implementation or peer launch is claimed.

@@ -2,7 +2,7 @@
 
 ## Assignment and approval
 
-**Product owner: `side/diagnostics`. Parallel peer D in the [parallel execution plan](../database-parallel/README.md).**
+**Product owner: `side/diagnostics`. Parallel peer D in the [parallel execution plan](README.md).**
 Implementation is **WAITING ON accepted `side/database-foundation` release**. The operator's
 2026-09-08 amendment moves shared storage/renames/retirement to B and assigns this peer the complete
 operator-resolution behavior. Product scope stays together here; this is not a roadmap phase.
@@ -25,6 +25,10 @@ Outcomes:
 3. Add lightweight, explicit operator resolution to `run_failures`: status, actor/time and optional
    short note, with a usable dashboard action and honest history. No separate issue/fix table.
 
+The one [prerequisite task](00-prerequisites.md) must publish its verified B release before launch.
+Use that exact accepted release base, also used by both peers. Record this peer's detailed evidence
+only in `02-diagnostics-evidence.md` in this folder; do not share an `implementation.md` or edit another peer's plan.
+
 ## Authorities, prerequisites and scope
 
 - [Root instructions](../../../AGENTS.md), [document routing](../../README.md),
@@ -34,7 +38,7 @@ Outcomes:
   owns the pending amendment to diagnostic/receipt naming and §4's knowledge/fix authority.
 - [Dashboard surfaces: failure resolution](../../rebuild/reference/dashboard-surfaces.md#failure-resolution)
   owns operator actions, immutable failure/completion/receipt boundaries and archive presentation.
-- The [parallel execution plan](../database-parallel/README.md) owns the shared prerequisite B, following run completion and
+- The [parallel execution plan](README.md) owns the shared prerequisite B, following run completion and
   timeline T2. B provides `run_failures`, immutable completion, diagnostic renames and strict annotation
   storage. Provider accounting and generated-file behavior are independent peers, not prerequisites.
 - [Clock/config/secrets](../../rebuild/reference/clock-config-secrets.md), D321/D322/D332,
@@ -46,7 +50,7 @@ B owns diagnostic/failure/receipt schemas, migrations/FKs/integrity/recovery/del
 knowledge/fix retirement and protected backup, existing capture/readback adaptations, and low-level
 independently versioned annotation storage. D owns resolution command admission/dispatch, the command
 transaction and audits/events, current annotation read model, failure-detail/archive controls, exclusive
-tests and this plan/evidence. The [parallel execution plan](../database-parallel/README.md) binds exact paths, resource slots and release proof.
+tests and this plan/evidence. The [parallel execution plan](README.md) binds exact paths, resource slots and release proof.
 D alone owns the enumerated command/UI files; provider and generated-artifact peers cannot edit them.
 D cannot reopen shared migration/composition/domain-ID files. Read nearest server/dashboard/control
 instructions and linked lessons before edits.
@@ -187,7 +191,7 @@ conversation, and never implements or delegates. B must already have proved the 
 | --- | --- | --- |
 | `side/diagnostics` | Create `codex/diagnostics` in `/Users/julianhein/Projects/hr-worktree-diagnostics`; verify availability. | Exact accepted B release SHA, also used by P and G. No unfinished peer dependency. |
 
-The [parallel execution plan](../database-parallel/README.md) names the provider-usage implementing supervisor as peer integration owner.
+The [parallel execution plan](README.md) names the provider-usage implementing supervisor as peer integration owner.
 Return a compact reviewed candidate and retain responsibility until its exact handoff is accepted.
 End the turn when no local work remains; do not poll other tasks. Operator-chosen integration may
 place D before or after either peer. Shared-target operations, combined gates, conflict review and
@@ -232,7 +236,7 @@ counts, identities, evidence digests and integrity. Preserve original recovery m
 - Original product scope remains approved. On 2026-09-08 the operator explicitly approved revising
   the remaining plans for parallel execution, including their ownership, prerequisites and gates.
 - Earlier inspection/check records are historical planning evidence. This amendment's validation
-  is recorded in the [parallel execution plan](../database-parallel/README.md); no product tests are claimed from planning.
+  is recorded in the [parallel execution plan](README.md); no product tests are claimed from planning.
 - B-owned storage prerequisites and this peer's S1–S4/P1–P6 proof allocation: **not started**. Required product proof, gates, independent review, accepted integration
   and cleanup remain unfinished until linked to exact evidence.
 - Launch: **WAITING ON accepted B release with evidence-preserving storage and independent command/UI ownership**. Verify the committed plan revision, base, branch/path ownership
