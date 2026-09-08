@@ -16,7 +16,7 @@ undecided design. Use clear vocabulary consistent with the decisions already mad
 
 | Group | Current tables / relationship | Decision |
 | --- | --- | --- |
-| Approvals | `gates`, `ocr_approvals` | Open |
+| Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
 | Settings and version changes | `settings_current`, `runtime_config`, `version_plans`, `version_bump_applications` | Open |
 | Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Open |
 | Messages and notes | `notifications`, `notes` | Open |
@@ -68,5 +68,64 @@ Read-only source inspection at master `cd47a750e4157f42fb1ca7268f1c19bbb4574006`
 Evidence: `src/domain/gates.ts`, `src/core/command-kernel.ts`,
 `src/infra/sqlite/authority-database.ts`, and
 [dashboard approval durability](../../rebuild/reference/dashboard-surfaces.md#44-durability-the-approval-manifest-is-part-of-the-contracts-execution-ported-as-is).
-Recheck after the timeline work lands before choosing retirement or migration behavior. No rename,
-removal or replacement has been approved for this group. No code tests or database writes ran.
+No code tests or database writes ran. Recheck consumers and migration behavior against the accepted
+timeline implementation before executing the approved retirement direction below.
+
+## Approved group 1: retire unused approval tables
+
+On 2026-09-08 the operator approved the two proposed removals with “okay do that.” This approves
+their inclusion in the new batch; it does not launch implementation or approve an executable
+parallel split. Keep the complete execution briefs and prompts in this folder once the remaining
+groups and shared prerequisites have been resolved.
+
+| Table | Approved change | Behavior that must remain |
+| --- | --- | --- |
+| `gates` | Remove the unused physical gate projection and its storage-only scaffolding. | Workflow gate nodes, paused-run presentation, approval commands, durable gate answers and resumption. |
+| `ocr_approvals` | Remove the unused OCR-specific opaque placeholder and its storage-only scaffolding. | The planned requirement to durably accept an OCR review and reliably create the intended child runs without duplicates after recovery. |
+| `checkpoint_payloads` | Keep the table and existing name. | Existing authoritative gate-result records, including run/gate/command identity, actor/time, expected version, schema and result. |
+
+### Concrete workflow to preserve
+
+For an identity-confirmation gate in a separations workflow:
+
+1. The workflow pauses; `workflow_runs` records the parked gate and worker/browser resources are
+   released.
+2. The operator submits a confirmation through the command system. It validates the current run,
+   gate, version and answer schema; `commands` and `command_audits` retain the action and outcome.
+3. The accepted answer is saved through `authority.gateResults` in `checkpoint_payloads`, and the
+   run transitions back to `queued`.
+4. A worker claims the queued run, reads the persisted answer and continues past the gate without
+   requesting the same confirmation again.
+
+The physical `gates` projection is not the authority for that answer. Current source inspection
+found no application consumers of it; this is not evidence that every existing database is empty.
+
+The OCR review-and-dispatch flow is future functionality, not an implemented replacement to claim
+as complete here. Its eventual design should use shared gate/command and run-creation mechanisms
+where appropriate, with explicit proof of durable acceptance, atomic/replay-safe dispatch and crash
+recovery. A saved gate answer alone does not prove those dispatch guarantees. This batch removes
+the unused placeholder; it does not implement OCR dispatch or erase its requirements.
+
+### Requirements for the eventual execution brief
+
+- Recheck actual readers/writers, the accepted timeline base, generic repository registration,
+  migrations, upgrades, backups/restores and storage/recovery fixtures before retiring either table.
+  Resolve newly discovered real consumers or authoritative stored data before destructive migration;
+  do not silently discard it or widen scope into an in-flight assignment.
+- Put shared schema, migration and recovery ownership in the prerequisite when it overlaps other
+  groups. Do not assign two peers to edit the same authority surfaces independently. Establish the
+  upgrade policy for supported existing databases, including populated legacy tables, before launch.
+- When admitting the execution brief, update the owning approval/storage contracts and decision
+  pointers to distinguish the retired tables from preserved behavior and future requirements.
+  Remove obsolete registration and adjust relevant fixtures/catalogs/guards with deciding evidence;
+  preserve unrelated projections and do not weaken assertions merely to pass removal tests.
+- Focused proof must cover approval validation, durable answer storage and queued resumption,
+  duplicate/stale command handling, and recovery using the saved answer. Verify fresh database
+  creation plus supported upgrade/restore behavior and retired-table consumer absence. Exercise
+  existing tests where sufficient; add tests for changed migration or runtime behavior as needed.
+- Follow this folder's agreed cadence: focused tests, lint and affected freshness checks during
+  implementation; heavy gates, remaining repairs and fresh independent Astra/high review in the
+  final-validation session. No master integration or final acceptance before those gates and review.
+
+Status: two table removals approved for planning; implementation, migration policy, parallel
+allocation and launch prompts remain pending. All other discussion groups remain open.
