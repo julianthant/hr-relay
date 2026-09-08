@@ -71,17 +71,20 @@ were applied. There are no duplicate selected email addresses. One selected appl
 Accept Terms field, and two compound-name splits await operator confirmation in the private review.
 
 The portal's current 19-column workbook was downloaded through **Create a Copy → Download a Copy**.
-The operator explicitly required a copy and no edits to the shared original. A separate local review
-copy contains all 87 selected applicants, extends the template's applicant rows, and retains native
-checkboxes: 87 post-December-1-2024 SB791 selections and 435 other service boxes unchecked. The
-authoring exporter omits form controls, so native controls were restored in the local copy using
-the template's control structures. All applicant values were reconciled to the selected source
-records, checkbox state was verified in the saved workbook, and a separate LibreOffice PDF render
-verified the resulting layout and visible selections. The downloaded original's bytes are unchanged.
+The operator explicitly required a copy and no edits to the shared original. The first separate
+87-applicant copy retained native checkboxes, but Excel for the web did not display those controls.
+The operator then supplied a compact example and requested matching cell sizes. The revised copy
+uses that example's 18-column layout, exact column widths, 60-point blue header, 15-point body rows,
+and alternating blue/white fills. It marks only the post-December-1-2024 SB791 service with a visible
+`Y` for each of the 87 applicants, as in the example; other service cells are blank. All applicant
+and fixed values were reconciled to the preceding verified copy, and the revised formatting and
+visible selections were inspected in Excel for the web. Both shared originals remain unchanged.
 Applicant-specific review notes and artifacts remain outside committed documentation.
 
-The operator must review the completed workbook before submission. No workbook has been uploaded
-and no request submitted; final Summary state and receipt remain unverified. The PDF's two batch
+The operator explicitly authorized uploading a browser review copy and attaching it without
+submission. The revised copy is in the operator's OneDrive; its 14.2 KB workbook replaced the earlier
+attachment in Choose Options. Operator review remains pending. No request was submitted; final
+Summary state and receipt remain unverified. The PDF's two batch
 pages were extracted and visually inspected.
 The single-applicant branch (PDF pages 3–4), automated task/store boundaries, ordered tuple model,
 resume/no-repeat-write mechanics and controlled proof targets remain outside this completed evidence.

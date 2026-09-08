@@ -2660,7 +2660,7 @@ needs:
 - migrations
 
 log:
-- 2026-09-08 | Background Check walkthrough (operator label: Phase 4.1) | live batch form verified; original roster yields 87 yellow Date Background Entered cells (85 Residential/Retail, 2 Catering); separate copy of portal template prepared and checked; operator workbook review and applicant-specific clarifications pending; shared originals unchanged, no upload/submission or implementation admission claimed
+- 2026-09-08 | Background Check walkthrough (operator label: Phase 4.1) | live batch form verified; original roster yields 87 yellow Date Background Entered cells (85 Residential/Retail, 2 Catering); separate review copy reformatted to the operator's compact example, verified in browser Excel, and attached on explicit instruction; operator review and applicant-specific clarifications pending; shared originals unchanged, no submission or implementation admission claimed
 
 #### Shared capabilities assigned with 4A {#cross-cutting}
 status: planned
