@@ -145,21 +145,21 @@ const CHECKPOINT_KEY = [
  * change.
  */
 const EXPECTED_CHECKPOINTS = [
-  { node: "resolve-action", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "document", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "plan", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "termination-type", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "name-search", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "subject", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "job-summary", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "employment", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "department-option", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "timecard-search", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "timecard", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "dates", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: "comparison", attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: APPROVAL_NODE, attempt: 3, keyedBy: CHECKPOINT_KEY },
-  { node: PENDING_SET_NODE, attempt: 3, keyedBy: CHECKPOINT_KEY },
+  { node: "resolve-action", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "document", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "plan", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "termination-type", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "name-search", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "subject", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "job-summary", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "employment", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "department-option", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "timecard-search", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "timecard", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "dates", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: "comparison", attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: APPROVAL_NODE, attempt: 4, keyedBy: CHECKPOINT_KEY },
+  { node: PENDING_SET_NODE, attempt: 4, keyedBy: CHECKPOINT_KEY },
 ] as const;
 
 /** Zero, as a delta measured BEFORE and AFTER: the database legitimately holds

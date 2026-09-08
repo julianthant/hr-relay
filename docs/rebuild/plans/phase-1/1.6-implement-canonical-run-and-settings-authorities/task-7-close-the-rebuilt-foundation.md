@@ -1362,3 +1362,42 @@ candidate gate evidence is reused under D191. Scoped roadmap-binding/target-regi
 size and diff checks passed. No new links or runtime inputs were introduced. Read-only canonical
 Settings readback confirmed revision 6 and absence of all three temporary overrides. No full review,
 integration or completion is claimed while the mandatory Separations proof is failed.
+
+
+### Session-token prerequisite recovered (2026-09-07)
+
+The operator completed the manual headed login. Presence-only inspection confirmed the required
+PeopleSoft session cookie, an application servlet route and absence of sign-in/password forms;
+`manual-token-recovery.json` records those facts without protected values. That browser closed before
+a separate, fresh headed login-only diagnostic used the unchanged production UCPath recipe.
+It returned `logged-in` at `2026-09-08T03:32:31.450Z`, about 34 seconds after start. A presence-only
+one-second observer saw the required cookie at `03:32:26.567Z`, the application route at
+`03:32:28.566Z`, and the recipe subsequently passed its unchanged authentication proof.
+`token-diagnostic-success.json` preserves only status, DOM booleans, host and cookie-presence
+transitions. This establishes a recovered prerequisite, not the cause of attempt 3's missing cookie.
+
+Canonical command `6c08bfa2-b1f3-4f62-bc11-4ff5c3dfd1de` temporarily reapplied headed mode,
+60000 ms navigation and 120000 ms acquisition, revision 6 → 7; restart activation and served
+fingerprints matched. No credential, private identity, login proof or product timeout changed.
+The diagnostic browser and BFF stopped. Post-doctor at `2026-09-08T03:34:53.998Z` passed healthy
+schema 32/generation 541 on the same operator-root identity, nine reconciled runs, zero pending
+commands/unresolved writes/durable outbox, two historical leases and the retained one local
+run-terminal outbox row. Primary master was restored clean at its unchanged original HEAD.
+Revision 7 is intentionally retained for the next proof and requires canonical restoration afterward.
+
+Read-only protected-input admission confirms Separations next attempt 4 with all four attempt-3
+checkpoints retained; Person Lookup remains accepted at attempt 3, with its next ordinal 4 and
+three retained checkpoints. Only Separations' expected checkpoint ordinal changes 3 → 4.
+Candidate gates and freeze precede another workflow start. All prior failures remain failed;
+Step 4 acceptance, Step 5 consolidation and Step 6 review/integration/cleanup remain open.
+
+
+**Step 3 reaccepted for Separations attempt 4.** Typecheck 10043, lint 51156, manifest/catalog/
+roadmap freshness 29277, instruction audit and diff checks passed. Serial runner 36543 passed full
+coverage (438 files / 5521 tests, 327874 ms; statements 85.87%, branches 77.52%, functions 89.88%,
+lines 88%; configured floors met), suite size (236 ms), standalone architecture (62705 ms), then
+unchanged desktop parity (259 cases, 60703 ms). `token-candidate-gate-results.json`,
+`token-gate-prerequisites.json` and `token-gated-inputs.json` bind commands, process handles,
+configuration identities and all 1908 input hashes, rechecked before freeze. Against the prior
+full-gated candidate, only the Separations manifest ordinal changed; accepted Person Lookup inputs
+remain unchanged. No final review, integration or task completion is claimed.
