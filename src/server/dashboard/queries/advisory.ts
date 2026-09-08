@@ -19,11 +19,12 @@ import { RunIdSchema } from "../../../domain/ids.js";
 import type { FailureTriageOutcome } from "../../../domain/trust/advisory.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
 import type { RunRecord } from "../../../domain/run/record.js";
-import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
+import { SectionUnavailableError } from "../../failures.js";
+import { requireTrustRun, assertTrustEvidenceIdentity, type TrustRunReader } from "../../trust/run-reader.js";
 
 export interface AdvisoryQueryDeps {
+  readonly runReader: Pick<TrustRunReader, "read">;
   readonly authority: Readonly<{
-    getRun: (runId: string) => RunRecord | undefined;
     /** The run's terminal failure, when it has one. */
     getFailureForRun: (runId: string) => FailureRecord | undefined;
   }>;
@@ -41,14 +42,24 @@ export async function buildRunAdvisory(
   runIdInput: string,
 ): Promise<RunAdvisoryWire> {
   const runId = RunIdSchema.parse(runIdInput);
-  const run = deps.authority.getRun(runId);
-  if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist`);
+  const run = requireTrustRun(deps.runReader, runId);
+  if (run.lifecycle.state !== "terminal" || run.lifecycle.failureId === undefined) {
+    throw new SectionUnavailableError(`run ${runId} has no terminal failure; the failure advisory is not available`);
+  }
   const failure = deps.authority.getFailureForRun(runId);
   if (failure === undefined) {
     // Not a degraded advisory — there is genuinely nothing to explain.
     throw new SectionUnavailableError(`run ${runId} has no failure record; the failure advisory is not available`);
   }
+  const assertFailure = (current: RunRecord): void => {
+    assertTrustEvidenceIdentity(current, failure, "advisory failure");
+    if (current.lifecycle.state !== "terminal" || current.lifecycle.failureId !== failure.failureId) {
+      throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: advisory failure for ${runId}`);
+    }
+  };
+  assertFailure(run);
   const outcome = await deps.advise(run, failure);
+  assertFailure(requireTrustRun(deps.runReader, runId));
   return RunAdvisoryWireSchema.parse({
     wireVersion: 1,
     runId,

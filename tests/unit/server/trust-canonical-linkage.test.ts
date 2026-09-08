@@ -13,7 +13,7 @@ import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archi
 import { seedPersonLookupExitRun } from "../../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { uuidOf } from "./helpers/dashboard-harness.js";
-import { trustWorld, trustArchiveRecord } from "./helpers/trust-authority-fixture.js";
+import { trustWorld, trustArchiveRecord, foldTrustGate } from "./helpers/trust-authority-fixture.js";
 
 const worlds: ReturnType<typeof trustWorld>[] = [];
 function fixture() { const value = trustWorld(); worlds.push(value); return value; }
@@ -139,6 +139,14 @@ describe("2.6.1-1 canonical trust linkage", () => {
       : { state: "refused", refusal: { reason: "cursor-stale" } } }), /cursor-stale/);
     assert.equal(calls, 2);
     assert.equal(f.database.authority.notifications.listByActor("local-operator").length, 0);
+    const resolvedFold = foldTrustGate(f.world, parked, "resolved");
+    assert.equal((buildRunGate(f.deps, run.envelope.runId, resolvedFold, parked) as { state: string }).state, "open",
+      "stale resolved evidence cannot close the real canonical gate");
+    const queued = f.create(34); const openFold = foldTrustGate(f.world, queued, "open");
+    assert.equal((buildRunGate(f.deps, queued.envelope.runId, openFold, queued) as { state: string }).state, "absent",
+      "stale open evidence cannot grant a gate to a canonical queued run");
+    assert.throws(() => buildTrustSection(f.deps, queued.envelope.runId, "parked-write"), SectionUnavailableError);
+
   });
 
   it("refuses unconfigured admission and mismatched notification workflow before durable writes or delivery", async () => {

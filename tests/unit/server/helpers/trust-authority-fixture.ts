@@ -55,7 +55,33 @@ export function trustWorld() {
     if (outcome.state !== "applied") throw new Error("fixture cancel failed");
     return outcome.run;
   };
-  return { world, database, service, reader, receipts, deps, runtimeConfig, create, cancel,
+  const fail = (run: RunRecord, seed: number) => {
+    const now = world.clock.now().toISOString(); const workerId = "trust-failure-worker";
+    const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, now });
+    assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
+    assert.equal(claimed.run.envelope.runId, run.envelope.runId);
+    const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+    const validating = database.authority.runs.transition({ runId: run.envelope.runId,
+      expectedVersion: claimed.run.version, claim, now,
+      lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now } });
+    assert.equal(validating.state, "applied"); if (validating.state !== "applied") throw new Error("fixture validation failed");
+    database.terminalizeFailure(personLookupDescriptor, {
+      failure: { failureId: uuidOf(seed), fingerprint: HASH_A, runId: run.envelope.runId,
+        traceId: run.envelope.traceId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
+        code: "INPUT_INVALID", summary: "trust fixture failed validation", transient: false,
+        writeState: "not-attempted", occurredAt: now,
+        causeChain: [{ code: "INPUT_INVALID", summary: "invalid input", role: "primary", transient: false }],
+        remediation: [{ kind: "operator-action", message: "Correct the input" }] },
+      authorization: { kind: "failed", runId: run.envelope.runId, workflowId: run.envelope.workflow,
+        attempt: run.envelope.attempt, descriptorVersion: run.envelope.descriptorVersion,
+        contractFingerprint: run.envelope.contractFingerprint, expectedVersion: validating.run.version,
+        claim, authorizedAt: now, failureId: uuidOf(seed) },
+    });
+    const result = reader.read(run.envelope.runId);
+    assert.equal(result.state, "present"); if (result.state !== "present") throw new Error("failed fixture run missing");
+    return result.run;
+  };
+  return { world, database, service, reader, receipts, deps, runtimeConfig, create, cancel, fail,
     dispose() { database.close(); world.dispose(); } };
 }
 
@@ -125,3 +151,19 @@ export function trustArchiveRecord(run: RunRecord) {
   });
 }
 
+/** Real folded evidence deliberately contradicts the separate SQLite lifecycle oracle. */
+export function foldTrustGate(world: ReturnType<typeof makeWorld>, run: RunRecord, state: "open" | "resolved") {
+  const e = run.envelope; const ts = world.clock.now().toISOString();
+  if (world.projection.runFold(e.runId) === undefined) world.writer.emit({ t: "run.queued", kind: "run", ts, workflow: e.workflow, runId: e.runId,
+    attempt: e.attempt, traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId,
+    shape: e.shape, priority: e.priority, dryRun: e.dryRun, actorId: "local-operator", title: "Trust fold fixture",
+    descriptorVersion: e.descriptorVersion, contractFingerprint: e.contractFingerprint,
+    resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint, configSnapshotId: e.configSnapshotId });
+  const address = { ts, workflow: e.workflow, runId: e.runId, attempt: e.attempt, traceId: e.traceId, spanPath: e.traceId, gate: "identity-approval" };
+  world.writer.emit({ ...address, t: "gate.opened" });
+  if (state === "resolved") world.writer.emit({ ...address, t: "gate.resolved", resolutionKey: "resolved", resultHash: HASH_A });
+  const fold = world.projection.runFold(e.runId); assert.ok(fold);
+  assert.equal(fold.openGates.length, state === "open" ? 1 : 0);
+  if (state === "resolved") assert.ok(fold.resolvedGates.length > 0);
+  return fold;
+}

@@ -507,3 +507,71 @@ linter, build or parity ran alongside coverage. Peers confirmed their releases.
 All failed and interrupted iterations remain recorded above. T's heavy-gate
 window was released after final parity for peers to continue independently while
 this frozen candidate receives review. No push, production write or live HR run.
+
+
+## T-R1 findings and bounded repair
+
+Fresh complete reviewer `/root/sup_review_trust_tail` returned CHANGES REQUIRED
+on `6e65af26fca6727706f28677ad4c8efa2a2770d0`, base
+`a3c73c8039508ea307db70f9c2f01228c689435c`. It inspected all 24 paths and all eight
+proof rows, independently verified the 2,175 input hashes, and inspected the
+passing gate logs. It reran no write-producing gate. Three required findings:
+
+1. P2: existing failure advisory still used raw lifecycle admission, allowing an
+   archived retained run to reach current provider work, and lacked async
+   re-admission. No approved exclusion exists.
+2. P2: real no-fold/stale-page tests did not supply the promised contradictory
+   open/resolved-fold gate/write proof.
+3. P3: complete candidate-range whitespace failed for blank EOF lines in two new
+   files. Precommit whitespace had missed then-untracked files; its recorded PASS
+   was insufficient for the complete candidate.
+
+The advisory omission is a planning/ownership gap within the existing T failure
+consumer requirement. The bounded ownership correction assigns T
+`queries/advisory.ts`, its new trust advisory tests, only the advisory dependency
+binding in root `compose.ts`, and the two existing advisory ingress fixtures in
+`bff-flow.test.ts`. Both peers confirmed no conflicting advisory/root work;
+1-3's other BFF hunks remain its own and consume accepted T before integration.
+No root registrar, data/operator wiring, shared run port, provider feature,
+public wire, lifecycle authority or schema is changed. This repairs an already
+required trust boundary; it adds no roadmap task or new provider capability.
+
+The repair uses the existing canonical reader, requires the terminal run's exact
+failure tuple/pointer before provider invocation, and rechecks after the await.
+Real SQLite tests cover positive no-fold triage, missing/foreign failure,
+absent/archive/tombstone refusal before invocation, and archive/delete during
+provider work. Contradictory real folded events cannot close a canonical gate,
+open a queued run's gate, hide real parked-write actions, or regrant those actions
+after actual typed write resolution. The two trailing blank lines are removed;
+full base-to-candidate whitespace will be verified after the repair commit.
+Findings remain open until repaired gates and independent renewed acceptance.
+
+
+### T-R1 repair candidate gates — awaiting renewed acceptance
+
+The repair commit containing this record addresses the three findings above and
+keeps the original candidate as history. One test initially emitted a duplicate
+immutable `run.queued` event; the fixture now emits it only for the first fold,
+then appends the contradictory gate evidence. Two ingress mocks initially omitted
+the typed absent result's runId; they now return the complete canonical shape.
+These fixture defects were corrected without weakening assertions or schemas.
+
+| Repaired gate | Verified result |
+| --- | --- |
+| Focused proof | 27/27 tests across real advisory, canonical linkage and parked-write round trips; initial broader cohort also passed BFF/advisory architecture checks. |
+| Typecheck / full lint | Exit 0; `review-repair-typecheck-2.log`, `review-repair-lint.log`. |
+| Full coverage / suite size | Exit 0; 443 files / 5,566 tests; 308.597 seconds. Statements 85.93%, branches 77.65%, functions 89.91%, lines 88.10%; all configured floors pass. 346 unit / 17 scenario / 80 architecture files. |
+| Parity | Exit 0, 261/261, 56.355 seconds; no refreeze. |
+| Build / generated freshness | Build, manifest, catalog and roadmap checks exit 0. |
+| Whitespace / docs | Complete working range against base passes, including the intent-added new test. Instruction-pair/chain audit passes. Committed range is checked below at freeze. |
+
+All logs use the `review-repair-` prefix under `/tmp/hr-tail-trust-evidence`.
+`final-inputs-review-repair.json` binds 2,176 inputs, excludes only this evidence
+owner, and has SHA256
+`8210b55b6e9281527eb8f2619439048ba8de3f0e286a897f60a1cf169047f139`.
+All bound inputs were reverified unchanged after coverage. The same verified
+2-worker adapter preserves membership, isolation, floors and timeouts; lifecycle
+SQL guards passed in 20.663 / 20.381 seconds. Owned compiler/linter/build/parity did
+not overlap coverage; peers confirmed release. Their next gate window was
+released after repaired parity. Review findings remain pending independent
+verification; integration and all task completion checkboxes remain open.

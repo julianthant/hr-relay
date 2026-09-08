@@ -9,4 +9,3 @@ export function createTrustRunReader(database: AuthorityDatabase, clock: Clock =
   const service = new RunRecordService({ database, clock, ids: { uuid: forbidden }, publishQueued: forbidden });
   return Object.freeze({ read: service.read.bind(service), list: service.list.bind(service) });
 }
-

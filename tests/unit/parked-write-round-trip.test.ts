@@ -1,6 +1,8 @@
 import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
 import { buildTrustSection } from "../../src/server/dashboard/queries/run-trust.js";
 import { makeWorld } from "./server/helpers/dashboard-harness.js";
+import { foldTrustGate } from "./server/helpers/trust-authority-fixture.js";
+import { SectionUnavailableError } from "../../src/server/failures.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
@@ -245,6 +247,23 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
         /IDENTITY_MISMATCH|belongs to/);
       }
       assert.deepEqual(parkedIntent(h.database), intent);
+      const state = deps.runReader.read(WRITE_FIXTURE_RUN_ID);
+      assert.equal(state.state, "present"); if (state.state !== "present") throw new Error("parked run missing");
+      foldTrustGate(projection, state.run, "resolved");
+      const contradictory = buildTrustSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
+      assert.deepEqual(contradictory, section, "resolved fold cannot hide canonical parked-write actions");
+      const resolved = h.kernel.execute(resolutionCommand("resolve-write-absent", {
+        runId: WRITE_FIXTURE_RUN_ID, expectedVersion: state.run.version,
+        writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+      }, { evidenceNote: "checked target: no transaction exists" }));
+      assert.equal(resolved.state, "applied");
+      const resumed = deps.runReader.read(WRITE_FIXTURE_RUN_ID);
+      assert.equal(resumed.state, "present"); if (resumed.state !== "present") throw new Error("resumed run missing");
+      assert.equal(resumed.run.lifecycle.state, "queued");
+      foldTrustGate(projection, resumed.run, "open");
+      assert.throws(() => buildTrustSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write"), SectionUnavailableError,
+        "stale open evidence cannot regrant resolved write actions");
+
     } finally { projection.dispose(); }
   });
   it("reports parked-write as a first-class outcome over the durable parked state", async () => {
