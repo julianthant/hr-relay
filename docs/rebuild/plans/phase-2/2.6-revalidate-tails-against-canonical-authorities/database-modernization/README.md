@@ -18,7 +18,7 @@ review and remaining repairs in one fresh final session. Planning creates no tas
 T integration is `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; its candidate, repairs, retained
 proof and incomplete independent-review status are recorded in [timeline.md](timeline.md#operator-directed-merge-and-cleanup--2026-09-09).
 R, C0 and accepted T1 are ancestors; removed predecessor branches are not launch prerequisites.
-C is integrated at `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`; its [release and closure evidence](run-completion.md#c-scoped-release-and-local-integration--2026-09-09) supplies F’s source prerequisite. Its [approved execution brief](run-completion.md#approved-execution-brief--2026-09-09)
+C is integrated at `e43a8d8515486c73c276fa319bbe06d196b309e3`; its [release and closure evidence](run-completion.md#c-schema-39-upgrade-repair--2026-09-09) supplies F’s source prerequisite. Its [approved execution brief](run-completion.md#approved-execution-brief--2026-09-09)
 supersedes generic retention/integration wording for C: one supervisor implements, passes focused
 checks, merges locally into master and cleans up its owned checkout/ref. Full gates and complete
 independent review remain in 2.6.9.
