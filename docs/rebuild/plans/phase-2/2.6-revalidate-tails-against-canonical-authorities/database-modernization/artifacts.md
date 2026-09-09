@@ -403,7 +403,7 @@ or final phase acceptance. Preserve all T2 product requirements and proof rows a
 | Field | Binding |
 | --- | --- |
 | Assignment | 2.6.6.3 G; one GPT-6 Astra/high supervisor, zero implementation workers and zero reviewers here |
-| Common runtime prerequisite | F’s next verified integrated resolver-port repair release, recorded in the launch prerequisite update below. The initially verified `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` is superseded for launch once that repair releases. No unmerged candidate is a base. |
+| Common runtime prerequisite | Completed F resolver-port integration `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, with verified release record `e06a1c82e9983deb281c5400671f6ce330214000` and complete cleanup receipt. This supersedes `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` for launch. |
 | Inspected planning base | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; source/tests/configuration/dependencies match F’s tested candidate `a1e963445bc05d57f1eb9abbff95a9238300ab3a` |
 | Execution base | The exact committed plan/base returned by the planner, containing this approved G brief and F’s completed resolver-port repair integration. Verify both ancestries and unchanged runtime inputs relative to that latest tested F release. A pre-repair plan commit is not launchable. Do not start from an arbitrary later master. |
 | Branch / checkout | Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs` from that exact execution base. Both were absent during planning; names are not reservations. |
@@ -560,3 +560,29 @@ The planner retains approved G plan `4e84dbcb1b696c5d4d1f99f8a73a5bf25d085dd3`, 
 committed descendant containing that plan and this F release against F’s tested runtime inputs,
 and returns the exact resolved implementation base. No new G product approval, scope expansion,
 implementation or child launch is implied. P/D/G’s concurrent planning commits were preserved.
+
+
+### Verified final planning rebind — 2026-09-09
+
+The planner verified common F integration `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, its
+release record `e06a1c82e9983deb281c5400671f6ce330214000` and the complete resolver-repair
+cleanup receipt. The old pending-prerequisite hold is resolved. Approved G plan
+`4e84dbcb1b696c5d4d1f99f8a73a5bf25d085dd3` remains an ancestor. All G01–G06 steps, the six
+production/five test paths, proof allocation, exclusions and focused/merge/cleanup schedule are
+unchanged. F's six G production files also remain identical to the earlier inspected release.
+
+The exact implementation base is the committed G rebind SHA returned by this planner, a descendant
+of inspected master `fcb02e295542aa7772052200d75050656b818b83` containing both the full approved
+G plan and current F integration. All non-document inputs match F's tested candidate
+`f917ffe7b2308b4746e2aba16719a68cbafdb56c`. Use the pinned base, not a later arbitrary master;
+verify both prerequisite and approval ancestries before creating the G checkout. G branch/path
+are absent; only the unrelated separation-accounting worktree remains. No G worktree, worker,
+reviewer or implementation was created by planning.
+
+For this factual documentation rebind, rerun roadmap generation/freshness, the 24-case focused
+roadmap binding suite, changed-document links, nine existing instruction pairs/chain bounds and
+whitespace checks. Reuse F's passing `npm run lint` from its tested candidate only after verifying
+all non-document input equality; the earlier G lint run predating the resolver repair is not the
+current basis. F's `final-reuse.json` and `focused-pass.json` beside the complete receipt retain
+that command/input evidence. Full gates and independent review remain in 2.6.9. READY is issued
+only after this rebind is committed, read back and checked with the exact returned base.

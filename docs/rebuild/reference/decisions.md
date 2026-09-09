@@ -2406,3 +2406,14 @@ and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-
 own local master merge/owned cleanup after focused PASS; full gates and complete independent review
 remain 2.6.9. Other frozen inputs and sibling allocations stay unchanged. No product implementation,
 operator database application, child dispatch or push is claimed.
+
+
+### 2026-09-09 — 2.6.6.3 G merge, cleanup and final gate timing
+
+The operator approved the complete [G01–G06 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#approved-execution-brief--2026-09-09)
+with unchanged six-file artifact ownership after repaired F. [Roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12)
+own G's local master merge and owned cleanup after focused PASS. Full gates and complete
+independent review remain in 2.6.9. The verified resolver-port release updates only G's prerequisite
+binding; it adds no product scope or new approval requirement. Implementation is unstarted;
+no push, live application, sibling dispatch or final phase acceptance is claimed.
