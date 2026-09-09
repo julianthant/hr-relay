@@ -47,7 +47,7 @@ export function selectedSettingsFixture(
     intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unused, resolveAbsent: unused },
     workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
-    settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostConfigFacts(env), clock); }, credentials),
+    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts(env), clock), credentials),
   });
   return {
     database, file, path,

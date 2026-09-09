@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock, type Clock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, settingsRuntimeIdentity, type SettingsFileRecord } from "../../../src/domain/config/settings.js";
+import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../src/domain/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, settingsRuntimeIdentity, type SettingsFileRecord, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsReadbackSchema } from "../../../src/domain/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../src/domain/commands.js";
 import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
@@ -43,7 +43,7 @@ function fixture(probe: () => void = () => {}) {
     settingsCurrent: { ...repositories.settingsCurrent, get: () => { reads += 1; probe(); return repositories.settingsCurrent.get(); } },
   })) };
   const reader = createSettingsRuntimeReader({ database: authority, hostFacts: hostConfigFacts({}), clock, active });
-  const settings = createSettingsApplicationExecutor((value) => { resolveConfigWithProvenance(value, hostConfigFacts({}), clock); }, store);
+  const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), store);
   const execute = (command: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, command);
   const apply = () => {
     const patch = { "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 } };
@@ -151,4 +151,71 @@ it("F long-lived dashboard reader follows active settings and retains saved-only
  assert.deepEqual(reader.read(), { record, runtimeStatus: { state: "current", identity: active } });
  assert.notDeepEqual(reader.read(), original);
  assert.equal(f.database.withAuthorityTransaction(activeSettingsConfig).display.screenWidth, 1980);
+});
+
+
+describe("F settings resolver application port", () => {
+  it("refuses an incomplete resolver result before changing ordinary or active settings", () => {
+    const f = fixture();
+    const before = f.database.withAuthorityTransaction(activeSettingsConfig);
+    const generation = f.database.getMeta().authorityGeneration;
+    const settings = createSettingsApplicationExecutor((value) => {
+      const resolved = resolveConfigWithProvenance(value, hostConfigFacts({}), f.clock);
+      // Inject a malformed collaborator result without making the collaborator throw.
+      Reflect.deleteProperty(resolved, "fingerprint");
+      return resolved;
+    }, f.store);
+    const patch = { "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 } };
+    const commandId = randomUUID();
+    const result = executeSettingsCommand({ authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, settings }, {
+      family: "settings", type: "apply-settings", commandId, requestedAt: f.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: f.initial.revision },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    });
+    assert.equal(result.state, "rejected");
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "cross-field-invalid");
+    assert.deepEqual(readSettings(f.database.authority), f.initial);
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.equal(f.database.authority.commands.get(commandId), undefined);
+    assert.equal(f.database.authority.commandAudits.findByCommand(commandId), undefined);
+  });
+
+  it("returns complete results and restores the established host default after clearing display overrides", () => {
+    const f = fixture();
+    const establishedHost = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" });
+    const baseline = resolveConfigWithProvenance({}, establishedHost, f.clock);
+    const resolutions: ResolvedConfig[] = [];
+    const settings = createSettingsApplicationExecutor((value) => {
+      const resolved = resolveConfigWithProvenance(value, establishedHost, f.clock);
+      resolutions.push(resolved);
+      return resolved;
+    }, f.store);
+    const execute = (patch: SettingsPatch) => {
+      const command = { family: "settings", type: "apply-settings", commandId: randomUUID(),
+        requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+        target: { expectedRevision: readSettings(f.database.authority).revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } };
+      const dependencies = { authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, settings };
+      assert.equal(executeSettingsCommand(dependencies, command).state, "applied");
+      assert.equal(executeSettingsCommand(dependencies, command).state, "already-applied");
+    };
+    execute({ "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 } });
+    const overridden = resolutions[0];
+    assert.ok(overridden);
+    const retained = structuredClone(overridden);
+    assert.equal(overridden.config.display.screenWidth, 1980);
+    assert.equal(overridden.provenance["display.screenWidth"], "settings");
+    assert.notEqual(overridden.fingerprint, baseline.fingerprint);
+    execute({ "display.screenWidth": { clear: true }, "display.screenHeight": { clear: true } });
+    assert.equal(resolutions.length, 2, "exact command replay must not resolve again");
+    assert.deepEqual(resolutions[1], baseline);
+    assert.equal(resolutions[1]?.config.display.screenWidth, 2560);
+    assert.equal(resolutions[1]?.config.display.screenHeight, 1440);
+    assert.equal(resolutions[1]?.provenance["display.screenWidth"], "default");
+    assert.equal(resolutions[1]?.provenance["display.screenHeight"], "default");
+    assert.deepEqual(readSettings(f.database.authority).settings, {}, "host defaults must not become persisted overrides");
+    assert.deepEqual(overridden, retained, "later settings must not rewrite a prior resolution");
+  });
 });

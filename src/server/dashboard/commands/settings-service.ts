@@ -1,5 +1,6 @@
 import type { SettingsApplicationExecutor, SettingsCommand } from "../../../core/command-kernel.js";
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../domain/commands.js";
+import { ResolvedConfigSchema, type ResolvedConfig } from "../../../domain/config/resolve.js";
 import type { CredentialStore } from "../../../domain/config/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../domain/config/protected-settings.js";
 import {
@@ -37,7 +38,7 @@ function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply
 
 /** Ordinary values are staged purely and committed by the kernel's SQLite transaction. */
 export function createSettingsApplicationExecutor(
-  validateCandidate: (settings: SettingsFileRecord["settings"]) => void,
+  resolveCandidate: (settings: SettingsFileRecord["settings"]) => ResolvedConfig,
   credentials: CredentialStore,
 ): SettingsApplicationExecutor {
   return Object.freeze({
@@ -61,7 +62,7 @@ export function createSettingsApplicationExecutor(
       let settings: SettingsFileRecord["settings"];
       try {
         settings = mergeSettingsPatch(current.settings, command.payload.patch);
-        validateCandidate(settings);
+        ResolvedConfigSchema.parse(resolveCandidate(settings));
       } catch (error) {
         const keys = error instanceof z.ZodError
           ? [...new Set(error.issues.map((issue) => issue.path.map(String).join(".")))].sort()

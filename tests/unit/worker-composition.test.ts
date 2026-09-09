@@ -247,8 +247,9 @@ function journalWorkerSettings(
   persisted: ReturnType<typeof persistUnjournaledWorkerSettings>,
   stateRoot: string,
 ): void {
-  const result = executeSettingsCommand({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("4"),
-    settings: createSettingsApplicationExecutor(() => {}, createCredentialStore({ stateRoot })) }, persisted.command);
+  const clock = manualClock(new Date(NOW));
+  const result = executeSettingsCommand({ authority: database, clock, ids: sequentialIdFactory("4"),
+    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), createCredentialStore({ stateRoot })) }, persisted.command);
   assert.equal(result.state, "applied");
 }
 
@@ -961,7 +962,7 @@ describe("D331 settings apply during a production worker claim", () => {
     spans.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic claim fixture" }));
     const credentials = createCredentialStore({ stateRoot });
     const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(
-      (settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); }, credentials) });
+      (settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials) });
     const source = createCredentialSecretSource(credentials);
     const applyProtected = (value: string, revision: number) => kernel.execute({
       commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",

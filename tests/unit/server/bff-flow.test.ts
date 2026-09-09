@@ -387,7 +387,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); }, credentials),
+    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials),
   });
   const commands = createDashboardCommandService({ kernel, projection });
   const startPlans = (options.startPlans ?? ((real: StartPlanService) => real))(createStartPlanService({
