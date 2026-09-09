@@ -5,19 +5,44 @@
 On 2026-09-08 the operator asked to continue the existing table-by-table design discussion in the
 current task and collect all resulting changes in one folder, like `database-parallel`. No separate
 planning task or implementation worktree is needed. This folder is the single owner for the new batch.
-The [earlier database batch](../database-parallel/README.md) remains unchanged.
+The [earlier database batch](../database-parallel/README.md) remains unchanged by the decisions
+recorded so far; follow the ownership rule below when a later decision revises its scope.
 
 This is a planning worklist, not an approved execution plan. Explain concrete workflows, propose
 names/designs, obtain the operator's decisions and record the approved changes here. Do not infer
 that every table needs a rename, consolidate tables solely to reduce their count, or implement an
 undecided design. Use clear vocabulary consistent with the decisions already made in the earlier batch.
 
+### One owner for each planned change
+
+On 2026-09-08 the operator directed: “if we are going back to update the changes we made in the
+existing plans, update those plans instead of overlapping the same table in a new plan.” Before
+recording a revised table change, find its existing implementation owner. Amend that owner's scope,
+proof, prerequisites and prompts together; this worklist should link to it rather than assign a
+second implementation of the same change. Table renames do not create new ownership identities.
+Shared tables/files between otherwise distinct changes still require one shared prerequisite owner
+or an explicit ordering before launch. Never label conflicting assignments parallel-ready.
+
+Distinguish completed historical scope from pending work: preserve completed evidence rather than
+rewriting what an old candidate implemented. Record a new approved follow-up against that accepted
+base when needed. For an in-flight owner, record a clearly dated amendment and reconcile its actual
+candidate/remaining work before release; do not silently invalidate existing gates or launch a
+competing task. This instruction does not authorize automatic task dispatch or messages.
+
+Ownership check for the settings/version decisions: the current and committed sidetrack plans
+contain no other pending assignment to consolidate these tables. The completed `worker-names` plan
+at `d487254aa` explicitly kept `config_snapshots` unchanged and records accepted integration at
+`1c8e294fe3510969c3a0f27dcf3506b922e4e42b`; its preservation requirement was for that completed
+rename assignment, not a competing snapshot migration. Its working file is currently deleted by
+another session; this planning change does not restore it. The earlier database-parallel batch
+owns adjacent shared code, so execution allocation must still reconcile those prerequisites.
+
 ## Remaining discussion
 
 | Group | Current tables / relationship | Decision |
 | --- | --- | --- |
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
-| Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved settings direction: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Version-change names/design remain open. |
+| Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
 | Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Open |
 | Messages and notes | `notifications`, `notes` | Open |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
@@ -138,7 +163,8 @@ active the new configuration for new runs. old runs keep thier own config. but n
 the new config without restart.” Record this as the required product behavior for the new batch,
 not as behavior already implemented. The operator then accepted the proposed two-table direction
 with the naming correction “just change it to settings snapshots.” Use `settings_snapshots` in
-place of the proposed retained name `config_snapshots`. Version-change tables remain undecided.
+place of the proposed retained name `config_snapshots`. Version-change decisions are recorded in
+the following section.
 
 ### Approved storage design
 
@@ -214,3 +240,70 @@ it is a behavior change, not a mechanical table rename. Resolve shared prerequis
 batch ownership before allocating parallel work. Carry the agreed final-session heavy gates and
 independent review cadence. No implementation, contract ratification or launch prompt is authorized
 by this discussion record alone; execution admission remains pending the complete batch plan.
+
+## Approved group 2 versions: one change row from proposal to completion
+
+On 2026-09-08 the operator approved the recommendation with “okay do that”: combine
+`version_plans` and `version_bump_applications` into **`version_changes`**, and require an updated
+review when the affected archive membership changes after preview. This replaces the earlier
+unapproved two-table naming suggestion and the proposed name `app_version`.
+
+### Approved design and workflow
+
+One row represents one proposed version change, not the single current application version. It
+supports whole-application or selected-workflow scope and moves `planned` → `applied` once. Multiple
+proposals can target the same version, so the target version is not the row's unique identity.
+
+Store shared scope, target version and change explanation once. Preserve the reviewed identities,
+candidate membership, actor/time and review fingerprint separately from the eventual applied
+identities, actual archive membership and application actor/time. The proposal stays fixed; applying
+adds the outcome without rewriting what was reviewed. Applied rows are immutable. `archived_runs`
+continues to hold the self-contained run details and links to the completed change.
+
+1. Preview creates a `planned` row with the exact proposed change and archive candidates/blockers.
+2. Apply authenticates the reviewed row/revision/fingerprint and rechecks the current build,
+   workflow identities, archive candidates and unresolved-run blockers inside the transaction.
+3. If archive candidate membership has changed (added or removed runs), do not silently apply the
+   new set. Return a distinct review-required outcome and present an updated preview for explicit
+   review before application. Blockers clearing does not itself authorize additional archive members.
+   Define the reviewed replacement/supersession protocol in the execution brief without overwriting
+   earlier reviewed evidence or allowing stale confirmation to apply the replacement.
+4. If valid, create the archive records, add the actual outcome and mark the change `applied` in one
+   transaction with the command/audit. Failure rolls back the whole application. Exact command replay
+   returns its durable outcome without duplicate archival; competing apply commands cannot both win.
+5. Archive/history reads use the same completed change row. Minor changes still archive nothing;
+   major changes preserve all existing unresolved-submit and terminal-state restrictions. These
+   commands do not install code or make the database the authority for the running build identity.
+
+### Inspected evidence and required execution planning
+
+`src/domain/archive/model.ts` defines the current reviewed plan and applied record;
+`src/core/command-kernel.ts` creates, revalidates and applies them. The current apply path recomputes
+archive membership, so renewed review for changed membership is a deliberate behavior change.
+`src/infra/sqlite/migrations.ts` gives applications a unique plan reference and makes archive records
+reference applications. `src/infra/sqlite/authority-database.ts` enforces plan consumption and immutable
+application storage. The dashboard archive query reads both. These relationships can be represented
+by one lifecycle row while retaining their proofs; no migration or runtime test has been executed.
+
+Before admitting the execution brief:
+
+- Define strict planned/applied shapes, atomic one-time transition, proposal immutability, applied
+  immutability and archive references that cannot point to a merely planned change. Keep command and
+  audit ownership in their existing tables; this consolidation does not duplicate command history.
+- Plan supported conversion for unapplied plans and applied plan/application pairs. Preserve original
+  identities, archive references, review/application evidence and historical immutable bytes/digests.
+  Reject inconsistent pairs rather than fabricate a missing outcome. Reconcile ID mapping, schema
+  generations, old backups/restore and integrity checks at the shared migration owner.
+- Ratify the changed archive-review behavior and storage ownership at the owning dashboard/archive
+  contracts with decision pointers. Update command/API/read-model consumers and affected UI together.
+- Focused proof must cover preview without application, successful atomic application, applied-row
+  immutability, exact replay, concurrent apply, stale review/build/workflow rejection, added/removed
+  candidate review requirements, blockers, minor no-archive behavior, transaction rollback and
+  preservation of populated historical archives through upgrade/restore. Use targeted UI proof for
+  the updated-preview path. Final heavy gates and independent review follow this folder's cadence.
+- Resolve overlap with the pending relaunch/deletion discussion and the shared database prerequisite.
+  Do not assign competing archive-schema, migration or command-kernel edits to independent peers.
+
+Status: product direction and name approved; complete execution allocation, migration policy,
+review-replacement protocol, contract admission and launch prompts remain pending. No implementation
+or separate task is launched by this record.
