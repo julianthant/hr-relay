@@ -56,12 +56,36 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Keep `deleted_runs` for explicit live/archive deletion, separate from transfer. |
 | Messages and notes | `notifications`, `notes` | Approved: keep `notifications`; remove unused SQL `notes` projection only. Preserve diagnostic log files/readers and handle notification links after archive transfer. |
 | Testing and Activity read model | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Approved: `dryrun_results`; shared derived `run_summaries` for Queue/Activity, using validated existing person identities for server-side counts in place of the two pseudonym tables. |
-| Database maintenance | `authority_meta`, `authority_upgrades` | Open |
+| Database maintenance | `authority_meta`, `authority_upgrades` | Approved: retain behavior and rename to `database_state` / `database_upgrades` in R; retain existing backups and exports. Manual upgrades still record recovery progress. |
+| Remaining table audit | `spans`, `operator_xlsx_exports` | Approved: F removes unused SQL spans while preserving timeline events and required historical-file readers. F/G consolidate export metadata and verified file evidence into generated_artifacts; retire operator_xlsx_exports. No report_exports table. |
 | Run/operation relationships | Historical `run_operation_attempts` links to `workflow_runs` across retry, re-fencing, archive and deletion | Open; inspect the completed operation-name finding in Git at `58d4fbcba:docs/sidetracks/operation-names/README.md` |
 
 For each group, explain which action creates or updates a row, its readers and linked rows, a
 concrete example, and whether it is durable evidence, current state or a rebuildable read model.
 Distinguish implemented behavior from reserved storage and planned functionality.
+
+## Approved rename-first allocation — 2026-09-09
+
+The operator approved inserting 2.6.2 R before C0 (now 2.6.3), moving all seven naming-only
+changes to [renames.md](renames.md). Existing F/D/S plans consume those names and retain their
+behavioral changes. Keep maintenance state/recovery, backups and exports; no automatic dashboard
+update or change to displayed app-version policy is introduced. Scope remains planned, not implemented.
+The focused-task/full-finalization cadence is a trial for **Phase 2.6 only**.
+
+## Approved remaining-table disposition — 2026-09-09
+
+The operator directed “put it there for xlsx” and “remove spans.” The existing
+[artifact plan](artifacts.md#xlsx-consolidation-amendment--2026-09-09) owns export consolidation;
+F supplies the single-row schema/conversion/baseline, G supplies publication and verification.
+Each explicit XLSX export is one generated_artifacts file row with request, status and verified
+output evidence. Keep independent request identities, historical receipt/download references,
+authorization and exact content checks; retire the separate export table without dual writes.
+
+F owns removal of the unused SQL spans projection, including registration, generic repository
+and obsolete projection-only tests. Preserve timeline_events, logs and retained span-file inputs
+needed by supported conversions/recovery. No blanket deletion of span directories or timeline data.
+Focused absence/current-history tests belong to F; full recovery proof stays at 2.6.8.3.
+These changes are structural and do not expand the seven-name R assignment.
 
 ## Agreed execution cadence for this future batch
 

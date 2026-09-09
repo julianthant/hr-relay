@@ -2,24 +2,20 @@
 
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
-**2026-09-09 approved scope and identity amendment.** After the completed Task 1 peers, new
-[Task 2 · Database modernization](database-modernization/README.md) combines database-parallel,
-database-remaining and pending timeline T2. It contains multiple shared prerequisites and independent
-peer groups; C0 contract/execution admission is still open. Active T1 keeps its own plan and gates.
-The former Task 2 proof is now **Task 3** (p2f-proof), and former Task 3 closure is **Task 4**
-(p2f-close). Their stable IDs and required proof remain. Below, dated old Task 2/3 and downstream-only
-statements describe the earlier allocation; this amendment admits only the named database redesign.
-Final Task 3 owns combined heavy gates, all remaining repairs and fresh independent review, then
-Task 4 handover. A focused-tested development release unlocks only its explicit consumers and does
-not mark a roadmap task done. Completed Task 1 files and evidence are unchanged.
+**2026-09-09 approved scope and rename-first amendment.** The
+[combined database plan](database-modernization/README.md) owns the remaining database and timeline
+work. New **Task 2** performs only approved naming changes; former C0 becomes **Task 3**.
+Timeline/completion/domain/lifecycle/served prerequisites are Tasks **4/5/6/7/8**.
+Independent peers remain under their prerequisite; finalization children are **6.5/7.3/8.3**.
+**Task 8.3** owns full gates, remaining repairs and independent review; **Task 9** records handover.
+Completed Task 1 and timeline T1 evidence remain unchanged. Earlier numbered references in dated
+handoffs below are historical aliases, resolved through the combined identity map.
 
-
-**Current display identities — 2026-09-09 expansion.** The operator requested the same visible
-prerequisite/parallel-card structure as 3.1. Database C0/T/C/F/L/V now occupy Tasks 2–7, with
-P/D/G/S under 5, A/Q under 6 and U/H under 7. Finalization children are **5.5/6.3/7.3**; full proof is **7.3**, and closure is **8**; completed
-Task 1 records and stable proof/close node IDs are unchanged. Earlier Task 3/4 references in the
-initial consolidation amendment below are historical aliases. See the combined folder's identity
-map. A task card records its scoped development release; full product acceptance waits for Task 7.3.
+**Phase 2.6 trial only:** implementation tasks and intermediate finalizers run focused tests, lint
+and affected freshness checks. Full gates and independent review run at Task 8.3, with required
+reruns after fixes. Task 9 reuses that accepted evidence when inputs are unchanged. This does not
+change other phases or already completed/in-flight gate schedules. A development release unlocks
+its explicit successor; it is not reviewed master acceptance.
 
 ## 2.6 · Revalidate tails against canonical authorities
 
@@ -135,119 +131,126 @@ See the [owning task and execution brief](task-1-2-revalidate-data-intake-and-pr
 
 See the [owning task and execution brief](task-1-3-revalidate-operator-read-models.md).
 
-### Task 2 · Settle database contracts and task ownership
+### Task 2 · Apply approved database renames
+<!-- roadmap: p2db-simple-renames -->
+
+Assignment **R**, display **2.6.2**. Scope and execution owner:
+[rename task](database-modernization/renames.md). Naming only, with focused tests/lint/freshness;
+full gates and independent review remain at 2.6.8.3. Release its committed candidate to C0.
+
+### Task 3 · Settle database contracts and task ownership
 <!-- roadmap: p2-db-modernization -->
 
 Assignment **C0**, display **2.6.2**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#c0--contract-and-execution-admission).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-### Task 3 · Finish database transaction history and retire ledgers
+### Task 4 · Finish database transaction history and retire ledgers
 <!-- roadmap: p2db-timeline-history -->
 
 Assignment **T**, display **2.6.3**. Single scope/proof owner: [owning plan](database-modernization/timeline.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-### Task 4 · Store completion directly on workflow runs
+### Task 5 · Store completion directly on workflow runs
 <!-- roadmap: p2db-run-completion -->
 
 Assignment **C**, display **2.6.4**. Single scope/proof owner: [owning plan](database-modernization/run-completion.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-### Task 5 · Prepare independent database domain tasks
+### Task 6 · Prepare independent database domain tasks
 <!-- roadmap: p2db-domain-foundation -->
 
 Assignment **F**, display **2.6.5**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#f--domain-foundation-unlock-p-d-g-and-s).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 5.1 · Track provider requests and usage
+#### Task 6.1 · Track provider requests and usage
 <!-- roadmap: p2db-provider-usage -->
 
-Assignment **P**, display **2.6.5.1**. Single scope/proof owner: [owning plan](database-modernization/provider-usage.md).
+Assignment **P**, display **2.6.6.1**. Single scope/proof owner: [owning plan](database-modernization/provider-usage.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 5.2 · Add diagnostic failure resolution
+#### Task 6.2 · Add diagnostic failure resolution
 <!-- roadmap: p2db-diagnostics -->
 
-Assignment **D**, display **2.6.5.2**. Single scope/proof owner: [owning plan](database-modernization/diagnostics.md).
+Assignment **D**, display **2.6.6.2**. Single scope/proof owner: [owning plan](database-modernization/diagnostics.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 5.3 · Publish and update generated artifacts
+#### Task 6.3 · Publish and update generated artifacts
 <!-- roadmap: p2db-generated-artifacts -->
 
-Assignment **G**, display **2.6.5.3**. Single scope/proof owner: [owning plan](database-modernization/artifacts.md).
+Assignment **G**, display **2.6.6.3**. Single scope/proof owner: [owning plan](database-modernization/artifacts.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 5.4 · Activate settings for new runs without restart
+#### Task 6.4 · Activate settings for new runs without restart
 <!-- roadmap: p2db-settings-activation -->
 
-Assignment **S**, display **2.6.5.4**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-2-settings-current-settings-and-retained-snapshots).
+Assignment **S**, display **2.6.6.4**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-2-settings-current-settings-and-retained-snapshots).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 5.5 · Finalization
+#### Task 6.5 · Finalization
 <!-- roadmap: p2db-domain-finalization -->
 
 The [group finalization plan](database-modernization/group-finalization.md) owns this sequential
 child. It consumes every worker in its group and releases the next prerequisite after focused
-combined checks and repair. Heavy proof/review remains in final Task 7.3.
+combined checks and repair. Heavy proof/review remains in final Task 8.3.
 
-### Task 6 · Prepare independent archive and summary tasks
+### Task 7 · Prepare independent archive and summary tasks
 <!-- roadmap: p2db-lifecycle-foundation -->
 
 Assignment **L**, display **2.6.6**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#l--lifecycle-foundation-unlock-a-and-q).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 6.1 · Transfer runs into independent archive reports
+#### Task 7.1 · Transfer runs into independent archive reports
 <!-- roadmap: p2db-archive-transfer -->
 
-Assignment **A**, display **2.6.6.1**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+Assignment **A**, display **2.6.7.1**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-3-independent-archive-reports-and-no-relaunch).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 6.2 · Build shared run summaries for Queue and Activity
+#### Task 7.2 · Build shared run summaries for Queue and Activity
 <!-- roadmap: p2db-run-summaries -->
 
-Assignment **Q**, display **2.6.6.2**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-5-dryrun-results-and-shared-run-summaries).
+Assignment **Q**, display **2.6.7.2**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-5-dryrun-results-and-shared-run-summaries).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 6.3 · Finalization
+#### Task 7.3 · Finalization
 <!-- roadmap: p2db-lifecycle-finalization -->
 
 The [group finalization plan](database-modernization/group-finalization.md) owns this sequential
 child. It consumes every worker in its group and releases the next prerequisite after focused
-combined checks and repair. Heavy proof/review remains in final Task 7.3.
+combined checks and repair. Heavy proof/review remains in final Task 8.3.
 
-### Task 7 · Prepare independent dashboard consumers
+### Task 8 · Prepare independent dashboard consumers
 <!-- roadmap: p2db-served-interfaces -->
 
 Assignment **V**, display **2.6.7**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#v--served-interface-release-unlock-u-and-h).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 7.1 · Connect Queue and Activity to shared summaries
+#### Task 8.1 · Connect Queue and Activity to shared summaries
 <!-- roadmap: p2db-activity-views -->
 
-Assignment **U**, display **2.6.7.1**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-5-dryrun-results-and-shared-run-summaries).
+Assignment **U**, display **2.6.8.1**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-5-dryrun-results-and-shared-run-summaries).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 7.2 · Render saved archive reports without legacy workflows
+#### Task 8.2 · Render saved archive reports without legacy workflows
 <!-- roadmap: p2db-archive-viewer -->
 
-Assignment **H**, display **2.6.7.2**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+Assignment **H**, display **2.6.8.2**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-3-independent-archive-reports-and-no-relaunch).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-#### Task 7.3 · Finalization
+#### Task 8.3 · Finalization
 
 Consume the database development releases under the [final validation plan](database-modernization/final-validation.md).
 This fresh session owns integration repairs, all required heavy gates and independent review before
@@ -290,10 +293,10 @@ These historical readers never reintroduce runtime settings-file authority.
 > the deleted operator root/backup is not an input. D135 is cited; no second controlled write. No
 > redesign.
 
-### Task 8 · Close tail revalidation and hand fixtures to 3.1
+### Task 9 · Close tail revalidation and hand fixtures to 3.1
 <!-- roadmap: p2f-close -->
 
-- [ ] Pass targeted/full/generated/production-route gates and an adversarial deletion-test review.
+- [ ] Verify Task 8.3 accepted full/generated/production-route gates and independent review; reuse unchanged evidence instead of rerunning full gates for handover.
 - [ ] Hand 3.1 stable contracts, representative fixtures, and an unresolved-defect ledger.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | hands 3.1 `ref clock-config-secrets` §D331.10 (the

@@ -5,15 +5,22 @@ All prerequisites have one Astra/high supervisor, zero implementation workers by
 own branch/worktree at execution, and no master integration. This file describes outputs and
 acceptance; the exact path manifest and verified bases must be recorded before implementation.
 
+## R · Approved naming-only changes
+
+Execute [2.6.2 R](renames.md) first. Release its renamed, focused-tested candidate to C0;
+no full gates or independent review until phase finalization at 2.6.8.3.
+
 ## C0 · Contract and execution admission
 
-**Planning only.** Consume accepted timeline T1, including actual commit/tree, review/gates and
+**Planning only; now 2.6.3.** Consume R’s committed development release and accepted timeline T1, including actual commit/tree, review/gates and
 schema/floor; the timeline owner records accepted integration `46930920696ab214b036d5f2681b8ffb4e5620ea`;
 verify its evidence and ancestry at admission. Preserve T1's
 immutable migrations, source conversion evidence and original in-flight gate schedule.
 
-1. Resolve the maintenance-table discussion (`authority_meta`, `authority_upgrades`) with the
-   operator; do not invent renames or remove upgrade history. Inspect the operation-name deferred
+1. Verify R preserved `database_state` and `database_upgrades` behavior and the other five approved
+   renames; do not repeat them. Allocate approved SQL spans removal to F and single-row XLSX
+   consolidation to F/G, preserving timelines, export identities and recovery.
+   Inspect the operation-name deferred
    relationship finding in Git and determine how run-operation attempts shared by retries survive
    archive transfer/deletion without dangling references or invented ownership. Ask only for a real
    product tradeoff; routine storage implementation choices belong to the supervisor.
@@ -59,7 +66,7 @@ Consume C. Retain all [foundation proof allocation](foundation.md#b-proof-alloca
 [artifact import/extraction](artifacts.md#t1--imported-and-extracted-artifacts) requirements.
 Complete shared provider/diagnostic/artifact migrations, real baseline repositories and wiring,
 import/extraction behavior, renames/retirements and recovery before releasing domain peers.
-Add the approved app_settings/settings_snapshots schema and functional baseline settings modules,
+Consume R’s settings_snapshots rename; add the approved app_settings consolidation and functional baseline settings modules,
 then isolate S's save/activation/claim behavior from D's command/read UI files. Settings baseline
 must preserve current working behavior; S supplies the approved no-restart change.
 
@@ -71,13 +78,16 @@ F must route the real application through P/D/G/S's baseline modules, not provid
 Release evidence: populated fresh/historical DB conversion; backup/restore; cross-domain deletion
 and retained artifacts; no lost failure/receipt data; functional baseline provider/settings/export
 flows; exact isolated peer paths/tests and contract versions. Remove unused gates/ocr_approvals/SQL
-notes and rename dryrun_results with real consumer/absence tests, preserving approvals/logs/live-read.
+notes and the unused SQL spans projection; preserve timeline_events and supported historical span-file readers.
+Consume R’s dryrun_results and diagnostic names with consumer/absence tests, preserving approvals/logs/live-read.
+F also migrates operator_xlsx_exports evidence into generated_artifacts and retires the old table,
+with a working export baseline before G adds publication behavior; no live dual-write path.
 All peers use the same F SHA. P↔D↔G↔S must require no sibling API, migration, fixture or generated
 source. S cannot launch until its extraction makes that four-way proof true.
 
 ## L · Lifecycle foundation; unlock A and Q
 
-Consume the exact **2.6.5.5 Finalization** development release, which includes P/D/G/S on F
+Consume the exact **2.6.6.5 Finalization** development release, which includes P/D/G/S on F
 and all C/T ancestry. Do not individually assemble unfinalized peers or bypass their group's last
 child. Shared schema, capture adapters and provider aggregate preservation must be present in that
 verified release; L does not change the finalized domain ownership without an explicit amendment.
@@ -100,7 +110,7 @@ with both merge orders preserving counts, saved reports, deletes, settings bindi
 
 ## V · Served interface release; unlock U and H
 
-Consume **2.6.6.3 Finalization**, preserving the combined A/Q focused proof. Integrate real served queries and report interfaces,
+Consume **2.6.7.3 Finalization**, preserving the combined A/Q focused proof. Integrate real served queries and report interfaces,
 root route/command registration, shared dashboard wire types, download authorization and UI shell
 wiring. Finish shared archive relaunch removal without removing current-run retry/start. Separate
 Queue/Activity U paths from generic Archive H paths, including fixtures, snapshot/reference files,
@@ -122,4 +132,4 @@ endpoint, shared unmerged component or another peer's screenshot reference. Reco
 
 Return that compact record in the owner file and chat. Do not create observer tasks, automatically
 launch children, reserve idle worktrees or mark final product acceptance done. The next operator-started prerequisite
-assembles only its explicit input candidates. Final master integration belongs to 2.6.7.3.
+assembles only its explicit input candidates. Final master integration belongs to 2.6.8.3.

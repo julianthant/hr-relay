@@ -7129,3 +7129,20 @@ remain unchanged, with generated-file registration and receipt settlement consis
 No artifact-management page, new automatic export, diagnostic-catalog duplication or activation of
 unwired workflow projections is assigned. Frozen archives and exact referenced file versions retain
 their meaning. This is pending approved scope; two sequential units follow diagnostics integration.
+
+## Phase 2.6 approved naming and projection cleanup — 2026-09-09
+
+The operator retains maintenance state and upgrade recovery, backups and exports. Naming-only
+2.6.2 R changes authority_meta → database_state, authority_upgrades → database_upgrades,
+diagnostic_bundles → diagnostic_snapshots, diagnostic_attachments → diagnostic_files,
+evidence_receipts → run_receipts, config_snapshots → settings_snapshots and
+dry_run_scenario_results → dryrun_results. Row meanings, generation/transaction rules, immutable
+evidence and upgrade behavior remain unchanged. Released schemas/migrations and historical readers
+keep their original names; no operator database upgrade is authorized by this contract amendment.
+
+F retires only the unused SQL spans projection; timeline_events and historical file inputs needed
+for admitted conversion/recovery remain. F/G put each explicit XLSX export's request and completion
+evidence on its generated_artifacts file row and retire operator_xlsx_exports; no second receipt
+table. Preserve unique request/receipt identities, snapshot selection, immutable evidence, download
+verification and authorization. The [single owning plan](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#xlsx-consolidation-amendment--2026-09-09)
+specifies conversion and proof; current implementation is not claimed by this amendment.

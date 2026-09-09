@@ -2612,3 +2612,10 @@ preserves D331/D336 settings and independent credential authority. Conversion of
 it does not replay schema 33's batch defaults or reimport environment values. `config_snapshots`
 keeps its name, rows and references. Existing source-change refusal and interrupted settlement
 remain required. The [side assignment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md) owns execution evidence.
+
+### Phase 2.6 snapshot naming amendment — 2026-09-09
+
+Naming-only 2.6.2 R changes config_snapshots → settings_snapshots, preserving immutable rows,
+existing run bindings, protected-value exclusions and current activation behavior. Released history
+retains its original names. Settings consolidation and no-restart activation remain with F/S after
+C0; R does not implement them. [Approved scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).

@@ -1267,9 +1267,9 @@ integrations or full product acceptance. Completed prerequisite/peer cards mean 
 release only; full acceptance-finalizer/phase completion still requires full gates and review. Existing in-flight timeline T1 and other admitted tasks
 keep their original cadence.
 
-Intermediate finalization children 2.6.5.5 and 2.6.6.3 combine their groups with focused
+Intermediate finalization children 2.6.6.5 and 2.6.7.3 combine their groups with focused
 checks/lint/freshness and repair, then release the next prerequisite. They defer heavy proof/review.
-One fresh final 2.6.7.3 session combines all candidates, fixes remaining defects itself, runs typecheck,
+One fresh final 2.6.8.3 session combines all candidates, fixes remaining defects itself, runs typecheck,
 lint, full coverage, architecture, parity/build, generated and the original recovery/scenario/concurrency/
 redaction/production-route proofs, then obtains fresh independent review of the complete candidate.
 Findings and integration defects are fixed in that session with required reruns/review; no repair
@@ -1277,6 +1277,12 @@ handbacks to finished peers. No master integration or final completion before PA
 This moves timing only: every proof, assertion, membership rule, coverage floor, isolation and deadline
 remains binding. Coverage runs without this batch's compiler/linter contention; observed resource
 conflicts are assigned explicitly. General D191 reuse/rerun and documentation-only rules still apply.
+
+**Rename-first trial clarification (2026-09-09).** This cadence applies only to Phase 2.6.
+New 2.6.2 R uses focused tests, lint and affected freshness, including targeted fresh/historical
+rename checks; no full coverage, whole architecture suite or broad parity per task. Full gates and
+independent review belong to 2.6.8.3, with required reruns after repairs. Handover 2.6.9 verifies
+and reuses unchanged final evidence. Other phases and existing in-flight assignments are unchanged.
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 

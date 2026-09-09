@@ -2829,3 +2829,14 @@ external writes. [Dashboard surfaces](dashboard-surfaces.md#failure-resolution) 
 and live/archived presentation. This amendment is approved design, not implementation or permission
 to apply a database upgrade. The [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) assigns shared diagnostic
 storage/retirement to prerequisite B and operator resolution to an independent peer after B.
+
+### Phase 2.6 naming and XLSX evidence amendment — 2026-09-09
+
+R owns naming-only diagnostic_snapshots, diagnostic_files and run_receipts, preserving existing
+protection and evidence semantics. F/G consolidate each XLSX export's request/completion/verified
+file evidence into one generated_artifacts row and retire operator_xlsx_exports; prior separate-table
+requirements are superseded. Preserve independent export identities, immutable issued receipt fields,
+exact snapshot selection, byte verification and authorized downloads. Owners:
+[artifact conversion and proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#xlsx-consolidation-amendment--2026-09-09)
+and [naming scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
+This is an approved future contract, not implementation evidence.

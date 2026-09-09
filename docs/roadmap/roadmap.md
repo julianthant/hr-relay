@@ -1000,15 +1000,15 @@ log:
 - 2026-09-08 | C9b7365d76 · 2.6.1-3-R2 PASS · integrated 813581124 | canonical operator lifecycle/counts, Cancelling, immutable archive batch snapshots, safe upgrade status and schema-34 runs_view retirement; integration typecheck/lint, 447 files / 5,639 tests and 262 desktop parity cases pass; owned worktree/ref and scratch cleaned
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
 
-#### 2 · Settle database contracts and task ownership {#p2-db-modernization}
+#### 2 · Apply approved database renames {#p2db-simple-renames}
 status: planned
-doc: 2.6 §Task 2 · Settle database contracts and task ownership
+doc: 2.6 §Task 2 · Apply approved database renames
 
-> Database modernization now uses visible prerequisite and parallel-child cards, matching 3.1. This planning prerequisite retains the original p2-db-modernization anchor. Scope and exact execution admission remain with the combined folder.
+> Naming-only prerequisite before C0. Preserve behavior and released migration history. Phase 2.6 trial: focused tests/lint/freshness here; full gates and independent review at 2.6.8.3.
 
 builds:
-- [ ] DOCS close remaining product decisions and ratify approved table/lifecycle contracts
-- [ ] DOCS bind exact disjoint files, tests, migration owners, resources and verified execution prompts
+- [ ] BE apply seven approved table renames and update current consumers without lifecycle redesign
+- [ ] PROOF check focused naming/migration behavior and historical-name exceptions; release a committed candidate to C0
 
 needs:
 - p2f-trust
@@ -1017,13 +1017,29 @@ needs:
 - fact(met): timeline T1 integrated at 46930920696ab214b036d5f2681b8ffb4e5620ea with recorded review and gates
 
 log:
+- 2026-09-09 | operator rename-first amendment | new 2.6.2 R; current C0 and later tasks shift by one; planning only in this commit
+
+#### 3 · Settle database contracts and task ownership {#p2-db-modernization}
+status: planned
+doc: 2.6 §Task 3 · Settle database contracts and task ownership
+
+> Database modernization now uses visible prerequisite and parallel-child cards, matching 3.1. This planning prerequisite retains the original p2-db-modernization anchor. Scope and exact execution admission remain with the combined folder.
+
+builds:
+- [ ] DOCS close remaining product decisions and ratify approved table/lifecycle contracts
+- [ ] DOCS bind exact disjoint files, tests, migration owners, resources and verified execution prompts
+
+needs:
+- p2db-simple-renames
+
+log:
 - 2026-09-09 | database roadmap expansion | 2.6.2; assignment C0; visible dependency card only; no implementation or launch readiness claimed
 
-#### 3 · Finish database transaction history and retire ledgers {#p2db-timeline-history}
+#### 4 · Finish database transaction history and retire ledgers {#p2db-timeline-history}
 status: planned
-doc: 2.6 §Task 3 · Finish database transaction history and retire ledgers
+doc: 2.6 §Task 4 · Finish database transaction history and retire ledgers
 
-> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.7.3.
+> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.8.3.
 
 builds:
 - [ ] BOTH complete pending timeline T2: database history, Activity transaction exports and archive transaction capture
@@ -1035,11 +1051,11 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.3; assignment T; visible dependency card only; no implementation or launch readiness claimed
 
-#### 4 · Store completion directly on workflow runs {#p2db-run-completion}
+#### 5 · Store completion directly on workflow runs {#p2db-run-completion}
 status: planned
-doc: 2.6 §Task 4 · Store completion directly on workflow runs
+doc: 2.6 §Task 5 · Store completion directly on workflow runs
 
-> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.7.3.
+> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.8.3.
 
 builds:
 - [ ] BE retain canonical completion and run_failures while retiring terminal authorizations and terminal outbox
@@ -1051,13 +1067,14 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.4; assignment C; visible dependency card only; no implementation or launch readiness claimed
 
-#### 5 · Prepare independent database domain tasks {#p2db-domain-foundation}
+#### 6 · Prepare independent database domain tasks {#p2db-domain-foundation}
 status: planned
-doc: 2.6 §Task 5 · Prepare independent database domain tasks
+doc: 2.6 §Task 6 · Prepare independent database domain tasks
 
-> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.7.3.
+> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.8.3.
 
 builds:
+- [ ] BE remove unused SQL spans and consolidate operator_xlsx_exports into generated_artifacts with a working export baseline
 - [ ] BOTH finish shared schemas, repositories, composition, recovery and populated fixtures; complete imported/extracted artifacts and approved unused-table retirements
 - [ ] PROOF release working provider, diagnostic, generated-artifact and settings module boundaries; verify all four peer write sets and either merge order
 
@@ -1069,9 +1086,9 @@ log:
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
 status: planned
-doc: 2.6 §Task 5.1 · Track provider requests and usage
+doc: 2.6 §Task 6.1 · Track provider requests and usage
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BE implement provider-neutral accounting, quota windows, all-time usage and remaining allowance without real key/provider wiring
@@ -1085,9 +1102,9 @@ log:
 
 ##### 2 · Add diagnostic failure resolution {#p2db-diagnostics}
 status: planned
-doc: 2.6 §Task 5.2 · Add diagnostic failure resolution
+doc: 2.6 §Task 6.2 · Add diagnostic failure resolution
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BOTH add explicit live failure resolution with actor/time, commands, audit and usable diagnostic controls
@@ -1101,12 +1118,12 @@ log:
 
 ##### 3 · Publish and update generated artifacts {#p2db-generated-artifacts}
 status: planned
-doc: 2.6 §Task 5.3 · Publish and update generated artifacts
+doc: 2.6 §Task 6.3 · Publish and update generated artifacts
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
-- [ ] BE implement ordered generated-file lifecycle, verification and existing XLSX exports
+- [ ] BE implement ordered generated-file lifecycle and XLSX exports with request/completion evidence on the same generated-artifact row
 - [ ] PROOF prove pending/completed updates, fault recovery, idempotency and shared-file retention
 
 needs:
@@ -1117,9 +1134,9 @@ log:
 
 ##### 4 · Activate settings for new runs without restart {#p2db-settings-activation}
 status: planned
-doc: 2.6 §Task 5.4 · Activate settings for new runs without restart
+doc: 2.6 §Task 6.4 · Activate settings for new runs without restart
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BOTH save and activate app_settings/settings_snapshots for newly created runs without restarting
@@ -1133,9 +1150,9 @@ log:
 
 ##### 5 · Finalization {#p2db-domain-finalization}
 status: planned
-doc: 2.6 §Task 5.5 · Finalization
+doc: 2.6 §Task 6.5 · Finalization
 
-> Sequential finalization child of its prerequisite, not another parallel worker. This intermediate release uses focused combined checks; full gates and independent review remain assigned to final 2.6.7.3.
+> Sequential finalization child of its prerequisite, not another parallel worker. This intermediate release uses focused combined checks; full gates and independent review remain assigned to final 2.6.8.3.
 
 builds:
 - [ ] BOTH Combine provider, diagnostics, generated artifacts and settings candidates; reconcile shared output and fix integration defects
@@ -1151,11 +1168,11 @@ needs:
 log:
 - 2026-09-09 | nested finalization | 2.6.5.5 finalizes its own children; one owner for target writes and repairs; no launch or final acceptance claimed
 
-#### 6 · Prepare independent archive and summary tasks {#p2db-lifecycle-foundation}
+#### 7 · Prepare independent archive and summary tasks {#p2db-lifecycle-foundation}
 status: planned
-doc: 2.6 §Task 6 · Prepare independent archive and summary tasks
+doc: 2.6 §Task 7 · Prepare independent archive and summary tasks
 
-> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.7.3.
+> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.8.3.
 
 builds:
 - [ ] BE finish shared lifecycle contracts, source adapters, archive/version/summary registration, deletion and backup interfaces
@@ -1169,9 +1186,9 @@ log:
 
 ##### 1 · Transfer runs into independent archive reports {#p2db-archive-transfer}
 status: planned
-doc: 2.6 §Task 6.1 · Transfer runs into independent archive reports
+doc: 2.6 §Task 7.1 · Transfer runs into independent archive reports
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BOTH implement version_changes and verified archive.sqlite/archive_records transfer, historical conversion and deletion/recovery
@@ -1185,9 +1202,9 @@ log:
 
 ##### 2 · Build shared run summaries for Queue and Activity {#p2db-run-summaries}
 status: planned
-doc: 2.6 §Task 6.2 · Build shared run summaries for Queue and Activity
+doc: 2.6 §Task 7.2 · Build shared run summaries for Queue and Activity
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BE derive and incrementally maintain indexed run_summaries with stable rebuild/catch-up and validated aggregate identity counts
@@ -1201,9 +1218,9 @@ log:
 
 ##### 3 · Finalization {#p2db-lifecycle-finalization}
 status: planned
-doc: 2.6 §Task 6.3 · Finalization
+doc: 2.6 §Task 7.3 · Finalization
 
-> Sequential finalization child of its prerequisite, not another parallel worker. This intermediate release uses focused combined checks; full gates and independent review remain assigned to final 2.6.7.3.
+> Sequential finalization child of its prerequisite, not another parallel worker. This intermediate release uses focused combined checks; full gates and independent review remain assigned to final 2.6.8.3.
 
 builds:
 - [ ] BOTH Combine archive transfer and run summaries; verify transfer/delete/count consistency and repair integration defects
@@ -1217,11 +1234,11 @@ needs:
 log:
 - 2026-09-09 | nested finalization | 2.6.6.3 finalizes its own children; one owner for target writes and repairs; no launch or final acceptance claimed
 
-#### 7 · Prepare independent dashboard consumers {#p2db-served-interfaces}
+#### 8 · Prepare independent dashboard consumers {#p2db-served-interfaces}
 status: planned
-doc: 2.6 §Task 7 · Prepare independent dashboard consumers
+doc: 2.6 §Task 8 · Prepare independent dashboard consumers
 
-> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.7.3.
+> Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.8.3.
 
 builds:
 - [ ] BOTH finish real served queries, shared routes/wires, download authorization and shared UI wiring
@@ -1235,9 +1252,9 @@ log:
 
 ##### 1 · Connect Queue and Activity to shared summaries {#p2db-activity-views}
 status: planned
-doc: 2.6 §Task 7.1 · Connect Queue and Activity to shared summaries
+doc: 2.6 §Task 8.1 · Connect Queue and Activity to shared summaries
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BOTH use served summary queries for Queue/Activity and existing exports while keeping transaction metrics distinct
@@ -1251,9 +1268,9 @@ log:
 
 ##### 2 · Render saved archive reports without legacy workflows {#p2db-archive-viewer}
 status: planned
-doc: 2.6 §Task 7.2 · Render saved archive reports without legacy workflows
+doc: 2.6 §Task 8.2 · Render saved archive reports without legacy workflows
 
-> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.7.3.
+> Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.8.3.
 
 builds:
 - [ ] BOTH render generic archive list/detail/filter/download from saved reports and remove archive relaunch UI
@@ -1267,7 +1284,7 @@ log:
 
 ##### 3 · Finalization {#p2f-proof}
 status: planned
-doc: 2.6 §Task 7.3 · Finalization · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
+doc: 2.6 §Task 8.3 · Finalization · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
 > D336: consume Task 1.6.6's SQLite-settings restore and revised adapter/proof mapping; the old paired-file rollback and settings-pathname target are superseded.
 
@@ -1290,13 +1307,13 @@ needs:
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.4 with M17/M22 over a migrated copy and §D332.7 item 6 (no redesign) · left: A0/A1 deleted and their two inventory entries flipped to `active` in that commit
 
-#### 8 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
+#### 9 · Close tail revalidation and hand fixtures to 3.1 {#p2f-close}
 status: planned
-doc: 2.6 §Task 8 · Close tail revalidation and hand fixtures to 3.1 · 3.1 §Reopened completion tasks · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
+doc: 2.6 §Task 9 · Close tail revalidation and hand fixtures to 3.1 · 3.1 §Reopened completion tasks · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 builds:
-- [ ] PROOF run targeted suites, full coverage/lint/typecheck, architecture guards, generated checks, and production-route smoke
-- [ ] PROOF adversarial review and deletion tests find no stale authority path
+- [ ] PROOF verify accepted finalization gate evidence and unchanged inputs; do not repeat full gates for handover
+- [ ] PROOF verify finalization review and deletion-test evidence leaves no stale authority path
 - [ ] DOCS issue the 3.1 stable-contract fixture matrix and unresolved-defect ledger; do not silently absorb dashboard work
 
 needs:
@@ -3701,21 +3718,27 @@ T2 into Phase 2.6. The owning [combined folder](../rebuild/plans/phase-2/2.6-rev
 contains product owners, multiple prerequisite releases, peer allocations and final-session controls.
 This is an explicit scope exception to Phase 2.6's former downstream-only boundary, not general
 permission to redesign other authorities. C0 must ratify the approved product changes at their actual
-contract owners and close decision/ownership gaps before implementation briefs become READY.
+contract owners and close decision/ownership gaps before downstream implementation briefs become READY. R is the separately approved naming-only predecessor.
 
-Completed 2.6.1 identities/evidence and active timeline T1 remain unchanged. Pending proof/close tasks
-initially moved to 2.6.3/2.6.4. The operator then requested visible prerequisite/parallel cards,
-matching 3.1: C0/T/C/F/L/V are 2.6.2/3/4/5/6/7; P/D/G/S are children 2.6.5.1–4;
-A/Q are 2.6.6.1–2; U/H are 2.6.7.1–2. The proof/close anchors p2f-proof/p2f-close remain
-stable. p2-db-modernization now identifies actual C0 instead of a container.
-Completed tasks and Phase 3 IDs are unchanged. Both parallel children and sequential consumers
-carry actual dependency edges; finalization is now nested as the last child: 2.6.5.5, 2.6.6.3 and 2.6.7.3.
-The original proof anchor is the last of these; closure is 2.6.8. Sequential consumers wait for
-their preceding group finalization release, including every worker in that group.
+Completed 2.6.1 and timeline T1 identities/evidence remain unchanged. The operator inserted
+**2.6.2 R** for approved naming-only changes before planning prerequisite **2.6.3 C0**.
+T/C/F/L/V are **2.6.4/5/6/7/8**; P/D/G/S are children **2.6.6.1–4**;
+A/Q are **2.6.7.1–2**; U/H are **2.6.8.1–2**. Finalization children are
+**2.6.6.5/2.6.7.3/2.6.8.3**, with closure **2.6.9**. Stable IDs remain unchanged;
+new R uses p2db-simple-renames and C0 retains p2-db-modernization. Historical log numbers are
+aliases, not current launch instructions. C0 consumes R's committed development release and must
+not duplicate its renames. Phase 3 IDs and all completed/in-flight assignments remain unchanged.
+
+The gate schedule is an explicit **Phase 2.6-only trial**, not a new default for other phases.
+Every remaining implementation task, including R, runs focused tests, lint and affected freshness.
+R preserves released migration SQL/fingerprints and adds the supported rename conversion; it
+never performs a blind replacement of historical evidence. No operator database is changed by
+these candidate tasks. Full tests and independent review remain with the final phase owner;
+closure verifies/reuses its unchanged evidence rather than running another full suite.
 
 For this newly combined, unlaunched batch only, the operator explicitly chooses focused tests, lint
 and affected freshness during prerequisite/peer implementation, with heavy gates and independent
-review in one fresh final 2.6.7.3 session. A prerequisite's tested committed development release may
+review in one fresh final 2.6.8.3 session. A prerequisite's tested committed development release may
 unlock its explicit children before review/master integration; its completed card records that
 limited development release, not reviewed product acceptance
 or master integration. The encompassing Phase 2.6 remains incomplete until finalization. The final proof consumes the
@@ -3728,9 +3751,9 @@ integration and completion. No repair handbacks, automatic task dispatch, idle c
 gates, or push. D191's matching scoped cadence amendment governs proof timing and evidence. Existing
 in-flight tasks retain their original gates and reviews. No implementation is authorized by planning.
 
-Intermediate children 2.6.5.5 and 2.6.6.3 combine their exact worker candidates, run focused
+Intermediate children 2.6.6.5 and 2.6.7.3 combine their exact worker candidates, run focused
 integration checks/lint/freshness and own immediate integration repairs. They publish development
-releases only. The last child 2.6.7.3 owns the complete heavy-gate/review/remaining-repair obligation.
+releases only. The last child 2.6.8.3 owns the complete heavy-gate/review/remaining-repair obligation.
 This explicit scoped cadence preserves the operator's reviews-last request; intermediate completion
 cannot imply green unrun heavy gates. Provider completion now joins its group's finalizer; this is
 an explicit group-release barrier, not an inferred whole-phase dependency.
@@ -3740,7 +3763,7 @@ an explicit group-release barrier, not an inferred whole-phase dependency.
 For every newly planned parallel workflow, the **task node is the actual prerequisite**, not a
 container. Its independently implementable workers are numbered child nodes. The **last numbered
 child is named Finalization** and is sequential: it requires the parent and every worker in that
-group. Example: `2.6.2` prerequisite → `2.6.2.1`, `2.6.2.2` workers → `2.6.2.3 · Finalization`.
+group. Example: `N` prerequisite → `N.1`, `N.2` workers → `N.3 · Finalization`.
 The display may also say “2.6.2 Finalization,” but keep one stable numbered task and one owner.
 Do not add a detached sibling finalizer or a duplicate container just to draw the group.
 

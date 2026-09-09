@@ -9,6 +9,20 @@
 > alternate launch instructions. Every product proof remains required; heavy proof and independent
 > review run in the final session. Existing in-flight timeline T1 keeps its own schedule.
 
+## XLSX consolidation amendment — 2026-09-09
+
+The operator approved storing XLSX exports in the already planned **generated_artifacts** table
+(the managed created-output records), and removing `operator_xlsx_exports`. This supersedes the
+earlier separate-export-receipt-table requirement. No `report_exports` table is introduced.
+Every generated_artifacts row still represents one logical output file; export request/completion
+metadata belongs to that file row, not to a second top-level row of another kind.
+
+F owns the common schema, populated historical export conversion, table/registry retirement and
+working baseline repository/service adaptation before G launches. G owns publication/verification
+and current export lifecycle through that baseline. This keeps F and G sequential on shared files;
+no peer needs G's unmerged code to use the F release. Retain all P6/P7/P8 proof below with the
+single-row storage shape; finalization owns complete cross-domain/recovery proof.
+
 ## Archive-report amendment — 2026-09-08
 
 This plan retains ownership of import/generated artifact identities, publication and retention.
@@ -26,7 +40,7 @@ the complete revised allocation and verified prompts.
 
 ## Assignment and approval
 
-**Current assignments: 2.6.5 F / 2.6.5.3 G.** This file owns its product requirements within the
+**Current assignments: 2.6.6 F / 2.6.6.3 G.** This file owns its product requirements within the
 [combined workflow](README.md). Implementation waits for C0 and the verified C/F development
 release. Earlier side-work IDs are historical aliases only.
 
@@ -89,8 +103,9 @@ batch grouping/priority, run membership, retry, operation proof or UNKNOWN-submi
 introduce PDF-to-intake automation, new OCR providers, real-key wiring, an I-9 workbook path/column
 layout or activation of currently unwired descriptor projections. No new file-management UI, sync
 service, automatic exports, new output format or general artifact garbage collector. Keep diagnostic
-files as diagnostic relationships and `operator_xlsx_exports` as export-evidence records, not competing
-file heads. Internal screenshots/PDF raster intermediates are not automatically registered as managed
+files as diagnostic relationships. Store export evidence on its generated_artifacts row;
+retire operator_xlsx_exports after verified conversion, without a competing file head.
+Internal screenshots/PDF raster intermediates are not automatically registered as managed
 output files merely because they use the byte store. No replacement generic `artifacts`, file-update,
 sink-state, import-draft or import-snapshot authority table. No live HR writes, push or cutover.
 
@@ -204,15 +219,21 @@ and publication evidence prove safe reconciliation. The existing conservative co
 acceptable outcome. Do not add an automatic recovery policy, new parked-run state or external resubmit;
 existing blocking projection failures remain structured node failures with durable work retained.
 
-**Current consumers.** Adapt the existing executor projector seam and synthetic `xlsx-retention` writer,
-without activating an I-9 workflow or inventing operator workbook columns/paths. Register outputs from
-the existing explicit operator XLSX export service: allocate a logical output identity, retain pending
-state for the admitted generation, publish/verify its immutable bytes, and settle the ready record with
-its existing export receipt in one authority transaction. Preserve the export's served snapshot selection,
-protected data, download headers, workbook contents and authorization. Repeated explicit exports remain
-separate requests as today; retries of an already identified generation cannot create conflicting receipts.
-`operator_xlsx_exports` remains evidence of what was requested/exported, not another mutable file head.
-No automatic registry rows for diagnostic attachments or extraction intermediates in this unit.
+**Current consumers.** Adapt the existing executor projector seam and synthetic `xlsx-retention`
+writer without activating an I-9 workflow or inventing workbook columns/paths. The existing explicit
+XLSX service creates one generated_artifacts row in pending state for each admitted export identity.
+That same row carries the requester/time, exact search snapshot or Activity selection, workbook
+format/version and sheet/row metadata. Publish and verify immutable bytes, then atomically settle
+that row to ready with its verified artifact reference, digest, length and download metadata.
+Do not return a successful download before the persisted record and returned bytes agree.
+Preserve authorization, protected fields, workbook content and download headers. Failed publication
+retains truthful pending/failed state. Same identified request and payload replays on the same row;
+divergent replay refuses. Separate explicit exports remain separate logical outputs even when
+content-addressed bytes match. No second SQL export-receipt row or live dual write remains.
+Export receipt IDs can be retained as unique compatibility identities on the same row; an issued
+receipt's immutable fields/digest must not be rewritten. Managed-workbook update receipts remain
+part of their own generated row's bounded bookkeeping. Do not automatically register diagnostic
+attachments or extraction intermediates here.
 
 **Historical conversion.** Group old output updates and head by their exact admitted destination/sink
 identity, preserving each pending/completed update, stable key, source, payload, receipt ID and ordering.
@@ -224,8 +245,13 @@ invent a full version history from a hash. A current populated head without veri
 blocks conversion instead of becoming a plausible ready record. A first-create pending file may have no
 head or existing file, which is a distinct valid case.
 
-Historical exports can register a ready logical file from their exact retained verified artifact and
-export identity. Do not rewrite issued receipt JSON/digests or enumerate unrelated files from disk. No
+Historical exports migrate one-for-one into generated_artifacts using their exact export identity,
+request metadata, immutable receipt fields and retained verified artifact. Preserve existing download/
+receipt references through unique compatibility lookup; never collapse independent exports by hash.
+Missing bytes remain explicitly unavailable rather than falsely verified ready. Conflicting identity
+or altered evidence refuses. Retire operator_xlsx_exports and its current registry/repository paths
+only after complete conversion; supported historical readers retain the old layout deliberately.
+Do not rewrite issued receipt JSON/digests or enumerate unrelated files from disk. No
 historical generated-file row may claim its original creation time or producer was known if evidence
 lacks it. Remove the two old live output tables and expose pending-update counts from the new authority
 in Storage Doctor; count updates, not merely the number of files containing pending work.
@@ -259,7 +285,7 @@ verified database backup/source manifest, following the timeline predecessor's s
 | P3 Frozen source and readers | Changing a later import or updating its logical source file cannot change earlier submitted values or their exact file version. Existing intake review/rerun, command history, run origins, receipts, archives and protected downloads remain correct. |
 | P4 Concurrent output updates | Real independent connections admit distinct updates to one file without lost work. Exclusive writer fencing and ordered settlement hold. Exact checkpoint replay does not duplicate rows, drain unrelated updates or overwrite newer contents. Mutation during projection leaves newly queued work pending; record limits refuse before checkpoint commit. |
 | P5 File/DB failure windows | Inject before/after staging, fsync, replace and DB acknowledgement. No false ready state, unsafe repeat or discarded intent. External edits, missing/headless files and stale writer generations yield distinct refusal/conflict. Original/current/intended bytes and old version refs remain verifiable. |
-| P6 Generated history/export | One file row progresses pending to verified ready and survives later updates without changing old import/run/export references. Existing explicit XLSX exports preserve selection, protected contents, receipt/digest/headers; byte/receipt/DB faults cannot return a successful inconsistent download. Independent exports remain independent. |
+| P6 Generated history/export | One file row progresses pending to verified ready and survives later updates without changing old import/run/export references. Existing explicit XLSX exports keep request and completion evidence on one generated row and preserve selection, protected contents, receipt/digest/headers; byte/receipt/DB faults cannot return a successful inconsistent download. Independent exports remain independent; replay creates no duplicate row and no live operator_xlsx_exports table/reader/writer survives. |
 | P7 Output migration/retirement | Populated pending/completed/mixed updates, existing heads and files, old exports and unavailable history have exact conversion outcomes. Required stopped file copies and DB backup are identity-bound; changed/missing sources refuse. Old output tables/current consumers retire and pending counts remain accurate. |
 | P8 Upgrade/retention/compatibility | Fresh creation, supported old backups/upgrades, pre/postcommit interruption, exact resume, no-write repeat and full restore pass. D308/tombstones, shared file refs, diagnostics/pins, archive identity and schema/settings coupling remain correct. No new real provider/workflow activation. |
 
@@ -268,7 +294,7 @@ verified database backup/source manifest, following the timeline predecessor's s
 F owns complete imported/extracted artifacts and shared migration/recovery proof; G owns generated
 publication/update/export proof on F alone. Existing archive/retention behavior is tested on that
 base. New archive.sqlite transfer, shared-file custody and post-transfer access consume G in L/A/H
-and receive combined proof in 2.6.7.3; G must not require A's unmerged implementation.
+and receive combined proof in 2.6.8.3; G must not require A's unmerged implementation.
 
 ## Execution ownership
 
@@ -276,7 +302,7 @@ Use [the combined workflow](README.md), [prerequisite releases](prerequisites.md
 [launch registry](PROMPTS.md). One Astra/high supervisor owns this assignment; default zero
 implementation workers. Shared migrations, composition and fixture work belongs to its prerequisite.
 Return a committed development candidate after focused checks, lint and affected freshness; final
-2.6.7.3 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
+2.6.8.3 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
 No per-peer review, master merge, provider-owned integration or automatic task dispatch remains.
 
 ## Focused checks and final proof
@@ -293,7 +319,7 @@ Add real populated migration, concurrent connection and fault-injection tests fo
 replace retired guards with meaningful negative controls and deciding inventory evidence. Preserve
 all assertions, test membership, coverage floors, isolation and timeouts. Run lint whenever tests
 run. A focused pass is not complete product acceptance. The full required typecheck/coverage/
-architecture/parity/build/recovery and generated gates are owned by [2.6.7.3](final-validation.md).
+architecture/parity/build/recovery and generated gates are owned by [2.6.8.3](final-validation.md).
 Use /ui for frontend work and deliberate parity changes; preserve the scoped product exclusions.
 
 No live external submission, real provider/key wiring, operator database upgrade or source cleanup

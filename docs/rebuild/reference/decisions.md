@@ -1,15 +1,20 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
-**2026-09-09 finalization-child convention:** new parallel plans use a prerequisite task with
-independent implementation children and a last numbered Finalization child; next groups require its
-release. Database finalization children are 2.6.5.5/2.6.6.3/2.6.7.3, closure 2.6.8. Owner:
-[roadmap group shape](../../roadmap/roadmap.md#parallel-group-shape-for-future-plans-2026-09-09).
-Existing admitted/in-flight maps remain unchanged; the database's heavy-gates/review-last exception remains.
+**2026-09-09 table decisions:** retain/rename maintenance state and recovery; retain backups and
+exports; remove unused SQL spans; consolidate XLSX export evidence into generated_artifacts.
+Owners: [storage/surface contract](dashboard-surfaces.md#phase-26-approved-naming-and-projection-cleanup--2026-09-09),
+[export evidence](operator-trust.md#phase-26-naming-and-xlsx-evidence-amendment--2026-09-09),
+[snapshot naming](clock-config-secrets.md#phase-26-snapshot-naming-amendment--2026-09-09).
 
-**2026-09-09 database roadmap expansion:** expose C0/T/C/F/L/V as 2.6.2–7 with independent
-children under 5/6/7; final proof/close move to 2.6.8/9 with stable IDs and all proof retained.
-Scoped development-card completion unlocks dependencies; product acceptance remains with the final
-review/gate session. Owner: [combined database governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09).
+**2026-09-09 rename-first / Phase 2.6-only gate trial:** insert 2.6.2 R for seven approved
+naming-only changes; C0 moves to 2.6.3, later tasks shift by one. Finalization children are
+2.6.6.5/2.6.7.3/2.6.8.3; closure is 2.6.9. All implementation tasks use focused tests/lint/freshness;
+full gates and independent review remain at 2.6.8.3. Other phases and in-flight work are unchanged.
+Owners: [roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09),
+[D191 timing](guards-and-tests.md#314-testing-standard-d85--what-replaces-the-e2e-ritual),
+[approved rename scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
+The [parallel group shape](../../roadmap/roadmap.md#parallel-group-shape-for-future-plans-2026-09-09)
+remains unchanged; this trial does not generalize its gate exception.
 
 **2026-09-09 combined database planning amendment:** Phase 2.6 admits the named database redesign,
 preserves active T1, renumbers only pending proof/closure, and defers heavy gates/review to the single
