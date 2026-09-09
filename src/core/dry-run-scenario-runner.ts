@@ -231,7 +231,14 @@ export function evaluateDryRunScenarioEvidence(
   const deltas = {
     writeIntents: evidence.writeSafetyAfter.writeIntents - before.writeIntents,
     writeAttempts: evidence.writeSafetyAfter.writeAttempts - before.writeAttempts,
-    durableOutbox: evidence.writeSafetyAfter.durableOutbox - before.durableOutbox,
+    confirmedOperations: evidence.writeSafetyAfter.confirmedOperations - before.confirmedOperations,
+  };
+  // Released manifests declare zero outbox deltas. Schema40 retires that table;
+  // their no-write obligation now checks actual durable confirmations instead.
+  const expectedDeltas = {
+    writeIntents: scenarioCase.durableDeltas.writeIntents,
+    writeAttempts: scenarioCase.durableDeltas.writeAttempts,
+    confirmedOperations: scenarioCase.durableDeltas.durableOutbox,
   };
   const failedTerminalMatches = scenarioCase.terminal.lifecycle === "failed"
     && evidence.terminal.lifecycle === "failed"
@@ -255,7 +262,7 @@ export function evaluateDryRunScenarioEvidence(
         "checkpoints-match", "checkpoints-mismatch"),
       assertion("gate-results", same(evidence.gateResults, expectedGates),
         "gate-results-match", "gate-results-mismatch"),
-      assertion("write-safety-deltas", same(deltas, scenarioCase.durableDeltas),
+      assertion("write-safety-deltas", same(deltas, expectedDeltas),
         "write-safety-deltas-zero", "write-safety-deltas-nonzero"),
       assertion("receipt", evidence.receipt.result === scenarioCase.receipt.result
         && evidence.receipt.confidence === scenarioCase.receipt.confidence
@@ -291,7 +298,7 @@ export function evaluateDryRunScenarioEvidence(
       "checkpoints-match", "checkpoints-mismatch"),
     assertion("gate-results", same(evidence.gateResults, expectedGates),
       "gate-results-match", "gate-results-mismatch"),
-    assertion("write-safety-deltas", same(deltas, scenarioCase.durableDeltas),
+    assertion("write-safety-deltas", same(deltas, expectedDeltas),
       "write-safety-deltas-zero", "write-safety-deltas-nonzero"),
     assertion("receipt", evidence.receipt.result === scenarioCase.receipt.result
       && evidence.receipt.confidence === scenarioCase.receipt.confidence

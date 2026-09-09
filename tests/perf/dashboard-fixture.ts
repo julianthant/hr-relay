@@ -33,7 +33,7 @@ import type { RunRecord } from "../../src/domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
-import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
 import {
@@ -729,7 +729,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
@@ -785,7 +785,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
         contractFingerprint: CONTRACT_FINGERPRINT,
       }],
     },
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger: createTransactionHistory(database.authority),
   };
 
   return Object.freeze({

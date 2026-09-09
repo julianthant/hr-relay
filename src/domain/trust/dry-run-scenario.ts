@@ -46,7 +46,7 @@ export const DryRunSubjectKindSchema = z.enum([
 export const DryRunWriteSafetyCountsSchema = z.strictObject({
   writeIntents: z.number().int().nonnegative(),
   writeAttempts: z.number().int().nonnegative(),
-  durableOutbox: z.number().int().nonnegative(),
+  confirmedOperations: z.number().int().nonnegative(),
 });
 
 const CheckpointKeyPartSchema = z.enum([

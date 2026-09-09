@@ -52,12 +52,12 @@ import { publicTransactionKeyDigest, PublicTransactionKeyDigestSchema } from "..
  * archived and stays an audit record in its own lifecycle.
  */
 import { z } from "zod";
-import { ArchivedEvidencePointersSchema } from "./model.js";
+
 import { KualiSaveSeparationFinalization } from "../contracts/kuali/save-separation-finalization.js";
 import { UcpathPendingSweepProofSchema } from "../ui/ucpath-smart-hr-termination.js";
 import { UcpathCreateTermination } from "../contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../contracts/ucpath/delete-pending-terminations.js";
-import { FingerprintSchema } from "../ids.js";
+import { FingerprintSchema, NonNegativeIntSchema } from "../ids.js";
 import { directIdentifierDigestReference } from "../redaction.js";
 import { LedgerCompletionKindSchema, LedgerProofSourceSchema } from "../ledger-primitives.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
@@ -72,7 +72,7 @@ import { deriveSchemaHash } from "../schema-bound-value.js";
  * browser-reachable Node built-in is a blank page in dev and a silent time
  * bomb in prod).
  */
-export const LedgerLinePointerSchema = ArchivedEvidencePointersSchema.shape.ledgerPartitions.element;
+export const LedgerLinePointerSchema = z.strictObject({ system: z.string().min(1), date: z.iso.date(), sequence: NonNegativeIntSchema });
 export type LedgerLinePointer = z.infer<typeof LedgerLinePointerSchema>;
 
 /**

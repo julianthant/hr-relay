@@ -1,3 +1,4 @@
+import { currentAtomicWriteFixture } from "../helpers/timeline-write-fixture.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import {
@@ -27,7 +28,8 @@ export function fixtureUuid(tag: string): string {
 export interface LedgerCommitFixture {
   readonly intent: Readonly<Record<string, unknown>>;
   readonly attempt: Readonly<Record<string, unknown>>;
-  readonly commit: Readonly<Record<string, unknown>>;
+  readonly commit: ReturnType<typeof currentAtomicWriteFixture>;
+  readonly historicalCommit: Readonly<{ ledgerOutbox: unknown; terminalSpanOutbox: unknown }>;
   readonly outboxId: string;
   readonly confirmedAt: string;
 }
@@ -176,5 +178,5 @@ export function ledgerCommitFixture(
     },
   });
 
-  return { intent, attempt, commit, outboxId: ledgerOutboxId, confirmedAt };
+  return { intent, attempt, commit: currentAtomicWriteFixture(commit), historicalCommit: commit, outboxId: ledgerOutboxId, confirmedAt };
 }

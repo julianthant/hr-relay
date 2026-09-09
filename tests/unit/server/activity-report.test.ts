@@ -12,14 +12,12 @@
  * operator cannot see.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
-import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
-import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
+import { ledgerCommitFixture, fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import {
@@ -762,20 +760,10 @@ describe("the Activity report's write-ledger block (D236)", () => {
     seq: number,
     overrides: Readonly<{ system?: string; instance?: "prod" | "test"; confirmedAt: string }>,
   ): void {
-    const system = overrides.system ?? "ucpath";
-    mkdirSync(ledgerDirectory(w.stateRoot), { recursive: true });
-    const path = ledgerFilePath(w.stateRoot, system, overrides.confirmedAt.slice(0, 10));
-    appendFileSync(path, `${JSON.stringify({
-      outboxId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-      seq,
-      payload: {
-        ...LEDGER_PAYLOAD,
-        system,
-        idempotencyKeyDigest: deriveIdempotencyKeyDigest(system, IDEMPOTENCY_KEY),
-        instance: overrides.instance ?? "prod",
-        confirmedAt: overrides.confirmedAt,
-      },
-    })}\n`, "utf8");
+    const f = ledgerCommitFixture(seq, { ...overrides, runId: fixtureUuid(`activity-history-${String(seq)}`), itemId: fixtureUuid(`activity-history-item-${String(seq)}`) });
+    seedAtomicWriteOwner(w.database, f.commit);
+    w.database.authority.writeIntents.fenceAttempt({ intent: f.intent, attempt: f.attempt });
+    w.database.commitWriteAttempt(f.commit, atomicWriteCheckpoint(f.commit));
   }
 
   it("serves what was filed beside the totals, without reconciling the two", () => {

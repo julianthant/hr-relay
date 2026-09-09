@@ -66,7 +66,7 @@ import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
-import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
@@ -754,7 +754,7 @@ export async function startSeededServer(
     clock,
     appVersion: SEEDED_APP_VERSION,
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),

@@ -359,8 +359,11 @@ export function terminationDurableFootprint(
     TERMINATION_ITEM_ID,
     nodeId,
   );
-  const outboxes = harness.ids.minted()
-    .map((id) => harness.database.authority.durableOutbox.get(id))
-    .filter((row) => row !== undefined);
+  // Retain this shared fixture field for existing callers; its evidence is now
+  // immutable native confirmations, so zero-write assertions remain substantive.
+  const outboxes = harness.database.authority.timelineEvents.page({}).filter(
+    (event) => event.payload.kind === "operation-confirmed"
+      && event.payload.facts.writeIntentId === intent?.writeIntentId,
+  );
   return { intent, checkpoint, outboxes };
 }

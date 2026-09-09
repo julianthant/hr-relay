@@ -1,3 +1,4 @@
+import { reconstructConfirmedOperation } from "../events/confirmed-operation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../domain/protected-input.js";
 import { valueFreeProtectedData } from "../domain/protected-input.js";
 import { isFreshOccurrenceProof } from "./repeat-proof.js";
@@ -51,7 +52,6 @@ import {
   IsoInstantSchema,
   LeaseIdSchema,
   NodeIdSchema,
-  OutboxIdSchema,
   PageStateIdSchema,
   TraceIdSchema,
   WriteAttemptIdSchema,
@@ -654,8 +654,23 @@ export function executeSequencedWriteCommit(
   return authority.withAuthorityTransaction((repositories) => {
     const current = repositories.runs.get(parsed.run.runId);
     if (current === undefined) throw new Error(`run ${parsed.run.runId} does not exist`);
+    const intent = repositories.writeIntents.get(parsed.commit.writeIntentId);
+    const source = intent?.status === "committed" ? repositories.historicalOperationSources.list().find((row) =>
+      row.operationId === parsed.commit.writeIntentId && row.generation === parsed.commit.generation) : undefined;
+    // Released settlements hashed the exact outbox envelopes. Preserve their journal identity
+    // while authenticating the caller's current facts against those retained envelopes.
+    if (source !== undefined && (source.ledgerOutbox.payload.kind !== "ledger-entry"
+      || canonicalJsonStringify(source.ledgerOutbox.payload.entry) !== canonicalJsonStringify(parsed.commit.transaction)
+      || canonicalJsonStringify(source.spanOutbox.payload) !== canonicalJsonStringify(parsed.commit.committedSpan))) {
+      throw new Error("write settlement replay differs from its historical evidence");
+    }
+    const { transaction: _transaction, committedSpan: _committedSpan, ...commitIdentity } = parsed.commit;
+    const fingerprintInput = source === undefined ? parsed : { ...parsed, commit: { ...commitIdentity,
+      ledgerOutbox: { ...source.ledgerOutbox, projection: { state: "pending" } },
+      terminalSpanOutbox: { ...source.spanOutbox, projection: { state: "pending" } },
+    } };
     const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(
-      valueFreeProtectedData(parsed, retainedRunProtectedBindings(current)),
+      valueFreeProtectedData(fingerprintInput, retainedRunProtectedBindings(current)),
     )));
     const advance = () => transition.kind === "advance-running"
       ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
@@ -664,21 +679,24 @@ export function executeSequencedWriteCommit(
       : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
           evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: "resolve-write-present",
           startAt: NodeIdSchema.parse(transition.startAt) });
-    const intent = repositories.writeIntents.get(parsed.commit.writeIntentId);
     if (intent?.status === "committed") {
       const outcome = advance();
       const run = requireLifecycleApplied(outcome);
       if (outcome.state !== "applied-already") throw new Error("committed write has no exact lifecycle settlement replay");
       const report = AtomicWriteCommitReportSchema.parse({ state: "committed", intent,
         attempt: repositories.writeAttempts.get(intent.currentAttemptId),
-        ledgerOutbox: repositories.durableOutbox.get(parsed.commit.ledgerOutbox.outboxId),
-        terminalSpanOutbox: repositories.durableOutbox.get(parsed.commit.terminalSpanOutbox.outboxId),
+        ...(() => {
+          const event = repositories.timelineEvents.get(lifecycleCommandId("timeline-operation-confirmed", { writeIntentId: intent.writeIntentId, generation: intent.generation }));
+          if (event === undefined) throw new Error("confirmed-history-replay-missing");
+          const restored = reconstructConfirmedOperation(repositories, event);
+          return { transaction: restored.ledger, committedSpan: restored.span };
+        })(),
       });
       const checkpoint = repositories.runCheckpoints.get(parsed.checkpoint.workflowId, parsed.checkpoint.itemId,
         parsed.checkpoint.nodeId, parsed.checkpoint.attempt, parsed.checkpoint.claimGeneration);
       if (canonicalJsonStringify(checkpoint) !== canonicalJsonStringify(parsed.checkpoint)
-        || canonicalJsonStringify(report.ledgerOutbox) !== canonicalJsonStringify(parsed.commit.ledgerOutbox)
-        || canonicalJsonStringify(report.terminalSpanOutbox) !== canonicalJsonStringify(parsed.commit.terminalSpanOutbox)
+        || canonicalJsonStringify(report.transaction) !== canonicalJsonStringify(parsed.commit.transaction)
+        || canonicalJsonStringify(report.committedSpan) !== canonicalJsonStringify(parsed.commit.committedSpan)
         || canonicalJsonStringify(intent.completionProof) !== canonicalJsonStringify(parsed.commit.completionProof)
         || intent.confirmedAt !== parsed.commit.confirmedAt || intent.generation !== parsed.commit.generation) {
         throw new Error("write settlement replay differs from its durable evidence");
@@ -772,12 +790,7 @@ export function buildCommittedSettlement(input: CommittedSettlementInput): {
     ? { state: "present", value: intent.bindingProof.expected }
     : { state: "absent" };
   const completionKind = commitContract.writeSafety.completion.kind;
-  const ledgerOutbox = {
-    outboxId: OutboxIdSchema.parse(input.ids.uuid()),
-    aggregate: { kind: "write-intent", writeIntentId: intent.writeIntentId, generation: intent.generation },
-    payload: {
-      kind: "ledger-entry",
-      entry: {
+  const transaction = {
         workflowId: intent.workflowId,
         itemId: intent.itemId,
         system: intent.system,
@@ -800,15 +813,8 @@ export function buildCommittedSettlement(input: CommittedSettlementInput): {
         fencedAt: intent.fencedAt,
         confirmedAt,
         externalOccurredAt: { state: "absent" },
-      },
-    },
-    projection: { state: "pending" },
-    createdAt: confirmedAt,
-  };
-  const terminalSpanOutbox = {
-    outboxId: OutboxIdSchema.parse(input.ids.uuid()),
-    aggregate: { kind: "write-intent", writeIntentId: intent.writeIntentId, generation: intent.generation },
-    payload: {
+      };
+  const committedSpan = {
       kind: "write-committed-span",
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
@@ -823,10 +829,7 @@ export function buildCommittedSettlement(input: CommittedSettlementInput): {
       bindingProofDigest: intent.bindingProofDigest,
       occurredAt: confirmedAt,
       outcome,
-    },
-    projection: { state: "pending" },
-    createdAt: confirmedAt,
-  };
+    };
   const checkpoint = buildTransactionCheckpoint(input, outcome, confirmedAt, input.proofSource);
   const commit = {
     writeIntentId: intent.writeIntentId,
@@ -834,8 +837,8 @@ export function buildCommittedSettlement(input: CommittedSettlementInput): {
     completionProof: { schemaHash: proofSchemaHash, value: input.proofValue },
     confirmedAt,
     outcome,
-    ledgerOutbox,
-    terminalSpanOutbox,
+    transaction,
+    committedSpan,
   };
   return Object.freeze({ commit, checkpoint, outcome });
 }

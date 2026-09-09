@@ -1,3 +1,9 @@
+import { lifecycleCommandId } from "../../domain/identifiers.js";
+import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../domain/ledger-projection.js";
+import { sha256Hex } from "../../domain/sha256.js";
+import { HistoricalOperationSourceSchema, type HistoricalOperationSource } from "../../events/timeline.js";
+import { ArchivedRunRecordSchema, ArchivedTransactionsSchema, type ArchivedTransactions } from "../../domain/archive/model.js";
+import { createTransactionHistory } from "./transaction-history.js";
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../domain/command-groups.js";
 import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../events/confirmed-operation.js";
 import { timelineAppendContent, timelineCheckpointReference } from "../../events/timeline.js";
@@ -81,7 +87,6 @@ import {
   ItemIdSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   NonNegativeIntSchema,
-  OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
@@ -234,15 +239,8 @@ import {
   type NotificationRecord,
   type NotificationRecordOutcome,
 } from "../../domain/notifications.js";
-import {
-  LedgerLeaseOutcomeSchema,
-  LedgerPartitionRecordSchema,
-  LedgerProjectionRecordSchema,
-  ledgerPartitionRecordKey,
-  type LedgerLeaseOutcome,
-  type LedgerPartitionRecord,
-  type LedgerProjectionRecord,
-} from "../../domain/ledger-projection.js";
+
+
 import {
   DiagnosticBundleSchema,
   type DiagnosticBundle,
@@ -276,12 +274,6 @@ import {
   type FixRecord,
   type KnowledgeRecord,
 } from "../../domain/trust/knowledge.js";
-import {
-  LedgerLeaseRequestSchema,
-  LedgerReleaseRequestSchema,
-  LedgerSequenceAssignmentSchema,
-  LedgerAppendConfirmationSchema,
-} from "./ledger-projection-contracts.js";
 import {
   ProviderAdmissionDenyRequestSchema,
   ProviderAdmissionInterruptRequestSchema,
@@ -805,19 +797,7 @@ type NotificationRepository = Readonly<{
  * Ref write-safety §6's serialized ledger projection authority. Executors never touch
  * these rows; the projector does, one `(system, date)` partition at a time.
  */
-type LedgerProjectionRepository = Readonly<{
-  listPendingOutbox(): readonly z.infer<typeof AtomicOutboxRecordSchema>[];
-  getOutbox(outboxId: string): z.infer<typeof AtomicOutboxRecordSchema> | undefined;
-  listLedgerOutboxByWriteIntent(writeIntentId: string): readonly z.infer<typeof AtomicOutboxRecordSchema>[];
-  acquireLease(input: unknown): LedgerLeaseOutcome;
-  releaseLease(input: unknown): LedgerPartitionRecord;
-  getPartition(system: string, date: string): LedgerPartitionRecord | undefined;
-  assignSequence(input: unknown): LedgerProjectionRecord;
-  markAppended(input: unknown): LedgerProjectionRecord;
-  getProjection(outboxId: string): LedgerProjectionRecord | undefined;
-  listProjections(system: string, date: string): readonly LedgerProjectionRecord[];
-  listUnappendedProjections(): readonly LedgerProjectionRecord[];
-}>;
+
 
 type RunResultRepository = Readonly<{
   get(runId: string): RunResultRecord | undefined;
@@ -942,6 +922,8 @@ type VersionPlanRepository = Readonly<{
 
 /** D179: one self-contained archived run per prior-version run a bump swept. */
 type ArchivedRunRepository = Readonly<{
+  transactions(runId: string): ArchivedTransactions;
+  enrichTransactions(input: unknown): ArchivedTransactions;
   bindingMismatches(input: unknown): readonly string[];
   insert(input: unknown): ImmutableInsertResult<ArchivedRunStorageRecord>;
   get(runId: string): ArchivedRunStorageRecord | undefined;
@@ -997,7 +979,7 @@ export type AuthorityRepositories = Readonly<{
   ocrExtractions: OcrExtractionRepository;
   knowledgeRecords: KnowledgeRepository;
   fixRecords: FixRecordRepository;
-  ledgerProjection: LedgerProjectionRepository;
+  historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
   providerAdmissions: ProviderAdmissionRepository;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
@@ -1032,7 +1014,6 @@ export type AuthorityRepositories = Readonly<{
   writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
   }>;
-  durableOutbox: ReadRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
   artifactOutbox: ArtifactOutboxRepository;
   artifactSinkHeads: ArtifactSinkHeadRepository;
   opaque: OpaqueAuthorityRepositories;
@@ -1706,10 +1687,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "write-attempt-columns-match-record",
     sql: "SELECT count(*) AS count FROM run_operation_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
   },
-  {
-    name: "durable-outbox-columns-match-record",
-    sql: "SELECT count(*) AS count FROM operation_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
-  },
+
   {
     name: "failure-fingerprint-column-matches-record",
     sql: "SELECT count(*) AS count FROM failures WHERE fingerprint IS NOT json_extract(record_json, '$.fingerprint')",
@@ -1801,50 +1779,11 @@ const INVARIANT_QUERIES = Object.freeze([
       ) AS count
     `,
   },
-  {
-    name: "ledger-partition-columns-match-record",
-    sql: "SELECT count(*) AS count FROM ledger_partitions WHERE record_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR next_seq IS NOT json_extract(record_json, '$.nextSeq') OR lease_holder IS NOT json_extract(record_json, '$.lease.holder') OR lease_expires_at IS NOT json_extract(record_json, '$.lease.expiresAt') OR lease_generation IS NOT json_extract(record_json, '$.leaseGeneration') OR version IS NOT json_extract(record_json, '$.version')",
-  },
-  {
-    name: "ledger-projection-columns-match-record",
-    sql: "SELECT count(*) AS count FROM ledger_projections WHERE record_key IS NOT json_extract(record_json, '$.outboxId') OR partition_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR seq IS NOT json_extract(record_json, '$.seq') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR line_digest IS NOT json_extract(record_json, '$.lineDigest') OR assigned_at IS NOT json_extract(record_json, '$.assignedAt') OR appended_at IS NOT json_extract(record_json, '$.lifecycle.appendedAt')",
-  },
-  {
-    // Ref write-safety §6: sequences are dense from zero inside a partition, so
-    // `nextSeq` is the count. A gap here means a lost or rewritten entry.
-    name: "ledger-partition-sequence-is-dense",
-    sql: `
-      SELECT count(*) AS count FROM ledger_partitions AS partition
-      WHERE partition.next_seq <> (
-        SELECT count(*) FROM ledger_projections AS projection
-        WHERE projection.partition_key = partition.record_key
-      )
-      OR partition.next_seq <> COALESCE((
-        SELECT max(projection.seq) + 1 FROM ledger_projections AS projection
-        WHERE projection.partition_key = partition.record_key
-      ), 0)
-    `,
-  },
-  {
-    name: "ledger-projection-binds-a-ledger-outbox",
-    sql: `
-      SELECT count(*) AS count FROM ledger_projections AS projection
-      LEFT JOIN operation_outbox AS outbox ON outbox.record_key = projection.record_key
-      WHERE outbox.record_key IS NULL OR outbox.kind IS NOT 'ledger-entry'
-    `,
-  },
-  {
-    name: "projected-ledger-outbox-has-an-appended-line",
-    sql: `
-      SELECT count(*) AS count FROM operation_outbox AS outbox
-      LEFT JOIN ledger_projections AS projection ON projection.record_key = outbox.record_key
-      WHERE outbox.kind = 'ledger-entry'
-        AND json_extract(outbox.record_json, '$.projection.state') = 'projected'
-        AND (projection.record_key IS NULL
-          OR projection.state IS NOT 'appended'
-          OR projection.line_digest IS NOT json_extract(outbox.record_json, '$.projection.projectionFingerprint'))
-    `,
-  },
+
+
+
+
+
   {
     name: "attempting-write-has-current-attempt",
     sql: `
@@ -1864,7 +1803,20 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
-  return [...violations, ...commandGroupLinkViolations(database)];
+  return [...violations, ...commandGroupLinkViolations(database), ...archiveTransactionIntegrityViolations(database)];
+}
+
+/** Frozen transaction presentation is authenticated independently of original archive bytes. */
+function archiveTransactionIntegrityViolations(database: DatabaseSync): readonly string[] {
+  for (const value of database.prepare("SELECT record_key,record_json,transactions_json,transactions_digest FROM archived_runs").all()) {
+    try {
+      const row = z.strictObject({ record_key: z.string(), record_json: z.string(), transactions_json: z.string(), transactions_digest: z.string() }).parse(value);
+      const archive = ArchivedRunRecordSchema.parse(JSON.parse(row.record_json));
+      const section = ArchivedTransactionsSchema.parse(JSON.parse(row.transactions_json));
+      if (sha256Hex(row.transactions_json) !== row.transactions_digest || section.runId !== row.record_key || section.contentDigest !== archive.contentDigest) return ["archive-transactions-integrity-mismatch"];
+    } catch { return ["archive-transactions-integrity-mismatch"]; }
+  }
+  return [];
 }
 
 /** Validate both declared links and missing links from each immutable parent selection. */
@@ -1891,6 +1843,58 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
     ? [] : ["command-group child linkage mismatch"]);
 }
 
+const RETIRED_HISTORY_INVARIANT_QUERIES = [
+  {
+    // Ref write-safety §6: sequences are dense from zero inside a partition, so
+    // `nextSeq` is the count. A gap here means a lost or rewritten entry.
+    name: "ledger-partition-sequence-is-dense",
+    sql: `
+      SELECT count(*) AS count FROM ledger_partitions AS partition
+      WHERE partition.next_seq <> (
+        SELECT count(*) FROM ledger_projections AS projection
+        WHERE projection.partition_key = partition.record_key
+      )
+      OR partition.next_seq <> COALESCE((
+        SELECT max(projection.seq) + 1 FROM ledger_projections AS projection
+        WHERE projection.partition_key = partition.record_key
+      ), 0)
+    `,
+  },
+
+  {
+    name: "durable-outbox-columns-match-record",
+    sql: "SELECT count(*) AS count FROM operation_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
+  },
+  {
+    name: "ledger-partition-columns-match-record",
+    sql: "SELECT count(*) AS count FROM ledger_partitions WHERE record_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR next_seq IS NOT json_extract(record_json, '$.nextSeq') OR lease_holder IS NOT json_extract(record_json, '$.lease.holder') OR lease_expires_at IS NOT json_extract(record_json, '$.lease.expiresAt') OR lease_generation IS NOT json_extract(record_json, '$.leaseGeneration') OR version IS NOT json_extract(record_json, '$.version')",
+  },
+  {
+    name: "ledger-projection-columns-match-record",
+    sql: "SELECT count(*) AS count FROM ledger_projections WHERE record_key IS NOT json_extract(record_json, '$.outboxId') OR partition_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR seq IS NOT json_extract(record_json, '$.seq') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR line_digest IS NOT json_extract(record_json, '$.lineDigest') OR assigned_at IS NOT json_extract(record_json, '$.assignedAt') OR appended_at IS NOT json_extract(record_json, '$.lifecycle.appendedAt')",
+  },
+  {
+    name: "ledger-projection-binds-a-ledger-outbox",
+    sql: `
+      SELECT count(*) AS count FROM ledger_projections AS projection
+      LEFT JOIN operation_outbox AS outbox ON outbox.record_key = projection.record_key
+      WHERE outbox.record_key IS NULL OR outbox.kind IS NOT 'ledger-entry'
+    `,
+  },
+  {
+    name: "projected-ledger-outbox-has-an-appended-line",
+    sql: `
+      SELECT count(*) AS count FROM operation_outbox AS outbox
+      LEFT JOIN ledger_projections AS projection ON projection.record_key = outbox.record_key
+      WHERE outbox.kind = 'ledger-entry'
+        AND json_extract(outbox.record_json, '$.projection.state') = 'projected'
+        AND (projection.record_key IS NULL
+          OR projection.state IS NOT 'appended'
+          OR projection.line_digest IS NOT json_extract(outbox.record_json, '$.projection.projectionFingerprint'))
+    `,
+  },
+] as const;
+
 const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
 /** Historical backups retain every invariant executable in their released DDL.
  * Compile against an empty immutable replay, never against operator state; only
@@ -1902,7 +1906,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
     try {
       for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= version)) for (const statement of migration.statements) reference.exec(statement);
       const taskColumns = new Set(reference.prepare(`PRAGMA table_info(${version < 33 ? "tasks" : "workflow_runs"})`).all().map((row) => row.name));
-      queries = INVARIANT_QUERIES.flatMap((entry) => {
+      queries = [...INVARIANT_QUERIES, ...RETIRED_HISTORY_INVARIANT_QUERIES].flatMap((entry) => {
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
@@ -2036,6 +2040,36 @@ function timelineEvidenceRepositories(database: DatabaseSync) {
   };
 }
 
+/** Authenticate even retry-shared sources whose original run timeline was deleted. */
+function readHistoricalOperationSource(database: DatabaseSync, json: string): HistoricalOperationSource {
+  const source = parseJsonRecord(HistoricalOperationSourceSchema, json);
+  if (source.ledgerOutbox.payload.kind !== "ledger-entry" || source.spanOutbox.payload.kind !== "write-committed-span") throw new Error("historical-source-kind-mismatch");
+  const ledger = source.ledgerOutbox.payload.entry;
+  const span = source.spanOutbox.payload;
+  const evidence = timelineEvidenceRepositories(database);
+  const eventId = lifecycleCommandId("timeline-operation-confirmed", { writeIntentId: source.operationId, generation: source.generation });
+  const rawEvent = database.prepare("SELECT * FROM timeline_events WHERE record_key = ?").get(eventId);
+  const attempts = database.prepare("SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ? AND generation = ?")
+    .all(source.operationId, source.generation).map((row) => parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json));
+  const attempt = attempts[0];
+  if (attempts.length !== 1 || attempt === undefined) throw new Error("historical-source-attempt-mismatch");
+  let event;
+  if (rawEvent !== undefined) event = timelineEventFromRow(rawEvent);
+  else {
+    const checkpoints = database.prepare("SELECT record_json FROM run_checkpoints WHERE run_id = ?").all(source.runId)
+      .map((row) => parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json))
+      .filter((row) => row.workflowId === ledger.workflowId && row.itemId === ledger.itemId && row.attempt === ledger.attempt
+        && row.writtenAt === ledger.confirmedAt && canonicalJsonStringify(row.output.value) === canonicalJsonStringify(span.outcome));
+    const checkpoint = checkpoints[0];
+    if (checkpoints.length !== 1 || checkpoint === undefined) throw new Error("historical-source-checkpoint-mismatch");
+    event = confirmedOperationTimeline({ ledger, span, checkpoint, writeAttemptId: attempt.writeAttemptId, recordedAt: ledger.confirmedAt });
+  }
+  const restored = reconstructConfirmedOperation(evidence, event);
+  if (canonicalJsonStringify(restored.ledger) !== canonicalJsonStringify(ledger)
+    || canonicalJsonStringify(restored.span) !== canonicalJsonStringify(span)) throw new Error("historical-source-settlement-disagreement");
+  return source;
+}
+
 function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false): void {
     if (record.scope.kind === "worker") return;
     const run = readTimelineRun(database, record.scope.runId);
@@ -2085,6 +2119,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
       config_snapshots: AUTHORITY_RECORD_SCHEMA_REGISTRY.settings_snapshots,
       dry_run_scenario_results: AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results,
     } : {}),
+    ...(presentTables?.has("operation_outbox") === true ? { operation_outbox: AtomicOutboxRecordSchema } : {}),
+    ...(presentTables?.has("ledger_partitions") === true ? { ledger_partitions: LedgerPartitionRecordSchema, ledger_projections: LedgerProjectionRecordSchema } : {}),
     ...(presentTables?.has("leases") === true ? { leases: WorkerLeaseRecordSchema } : {}),
     ...(presentTables?.has("duo_ceremony_leases") === true ? { duo_ceremony_leases: DuoCeremonyLeaseRecordSchema } : {}),
     ...(presentTables?.has("start_plans") === true ? { start_plans: StartPlanRecordSchema } : {}),
@@ -2110,7 +2146,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
         if (table === "timeline_events") {
           const event = timelineEventFromRow(database.prepare("SELECT * FROM timeline_events WHERE record_key = ?").get(row.record_key));
           assertTimelineOwner(database, event);
-        } else parseJsonRecord(schema, row.record_json);
+        } else if (table === "timeline_operation_sources") readHistoricalOperationSource(database, row.record_json);
+        else parseJsonRecord(schema, row.record_json);
       } catch (error) {
         throw new Error(
           `authority table ${table} record ${row.record_key} failed strict record schema validation: ${errorMessage(error)}`,
@@ -2139,9 +2176,9 @@ function authorityContentFingerprint(database: DatabaseSync): string {
     } else {
       hash.update("[");
       let rowIndex = 0;
-      const schema = name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
+      const schema = name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" ? AuthorityRecordFingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json${name === "commands" ? ", parent_command_id" : ""} FROM ${name} ORDER BY record_key
+        SELECT record_key, record_json${name === "commands" ? ", parent_command_id" : name === "archived_runs" ? ", transactions_json, transactions_digest" : ""} FROM ${name} ORDER BY record_key
       `).iterate()) {
         const row = schema.parse(rawRow);
         if (rowIndex > 0) hash.update(",");
@@ -2162,7 +2199,6 @@ function pendingCounts(database: DatabaseSync) {
     pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count("SELECT count(*) AS count FROM workflow_workers"),
-    durableOutbox: count("SELECT count(*) AS count FROM operation_outbox WHERE json_extract(record_json, '$.projection.state') = 'pending'"),
     runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
@@ -3490,21 +3526,14 @@ export class AuthorityDatabase implements Disposable {
       this.#writeCommitHooks?.afterStorageStep("intent-state");
       this.#replaceWriteAttempt(committedAttempt);
       this.#writeCommitHooks?.afterStorageStep("attempt-state");
-      this.#insertDurableOutbox(parsed.ledgerOutbox);
-      this.#writeCommitHooks?.afterStorageStep("ledger-outbox");
-      this.#insertDurableOutbox(parsed.terminalSpanOutbox);
-      this.#writeCommitHooks?.afterStorageStep("terminal-span-outbox");
-      if (parsed.ledgerOutbox.payload.kind !== "ledger-entry" || parsed.terminalSpanOutbox.payload.kind !== "write-committed-span") {
-        throw new Error("confirmed-history-source-kind");
-      }
       this.authority.runCheckpoints.insert(checkpoint);
       this.#writeCommitHooks?.afterStorageStep("transaction-checkpoint");
-      const history = confirmedOperationTimeline({ ledger: parsed.ledgerOutbox.payload.entry,
-        span: parsed.terminalSpanOutbox.payload, checkpoint, writeAttemptId: committedAttempt.writeAttemptId,
+      const history = confirmedOperationTimeline({ ledger: parsed.transaction,
+        span: parsed.committedSpan, checkpoint, writeAttemptId: committedAttempt.writeAttemptId,
         recordedAt: this.#clock.now().toISOString() });
       const reconstructed = reconstructConfirmedOperation(this.authority, history);
-      if (canonicalJsonStringify(reconstructed.ledger) !== canonicalJsonStringify(parsed.ledgerOutbox.payload.entry)
-        || canonicalJsonStringify(reconstructed.span) !== canonicalJsonStringify(parsed.terminalSpanOutbox.payload)) {
+      if (canonicalJsonStringify(reconstructed.ledger) !== canonicalJsonStringify(parsed.transaction)
+        || canonicalJsonStringify(reconstructed.span) !== canonicalJsonStringify(parsed.committedSpan)) {
         throw new Error("confirmed-history-lossless-reconstruction-failed");
       }
       this.authority.timelineEvents.append(history);
@@ -3514,8 +3543,8 @@ export class AuthorityDatabase implements Disposable {
         state: "committed",
         intent: committedIntent,
         attempt: committedAttempt,
-        ledgerOutbox: parsed.ledgerOutbox,
-        terminalSpanOutbox: parsed.terminalSpanOutbox,
+        transaction: parsed.transaction,
+        committedSpan: parsed.committedSpan,
       });
     });
   }
@@ -4405,298 +4434,6 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #buildLedgerProjectionRepository(): AuthorityRepositories["ledgerProjection"] {
-    const readPartition = (system: string, date: string): LedgerPartitionRecord | undefined => this.#readRecord(
-      "ledger_partitions",
-      ledgerPartitionRecordKey(system, date),
-      LedgerPartitionRecordSchema,
-    );
-    const writePartition = (record: LedgerPartitionRecord, mode: "insert" | "update"): void => {
-      const key = ledgerPartitionRecordKey(record.system, record.date);
-      const json = canonicalJsonStringify(record);
-      const holder = record.lease.state === "held" ? record.lease.holder : null;
-      const expiresAt = record.lease.state === "held" ? record.lease.expiresAt : null;
-      const result = mode === "insert"
-        ? this.#database.prepare(`
-            INSERT INTO ledger_partitions
-              (record_key, system, ledger_date, next_seq, lease_holder, lease_expires_at, lease_generation, version, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            key, record.system, record.date, record.nextSeq, holder, expiresAt,
-            record.leaseGeneration, record.version, json, record.createdAt,
-          )
-        : this.#database.prepare(`
-            UPDATE ledger_partitions
-            SET next_seq = ?, lease_holder = ?, lease_expires_at = ?, lease_generation = ?, version = ?, record_json = ?
-            WHERE record_key = ? AND version = ?
-          `).run(
-            record.nextSeq, holder, expiresAt, record.leaseGeneration,
-            record.version, json, key, record.version - 1,
-          );
-      const changes = sqliteChanges(result.changes);
-      if (changes !== 1) throw new Error(`ledger partition ${key} ${mode} affected ${String(changes)} rows`);
-    };
-    const assertHeldLease = (
-      partition: LedgerPartitionRecord | undefined,
-      projectorId: string,
-      leaseGeneration: number,
-      key: string,
-    ): LedgerPartitionRecord => {
-      if (partition === undefined) throw new Error(`ledger partition ${key} does not exist`);
-      if (partition.lease.state !== "held"
-        || partition.lease.holder !== projectorId
-        || partition.leaseGeneration !== leaseGeneration) {
-        throw new Error(`ledger partition ${key} is not leased to ${projectorId} at generation ${String(leaseGeneration)}`);
-      }
-      return partition;
-    };
-    return Object.freeze({
-      listPendingOutbox: () => {
-        const rows = this.#database.prepare(`
-          SELECT record_json FROM operation_outbox
-          WHERE kind = 'ledger-entry'
-            AND json_extract(record_json, '$.projection.state') = 'pending'
-          ORDER BY created_at, record_key
-        `).all();
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          AtomicOutboxRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
-      },
-      getOutbox: (outboxId: string) => this.#readRecord(
-        "operation_outbox",
-        OutboxIdSchema.parse(outboxId),
-        AtomicOutboxRecordSchema,
-      ),
-      /**
-       * Every LEDGER outbox row one write intent produced, oldest first.
-       *
-       * This is what lets the archive name the ledger LINES a run filed
-       * without copying them: the sweep walks the run's intents, this walks
-       * each intent's outbox rows, and `getProjection` turns each into a
-       * `(system, date, seq)` pointer. `operation_outbox_intent_id_idx` is the
-       * index it rides. `kind` is filtered here rather than by the caller
-       * because a `write-committed-span` row is not a ledger line and a
-       * pointer to one would name a partition that does not exist.
-       */
-      listLedgerOutboxByWriteIntent: (writeIntentId: string) => {
-        const rows = this.#database.prepare(`
-          SELECT record_json FROM operation_outbox
-          WHERE write_intent_id = ? AND kind = 'ledger-entry'
-          ORDER BY created_at, record_key
-        `).all(WriteIntentIdSchema.parse(writeIntentId));
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          AtomicOutboxRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
-      },
-      acquireLease: (input: unknown): LedgerLeaseOutcome => {
-        const request = LedgerLeaseRequestSchema.parse(input);
-        return this.#authorityWrite("ledger_partitions", () => {
-          const current = readPartition(request.system, request.date);
-          if (current === undefined) {
-            const created = LedgerPartitionRecordSchema.parse({
-              system: request.system,
-              date: request.date,
-              nextSeq: 0,
-              lease: { state: "held", holder: request.projectorId, expiresAt: request.expiresAt },
-              leaseGeneration: 1,
-              version: 1,
-              createdAt: request.now,
-              updatedAt: request.now,
-            });
-            writePartition(created, "insert");
-            return {
-              result: LedgerLeaseOutcomeSchema.parse({ state: "acquired", partition: created }),
-              changes: 1,
-            };
-          }
-          const live = current.lease.state === "held"
-            && Date.parse(current.lease.expiresAt) > Date.parse(request.now);
-          if (live && current.lease.state === "held" && current.lease.holder !== request.projectorId) {
-            return {
-              result: LedgerLeaseOutcomeSchema.parse({ state: "held", partition: current }),
-              changes: 0,
-            };
-          }
-          const renewed = LedgerPartitionRecordSchema.parse({
-            ...current,
-            lease: { state: "held", holder: request.projectorId, expiresAt: request.expiresAt },
-            leaseGeneration: current.leaseGeneration + 1,
-            version: current.version + 1,
-            updatedAt: request.now,
-          });
-          writePartition(renewed, "update");
-          return {
-            result: LedgerLeaseOutcomeSchema.parse({ state: "acquired", partition: renewed }),
-            changes: 1,
-          };
-        });
-      },
-      releaseLease: (input: unknown) => {
-        const request = LedgerReleaseRequestSchema.parse(input);
-        const key = ledgerPartitionRecordKey(request.system, request.date);
-        return this.#authorityWrite("ledger_partitions", () => {
-          const current = assertHeldLease(
-            readPartition(request.system, request.date),
-            request.projectorId,
-            request.leaseGeneration,
-            key,
-          );
-          const released = LedgerPartitionRecordSchema.parse({
-            ...current,
-            lease: { state: "unleased" },
-            version: current.version + 1,
-            updatedAt: request.now,
-          });
-          writePartition(released, "update");
-          return { result: released, changes: 1 };
-        });
-      },
-      getPartition: (system: string, date: string) => readPartition(system, date),
-      assignSequence: (input: unknown) => {
-        const request = LedgerSequenceAssignmentSchema.parse(input);
-        const key = ledgerPartitionRecordKey(request.system, request.date);
-        return this.#authorityWrite("ledger_projections", () => {
-          const current = assertHeldLease(
-            readPartition(request.system, request.date),
-            request.projectorId,
-            request.leaseGeneration,
-            key,
-          );
-          const existing = this.#readRecord("ledger_projections", request.outboxId, LedgerProjectionRecordSchema);
-          if (existing !== undefined) {
-            // Idempotent by outbox id. A second assignment for the same entry
-            // would mint a second sequence for one filed transaction.
-            if (existing.lineDigest !== request.lineDigest) {
-              throw new Error(`ledger outbox ${request.outboxId} was already assigned sequence ${String(existing.seq)} with a different line`);
-            }
-            return { result: existing, changes: 0 };
-          }
-          const outbox = this.#readRecord("operation_outbox", request.outboxId, AtomicOutboxRecordSchema);
-          if (outbox === undefined || outbox.payload.kind !== "ledger-entry") {
-            throw new Error(`ledger outbox ${request.outboxId} is not a durable ledger-entry row`);
-          }
-          const record = LedgerProjectionRecordSchema.parse({
-            outboxId: request.outboxId,
-            system: request.system,
-            date: request.date,
-            seq: current.nextSeq,
-            lineDigest: request.lineDigest,
-            projectedBy: request.projectorId,
-            lifecycle: { state: "assigned" },
-            assignedAt: request.assignedAt,
-          });
-          const inserted = this.#database.prepare(`
-            INSERT INTO ledger_projections
-              (record_key, partition_key, system, ledger_date, seq, state, line_digest, assigned_at, appended_at, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
-          `).run(
-            record.outboxId, key, record.system, record.date, record.seq,
-            record.lifecycle.state, record.lineDigest, record.assignedAt,
-            canonicalJsonStringify(record), record.assignedAt,
-          );
-          if (sqliteChanges(inserted.changes) !== 1) {
-            throw new Error(`ledger projection ${request.outboxId} insertion affected no rows`);
-          }
-          writePartition(LedgerPartitionRecordSchema.parse({
-            ...current,
-            nextSeq: current.nextSeq + 1,
-            version: current.version + 1,
-            updatedAt: request.assignedAt,
-          }), "update");
-          return { result: record, changes: 1 };
-        });
-      },
-      markAppended: (input: unknown) => {
-        const request = LedgerAppendConfirmationSchema.parse(input);
-        const key = ledgerPartitionRecordKey(request.system, request.date);
-        return this.#authorityWrite("ledger_projections", () => {
-          assertHeldLease(
-            readPartition(request.system, request.date),
-            request.projectorId,
-            request.leaseGeneration,
-            key,
-          );
-          const existing = this.#readRecord("ledger_projections", request.outboxId, LedgerProjectionRecordSchema);
-          if (existing === undefined) throw new Error(`ledger projection ${request.outboxId} has no assigned sequence`);
-          if (existing.lineDigest !== request.lineDigest) {
-            throw new Error(`ledger projection ${request.outboxId} appended a line that does not match its assignment`);
-          }
-          if (existing.lifecycle.state === "appended" && existing.lifecycle.appendedAt !== request.appendedAt) {
-            throw new Error(`ledger projection ${request.outboxId} was already appended at ${existing.lifecycle.appendedAt}`);
-          }
-          const appended = LedgerProjectionRecordSchema.parse({
-            ...existing,
-            lifecycle: { state: "appended", appendedAt: request.appendedAt },
-          });
-          let changes = 0;
-          if (existing.lifecycle.state === "assigned") {
-            const updated = this.#database.prepare(`
-              UPDATE ledger_projections
-              SET state = 'appended', appended_at = ?, record_json = ?
-              WHERE record_key = ? AND state = 'assigned'
-            `).run(request.appendedAt, canonicalJsonStringify(appended), request.outboxId);
-            if (sqliteChanges(updated.changes) !== 1) {
-              throw new Error(`ledger projection ${request.outboxId} append confirmation affected no rows`);
-            }
-            changes += 1;
-          }
-          // Marking the outbox is separate and separately idempotent: the crash
-          // window between the line landing and the outbox flipping is exactly
-          // what recovery has to be able to close without re-appending.
-          const outbox = this.#readRecord("operation_outbox", request.outboxId, AtomicOutboxRecordSchema);
-          if (outbox === undefined) throw new Error(`ledger outbox ${request.outboxId} disappeared before projection`);
-          if (outbox.projection.state === "projected") {
-            if (outbox.projection.projectionFingerprint !== request.lineDigest) {
-              throw new Error(`ledger outbox ${request.outboxId} was already projected with a different line`);
-            }
-            return { result: appended, changes };
-          }
-          const projected = AtomicOutboxRecordSchema.parse({
-            ...outbox,
-            projection: {
-              state: "projected",
-              projectedAt: request.appendedAt,
-              projectionFingerprint: request.lineDigest,
-            },
-          });
-          const marked = this.#database.prepare(`
-            UPDATE operation_outbox SET record_json = ? WHERE record_key = ?
-          `).run(canonicalJsonStringify(projected), request.outboxId);
-          if (sqliteChanges(marked.changes) !== 1) {
-            throw new Error(`ledger outbox ${request.outboxId} projection marking affected no rows`);
-          }
-          return { result: appended, changes: changes + 1 };
-        });
-      },
-      getProjection: (outboxId: string) => this.#readRecord(
-        "ledger_projections",
-        OutboxIdSchema.parse(outboxId),
-        LedgerProjectionRecordSchema,
-      ),
-      listProjections: (system: string, date: string) => {
-        const rows = this.#database.prepare(`
-          SELECT record_json FROM ledger_projections WHERE partition_key = ? ORDER BY seq
-        `).all(ledgerPartitionRecordKey(system, date));
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          LedgerProjectionRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
-      },
-      /** The crash window: a sequence was handed out, the line never landed. */
-      listUnappendedProjections: () => {
-        const rows = this.#database.prepare(`
-          SELECT record_json FROM ledger_projections WHERE state = 'assigned' ORDER BY partition_key, seq
-        `).all();
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          LedgerProjectionRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
-      },
-    });
-  }
-
 
   #buildAuthorityRepositories(): AuthorityRepositories {
     const opaque = (tableInput: z.input<typeof OpaqueAuthorityTableSchema>): ImmutableRepository<OpaqueAuthorityRecord> => {
@@ -5150,7 +4887,7 @@ export class AuthorityDatabase implements Disposable {
           )));
         },
       }),
-      ledgerProjection: this.#buildLedgerProjectionRepository(),
+      historicalOperationSources: { list: () => this.#database.prepare("SELECT record_json FROM timeline_operation_sources ORDER BY record_key").all().map((row) => readHistoricalOperationSource(this.#database, JsonRowSchema.parse(row).record_json)) },
       runResults: Object.freeze({
         get: (runId: string) => this.#readRecord(
           "run_results",
@@ -5828,6 +5565,30 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       archivedRuns: Object.freeze({
+        transactions: (runId: string) => this.#withReadSnapshot(() => {
+          const archive = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
+          if (archive === undefined) throw new Error("archive-transactions-owner-missing");
+          const raw = z.strictObject({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }).parse(
+            this.#database.prepare("SELECT transactions_json,transactions_digest FROM archived_runs WHERE record_key=?").get(runId));
+          if (raw.transactions_json === null || raw.transactions_digest === null) throw new Error("archive-transactions-missing");
+          const section = ArchivedTransactionsSchema.parse(JSON.parse(raw.transactions_json));
+          if (sha256Hex(raw.transactions_json) !== raw.transactions_digest || section.runId !== runId || section.contentDigest !== archive.contentDigest) throw new Error("archive-transactions-integrity-mismatch");
+          return section;
+        }),
+        enrichTransactions: (input: unknown) => this.#authorityWrite("archived_runs", () => {
+          const section = ArchivedTransactionsSchema.parse(input);
+          const archive = this.#readRecord("archived_runs", section.runId, ArchivedRunStorageRecordSchema);
+          if (archive === undefined || archive.contentDigest !== section.contentDigest) throw new Error("archive-transactions-owner-mismatch");
+          const raw = z.object({ transactions_json: z.string().nullable() }).parse(this.#database.prepare("SELECT transactions_json FROM archived_runs WHERE record_key=?").get(section.runId));
+          const json = canonicalJsonStringify(section);
+          if (raw.transactions_json !== null) {
+            const existing = this.authority.archivedRuns.transactions(section.runId);
+            if (canonicalJsonStringify(existing) !== json) throw new Error("archive-transactions-divergent-enrichment");
+            return { result: existing, changes: 0 };
+          }
+          const result = this.#database.prepare("UPDATE archived_runs SET transactions_json=?,transactions_digest=? WHERE record_key=?").run(json, sha256Hex(json), section.runId);
+          return { result: section, changes: sqliteChanges(result.changes) };
+        }),
         bindingMismatches: (input: unknown) => {
           const archived = ArchivedRunStorageRecordSchema.parse(input);
           const run = this.#readRunRow(archived.runId);
@@ -5869,6 +5630,7 @@ export class AuthorityDatabase implements Disposable {
               record.appVersion.state === "present" ? record.appVersion.value : null,
               record.contentDigest, json, record.archivedAt,
             );
+            this.authority.archivedRuns.enrichTransactions(createTransactionHistory(this.authority).capture(record.runId, record.contentDigest, record.archivedAt, record.evidence.ledgerPartitions));
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
           });
         },
@@ -6138,10 +5900,9 @@ export class AuthorityDatabase implements Disposable {
               JOIN run_operations AS intent ON intent.record_key = attempt.write_intent_id
               WHERE json_extract(intent.record_json, '$.runId') = ?
             `),
-            durableOutbox: count(`
-              SELECT count(*) AS count FROM operation_outbox AS outbox
-              JOIN run_operations AS intent ON intent.record_key = outbox.write_intent_id
-              WHERE json_extract(intent.record_json, '$.runId') = ?
+            confirmedOperations: count(`
+              SELECT count(*) AS count FROM timeline_events
+              WHERE run_id = ? AND json_extract(record_json, '$.payload.kind') = 'operation-confirmed'
             `),
           });
         },
@@ -6158,9 +5919,7 @@ export class AuthorityDatabase implements Disposable {
           )));
         },
       }),
-      durableOutbox: Object.freeze({
-        get: (outboxId: string) => this.#readRecord("operation_outbox", outboxId, AtomicOutboxRecordSchema),
-      }),
+
       artifactOutbox: Object.freeze({
         insert: (input: unknown) => {
           const record = ArtifactOutboxStorageRecordSchema.parse(input);
@@ -6904,10 +6663,7 @@ export class AuthorityDatabase implements Disposable {
           // Keep an entire operation group while another retained retry owns or
           // references its evidence. The last owner collects the held group.
           for (const operationId of evidence.operationIds) {
-            remove("ledger_projections", `DELETE FROM ledger_projections WHERE record_key IN (
-              SELECT record_key FROM operation_outbox WHERE write_intent_id = ?
-            )`, operationId);
-            remove("operation_outbox", "DELETE FROM operation_outbox WHERE write_intent_id = ?", operationId);
+            remove("timeline_operation_sources", "DELETE FROM timeline_operation_sources WHERE json_extract(record_json, '$.operationId') = ?", operationId);
             remove("run_operation_attempts", "DELETE FROM run_operation_attempts WHERE write_intent_id = ?", operationId);
             remove("run_operations", "DELETE FROM run_operations WHERE record_key = ?", operationId);
           }
@@ -8350,24 +8106,12 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityDirty = true;
   }
 
-  #insertDurableOutbox(record: z.infer<typeof AtomicOutboxRecordSchema>): void {
-    const json = canonicalJsonStringify(record);
-    const result = this.#database.prepare(`
-      INSERT INTO operation_outbox (
-        record_key, write_intent_id, generation, kind, record_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(record.outboxId, record.aggregate.writeIntentId, record.aggregate.generation, record.payload.kind, json, record.createdAt);
-    const changes = sqliteChanges(result.changes);
-    if (changes !== 1) throw new Error(`durable outbox ${record.outboxId} insertion affected ${String(changes)} rows`);
-    this.#authorityDirty = true;
-  }
-
   #assertAtomicCommitMatchesIntent(
     input: z.infer<typeof AtomicWriteCommitInputSchema>,
     intent: Extract<WriteIntentRecord, { status: "attempting" }>,
   ): void {
-    const ledger = input.ledgerOutbox.payload;
-    const span = input.terminalSpanOutbox.payload;
+    const ledger = { kind: "ledger-entry", entry: input.transaction };
+    const span = input.committedSpan;
     if (ledger.kind !== "ledger-entry" || span.kind !== "write-committed-span" || input.outcome.disposition !== "committed") {
       throw new Error("atomic write commit payload arms were not narrowed after strict parsing");
     }
@@ -8387,7 +8131,7 @@ export class AuthorityDatabase implements Disposable {
       const ledgerValue = ledger.entry[field as keyof typeof ledger.entry];
       const spanValue = span[field as keyof typeof span];
       if (ledgerValue !== value || spanValue !== value) {
-        throw new Error(`atomic write outboxes ${field} do not match intent ${intent.writeIntentId}`);
+        throw new Error(`atomic confirmed facts ${field} do not match intent ${intent.writeIntentId}`);
       }
     }
     if (ledger.entry.fencedAt !== intent.fencedAt
@@ -8395,10 +8139,10 @@ export class AuthorityDatabase implements Disposable {
       || ledger.entry.proofSource !== input.outcome.proofSource
       || span.occurredAt !== input.confirmedAt
       || canonicalJsonStringify(ledger.entry.proof) !== canonicalJsonStringify(input.completionProof)) {
-      throw new Error(`atomic write outboxes do not match proof/timing for intent ${intent.writeIntentId}`);
+      throw new Error(`atomic confirmed facts do not match proof/timing for intent ${intent.writeIntentId}`);
     }
     if (ledger.entry.traceId !== span.traceId) {
-      throw new Error(`atomic write outboxes do not share trace identity for intent ${intent.writeIntentId}`);
+      throw new Error(`atomic confirmed facts do not share trace identity for intent ${intent.writeIntentId}`);
     }
     if (intent.bindingProof.kind === "subject-match") {
       if (ledger.entry.subject.state !== "present"
@@ -8408,12 +8152,7 @@ export class AuthorityDatabase implements Disposable {
     } else if (ledger.entry.subject.state !== "absent") {
       throw new Error(`ledger subject must be absent for unscoped binding proof on intent ${intent.writeIntentId}`);
     }
-    if (input.ledgerOutbox.projection.state !== "pending"
-      || input.terminalSpanOutbox.projection.state !== "pending"
-      || input.ledgerOutbox.createdAt !== input.confirmedAt
-      || input.terminalSpanOutbox.createdAt !== input.confirmedAt) {
-      throw new Error(`atomic write outboxes must begin pending at confirmation time for intent ${intent.writeIntentId}`);
-    }
+
   }
 
   #buildProjectionRepositories(): ProjectionRepositories {

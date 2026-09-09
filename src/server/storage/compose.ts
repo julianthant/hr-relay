@@ -53,7 +53,7 @@ import {
   descriptorSetHash,
 } from "../dashboard/compose.js";
 import { createRunQueueProjection } from "../dashboard/projectors/run-queue-projection.js";
-import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../infra/sqlite/transaction-history.js";
 import {
   OfflineSpanRootRepairService,
   type SpanRootRepairReport,
@@ -151,7 +151,7 @@ function formatReport(report: StorageDoctorReport): string {
     const values = report.counts.values;
     lines.push(
       `pending: commands ${String(values.pendingCommands)} · write intents ${String(values.unresolvedWriteIntents)} `
-      + `· leases ${String(values.leases)} · outbox ${String(values.durableOutbox)} `
+      + `· leases ${String(values.leases)} `
       + `· terminal outbox ${String(values.runTerminalOutbox)} · provider reservations ${String(values.providerReservations)} `
       + `· artifact outbox ${String(values.artifactOutbox)}`,
     );
@@ -298,7 +298,7 @@ function rebuildStagedProjections(
         clock,
         appVersion,
         descriptorSetHash: setHash,
-        ledger: createLedgerReadThrough(stateRoot),
+        ledger: createTransactionHistory(staged.authority),
         authority: {
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),

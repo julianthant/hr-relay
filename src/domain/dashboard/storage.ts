@@ -64,7 +64,6 @@ export const StoragePendingCountsWireSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
   unresolvedWriteIntents: NonNegativeIntSchema,
   leases: NonNegativeIntSchema,
-  durableOutbox: NonNegativeIntSchema,
   runTerminalOutbox: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,

@@ -34,7 +34,6 @@ import {
   TERMINATION_NODE,
   compositionClaimRunning,
   compositionContext,
-  compositionDurableFootprint,
   compositionHarness,
   compositionPendingSet,
   compositionQueuedRun,
@@ -95,8 +94,10 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
   it("a restart attempt reuses the completed write's durable proof: zero new stage, fence or click", async () => {
     const h = harness();
     const first = await fileTermination(h);
-    const before = compositionDurableFootprint(h, "ucpath", TERMINATION_NODE, TERMINATION_IDEMPOTENCY_KEY);
-    assert.notEqual(before.intent, undefined);
+    const before = h.database.authority.writeIntents.findByPermanentKey("ucpath", TERMINATION_IDEMPOTENCY_KEY);
+    const confirmations = h.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed");
+    assert.equal(confirmations.length, 1);
+    assert.notEqual(before, undefined);
 
     const { run, claim } = compositionClaimRunning(
       h.database, h.clock, restartRun(UUID_5, 2, first.envelope.runId), TERMINATION_NODE,
@@ -107,8 +108,9 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
     const output = Reflect.get(outcome as object, "output") as { receipt: { transactionId: string } };
     assert.equal(output.receipt.transactionId, COMPOSITION_RECEIPT, "the reused settlement carries the first attempt's receipt");
     assert.deepEqual(worldCounts(h), { stages: 1, clicks: 1, rows: 1 }, "the restart neither staged nor clicked");
-    const after = compositionDurableFootprint(h, "ucpath", TERMINATION_NODE, TERMINATION_IDEMPOTENCY_KEY);
-    assert.deepEqual(after.intent, before.intent, "the permanent intent is byte-for-byte the first attempt's");
+    const after = h.database.authority.writeIntents.findByPermanentKey("ucpath", TERMINATION_IDEMPOTENCY_KEY);
+    assert.deepEqual(h.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed"), confirmations);
+    assert.deepEqual(after, before, "the permanent intent is byte-for-byte the first attempt's");
     assert.equal(h.database.authority.writeIntents.countDryRunEvidenceByRun(UUID_5).writeAttempts, 0, "no attempt row under the restart run");
   });
 

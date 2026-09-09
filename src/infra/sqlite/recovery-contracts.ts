@@ -26,7 +26,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const HistoricalBackupSchemaVersionSchema = z.number().int().refine(
-  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 38,
+  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 39,
   "schema version is not an admitted historical authority layout",
 );
 const BackupSchemaVersionSchema = z.number().int().refine(
@@ -39,7 +39,6 @@ export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
   unresolvedWriteIntents: NonNegativeIntSchema,
   leases: NonNegativeIntSchema,
-  durableOutbox: NonNegativeIntSchema,
   runTerminalOutbox: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,

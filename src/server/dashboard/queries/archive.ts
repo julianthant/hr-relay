@@ -47,7 +47,7 @@ import {
   versionBumpPlanFingerprint,
 } from "../../../domain/archive/model.js";
 import { archiveRetention } from "../../../domain/archive/retention.js";
-import type { LedgerReadThrough } from "../../../infra/ledger/ledger-read-through.js";
+
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import {
   assessVersionBumpFromRuns,
@@ -212,6 +212,7 @@ import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetail
 import { TargetNotFoundError } from "../../failures.js";
 
 export interface ArchiveQueryDeps {
+  readonly ledger: unknown;
   readonly reader: Pick<RunRecordService, "read" | "list">;
   readonly clock: Clock;
   readonly appVersion: string;
@@ -244,7 +245,7 @@ export interface ArchiveQueryDeps {
    * filed real HR transactions, which is the most dangerous empty state this
    * surface has.
    */
-  readonly ledger: LedgerReadThrough;
+
 }
 
 function requireArchivedRun(reader: ArchiveQueryDeps["reader"], runId: string): void {
@@ -611,8 +612,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
        * the ledger is a flat append-only file whose entry schema is the same
        * one every reader in this tree uses.
        */
-      ledger: deps.ledger.resolve(record.evidence.ledgerPartitions, hasProtectedTransactionInput({
-        envelope: { workflow: record.workflowId }, input: record.input })),
+      ledger: repositories.archivedRuns.transactions(record.runId).lines,
       /*
        * Computed from the record's OWN fields, the D86 policy constants and
        * `now` — no store read, no descriptor. Reading the artifact bytes back

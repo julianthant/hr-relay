@@ -29,8 +29,6 @@ export const AuthorityTableNameSchema = z.enum([
   "activity_person_pseudonym_generations",
   "knowledge_records",
   "fix_records",
-  "ledger_partitions",
-  "ledger_projections",
   "provider_budget_counters",
   "provider_admissions",
   "workflow_workers",
@@ -49,7 +47,6 @@ export const AuthorityTableNameSchema = z.enum([
   "ocr_approvals",
   "run_operations",
   "run_operation_attempts",
-  "operation_outbox",
   "artifact_outbox",
   "artifact_sink_heads",
   "intake_sessions",
@@ -64,6 +61,7 @@ export const AuthorityTableNameSchema = z.enum([
   "deleted_runs",
   "database_upgrades",
   "timeline_events",
+  "timeline_operation_sources",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([
@@ -161,7 +159,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39)]),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -205,7 +203,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   tombstoneBackfill: TombstoneBackfillCountsSchema,
   upgradeId: FingerprintSchema,
   phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39)]),
+  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40)]),
   backupManifest: z.string().min(1),
   ordinaryRevision: PositiveIntSchema,
   ordinaryFingerprint: FingerprintSchema,

@@ -1,6 +1,6 @@
 import { deriveBulkChildCommand } from "../../domain/command-groups.js";
 import { timelineSourcesForUpgrade, readPreservedTimelineSources, type TimelineSourceSnapshot } from "../events/timeline-import.js";
-import { importTimelineSources } from "../sqlite/timeline-conversion.js";
+import { convertOperationHistory, freezeConvertedArchiveTransactions, importTimelineSources } from "../sqlite/timeline-conversion.js";
 /** D336 temporary stopped SQLite conversion adapter; Phase 2.6 owns deletion. */
 import { DatabaseSync } from "node:sqlite";
 import { openSync, closeSync, lstatSync, unlinkSync } from "node:fs";
@@ -85,7 +85,10 @@ export function inspectHistoricalSettingsExposure(path: string | undefined): rea
   if (path === undefined) return [];
   const database = new DatabaseSync(path, { readOnly: true });
   try {
-    const exposed = database.prepare(`SELECT 1 FROM ${settingsSnapshotsTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} WHERE json_type(record_json, '$.config.operator.timekeeperName') IS NOT NULL LIMIT 1`).get();
+    const table = settingsSnapshotsTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version);
+    const exposed = database.prepare(table === "settings_snapshots"
+      ? "SELECT 1 FROM settings_snapshots WHERE json_type(record_json, '$.config.operator.timekeeperName') IS NOT NULL LIMIT 1"
+      : "SELECT 1 FROM config_snapshots WHERE json_type(record_json, '$.config.operator.timekeeperName') IS NOT NULL LIMIT 1").get();
     return exposed === undefined ? [] : ["operator.timekeeperName"];
   } finally { database.close(); }
 }
@@ -239,6 +242,10 @@ export function convertSettingsDatabase(args: Readonly<{
             if (migration.version === 32 && index === 2 && sources.ordinary.revision > 1) {
               database.prepare("UPDATE settings_current SET record_json=json_set(record_json,'$.settings',json(?)) WHERE record_key='current'").run(canonicalJsonStringify(sources.ordinary.settings));
             }
+            if (migration.version === 40 && statement === "DROP TABLE ledger_projections" && existed) {
+              if (args.timelineSources === undefined) throw new Error("operation-history-sources-required");
+              convertOperationHistory(database, args.timelineSources, now);
+            }
             database.exec(statement);
           }
           if (links !== undefined) applyCommandGroupLinks(database, links);
@@ -267,12 +274,13 @@ export function convertSettingsDatabase(args: Readonly<{
             const corpus = inspectSpanAuthorityCorpusReadOnly(historyDirectory, historyDirectory);
             if (corpus.roots.some((root) => root.streamIssues.length > 0)) throw new Error("invalid span ordering or identity");
           } catch { throw new Error("timeline-import-span-history-invalid"); }
-          const counts = importTimelineSources(database, verifiedSources, now);
+          const counts = from >= 38 ? { imported: 0, replayed: 0, excludedDeleted: 0 } : importTimelineSources(database, verifiedSources, now);
           if (counts.replayed !== 0) throw new Error("timeline-import-unexpected-existing-events");
           timelineImport = { state: "imported", manifestDigest: currentSources.digest,
             copyDirectory: args.timelineCopyDirectory, backupSha256: backupEvidence.manifest.sha256,
             imported: counts.imported, excludedDeleted: counts.excludedDeleted };
         }
+        freezeConvertedArchiveTransactions(database, now);
         const revision = from >= 32 ? sources.ordinary.revision : writeOrdinaryConversion(database, sources, now, upgradeId);
         pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
           by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport, backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,

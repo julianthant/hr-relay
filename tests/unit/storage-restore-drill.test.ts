@@ -1,3 +1,11 @@
+import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
+import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
+import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT } from "../fixtures/phase1c-contract-fixtures.js";
+import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../../src/domain/ids.js";
+import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../src/core/run-record-service.js";
+import { randomUUID } from "node:crypto";
 import { upgradeStorage } from "../../src/server/storage/upgrade.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 /**
@@ -1060,3 +1068,133 @@ function probePid(pid: number): Readonly<{ state: "present" | "absent" }> {
     return { state: typeof error === "object" && error !== null && Reflect.get(error, "code") === "ESRCH" ? "absent" : "present" };
   }
 }
+
+describe("T restore-loss warning after real worker recovery", () => {
+  const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
+  const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_COMMIT);
+  function paths() {
+    const repoRoot = mkdtempSync(join(tmpdir(), "history-restore-loss-")); roots.push(repoRoot);
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "history-restore", version: "0.1.0" }));
+    return { repoRoot, stateRoot, authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority") };
+  }
+  function createAuthority(p: ReturnType<typeof paths>) {
+    mkdirSync(p.stateRoot, { recursive: true });
+    const db = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 250, migrationOwner: "history-restore" }, CLOCK); db.close();
+  }
+it.each([false, true])("restore confirmation evidence survives recovery accounting (backup after commit: %s)", async (backupAfterCommit) => {
+  CLOCK.setWall(new Date(WRITE_INTENT_ATTEMPTING.fencedAt));
+  const p = paths(); createAuthority(p);
+  const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
+  const inspect = (path: string) => {
+    const db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "r1c-read",
+      openMode: "storage-doctor-read-only-no-migrate" }, CLOCK);
+    try {
+      const run = db.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId); assert.ok(run);
+      const attempt = db.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId); assert.ok(attempt);
+      return { runId: run.envelope.runId, version: run.version, lifecycle: run.lifecycle.state,
+        claimedAt: "claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : undefined, claimGeneration: run.claimGeneration,
+        attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state,
+        operationStatus: db.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status,
+        checkpoint: db.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId,
+          checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration) !== undefined,
+        events: db.authority.timelineEvents.page({}).map((record) => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
+    } finally { db.close(); }
+  };
+  const initial = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-seed" }, CLOCK);
+  try {
+    seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT);
+    const queued = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId); assert.ok(queued);
+    createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
+      runQueuedSpanEvent({ run: queued, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic restored commit" }));
+    const claim = initial.authority.runs.claimNext({ workflow: WRITE_INTENT_ATTEMPTING.workflowId,
+      workerId: "r1c-restore-worker", now: CLOCK.now().toISOString() });
+    assert.equal(claim.state, "claimed");
+    const service = new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID },
+      publishQueued: () => { throw new Error("test must not enqueue"); } });
+    const validating = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
+      claim: { workerId: "r1c-restore-worker", claimGeneration: 1 }, lifecycle: { state: "validating",
+        workerId: "r1c-restore-worker", claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
+    assert.equal(validating.state, "applied", JSON.stringify(validating));
+    const running = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
+      claim: { workerId: "r1c-restore-worker", claimGeneration: 1 }, lifecycle: { state: "running",
+        workerId: "r1c-restore-worker", claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
+        currentNodeId: checkpoint.nodeId } });
+    assert.equal(running.state, "applied");
+    initial.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+  } finally { initial.close(); }
+  const before = inspect(p.authorityPath);
+  assert.equal(before.lifecycle, "running"); assert.equal(before.outcome, "attempting");
+  let backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
+  assert.equal(backup.exitCode, 0, backup.output);
+  let manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
+  CLOCK.setWall(new Date(ATOMIC_WRITE_COMMIT.confirmedAt));
+  const newer = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-commit" }, CLOCK);
+  try {
+    const service = new RunRecordService({ database: newer, clock: CLOCK, ids: { uuid: randomUUID },
+      publishQueued: () => { throw new Error("test must not enqueue"); } });
+    const claim = { workerId: WorkerIdSchema.parse("r1c-restore-worker"),
+      claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
+    executeSequencedWriteCommit(newer, { run: { runId: before.runId, expectedVersion: before.version, claim },
+      commit: ATOMIC_WRITE_COMMIT, checkpoint }, { kind: "advance-running", claim, claimedAt: before.claimedAt!,
+      port: workerRunLifecyclePort(service) });
+  } finally { newer.close(); }
+  const committed = inspect(p.authorityPath);
+  assert.equal(committed.version, before.version + 1); assert.equal(committed.attemptId, before.attemptId);
+  assert.equal(committed.outcome, "committed"); assert.equal(committed.checkpoint, true);
+  if (backupAfterCommit) {
+    // A preserved confirmation already present in the restored backup is accounted for.
+    backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
+    assert.equal(backup.exitCode, 0, backup.output);
+    manifest = readdirSync(p.backupDirectory).filter((name) => name.endsWith(".manifest.json")).sort().at(-1);
+    assert.ok(manifest);
+  }
+  const restore = await composeStorageCommand(rebuildRuntimeIsolation,
+    ["restore", "--from", join(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
+  assert.equal(restore.exitCode, 0, restore.output);
+  const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
+  const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+  const current = inspect(p.authorityPath);
+  const preserved = inspect(join(p.stateRoot, "suspects", restoredReport.suspectFileName));
+  assert.deepEqual(current, backupAfterCommit ? committed : before); assert.deepEqual(preserved, committed);
+  assert.equal(doctor.exitCode, backupAfterCommit ? 0 : 1, doctor.output);
+  if (backupAfterCommit) {
+    const healthy = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK);
+    try {
+      const service = new RunRecordService({ database: healthy, clock: CLOCK, ids: { uuid: randomUUID },
+        publishQueued: () => { throw new Error("test must not enqueue"); } });
+      assert.equal(service.renewClaim({ commandId: randomUUID(), runId: current.runId,
+        claim: { workerId: "r1c-restore-worker", claimGeneration: current.claimGeneration } }).state, "applied");
+    } finally { healthy.close(); }
+    const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+    assert.equal(accounted.exitCode, 0, accounted.output);
+    assert.ok(inspect(p.authorityPath).version > committed.version);
+    return;
+  }
+  CLOCK.advanceWall(60 * 60 * 1000);
+  const mutationDb = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-sweep" }, CLOCK);
+  try {
+    const service = new RunRecordService({ database: mutationDb, clock: CLOCK, ids: { uuid: randomUUID },
+      publishQueued: () => { throw new Error("test must not enqueue"); } });
+    const outcomes = sweepWorkerClaims(mutationDb, workerRunLifecyclePort(service), {
+      staleBefore: CLOCK.now().toISOString(), now: CLOCK.now().toISOString() });
+    assert.equal(outcomes.length, 1);
+    const outcome = outcomes[0]; assert.ok(outcome);
+    assert.equal(outcome.state, "recovery-required");
+    if (outcome.state !== "recovery-required") throw new Error("expected parked recovery");
+    assert.equal(outcome.parked, true);
+  } finally { mutationDb.close(); }
+  const afterSweep = inspect(p.authorityPath);
+  assert.equal(afterSweep.version, committed.version);
+  assert.equal(afterSweep.lifecycle, "parked-write");
+  assert.equal(afterSweep.outcome, "attempting"); assert.equal(afterSweep.checkpoint, false);
+  const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+  assert.equal(doctorAfter.exitCode, 1, doctorAfter.output);
+  const afterReport = z.object({ spanAuthority: SpanAuthorityReconciliationWireSchema }).parse(JSON.parse(doctorAfter.output));
+  assert.equal(afterReport.spanAuthority.state, "degraded");
+  if (afterReport.spanAuthority.state !== "degraded") throw new Error("expected restore-loss warning");
+  assert.ok(afterReport.spanAuthority.problems.some((problem) => problem.state === "restore-loss"
+    && problem.runId === current.runId && problem.possibleExternalWrite === true));
+});
+
+});

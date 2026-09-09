@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
+import { ConfigSchema } from "../../src/domain/config/schema.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../src/domain/authority.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
@@ -11,9 +12,15 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js"
 import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
 import { AUTHORITY_APPLICATION_ID, DATABASE_TABLE_RENAMES, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
-import { CONFIG_SNAPSHOT, NOW, HASH_A, HASH_B, UUID_5, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT as UNPINNED_CONFIG_SNAPSHOT, NOW, HASH_A, HASH_B, UUID_5, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
+// The released fingerprint oracle must not depend on the checkout's absolute path.
+const CONFIG_SNAPSHOT = { ...UNPINNED_CONFIG_SNAPSHOT, config: ConfigSchema.parse({
+  ...UNPINNED_CONFIG_SNAPSHOT.config,
+  paths: Object.fromEntries(Object.entries(UNPINNED_CONFIG_SNAPSHOT.config.paths)
+    .map(([key, value]) => [key, value.replace(process.cwd(), "/synthetic/database-renames")])),
+}) };
 const clock = manualClock(new Date(NOW));
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -105,33 +112,36 @@ function fixture() {
 }
 
 describe("seven database table renames", () => {
-  it("migrates populated v38 once, preserving all row bytes, links, journal and generation", () => {
+  it("migrates populated v38 once, preserving rows and links with explicit stopped-upgrade journal generations", async () => {
     const f = fixture();
     const before = new Map(Object.entries(DATABASE_TABLE_RENAMES).map(([old, current]) => [current, rows(f.path, old)]));
     const tallies = rows(f.path, "deleted_runs");
     const historical = inspectAuthorityBackupReadOnly(f.path);
-    // Captured with the untouched reader at 27e073c0c69e1ff54fb699c805175589e8f016b3.
-    assert.equal(historical.authorityContentFingerprint, "14a5057e1f70a3f5a821934a85fbb5511784d4c2cc115f8db39fdf7a0aa021b5");
+    // Reverified with the unchanged master reader at 52558d04 on this path-pinned v38 fixture.
+    assert.equal(historical.authorityContentFingerprint, "2c771d5730d5e02b834422ec973ec98a10f39fa629c2cd7732354b68ccfdde01");
     const original = readFileSync(f.path);
     const readOnly = open(f.path, true);
     try {
       assert.equal(readOnly.getMeta().schemaVersion, 38);
+      assert.equal(readOnly.getMeta().authorityGeneration, 7);
       assert.deepEqual(readOnly.readUpgradePhases(), { state: "available", phases: [
         { phase: "baseline", fromSchemaVersion: 0, toSchemaVersion: 38, recordedAt: NOW },
       ] });
     } finally { readOnly.close(); }
     assert.deepEqual(readFileSync(f.path), original);
+    assert.throws(() => open(f.path), /upgrade-required/u);
+    await f.backup(); await f.upgrade();
     const db = open(f.path);
     try {
-      assert.equal(db.getMeta().schemaVersion, 39);
-      assert.equal(db.getMeta().authorityGeneration, 7);
+      assert.equal(db.getMeta().schemaVersion, 40);
+      assert.equal(db.getMeta().authorityGeneration, 9); // committed + settled upgrade journal writes
       assert.deepEqual(db.authority.diagnosticBundles.get(UUID_5), diagnostic);
       assert.equal(db.authority.diagnosticBundles.listAttachments(UUID_5).length, 1);
       assert.deepEqual(db.authority.evidenceReceipts.get(UUID_5), receipt);
       assert.deepEqual(db.authority.configSnapshots.get(CONFIG_SNAPSHOT.configSnapshotId), CONFIG_SNAPSHOT);
       assert.deepEqual(db.authority.dryRunScenarioResults.get(UUID_8), dryrun);
       assert.equal(db.authority.diagnosticBundles.insert(diagnostic).state, "existing");
-      assert.equal(db.getMeta().authorityGeneration, 7);
+      assert.equal(db.getMeta().authorityGeneration, 9); // committed + settled upgrade journal writes
       assert.throws(() => db.authority.diagnosticBundles.insert({ ...diagnostic, contentDigest: HASH_B }), /different content/u);
       assert.throws(() => db.authority.diagnosticBundles.purge(UUID_5, NOW), /pinned/u);
       assert.throws(() => db.authority.evidenceReceipts.insert({ ...receipt, descriptorFingerprint: HASH_B }), /different content/u);
@@ -139,11 +149,17 @@ describe("seven database table renames", () => {
         db.authority.dryRunScenarioResults.insert({ ...dryrun, resultId: UUID_7 });
         db.authority.dryRunScenarioResults.insert({ ...dryrun, resultId: UUID_5 });
       });
-      assert.equal(db.getMeta().authorityGeneration, 8);
+      assert.equal(db.getMeta().authorityGeneration, 10);
     } finally { db.close(); }
     for (const [current, prior] of before) {
       if (current === "database_state" || current === "dryrun_results") continue;
-      assert.deepEqual(rows(f.path, current), prior, `${current} must preserve every column and JSON byte`);
+      const actual = rows(f.path, current);
+      if (current === "database_upgrades") {
+        // Stopped conversion appends its own journal; all released entries remain byte-exact.
+        const keys = new Set(prior.map((row) => row.record_key));
+        assert.ok(actual.length > prior.length);
+        assert.deepEqual(actual.filter((row) => keys.has(row.record_key)), prior);
+      } else assert.deepEqual(actual, prior, `${current} must preserve every column and JSON byte`);
     }
     assert.deepEqual(rows(f.path, "dryrun_results").find((row) => row.record_key === UUID_8), before.get("dryrun_results")?.[0]);
     assert.deepEqual(rows(f.path, "deleted_runs"), tallies);
@@ -204,7 +220,7 @@ describe("seven database table renames", () => {
     assert.equal(inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint, before.authorityContentFingerprint);
     assert.deepEqual(rows(f.path, "authority_upgrades"), journal);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 39);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 40);
     assert.equal((await f.upgrade()).state, "converted");
     const settled = rows(f.path, "database_upgrades");
     assert.equal(settled.length, journal.length + 2);

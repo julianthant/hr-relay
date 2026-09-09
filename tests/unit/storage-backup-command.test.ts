@@ -1,7 +1,7 @@
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../fixtures/phase1c-contract-fixtures.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../../src/domain/ids.js";
@@ -414,7 +414,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     const claim = { workerId: WorkerIdSchema.parse("r1c-restore-worker"),
       claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
     executeSequencedWriteCommit(newer, { run: { runId: before.runId, expectedVersion: before.version, claim },
-      commit: ATOMIC_WRITE_COMMIT, checkpoint }, { kind: "advance-running", claim, claimedAt: before.claimedAt!,
+      commit: currentAtomicWriteFixture(ATOMIC_WRITE_COMMIT), checkpoint }, { kind: "advance-running", claim, claimedAt: before.claimedAt!,
       port: workerRunLifecyclePort(service) });
   } finally { newer.close(); }
   const committed = inspect(p.authorityPath);

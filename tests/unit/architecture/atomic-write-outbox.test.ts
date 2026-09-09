@@ -1,11 +1,10 @@
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
-import { AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
@@ -17,19 +16,22 @@ import {
   type AuthorityWriteCommitHooks,
 } from "../../../src/infra/sqlite/index.js";
 import {
-  ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
   LEDGER_OUTBOX_RECORD,
   NOW,
   SUBJECT_EVIDENCE,
   UNSCOPED_PROOF,
   SPAN_OUTBOX_RECORD,
   UUID_4,
-  UUID_7,
-  UUID_8,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
+
+const ATOMIC_WRITE_COMMIT = HISTORICAL_ATOMIC_WRITE_COMMIT;
+function commitHistory(database: AuthorityDatabase, input: unknown, checkpoint: unknown) {
+  return database.commitWriteAttempt(currentAtomicWriteFixture(input), checkpoint);
+}
 
 const CLOCK = manualClock(new Date(NOW));
 const roots: string[] = [];
@@ -73,12 +75,12 @@ describe("Phase 1c atomic write authority commit", () => {
       ? { ...checkpoint, writtenAt: "2026-01-01T00:00:00.000Z" }
       : { ...checkpoint, output: { ...checkpoint.output, value: {} } };
     const before = database.getMeta().authorityGeneration;
-    assert.throws(() => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, invalid), /confirmed-history-checkpoint-outcome-mismatch/u);
+    assert.throws(() => commitHistory(database, ATOMIC_WRITE_COMMIT, invalid), /confirmed-history-checkpoint-outcome-mismatch/u);
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
     assert.equal(database.authority.writeAttempts.get(UUID_4)?.outcome.state, "attempting");
-    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
-    assert.equal(database.authority.durableOutbox.get(UUID_8), undefined);
+    assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
+    assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
     assert.deepEqual(database.authority.timelineEvents.page({}), []);
   });
 
@@ -86,17 +88,17 @@ describe("Phase 1c atomic write authority commit", () => {
     const database = open(databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
-    const report = database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
+    const report = commitHistory(database, ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
 
     assert.equal(AtomicWriteCommitReportSchema.safeParse(report).success, true);
     assert.equal(report.intent.status, "committed");
     assert.equal(report.attempt.outcome.state, "committed");
-    assert.equal(AtomicOutboxRecordSchema.safeParse(report.ledgerOutbox).success, true);
-    assert.equal(AtomicOutboxRecordSchema.safeParse(report.terminalSpanOutbox).success, true);
+    assert.deepEqual(report.transaction, LEDGER_OUTBOX_RECORD.payload.entry);
+    assert.deepEqual(report.committedSpan, SPAN_OUTBOX_RECORD.payload);
     assert.deepEqual(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId), report.intent);
     assert.deepEqual(database.authority.writeAttempts.get(UUID_4), report.attempt);
-    assert.deepEqual(database.authority.durableOutbox.get(UUID_7), LEDGER_OUTBOX_RECORD);
-    assert.deepEqual(database.authority.durableOutbox.get(UUID_8), SPAN_OUTBOX_RECORD);
+    assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 1);
+    assert.equal("durableOutbox" in database.authority, false);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit + 1);
     const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
     assert.deepEqual(database.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId,
@@ -118,14 +120,14 @@ describe("Phase 1c atomic write authority commit", () => {
       const generationBeforeCommit = database.getMeta().authorityGeneration;
 
       assert.throws(
-        () => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)),
+        () => commitHistory(database, ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)),
         new RegExp(`injected failure after ${failedStep}`),
       );
       assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
       assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
       assert.equal(database.authority.writeAttempts.get(UUID_4)?.outcome.state, "attempting");
-      assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
-      assert.equal(database.authority.durableOutbox.get(UUID_8), undefined);
+      assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
+      assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
       assert.deepEqual(database.authority.timelineEvents.page({}), []);
       const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
       assert.equal(database.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId,
@@ -138,7 +140,7 @@ describe("Phase 1c atomic write authority commit", () => {
     const database = open(databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
-    assert.throws(() => database.commitWriteAttempt({
+    assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
       terminalSpanOutbox: {
         ...SPAN_OUTBOX_RECORD,
@@ -150,17 +152,17 @@ describe("Phase 1c atomic write authority commit", () => {
           },
         },
       },
-    }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /terminal span outcome must equal/);
+    }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /atomic confirmation proof and outcome must agree/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
-    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+    assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
   });
 
   it("rejects mismatched ledger/terminal trace identity before changing authority", () => {
     const database = open(databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
-    assert.throws(() => database.commitWriteAttempt({
+    assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
       ledgerOutbox: {
         ...LEDGER_OUTBOX_RECORD,
@@ -169,17 +171,17 @@ describe("Phase 1c atomic write authority commit", () => {
           entry: { ...LEDGER_OUTBOX_RECORD.payload.entry, traceId: "se-120001-2222" },
         },
       },
-    }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /same trace identity/);
+    }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /atomic confirmation traceId mismatch/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
-    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+    assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
   });
 
   it("rejects ledger subject evidence that disagrees with the fenced subject proof", () => {
     const database = open(databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
-    assert.throws(() => database.commitWriteAttempt({
+    assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
       ledgerOutbox: {
         ...LEDGER_OUTBOX_RECORD,
@@ -194,7 +196,7 @@ describe("Phase 1c atomic write authority commit", () => {
     }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /ledger subject does not match the fenced binding proof/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
-    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
+    assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
   });
 
   it("rejects subject-bearing ledger output for an explicitly unscoped fence", () => {
@@ -241,7 +243,7 @@ describe("Phase 1c atomic write authority commit", () => {
       },
     };
     const generationBeforeCommit = database.getMeta().authorityGeneration;
-    assert.throws(() => database.commitWriteAttempt({
+    assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
       ledgerOutbox,
       terminalSpanOutbox,
@@ -258,7 +260,7 @@ describe("Phase 1c atomic write authority commit", () => {
     // surface rather than weakening it — the arm below still proves the only
     // writer is the atomic commit.
     assert.deepEqual(Object.keys(database.authority.writeAttempts), ["get", "listByIntent"]);
-    assert.deepEqual(Object.keys(database.authority.durableOutbox), ["get"]);
+    assert.equal("durableOutbox" in database.authority, false);
 
     const adapterPath = join(REPO_ROOT, "src/infra/sqlite/authority-database.ts");
     const adapter = readFileSync(adapterPath, "utf8");

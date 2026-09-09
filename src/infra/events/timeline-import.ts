@@ -5,23 +5,26 @@ import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema } from "../../domain/ids.js";
+import { LedgerEntrySchema } from "../../domain/ledger.js";
 import { SpanEventWireSchema, type SpanEventWire } from "../../events/types.js";
 import { TimelineAppendSchema, type TimelineAppend } from "../../events/timeline.js";
 import type { VerifiedBackup } from "../sqlite/backup-service.js";
 
 const SourceFileSchema = z.strictObject({
-  relativePath: z.string().regex(/^spans\/[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/),
+  relativePath: z.string().regex(/^(?:spans|ledger)\/[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/),
   sha256: FingerprintSchema,
   bytes: z.number().int().nonnegative(),
   lines: z.number().int().nonnegative(),
 });
-export const TimelineSourceManifestSchema = z.strictObject({
-  version: z.literal(1),
+const ManifestFields = {
   sourceDatabaseIdentity: FingerprintSchema,
   backupSha256: FingerprintSchema,
   authorityGeneration: z.number().int().nonnegative(),
-  files: z.array(SourceFileSchema),
-}).superRefine(({ files }, context) => {
+};
+export const TimelineSourceManifestSchema = z.discriminatedUnion("version", [
+  z.strictObject({ version: z.literal(1), ...ManifestFields, files: z.array(SourceFileSchema.extend({ relativePath: z.string().regex(/^spans\/[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/) })) }),
+  z.strictObject({ version: z.literal(2), ...ManifestFields, files: z.array(SourceFileSchema) }),
+]).superRefine(({ files }, context) => {
   const paths = files.map((file) => file.relativePath);
   if (new Set(paths).size !== paths.length || paths.some((path, index) => index > 0 && path <= paths[index - 1])) {
     context.addIssue({ code: "custom", message: "timeline source files must be unique and sorted" });
@@ -46,6 +49,7 @@ function sourceError(path: string, line?: number): Error {
 }
 
 function parseLines(path: string, bytes: Buffer): readonly SpanEventWire[] {
+  if (path.startsWith("ledger/")) { parseLedgerSource(path, bytes); return []; }
   if (bytes.length > 8 * 1024 * 1024) throw new TimelineSourceError("timeline-source-file-limit");
   const file = /^spans\/(.+)-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(path);
   if (file === null || !z.iso.date().safeParse(file[2]).success) throw sourceError(path);
@@ -130,28 +134,29 @@ function fileBytes(path: string): Buffer {
 /** Read-only preflight. The caller holds stopped-system admission before application. */
 export function inspectTimelineSources(stateRoot: string, backup: VerifiedBackup): TimelineSourceSnapshot {
   const files = withinSourceDirectory(stateRoot, () => {
-    if (!existsSync("spans")) return [];
-    return withinSourceDirectory("spans", () => {
-      const names = readdirSync(".").sort();
-      if (names.length > 128) throw new TimelineSourceError("timeline-source-file-count-limit");
-      let totalBytes = 0;
-      return names.map((name) => {
-        const relativePath = `spans/${name}`;
-        if (!SourceFileSchema.shape.relativePath.safeParse(relativePath).success) throw sourceError(relativePath);
-        const bytes = fileBytes(name);
-        totalBytes += bytes.length;
-        if (totalBytes > 16 * 1024 * 1024) throw new TimelineSourceError("timeline-source-corpus-limit");
-        return { relativePath, bytes };
+    let totalBytes = 0;
+    return (backup.manifest.schemaVersion >= 38 ? ["ledger"] : ["spans", "ledger"]).flatMap((directory) => {
+      if (!existsSync(directory)) return [];
+      return withinSourceDirectory(directory, () => {
+        const names = readdirSync(".").sort();
+        if (names.length > 128) throw new TimelineSourceError("timeline-source-file-count-limit");
+        return names.map((name) => {
+          const relativePath = `${directory}/${name}`;
+          if (!SourceFileSchema.shape.relativePath.safeParse(relativePath).success) throw sourceError(relativePath);
+          const bytes = fileBytes(name); totalBytes += bytes.length;
+          if (totalBytes > 16 * 1024 * 1024) throw new TimelineSourceError("timeline-source-corpus-limit");
+          return { relativePath, bytes };
+        });
       });
-    });
+    }).sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   });
   const manifest = TimelineSourceManifestSchema.parse({
-    version: 1,
+    version: 2,
     sourceDatabaseIdentity: backup.manifest.sourceDatabaseIdentity,
     backupSha256: backup.manifest.sha256,
     authorityGeneration: backup.manifest.authorityGeneration,
     files: files.map((file) => ({ relativePath: file.relativePath, sha256: digest(file.bytes),
-      bytes: file.bytes.length, lines: parseLines(file.relativePath, file.bytes).length })),
+      bytes: file.bytes.length, lines: sourceLineCount(file.relativePath, file.bytes) })),
   });
   return { manifest, digest: digest(canonicalJsonStringify(manifest)), files };
 }
@@ -167,7 +172,7 @@ function validateSnapshot(snapshot: TimelineSourceSnapshot): void {
     const expected = manifest.files[index];
     if (expected === undefined || expected.relativePath !== file.relativePath
       || !Buffer.isBuffer(file.bytes) || expected.bytes !== file.bytes.length
-      || expected.sha256 !== digest(file.bytes) || expected.lines !== parseLines(file.relativePath, file.bytes).length) {
+      || expected.sha256 !== digest(file.bytes) || expected.lines !== sourceLineCount(file.relativePath, file.bytes)) {
       throw new TimelineSourceError("timeline-source-snapshot-mismatch");
     }
     totalBytes += file.bytes.length;
@@ -200,15 +205,16 @@ export function preserveTimelineSources(snapshot: TimelineSourceSnapshot, backup
       const temporary = mkdtempSync(".pending-");
       try {
         withinSourceDirectory(temporary, () => {
-          mkdirSync("spans", { mode: 0o700 });
-          withinSourceDirectory("spans", () => {
-            for (const file of snapshot.files) {
-              const path = basename(file.relativePath);
-              writeFileSync(path, file.bytes, { flag: "wx", mode: 0o400 });
-              fsync(path);
-            }
-            fsync(".");
-          });
+          for (const directory of ["spans", "ledger"]) {
+            mkdirSync(directory, { mode: 0o700 });
+            withinSourceDirectory(directory, () => {
+              for (const file of snapshot.files.filter((file) => file.relativePath.startsWith(`${directory}/`))) {
+                const path = basename(file.relativePath);
+                writeFileSync(path, file.bytes, { flag: "wx", mode: 0o400 }); fsync(path);
+              }
+              fsync(".");
+            });
+          }
           writeFileSync("manifest.json", canonicalJsonStringify(snapshot.manifest), { flag: "wx", mode: 0o400 });
           fsync("manifest.json");
           fsync(".");
@@ -234,16 +240,18 @@ export function readPreservedTimelineSources(directory: string, expectedDigest: 
       || manifest.backupSha256 !== backup.manifest.sha256
       || manifest.sourceDatabaseIdentity !== backup.manifest.sourceDatabaseIdentity
       || manifest.authorityGeneration !== backup.manifest.authorityGeneration) throw new TimelineSourceError("timeline-source-copy-binding-mismatch");
-    const files = withinSourceDirectory("spans", () => {
-      const names = readdirSync(".").sort().map((name) => `spans/${name}`);
-      if (canonicalJsonStringify(names) !== canonicalJsonStringify(manifest.files.map((file) => file.relativePath))) {
-        throw new TimelineSourceError("timeline-source-copy-membership-mismatch");
-      }
-      return manifest.files.map((file) => {
-        const bytes = fileBytes(basename(file.relativePath));
-        if (bytes.length !== file.bytes || digest(bytes) !== file.sha256
-          || parseLines(file.relativePath, bytes).length !== file.lines) throw new TimelineSourceError("timeline-source-copy-content-mismatch");
-        return { relativePath: file.relativePath, bytes };
+    const files = ["ledger", "spans"].flatMap((directory) => {
+      const expected = manifest.files.filter((file) => file.relativePath.startsWith(`${directory}/`));
+      // Released span-only recovery copies predate the ledger directory.
+      if (directory === "ledger" && expected.length === 0 && !existsSync(directory)) return [];
+      return withinSourceDirectory(directory, () => {
+        const names = readdirSync(".").sort().map((name) => `${directory}/${name}`);
+        if (canonicalJsonStringify(names) !== canonicalJsonStringify(expected.map((file) => file.relativePath))) throw new TimelineSourceError("timeline-source-copy-membership-mismatch");
+        return expected.map((file) => {
+          const bytes = fileBytes(basename(file.relativePath));
+          if (bytes.length !== file.bytes || digest(bytes) !== file.sha256 || sourceLineCount(file.relativePath, bytes) !== file.lines) throw new TimelineSourceError("timeline-source-copy-content-mismatch");
+          return { relativePath: file.relativePath, bytes };
+        });
       });
     });
     const snapshot = { manifest, digest: expectedDigest, files };
@@ -291,4 +299,28 @@ export function timelineImportRecords(snapshot: TimelineSourceSnapshot, recorded
         fileDigest: sha256, line: index + 1 },
     }));
   });
+}
+
+function parseLedgerSource(path: string, bytes: Buffer) {
+  if (bytes.length > 8 * 1024 * 1024) throw new TimelineSourceError("timeline-source-file-limit");
+  const file = /^ledger\/(.+)-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(path);
+  if (file === null || !z.iso.date().safeParse(file[2]).success) throw sourceError(path);
+  if (bytes.length === 0) return [];
+  if (bytes.at(-1) !== 10) throw sourceError(path);
+  let text: string;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw sourceError(path); }
+  return text.slice(0, -1).split("\n").map((line, index) => {
+    try {
+      const entry = LedgerEntrySchema.parse(JSON.parse(line));
+      if (entry.payload.system !== file[1] || entry.seq !== index) throw sourceError(path, index + 1);
+      return { entry, line, relativePath: path, sha256: digest(bytes), lineNumber: index + 1 };
+    } catch { throw sourceError(path, index + 1); }
+  });
+}
+function sourceLineCount(path: string, bytes: Buffer): number {
+  return path.startsWith("ledger/") ? parseLedgerSource(path, bytes).length : parseLines(path, bytes).length;
+}
+export function historicalLedgerSources(snapshot: TimelineSourceSnapshot) {
+  validateSnapshot(snapshot);
+  return snapshot.files.filter((file) => file.relativePath.startsWith("ledger/")).flatMap((file) => parseLedgerSource(file.relativePath, file.bytes));
 }

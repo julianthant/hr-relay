@@ -1,3 +1,4 @@
+import { currentAtomicWriteFixture } from "../helpers/timeline-write-fixture.js";
 import { CredentialStoreApplyOutcomeSchema } from "../../../src/domain/config/credential-store.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
 import { SettingsRecordSchema, initialSettingsFileRecord } from "../../../src/domain/config/settings.js";
@@ -745,7 +746,6 @@ const AUTHORITY_PENDING_COUNTS = {
   pendingCommands: 1,
   unresolvedWriteIntents: 1,
   leases: 1,
-  durableOutbox: 1,
   runTerminalOutbox: 1,
   providerReservations: 1,
   artifactOutbox: 1,
@@ -1294,7 +1294,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { state: "existing", intent: WRITE_INTENT_FIXTURES[2] },
   ] },
   { name: "AtomicWriteCommitStorageStep", schema: AtomicWriteCommitStorageStepSchema, fixtures: AtomicWriteCommitStorageStepSchema.options },
-  { name: "AtomicWriteCommitInput", schema: AtomicWriteCommitInputSchema, fixtures: [ATOMIC_WRITE_COMMIT], openFixturePaths: ["outcome.output.value", "terminalSpanOutbox.payload.outcome.output.value"] },
+  { name: "AtomicWriteCommitInput", schema: AtomicWriteCommitInputSchema, fixtures: [currentAtomicWriteFixture(ATOMIC_WRITE_COMMIT)], openFixturePaths: ["outcome.output.value", "committedSpan.outcome.output.value"] },
   { name: "AtomicWriteCommitReport", schema: AtomicWriteCommitReportSchema, fixtures: [{
     state: "committed",
     intent: {
@@ -1312,9 +1312,9 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
       },
       recordedAt: LEDGER_OUTBOX_RECORD.createdAt,
     },
-    ledgerOutbox: LEDGER_OUTBOX_RECORD,
-    terminalSpanOutbox: SPAN_OUTBOX_RECORD,
-  }], openFixturePaths: ["terminalSpanOutbox.payload.outcome.output.value"] },
+    transaction: LEDGER_OUTBOX_RECORD.payload.entry,
+    committedSpan: SPAN_OUTBOX_RECORD.payload,
+  }], openFixturePaths: ["committedSpan.outcome.output.value"] },
   { name: "TerminalizationClaim", schema: TerminalizationClaimSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION.claim] },
   { name: "FailureTerminalAuthorizationRecord", schema: FailureTerminalAuthorizationRecordSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION] },
   { name: "SuccessTerminalAuthorizationRecord", schema: SuccessTerminalAuthorizationRecordSchema, fixtures: [SUCCESS_TERMINAL_AUTHORIZATION] },

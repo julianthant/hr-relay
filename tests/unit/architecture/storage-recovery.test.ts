@@ -1,5 +1,5 @@
 import { databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import fs, {
@@ -65,7 +65,7 @@ import {
   observeRuntimeLockSnapshot,
 } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import {
-  ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
   COMMAND_FIXTURES,
   HASH_A,
   HASH_B,
@@ -96,6 +96,8 @@ import {
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+
+const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -3045,7 +3047,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       pendingCommands: 1,
       unresolvedWriteIntents: 0,
       leases: 1,
-      durableOutbox: 2,
       runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 1,

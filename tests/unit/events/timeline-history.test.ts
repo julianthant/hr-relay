@@ -1,6 +1,7 @@
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
-import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, UUID_5, UUID_6, LEDGER_PAYLOAD, SPAN_OUTBOX_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
+import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, UUID_5, UUID_6, LEDGER_PAYLOAD, SPAN_OUTBOX_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
 import { reconstructConfirmedOperation } from "../../../src/events/confirmed-operation.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { spawnSync } from "node:child_process";
@@ -18,6 +19,8 @@ import { createTimelineRepository, TIMELINE_EVENT_INDEX_DDL, TIMELINE_EVENT_TABL
 import { inspectTimelineSources, preserveTimelineSources, readPreservedTimelineSources,
   timelineImportRecords } from "../../../src/infra/events/timeline-import.js";
 import type { VerifiedBackup } from "../../../src/infra/sqlite/backup-service.js";
+
+const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -296,6 +299,7 @@ describe("retained confirmed history and shared retry deletion", () => {
       expect(reconstructConfirmedOperation(database.authority, record)).toEqual({ ledger: LEDGER_PAYLOAD, span: SPAN_OUTBOX_PAYLOAD });
       database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: UUID_5, now: ts });
       expect(database.authority.timelineEvents.page({})).toEqual([]);
+      expect(createTransactionHistory(database.authority).query({ from: "2000-01-01", to: "2100-01-01" }).rows).toEqual([]);
       const tombstone = database.authority.deletedRuns.get(run.envelope.runId);
       expect(tombstone?.tallyVersion).toBe(3);
       expect(tombstone?.removed.find((entry) => entry.table === "timeline_events")?.rows).toBe(1);
@@ -348,6 +352,7 @@ describe("retained confirmed history and shared retry deletion", () => {
       expect(database.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId,
         checkpoint.attempt, checkpoint.claimGeneration)).toEqual(checkpoint);
       expect(database.authority.timelineEvents.page({})).toEqual([]);
+      expect(createTransactionHistory(database.authority).query({ from: "2000-01-01", to: "2100-01-01" }).rows).toEqual([]);
       database.authority.runs.transition({ runId: retry.envelope.runId, expectedVersion: retry.version,
         lifecycle: { state: "terminal", outcome: "cancelled", endedAt: ts }, now: ts });
       database.authority.runs.delete({ runId: retry.envelope.runId, origin: "queue", commandId: UUID_6, now: ts });

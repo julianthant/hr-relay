@@ -1,5 +1,6 @@
+import { historicalWorld } from "./transaction-history-fixture.js";
 import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,7 +35,7 @@ import {
 } from "../../src/infra/sqlite/migrations.js";
 import {
   COMMAND_FIXTURES,
-  ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
   CONFIG_SNAPSHOT,
   DELEGATION_MANIFEST,
   DEPENDENCY_RECORD,
@@ -82,6 +83,8 @@ import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migrat
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 import { withAuthorityBuildVariant } from "./fixtures/authority-build-variant.js";
+
+const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -479,7 +482,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -781,24 +784,10 @@ function reserveProvider(database: AuthorityDatabase) {
   });
 }
 
-const LEDGER_PARTITION = { system: "ucpath" as const, date: "2026-07-31" };
-const LEDGER_PROJECTOR_ID = "generation-fixture";
-
 /** Ref operator-trust's trust records hang off a real terminal run and its durable failure. */
 function terminalizeForTrust(database: AuthorityDatabase): void {
   const run = prepareRunning(database);
   database.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
-}
-
-function acquireLedgerLease(database: AuthorityDatabase): number {
-  const lease = database.authority.ledgerProjection.acquireLease({
-    ...LEDGER_PARTITION,
-    projectorId: LEDGER_PROJECTOR_ID,
-    now: NOW,
-    expiresAt: LATER,
-  });
-  if (lease.state !== "acquired") throw new Error("ledger generation fixture did not take its lease");
-  return lease.partition.leaseGeneration;
 }
 
 function terminalFailureRequest(run: ReturnType<typeof prepareRunning>) {
@@ -900,7 +889,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(35), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(36), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(37), true);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(38), false);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(38), true);
   });
 
   it("creates a fresh authority at the current schema with one baseline journal row", () => {
@@ -2057,27 +2046,6 @@ describe("authority generation accounting", () => {
     { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
     { table: "knowledge_records", mutate: (db) => { db.authority.knowledgeRecords.insert(KNOWLEDGE_RECORD); } },
     { table: "fix_records", mutate: (db) => { db.authority.fixRecords.insert(FIX_RECORD); } },
-    { table: "ledger_partitions", mutate: (db) => { acquireLedgerLease(db); } },
-    {
-      table: "ledger_projections",
-      prepare: (db) => {
-        seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
-        db.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
-        acquireLedgerLease(db);
-      },
-      mutate: (db) => {
-        const partition = db.authority.ledgerProjection.getPartition(LEDGER_PARTITION.system, LEDGER_PARTITION.date);
-        if (partition === undefined) throw new Error("ledger generation fixture lost its partition");
-        db.authority.ledgerProjection.assignSequence({
-          ...LEDGER_PARTITION,
-          projectorId: LEDGER_PROJECTOR_ID,
-          leaseGeneration: partition.leaseGeneration,
-          outboxId: UUID_7,
-          lineDigest: HASH_A,
-          assignedAt: NOW,
-        });
-      },
-    },
     { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "workflow_workers", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
@@ -2197,11 +2165,6 @@ describe("authority generation accounting", () => {
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
     { table: "run_operations", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
     { table: "run_operation_attempts", prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); }, mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
-    {
-      table: "operation_outbox",
-      prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); },
-      mutate: (db) => { db.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)); },
-    },
     { table: "artifact_outbox", mutate: (db) => { db.authority.artifactOutbox.insert(ARTIFACT_OUTBOX); } },
     { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
   ];
@@ -2219,7 +2182,7 @@ describe("authority generation accounting", () => {
   it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
-        && !["database_state", "database_upgrades"].includes(name))
+        && !["database_state", "database_upgrades", "timeline_operation_sources"].includes(name))
       .map(({ name }) => name)
       .sort());
     for (const mutation of cases) {
@@ -2230,6 +2193,20 @@ describe("authority generation accounting", () => {
       assert.equal(database.getMeta().authorityGeneration, before + 1, mutation.table);
       database.close();
     }
+  });
+
+  it("accounts conversion-only operation sources with the stopped upgrade generation", async () => {
+    const world = historicalWorld();
+    try {
+      const before = 7; // historicalWorld seeds this released authority generation.
+      await world.backup(); await world.upgrade();
+      const db = world.open();
+      try {
+        assert.equal(db.authority.historicalOperationSources.list().length, 2);
+        assert.equal(db.getMeta().authorityGeneration, before + 2, "one conversion transaction plus one settlement transaction");
+        assert.deepEqual(Object.keys(db.authority.historicalOperationSources), ["list"]);
+      } finally { db.close(); }
+    } finally { world.dispose(); }
   });
 
   it("#16 enumerates every current never-delete trigger and each aborts without a tombstone", () => {
@@ -2329,7 +2306,7 @@ describe("authority generation accounting", () => {
     const database = AuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       CLOCK,
-      { afterStorageStep: (step) => { if (step === "ledger-outbox") throw new Error("injected nested outbox failure"); } },
+      { afterStorageStep: (step) => { if (step === "timeline-event") throw new Error("injected nested outbox failure"); } },
     );
     openDatabases.push(database);
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
@@ -2344,8 +2321,7 @@ describe("authority generation accounting", () => {
     assert.deepEqual(database.authority.notifications.get(UUID_3), NOTIFICATION);
     assert.equal(database.authority.writeIntents.get(UUID_1)?.status, "attempting");
     assert.equal(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId)?.outcome.state, "attempting");
-    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
-    assert.equal(database.authority.durableOutbox.get(UUID_8), undefined);
+    assert.deepEqual(database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed"), []);
     assert.equal(database.getMeta().authorityGeneration, generationBefore + 1);
   });
 

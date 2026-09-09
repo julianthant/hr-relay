@@ -313,7 +313,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeOlderBuild({
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), /authority schema 39 is newer than supported 29/u);
+        }), /authority schema 40 is newer than supported 29/u);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -336,12 +336,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 39);
+    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
   });
 
   it.each([
-    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 37 \}/u },
-    { version: 40, refusal: /authority schema 40 is newer than supported 39/u },
+    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 39 \}/u },
+    { version: 41, refusal: /authority schema 41 is newer than supported 40/u },
   ])("releases its acquired server process record when authority v$version refuses open", async ({
     version,
     refusal,

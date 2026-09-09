@@ -1,0 +1,314 @@
+{
+  "provenance": {
+    "commit": "52558d04eafca64fe0771b3d8dc995d769f93550",
+    "source": "src/core/write-sequencer.ts",
+    "schemaVersion": 39
+  },
+  "bundle": {
+    "run": {
+      "runId": "22222222-2222-4222-8222-222222222222",
+      "expectedVersion": 4,
+      "claim": {
+        "workerId": "sweep-replay-worker",
+        "claimGeneration": 1
+      }
+    },
+    "commit": {
+      "writeIntentId": "11111111-1111-4111-8111-111111111111",
+      "generation": 1,
+      "completionProof": {
+        "schemaHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "value": "T123456"
+      },
+      "confirmedAt": "2026-07-31T17:01:00.000Z",
+      "outcome": {
+        "disposition": "committed",
+        "proofSource": "normal-output",
+        "proof": {
+          "schemaHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "value": "T123456"
+        },
+        "output": {
+          "schemaHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "value": {
+            "transactionId": "T123456"
+          }
+        },
+        "confirmedAt": "2026-07-31T17:01:00.000Z"
+      },
+      "ledgerOutbox": {
+        "outboxId": "77777777-7777-4777-8777-777777777777",
+        "aggregate": {
+          "kind": "write-intent",
+          "writeIntentId": "11111111-1111-4111-8111-111111111111",
+          "generation": 1
+        },
+        "payload": {
+          "kind": "ledger-entry",
+          "entry": {
+            "workflowId": "separation",
+            "itemId": "33333333-3333-4333-8333-333333333333",
+            "system": "ucpath",
+            "idempotencyKey": "10001573|termination|2026-08-01",
+            "idempotencyKeyDigest": "f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347",
+            "writeIntentId": "11111111-1111-4111-8111-111111111111",
+            "intentGeneration": 1,
+            "proof": {
+              "schemaHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "value": "T123456"
+            },
+            "completionKind": "receipt",
+            "proofSource": "normal-output",
+            "bindingProofDigest": "507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372",
+            "subject": {
+              "state": "present",
+              "value": {
+                "kind": "person",
+                "identifierKind": "eid",
+                "bindingDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "displaySuffix": "1234"
+              }
+            },
+            "runId": "22222222-2222-4222-8222-222222222222",
+            "traceId": "se-120000-2222",
+            "attempt": 1,
+            "operator": "local-operator",
+            "instance": "prod",
+            "configFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "dryRun": false,
+            "fencedAt": "2026-07-31T17:00:00.000Z",
+            "confirmedAt": "2026-07-31T17:01:00.000Z",
+            "externalOccurredAt": {
+              "state": "absent"
+            }
+          }
+        },
+        "projection": {
+          "state": "pending"
+        },
+        "createdAt": "2026-07-31T17:01:00.000Z"
+      },
+      "terminalSpanOutbox": {
+        "outboxId": "88888888-8888-4888-8888-888888888888",
+        "aggregate": {
+          "kind": "write-intent",
+          "writeIntentId": "11111111-1111-4111-8111-111111111111",
+          "generation": 1
+        },
+        "payload": {
+          "kind": "write-committed-span",
+          "writeIntentId": "11111111-1111-4111-8111-111111111111",
+          "intentGeneration": 1,
+          "runId": "22222222-2222-4222-8222-222222222222",
+          "traceId": "se-120000-2222",
+          "workflowId": "separation",
+          "itemId": "33333333-3333-4333-8333-333333333333",
+          "attempt": 1,
+          "system": "ucpath",
+          "idempotencyKey": "10001573|termination|2026-08-01",
+          "idempotencyKeyDigest": "f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347",
+          "bindingProofDigest": "507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372",
+          "occurredAt": "2026-07-31T17:01:00.000Z",
+          "outcome": {
+            "disposition": "committed",
+            "proofSource": "normal-output",
+            "proof": {
+              "schemaHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "value": "T123456"
+            },
+            "output": {
+              "schemaHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "value": {
+                "transactionId": "T123456"
+              }
+            },
+            "confirmedAt": "2026-07-31T17:01:00.000Z"
+          }
+        },
+        "projection": {
+          "state": "pending"
+        },
+        "createdAt": "2026-07-31T17:01:00.000Z"
+      }
+    },
+    "checkpoint": {
+      "workflowId": "separation",
+      "itemId": "33333333-3333-4333-8333-333333333333",
+      "nodeId": "write-11111111-1111-4111-8111-111111111111",
+      "attempt": 1,
+      "claimGeneration": 1,
+      "runId": "22222222-2222-4222-8222-222222222222",
+      "output": {
+        "schemaHash": "0b0b247cbfe579de8b54f390c47440b3d76ef1fb7ef1b056dc4f947b58c85d38",
+        "value": {
+          "disposition": "committed",
+          "proofSource": "normal-output",
+          "proof": {
+            "schemaHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "value": "T123456"
+          },
+          "output": {
+            "schemaHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "value": {
+              "transactionId": "T123456"
+            }
+          },
+          "confirmedAt": "2026-07-31T17:01:00.000Z"
+        }
+      },
+      "descriptorVersion": 1,
+      "contractFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "implFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "provenance": [],
+      "writtenAt": "2026-07-31T17:01:00.000Z"
+    }
+  },
+  "transition": {
+    "kind": "advance-running",
+    "claim": {
+      "workerId": "sweep-replay-worker",
+      "claimGeneration": 1
+    },
+    "claimedAt": "2026-07-31T17:00:00.000Z"
+  },
+  "tables": {
+    "workflow_runs": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"claimGeneration\":1,\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"envelope\":{\"attempt\":1,\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"configSnapshotId\":\"44444444-4444-4444-8444-444444444444\",\"contractFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"descriptorVersion\":1,\"dryRun\":false,\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"priority\":\"interactive\",\"resolvedInstance\":{\"ucpath\":\"prod\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"shape\":\"single\",\"traceId\":\"se-120000-2222\",\"workflow\":\"separation\"},\"input\":{\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parsed\":{\"protectedBindings\":[],\"schemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"value\":{}},\"raw\":{}},\"lifecycle\":{\"claimedAt\":\"2026-07-31T17:00:00.000Z\",\"currentNodeId\":\"write-11111111-1111-4111-8111-111111111111\",\"heartbeatAt\":\"2026-07-31T17:01:00.000Z\",\"state\":\"running\",\"workerId\":\"sweep-replay-worker\"},\"updatedAt\":\"2026-07-31T17:01:00.000Z\",\"version\":5}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "workflow": "separation",
+        "item_id": "33333333-3333-4333-8333-333333333333",
+        "state": "running",
+        "priority": "interactive",
+        "attempt": 1,
+        "not_before": null,
+        "owner_worker_id": "sweep-replay-worker",
+        "claim_generation": 1,
+        "heartbeat_at": "2026-07-31T17:01:00.000Z",
+        "version": 5,
+        "parent_run_id": null,
+        "run_number": null,
+        "session_id": null
+      }
+    ],
+    "run_operations": [
+      {
+        "record_key": "11111111-1111-4111-8111-111111111111",
+        "idempotency_key_digest": "f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347",
+        "status": "committed",
+        "record_json": "{\"bindingProof\":{\"afterPrepareSpanPath\":\"termination/prepare\",\"attempt\":1,\"expected\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"},\"kind\":\"subject-match\",\"leaseId\":\"66666666-6666-4666-8666-666666666666\",\"match\":\"match\",\"observationId\":\"ucpath.termination.subject\",\"observed\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"},\"observedAt\":\"2026-07-31T17:00:00.000Z\",\"pageStateId\":\"ucpath.termination-ready\",\"proofId\":\"55555555-5555-4555-8555-555555555555\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ucpath/terminate-person\",\"version\":1},\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"completionProof\":{\"schemaHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"value\":\"T123456\"},\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"currentAttemptId\":\"44444444-4444-4444-8444-444444444444\",\"fencedAt\":\"2026-07-31T17:00:00.000Z\",\"generation\":1,\"idempotencyKey\":\"10001573|termination|2026-08-01\",\"idempotencyKeyDigest\":\"f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"runAttempt\":1,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"status\":\"committed\",\"system\":\"ucpath\",\"taskId\":\"ucpath/terminate-person\",\"updatedAt\":\"2026-07-31T17:01:00.000Z\",\"version\":2,\"workflowId\":\"separation\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "system": "ucpath",
+        "idempotency_key": "10001573|termination|2026-08-01"
+      }
+    ],
+    "run_operation_attempts": [
+      {
+        "record_key": "44444444-4444-4444-8444-444444444444",
+        "write_intent_id": "11111111-1111-4111-8111-111111111111",
+        "generation": 1,
+        "record_json": "{\"bindingProof\":{\"afterPrepareSpanPath\":\"termination/prepare\",\"attempt\":1,\"expected\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"},\"kind\":\"subject-match\",\"leaseId\":\"66666666-6666-4666-8666-666666666666\",\"match\":\"match\",\"observationId\":\"ucpath.termination.subject\",\"observed\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"},\"observedAt\":\"2026-07-31T17:00:00.000Z\",\"pageStateId\":\"ucpath.termination-ready\",\"proofId\":\"55555555-5555-4555-8555-555555555555\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ucpath/terminate-person\",\"version\":1},\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"fencedAt\":\"2026-07-31T17:00:00.000Z\",\"generation\":1,\"leaseId\":\"66666666-6666-4666-8666-666666666666\",\"outcome\":{\"completionProof\":{\"schemaHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"value\":\"T123456\"},\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"state\":\"committed\"},\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"runAttempt\":1,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"writeAttemptId\":\"44444444-4444-4444-8444-444444444444\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      }
+    ],
+    "run_checkpoints": [
+      {
+        "record_key": "separation\u000033333333-3333-4333-8333-333333333333\u0000write-11111111-1111-4111-8111-111111111111\u00001\u00001",
+        "workflow": "separation",
+        "item_id": "33333333-3333-4333-8333-333333333333",
+        "node_id": "write-11111111-1111-4111-8111-111111111111",
+        "attempt": 1,
+        "claim_generation": 1,
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"attempt\":1,\"claimGeneration\":1,\"contractFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"descriptorVersion\":1,\"implFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"write-11111111-1111-4111-8111-111111111111\",\"output\":{\"schemaHash\":\"0b0b247cbfe579de8b54f390c47440b3d76ef1fb7ef1b056dc4f947b58c85d38\",\"value\":{\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"disposition\":\"committed\",\"output\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"transactionId\":\"T123456\"}},\"proof\":{\"schemaHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"value\":\"T123456\"},\"proofSource\":\"normal-output\"}},\"provenance\":[],\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"separation\",\"writtenAt\":\"2026-07-31T17:01:00.000Z\"}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "commands": [
+      {
+        "record_key": "c8ee4270-9178-4e84-9f2c-3223475b4dd4",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"c8ee4270-9178-4e84-9f2c-3223475b4dd4\",\"fence\":{\"claimGeneration\":1,\"kind\":\"claim\",\"workerId\":\"sweep-replay-worker\"},\"kind\":\"run-lifecycle\",\"operation\":\"worker-transition\",\"recordedAt\":\"2026-07-31T17:00:00.000Z\",\"requestFingerprint\":\"5d93d585d9c27d83ad7174409e18b86eec67b406a2d3a699b07cceb716346c55\"}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "parent_command_id": null
+      },
+      {
+        "record_key": "efb4772d-935b-4586-9ff3-00d64c6ae8bf",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"efb4772d-935b-4586-9ff3-00d64c6ae8bf\",\"fence\":{\"claimGeneration\":1,\"kind\":\"claim\",\"workerId\":\"sweep-replay-worker\"},\"kind\":\"run-lifecycle\",\"operation\":\"worker-transition\",\"recordedAt\":\"2026-07-31T17:00:00.000Z\",\"requestFingerprint\":\"a64b809e4140a096db79cb630597de708f36aaa132799cab3cf544f597275603\"}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "parent_command_id": null
+      },
+      {
+        "record_key": "087249a3-f072-4a60-8285-a450105ce850",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"087249a3-f072-4a60-8285-a450105ce850\",\"fence\":{\"claimGeneration\":1,\"kind\":\"claim\",\"workerId\":\"sweep-replay-worker\"},\"kind\":\"run-lifecycle\",\"operation\":\"worker-transition\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"610d618d9da0430bd9cf48dd4c0f874d5f72daecabe7631289d505d956ef14a3\"}",
+        "created_at": "2026-07-31T17:01:00.000Z",
+        "parent_command_id": null
+      }
+    ],
+    "command_audits": [
+      {
+        "record_key": "c8ee4270-9178-4e84-9f2c-3223475b4dd4",
+        "command_id": "c8ee4270-9178-4e84-9f2c-3223475b4dd4",
+        "record_json": "{\"auditId\":\"c8ee4270-9178-4e84-9f2c-3223475b4dd4\",\"completedAt\":\"2026-07-31T17:00:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"c8ee4270-9178-4e84-9f2c-3223475b4dd4\",\"fence\":{\"claimGeneration\":1,\"kind\":\"claim\",\"workerId\":\"sweep-replay-worker\"},\"kind\":\"run-lifecycle\",\"operation\":\"worker-transition\",\"recordedAt\":\"2026-07-31T17:00:00.000Z\",\"requestFingerprint\":\"5d93d585d9c27d83ad7174409e18b86eec67b406a2d3a699b07cceb716346c55\"},\"result\":{\"appliedVersion\":3,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      },
+      {
+        "record_key": "efb4772d-935b-4586-9ff3-00d64c6ae8bf",
+        "command_id": "efb4772d-935b-4586-9ff3-00d64c6ae8bf",
+        "record_json": "{\"auditId\":\"efb4772d-935b-4586-9ff3-00d64c6ae8bf\",\"completedAt\":\"2026-07-31T17:00:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"efb4772d-935b-4586-9ff3-00d64c6ae8bf\",\"fence\":{\"claimGeneration\":1,\"kind\":\"claim\",\"workerId\":\"sweep-replay-worker\"},\"kind\":\"run-lifecycle\",\"operation\":\"worker-transition\",\"recordedAt\":\"2026-07-31T17:00:00.000Z\",\"requestFingerprint\":\"a64b809e4140a096db79cb630597de708f36aaa132799cab3cf544f597275603\"},\"result\":{\"appliedVersion\":4,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      },
+      {
+        "record_key": "087249a3-f072-4a60-8285-a450105ce850",
+        "command_id": "087249a3-f072-4a60-8285-a450105ce850",
+        "record_json": "{\"auditId\":\"087249a3-f072-4a60-8285-a450105ce850\",\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"087249a3-f072-4a60-8285-a450105ce850\",\"fence\":{\"claimGeneration\":1,\"kind\":\"claim\",\"workerId\":\"sweep-replay-worker\"},\"kind\":\"run-lifecycle\",\"operation\":\"worker-transition\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"610d618d9da0430bd9cf48dd4c0f874d5f72daecabe7631289d505d956ef14a3\"},\"result\":{\"appliedVersion\":5,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "timeline_events": [
+      {
+        "cursor": 1,
+        "record_key": "30d26a9a-57b8-5ef7-bd62-36bd4441a654",
+        "workflow": "separation",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "worker_id": null,
+        "retention_date": "2026-07-31",
+        "retention_class": "ordinary",
+        "record_json": "{\"eventId\":\"30d26a9a-57b8-5ef7-bd62-36bd4441a654\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"payload\":{\"attempt\":1,\"checkpoint\":{\"attempt\":1,\"claimGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"write-11111111-1111-4111-8111-111111111111\",\"outputDigest\":\"fa6283988856c6e9e66b6de68df726a23027d8de6e65421f221f51060d055268\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"separation\",\"writtenAt\":\"2026-07-31T17:01:00.000Z\"},\"claimGeneration\":1,\"kind\":\"checkpoint-recorded\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflow\":\"separation\"},\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"retentionDate\":\"2026-07-31\",\"schemaVersion\":1,\"scope\":{\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"},\"source\":{\"kind\":\"native\"},\"workflow\":\"separation\",\"cursor\":1}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      },
+      {
+        "cursor": 2,
+        "record_key": "78cbd1bd-4a25-49ac-87f2-3c597fd9183b",
+        "workflow": "separation",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "worker_id": null,
+        "retention_date": "2026-07-31",
+        "retention_class": "confirmed-operation",
+        "record_json": "{\"eventId\":\"78cbd1bd-4a25-49ac-87f2-3c597fd9183b\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"payload\":{\"checkpoint\":{\"attempt\":1,\"claimGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"write-11111111-1111-4111-8111-111111111111\",\"outputDigest\":\"fa6283988856c6e9e66b6de68df726a23027d8de6e65421f221f51060d055268\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"separation\",\"writtenAt\":\"2026-07-31T17:01:00.000Z\"},\"facts\":{\"attempt\":1,\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"completionKind\":\"receipt\",\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"dryRun\":false,\"externalOccurredAt\":{\"state\":\"absent\"},\"fencedAt\":\"2026-07-31T17:00:00.000Z\",\"idempotencyKey\":\"10001573|termination|2026-08-01\",\"idempotencyKeyDigest\":\"f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347\",\"instance\":\"prod\",\"intentGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"operator\":\"local-operator\",\"proofSource\":\"normal-output\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"subject\":{\"state\":\"present\",\"value\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"}},\"system\":\"ucpath\",\"traceId\":\"se-120000-2222\",\"workflowId\":\"separation\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"},\"kind\":\"operation-confirmed\",\"proofDigest\":\"e89eddca17313c78d746f41aaca59f9b2a56a6249ede0aa2aaa4d80154152fee\",\"spanOccurredAt\":\"2026-07-31T17:01:00.000Z\",\"writeAttemptId\":\"44444444-4444-4444-8444-444444444444\"},\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"retentionDate\":\"2026-07-31\",\"schemaVersion\":1,\"scope\":{\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"},\"source\":{\"kind\":\"native\"},\"workflow\":\"separation\",\"cursor\":2}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "operation_outbox": [
+      {
+        "record_key": "77777777-7777-4777-8777-777777777777",
+        "write_intent_id": "11111111-1111-4111-8111-111111111111",
+        "generation": 1,
+        "kind": "ledger-entry",
+        "record_json": "{\"aggregate\":{\"generation\":1,\"kind\":\"write-intent\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"},\"createdAt\":\"2026-07-31T17:01:00.000Z\",\"outboxId\":\"77777777-7777-4777-8777-777777777777\",\"payload\":{\"entry\":{\"attempt\":1,\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"completionKind\":\"receipt\",\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"dryRun\":false,\"externalOccurredAt\":{\"state\":\"absent\"},\"fencedAt\":\"2026-07-31T17:00:00.000Z\",\"idempotencyKey\":\"10001573|termination|2026-08-01\",\"idempotencyKeyDigest\":\"f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347\",\"instance\":\"prod\",\"intentGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"operator\":\"local-operator\",\"proof\":{\"schemaHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"value\":\"T123456\"},\"proofSource\":\"normal-output\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"subject\":{\"state\":\"present\",\"value\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"}},\"system\":\"ucpath\",\"traceId\":\"se-120000-2222\",\"workflowId\":\"separation\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"},\"kind\":\"ledger-entry\"},\"projection\":{\"state\":\"pending\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      },
+      {
+        "record_key": "88888888-8888-4888-8888-888888888888",
+        "write_intent_id": "11111111-1111-4111-8111-111111111111",
+        "generation": 1,
+        "kind": "write-committed-span",
+        "record_json": "{\"aggregate\":{\"generation\":1,\"kind\":\"write-intent\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"},\"createdAt\":\"2026-07-31T17:01:00.000Z\",\"outboxId\":\"88888888-8888-4888-8888-888888888888\",\"payload\":{\"attempt\":1,\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"idempotencyKey\":\"10001573|termination|2026-08-01\",\"idempotencyKeyDigest\":\"f939c5a089e1110ee501e0944fa56c44231bd93ccc3ff495668d465e0e681347\",\"intentGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"kind\":\"write-committed-span\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"outcome\":{\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"disposition\":\"committed\",\"output\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"transactionId\":\"T123456\"}},\"proof\":{\"schemaHash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"value\":\"T123456\"},\"proofSource\":\"normal-output\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"system\":\"ucpath\",\"traceId\":\"se-120000-2222\",\"workflowId\":\"separation\",\"writeIntentId\":\"11111111-1111-4111-8111-111111111111\"},\"projection\":{\"state\":\"pending\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ]
+  }
+}

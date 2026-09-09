@@ -101,7 +101,7 @@ import {
   EXIT_TERMINAL_AT,
   seedPersonLookupExitRun,
 } from "../fixtures/receipt-run-fixtures.js";
-import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 /* ── the source file, as an operator would upload it ─────────────────────── */
@@ -218,7 +218,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: descriptorSetHash(descriptors.map((descriptor) => descriptor.contractFingerprint)),
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),

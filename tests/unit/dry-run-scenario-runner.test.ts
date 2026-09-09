@@ -70,7 +70,7 @@ const READY_EVIDENCE = {
     keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
   }],
   gateResults: [{ gate: "approval", decision: "approved", resolvedBy: "local-operator" }],
-  writeSafetyAfter: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+  writeSafetyAfter: { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 },
   receipt: {
     result: "partial",
     confidence: "unknown",
@@ -250,7 +250,7 @@ describe("dry-run scenario execution", () => {
           return Promise.resolve({
             runId: "22222222-2222-4222-8222-222222222222",
             traceId: "fx-180000-2222",
-            writeSafetyBefore: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+            writeSafetyBefore: { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 },
           });
         },
         drain: () => {
@@ -314,7 +314,7 @@ describe("dry-run scenario execution", () => {
         start: () => Promise.resolve({
           runId: "22222222-2222-4222-8222-222222222222",
           traceId: "fx-180000-2222",
-          writeSafetyBefore: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+          writeSafetyBefore: { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 },
         }),
         drain: () => Promise.resolve(),
         resolveGate: () => Promise.reject(new Error("no gate expected")),
@@ -322,7 +322,7 @@ describe("dry-run scenario execution", () => {
           reachedNodeIds: ["read"],
           checkpoints: [],
           gateResults: [],
-          writeSafetyAfter: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+          writeSafetyAfter: { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 },
           receipt: {
             result: "failed",
             confidence: "unknown",
@@ -362,7 +362,7 @@ describe("dry-run scenario execution", () => {
           start: () => Promise.resolve({
             runId: "22222222-2222-4222-8222-222222222222",
             traceId: "fx-180000-2222",
-            writeSafetyBefore: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+            writeSafetyBefore: { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 },
           }),
           drain: () => Promise.reject(new Error(`failed for ${secret}`)),
           resolveGate: () => Promise.resolve(),
@@ -420,7 +420,14 @@ describe("dry-run scenario execution", () => {
 describe("dry-run scenario evidence assertions", () => {
   const scenarioCase = parseDryRunScenarioManifest(GATED_MANIFEST).cases[0];
   if (scenarioCase === undefined) throw new Error("fixture manifest has no case");
-  const before = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
+  const before = { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 } as const;
+
+  it("refuses a confirmation delta against the released zero-write manifest", () => {
+    const outcomes = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before, {
+      ...READY_EVIDENCE, writeSafetyAfter: { ...READY_EVIDENCE.writeSafetyAfter, confirmedOperations: 1 },
+    });
+    assert.deepEqual(outcomes.filter((row) => row.verdict === "failed").map((row) => row.assertionId), ["write-safety-deltas"]);
+  });
 
   it("refuses an evaluation whose declared arm disagrees with the case shape; the manifest arm, not the case, selects the assertion set (D318)", () => {
     assert.ok(scenarioCase && "preview" in scenarioCase, "the fixture case is a preview-arm case");

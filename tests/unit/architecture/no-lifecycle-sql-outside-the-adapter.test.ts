@@ -27,6 +27,16 @@ function mutator(declaration: ts.Declaration | undefined): boolean {
 // D332/D336's sole stopped, transactional ordinal backfill; its import closure
 // is independently guarded by authority-upgrade-adapters-isolated.
 const BACKFILL_SQL = "UPDATE deleted_runs SET item_id=?, attempt=?, run_number=NULL, ordinal_source=?, record_json=json_set(record_json,'$.itemId',?,'$.attempt',?,'$.runNumber',NULL,'$.ordinalSource',?) WHERE record_key=? AND item_id IS NULL AND attempt IS NULL AND run_number IS NULL";
+// T/P7 permits only this one-time section enrichment inside the stopped converter.
+const ARCHIVE_SECTION_SQL = "UPDATE archived_runs SET transactions_json=?, transactions_digest=? WHERE record_key=? AND transactions_json IS NULL";
+function allowedArchiveSectionSql(relative: string, node: ts.Node): boolean {
+  if (relative !== "src/infra/sqlite/timeline-conversion.ts" || !ts.isStringLiteralLike(node)
+    || node.text !== ARCHIVE_SECTION_SQL) return false;
+  for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
+    if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "freezeConvertedArchiveTransactions";
+  }
+  return false;
+}
 function audit(fixtures = false): string[] {
   const roots = gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u.test(path));
   const extras = new Map(["sql", "mutator", "view"].map((kind) => [resolve(REPO_ROOT, `src/core/guard-fixtures/${kind}.ts`),
@@ -70,6 +80,7 @@ function audit(fixtures = false): string[] {
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
+        && !allowedArchiveSectionSql(relative, node)
         && !(relative === "src/infra/compat/settings-database-upgrade.ts" && ts.isStringLiteralLike(node) && node.text === BACKFILL_SQL)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
@@ -85,11 +96,26 @@ function audit(fixtures = false): string[] {
   return violations;
 }
 describe("no-lifecycle-sql-outside-the-adapter", () => {
+  it("admits only exact frozen-section SQL in its stopped converter", () => {
+    const check = (sql: string, path: string, name: string) => {
+      const source = ts.createSourceFile(path, `function ${name}() { db.prepare(${JSON.stringify(sql)}); }`, ts.ScriptTarget.Latest, true);
+      let admitted = false;
+      const visit = (node: ts.Node): void => { if (allowedArchiveSectionSql(path, node)) admitted = true; ts.forEachChild(node, visit); };
+      visit(source); return admitted;
+    };
+    const path = "src/infra/sqlite/timeline-conversion.ts";
+    assert.equal(check(ARCHIVE_SECTION_SQL, path, "freezeConvertedArchiveTransactions"), true);
+    assert.equal(check(ARCHIVE_SECTION_SQL, "src/core/guard-fixtures/sql.ts", "freezeConvertedArchiveTransactions"), false);
+    assert.equal(check(ARCHIVE_SECTION_SQL, path, "ordinaryRuntime"), false);
+    assert.equal(check(ARCHIVE_SECTION_SQL.replace(" AND transactions_json IS NULL", ""), path, "freezeConvertedArchiveTransactions"), false);
+    assert.equal(check("UPDATE archived_runs SET record_json=? WHERE record_key=?", path, "freezeConvertedArchiveTransactions"), false);
+  });
   it("limits lifecycle writes to the service/adapter and exact stopped ordinal backfill", () => { assert.deepEqual(audit(), []); });
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);
     assert.ok(found.some((entry) => entry.includes("UPDATE workflow_runs")), "renamed run table remains protected");
+    assert.ok(found.some((entry) => entry.includes("UPDATE archived_runs")), "archive body remains protected");
     assert.ok(found.some((entry) => entry.includes("UPDATE tasks")), "historical run table remains protected");
     assert.ok(found.some((entry) => entry.includes("UPDATE workflow_workers")), "renamed worker table remains protected");
     assert.ok(found.some((entry) => entry.includes("mutate({})")), "destructured mutator is still resolved");

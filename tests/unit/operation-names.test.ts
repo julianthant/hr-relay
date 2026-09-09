@@ -1,3 +1,9 @@
+import { z } from "zod";
+import { AtomicOutboxRecordSchema } from "../../src/domain/outbox.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
+import { WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
+import { checkpointRecordKey } from "../../src/domain/workflow/checkpoint.js";
+import { atomicWriteCheckpoint } from "./helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -15,13 +21,66 @@ import { createOperationRenameSource, operationFixtureId, OPERATION_TABLE_RENAME
 const clock = manualClock(new Date(NOW));
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(version = 34) {
+function fixture(version = 34, complete = true) {
   const root = mkdtempSync(join(tmpdir(), "operation-names-")); roots.push(root);
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(root, name));
   const stateRoot = join(root, ".tracker"); mkdirSync(stateRoot);
   const path = join(stateRoot, "state.db"); createOperationRenameSource(path, version);
+  if (complete) completeHistoricalConfirmation(path, version);
   const input = { stateRoot, processLockRoot: join(stateRoot, "locks"), environmentFile: join(root, ".env"), plan: false };
   return { path, input, backup: () => backupStoppedAuthority(stateRoot, clock), run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+}
+/** The released rename corpus has no checkpoint and mismatched generic facts.
+ * Keep that corpus unchanged for its fingerprint guard; complete only these
+ * stopped-conversion fixtures before taking their immutable source snapshot. */
+function completeHistoricalConfirmation(path: string, version: number) {
+  const db = new DatabaseSync(path);
+  const operations = version < 36 ? "write_intents" : "run_operations";
+  const outboxTable = version < 36 ? "durable_outbox" : "operation_outbox";
+  const json = (row: unknown): unknown => JSON.parse(z.object({ record_json: z.string() }).parse(row).record_json);
+  try {
+    const intent = WriteIntentRecordSchema.parse(json(db.prepare(`SELECT record_json FROM ${operations} WHERE record_key=?`).get(operationFixtureId(3))));
+    assert.equal(intent.status, "committed");
+    const boxes = db.prepare(`SELECT record_json FROM ${outboxTable}`).all().map((row) => AtomicOutboxRecordSchema.parse(json(row)));
+    const ledgerBox = boxes.find((row) => row.payload.kind === "ledger-entry");
+    const spanBox = boxes.find((row) => row.payload.kind === "write-committed-span");
+    assert.ok(ledgerBox?.payload.kind === "ledger-entry" && spanBox?.payload.kind === "write-committed-span");
+    if (intent.status !== "committed") assert.fail("committed rename fixture required");
+    const transaction = { ...ledgerBox.payload.entry, proof: intent.completionProof, confirmedAt: intent.confirmedAt };
+    const outcome = { ...spanBox.payload.outcome, proof: intent.completionProof, confirmedAt: intent.confirmedAt };
+    const committedSpan = { ...spanBox.payload, outcome, occurredAt: intent.confirmedAt };
+    for (const box of [{ ...ledgerBox, payload: { kind: "ledger-entry", entry: transaction } }, { ...spanBox, payload: committedSpan }]) {
+      db.prepare(`UPDATE ${outboxTable} SET record_json=? WHERE record_key=?`).run(JSON.stringify(AtomicOutboxRecordSchema.parse(box)), box.outboxId);
+    }
+    for (const row of db.prepare("SELECT record_json FROM workflow_runs").all()) {
+      const run = RunRecordSchema.parse(json(row));
+      const updated = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, workflow: transaction.workflowId,
+        traceId: transaction.traceId, resolvedInstance: { [transaction.system]: transaction.instance },
+        configFingerprint: transaction.configFingerprint, dryRun: false } });
+      db.prepare("UPDATE workflow_runs SET workflow=?,record_json=? WHERE record_key=?").run(updated.envelope.workflow, JSON.stringify(updated), updated.envelope.runId);
+    }
+    const checkpoint = atomicWriteCheckpoint({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+      completionProof: intent.completionProof, confirmedAt: intent.confirmedAt, outcome, transaction, committedSpan });
+    db.prepare("INSERT INTO run_checkpoints(record_key,workflow,item_id,node_id,attempt,claim_generation,run_id,record_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(checkpointRecordKey(checkpoint), checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration ?? null, checkpoint.runId, JSON.stringify(checkpoint), checkpoint.writtenAt);
+  } finally { db.close(); }
+}
+function currentOperationRows(path: string) {
+  return OPERATION_TABLE_RENAMES.map(([, current]) => current === "operation_outbox"
+    ? undefined : rows(path, current));
+}
+function assertConvertedRows(path: string, prior: ReturnType<typeof rows>[]) {
+  for (const [index, current] of currentOperationRows(path).entries()) {
+    if (current !== undefined) assert.deepEqual(current, prior[index]);
+  }
+  const db = open(path);
+  try {
+    const source = db.authority.historicalOperationSources.list();
+    assert.equal(source.length, 1);
+    const priorBoxes = prior[2].map((row) => JSON.parse(z.object({ record_json: z.string() }).parse(row).record_json) as unknown);
+    assert.deepEqual([source[0].ledgerOutbox, source[0].spanOutbox].sort((a,b) => a.outboxId.localeCompare(b.outboxId)),
+      priorBoxes.map((row) => AtomicOutboxRecordSchema.parse(row)).sort((a,b) => a.outboxId.localeCompare(b.outboxId)));
+  } finally { db.close(); }
 }
 function rows(path: string, table: string) {
   const db = new DatabaseSync(path, { readOnly: true });
@@ -37,7 +96,7 @@ function open(path: string) {
 
 describe("operation table names", () => {
   it("retains the populated v34 fingerprint produced by the accepted baseline reader", () => {
-    const f = fixture();
+    const f = fixture(34, false);
     // Captured with the unmodified reader at 35635a04e16e9c3cf1e99b16d4963752a18c616a.
     assert.equal(inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint,
       "2fc06e2ed8866535acad0ba9850200dbc34d2ea28e67fea2126f764f2c0ad71b");
@@ -58,19 +117,19 @@ describe("operation table names", () => {
       assert.deepEqual(receipt.removed.filter(({ table }) => OPERATION_TABLE_RENAMES.some(([, current]) => current === table)), []);
       // The retained run can still consume this workflow/item's permanent keys.
       assert.equal(db.authority.writeIntents.get(operationFixtureId(3))?.status, "committed");
-      assert.equal(db.authority.ledgerProjection.listPendingOutbox().length, 1);
+      assert.equal(db.authority.historicalOperationSources.list().length, 1);
       assert.equal(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).length, 2);
       assert.equal(db.authority.writeIntents.get(operationFixtureId(2))?.status, "attempting");
       assert.deepEqual(db.authority.deletedRuns.get(receipt.runId)?.removed, receipt.removed);
       const last = db.authority.runs.delete({ runId: operationFixtureId(50),
         origin: "queue", commandId: operationFixtureId(81), now: NOW });
       assert.deepEqual(last.removed.filter(({ table }) => OPERATION_TABLE_RENAMES.some(([, current]) => current === table)), [
-        { table: "run_operation_attempts", rows: 5 }, { table: "run_operations", rows: 4 }, { table: "operation_outbox", rows: 2 },
+        { table: "run_operation_attempts", rows: 5 }, { table: "run_operations", rows: 4 },
       ]);
       assert.equal(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).length, 0);
       assert.equal(db.authority.writeIntents.get(operationFixtureId(2)), undefined);
       assert.equal(db.authority.writeIntents.get(operationFixtureId(3)), undefined);
-      assert.equal(db.authority.ledgerProjection.listPendingOutbox().length, 0);
+      assert.equal(db.authority.historicalOperationSources.list().length, 0);
       assert.deepEqual(db.authority.deletedRuns.get(last.runId)?.removed, last.removed);
       assert.equal(db.authority.deletedRuns.get(operationFixtureId(70))?.removed[0]?.table, "durable_outbox");
     } finally { db.close(); }
@@ -89,17 +148,19 @@ describe("operation table names", () => {
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(readFileSync(f.path), bytes, "backup and rehearsal must not change the source");
     assert.equal((await f.run()).state, "converted");
-    for (const [index, [, current]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, current), prior[index]);
+    assertConvertedRows(f.path, prior);
     assert.deepEqual(rows(f.path, "deleted_runs"), receipts);
     const after = inspectAuthorityBackupReadOnly(f.path);
     assert.equal(after.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(after.counts, historical.counts);
+    const { durableOutbox: historicalPending, ...currentCounts } = historical.counts;
+    assert.equal(historicalPending, 1);
+    assert.deepEqual(after.counts, currentCounts);
     assert.equal(after.tables.some(({ name }) => OPERATION_TABLE_RENAMES.some(([old]) => old === name)), false);
     const db = open(f.path);
     try {
       assert.equal(db.authority.writeIntents.get(operationFixtureId(1))?.status, "observed-present");
       assert.deepEqual(db.authority.writeAttempts.listByIntent(operationFixtureId(2)).map((r) => [r.generation, r.runAttempt]), [[1, 1], [2, 3]]);
-      assert.equal(db.authority.ledgerProjection.listPendingOutbox().length, 1);
+      assert.equal(db.authority.historicalOperationSources.list().length, 1);
       assert.equal(db.authority.deletedRuns.get(operationFixtureId(70))?.removed[2]?.table, "write_intents");
 
     } finally { db.close(); }
@@ -120,7 +181,7 @@ describe("operation table names", () => {
       for (const [index, [old]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, old), prior[index]);
     }
     assert.equal((await f.run()).state, "converted");
-    for (const [index, [, current]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, current), prior[index]);
+    assertConvertedRows(f.path, prior);
   });
 
   it("rolls all three DDL renames back together on an interrupted transaction", () => {
@@ -188,7 +249,8 @@ describe("operation table names", () => {
     const db = new DatabaseSync(f.path);
     try {
       assert.equal(db.prepare("PRAGMA foreign_key_list(run_operation_attempts)").get()?.table, "run_operations");
-      assert.equal(db.prepare("PRAGMA foreign_key_list(operation_outbox)").get()?.table, "run_operations");
+      assert.equal(db.prepare("SELECT name FROM sqlite_schema WHERE name='operation_outbox'").get(), undefined);
+      assert.equal(db.prepare("SELECT count(*) AS n FROM timeline_operation_sources").get()?.n, 1);
       assert.throws(() => db.prepare("UPDATE run_operation_attempts SET write_intent_id=? WHERE record_key=?").run(operationFixtureId(99), operationFixtureId(12)), /FOREIGN KEY/u);
       assert.throws(() => db.exec("INSERT INTO run_operation_attempts SELECT 'duplicate-generation',write_intent_id,generation,record_json,created_at FROM run_operation_attempts LIMIT 1"), /UNIQUE/u);
       assert.throws(() => db.exec("UPDATE run_operations SET system=NULL"), /requires system/u);

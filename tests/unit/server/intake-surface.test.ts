@@ -49,7 +49,7 @@ import {
   intakeFixtureDescriptor,
   intakeFixtureProjection,
 } from "../../fixtures/intake-workflow-fixture.js";
-import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 
 const ROSTER_CSV = [
   "Work-study roster,,",
@@ -170,7 +170,7 @@ function surface(): Surface {
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([intakeFixtureDescriptor.contractFingerprint]),
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),

@@ -1,7 +1,7 @@
 # explorer-graph--paper-ink--1280x720
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: 3e459f4b09a28d4992efe712a98310053030f263ac11d9c0610234142f2c8df9
+# descriptorHash: 6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -154,7 +154,7 @@
             - row "Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts":
               - rowheader "Source"
               - cell "contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts"
-        - text: input ee4776e0a94eoutput 6b08cc3af988impl 3650170e9dea
+        - text: input ee4776e0a94eoutput 6b08cc3af988impl 68a807c04654
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

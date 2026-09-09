@@ -1,7 +1,7 @@
 # run-running--paper-ink--1440x900--panel-dismissed
 # adapter: fixture
 # fixture: run-running
-# descriptorHash: 3e459f4b09a28d4992efe712a98310053030f263ac11d9c0610234142f2c8df9
+# descriptorHash: 6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: panel-dismissed
 # capturedAt: 2026-08-03
@@ -261,7 +261,7 @@
       - 'listitem "9:53 AM: info note: 2 candidates returned from person search"': 9:53 AM 2 candidates returned from person search
       - 'listitem "9:54 AM: info note: Selecting the exact name match"': 9:54 AM Selecting the exact name match
     - searchbox "Search logs"
-    - text: 3e459f4b
+    - text: 6bf54d32
     - button "Run provenance"
     - text: live
   - complementary "Run data":

@@ -1,3 +1,4 @@
 export const forbidden = `UPDATE tasks SET record_json = '{}' WHERE record_key = ?`;
 export const renamed = `UPDATE workflow_runs SET record_json = '{}' WHERE record_key = ?`;
 export const worker = `UPDATE workflow_workers SET state = 'idle' WHERE record_key = ?`;
+export const archive = `UPDATE archived_runs SET record_json = '{}' WHERE record_key = ?`;

@@ -1,3 +1,4 @@
+import { LedgerLinePointerSchema, ResolvedLedgerLineWireSchema } from "./ledger-resolution.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../protected-input.js";
 /**
  * The archive model — charter §25 / ref dashboard-surfaces §10.2 (D80), as-built by D179.
@@ -42,7 +43,6 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
-  NonNegativeIntSchema,
   PositiveIntSchema,
   RunIdSchema,
   TraceIdSchema,
@@ -326,11 +326,7 @@ export const ArchivedEvidencePointersSchema = z.strictObject({
    * positive while nothing populated the field, so no stored record carries a
    * pointer under the old bound; a first line would simply have been refused.
    */
-  ledgerPartitions: z.array(z.strictObject({
-    system: z.string().min(1),
-    date: z.iso.date(),
-    sequence: NonNegativeIntSchema,
-  })),
+  ledgerPartitions: z.array(LedgerLinePointerSchema),
 });
 export type ArchivedEvidencePointers = z.infer<typeof ArchivedEvidencePointersSchema>;
 
@@ -706,3 +702,13 @@ export function versionDrift(
   }
   return Object.freeze(reasons);
 }
+
+/** Separately bound enrichment; never part of the released archive content digest. */
+export const ArchivedTransactionsSchema = z.strictObject({
+  version: z.literal(1), runId: RunIdSchema, contentDigest: FingerprintSchema,
+  capturedAt: IsoInstantSchema,
+  lines: z.array(ResolvedLedgerLineWireSchema),
+  eventIds: z.array(z.uuid()),
+  sourceDigests: z.array(FingerprintSchema),
+});
+export type ArchivedTransactions = z.infer<typeof ArchivedTransactionsSchema>;

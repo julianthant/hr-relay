@@ -1,297 +1,85 @@
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
-/**
- * Ref write-safety §6's mechanical arms: one ordered projector, idempotent by outbox id,
- * loud on every disagreement, and a `ledger/` directory that NO cleanup path
- * can reach. Every arm is executed against a violating fixture so a dead arm
- * cannot stand in for enforcement.
- */
+/** T replaces projector authority with confirmed SQLite history; old source evidence remains read-only. */
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import ts from "typescript";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
-import { manualClock } from "../../../src/domain/clock.js";
-import { EVENT_STREAMS } from "../../../src/infra/events/jsonl-streams.js";
-import {
-  LedgerDegradedReasonSchema,
-  LedgerPartitionKeySchema,
-  LedgerProjectionReportSchema,
-  deriveLedgerLineDigest,
-  ledgerPartitionOfInstant,
-} from "../../../src/domain/ledger-projection.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import {
-  createLedgerProjector,
-  ledgerFilePath,
-  ledgerLineForOutbox,
-} from "../../../src/infra/ledger/index.js";
-import { NOW } from "../../fixtures/phase1c-contract-fixtures.js";
-import { ledgerCommitFixture } from "../fixtures/ledger-projection-fixtures.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { deriveLedgerLineDigest } from "../../../src/domain/ledger-projection.js";
+import { historyWorld, historicalWorld } from "../transaction-history-fixture.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
-
-const LEDGER_OWNER_ROOT = "src/infra/ledger/";
-const DELETION_PRIMITIVES = /\b(?:unlinkSync|unlink|rmSync|rmdirSync|rmdir|truncateSync|ftruncateSync|rimraf)\s*\(/;
-const LEDGER_REFERENCE = /ledgerDirectory\s*\(|ledgerFilePath\s*\(|ledgerFileName\s*\(|["'`]ledger["'`]|\/ledger\//;
-
-export interface ScannedSource {
-  readonly path: string;
-  readonly content: string;
+interface Source { path: string; content: string }
+export function retiredLedgerConsumerViolations(sources: readonly Source[]) {
+  return sources.filter(({ content }) => /(?:from\s+["'][^"']*infra\/ledger\/|\.authority\.(?:durableOutbox|ledgerProjection)\b|(?:createLedgerProjector|createLedgerReadThrough)\s*\()/u.test(content)).map(({ path }) => path);
 }
-
-/**
- * D86 gave `spans/` and `notes/` a 30-day prune and gave `ledger/` a retention
- * floor of FOREVER. A module that can both name the ledger and delete a file is
- * a route from "clean up the tracker" to "erase proof that a real HR
- * transaction was filed", so the two capabilities may never meet outside the
- * projector's own directory — and the projector itself deletes nothing.
- */
-export function ledgerPruneReachabilityViolations(sources: readonly ScannedSource[]): readonly string[] {
-  const violations: string[] = [];
-  for (const source of sources) {
-    const namesLedger = LEDGER_REFERENCE.test(source.content);
-    const deletes = DELETION_PRIMITIVES.test(source.content);
-    if (source.path.startsWith(LEDGER_OWNER_ROOT)) {
-      if (deletes) violations.push(`${source.path}: the ledger owner module may not call a deletion primitive`);
-      continue;
+const LEDGER_REFERENCE = /ledgerDirectory\s*\(|ledgerFilePath\s*\(|ledgerFileName\s*\(|["'`]ledger["'`]|\/ledger\//u;
+const DELETION_PRIMITIVES = /\b(?:unlinkSync|unlink|rmSync|rmdirSync|rmdir|truncateSync|ftruncateSync|rimraf)\s*\(/u;
+/** Pin the reviewed recovery-copy function; an edit cannot expand its deletion exception. */
+function withoutVerifiedScratchCleanup(source: Source): string {
+  if (source.path !== "src/infra/events/timeline-import.ts") return source.content;
+  const file = ts.createSourceFile(source.path, source.content, ts.ScriptTarget.Latest, true);
+  const owner = file.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "preserveTimelineSources");
+  if (owner === undefined || createHash("sha256").update(owner.getText(file)).digest("hex") !== "961b8bf1f77ead9a2f547e15ca518bd5db66c25e02c0535884843e6039848771") return source.content;
+  const original = owner.getText(file);
+  const admitted = original.replace("rmSync(temporary, { recursive: true, force: true });", "");
+  return source.content.slice(0, owner.getStart(file)) + admitted + source.content.slice(owner.end);
+}
+export function ledgerSoleWriterViolations(sources: readonly Source[]) {
+  return sources.filter(({ content }) => LEDGER_REFERENCE.test(content)
+    && /\bappendFile(?:Sync)?\s*\(|openSync\s*\([^)]*["'`]a["'`]/u.test(content)).map(({ path }) => path);
+}
+export function ledgerPruneReachabilityViolations(sources: readonly Source[]) {
+  return sources.filter((source) => (LEDGER_REFERENCE.test(source.content) || source.path.startsWith("src/infra/ledger/"))
+    && DELETION_PRIMITIVES.test(withoutVerifiedScratchCleanup(source))).map(({ path }) => path);
+}
+function sources() { return gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u.test(path) && existsSync(join(REPO_ROOT, path))).map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") })); }
+describe("ledger projector retirement", () => {
+  it("keeps current consumers absent and catches an injected read-through or repository alias", () => {
+    assert.deepEqual(retiredLedgerConsumerViolations(sources()), []);
+    for (const content of ['import { x } from "../infra/ledger/index.js";', 'db.authority.ledgerProjection.list()', 'db.authority.durableOutbox.get(id)', 'createLedgerReadThrough(root)']) assert.deepEqual(retiredLedgerConsumerViolations([{ path: "violating.ts", content }]), ["violating.ts"]);
+  });
+  it("allows no ledger appender or current cleanup path, with violating controls", () => {
+    assert.deepEqual(ledgerSoleWriterViolations(sources()), []); assert.deepEqual(ledgerPruneReachabilityViolations(sources()), []);
+    assert.deepEqual(ledgerSoleWriterViolations([{ path: "bad.ts", content: 'appendFileSync(ledgerFilePath(root), line)' }]), ["bad.ts"]);
+    assert.deepEqual(ledgerPruneReachabilityViolations([{ path: "bad.ts", content: 'rmSync(ledgerDirectory(root))' }]), ["bad.ts"]);
+    for (const primitive of ["unlinkSync", "unlink", "rmSync", "rmdirSync", "rmdir", "truncateSync", "ftruncateSync", "rimraf"]) {
+      assert.deepEqual(ledgerPruneReachabilityViolations([{ path: "bad.ts", content: `${primitive}(\`\${root}/ledger/ucpath-2026-07-31.jsonl\`)` }]), ["bad.ts"]);
     }
-    if (namesLedger && deletes) {
-      violations.push(`${source.path}: a cleanup path can reach ledger/, which is never pruned (D86)`);
-    }
-  }
-  return violations;
-}
-
-/**
- * Executors never append the ledger; exactly one module does (ref write-safety §6). A
- * second appender would be a second sequence authority.
- */
-export function ledgerSoleWriterViolations(sources: readonly ScannedSource[]): readonly string[] {
-  const appends = /\bappendFileSync\s*\(|\bappendFile\s*\(|openSync\s*\([^)]*["'`]a["'`]/;
-  return sources
-    .filter((source) => !source.path.startsWith(LEDGER_OWNER_ROOT))
-    .filter((source) => LEDGER_REFERENCE.test(source.content) && appends.test(source.content))
-    .map((source) => `${source.path}: only ${LEDGER_OWNER_ROOT} may append the ledger`);
-}
-
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-
-function newRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-ledger-guard-"));
-  roots.push(root);
-  return root;
-}
-
-function open(root: string): AuthorityDatabase {
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "ledger-guard" },
-    manualClock(new Date(NOW)),
-  );
-  databases.push(database);
-  return database;
-}
-
-function cleanup(): void {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-}
-
-function productionSources(): readonly ScannedSource[] {
-  return gitVisibleFiles(["src"])
-    .filter((path) => path.endsWith(".ts") || path.endsWith(".tsx"))
-    .map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") }));
-}
-
-describe("ledger projector", () => {
-  it("keeps every cleanup path structurally unable to reach ledger/", () => {
-    assert.deepEqual(ledgerPruneReachabilityViolations(productionSources()), []);
-    // The prune is blind to the ledger by construction, not by convention.
-    assert.deepEqual([...EVENT_STREAMS], ["spans", "notes"]);
-    const streams = readFileSync(join(REPO_ROOT, "src/infra/events/jsonl-streams.ts"), "utf8");
-    assert.equal(LEDGER_REFERENCE.test(streams.replaceAll(/^\s*\*.*$|\/\*[\s\S]*?\*\//gm, "")), false);
-
-    const violating: readonly ScannedSource[] = [
-      {
-        path: "src/services/cleanup/sweep.ts",
-        content: "import { unlinkSync } from 'node:fs';\nexport const sweep = (root: string) => unlinkSync(`${root}/ledger/ucpath-2026-07-31.jsonl`);\n",
-      },
-      {
-        path: "src/core/retention.ts",
-        content: "import { ledgerDirectory } from '../infra/ledger/index.js';\nexport const purge = (root: string) => rmSync(ledgerDirectory(root), { recursive: true });\n",
-      },
-      {
-        path: "src/infra/ledger/compactor.ts",
-        content: "import { rmSync } from 'node:fs';\nexport const compact = (path: string) => rmSync(path);\n",
-      },
-    ];
-    for (const source of violating) {
-      assert.equal(
-        ledgerPruneReachabilityViolations([source]).length,
-        1,
-        `${source.path} bypassed the never-pruned arm`,
-      );
-    }
-    const allowed: readonly ScannedSource[] = [
-      {
-        path: "src/infra/events/jsonl-streams.ts",
-        content: "import { unlinkSync } from 'node:fs';\nexport const prune = (path: string) => unlinkSync(`${path}/spans/onboarding-2026-07-31.jsonl`);\n",
-      },
-      {
-        path: "src/infra/ledger/ledger-projector.ts",
-        content: "export const ledgerDirectory = (root: string) => `${root}/ledger`;\n",
-      },
-    ];
-    assert.deepEqual(ledgerPruneReachabilityViolations(allowed), []);
+    assert.deepEqual(ledgerSoleWriterViolations([{ path: "bad.ts", content: 'appendFileSync(`${root}/ledger/ucpath.jsonl`, line)' }]), ["bad.ts"]);
+    const path = "src/infra/events/timeline-import.ts";
+    const content = readFileSync(join(REPO_ROOT, path), "utf8");
+    for (const source of [{ path: "wrong.ts", content }, { path, content: content.replace("rmSync(temporary,", 'rmSync("ledger",') },
+      { path, content: content + '\nrmSync("ledger");' }]) assert.deepEqual(ledgerPruneReachabilityViolations([source]), [source.path]);
   });
-
-  it("keeps the ledger to one appender", () => {
-    assert.deepEqual(ledgerSoleWriterViolations(productionSources()), []);
-    assert.equal(
-      ledgerSoleWriterViolations([{
-        path: "src/core/write-sequencer.ts",
-        content: "import { appendFileSync } from 'node:fs';\nexport const emit = (root: string, line: string) => appendFileSync(`${root}/ledger/ucpath.jsonl`, line);\n",
-      }]).length,
-      1,
-    );
+  it("has no retired tables or repositories on a fresh database", () => {
+    const w = historyWorld(); try {
+      w.commit(601); const db = new DatabaseSync(w.path, { readOnly: true }); try {
+        const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
+        for (const retired of ["operation_outbox", "ledger_partitions", "ledger_projections"]) assert.equal(names.includes(retired), false);
+      } finally { db.close(); }
+      for (const key of ["durableOutbox", "ledgerProjection"]) assert.equal(key in w.database.authority, false);
+      assert.equal(w.history.query({ from: "2026-01-01", to: "2027-01-01" }).rows.length, 1);
+    } finally { w.dispose(); }
   });
-
-  it("derives one line and one digest per (outbox, sequence), with a separated hash", () => {
-    const fixture = ledgerCommitFixture(0);
-    const root = newRoot();
-    try {
-      const database = open(root);
-      seedAtomicWriteOwner(database, fixture.commit);
-      database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt });
-      database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
-      const outbox = database.authority.ledgerProjection.getOutbox(fixture.outboxId);
-      assert.notEqual(outbox, undefined);
-      if (outbox === undefined) return;
-
-      const line = ledgerLineForOutbox(outbox, 0);
-      assert.equal(ledgerLineForOutbox(outbox, 0), line, "line derivation is not deterministic");
-      assert.notEqual(ledgerLineForOutbox(outbox, 1), line, "sequence is not part of the projected line");
-      assert.equal(line.includes("\n"), false);
-      assert.equal(deriveLedgerLineDigest(line), deriveLedgerLineDigest(line));
-      assert.notEqual(deriveLedgerLineDigest(line), deriveLedgerLineDigest(`${line} `));
-      // A domain separator, so a ledger line digest can never collide with a
-      // fingerprint derived over the same bytes for another purpose.
-      assert.notEqual(deriveLedgerLineDigest(line), deriveLedgerLineDigest(`hrauto:ledger-line:v1 ${line}`));
-      // The partition comes from the entry, never from wall-clock now.
-      assert.equal(ledgerPartitionOfInstant(fixture.confirmedAt), "2026-07-31");
-      assert.equal(ledgerPartitionOfInstant("2026-08-01T00:30:00.000+02:00"), "2026-07-31");
-    } finally {
-      cleanup();
-    }
+  it("preserves the separated historical line hash and detects changed content", () => {
+    const line = canonicalJsonStringify({ seq: 0, payload: "historical" });
+    assert.equal(deriveLedgerLineDigest(line), deriveLedgerLineDigest(line));
+    assert.notEqual(deriveLedgerLineDigest(line), deriveLedgerLineDigest(`${line} `));
+    assert.notEqual(deriveLedgerLineDigest(line), deriveLedgerLineDigest(canonicalJsonStringify({ seq: 1, payload: "historical" })));
   });
-
-  it("is idempotent by outbox id and refuses a second sequence or a conflicting line", () => {
-    const root = newRoot();
-    try {
-      const database = open(root);
-      const fixture = ledgerCommitFixture(0);
-      seedAtomicWriteOwner(database, fixture.commit);
-      database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt });
-      database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
-      const repository = database.authority.ledgerProjection;
-      const lease = repository.acquireLease({
-        system: "ucpath", date: "2026-07-31", projectorId: "guard-a", now: NOW, expiresAt: "2026-07-31T17:30:00.000Z",
-      });
-      assert.equal(lease.state, "acquired");
-      if (lease.state !== "acquired") return;
-      const outbox = repository.getOutbox(fixture.outboxId);
-      if (outbox === undefined) throw new Error("guard fixture lost its outbox");
-      const digest = deriveLedgerLineDigest(ledgerLineForOutbox(outbox, 0));
-      const request = {
-        system: "ucpath",
-        date: "2026-07-31",
-        projectorId: "guard-a",
-        leaseGeneration: lease.partition.leaseGeneration,
-        outboxId: fixture.outboxId,
-        lineDigest: digest,
-        assignedAt: NOW,
-      };
-      const first = repository.assignSequence(request);
-      assert.equal(first.seq, 0);
-      assert.deepEqual(repository.assignSequence(request), first, "assignment is not idempotent by outbox id");
-      assert.equal(repository.getPartition("ucpath", "2026-07-31")?.nextSeq, 1, "a repeat assignment burned a sequence");
-      assert.throws(
-        () => repository.assignSequence({ ...request, lineDigest: "b".repeat(64) }),
-        /already assigned sequence/,
-      );
-      // A projector that no longer holds the lease cannot advance anything.
-      assert.throws(
-        () => repository.assignSequence({ ...request, projectorId: "guard-b", outboxId: fixture.outboxId }),
-        /is not leased to/,
-      );
-      const { assignedAt: _assignedAt, ...appendBase } = request;
-      assert.throws(
-        () => repository.markAppended({ ...appendBase, appendedAt: NOW, projectorId: "guard-b" }),
-        /is not leased to/,
-      );
-    } finally {
-      cleanup();
-    }
+  it("retains historical dense-sequence refusal before allowing conversion", async () => {
+    const w = historicalWorld({ files: true }); try {
+      const raw = new DatabaseSync(w.path); try { raw.exec("UPDATE ledger_partitions SET next_seq=5, version=version+1, record_json=json_set(record_json,'$.nextSeq',5,'$.version',2)"); } finally { raw.close(); }
+      await assert.rejects(w.backup(), /ledger-partition-sequence-is-dense/u);
+    } finally { w.dispose(); }
   });
-
-  it("degrades read-only when a partition sequence is not dense", () => {
-    const root = newRoot();
-    try {
-      const path = join(root, "state.sqlite");
-      const database = open(root);
-      for (const index of [0, 1]) {
-        const fixture = ledgerCommitFixture(index);
-        seedAtomicWriteOwner(database, fixture.commit);
-        database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt });
-        database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
-      }
-      const report = createLedgerProjector(database, manualClock(new Date(NOW)), {
-        stateRoot: root, projectorId: "guard-a", leaseMs: 30_000,
-      }).project(LedgerPartitionKeySchema.parse({ system: "ucpath", date: "2026-07-31" }));
-      assert.equal(report.state, "projected");
-      assert.equal(readFileSync(ledgerFilePath(root, "ucpath", "2026-07-31"), "utf8").split("\n").filter(Boolean).length, 2);
-      database.close();
-      databases.splice(databases.indexOf(database), 1);
-
-      const raw = new DatabaseSync(path);
-      raw.prepare("UPDATE ledger_partitions SET next_seq = 5, record_json = json_set(record_json, '$.nextSeq', 5), version = version + 1 WHERE record_key = ?")
-        .run("ucpath:2026-07-31");
-      raw.close();
-      assert.throws(
-        () => AuthorityDatabase.inspectExistingReadOnly(path),
-        /ledger-partition-sequence-is-dense/,
-      );
-    } finally {
-      cleanup();
-    }
+  it("forbids changing retained historical operation source bytes", async () => {
+    const w = historicalWorld(); try { await w.backup(); await w.upgrade(); const raw = new DatabaseSync(w.path); try {
+      assert.throws(() => raw.exec("UPDATE timeline_operation_sources SET record_json=record_json"), /immutable/u);
+      assert.throws(() => raw.exec("DELETE FROM timeline_operation_sources"), /deletion|tombstone|owned/u);
+    } finally { raw.close(); } } finally { w.dispose(); }
   });
-
-  it("keeps degraded health a closed, non-continuable outcome", () => {
-    assert.deepEqual([...LedgerDegradedReasonSchema.options].sort(), [
-      "duplicate-outbox",
-      "duplicate-sequence",
-      "line-digest-mismatch",
-      "malformed-tail",
-      "missing-outbox-payload",
-      "sequence-authority-mismatch",
-      "sequence-gap",
-      "sequence-out-of-order",
-      "unrecorded-line",
-    ]);
-    const partition = { system: "ucpath" as const, date: "2026-07-31" };
-    assert.equal(LedgerProjectionReportSchema.safeParse({
-      state: "degraded", partition, reason: "looks-fine", detail: "continued anyway",
-    }).success, false);
-    assert.equal(LedgerProjectionReportSchema.safeParse({
-      state: "degraded", partition, reason: "sequence-gap",
-    }).success, false, "a degraded report must name what disagreed");
-    assert.equal(LedgerProjectionReportSchema.safeParse({
-      state: "projected", partition, appended: [], repaired: [], remarked: [], nextSeq: 0, reason: "sequence-gap",
-    }).success, false, "a projected report cannot smuggle a degraded reason");
-  });
-
-  it("registers this guard file under its inventory name", () => {
-    assert.equal(relative(REPO_ROOT, import.meta.filename).replaceAll("\\", "/"),
-      "tests/unit/architecture/ledger-projector.test.ts");
-  });
+  it("retains this guard's inventory identity", () => { assert.equal(relative(REPO_ROOT, import.meta.filename), "tests/unit/architecture/ledger-projector.test.ts"); });
 });

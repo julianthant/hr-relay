@@ -1,3 +1,4 @@
+import { reconstructConfirmedOperation } from "../../src/events/confirmed-operation.js";
 import { lifecycleCommandId } from "../../src/core/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { PositiveIntSchema } from "../../src/domain/ids.js";
@@ -275,10 +276,11 @@ describe("ref write-safety §4 recovery matrix", () => {
     assert.equal((checkpoint.output.value as { proofSource: string }).proofSource, "recovery-probe");
     const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(run && run.lifecycle.state === "queued", "the settled run resumed to the queue");
-    // Ledger + span outboxes exist — recovery backfill IS a filed transaction.
-    const minted = h.ids.minted();
-    assert.ok(h.database.authority.durableOutbox.get(minted[minted.length - 2]));
-    assert.ok(h.database.authority.durableOutbox.get(minted[minted.length - 1]));
+    const confirmations = h.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed");
+    assert.equal(confirmations.length, 1, "recovery backfill is one filed transaction");
+    const { ledger, span } = reconstructConfirmedOperation(h.database.authority, confirmations[0]);
+    assert.deepEqual(ledger.proof, intent.completionProof);
+    assert.equal(span.outcome.proofSource, "recovery-probe");
   });
 
   it("parks a malformed present proof — never done with unvalidated proof", async () => {
@@ -672,7 +674,7 @@ describe("positive recovery composite refusal", () => {
     assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
       WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID), undefined);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
-    assert.ok(h.ids.minted().every((id) => h.database.authority.durableOutbox.get(id) === undefined));
+    assert.deepEqual(h.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed"), []);
   });
 });
 
@@ -688,13 +690,12 @@ describe("resume-queued helper replay", () => {
     const checkpoint = h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
       WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
     assert.ok(checkpoint);
-    const outboxes = h.ids.minted().map((id) => h.database.authority.durableOutbox.get(id));
-    const ledgerOutbox = outboxes.find((entry) => entry?.payload.kind === "ledger-entry");
-    const terminalSpanOutbox = outboxes.find((entry) => entry?.payload.kind === "write-committed-span");
-    assert.ok(ledgerOutbox && terminalSpanOutbox);
+    const confirmation = h.database.authority.timelineEvents.page({}).find((event) => event.payload.kind === "operation-confirmed");
+    assert.ok(confirmation);
+    const { ledger: transaction, span: committedSpan } = reconstructConfirmedOperation(h.database.authority, confirmation);
     const input = { run: { runId: run.envelope.runId, expectedVersion: run.version }, checkpoint,
       commit: { writeIntentId, generation: intent.generation, completionProof: intent.completionProof,
-        confirmedAt: intent.confirmedAt, outcome: checkpoint.output.value, ledgerOutbox, terminalSpanOutbox } };
+        confirmedAt: intent.confirmedAt, outcome: checkpoint.output.value, transaction, committedSpan } };
     const transition = { kind: "resume-queued" as const, startAt: WRITE_FIXTURE_NODE_ID,
       port: testRunContinuation(h.database, h.clock),
       commandId: lifecycleCommandId("positive-recovery", { writeIntentId, generation: intent.generation }) };
