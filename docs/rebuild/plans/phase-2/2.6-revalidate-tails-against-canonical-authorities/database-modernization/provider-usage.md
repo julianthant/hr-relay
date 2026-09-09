@@ -641,9 +641,14 @@ is `f00515fb278a2571152100dd17efedd97757dc32`. Local master integration is
 Its sole conflict was P's appended evidence against an empty master hunk; no behavior conflict
 or contract change occurred. The original P production proof ran on exact F alone.
 
-Integration validation passed 215 unit cases and 183 architecture cases against master,
-using the separately verified one-worker integration adapter. Repository lint and affected
-manifest/catalog generation and freshness passed. Exact commands, file hashes and exit results are retained in `integration-*.json`.
+Master gained the independently integrated S settings code while P was recording completion.
+P synchronized that existing master release into its own fixed checkout, commit
+`7619f1986c06348f6f45f16ab5e6bf287712299d`. The earlier mutable-master snapshots are explicitly
+superseded in `integration-drift.json`; acceptance uses the fixed-checkout `combined-unit.json`,
+`combined-architecture.json` and `combined-lint.json` receipts. These re-run the complete selected
+215 unit and 183 architecture cases and repository lint on the final combined runtime inputs.
+Affected manifest/catalog generation and freshness are recorded in `closure-*.json`.
+Exact commands, file hashes and exits remain beside the logs.
 Completion-record commits change only the approved documentation paths and generated roadmap;
 unchanged runtime inputs retain those integration gate results. The final documentation gate
 rechecks roadmap bindings, local links, instruction pairs/chains, freshness and whitespace.
@@ -662,3 +667,9 @@ L consumes the immutable candidate/integration and closure record under its exis
 No peer messages, worker dispatch, successor launch, live application or push occurred. Full gates,
 fresh complete independent review and phase acceptance remain 2.6.9. P is a scoped development
 release; no independent-review PASS is asserted here.
+
+
+The final recording merge is documentation-only relative to the fixed combined runtime candidate.
+The closure receipt records its exact SHA/tree after the final master comparison and cleanup.
+This late source synchronization is an external integration change, not a P scope amendment or a
+reason to reschedule a sibling. P retained its own verification duty and sent no peer messages.
