@@ -7,18 +7,23 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 
 ## Readiness
 
-R is first: its scope is approved and `/phase-plan 2.6.2` resolves its exact execution brief/base.
+R is first: its complete [execution brief](renames.md#approved-execution-brief--2026-09-09) was
+approved on 2026-09-09. Use the planner's verified plan SHA and resolved supervisor prompt after
+scoped planning checks; R implementation has not started.
 All later implementation prompts are **WAITING ON** R and completed C0 (T1 is integrated), and their explicit
 prerequisite releases. These are exact conditional task instructions, not permission to guess SHAs
 or start all tasks today. At release, persist each resolved plan/base/head/path binding in the
 assignment's owner file and return that task's fully resolved prompt. Never copy an old sideplan
 prompt, rerun completed T1, or treat a planning commit as an implementation release.
 
-## Plan the rename task first
+## Execute the approved rename task first
 
-```text
-/phase-plan 2.6.2 using /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md. Scope is approved: seven naming-only changes, no behavior redesign. Verify the current base, exact consumer/test ownership and released migration history, then persist the complete execution brief. Use Astra/high in this session; do not create worktrees, dispatch agents or implement code. Phase 2.6-only trial: focused tests/lint/freshness per implementation task; full gates and fresh independent review at 2.6.9. Return a verified /supervise 2.6.2 prompt.
-```
+The substantive R1–R5 steps, exact proof commands, base and checkout binding are in
+[renames.md](renames.md#approved-execution-brief--2026-09-09). Planning is approved; do not repeat
+planning or launch against an uncommitted brief. The planner returns a copy-ready `/supervise 2.6.2`
+prompt with the verified full plan SHA. R creates its isolated checkout from that commit, releases
+only a focused-tested development candidate to C0, and retains its worktree/ref. No master merge
+or independent review occurs in R; final 2.6.9 retains both after the required gates.
 
 ## Continue C0 planning after R
 
