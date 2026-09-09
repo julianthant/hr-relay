@@ -59,8 +59,10 @@ import {
   sessionManagerFor,
 } from "../helpers/phase1f-executor-harness.js";
 
+const artifactReadiness: Promise<void>[] = [];
 const disposers: (() => void)[] = [];
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(artifactReadiness.splice(0));
   for (const dispose of disposers.splice(0)) dispose();
 });
 
@@ -145,10 +147,12 @@ function outboxRow(database: AuthorityDatabase, input: Readonly<{
 }
 
 function projectorFor(database: AuthorityDatabase, root: string, clock: Readonly<{ now: () => Date }>) {
+  const artifacts = createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"});
+  artifactReadiness.push(artifacts.ready);
   return createArtifactSinkProjector({
     authority: database.authority,
     withAuthorityTransaction: (work) => database.withAuthorityTransaction(work),
-    sinks: { "xlsx-retention": createXlsxRetentionSink({ workbookPath: join(root, "retention.xlsx"), artifacts: createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"}) }) },
+    sinks: { "xlsx-retention": createXlsxRetentionSink({ workbookPath: join(root, "retention.xlsx"), artifacts }) },
     lockDir: join(root, "locks"),
     clock: clock as never,
   });
@@ -276,7 +280,7 @@ describe("artifact sink projector over the xlsx-retention sink", () => {
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
     const projector = projectorFor(database, root, authority.clock);
-    mkdirAndLock(join(root, "locks"), "xlsx-retention.lock");
+    mkdirAndLock(root, ".retention.xlsx.writer.lock");
     const row = outboxRow(database, { outboxId: "aaaaaaaa-0001-4000-8000-000000000001", stableSuffix: "a", record: "retain" });
     await assert.rejects(projector.projectOutbox([row]), (error: unknown) => error instanceof ArtifactSinkBusyError);
     assert.equal(database.authority.artifactOutbox.get(row)?.state, "pending");

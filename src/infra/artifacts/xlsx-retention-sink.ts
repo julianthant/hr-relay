@@ -36,8 +36,8 @@ import { OPERATOR_XLSX_MEDIA_TYPE } from "../../domain/dashboard/xlsx-export.js"
  * (`<workbook>.pending-<outboxId>.xlsx`), never written over it.
  */
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { lstat, mkdir, open, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
 import writeXlsxFile from "write-excel-file/node";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
@@ -75,10 +75,14 @@ export class ArtifactSinkConflictError extends Error {
 export interface ArtifactSinkProjectionRequest {
   readonly row: ArtifactOutboxStorageRecord;
   readonly head: ArtifactSinkHeadRecord | undefined;
+  readonly previousArtifact: ArtifactRef | undefined;
+  readonly prepare: (artifact: ArtifactRef) => void;
+  readonly assertPrepared: (artifact: ArtifactRef) => void;
 }
 
 export interface ArtifactSink {
   readonly sinkId: string;
+  writerLockPath(): Promise<string>;
   /** Applies the row and returns the workbook's new content hash. */
   project(request: ArtifactSinkProjectionRequest): Promise<Readonly<{ contentSha256: Fingerprint; artifact: ArtifactRef }>>;
 }
@@ -107,13 +111,24 @@ async function readRows(bytes: Buffer): Promise<string[][]> {
   return first.data.map((row) => row.map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
 }
 
-export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string; artifacts: ContentAddressedArtifactWriter }>): ArtifactSink {
+export type PublicationFaultPoint = "before-stage" | "after-stage" | "after-stage-sync" | "after-prepare" | "before-replace" | "after-replace" | "after-directory-sync";
+export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string; artifacts: ContentAddressedArtifactWriter;
+  fault?: (point: PublicationFaultPoint) => void | Promise<void>;
+}>): ArtifactSink {
   const { workbookPath } = options;
   return Object.freeze({
     sinkId: "xlsx-retention",
+    async writerLockPath() {
+      await mkdir(dirname(workbookPath), { recursive: true });
+      // Canonical parent identity makes aliases share the same exclusive destination fence.
+      return join(await realpath(dirname(workbookPath)), `.${basename(workbookPath)}.writer.lock`);
+    },
     async project(request: ArtifactSinkProjectionRequest) {
       const { row, head } = request;
       const stored = await readWorkbookBytes(workbookPath);
+      if (stored.present && (await lstat(workbookPath)).isSymbolicLink()) throw new ArtifactSinkConflictError({
+        sinkId: row.sinkId, message: "generated-artifact-symlink-destination-conflict",
+      });
 
       if (head === undefined && stored.present) {
         throw new ArtifactSinkConflictError({
@@ -161,7 +176,26 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         }
       }
 
-      if (stored.present) await options.artifacts.put(stored.bytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE });
+      const verifyRetained = async (artifact: ArtifactRef, bytes: Buffer) => {
+        const chunks: Buffer[] = [];
+        let length = 0;
+        for await (const chunk of await options.artifacts.open(artifact)) {
+          if (!(chunk instanceof Uint8Array)) throw new Error("generated-artifact-non-byte-readback");
+          length += chunk.byteLength;
+          if (length > bytes.length) throw new Error("generated-artifact-readback-size-conflict");
+          chunks.push(Buffer.from(chunk));
+        }
+        if (!Buffer.concat(chunks).equals(bytes) || artifact.bytes !== bytes.length || artifact.sha256 !== contentSha256(bytes)
+          || artifact.mediaType !== OPERATOR_XLSX_MEDIA_TYPE) throw new Error("generated-artifact-readback-conflict");
+        return artifact;
+      };
+      const retain = async (bytes: Buffer) => verifyRetained(
+        await options.artifacts.put(bytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }), bytes,
+      );
+      if (stored.present) {
+        if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
+        await verifyRetained(request.previousArtifact, stored.bytes);
+      }
       const existingRows: string[][] = stored.present ? (await readRows(stored.bytes)).slice(1) : [];
       const upserted = new Map(existingRows.map((cells) => [cells[0] ?? "", cells]));
       const current = upserted.get(intended[0] ?? "");
@@ -173,27 +207,45 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         // A duplicate key with identical content is a VERIFIED no-op: the
         // hash-checked bytes on disk already say what this row says, so
         // nothing is rewritten and the recorded hash stays authoritative.
-        return Object.freeze({ contentSha256: contentSha256(stored.bytes), artifact: await options.artifacts.put(stored.bytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }) });
+        if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
+        const artifact = request.previousArtifact;
+        request.prepare(artifact);
+        return Object.freeze({ contentSha256: contentSha256(stored.bytes), artifact });
       }
 
       const nextBytes = await composeWorkbook([...upsert(upserted, intended).values()]);
-      const artifact = await options.artifacts.put(nextBytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE });
+      const artifact = await retain(nextBytes);
       await mkdir(dirname(workbookPath), { recursive: true });
       const tempPath = `${workbookPath}.tmp-${String(row.outboxId)}`;
-      await writeFile(tempPath, nextBytes);
+      request.prepare(artifact);
+      await options.fault?.("after-prepare");
+      await options.fault?.("before-stage");
+      await writeFile(tempPath, nextBytes, { flag: "wx" });
+      await options.fault?.("after-stage");
       const tempHandle = await open(tempPath, "r+");
       try {
         await tempHandle.sync();
       } finally {
         await tempHandle.close();
       }
+      await options.fault?.("after-stage-sync");
+      if (!(await readFile(tempPath)).equals(nextBytes)) throw new Error("generated-artifact-staged-bytes-conflict");
+      await options.fault?.("before-replace");
+      const beforeReplace = await readWorkbookBytes(workbookPath);
+      if (beforeReplace.present !== stored.present || (beforeReplace.present && stored.present && !beforeReplace.bytes.equals(stored.bytes))) {
+        throw new ArtifactSinkConflictError({ sinkId: row.sinkId, message: "generated-artifact-destination-changed-before-replace" });
+      }
+      request.assertPrepared(artifact);
       await rename(tempPath, workbookPath);
+      await options.fault?.("after-replace");
       const directoryHandle = await open(dirname(workbookPath), "r");
       try {
         await directoryHandle.sync();
       } finally {
         await directoryHandle.close();
       }
+      await options.fault?.("after-directory-sync");
+      if (!(await readFile(workbookPath)).equals(nextBytes)) throw new ArtifactSinkConflictError({ sinkId: row.sinkId, message: "generated-artifact-published-bytes-conflict" });
       return Object.freeze({ contentSha256: contentSha256(nextBytes), artifact });
     },
   });
