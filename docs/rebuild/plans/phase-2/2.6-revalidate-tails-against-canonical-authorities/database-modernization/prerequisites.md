@@ -793,3 +793,101 @@ a retained branch. T's plan/base and product scope are unchanged. The merge comm
 scoped gate results. Remove only C0's integrated clean worktree/ref after passing checks; preserve
 R's separate worktree and the calling task. No push. Historical retention statements above describe
 the original handoff; this explicit later instruction owns current cleanup and launch routing.
+
+## L06 scoped release — 2026-09-09
+
+Status: focused candidate PASS; local integration and cleanup pending. No A/Q launch or phase acceptance is claimed.
+The approved base is `c3eb6725e3607a7df82a6c2a94a4765e8579efbd`; L used
+`codex/lifecycle-foundation` at `/Users/julianhein/Projects/hr-worktree-database-contracts`.
+The integration target is local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`.
+The operator explicitly assigned local merge and owned cleanup after focused PASS, without push.
+Independent review and full gates remain assigned to 2.6.9.
+
+### Implemented prerequisite boundaries
+
+| Step | Delivered boundary and proof |
+| --- | --- |
+| L01 | Verified P/D/G/S and F/C/T/R ancestry on the approved base. The original combined foundation run passed four suites and 29 tests. Reconciled the failure-capability import closure, C terminal fixture settlement, exact stopped-conversion SQL admission and registered native lifecycle adapters. |
+| L02 | Live schema 48 adds `archive_transfers`, `version_changes`, `run_summaries` and `summary_publication`; archive schema 1 owns immutable generic reports and deletion progress at the isolation-owned `archive.sqlite`. Released migration statements through 47 remain unchanged. Version changes bind workflow/application scope, targets, reviewed membership, actor/reason and monotonic verified progress. |
+| L03 | `RunRecordService.lifecycleStorage()` exposes the shared production capability. Outer authority commits refresh a published summary generation atomically; absence and stale generations refuse. Capture preserves original run/source JSON across 20 source groups, including scoped note files, command/audit lineage, settings, diagnostics, receipt/failure/resolution, checkpoints, operations and attempts. Generic display uses protected projections. Transfer validates source/version and file membership before removing live rows; it creates no deletion receipt. Canonical read/list, notification targets, reserved IDs/ordinals and digest-bound downloads survive transfer. |
+| L04 | Explicit storage backup publishes a verified paired manifest after native snapshots and retained-file verification. Restore holds stopped-system admission across both stores/files, preserves suspects and blocks normal boot with a durable marker until settlement. Tests interrupt live/archive/file replacement and transfer capture/verification/cleanup, restart, and resume. File deletion resumes after unlink while preserving shared archive references. Both deletion orders retain shared operation/checkpoint groups; separate proofs include former/current operation-attempt owners and corrupt-owner refusal before any tombstone. Historical populated migration/recovery fixtures remain in the scoped batch. |
+| L05 | A baseline paths are `report-capture`, `archive-transfer`, `version-changes`, `archive-records` and generic `archive-reports`; Q baseline paths are `run-summary`, `run-summaries` and query `run-summaries`. Both consume the common lifecycle capability and never import their sibling implementation. Separate fixtures prove either order, replay, summary removal without Q, and summary publication without A. Independent database connections prove consistent reads across a writer and stale refusal after restart. Activity deduplicates validated canonical Separations identities only inside the selected current set; aggregate responses expose neither identities nor digests. Current pseudonym tables/producers/query wiring are retired; compatibility entry points refuse and protected credential/history grammars remain readable. |
+
+### Frozen consumer contract
+
+`createRunLifecycleStorage` exports source capture, summary refresh/read, report capture/verify,
+verified transfer/publication/read, file retention/authorized read and version-change read/write.
+`transferArchiveReport` orders capture → file/report verification → fenced live cleanup → publication,
+with durable replay at each boundary. `createArchiveRecords` routes publication and reads through
+that common fence rather than exposing an alternate A cleanup path. Generic viewing reads only the
+saved display document and attachment references; original source JSON is retained internally.
+`readRunSummarySource` requires a complete current publication. Current Queue serving remains the
+explicit existing path until Q performs its verified cutover. Q owns incremental/indexed query policy,
+selected-set calculation and served generation behavior; A owns complete version-bump/historical
+conversion policy and retirement of old execution doors. Those child outcomes are not L acceptance.
+
+The three lifecycle fixture owners are `tests/unit/lifecycle-foundation/source-hooks.test.ts`,
+`two-store-recovery.test.ts` and `peer-contracts.test.ts`. The complete source inventory is exported
+by `LifecycleSourceSnapshotSchema`; generic report and version-change schemas are strict. Summary
+rows carry source generation/cursor, canonical lifecycle, title, original/local time, duration
+availability, completion/receipt/failure facts, containment/dependencies and internal person availability.
+No summary authorizes a command. Legacy protected values, old backup layouts and migration bytes
+remain separate historical authorities; no new pseudonym/key authority is introduced.
+
+### Gate and identity evidence
+
+Evidence is retained outside the removable worktree at
+`/Users/julianhein/Projects/hr-lifecycle-foundation-evidence-20260909/`.
+`migration-identities.json` records every live migration statement hash and archive identity;
+`release-inputs.json` records exact runtime/test/tooling inputs. Final gate/commit/merge identities
+are recorded below after verification. Each test invocation uses `VITEST_MAX_WORKERS=1` and
+`--maxWorkers=1`; observed unit and architecture processes each had one file worker, two total.
+No provider, browser, HR submission or actual operator database migration was performed.
+
+The required selectors and commands are those in the approved L execution brief above. The final
+record must include all fourteen unit suites, seven architecture suites, lint, manifest/catalog/roadmap
+generation and freshness, changed local links, nine existing instruction twins/chain checks and
+`git diff --check`. No full typecheck, coverage, broad architecture/parity/build or independent review
+was run here. All retained 2.6.9 acceptance remains due.
+
+### Delivery assessment
+
+The assignment retained one supervisor and zero supporting agents. An interrupted implementation
+was resumed from a verified handoff; saved file hashes, branch/base and target cleanliness were
+rechecked before continuing. Repair rounds exposed implementation defects in source-fixture terminal
+settlement, native-backup table ordering, immutable-trigger compatibility, and ownership validation
+performed after a deletion tombstone. The two-attempt-owner negative case found the latter; validation
+now precedes the tombstone in the same transaction. Final contract inspection also completed the
+application-scope version-change target vocabulary. The plan already assigned these boundaries;
+these were implementation repairs, not new operator scope. Running the coupled retry-owner and
+version-scope fixtures earlier would have reduced repeated gates. Historical logs retain failed rounds;
+only final passing inputs support release. No elapsed-time or savings estimate is asserted.
+
+### Final focused candidate
+
+Candidate `08d9f4f5334eb20a49334acda268727b622b1163`, tree
+`be196dd7e634315e0994619ed7ff3da5f7036c7e`, includes the separate prerequisite
+import repair `01b460250`. Runtime, tests and tooling were frozen throughout the final batch.
+`final-gates.json` retains the full literal commands and exit codes; the logs below share the
+evidence directory named above. All invocations exited 0.
+
+| Gate | Final evidence |
+| --- | --- |
+| Fourteen required unit suites | 263 tests PASS; `L-final-unit.log` |
+| Seven required architecture suites | 139 tests PASS; `L-final-architecture.log` |
+| Full lint | PASS; `L-final-lint.log` |
+| Build manifest generation/freshness | PASS; `L-release-manifest-generate.log`; final freshness rechecked |
+| Store catalog generation/freshness | PASS; regenerated without a resulting catalog diff |
+| Runtime input identity | 2,088 SHA-256 entries in `release-inputs.json`; includes every new source/test |
+| Schema identities | `migration-identities.json`: live 48, floor 46; archive 1/application ID 1213350482 |
+| Instructions | Nine existing pairs identical; maximum chain 17,333 bytes, below 32,768 |
+
+A and Q consume this exact implementation SHA after local incorporation, each in its own assigned
+worktree, using the frozen contract above and its existing approved allocation. Their complete
+implementation and proof remain due; neither child is launched here. Full typecheck, coverage,
+broad architecture/parity/build, remaining phase proofs and fresh independent review remain at 2.6.9.
+
+Documentation release checks passed: roadmap generation/freshness, focused roadmap binding,
+changed local link/anchor verification, instruction pairs/chains and whitespace. Documentation-only
+release edits leave all 2,088 frozen runtime/test/tooling hashes unchanged; lint and runtime gates
+are reused under the approved D191 cadence. Integration and cleanup receipt follows below.
