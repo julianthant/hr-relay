@@ -335,9 +335,9 @@ No implementation, task launch or phase acceptance is claimed by this planning r
 | --- | --- |
 | Task and owner | 2.6.6.2 D; this diagnostics.md section and its execution evidence |
 | Supervisor | One GPT-6 Astra/high supervisor implementing locally; zero implementation workers and no independent reviewer in D |
-| Common runtime prerequisite | Repaired F integration `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, superseding initial F `7ec279750817934b7da69ce433e0e5a44fed6a58` |
+| Common runtime prerequisite | Complete resolver F integration `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, superseding the earlier F releases; see the factual rebind below |
 | Inspected planning source | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; F repair candidate `a1e963445bc05d57f1eb9abbff95a9238300ab3a` is integrated |
-| Implementation base | Exact committed approved-plan SHA supplied by the planner, a verified descendant of repaired F containing this complete section |
+| Implementation base | Exact verified rebind commit supplied by the planner, containing approved plan `950c5b617d73d2e9d1f7e43b7e90f3eaf21c80be` and F integration `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`; never the older plan commit alone |
 | Checkout creation | Create `codex/diagnostics` at `/Users/julianhein/Projects/hr-worktree-diagnostics` from that base; never implement in the integration checkout |
 | Integration target and owner | Local master at `/Users/julianhein/Projects/hr-automation-rebuild`; the same D supervisor owns D-only integration and cleanup after focused PASS |
 | Release consumer | 2.6.7 L consumes D's recorded integrated commit alongside its other explicit prerequisites; no successor dispatch |
@@ -563,3 +563,33 @@ snapshot; no tests ran. Including the unchanged committed helper fixed that test
 its corrected rerun passed without any source-link change. Failed logs remain as setup evidence.
 The shared working-tree binding test also passed but is not substituted for the D-only candidate
 check. Full gates and fresh independent review are explicitly unrun here and remain at 2.6.9.
+
+
+### Factual prerequisite rebind — complete F resolver release
+
+The superseding F repair is now integrated at `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`;
+final release record `e06a1c82e9983deb281c5400671f6ce330214000` contains D's approved planning
+commit `950c5b617d73d2e9d1f7e43b7e90f3eaf21c80be`. The
+[resolver cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+is complete: owned worktree/ref absent, no owned processes, earlier receipts preserved. This
+clears the temporary launch hold raised after the first D prompt; the earlier prompt's base is
+superseded. The final planner prompt binds the exact commit containing this rebind as implementation
+base while retaining the original approved-plan identity. No scope, ownership or gate approval changes.
+
+Source comparison from the approved plan through F's final record proves every D production file,
+the timeline schema, live-panel context and four-way resolution expectation unchanged. The shared
+command-kernel tests now construct valid complete settings resolver results; preserve those fixture
+repairs when implementing D's separately owned resolution cases. All three approved D ownership
+amendments remain necessary. F's follow-up changed settings contracts/fixtures and no D feature.
+
+F's tested candidate is `f917ffe7b2308b4746e2aba16719a68cbafdb56c`: 1,195 unit cases across
+input-verified runs, 199 affected architecture cases, 67 filtered UI cases, lint and freshness PASS.
+Its `final-reuse.json` records identical non-document inputs at the final F record. These are
+prerequisite facts, not D acceptance. Full phase gates and independent review remain at 2.6.9.
+
+The owner-only rebind passed 24 roadmap binding tests, a fresh `npm run lint`, roadmap freshness,
+27 local links, nine instruction pairs (maximum chain 17,333 bytes) and whitespace checks. Logs and the final exact commit/ancestry
+receipt are retained at `/tmp/diagnostics-plan-evidence-20260909/rebind/`. D worktree/ref availability
+and capacity are rechecked before handoff; the supervisor repeats volatile checks before creation.
+The shared registry's current D binding already names this F release in `e06a1c82e`; no peer or
+shared registry edits are needed here. The factual rebind slot is P → D → G after F's release.
