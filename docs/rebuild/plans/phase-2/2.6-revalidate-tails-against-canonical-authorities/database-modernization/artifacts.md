@@ -421,6 +421,46 @@ operator database: its publication/recovery acceptance uses isolated synthetic D
 READY additionally requires committed approval, passing documentation checks and verified plan
 availability. Planning creates no implementation checkout or task.
 
+### Parallel coordination binding — amended 2026-09-09
+
+The operator explicitly requested this plan/prompt correction and then required the updated
+[Parallel coordination protocol](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination).
+Read that section before G01 and apply it throughout G01–G06. This amendment changes coordination
+only: G’s product scope, one-supervisor/zero-worker allocation, base requirements, focused gates,
+authorized local merge/cleanup and 2.6.9 full-gate/review timing remain unchanged. It supersedes any
+interpretation of earlier planning-history sequences as a standing queue or messaging requirement.
+
+| Responsibility / resource | G binding |
+| --- | --- |
+| Implementation and proof | The operator-opened G supervisor owns G01–G05 in `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs`. P/D/S are independent assignments; G neither dispatches nor monitors them. Their unmerged work is not a G prerequisite. |
+| G integration and cleanup | The same G supervisor owns G06: its candidate’s local master merge, invalidated checks, exact release record and owned cleanup. No additional coordinator or automatic transfer to a peer. A focused candidate alone does not discharge G06. |
+| Later work | L owns its already assigned combined P/D/G/S consumption; 2.6.9 owns full-batch gates, independent review and final acceptance. G records the exact integrated release in this owner. Already assigned later work needs no new acceptance handshake or readiness broadcast. G does not wait for sibling completion after finishing G06. |
+| Shared writes | Before modifying the primary checkout/index, shared plan/status/registry files or combined generated output, inspect current Git/worktree state and available recorded ownership. Apply the isolation policy; clean status alone does not prove exclusivity. Serialize only the actual conflicting mutation/validation, not whole tasks or unrelated worktree-local gates. |
+| Actual conflict | Use an existing supported acquisition mechanism when available. If evidence leaves a concrete conflict needing another owner’s action, contact only that exact known owner. Record the resource, owner, grant/mechanism and release condition in G’s current evidence. No broadcast, peer availability survey, invented group slot or speculative queue. Release after the operation/process finishes, including failure; send one release only when necessary to unblock the named waiter. |
+
+**Communication default: no peer messages.** Read committed plans, Git and existing evidence first.
+Before any permitted message, identify the specific action the recipient must take and why primary
+evidence cannot resolve it. Only unresolved blockers, conflicting claims, changed required inputs
+or necessary delivery/reassignment justify contacting the affected exact returned task/agent ID.
+Never infer ownership from titles or reuse these planners’ IDs for future implementation sessions.
+No routine start/finish announcements, status/readiness reports, copied gate results, holding notices,
+acknowledgment rounds or relays. Native returns and established completion waits are delivery; do
+not duplicate them. Progress updates remain in G’s user-facing chat, not in peer messages.
+
+**Retain and finish owned duties.** Gates, final verification, merge and cleanup remain with G until
+finished or explicitly transferred under approval. If an actual transfer becomes necessary, record
+exact sender/recipient IDs, branch/worktree, plan/base/candidate, tested evidence, dirty state,
+unresolved issues and remaining-duty ownership here; the receiver must accept those still-owned
+duties. Message delivery alone is not acceptance. Record an existing authorized resume mechanism
+for any G verification retained after transfer; otherwise state the operator resume point. Do not
+invent an automation, subscription, dispatch or new verification duty.
+
+When no local work or active process remains and later duties already have an authorized owner,
+end G’s active turn with its contribution status and remaining owner. Keep phase acceptance open;
+no observer loop, sibling monitoring or confirmation wait merely to relay completion. While an
+owned dependency is genuinely needed, continue independent work and use supported completion waits
+with cursors/backoff. Resume only for an owned repair, missing evidence or assigned verification.
+
 ### Feasibility and required proof
 
 | Boundary / observed mechanism | G change and required negative proof |
@@ -443,7 +483,9 @@ mutated old reference, cross-checkpoint acknowledgement or unsafe repeated repla
 
 1. **G01 — Verify prerequisite.** Verify the exact plan/runtime ancestry, F receipt, ownership,
    runtime input equality, schema47/floor46 and resource capacity before creating the owned lane.
-   Read nearest module instructions and relevant artifact/export lessons. Preserve repaired replay.
+   Read the parallel coordination binding and its linked protocol; inspect recorded ownership
+   before shared writes without starting a peer check-in round. Read nearest module instructions
+   and relevant artifact/export lessons. Preserve repaired replay.
 2. **G02 — Ordered publication.** Complete durable prepared intent, byte verification, old/intended
    immutable retention, exclusive writer/generation fencing and atomic exact head/ack settlement.
    New updates admitted during a write remain pending. Preserve limits and rollback semantics.
@@ -457,7 +499,8 @@ mutated old reference, cross-checkpoint acknowledgement or unsafe repeated repla
    alone, run the candidate gates below, fix in-scope failures and commit logical categories using
    exact paths. Record plan/base/head/tree, paths, commands/exits, proof rows and deferred work here.
 6. **G06 — Merge and cleanup.** Recheck clean target, ancestry, current task ownership and changes
-   since base; serialize only shared integration/recording operations. Merge locally after focused
+   since base; apply the parallel coordination binding to actual shared integration/recording
+   conflicts. Retain this step through verified merge and cleanup; no routine peer handshake. Merge locally after focused
    PASS, repair in-scope integration defects and rerun invalidated checks. Record candidate and merge
    identities, inherited final-proof obligations and focused evidence; preserve owned logs/ignored
    artifacts outside the checkout, stop owned processes and remove only G’s worktree and branch.
@@ -586,3 +629,15 @@ all non-document input equality; the earlier G lint run predating the resolver r
 current basis. F's `final-reuse.json` and `focused-pass.json` beside the complete receipt retain
 that command/input evidence. Full gates and independent review remain in 2.6.9. READY is issued
 only after this rebind is committed, read back and checked with the exact returned base.
+
+
+### Coordination amendment persistence — 2026-09-09
+
+The operator authorized updating the plan and prompt, then explicitly directed rereading the revised
+protocol. Before editing, the planner reread the current references and verified clean master
+`d3a4d121b2611bdd277663fabb953ea29f6dfa13`, the worktree inventory and the existing grant for the
+actual shared documentation/index operation. Only this owner and G’s prompt binding change.
+The prior broad reservation conversation is not a prescribed workflow. After checks and the exact
+commit, one release to the already waiting owner ends this actual conflict; no peer status broadcast
+or new queue is created. The planner’s returned amended plan/base supersedes the previous G launch
+prompt while preserving the current F prerequisite and all execution requirements.

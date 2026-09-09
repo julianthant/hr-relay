@@ -229,7 +229,17 @@ the F dependency. Do not substitute the old C0 plan SHA or an unverified later m
 Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs` from
 the returned plan commit. One Astra/high supervisor, zero workers/reviewers here. Execute G01–G06,
 pass focused tests/lint/freshness, merge locally into master, preserve evidence and remove only
-G’s owned worktree/ref. Full gates and complete independent review remain in 2.6.9. No push,
+G’s owned worktree/ref. Read and apply the [G parallel coordination binding](artifacts.md#parallel-coordination-binding--amended-2026-09-09)
+and its [current protocol](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination)
+before G01: independent work and no peer messages by default. Inspect primary evidence and recorded
+ownership before shared writes; isolate work and serialize only actual conflicts. Contact only the
+exact affected owner when a necessary unresolved action remains; no check-ins, availability surveys,
+speculative queues, status/readiness broadcasts, acknowledgment rounds or duplicate native delivery.
+G retains its gates, merge, final verification and cleanup unless explicitly transferred and accepted.
+L/2.6.9 already own later combined work and need no new completion handshake. After G’s own duties
+finish, record its release and end the turn; no sibling observer loop. Use an existing authorized
+resume mechanism only for an owned repair, missing evidence or assigned verification. Do not invent
+automations or dispatch. Full gates and complete independent review remain in 2.6.9. No push,
 live database application, HR submission, sibling launch or cleanup of other lanes.
 
 
