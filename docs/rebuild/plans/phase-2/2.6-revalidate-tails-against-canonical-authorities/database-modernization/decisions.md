@@ -660,3 +660,256 @@ representative fixtures before/after with query counts, rows scanned, latency an
 no unmeasured speedup is claimed. Preserve existing bounded-scan tests, floors and assertion meaning.
 Use focused tests/lint/freshness during implementation and full gates/fresh independent review in
 the final session. Complete field/source mapping, prerequisite allocation and prompts remain pending.
+
+## C0 execution allocation — 2.6.6.4 S
+
+Prerequisite: **one frozen F release, identical to P/D/G base**. One Astra/high supervisor, zero implementation workers.
+Use the exact `S` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Verify extracted creation/claim/resource/settings ports; implement atomic save/current snapshot selection and per-run effective resource configuration; prove mixed settings, stale review and replay; release to L.
+
+### Exclusive changing paths
+
+- `src/infra/sqlite/settings-activation.ts` (new target)
+- `src/core/run-settings.ts` (new target)
+- `src/core/run-claim-admission.ts` (new target)
+- `src/server/worker/run-resources.ts` (new target)
+- `src/server/settings-runtime.ts`
+- `src/server/dashboard/commands/settings-service.ts`
+- `src/server/dashboard/commands/start-plan-service.ts`
+- `src/server/dashboard/queries/settings.ts`
+- `src/server/dashboard/queries/settings-editor.ts`
+- `src/dashboard/surfaces/settings.tsx`
+- `src/dashboard/surfaces/settings-model.ts`
+
+### Proof and test ownership
+
+All settings proof above remains. Effective execution/resource values, not fingerprints alone, must change for new runs. Same-run resume keeps old values; new retry/child uses current, without changing write keys or automatic child capabilities. Concurrent save/create and accepted-command replay, invalid save/audit rollback, stale start confirmation, restart and stale owner must be discriminating tests. F binds the creation hooks in all existing callers before release; S edits no global unions or provider implementation.
+
+- `tests/unit/settings-activation/save-create.test.ts` (new required test)
+- `tests/unit/settings-activation/mixed-execution.test.ts` (new required test)
+- `tests/unit/settings-activation/retry-child.test.ts` (new required test)
+- `tests/unit/settings-activation/stale-plan.test.ts` (new required test)
+- `tests/unit/server/settings-runtime-reader.test.ts`
+- `tests/unit/server/settings-facts.test.ts`
+- `tests/unit/dashboard/settings-editor-surface.test.ts`
+- `tests/unit/dashboard/settings-editor-client.test.ts`
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored release evidence: `04-settings-evidence.md` in this folder (new, exclusively owned by S).
+The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
+only the consuming prerequisite/finalizer updates shared status.
+
+## C0 execution allocation — 2.6.7.1 A
+
+Prerequisite: **one frozen L release, identical to Q base**. One Astra/high supervisor, zero implementation workers.
+Use the exact `A` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Verify archive/identity/cleanup/summary hook baseline; implement generic capture, historical conversion, version-change transfer and explicit archive deletion; prove each cross-store interruption; release to V.
+
+### Exclusive changing paths
+
+- `src/services/archive/report-capture.ts` (new target)
+- `src/services/archive/archive-transfer.ts` (new target)
+- `src/services/archive/version-changes.ts` (new target)
+- `src/infra/sqlite/archive-records.ts` (new target)
+- `src/server/dashboard/queries/archive-reports.ts` (new target)
+
+### Proof and test ownership
+
+All approved archive/version/deletion proof remains, including populated historical relaunch provenance, membership change requiring re-review, immutable source and report integrity, required file custody, live/shared-owner preservation, stable numbering and no deletion receipt on transfer. L supplies real backup/restore, explicit tombstones, source fences and live cleanup including summary removal; A cannot edit Q derivation or shared command/authority files.
+
+- `tests/unit/archive-transfer/capture.test.ts` (new required test)
+- `tests/unit/archive-transfer/recovery.test.ts` (new required test)
+- `tests/unit/archive-transfer/deletion.test.ts` (new required test)
+- `tests/unit/archive-transfer/historical-conversion.test.ts` (new required test)
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored release evidence: `05-archive-evidence.md` in this folder (new, exclusively owned by A).
+The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
+only the consuming prerequisite/finalizer updates shared status.
+
+## C0 execution allocation — 2.6.7.2 Q
+
+Prerequisite: **one frozen L release, identical to A base**. One Astra/high supervisor, zero implementation workers.
+Use the exact `Q` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Verify complete source hooks and summary schema; implement one derivation, indexed queries and atomic rebuild publication; prove mutation/rebuild races and selected-set equivalence; release to V.
+
+### Exclusive changing paths
+
+- `src/core/run-summary.ts` (new target)
+- `src/infra/sqlite/run-summaries.ts` (new target)
+- `src/server/dashboard/queries/run-summaries.ts` (new target)
+
+### Proof and test ownership
+
+All summary proof above remains. L supplies mutation/capture/deletion hooks and a rebuildable source snapshot independent of A. Test all contributing mutations, parent rollups, concurrent rebuild, stale generation refusal, selected-set distinct/median semantics, unavailable identity, archive/delete and no protected export leakage. Capture query counts, rows scanned, latency and update overhead on isolated representative fixtures; no speedup is assumed.
+
+- `tests/unit/run-summaries/derivation.test.ts` (new required test)
+- `tests/unit/run-summaries/mutations.test.ts` (new required test)
+- `tests/unit/run-summaries/rebuild.test.ts` (new required test)
+- `tests/unit/run-summaries/privacy.test.ts` (new required test)
+- `tests/perf/run-summaries.ts` (new required test)
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored release evidence: `06-summary-evidence.md` in this folder (new, exclusively owned by Q).
+The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
+only the consuming prerequisite/finalizer updates shared status.
+
+## C0 execution allocation — 2.6.8.1 U
+
+Prerequisite: **one frozen V release, identical to H base**. One Astra/high supervisor, zero implementation workers.
+Use the exact `U` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Verify served summary APIs and fixed client wiring; update Queue/Activity consumers on their existing surfaces; prove filters/grouping/pagination and accessible desktop rendering; release to 2.6.9.
+
+### Exclusive changing paths
+
+- `src/dashboard/surfaces/queue.tsx`
+- `src/dashboard/surfaces/queue-model.ts`
+- `src/dashboard/surfaces/queue-toolbar.tsx`
+- `src/dashboard/surfaces/activity.tsx`
+- `src/dashboard/surfaces/activity-model.ts`
+
+### Proof and test ownership
+
+Preserve existing Queue/Activity selected scope, group containment, durations, warnings, unavailable states, keyboard/zoom/resizing and authorized actions. V supplies all commands/client/wires/shared components; U requires no H renderer or fixture. No redesign of unrelated surfaces.
+
+- `tests/unit/summary-surfaces/queue.test.ts` (new required test)
+- `tests/unit/summary-surfaces/activity.test.ts` (new required test)
+- `tests/unit/dashboard/activity-render.test.ts`
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored release evidence: `07-activity-ui-evidence.md` in this folder (new, exclusively owned by U).
+The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
+only the consuming prerequisite/finalizer updates shared status.
+
+## C0 execution allocation — 2.6.8.2 H
+
+Prerequisite: **one frozen V release, identical to U base**. One Astra/high supervisor, zero implementation workers.
+Use the exact `H` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Verify descriptor-independent served report and download APIs; implement generic archive rendering and indexed filters; prove deletion/unavailable behavior and protected attachment access; release to 2.6.9.
+
+### Exclusive changing paths
+
+- `src/dashboard/surfaces/archive.tsx`
+- `src/dashboard/surfaces/archive-model.ts`
+- `src/dashboard/surfaces/archive-report.tsx` (new target)
+- `src/dashboard/surfaces/archive-report-model.ts` (new target)
+
+### Proof and test ownership
+
+Preserve approved generic report values/tables/logs/attachments, indexed filters and explicit missing/deleted facts. Prove rendering after removal of original workflow and live records, read-only captured resolution, rejected stale relaunch and protected downloads. V owns shared routes/client/navigation and old relaunch controls outside these surfaces.
+
+- `tests/unit/archive-report-ui/render.test.ts` (new required test)
+- `tests/unit/archive-report-ui/no-live-schema.test.ts` (new required test)
+- `tests/unit/archive-report-ui/download.test.ts` (new required test)
+- `tests/unit/dashboard/archive-render.test.ts`
+- `tests/unit/dashboard/archive-detail-render.test.ts`
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored release evidence: `08-archive-ui-evidence.md` in this folder (new, exclusively owned by H).
+The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
+only the consuming prerequisite/finalizer updates shared status.

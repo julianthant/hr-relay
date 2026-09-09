@@ -120,7 +120,7 @@ release. A necessary change to this allocation requires a plan amendment before 
 | Owner | Exclusive changing production scope after F | Exclusive tests and authored records |
 | --- | --- | --- |
 | P `side/provider-usage` | `src/infra/sqlite/provider-accounting.ts`; `src/core/provider-admission.ts`. F supplies immutable repository types and a real legacy implementation of this module before release. | Existing provider admission/pool/exhaustion tests, new `tests/unit/provider-accounting/`; provider plan and its new `01-provider-usage-evidence.md` file in this folder. |
-| D `side/diagnostics` | `src/core/failure-resolution.ts`, `src/infra/sqlite/failure-resolution.ts`, `src/server/dashboard/queries/failure-resolution.ts`; resolution command admission/dispatch in `src/domain/commands.ts` and `src/core/command-kernel.ts`; `src/server/dashboard/queries/run-trust.ts`, `src/server/dashboard/queries/run-detail-types.ts`, `src/domain/dashboard/run-detail.ts`, `src/dashboard/surfaces/trust.tsx` and `trust-model.ts`; a new `src/server/dashboard/compose/failure-resolution.ts` factory. D alone may change these command/read/UI files. | New `tests/unit/failure-resolution/`, `tests/unit/dashboard/failure-record-render.test.ts`, `failure-record-model.test.ts`, and new resolution parity cases/references; diagnostics plan and its `02-diagnostics-evidence.md` in this folder. Shared guard-inventory changes belong to the prerequisite or final owner; D records the required delta. |
+| D `side/diagnostics` | `src/core/failure-resolution.ts`, `src/infra/sqlite/failure-resolution.ts`, `src/server/dashboard/queries/failure-resolution.ts`; resolution command handling in new `src/server/dashboard/commands/failure-resolution.ts`; F owns global unions and root dispatch; `src/server/dashboard/queries/run-trust.ts`, F-owned frozen run-detail types, `src/dashboard/surfaces/trust.tsx` and `trust-model.ts`; a new `src/server/dashboard/compose/failure-resolution.ts` factory. D alone may change these command/read/UI files. | New `tests/unit/failure-resolution/`, `tests/unit/dashboard/failure-record-render.test.ts`, `failure-record-model.test.ts`, and new resolution parity cases/references; diagnostics plan and its `02-diagnostics-evidence.md` in this folder. Shared guard-inventory changes belong to the prerequisite or final owner; D records the required delta. |
 | G `side/artifacts-2` | `src/core/generated-artifact-projection.ts`, `src/infra/sqlite/generated-artifacts.ts`, existing `src/infra/artifacts/artifact-sink-projector.ts` and `xlsx-retention-sink.ts`; `src/server/dashboard/exports/operator-xlsx-export-service.ts` and a new `src/server/dashboard/compose/generated-exports.ts` factory. | Artifact projection/verified-reader/operator-XLSX tests and new `tests/unit/generated-artifacts/`; artifacts plan and its `03-artifacts-evidence.md` in this folder. No failure-detail UI or command registration changes. |
 
 All other changing shared files must be completed by F: migration and storage records, IDs/global
@@ -135,3 +135,153 @@ belong to the integration owner, with each peer documenting precise proposed cha
 Use prerequisites.md's F release record and four-way independence test (P/D/G/S). The old
 standalone branches/master barriers/reviews/launch prompts are retired, not alternative execution.
 Earlier plan-validation evidence is available in Git at `58d4fbcba` under database-parallel.
+
+## C0 prerequisite allocation — 2.6.6 F
+
+Consume **C release**. One Astra/high supervisor; zero implementation workers.
+Use `F`'s exact branch/absolute worktree from [the registry](PROMPTS.md#binding-registry).
+No future input SHA is guessed. Resolve committed candidate identities before creating the checkout.
+
+F owns shared schemas, appended migrations, strict historical aliases, complete imported/extracted
+artifact conversion, generated XLSX single-row conversion, diagnostic retirement, app_settings
+consolidation, unused projection retirement and all global unions/registration. Preserve R's seven
+names and C's completion. Common methods expose real authority transaction handles and validated
+record types; peers cannot add columns, change fingerprints or fix a common fixture after launch.
+
+Create/extract all four child path sets below before release. Route current production behavior
+through them: existing capability admission through P; real failure capture/readback through D's
+query/capture interface; explicit XLSX generation and checkpoint projection through G; settings save,
+new-run selection, claim authorization and worker resource creation through S. Freeze stable methods
+and global command types needed for the approved child behavior. A baseline can preserve existing
+capability availability, but an unused factory or placeholder success is not release proof. Resolution
+commands must have an explicit capability state until D supplies the admitted mutation; existing
+failure readback remains functional. Do not expose an action that only reaches a placeholder.
+
+S's extracted run-settings and run-claim-admission modules own selection/authentication policy;
+F rewires run-record-service, command-kernel, intake creation and worker-loop callers to those ports.
+S's run-resources factory receives the claimed run and its retained snapshot. F routes actual task,
+session/browser, provider and deadline configuration through that factory, preserving old behavior
+before S changes activation. P receives the resolved invocation settings, never imports S's mutable
+implementation. D/G depend only on frozen artifact/evidence and capture contracts, not each other.
+
+For process-wide ordinary scheduling, select current saved idle cadence at the next idle scheduling
+boundary; do not cancel or re-time a held claim/deadline. All run-bound task, session/browser and
+provider invocation values use the retained run snapshot. Lowered shared admission limits do not
+terminate existing work or erase cumulative quotas. Host probe and deployment-only sources retain
+existing process scope. The settings catalog and each actual composition consumer must agree;
+changing only the stored fingerprint fails S acceptance.
+
+Ordered work: admit C; implement shared conversion and real baseline repositories; extract/reconnect
+four production module sets; freeze types/callers/fixtures and generated inputs; prove populated
+mixed-domain migration, rollback/restore and independent baseline flows; release one F SHA to all
+four children. Preserve every B proof allocation above and artifact P1–P3/P7/P8, diagnostic P1/P2/P6,
+provider migration proof and settings bootstrap/snapshot continuity. No intermediate finalization.
+
+### Prerequisite-owned shared paths
+
+- `src/infra/sqlite/migrations.ts`
+- `src/infra/sqlite/authority-database.ts`
+- `src/infra/sqlite/storage-records.ts`
+- `src/infra/sqlite/recovery-contracts.ts`
+- `src/infra/compat/backup-inspection.ts`
+- `src/infra/compat/settings-database-upgrade.ts`
+- `src/domain/authority.ts`
+- `src/domain/run/deleted-run.ts`
+- `src/server/storage/compose.ts`
+- `src/server/storage/upgrade.ts`
+- `src/domain/commands.ts`
+- `src/core/command-kernel.ts`
+- `src/core/run-record-service.ts`
+- `src/server/dashboard/compose.ts`
+- `src/server/worker/compose.ts`
+- `src/server/dashboard/commands/command-service.ts`
+- `src/cli.ts`
+- `src/core/run-executor.ts`
+- `src/core/worker-loop.ts`
+- `src/core/worker-sessions.ts`
+- `src/domain/ids.ts`
+- `src/domain/providers.ts`
+- `src/domain/provider-admission.ts`
+- `src/domain/artifacts.ts`
+- `src/domain/config/schema.ts`
+- `src/domain/config/catalog.ts`
+- `src/domain/config/runtime-generation.ts`
+- `src/domain/config/settings-current.ts`
+- `src/domain/dashboard/settings.ts`
+- `src/domain/dashboard/settings-editor.ts`
+- `src/domain/dashboard/run-detail.ts`
+- `src/server/dashboard/queries/run-detail-types.ts`
+- `src/server/dashboard/queries/storage.ts`
+- `src/domain/dashboard/storage.ts`
+- `src/services/runs/enqueue.ts`
+- `src/domain/intake/enqueue.ts`
+- `src/services/start/plan.ts`
+- `src/domain/workflow/delegation.ts`
+- `src/domain/workflow/delegation-policy.ts`
+- `src/domain/intake/session.ts`
+- `src/domain/intake/manifest.ts`
+- `src/domain/ocr/extraction.ts`
+- `tests/unit/fixtures/settings-operation-fixtures.ts`
+- `tests/unit/fixtures/settings-runtime-corruption-fixtures.ts`
+- `tests/unit/helpers/settings-backup-fixture.ts`
+- `tests/parity/helpers/fixture-day.ts`
+- `tests/parity/helpers/seeded-bff.ts`
+
+The prerequisite additionally creates/extracts and verifies the complete production path sets of
+P, D, G, S in their C0 allocations, then freezes them before those peers start.
+It owns affected `docs/rebuild/guard-inventory.json`, generated outputs via their registered generators,
+and shared fixtures actually named above. Existing fixture changes outside this manifest require
+a scoped prerequisite amendment before release; peers may add only their own fixtures.
+
+### Required focused selectors
+
+- `tests/unit/intake-session.test.ts`
+- `tests/unit/intake-command-arms.test.ts`
+- `tests/unit/intake-validation.test.ts`
+- `tests/unit/server/intake-surface.test.ts`
+- `tests/unit/ocr-extraction-admission.test.ts`
+- `tests/unit/ocr-command.test.ts`
+- `tests/unit/provider-admission.test.ts`
+- `tests/unit/diagnostic-capture.test.ts`
+- `tests/unit/evidence-receipt-repository.test.ts`
+- `tests/unit/operator-xlsx-export.test.ts`
+- `tests/unit/storage-upgrade.test.ts`
+- `tests/unit/storage-backup.test.ts`
+- `tests/unit/storage-restore-drill.test.ts`
+- `tests/unit/database-foundation/baseline-contracts.test.ts` (new required test)
+- `tests/unit/database-foundation/four-way-independence.test.ts` (new required test)
+
+Run the explicit owned unit paths using `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`,
+`npm run lint`, affected architecture selectors under `--project architecture --maxWorkers=1`,
+affected supported generators and freshness checks, and `git diff --check`. Validate populated
+migration/recovery inputs before release; independent-connection race tests use separate database
+connections even with one file worker. All retained heavy proof remains due at 2.6.9.
+
+Each peer must implement and pass its full assigned focused proof on this baseline alone. Verify
+the production call paths and test the common contracts with each peer capability independently,
+then both orders of every pair using independent fixture instances. A textual merge alone proves
+nothing about counts, file custody, configuration or rollback. At peer consumption the next named
+prerequisite rechecks both orders with actual candidates and owns all combination fixes.
+
+Record baseline SHA/tree, exported type/method contracts, migration fingerprints, exact generated
+inputs, fixture paths and focused test exits before release. No inherited source proof is silently
+waived. A common API that remains unimplemented blocks the entire dependent peer group.
+
+### Direct consumer closure additions
+
+The current symbol/import inspection additionally assigns these transitive consumers to this
+sequential owner. Historical-only matches retain versioned compatibility rather than blind renaming.
+
+- `src/base/artifacts.ts`
+- `src/base/providers.ts`
+- `src/dashboard/surfaces/intake.tsx`
+- `src/domain/dashboard/artifacts.ts`
+- `src/domain/dashboard/xlsx-export.ts`
+- `src/domain/ocr/extraction.ts`
+- `src/domain/trust/knowledge-projection.ts`
+- `src/domain/workflow/artifact-projection.ts`
+- `src/server/dashboard/commands/intake-service.ts`
+- `src/server/dashboard/compose/data.ts`
+- `src/server/dashboard/exports/operator-xlsx-workbook.ts`
+- `src/server/dashboard/routes/data.ts`
+- `src/services/trust/knowledge-service.ts`

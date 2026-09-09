@@ -2484,3 +2484,36 @@ subject-binding, claim-generation, after-commit, unknown-write and D308 deletion
 The Task-4 matrix must disprove missing/stale acknowledgment, cross-node/key authorization reuse,
 competing occurrences, same-confirmation double-click, old-receipt recovery, rollback publication,
 omitted-transaction effects and source mutation. Live repeat verification is outside Task 1.6.4.
+
+## C0 transaction history and shared ownership — 2026-09-09
+
+T completes lossless operation history before retiring ledger_partitions, ledger_projections,
+operation_outbox and current ledger file writers/read-through aliases. Preserve original operation,
+attempt, checkpoint, confirmation/fence, actor, subject, system/instance and UTC/local-date facts.
+Coalesce representations only when required facts agree; missing files cannot erase pending outbox
+evidence. Conflicts or unexplained orphan history block retirement. Current settings cannot supply
+historical identity. One retained-history query serves Activity and existing exports plus an explicit,
+range/system-selected CLI export with pinned deterministic content and no silent overwrite.
+
+Count each confirmed automation operation once per generation; dry-run, observed-present, preview,
+replayed success and duplicate archive representations add no submissions. Confirmed history outlives
+ordinary event retention until authorized owner deletion. T preserves old archive transaction sections
+and their source identities; L/A transfer these facts into generic saved reports before live cleanup.
+
+Current `runDeletionEvidence` already retains complete shared operation groups while another retained
+retry can consume their keys/evidence. Keep that rule and validate every owner, including former attempt
+owners. L supplies an ownership resolver over live runs, validated archive transfer/report references
+and explicit tombstones; A performs its transfer protocol. An archived owner is neither an absent run
+nor a fabricated deletion. A still-live retry retains required operation/checkpoint facts and permanent
+keys. Collect shared evidence only when no retained consumer remains and the authorized operation
+permits it. Archive report provenance carries original run and attempt identity without a new run
+attempt table. Missing/conflicting links refuse; do not cascade from historical attempts into live runs.
+
+Operation generation and workflow-attempt ordinal have different meanings and need not be equal.
+Original attempt bytes, binding proofs and released replay identities remain immutable. Tests must
+cover two retries, former/current owner deletion, archive transfer in either order, stale/late delivery,
+shared report/file references, missing/corrupt ownership, rollback and restart. Snapshot changes do
+not mint new permanent write keys or clear uncertainty. Pre-click fencing and UNKNOWN refusal remain
+unchanged; archival or failure resolution never supplies authorization for another external click.
+
+This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

@@ -7146,3 +7146,55 @@ evidence on its generated_artifacts file row and retire operator_xlsx_exports; n
 table. Preserve unique request/receipt identities, snapshot selection, immutable evidence, download
 verification and authorization. The [single owning plan](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#xlsx-consolidation-amendment--2026-09-09)
 specifies conversion and proof; current implementation is not claimed by this amendment.
+
+## C0 archive, summary and surface contract — 2026-09-09
+
+L/A replace live `archived_runs` storage with one independent `archive.sqlite` database containing
+`archive_records`. Each report has stable source/transfer identity, indexed workflow/name/version,
+outcome and completion/archive timestamps, approved searchable metadata, and a versioned generic
+display document: labelled values, typed tables, text/log sections and verified attachment references.
+Freeze the supported displayed-run inventory while sources exist. Viewing must require neither a
+current workflow descriptor nor live RunRecord/failure/settings parsers. Preserve explicit absence,
+protected projections and original source digests separately from the report's own integrity binding.
+
+`version_changes` replaces proposal/application tables: immutable reviewed scope/target/reason,
+reviewed identities/membership/fingerprint and actor/time, then recoverable applying progress and
+immutable applied outcome. Changed membership requires renewed review. Fence terminal source trees,
+write and verify reports/files, remove only exclusively owned live data, then publish completion.
+Stable identities make replay verify identical content or refuse divergence. Transfer is not deletion
+and creates no `deleted_runs` receipt. Failure between stores remains resumable and distinguishable.
+Historical archive conversion uses stored sources once; historical relaunch lineage and command/audit
+identities become preserved report provenance before their producer-only tables/readers retire.
+Remove archive Relaunch and all current execution doors; historical command parsing remains inert.
+Normal live start/retry/restart stays available under its existing safety and the C0 settings rule.
+
+Explicit live or archive deletion uses `deleted_runs` and existing command/audit identity, with
+origin, honest tallies, durable progress and reference-aware file cleanup. Retained archive identity
+protects run-ID and numbering uniqueness after live cleanup. Failed or interrupted deletion cannot
+claim completion or recreate the report; stale live/archive commands refuse by canonical disposition.
+Notifications keep their state and resolve to the archived report after transfer, with explicit
+unavailable/deleted behavior. Late publication must not recreate a transferred/deleted live run.
+
+L/Q introduce one rebuildable `run_summaries` row per live run, serving Queue and Activity. Include
+only their required filter/display/status, timestamps/duration, completion/warning/failure, grouping
+and internally validated person-identity availability facts. Source authority still authorizes every
+action. One derivation serves initial fill, transactional source updates and rebuild; file/event inputs
+need a durable cursor and explicit freshness. Refresh affected parents; do not rewrite each second.
+Indexed filters/order/pagination and selected-set aggregates replace repeated whole-run enumeration.
+Stale/corrupt/missing generations refuse or expose a named recovery state, never plausible totals.
+Rebuild publishes a complete consistent generation with proven concurrent-update handling.
+
+Retire Activity pseudonym tables only after privacy/equivalence proof. Canonical validated identities
+remain server-internal; return aggregates and explicit unavailable counts, never person IDs/digests
+through Activity responses, exports or logs. No inferred identity, daily-distinct summation, averaged
+daily medians or new daily-totals table. Archive transfer/deletion removes the live summary. Preserve
+current generic Activity eligibility and range/group semantics; transaction history keeps its separate
+T query and must not be relabelled as run counts. No all-time generic archive population is admitted.
+
+F retires unused physical `gates`, `ocr_approvals`, SQL `notes` and SQL `spans` scaffolding only.
+Preserve checkpoint-backed gate answers, resumption, future durable OCR review/dispatch requirements,
+notes/log files and timeline events. Unknown authoritative population blocks retirement pending
+classification; a storage-only table name is not proof of safely disposable data. Verified historical
+preservation and absence/refusal guards precede removal.
+
+This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

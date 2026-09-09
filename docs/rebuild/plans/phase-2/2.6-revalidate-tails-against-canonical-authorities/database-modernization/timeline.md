@@ -84,4 +84,96 @@ The combined workflow replaces T2's former per-candidate heavy/review cadence: f
 lint and affected freshness now; every full coverage, architecture, parity, build and recovery proof
 remains due in 2.6.9 with fresh independent review. No operator DB upgrade or live submit is included.
 
-**WAITING ON:** accepted T1 and C0 execution admission; T1 integration is recorded, but no future task base or schema number is guessed.
+**READY after C0 release:** use the saved resolved 2.6.4 T prompt in [PROMPTS.md](PROMPTS.md#resolved-next-assignment--264-t). Base `c7b8b1e037bf27dd70d4df62bbfcac407e475631` contains verified R/T1 and C0 admission. T implementation has not started; select a new migration only after inspecting that base.
+
+## C0 execution allocation — 2.6.4 T
+
+Prerequisite: **C0 release containing R and accepted T1**. One Astra/high supervisor, zero implementation workers.
+Use the exact `T` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Inventory and validate retained source facts; implement one history query and safe explicit export; capture the compatible archive transaction section; retire current ledger/outbox machinery only after populated conversion proof; release to C.
+
+### Exclusive changing paths
+
+- `src/infra/sqlite/migrations.ts`
+- `src/infra/sqlite/authority-database.ts`
+- `src/infra/sqlite/storage-records.ts`
+- `src/infra/sqlite/recovery-contracts.ts`
+- `src/infra/compat/backup-inspection.ts`
+- `src/infra/compat/settings-database-upgrade.ts`
+- `src/domain/authority.ts`
+- `src/domain/run/deleted-run.ts`
+- `src/server/storage/compose.ts`
+- `src/server/storage/upgrade.ts`
+- `src/core/command-kernel.ts`
+- `src/domain/commands.ts`
+- `src/server/dashboard/compose.ts`
+- `src/server/worker/compose.ts`
+- `src/server/dashboard/commands/command-service.ts`
+- `src/cli.ts`
+- `src/core/write-sequencer.ts`
+- `src/infra/sqlite/write-commit-contracts.ts`
+- `src/infra/sqlite/ledger-projection-contracts.ts`
+- `src/infra/ledger/ledger-projector.ts`
+- `src/infra/ledger/ledger-read-through.ts`
+- `src/infra/ledger/index.ts`
+- `src/domain/archive/ledger-resolution.ts`
+- `src/domain/archive/model.ts`
+- `src/services/archive/archive-service.ts`
+- `src/server/dashboard/queries/archive.ts`
+- `src/server/dashboard/queries/activity-export.ts`
+- `src/server/dashboard/projectors/run-queue-projection.ts`
+- `src/domain/dashboard/activity.ts`
+- `src/infra/sqlite/transaction-history.ts` (new target)
+- `src/server/storage/transaction-export.ts` (new target)
+
+### Proof and test ownership
+
+All P1–P9 above remain assigned. Add populated source disagreement/missing-file controls and export collision/pinned snapshot tests. Reuse unchanged T1 rows only with exact tested identities. New archive-database behavior remains L/A; current archive P7 must work on T alone.
+
+- `tests/unit/write-sequencer-restart-no-repeat.test.ts`
+- `tests/unit/archive-ledger-read-through.test.ts`
+- `tests/unit/archive-protected-identity.test.ts`
+- `tests/unit/server/activity-report.test.ts`
+- `tests/unit/server/activity-export.test.ts`
+- `tests/unit/storage-upgrade.test.ts`
+- `tests/unit/storage-backup.test.ts`
+- `tests/unit/storage-restore-drill.test.ts`
+- `tests/unit/storage-upgrade-tombstones.test.ts`
+- `tests/unit/transaction-history.test.ts` (new required test)
+- `tests/unit/transaction-export.test.ts` (new required test)
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored evidence stays in this task's existing `timeline.md` owner; shared indices remain read-only.
+
+### Direct consumer closure additions
+
+The current symbol/import inspection additionally assigns these transitive consumers to this
+sequential owner. Historical-only matches retain versioned compatibility rather than blind renaming.
+
+- `src/core/dry-run-scenario-runner.ts`
+- `src/dashboard/surfaces/settings.tsx`
+- `src/domain/dashboard/storage.ts`
+- `src/domain/ids.ts`
+- `src/domain/ledger-projection.ts`
+- `src/domain/trust/dry-run-scenario.ts`
