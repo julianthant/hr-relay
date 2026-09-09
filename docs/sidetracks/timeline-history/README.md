@@ -3,7 +3,7 @@
 ## Assignment and approval
 
 **Owner: `side/timeline-history`. T1 IN PROGRESS under the parallel execution amendment;
-accepted rename master is consumed; repaired candidate gates pass and fresh complete R1b review is pending.** This is a separate successor, not an amendment to
+accepted rename master is consumed; repaired candidate gates pass; R1 and R1b exhausted native review context, and a standalone review arrangement is awaiting operator approval.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -651,11 +651,62 @@ context and the repairs affect recovery and lifecycle/evidence boundaries. Bound
 and primary-source proof reconciliation replace repeated whole-file/history dumps; the complete
 98-path and P1–P5/P9 review scope is unchanged.
 
+### R1b blocked review and additional proof — 2026-09-08
+
+Implementation/repair HEAD is **`8747821c5fbc88567efd6b95b1b2e21a6bf8ff98`**, tree
+`89ac2d3c1683e1d42b5f8d6bd0aa03207eb7c35d`, on `codex/timeline-events` in
+`/Users/julianhein/Projects/hr-worktree-timeline-events`. The repair commit follows
+`5cc60fa1626cd4069607b869904127b1fa593ab6`; accepted base remains
+`1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Inventory is
+`/tmp/timeline-events-R1b-inventory.json`. Review and probe execution left this candidate clean.
+
+Fresh complete reviewer `/root/sup_review_timeline_r1b` returned **BLOCKED after unexpected automatic
+compaction**. It generated the inventory and inspected semantic changes across all 98 paths,
+verified unchanged released migrations 1–37, and inspected the principal gate logs and scheduling
+adapter. It confirmed no new actionable defect before interruption. Its provisional inspection of
+the three R1 repairs is not acceptance: final path/proof reconciliation, restored-lost-evidence/current
+boot and historical recovery challenge, full failure-history reconciliation, requested probes and
+applicable UI review procedure remained unfinished. Neither native review supplies complete-scope
+acceptance. The bounded-reading adjustment did not make this complete native assignment fit; no
+third unchanged native review is dispatched.
+
+The supervisor completed R1b's requested external diagnostics against the unchanged pinned candidate:
+
+| Probe | Deciding assertions and result |
+| --- | --- |
+| Required requeue event | A SQLite trigger rejects `run.requeued` inside real `RunRecordService.requeue`. Run, authority metadata/generation, timeline events, commands and audits remain identical; no journal entry survives. Removing the trigger permits the same request, then exact replay returns `applied-already` without changing state/generation/events/journal. Exactly one requeue event remains. |
+| Multi-page read and cursor reset | Two real SQLite connections append 1,005 task events after one queued event. `readTimelineRecords` returns all 1,006 unique event IDs and consecutive cursors across three pages; production projection folds them once. A controlled lower cursor in this synthetic database triggers named degradation and one scheduled rebuild. Rebuild restores one retained event; a later append/ingest is counted once and repeated ingestion is inert. |
+
+Both probes pass (**2/2 selected**, 110 copied cases unselected, 3.01 seconds, exit0;
+`/tmp/timeline-events-R1b-probes-3.log`). Exact command:
+`npm exec -- tsx scripts/test-runner.ts run --config /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/timeline-r1b-probes-bcyb_o3x/vitest.config.mts -t 'R1b probe'`.
+Sources copy the candidate fixtures with absolute imports and append only these diagnostics; they
+live in that external temporary directory. Repository lint passed, exit0
+(`/tmp/timeline-events-R1b-probes-lint.log`); this lint checks the unchanged repository, not external
+copied harness files. Initial probe construction mistakes (wrong journal table name, then expecting
+`applied` instead of `applied-already` on replay) are retained in `...R1b-probes.log` and
+`...R1b-probes-2.log`; neither was a product defect. These final probe results have not yet received
+complete independent acceptance.
+
+A concrete standalone root-review prompt is prepared at
+`/tmp/timeline-events-standalone-review-prompt.md`. It preserves complete 98-path/P1–P5/P9 coverage,
+read-only independence, exact-candidate acceptance and all prior findings, while permitting verified
+root-context recovery after compaction. **This arrangement and creation of a new review task are
+proposed, not approved.** The operator was asked to approve creating that standalone task using the
+existing project/checkout, or to request the launch prompt for manual opening. No new app task,
+material review amendment, master integration, push, live migration or T2 dispatch has occurred.
+
+Cleanup is held pending acceptance. Recovery stash
+`a7058d8198b4cefc08076e5cf7e1a607b8c838fc` contains 68 tracked plus 10 untracked draft paths;
+all 78 exist in the committed candidate, with accepted-base reconciliation recorded above. Both
+owned probe directories remain available for the next review; unrelated stash
+`b5ba4102748f304ab4c22a10dddf0f5a52f317be` and peer resources remain untouched.
+
 - Approval: the operator's 2026-09-08 instruction to make this separate plan, retaining two tables
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
 - Notification: `Process operation names` acknowledged unchanged scope; no integration window
   was assigned there at the time of coordination.
-- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Repaired candidate gates pass; fresh complete review remains open.
+- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Repaired candidate gates pass; complete review remains open after two context-blocked native reviews.
 - T2: **WAITING ON** accepted T1 integration. No base SHA is invented for either future result.
 - T1 repairs and renewed candidate gates are complete; P1–P5/P9 independent acceptance remains open. R1/R2, T2, integration, cleanup and real database application remain open.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 24 tests;
