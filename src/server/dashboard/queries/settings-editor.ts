@@ -33,8 +33,8 @@ interface LeafSpec {
 const SECTION_COPY: Readonly<Record<EditableSettingsSectionId, Readonly<{ label: string; description: string }>>> = Object.freeze({
   general: { label: "General", description: "The operator identity this runtime reports." },
   display: { label: "Display", description: "The viewport assumptions used when browser work is composed." },
-  performance: { label: "Performance", description: "Concurrency and wait budgets. Changes take effect after restart." },
-  paths: { label: "Paths", description: "The durable report destination. Changes take effect after restart." },
+  performance: { label: "Performance", description: "Concurrency and wait budgets. Saved changes apply to new runs." },
+  paths: { label: "Paths", description: "The durable report destination. Saved changes apply to new runs." },
 });
 
 /** One closed list. The client only renders this document and forms its patch from its paths. */
@@ -78,7 +78,7 @@ const EDITABLE_LEAVES: readonly LeafSpec[] = Object.freeze([
   {
     section: "performance", path: "concurrency.defaultWorkers", input: "number", minimum: 1, label: "Default workers",
     description: "Workers proposed for a newly planned pool.",
-    hazard: "Changes worker admission after restart; verify pool capacity before saving.",
+    hazard: "Sets the proposed worker count for new pools; verify capacity before saving.",
     configValue: (config) => config.concurrency.defaultWorkers,
     settingsValue: (settings) => settings.concurrency?.defaultWorkers,
   },

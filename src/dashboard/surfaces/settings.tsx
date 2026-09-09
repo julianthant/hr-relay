@@ -622,7 +622,7 @@ function EditableSettingsSection({
             {editor.save.state === "saving" ? "Saving…" : `Save ${String(editor.dirtyCount)}`}
           </Button>
         </div>
-        {editor.save.state === "applied" && <Banner tone="success" title={editor.save.replayed ? "Settings already applied" : "Settings applied"}>Persisted readback is shown above. Restart is required before the running process adopts this revision.</Banner>}
+        {editor.save.state === "applied" && <Banner tone="success" title={editor.save.replayed ? "Settings already applied" : "Settings applied"}>Saved settings are active for new runs. Existing runs keep their original settings.</Banner>}
         {editor.save.state === "refused" && <Banner tone="danger" title="Settings were not applied">{editor.save.message}</Banner>}
         </form>
       </PanelBody>
