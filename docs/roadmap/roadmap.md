@@ -1071,6 +1071,7 @@ log:
 - 2026-09-09 | database roadmap expansion | 2.6.4; assignment C; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | 2.6.5 C plan approved | complete C01–C05 brief; T prerequisite integrated at 5e446a90f; one supervisor, focused checks, local master merge and owned cleanup. Full gates and complete independent review remain 2.6.9; implementation unstarted
 - 2026-09-09 | C focused development release | candidate 89d167332; master integration 0dd02a890; 524 unit + 134 focused architecture tests, lint, freshness and four Storage Doctor cases PASS. Cleanup receipt and F prerequisite at C owner; full acceptance/review remain 2.6.9
+- 2026-09-09 | C upgrade regression repaired | candidate 47a64d33a, integration e43a8d851; schema39 success/failure upgrade regressions added; 526 units, 134 architecture tests, lint, freshness and four Storage Doctor cases PASS. Repaired prerequisite and closure at C owner; full acceptance/review remain 2.6.9
 
 #### 6 · Prepare independent database domain tasks {#p2db-domain-foundation}
 status: planned
@@ -1089,6 +1090,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5; assignment F; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | C source prerequisite recorded | master 0dd02a890; F remains unlaunched and needs its own committed execution brief
+- 2026-09-09 | C prerequisite superseded by repair | use integrated e43a8d851 together with F approved plan; earlier C release alone is insufficient; no F dispatch
 - 2026-09-09 | 2.6.6 F plan approved | F01–F07 at foundation owner; verified C ancestry and schema41/floor40. One supervisor, focused checks, local master merge and owned cleanup; full gates and independent review remain 2.6.9. F and its four children remain unimplemented
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}

@@ -614,3 +614,48 @@ read-only `sup_review` on Astra/high. T's two incomplete context-blocked reviews
 performance failures (day 5,574 > 5,569; archive freeze 3,234 > 13) are retained there. A/H/2.6.9 own
 independent archive-report rendering after live-source deletion. No operator DB upgrade, HR
 submission, push, automatic F launch or unrelated cleanup occurred.
+
+## C schema 39 upgrade repair — 2026-09-09
+
+The operator's CHANGES REQUIRED finding against `89d167332` (then integrated at `977805e20`)
+reopened C's scoped release. Migration 40 parsed historical completed runs with the current
+schema before migration 41 could add completion, causing `timeline-import-authority-record-invalid`.
+Repair candidate `47a64d33a6b20569a7e3598e74463694bc8c4c9d` changes only that stopped operation-history reader to
+`HistoricalRunRecordV40Schema`. Timeline import and archive enrichment run after migration 41 and
+retain the current parser. Current completion validation, UNKNOWN refusal and migrations 1–40
+remain unchanged.
+
+Both captured success/failure authority records now also exercise the complete schema 39 → 41
+upgrade, rollback, lost acknowledgement, exact backup restore, re-upgrade, original command replay,
+divergence refusal and frozen archive identity. The schema-39 test databases are reconstructed
+from the pinned schema-40 settlement JSON, omitting only migration-40 archive enrichment columns
+after verifying empty transaction history. Captured fixture files and frozen JSON are unchanged.
+Before the fix both added tests failed with the reported named error; the ten existing tests passed.
+The repaired migration suite passes all twelve tests.
+
+| Evidence | Verified result |
+| --- | --- |
+| Repair base | `977805e200a2788b2ba8d2d75854d7346b32329b`; original plan and T remain ancestors |
+| Tested candidate / tree | `47a64d33a6b20569a7e3598e74463694bc8c4c9d` / `7c8efbea0fd42aafe3344f27f32e430ef486f817` |
+| Repair master integration / F source prerequisite | `e43a8d8515486c73c276fa319bbe06d196b309e3` |
+| Focused units | 26 files / 526 tests, exit 0 |
+| Focused architecture | 6 files / 134 tests, exit 0 |
+| Lint / manifest / store catalog freshness | all exit 0 |
+| Filtered Storage Doctor | four cases, exit 0; current build and exact a11y evidence |
+| Integration | clean merge, tested source/test/script/config/package objects unchanged; concurrent F planning commits preserved |
+
+[Exact gate commands/results](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/release-results.json),
+[red/green and scope notes](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/README.md),
+[tested input objects](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/tested-input-objects.json),
+[integration receipt](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/integration.json) and
+[final closure receipt](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/closure.json) preserve the repaired release evidence outside the
+owned worktree. The prior release's evidence remains unchanged as historical evidence. The
+recording-only documentation commit reuses the listed executable gates under D191 after object
+comparison; roadmap generation/freshness, document binding, links, instruction twins and whitespace
+are checked separately and recorded in this evidence directory.
+
+F must consume this repaired integration together with its committed approved plan; the earlier
+`0dd02a890` source alone is insufficient. Its separately approved F01–F07 scope and dedicated
+checkout are preserved. C does not launch F. One supervisor performed this repair without supporting
+agents. Full gates, complete independent review and phase acceptance remain in 2.6.9; existing T
+review/performance obligations remain open. No operator database upgrade, HR submission or push.

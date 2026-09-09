@@ -8,8 +8,8 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 ## Readiness
 
 R/C0/T/C development releases are incorporated in master. C integration
-`0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645` and its
-[scoped release/cleanup](run-completion.md#c-scoped-release-and-local-integration--2026-09-09)
+`e43a8d8515486c73c276fa319bbe06d196b309e3` and its
+[scoped release/cleanup](run-completion.md#c-schema-39-upgrade-repair--2026-09-09)
 are verified prerequisites for F. C's removed branch/path must not be recreated as a prerequisite.
 
 F (2.6.6) has operator approval for the complete
@@ -128,6 +128,9 @@ the planner returns the exact approved-plan SHA and a verified implementation ba
 both it and the repaired integration. Until then F is WAITING ON C, not READY on the earlier release.
 Verify F01–F07, both ancestries and the repaired C evidence before editing.
 
+C repair is now integrated at `e43a8d8515486c73c276fa319bbe06d196b309e3` after focused PASS.
+Its [repair evidence](run-completion.md#c-schema-39-upgrade-repair--2026-09-09) and closure receipt supersede the earlier C prerequisite; the preceding planning-source description is historical.
+
 Create `codex/database-foundation` at `/Users/julianhein/Projects/hr-worktree-database-foundation`
 from that verified base after rechecking absent ref/path and capacity. Execute only F with one
 Astra/high supervisor and zero workers. Run focused tests/lint/freshness and affected filtered UI
@@ -184,4 +187,4 @@ Keep Done / Now / Remaining visible, including integration, cleanup and deferred
 
 ## Next prerequisite record — 2.6.6 F
 
-C is locally integrated at `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`. Its [focused release](run-completion.md#c-scoped-release-and-local-integration--2026-09-09) supplies F's actual master source prerequisite. The [closure receipt](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/closure.json) verifies C's owned branch/path removal. F is not dispatched, planned anew or implemented by C. The operator opens F's next session and its committed brief must pin a descendant of this integration. No removed C/T branch is required. Full phase gates and complete independent review remain 2.6.9.
+C is locally integrated at `e43a8d8515486c73c276fa319bbe06d196b309e3`. Its [focused release](run-completion.md#c-schema-39-upgrade-repair--2026-09-09) supplies F's actual master source prerequisite. The [closure receipt](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/closure.json) verifies C's owned branch/path removal. F is not dispatched, planned anew or implemented by C. The operator opens F's next session and its committed brief must pin a descendant of this integration. No removed C/T branch is required. Full phase gates and complete independent review remain 2.6.9.
