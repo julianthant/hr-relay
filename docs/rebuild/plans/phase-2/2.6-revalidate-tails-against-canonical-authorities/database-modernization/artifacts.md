@@ -641,3 +641,63 @@ The prior broad reservation conversation is not a prescribed workflow. After che
 commit, one release to the already waiting owner ends this actual conflict; no peer status broadcast
 or new queue is created. The planner’s returned amended plan/base supersedes the previous G launch
 prompt while preserving the current F prerequisite and all execution requirements.
+
+## G execution record — 2026-09-09
+
+**Current state:** G01–G04 implemented and focused proof passed; G05 final committed checks and
+G06 integration/cleanup remain owned by this supervisor. This is a scoped development release;
+full acceptance and independent review remain in 2.6.9. No workers, reviewers or siblings were
+launched. No peer messages or transfers were needed.
+
+| Binding | Verified evidence |
+| --- | --- |
+| Plan/execution base | `391686035bc85a0587958e09dae7cf0feceadbed`; approved plan `4e84dbcb1b696c5d4d1f99f8a73a5bf25d085dd3` is an ancestor |
+| F prerequisite | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` and release `e06a1c82e9983deb281c5400671f6ce330214000` are ancestors; resolver cleanup receipt is complete and its owned path/ref remain absent |
+| Runtime comparison | All non-document inputs at the execution base equal F's tested `f917ffe7b2308b4746e2aba16719a68cbafdb56c`; schema47/floor46 and released migrations remain unchanged |
+| Owned lane | `codex/artifact-outputs`, `/Users/julianhein/Projects/hr-worktree-artifact-outputs`; created from the exact base with one existing auxiliary checkout, under the then-available cap |
+| Integration owner/condition | This G supervisor retains local master integration, invalidated focused checks, release recording and owned cleanup after committed focused PASS |
+| Evidence | `/Users/julianhein/Projects/hr-artifact-outputs-evidence-20260909/`; `preflight.json`, `config-proof.json`, command logs and `sensitivity.json` preserve actual results |
+
+### Implementation and proof
+
+| Step / proof | Delivered behavior and boundary evidence |
+| --- | --- |
+| G01 | Read the amended coordination binding and current linked protocol, server instructions, artifact/export contracts and lessons. Preserved unrelated primary-checkout planning edits. Verified ancestry, complete F receipt, runtime equality, schema/floor and capacity before creating the lane. |
+| G02 / P4 | Repository admission reserves bounded settlement metadata. Prepared update/artifact/generation identity is durable before staging. The writer verifies immutable old/intended bytes, staged bytes and destination bytes; canonical destination locks include directory aliases and refuse symlink files. Generation and exact prepared identity are rechecked before replacement. Head/version/ack settle together; independent enqueues remain pending. F's complete checkpoint commitment and historical witness resolver are unchanged. |
+| G03 / P5 | The new publication suite exercises ten staging/fsync/replace/settlement interruption boundaries with a valid initial publication, independent reopened connections, retained intent, unchanged last head and readable old immutable versions. Prepared retries refuse explicit reconciliation; no automatic recovery. It also covers staged corruption, external edits during publication, stale preparation, divergent settlement, exact acknowledgement, alias contention, metadata rollback and missing/corrupt old versions. Existing projection tests retain missing/headless destination and executor replay controls. |
+| G04 / P6 | The service captures and composes the admitted selection before registration changes authority generation, registers before publishing workbook bytes, verifies readback, settles the same generated row, then verifies persisted evidence before returning. An unavailable intended digest in the existing version collection binds pending exports to their bytes; verified publication appends the actual immutable reference without rewriting that commitment. Failed publication/readback/settlement retains failed registration. Identified exact-content replay reuses its row; request/content divergence refuses. Independent same-byte exports retain separate identities. Existing actor, protected workbook and header behavior is preserved. |
+| G05 / P8 | Existing immutable references survive later output versions; missing/corrupt bytes refuse. F's storage transaction, four-way independence and selected backup/recovery guards remain passing boundary checks. Combined archive custody/transfer and complete cross-domain recovery stay assigned to L/A/H and 2.6.9. |
+
+Four production files changed: the generated repository, sink projector, retention sink and export
+service. The core checkpoint resolver and composed export factory did not need edits. Test changes
+are restricted to the existing projection/export service suites and the new owned publication suite.
+No shared schemas, migrations, executor/root composition, registry, fixtures or sibling source changed.
+
+### Focused evidence and limitations
+
+The external adapter imports this checkout's real Vitest configuration. Structural and resolved
+configuration comparisons permit only root/project `maxWorkers: 1`; all project include/exclude
+membership, forks, isolation, assertions, coverage thresholds and 30-second test/hook timeouts match.
+Before the final prepared-fence recheck, the complete assigned unit selection passed **7 files /
+101 tests** and architecture selection passed **4 files / 131 tests**. `npm run lint`, manifest
+and store-catalog generation/freshness exited 0. Final committed results below supersede this
+iteration evidence; unrun full gates are not claimed.
+
+Targeted mutations prove the tests detect lost prepared intent, skipped staged-byte verification,
+skipped destination revalidation and divergent export replay. The initial removal of one redundant
+prepared precheck still refused at the second guard; it is retained as non-discriminating evidence,
+not claimed mutation coverage. All injected changes were restored exactly before normal gates.
+
+Observed implementation repair rounds: initial export identifier ordering violated existing refusal
+fixtures and was repaired by preserving capture before identity allocation; the projection test
+teardown now awaits artifact initialization before removing roots. New fixture migration-owner casing
+and the manual-clock method were corrected without changing production expectations. Final inspection found that re-putting missing old bytes could allocate a different immutable ID;
+publication now opens the exact retained reference first, with missing/corrupt controls and verified
+restore-to-the-same-reference controls. This was an in-scope implementation defect. No product or
+ownership amendment was required. Earlier use of the real clock/fixture contracts would have avoided
+those fixture repairs. Full review has not run; these observations are not an independent verdict.
+
+Full typecheck/coverage, whole architecture, broad parity/build/performance, combined archive transfer,
+original cross-domain recovery/scenario/production-route proof and fresh complete `sup_review` remain
+in **2.6.9**. This task adds no live producer, UI behavior, automatic recovery/GC, export format,
+provider wiring or HR submission. No push or operator-database upgrade occurred.
