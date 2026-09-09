@@ -204,9 +204,9 @@ exclusive allocations. G and S planning consume the repair record; no child is a
 /supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.1 P in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
 ```
 
-```text
-/supervise 2.6.6.2 (D), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.2 D in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/diagnostics at /Users/julianhein/Projects/hr-worktree-diagnostics from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
-```
+D uses its [approved D01–D05 brief](diagnostics.md#approved-execution-brief--2026-09-09) and the resolved binding below,
+not the older C0 no-merge prompt. The planner supplies its exact verified plan/base SHA after
+persistence checks; the common runtime prerequisite remains repaired F above.
 
 ```text
 /supervise 2.6.6.3 (G), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. After approval of G’s task-specific execution brief, execute the C0 execution allocation — 2.6.6.3 G in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/artifact-outputs at /Users/julianhein/Projects/hr-worktree-artifact-outputs from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit and merge locally into master after focused PASS, repair integration failures, preserve evidence, and remove only the owned worktree/branch. Record the integrated G candidate for L. No push, live database upgrade, HR submission, cleanup of other lanes or automatic task launch. Send Done / Now / Remaining at start and every verified step.
@@ -215,3 +215,21 @@ exclusive allocations. G and S planning consume the repair record; no child is a
 ```text
 /supervise 2.6.6.4 (S), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.4 S in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/settings-activation at /Users/julianhein/Projects/hr-worktree-settings-activation from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
 ```
+
+
+## Approved D binding — 2.6.6.2
+
+The operator approved the complete [D01–D05 execution brief](diagnostics.md#approved-execution-brief--2026-09-09)
+and its three ownership amendments on 2026-09-09 after F repair verification. The planner's exact
+committed plan SHA is the implementation base and must contain that complete section and repaired
+F integration `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. Use the returned verified prompt; do not
+substitute C0's older plan SHA or treat the runtime prerequisite alone as the approved D plan.
+
+One Astra/high supervisor, zero workers, creates `codex/diagnostics` at
+`/Users/julianhein/Projects/hr-worktree-diagnostics` after ref/path/capacity checks. D includes its
+new timeline payload, live-panel context and two foundation-test amendments; other P/G/S allocations
+remain unchanged. D01–D05 assign meaningful focused checks, lint, affected freshness and dedicated
+desktop proof, local master merge after focused PASS, invalidated integration rechecks, preserved
+evidence and owned worktree/ref cleanup. This overrides generic no-peer-merge/retention rules for
+D only. Full gates and independent complete review stay in 2.6.9. Record integrated D for L; no
+push, live application, unrelated cleanup or sibling dispatch. Implementation remains unstarted.

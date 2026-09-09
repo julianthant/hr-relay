@@ -39,6 +39,13 @@ Product scope is not reduced when a proof moves to a later gate. Current contrac
 implemented behavior until the assigned prerequisite ratifies the approved changes at their actual
 owners: R handles its names; C0 handles downstream product contracts.
 
+**D-specific approval, 2026-09-09:** the operator approved [D01–D05](diagnostics.md#approved-execution-brief--2026-09-09)
+on repaired F, including the strict resolution timeline payload, live-panel context wiring and
+the two resolution-specific foundation test amendments. D exclusively owns those additions and
+its original paths. The same supervisor merges D locally after focused PASS and removes its owned
+worktree/ref. This supersedes generic frozen-path, no-peer-merge and retained-candidate wording
+for D only. Full gates and complete independent review remain in 2.6.9; implementation is unstarted.
+
 ## Roadmap identity
 
 The operator requested visible prerequisite and parallel-child cards matching Phase 3.1. The

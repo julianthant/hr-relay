@@ -1,5 +1,11 @@
 # Diagnostic evidence and failure resolution
 
+**Current execution authority:** the operator approved [D01–D05](#approved-execution-brief--2026-09-09)
+after verification of repaired F on 2026-09-09. That brief supersedes this file's earlier waiting,
+no-master-merge, retained-branch and frozen-path wording for D only. It includes three explicit
+ownership amendments, focused checks, local master merge and owned cleanup. Full gates and fresh
+independent review remain at 2.6.9. Implementation is unstarted.
+
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
 lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
@@ -312,3 +318,248 @@ integration, independent review, heavy-gate waiver, sibling dispatch or live dat
 Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
 
 Authored evidence stays in this task's existing `diagnostics.md` owner; shared indices remain read-only.
+
+
+## Approved execution brief — 2026-09-09
+
+The operator approved this entire proposal with “approve” after reporting the repaired F release.
+Their explicit instruction assigns local merge and cleanup at the end of 2.6.6.2 and preserves
+full gates at the end of 2.6, not here. This section is the complete current D execution brief;
+older S1–S4/C0 execution restrictions above remain historical where this section overrides them.
+All original P1–P6 product obligations and their explicit cross-stage allocation remain binding.
+No implementation, task launch or phase acceptance is claimed by this planning record.
+
+### Assignment, prerequisite and isolation
+
+| Binding | Approved value |
+| --- | --- |
+| Task and owner | 2.6.6.2 D; this diagnostics.md section and its execution evidence |
+| Supervisor | One GPT-6 Astra/high supervisor implementing locally; zero implementation workers and no independent reviewer in D |
+| Common runtime prerequisite | Repaired F integration `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, superseding initial F `7ec279750817934b7da69ce433e0e5a44fed6a58` |
+| Inspected planning source | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; F repair candidate `a1e963445bc05d57f1eb9abbff95a9238300ab3a` is integrated |
+| Implementation base | Exact committed approved-plan SHA supplied by the planner, a verified descendant of repaired F containing this complete section |
+| Checkout creation | Create `codex/diagnostics` at `/Users/julianhein/Projects/hr-worktree-diagnostics` from that base; never implement in the integration checkout |
+| Integration target and owner | Local master at `/Users/julianhein/Projects/hr-automation-rebuild`; the same D supervisor owns D-only integration and cleanup after focused PASS |
+| Release consumer | 2.6.7 L consumes D's recorded integrated commit alongside its other explicit prerequisites; no successor dispatch |
+
+Recheck plan content, both ancestries, clean ownership, ref/path absence and worktree capacity before
+the first edit. Planning observed only the primary checkout and unrelated
+`/Users/julianhein/Projects/hr-separation-accounting-final`; preserve that checkout and branch.
+The diagnostics path/ref and F's removed path/ref were absent. Names are proposals, not reservations.
+At most four auxiliary worktrees may exist; never borrow an active sibling's checkout.
+
+F's [repair and integrated release](foundation.md#f-prerequisite-repair--2026-09-09) and
+[complete cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json)
+are the prerequisite evidence: 961 unit tests, 199 affected architecture tests, 67 filtered UI cases,
+lint and freshness passed. These are F's focused evidence, not D's behavior proof or full gates.
+F repair changed the command kernel's settings branch and appended settings tests, but left D's
+production modules, timeline grammar, shared failure UI and unavailable-resolution expectations
+unchanged. Preserve those new settings tests. No actual-target preflight is needed here: all D
+verification uses disposable synthetic authority roots, never the operator database.
+
+### Exclusive paths and approved ownership amendments
+
+D retains these production paths:
+
+- `src/core/failure-resolution.ts`
+- `src/infra/sqlite/failure-resolution.ts`
+- `src/server/dashboard/queries/failure-resolution.ts`
+- `src/server/dashboard/commands/failure-resolution.ts`
+- `src/server/dashboard/compose/failure-resolution.ts`
+- `src/server/dashboard/queries/run-trust.ts`
+- `src/dashboard/surfaces/trust.tsx`
+- `src/dashboard/surfaces/trust-model.ts`
+
+The operator approved three narrowly bounded additions to the former frozen allocation:
+
+1. `src/events/timeline.ts`: add a strict failure-resolution history payload with exact run/workflow,
+   failure, command, actor, action, annotation version and time binding. Use the existing timeline
+   transaction/repository and ordinary retention. Preserve historical payloads, SQL schema and
+   execution-span semantics; do not disguise annotation history as a run transition or gate event.
+2. `src/dashboard/surfaces/log-panel.tsx`: pass live action context and admitted actor through the
+   existing failure-detail call chain. Shared failure rendering defaults to read-only; the existing
+   archive caller receives no live controls. Keep callbacks/context inside this existing surface
+   and the D-owned trust files; no app-shell or archive redesign.
+3. Resolution cases in `tests/unit/command-kernel.test.ts` and
+   `tests/unit/database-foundation/four-way-independence.test.ts`: retain explicit unavailable-port
+   refusal proof while adding activated-command proof. Preserve all unrelated settings, provider,
+   artifact and pair/order assertions. These tests are D-owned for this bounded change only.
+
+D owns `tests/unit/failure-resolution/commands.test.ts` and `capture.test.ts` (new), local fixtures
+beside those tests, existing `tests/unit/dashboard/failure-record-render.test.ts` and
+`failure-record-model.test.ts`, and new `tests/parity/failure-resolution.spec.ts`,
+`tests/parity/helpers/fixture-failure-resolution.ts`, `tests/parity/references/failure-resolution-*`.
+Tests for the new timeline payload belong in D's dedicated command/capture suites. Shared fixture,
+registry, migration, global command union, authority-database and root composition edits remain
+excluded. Any further necessary shared edit requires amendment before dependent work proceeds.
+
+D records authored progress only here. Planning owns the synchronized shared admission pointers.
+These additions do not intersect P/G/S's allocated changing paths; all still consume repaired F
+without an unmerged sibling API. Either sibling merge order remains permitted. Serialize only
+shared-target merge/regeneration and evidenced resource conflicts; D has no permission to merge a
+sibling. L/final 2.6.9 retain combined actual-candidate pair/order verification.
+
+### Feasibility and proof bindings
+
+| Requirement / inspected mechanism | Required change and earliest proof |
+| --- | --- |
+| `createFailureResolutionRepository.read/update` already supplies strict annotation JSON, independent version/CAS and an outer-transaction-compatible writer. Kernel dispatch already encloses command insertion, application and audit in one authority transaction. | D02 activates its existing executor/capability and appends the resolution timeline event inside that transaction. D04 injects annotation, audit and event failures and proves complete rollback, including generation and command journal. |
+| The current timeline payload union admits only spans, checkpoints and confirmed operations. Existing repository admits an exact run/workflow owner and distinguishes confirmed versus ordinary retention. | D02 adds the narrowly owned strict payload. D04 proves restart/readback, source binding, ordinary pruning, duplicate identity and unchanged historical/event readers. This was a known allocation gap, not supervisor discovery. |
+| F's failure query is wired into trust/receipt composition; failure-detail wire already carries separate resolution/capability. `run-trust.ts` currently projects that annotation directly. | D02/D03 serve current annotation and apply existing protected-text rules to optional note values. Prove protected note text does not escape served views/errors/history while immutable failure and receipt content remains exact. Keep raw capture identity separate from public projection. |
+| The same failure body renders in live log-panel and Archive. Only the live panel currently has the admitted actor context; existing client provides command and run-section reads. | D03 passes explicit live context; absent context is read-only. Use durable section readback and a bounded lifecycle-cleaned refresh mechanism so another process's annotation change is visible without bumping run version or relying only on a local callback. Prove read failure is visible, no stale optimistic success, and unmount/selection changes stop obsolete refreshes. |
+| F's two shared tests expressly assert capability remains unavailable. | D02/D04 retain injected-unavailable negative proof and add active resolution proof; do not delete unrelated assertions or leave final gates knowingly broken. |
+| Archive transfer is not yet implemented; immutable snapshots may outlive source failures. | D04 proves current read-only presentation and stale/deleted target refusal on F alone. L/A/H and final 2.6.9 retain saved-report capture-time resolution, deletion/readability and full archive conversion portions of P5/P6. No fake archive producer is introduced. |
+
+The command proof matrix includes valid resolve/reopen; same-ID exact replay after commit/ack loss
+and restart; changed content under the same ID; two real connections competing for one version;
+wrong run/failure pairing; absent/tombstoned/moved source; invalid action/version/note; forged actor
+and rejected Host/Origin at the actual HTTP boundary. Invalid requests must have no annotation or
+other forbidden mutation. Inject failures after the annotation change but before audit/event commit,
+with a valid positive control reaching the same boundary. Reopen retains action history; matching
+fingerprints and successful retries never resolve another occurrence. Resolution cannot make an
+UNKNOWN external write retryable. P3/P4 compare original failure bytes/fingerprint, run completion,
+status/version and receipt bytes/digests before and after, rather than merely checking row counts.
+
+### Ordered execution
+
+| Step | Outcome / completion boundary |
+| --- | --- |
+| D01 — Bind scope | Verify the approved plan and repaired F, create the isolated branch/worktree, inspect applicable server/dashboard rules and the three amended paths, and preserve unrelated ownership. |
+| D02 — Resolution commands | Implement resolve/reopen with exact target/version and admitted actor/time, optional bounded note, typed refusals and atomic annotation/command/audit/timeline history. Preserve replay, immutable evidence and the unavailable-port negative control. |
+| D03 — Live controls | Use /ui locally: Components lead with Verification support, no delegated UI agents. Use the existing specimen/design system for status, actor/time, optional note, Mark resolved/Reopen, pending/failed feedback and keyboard access. Keep archived rendering read-only and provide durable cross-process refresh. |
+| D04 — Focused proof | Complete D-owned P3/P4, live P5 and annotation-specific P6, link unchanged R/F P1/P2/storage evidence, run the exact focused gates below, repair failures and record the candidate SHA/tree and logs. |
+| D05 — Merge and cleanup | Commit exact paths, merge D locally after focused PASS, revalidate affected integration inputs, record the actual integrated release for L, preserve evidence externally, stop owned processes and remove only D's clean worktree and merged branch from the safe primary checkout. |
+
+One supervisor fits the coupled command/annotation/UI seam and proof on an already composed F base.
+No workers, per-peer reviewer, nested finalizer or separate repair task is assigned. Independent
+complete review belongs to 2.6.9's fresh read-only sup_review on Astra/high, after its full gates.
+Keep Done / Now / Remaining visible at start/resume and each verified step, including pending merge,
+cleanup and the deferred phase acceptance. Routine implementation choices and in-scope repairs do
+not require renewed approval.
+
+### Exact focused gates and scheduling
+
+Run from the verified D worktree. Keep logs and the configuration below in an owned external
+`/tmp/diagnostics-*` directory during iteration; preserve final evidence outside the removed
+worktree in `/Users/julianhein/Projects/hr-diagnostics-evidence-20260909` without overwriting another
+owner's evidence. At most one effective D test file worker, within the four-worker batch budget.
+
+Create external `vitest-one.config.mts` by importing the actual D worktree `vitest.config.ts`,
+spreading the imported configuration and its `test` object, setting root `maxWorkers: 1`, and
+mapping every object in `test.projects` to preserve all fields while setting its nested
+`test.maxWorkers: 1`. Reject unexpected project shapes. Preserve forks, isolation, project membership,
+assertions, timeouts and coverage floors. Verify the resolved root/project worker settings and save
+the comparison; environment/CLI flags alone were insufficient in F. No production runner edit.
+
+Use `VITEST_MAX_WORKERS=1 npm run test -- --config <absolute owned vitest-one.config.mts> --project unit --maxWorkers=1`
+with this exact selector set (new files must collect meaningful cases):
+
+```text
+tests/unit/failure-resolution/commands.test.ts
+tests/unit/failure-resolution/capture.test.ts
+tests/unit/dashboard/failure-record-render.test.ts
+tests/unit/dashboard/failure-record-model.test.ts
+tests/unit/command-kernel.test.ts
+tests/unit/command-kernel-restart.test.ts
+tests/unit/database-foundation/transaction-contracts.test.ts
+tests/unit/database-foundation/four-way-independence.test.ts
+tests/unit/diagnostic-capture.test.ts
+tests/unit/diagnostic-safety-projection.test.ts
+tests/unit/storage-diagnostic-redaction.test.ts
+tests/unit/server/diagnostic-bundle-readback.test.ts
+tests/unit/evidence-receipt-repository.test.ts
+tests/unit/receipt-derivation-binding.test.ts
+tests/unit/archive-model.test.ts
+tests/unit/archive-protected-identity.test.ts
+```
+
+Use the same invocation with `--project architecture` for:
+
+```text
+tests/unit/architecture/control-command-single-path.test.ts
+tests/unit/architecture/command-result-exhaustive.test.ts
+tests/unit/architecture/dashboard-wire-boundary.test.ts
+tests/unit/architecture/redaction-surface-scan.test.ts
+tests/unit/architecture/strict-boundary-schemas.test.ts
+```
+
+Run `npm run lint` whenever tests run. Run affected generators before their checks:
+`npm run build:manifest` / `npm run build:manifest:check`, `npm run stores:catalog` /
+`npm run stores:catalog:check`, and `npm run roadmap` / `npm run roadmap:check` as their inputs change.
+Do not hand-edit generated output or use a failing guard as permission to weaken its requirement.
+Guard additions/retirements need the deciding inventory evidence and an ownership amendment if a
+shared path is required; none is presumed by this plan.
+
+Desktop proof is `npm run test:parity -- tests/parity/failure-resolution.spec.ts --workers=1`.
+Its local fixture must exercise actual command/refusal/readback paths, keyboard access, both themes,
+1024×720 minimum desktop, zoom/wrapping, protected notes, pending/error states, cross-process refresh
+and archived read-only rendering. New reference creation is deliberate /ui verification, followed
+by the assert run. Preserve existing shared fixtures and unrelated references; broad refreezes
+remain downstream. The filtered lane may build its candidate bundle as required by its own runner;
+this is not the deferred broad production-build acceptance gate. Use playwright-cli and its required
+playbook for manual browser work, not prohibited browser MCPs.
+
+Iteration runs the affected subset; the committed development candidate must have the complete
+focused set above, lint, affected freshness and dedicated desktop proof. Gates sharing mutable
+outputs run sequentially. The parity runner's worktree-local reports/build and ephemeral ports/root
+are D-owned; verify current ownership before starting. Full typecheck, coverage, whole architecture,
+full parity, broad build/performance and original phase-wide recovery/scenario proofs remain at
+2.6.9. No full gates or independent review are run merely to commit or merge D.
+
+Before integration, recheck master HEAD and clean exclusive integration access, candidate/plan
+identity and mergeability. Do not overwrite another session or infer ownership from idle status.
+After merging, rerun invalidated focused checks and freshness. Reuse only proven unchanged inputs,
+recording original tested commit/tree, integrated tree and inspected source/test/config/dependency
+comparison; any uncertainty requires the applicable rerun. Record-only commits use document/link,
+instruction-pair/chain, affected generation and whitespace checks, without rerunning unaffected
+runtime gates. A new SHA alone neither invalidates nor proves existing evidence.
+
+### Completion, exclusions and stop conditions
+
+D is complete only as a merged focused development release with actual integration SHA, tested
+candidate/tree, exact commands/exits, retained proof paths, explicit P1–P6 cross-stage disposition
+and verified worktree/ref/process cleanup. L and final 2.6.9 can consume the reachable master commit
+without retaining D's branch. Do not remove the active supervisor checkout from inside it; use the
+safe primary checkout after preserving ignored outputs and verifying no owned process remains.
+No branch deletion before verified integration, no unrelated worktree cleanup and no push.
+
+No new migration, schema/fingerprint registry, global command union, root dispatch/composition,
+provider/key wiring, archive implementation, automatic resolution, changed run/receipt identity,
+new issue/fix/knowledge authority, retention policy, notification/outbox, live HR write, operator
+upgrade, cutover or successor dispatch is authorized. No existing failed focused check can be
+carried as PASS. Missing/changed prerequisites, an unowned required change, incompatible protected
+projection or additional material contract decision stops dependent work for amendment; continue
+independent authorized work. The three known allocation gaps above are already approved and must
+not be returned as fresh permission questions.
+
+### Planning verification
+
+Approval covers this entire brief and its three ownership amendments on repaired F. Planning
+changes only this owner, synchronized admission/contract pointers and generated roadmap. Evidence
+is retained at `/tmp/diagnostics-plan-evidence-20260909`; the planner records final check results
+before committing, then verifies the committed section, ancestry, reachability and launch bindings.
+No D implementation or runtime proof is claimed here. READY requires that complete committed
+plan plus passing documentation gates and the verified repaired F prerequisite.
+
+
+Planning gates passed on the D-only document snapshot based on
+`0eeedcadad5ed4f686799be4dd190133372d5e2b`. P and G were concurrently editing shared documents;
+commit/index/roadmap operations were coordinated D → P → G. The planner reconstructed only D's
+approved edits over the committed base, generated its roadmap in an isolated document snapshot,
+and staged exact D blobs. Peer authored changes remain unstaged and preserved.
+
+| Planning check | Verified evidence |
+| --- | --- |
+| Documentation binding | 1 file / 24 tests PASS, exit 0; `candidate-binding-rerun.log`, then final recording rerun. Command uses the real test runner, architecture project and one-worker adapter against the D-only snapshot. |
+| Lint | `npm run lint` PASS, exit 0, `lint.log`. Source/tests/config/dependencies match planning source; these documentation edits change no lint input. |
+| Roadmap | `npm run roadmap` then `npm run roadmap:check` PASS, exit 0 in the D-only snapshot; `candidate-roadmap.log` and `candidate-freshness.log`. Regenerated again after this evidence record. |
+| Links/instructions | 218 D-candidate local links/anchors resolve; nine existing instruction pairs are identical; longest project chain 17,333 UTF-8 bytes, below 32,768. `candidate-doccheck.log`. |
+| Selector and scope preflight | All existing focused selectors resolve; only the two explicitly new resolution suites and dedicated parity case are pending creation. No implementation/runtime test or full gate was run by planning. |
+| Commit verification | Exact-path D-only staging, whitespace checks, committed owner readback, prerequisite ancestry and reachability are verified before the outgoing prompt; final receipt is in the planning evidence directory. |
+
+The first isolated binding attempt failed to import a guard helper omitted from the temporary
+snapshot; no tests ran. Including the unchanged committed helper fixed that test setup, and the
+24-case rerun passed. The first isolated link check needed canonical `/private/tmp` path handling;
+its corrected rerun passed without any source-link change. Failed logs remain as setup evidence.
+The shared working-tree binding test also passed but is not substituted for the D-only candidate
+check. Full gates and fresh independent review are explicitly unrun here and remain at 2.6.9.

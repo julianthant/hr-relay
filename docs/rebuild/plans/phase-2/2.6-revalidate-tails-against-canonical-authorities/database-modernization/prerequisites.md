@@ -493,6 +493,18 @@ sequential owner. Historical-only matches retain versioned compatibility rather 
 - `src/server/dashboard/routes/operator.ts`
 - `src/server/dashboard/routes/trust.ts`
 
+## D approved allocation amendment — 2026-09-09
+
+[D01–D05](diagnostics.md#approved-execution-brief--2026-09-09) supersedes D's frozen-path and retained-candidate restrictions:
+D owns `src/events/timeline.ts` for strict resolution history, `src/dashboard/surfaces/log-panel.tsx`
+for live action context, and the resolution cases in `tests/unit/command-kernel.test.ts` and
+`tests/unit/database-foundation/four-way-independence.test.ts`. Preserve unrelated assertions and
+all P/G/S ownership. These paths do not intersect P/G/S's changing sets, and require no unmerged
+sibling API. Repaired F `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` remains the common runtime
+prerequisite. D starts from its committed approved-plan descendant, runs focused proof/lint/freshness,
+merges locally and cleans up its owned worktree/ref. Other shared edits require amendment; full
+phase gates and independent review stay in 2.6.9. L consumes the recorded integrated D commit.
+
 ## C0 independence and gate-resource record — 2026-09-09
 
 Inspection used R `60b356dd119140dc972a077751ad16af934acb2e` and its unchanged production inputs.

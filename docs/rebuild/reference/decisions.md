@@ -2382,3 +2382,15 @@ owns its source/checkout bindings, steps, proof and release. Full gates and comp
 review remain in 2.6.9. Four future child checkouts are distinct and consume one actual integrated
 F release after cleanup. Product requirements are unchanged; no implementation, live application,
 child dispatch or push is claimed.
+
+
+### 2026-09-09 — 2.6.6.2 D ownership, merge and cleanup
+
+The operator approved the complete [D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+on repaired F. [Operator trust](operator-trust.md#d-resolution-history-admission--2026-09-09) owns
+the strict atomic resolution history admission; [dashboard surfaces](dashboard-surfaces.md#d-live-resolution-context-admission--2026-09-09)
+owns live-context/read-only archive wiring. The brief admits the two resolution-specific foundation
+test changes while preserving other peer ownership. [Roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12)
+own D's local merge and owned cleanup after focused PASS. Full gates and complete independent review
+remain in 2.6.9. Implementation is unstarted; no live application, push or task dispatch is claimed.

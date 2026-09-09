@@ -1306,6 +1306,16 @@ review remain in 2.6.9. F completion is a merged scoped development release, not
 Preserve all inherited proof, floors and failure semantics; no operator database application,
 automatic successor, push or waiver of a failing focused check is authorized.
 
+**2026-09-09 D integration exception.** The operator approved 2.6.6.2 D local master merge and
+owned cleanup after the focused gates in its
+[D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09).
+Run the assigned unit/architecture selectors, lint, affected freshness and dedicated desktop proof;
+recheck invalidated integration inputs before release. This overrides generic no-peer-merge and
+retained-branch timing for D only. Full typecheck, coverage, whole architecture/parity, broad
+build/performance and fresh complete independent review remain at 2.6.9. The filtered desktop lane
+may build its required candidate bundle. Preserve every product proof, assertion, floor, isolation
+and timeout; scoped PASS is not phase acceptance and a failing focused check cannot be deferred.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->

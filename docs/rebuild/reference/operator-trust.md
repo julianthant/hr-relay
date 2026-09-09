@@ -2869,3 +2869,14 @@ F adds separately versioned failure annotations and capture/query/command ports,
 
 Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.
+
+
+## D resolution history admission — 2026-09-09
+
+The approved [2.6.6.2 D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+closes the missing timeline representation for the already required atomic resolution history.
+D owns a strict resolution payload in `src/events/timeline.ts`, appended through the existing
+transaction/repository with ordinary retention. Preserve original failure/receipt/completion
+identities, historical payloads and execution-span semantics. Optional notes follow existing
+protected-text rules; public projection must not leak protected text. This admits implementation,
+not a new run transition, retention policy, SQL migration or already verified feature.

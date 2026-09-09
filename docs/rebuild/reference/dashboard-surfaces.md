@@ -7211,3 +7211,14 @@ F removes only approved unused SQL spans/gates/notes/OCR approval scaffolding, r
 
 Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.
+
+
+## D live resolution context admission — 2026-09-09
+
+The approved [2.6.6.2 D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+assigns `log-panel.tsx` live-context/actor wiring to D alongside its existing trust component/model.
+Shared failure rendering defaults to read-only; the archive caller receives no live resolution
+controls. Live controls use durable annotation readback and cross-process refresh without changing
+the run's logical version. Refusals and refresh failures remain visible; no optimistic resolved
+state may stand as authority. Saved-report capture-time resolution and post-transfer readability
+remain L/A/H and final 2.6.9 obligations. This is approved implementation scope, not completion.

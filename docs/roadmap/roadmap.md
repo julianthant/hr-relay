@@ -1128,6 +1128,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.2; assignment D; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | D01–D05 plan approved | repaired F prerequisite 51e4c087a; strict resolution history/live-context/test ownership amendments; one supervisor, focused checks, local merge and owned cleanup. Full gates/review remain 2.6.9; implementation unstarted
 
 ##### 3 · Publish and update generated artifacts {#p2db-generated-artifacts}
 status: planned
@@ -3728,6 +3729,14 @@ Full gates and complete independent review remain in 2.6.9 under D191; F complet
 scoped development release only. P/D/G/S receive distinct checkouts and one actual integrated F
 base after its cleanup; no child launch, live database application or push is authorized. F is
 planned, not implemented, and planning creates no checkouts.
+
+**D-specific operator exception, 2026-09-09:** the approved 2.6.6.2
+[D01–D05 brief](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+assigns the same supervisor local master merge and owned cleanup after focused PASS. Its three
+explicit timeline/live-context/test ownership additions supersede D's former frozen allocation;
+other P/G/S ownership stays unchanged. This overrides generic retained-candidate/no-peer-merge timing
+for D only. Full gates and complete independent review remain at 2.6.9 under D191. D completion is
+a merged focused development release, not phase acceptance; no push, live application or dispatch.
 
 ### Parallel group shape for future plans (2026-09-09)
 

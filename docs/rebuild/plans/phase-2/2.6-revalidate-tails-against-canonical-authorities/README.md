@@ -13,6 +13,11 @@ directly and each prerequisite fixes immediate combination defects with focused 
 Completed Task 1 and timeline T1 evidence remain unchanged. Earlier numbered references in dated
 handoffs below are historical aliases resolved through the combined identity map.
 
+**D-specific execution amendment:** [2.6.6.2 D01–D05](database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+is approved on repaired F and includes local master merge and owned cleanup after focused PASS.
+Its three exact ownership amendments are in that single owner. Full gates and independent review
+remain Task 9; D implementation is unstarted.
+
 **Phase 2.6 trial only:** implementation tasks run focused tests, lint and affected freshness.
 Full gates and independent review run at Task 9, with required reruns after fixes. Other phases and
 completed/in-flight gate schedules are unchanged. A development release unlocks its explicit
