@@ -239,17 +239,18 @@ describe("evidence receipt — strictness", () => {
 
   it("refuses to explain a run that has not settled, and one from another graph", () => {
     const evidence = kualiReceiptEvidence();
-    const run = evidence.run as { lifecycle: unknown };
+    const run = RunRecordSchema.parse(evidence.run);
+    const { completion: _completion, ...unsettled } = run;
     assert.throws(() => buildRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       ...evidence,
-      run: { ...run, lifecycle: { state: "queued" } },
+      run: { ...unsettled, lifecycle: { state: "queued" } },
     }), /a receipt states a settled verdict|only a terminal/);
     assert.throws(() => buildRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       ...evidence,
       run: {
-        ...run,
+        ...unsettled,
         lifecycle: { state: "terminal", outcome: "interrupted", endedAt: "2026-08-04T17:08:54.867Z" },
       },
     }), /interrupted/);
