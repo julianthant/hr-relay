@@ -4,7 +4,7 @@
 after verification of repaired F on 2026-09-09. That brief supersedes this file's earlier waiting,
 no-master-merge, retained-branch and frozen-path wording for D only. It includes three explicit
 ownership amendments, focused checks, local master merge and owned cleanup. Full gates and fresh
-independent review remain at 2.6.9. D implementation is in progress; see the current execution record below.
+independent review remain at 2.6.9. D01–D05 are complete as a focused development release; see the execution record below.
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
@@ -663,7 +663,7 @@ plan/implementation base `883ae264c170e4c82fd2240078cd3a4b25bb0976`. Required F 
 read and its absent worktree/ref verified. D's path/ref were absent before creation; two auxiliary
 worktrees existed. Shared master had unrelated documentation edits, which were preserved.
 
-D01–D03 are implemented. D04 candidate checks and D05 integration/cleanup are recorded below.
+D01–D05 are complete. D04 candidate checks and D05 integration/cleanup are recorded below.
 Full gates and fresh independent review remain with 2.6.9. Iteration evidence is
 `/tmp/diagnostics-20260909/`; retained evidence is
 `/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/`.
@@ -756,3 +756,28 @@ tree rather than reuse uncertain transitive inputs. No merge conflict or contest
 been observed. G's complete closure is primary evidence that its shared mutation finished. D uses
 Git's actual index/ref locking for its authorized merge; no peer message or reservation queue.
 Full independent review and phase acceptance remain at 2.6.9.
+
+### D05 focused development release and owned cleanup
+
+| Release fact | Exact evidence |
+| --- | --- |
+| Implementation | `c702be5c6c685ffa70a476774085e66a7088b411` |
+| Recording candidate / tree | `b74503847152790168c7f24220912f84a1029582` / `f95768f4b72172c258adc64654e04a22bc5fac19` |
+| Local integration / tested tree | `7443100f701e95f22363cbf39da085f88d14a4ac` / `8fd5491aed93f35bedc7e2959eac8951e76cf7c2` |
+| Integration focused gates | 293 unit cases, 58 architecture cases plus 24 document-binding cases, two desktop themes, lint, manifest/catalog/roadmap generation and freshness: all PASS, exit 0. `integration.json` and `iteration/*-integration*.log` retain command/exits and evidence. |
+| Input proof | The isolated D checkout fast-forwarded to the exact local merge before integration gates. All 2,079 non-document file hashes stayed unchanged across those checks. |
+| Cleanup | Owned process audit empty; manual browser closed and specimen Vite stopped. Browser/report/bundle evidence preserved externally. D-installed dependencies and owned ignored caches removed; ordinary `git worktree remove` and `git branch -d` exited 0. Registration, physical path and branch absence verified. Other worktrees remain. |
+| Later peer merge | P merged `4818223c9da0231481da6051f73f2c33ee16abf0` after D's successful integration checks. D's 31 non-shared implementation/test/reference paths are byte-identical and its shared database condition is unchanged. P's two database edits concern provider invariants only. P06 retains its later merge checks; no D claim of testing that later combined runtime is made. |
+| Final recording | This owner-only completion record changes no D runtime/test/configuration input. Documentation binding, links, instruction pairs/chains, roadmap freshness and whitespace are checked on the recording tree. D's runtime acceptance remains bound to the exact tested integration above. Final SHA/tree and cleanup checks are retained in `closure.json`. |
+
+The [D closure receipt](/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/closure.json),
+[candidate receipt](/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/candidate.json) and
+[integration receipt](/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/integration.json)
+are the reachable release for L and 2.6.9. D kept all assigned implementation, gate, merge and cleanup
+duties; no worker, reviewer, peer message, responsibility transfer or successor dispatch occurred.
+No push, live database application, HR write or operator upgrade occurred.
+
+**Completion boundary:** D01–D05 are complete as a locally merged focused development release.
+Full gates, fresh independent review, saved archive transfer/readability, upgrade/recovery and
+remaining combined P1–P6 acceptance stay with their admitted owners and final **2.6.9**. D stops here;
+this record neither launches L nor claims sibling completion.
