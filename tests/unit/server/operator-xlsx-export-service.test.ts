@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { Readable } from "node:stream";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
@@ -489,5 +490,111 @@ describe("operator XLSX export service", () => {
     } finally {
       h.close();
     }
+  });
+});
+
+
+describe("G explicit export lifecycle", () => {
+  for (const fault of ["put", "readback", "settlement"] as const) it(`retains a failed registration after ${fault}, then replays the same content on the same file`, async () => {
+    const h = exportHarness(`failure-${fault}`);
+    await h.artifacts.ready;
+    try {
+      const repository = h.database.authority.operatorXlsxExports;
+      let failing = true;
+      const service = createOperatorXlsxExportService({
+        clock: h.clock, ids: { uuid: () => EXPORT_ID }, sourceIdentity: h.database.getSourceDatabaseIdentity(),
+        artifacts: {
+          put: async (bytes, metadata) => {
+            const pending = repository.getFile(EXPORT_ID);
+            assert.ok(pending);
+            assert.equal(pending.exportEvidenceJson, null);
+            assert.ok(pending.state === "pending" || pending.state === "failed");
+            if (failing && fault === "put") throw new Error("injected-put");
+            return h.artifacts.put(bytes, metadata);
+          },
+          open: async ref => failing && fault === "readback" ? Readable.from([Buffer.alloc(ref.bytes)]) : h.artifacts.open(ref),
+        },
+        authority: { ...repository, insert: input => {
+          if (failing && fault === "settlement") throw new Error("injected-settlement");
+          return repository.insert(input);
+        } },
+        search: { search: () => searchPage(), searchSelected: () => searchPage() },
+        activityReport: () => { throw new Error("unexpected activity"); },
+      });
+      await assert.rejects(service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()), /injected-|does not contain/u);
+      const failed = repository.getFile(EXPORT_ID);
+      assert.equal(failed?.state, "failed");
+      assert.equal(repository.get(EXPORT_ID), undefined);
+      assert.equal(evidenceCount(h.path), 1);
+      failing = false;
+      const download = await service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
+      assert.equal(repository.getFile(EXPORT_ID)?.state, "ready");
+      assert.equal(evidenceCount(h.path), 1);
+      assert.deepEqual(download.evidence, repository.get(EXPORT_ID));
+      assert.deepEqual(download.bytes, await bytesOf(await h.artifacts.open(download.evidence.artifact)));
+    } finally { h.close(); }
+  });
+
+  it("refuses a changed settlement receipt instead of returning inconsistent download metadata", async () => {
+    const h = exportHarness("receipt-fault"); await h.artifacts.ready;
+    try {
+      const repository = h.database.authority.operatorXlsxExports;
+      const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => EXPORT_ID },
+        sourceIdentity: h.database.getSourceDatabaseIdentity(), artifacts: h.artifacts,
+        authority: { ...repository, insert: input => {
+          const saved = repository.insert(input);
+          return { ...saved, record: { ...saved.record, download: { ...saved.record.download, contentDisposition: "changed receipt" } } };
+        } },
+        search: { search: () => searchPage(), searchSelected: () => searchPage() }, activityReport: () => { throw new Error("unexpected activity"); } });
+      await assert.rejects(service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()), /settlement-readback-conflict/u);
+      const stored = repository.get(EXPORT_ID); assert.ok(stored);
+      assert.equal(stored.download.contentDisposition, 'attachment; filename="hr-run-search-2026-08-28-g19.xlsx"');
+      const replay = await fakeSearchExportService(h, { first: searchPage() }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
+      assert.deepEqual(replay.evidence, stored);
+    } finally { h.close(); }
+  });
+
+  it("replays immutable evidence and refuses changed request or selected contents", async () => {
+    const h = exportHarness("identified-replay"); await h.artifacts.ready;
+    try {
+      const service = fakeSearchExportService(h, { first: searchPage() });
+      const first = await service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
+      h.clock.advanceWall(1000);
+      const replay = await service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
+      assert.deepEqual(replay, first);
+      const generation = h.database.getMeta().authorityGeneration;
+      await assert.rejects(service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest("changed-token")), /registration-divergent/u);
+      const altered = searchPage();
+      const result = altered.results[0]; assert.ok(result);
+      const changed = fakeSearchExportService(h, { first: { ...altered, results: [{ ...result, runNumber: { state: "present", value: 99 } }] } });
+      await assert.rejects(changed.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()), /content-divergent/u);
+      assert.deepEqual(h.database.authority.operatorXlsxExports.get(EXPORT_ID), first.evidence);
+      assert.equal(h.database.getMeta().authorityGeneration, generation);
+    } finally { h.close(); }
+  });
+
+  it("keeps independent same-byte exports separate and refuses divergent pending byte commitments", async () => {
+    const h = exportHarness("independent"); await h.artifacts.ready;
+    try {
+      const first = await fakeSearchExportService(h, { first: searchPage() }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
+      const secondId = "00020002-0002-4002-8002-000200020003";
+      const repository = h.database.authority.operatorXlsxExports;
+      const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => secondId },
+        sourceIdentity: h.database.getSourceDatabaseIdentity(), artifacts: h.artifacts, authority: repository,
+        search: { search: () => searchPage(), searchSelected: () => searchPage() }, activityReport: () => { throw new Error("unexpected activity"); } });
+      const second = await service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
+      assert.notEqual(first.evidence.exportId, second.evidence.exportId);
+      assert.deepEqual(first.bytes, second.bytes);
+      assert.deepEqual(first.evidence.artifact, second.evidence.artifact);
+      assert.equal(evidenceCount(h.path), 2);
+      const pendingId = "00020002-0002-4002-8002-000200020004";
+      const registration = { exportId: pendingId, request: selectedSearchRequest(), requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+        requestedAt: h.clock.now().toISOString(), contentSha256: first.evidence.artifact.sha256 };
+      repository.register(registration);
+      assert.throws(() => repository.register({ ...registration, contentSha256: "a".repeat(64) }), /content-divergent/u);
+      assert.throws(() => repository.insert({ ...first.evidence, exportId: pendingId, createdAt: registration.requestedAt,
+        selection: { ...first.evidence.selection, query: { ...selectedSearchRequest().selection.query, q: "changed" } } }), /publication-identity-conflict/u);
+      assert.equal(repository.getFile(pendingId)?.state, "pending");
+    } finally { h.close(); }
   });
 });

@@ -45,7 +45,55 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
     if (files.length > 1) throw new Error("generated-artifact-update-identity-conflict");
     return generatedArtifactFromRow(files[0]);
   };
+  const publicationFile = (sinkId: string, updateId: string, expectedGeneration: number) => {
+    const file = get(`sink:${sinkId}`);
+    if (file === undefined) throw new Error("generated-artifact-head-owner-missing");
+    if ((file.head?.generation ?? 0) !== expectedGeneration) throw new Error("generated-artifact-head-generation-conflict");
+    if (file.updates.find(u => u.record.state === "pending")?.record.outboxId !== updateId) throw new Error("generated-artifact-out-of-order");
+    return file;
+  };
+  const PublicationIdentitySchema = z.strictObject({ sinkId: z.string(), updateId: z.uuid(), expectedGeneration: z.number().int().nonnegative() });
   return Object.freeze({ get, list,
+    publication: Object.freeze({
+      assertAvailable(input: unknown) {
+        const request = PublicationIdentitySchema.parse(input);
+        const file = publicationFile(request.sinkId, request.updateId, request.expectedGeneration);
+        if (file.prepared !== null) throw new Error("generated-artifact-prepared-conflict: interrupted publication requires explicit reconciliation");
+      },
+      assertPrepared(input: unknown) {
+        const request = PublicationIdentitySchema.extend({ artifact: ArtifactRefSchema }).parse(input);
+        const file = publicationFile(request.sinkId, request.updateId, request.expectedGeneration);
+        if (file.prepared === null || file.prepared.updateId !== request.updateId
+          || file.prepared.expectedGeneration !== request.expectedGeneration
+          || canonicalJsonStringify(file.prepared.artifact) !== canonicalJsonStringify(request.artifact)) {
+          throw new Error("generated-artifact-prepared-identity-conflict");
+        }
+      },
+      prepare(input: unknown) {
+        const request = PublicationIdentitySchema.extend({ artifact: ArtifactRefSchema }).parse(input);
+        return mutate(() => {
+          const file = publicationFile(request.sinkId, request.updateId, request.expectedGeneration);
+          if (file.prepared !== null) throw new Error("generated-artifact-prepared-conflict");
+          if (request.artifact.mediaType !== file.mediaType) throw new Error("generated-artifact-media-type-conflict");
+          const prepared = { updateId: request.updateId, expectedGeneration: request.expectedGeneration, artifact: request.artifact };
+          const next = { ...file, prepared, state: "writing" as const, version: file.version + 1 };
+          // Reserve the complete settlement before external replacement, including an ack timestamp.
+          if (file.versions.length >= 10000 || Buffer.byteLength(encode(next), "utf8") + 2048 > GENERATED_ARTIFACT_METADATA_LIMIT) {
+            throw new Error("generated-artifact-metadata-limit");
+          }
+          save(file, next);
+          return { result: next, changes: 1 };
+        });
+      },
+      fail(input: unknown) {
+        const request = PublicationIdentitySchema.extend({ state: z.enum(["failed", "conflict"]) }).parse(input);
+        return mutate(() => {
+          const file = publicationFile(request.sinkId, request.updateId, request.expectedGeneration);
+          save(file, { ...file, state: request.state, version: file.version + 1 });
+          return { result: undefined, changes: 1 };
+        });
+      },
+    }),
     outbox: Object.freeze({
       insert(input: unknown) {
         const record = ArtifactOutboxStorageRecordSchema.parse(input);
@@ -59,11 +107,23 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
             return { result: { state: "existing" as const, record: previous }, changes: 0 };
           }
           const old = get(`sink:${record.sinkId}`);
-          if (old === undefined) insertGeneratedArtifact(database, GeneratedArtifactSchema.parse({ format: 1, fileId: `sink:${record.sinkId}`,
+          if (old === undefined) {
+            const initial = GeneratedArtifactSchema.parse({ format: 1, fileId: `sink:${record.sinkId}`,
             sinkId: record.sinkId, exportId: null, exportRequest: null, registration: null, exportEvidenceJson: null, exportEvidenceFingerprint: null,
             mediaType: OPERATOR_XLSX_MEDIA_TYPE, state: "pending", historyCoverage: "complete", version: 1, head: null,
-            updates: [{ sequence: 1, record }], versions: [], prepared: null, createdAt: record.createdAt }));
-          else save(old, { ...old, state: "pending", version: old.version + 1, updates: [...old.updates, { sequence: old.updates.length + 1, record }] });
+            updates: [{ sequence: 1, record }], versions: [], prepared: null, createdAt: record.createdAt });
+            if (Buffer.byteLength(encode(initial), "utf8") + 2048 > GENERATED_ARTIFACT_METADATA_LIMIT) throw new Error("generated-artifact-metadata-limit");
+            insertGeneratedArtifact(database, initial);
+          }
+          else {
+            const next = { ...old, state: old.prepared === null ? "pending" as const : old.state, version: old.version + 1,
+              updates: [...old.updates, { sequence: old.updates.length + 1, record }] };
+            const pending = next.updates.filter(u => u.record.state === "pending").length;
+            if (next.versions.length + pending > 10000 || Buffer.byteLength(encode(next), "utf8") + pending * 2048 > GENERATED_ARTIFACT_METADATA_LIMIT) {
+              throw new Error("generated-artifact-metadata-limit");
+            }
+            save(old, next);
+          }
           return { result: { state: "inserted" as const, record }, changes: 1 };
         });
       },
@@ -95,6 +155,11 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
           if ((old.head?.generation ?? 0) !== request.expectedGeneration) throw new Error("generated-artifact-head-generation-conflict");
           const next = old.updates.find((u) => u.record.state === "pending");
           if (next?.record.outboxId !== request.lastOutboxId) throw new Error("generated-artifact-out-of-order");
+          if (old.prepared !== null && (old.prepared.updateId !== request.lastOutboxId
+            || old.prepared.expectedGeneration !== request.expectedGeneration
+            || canonicalJsonStringify(old.prepared.artifact) !== canonicalJsonStringify(request.artifact))) {
+            throw new Error("generated-artifact-prepared-identity-conflict");
+          }
           const { expectedGeneration, artifact, ...fields } = request;
           const head = { ...fields, generation: expectedGeneration + 1 };
           const versions = [...old.versions, { state: "verified" as const, artifact }];
@@ -105,17 +170,21 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
       },
     }),
     exports: Object.freeze({
+      getFile(exportId: string) { return get(`export:${OperatorXlsxExportIdSchema.parse(exportId)}`); },
       register(input:unknown){
-        const request=z.strictObject({exportId:OperatorXlsxExportIdSchema,request:OperatorXlsxExportRequestSchema,requestedBy:ActorIdSchema,requestedAt:IsoInstantSchema}).parse(input);
+        const request=z.strictObject({exportId:OperatorXlsxExportIdSchema,request:OperatorXlsxExportRequestSchema,requestedBy:ActorIdSchema,requestedAt:IsoInstantSchema, contentSha256: ArtifactRefSchema.shape.sha256.optional()}).parse(input);
         return mutate(()=>{
           const old=get(`export:${request.exportId}`);
           const registration={requestedBy:request.requestedBy,requestedAt:request.requestedAt};
           if(old!==undefined){
             if(canonicalJsonStringify(old.exportRequest)!==canonicalJsonStringify(request.request)||canonicalJsonStringify(old.registration)!==canonicalJsonStringify(registration))throw new Error("generated-export-registration-divergent");
+            // An unavailable first version commits to intended bytes before publication.
+            if (request.contentSha256 !== undefined && old.versions[0]?.state === "unavailable"
+              && old.versions[0].sha256 !== request.contentSha256) throw new Error("generated-export-content-divergent");
             return {result:old,changes:0};
           }
           const file=GeneratedArtifactSchema.parse({format:1,fileId:`export:${request.exportId}`,sinkId:null,exportId:request.exportId,exportRequest:request.request,registration,exportEvidenceJson:null,exportEvidenceFingerprint:null,
-            mediaType:OPERATOR_XLSX_MEDIA_TYPE,state:"pending",historyCoverage:"complete",version:1,head:null,updates:[],versions:[],prepared:null,createdAt:request.requestedAt});
+            mediaType:OPERATOR_XLSX_MEDIA_TYPE,state:"pending",historyCoverage:"complete",version:1,head:null,updates:[],versions:request.contentSha256 === undefined ? [] : [{state:"unavailable",sha256:request.contentSha256,reason:"missing-bytes"}],prepared:null,createdAt:request.requestedAt});
           insertGeneratedArtifact(database,file);return {result:file,changes:1};
         });
       },
@@ -130,8 +199,19 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
         return mutate(() => {
           const old = get(`export:${evidence.exportId}`);
           if (old !== undefined && old.exportEvidenceJson === null) {
-            if(old.registration===null||evidence.workbookVersion!==2||old.registration.requestedBy!==evidence.requestedBy||old.exportRequest?.selection.kind!==evidence.selection.kind)throw new Error("generated-export-publication-identity-conflict");
-            save(old,{...old,state:"ready",exportEvidenceJson:json,exportEvidenceFingerprint:sha256Hex(json),versions:[{state:"verified",artifact:evidence.artifact}],version:old.version+1});
+            if(old.registration===null||old.exportRequest===null||evidence.workbookVersion!==2||old.registration.requestedBy!==evidence.requestedBy||old.exportRequest?.selection.kind!==evidence.selection.kind)throw new Error("generated-export-publication-identity-conflict");
+            const selection = old.exportRequest.selection;
+            if (evidence.createdAt !== old.registration.requestedAt
+              || (selection.kind === "search" && (evidence.selection.kind !== "search"
+                || canonicalJsonStringify(selection.query) !== canonicalJsonStringify(evidence.selection.query)
+                || selection.snapshot.authorityGeneration !== evidence.selection.snapshot.authorityGeneration
+                || selection.snapshot.order !== evidence.selection.snapshot.order))
+              || (selection.kind === "activity" && (evidence.selection.kind !== "activity"
+                || selection.from !== evidence.selection.snapshot.from || selection.to !== evidence.selection.snapshot.to))
+              || (old.versions[0]?.state === "unavailable" && old.versions[0].sha256 !== evidence.artifact.sha256)) {
+              throw new Error("generated-export-publication-identity-conflict");
+            }
+            save(old,{...old,state:"ready",exportEvidenceJson:json,exportEvidenceFingerprint:sha256Hex(json),versions:[...old.versions,{state:"verified",artifact:evidence.artifact}],version:old.version+1});
             return {result:{state:"inserted" as const,record:evidence},changes:1};
           }
           if (old !== undefined) {

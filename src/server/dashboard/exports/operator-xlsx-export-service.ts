@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
 import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
@@ -193,47 +194,82 @@ export function createOperatorXlsxExportService(
     async export(requestedByInput: ActorId, input: unknown): Promise<OperatorXlsxDownload> {
       const requestedBy = ActorIdSchema.parse(requestedByInput);
       const request = OperatorXlsxExportRequestSchema.parse(input);
+      // Capture the entire admitted selection before registration advances authority generation.
       const document = request.selection.kind === "search"
         ? collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
         : collectActivityDocument({ ...deps, sourceIdentity }, request.selection);
       const workbook = await composeOperatorXlsxWorkbook(document);
-      const artifact = await deps.artifacts.put(workbook.bytes, { mediaType: workbook.mediaType });
-      const storedBytes = await materialize(await deps.artifacts.open(artifact), artifact.bytes);
-      if (!storedBytes.equals(workbook.bytes)) {
-        throw new Error(`content-addressed artifact ${artifact.id} does not contain the composed operator XLSX bytes`);
+      const exportId = OperatorXlsxExportIdSchema.parse(deps.ids.uuid());
+      const previous = deps.authority.getFile(exportId);
+      if (previous !== undefined) {
+        if (previous.registration?.requestedBy !== requestedBy
+          || canonicalJsonStringify(previous.exportRequest) !== canonicalJsonStringify(request)) {
+          throw new Error("generated-export-registration-divergent");
+        }
+        const completed = deps.authority.get(exportId);
+        if (completed !== undefined) {
+          if (completed.selection.snapshot.sourceIdentity !== sourceIdentity) throw new Error("generated-export-source-conflict");
+          const bytes = await materialize(await deps.artifacts.open(completed.artifact), completed.artifact.bytes);
+          verifyDownload(completed, bytes);
+          if (!bytes.equals(workbook.bytes) || canonicalJsonStringify(completed.selection) !== canonicalJsonStringify(document.selection)) {
+            throw new Error("generated-export-content-divergent");
+          }
+          return Object.freeze({ evidence: completed, filename: completed.download.filename,
+            mediaType: completed.download.mediaType, contentDisposition: completed.download.contentDisposition, bytes });
+        }
       }
-      const filename = filenameOf(document);
-      const contentDisposition = `attachment; filename="${filename}"`;
-      const evidence = OperatorXlsxExportEvidenceSchema.parse({
-        exportId: OperatorXlsxExportIdSchema.parse(deps.ids.uuid()),
-        workbookVersion: 2,
-        requestedBy,
-        createdAt: deps.clock.now().toISOString(),
-        selection: document.selection,
-        workbook: {
-          sheetNames: workbook.sheetNames,
-          rowCount: "results" in document
-            ? document.results.length
-            : document.report.totalRuns,
-        },
-        artifact,
-        download: {
-          filename,
-          mediaType: workbook.mediaType,
-          contentDisposition,
-          byteLength: storedBytes.byteLength,
-          sha256: createHash("sha256").update(storedBytes).digest("hex"),
-        },
+      const registration = deps.authority.register({ exportId, request, requestedBy,
+        requestedAt: previous?.registration?.requestedAt ?? deps.clock.now().toISOString(),
+        contentSha256: createHash("sha256").update(workbook.bytes).digest("hex"),
       });
-      const persisted = deps.authority.insert(evidence).record;
-      verifyDownload(persisted, storedBytes);
-      return Object.freeze({
-        evidence: persisted,
-        filename: persisted.download.filename,
-        mediaType: persisted.download.mediaType,
-        contentDisposition: persisted.download.contentDisposition,
-        bytes: storedBytes,
-      });
+      try {
+        const artifact = await deps.artifacts.put(workbook.bytes, { mediaType: workbook.mediaType });
+        const storedBytes = await materialize(await deps.artifacts.open(artifact), artifact.bytes);
+        if (!storedBytes.equals(workbook.bytes)) {
+          throw new Error(`content-addressed artifact ${artifact.id} does not contain the composed operator XLSX bytes`);
+        }
+        const filename = filenameOf(document);
+        const contentDisposition = `attachment; filename="${filename}"`;
+        const evidence = OperatorXlsxExportEvidenceSchema.parse({
+          exportId,
+          workbookVersion: 2,
+          requestedBy,
+          createdAt: registration.createdAt,
+          selection: document.selection,
+          workbook: {
+            sheetNames: workbook.sheetNames,
+            rowCount: "results" in document
+              ? document.results.length
+              : document.report.totalRuns,
+          },
+          artifact,
+          download: {
+            filename,
+            mediaType: workbook.mediaType,
+            contentDisposition,
+            byteLength: storedBytes.byteLength,
+            sha256: createHash("sha256").update(storedBytes).digest("hex"),
+          },
+        });
+        verifyDownload(evidence, storedBytes);
+        const persisted = deps.authority.insert(evidence).record;
+        if (canonicalJsonStringify(persisted) !== canonicalJsonStringify(evidence)
+          || canonicalJsonStringify(deps.authority.get(exportId)) !== canonicalJsonStringify(evidence)) {
+          throw new Error("generated-export-settlement-readback-conflict");
+        }
+        verifyDownload(persisted, storedBytes);
+        return Object.freeze({
+          evidence: persisted,
+          filename: persisted.download.filename,
+          mediaType: persisted.download.mediaType,
+          contentDisposition: persisted.download.contentDisposition,
+          bytes: storedBytes,
+        });
+      } catch (error) {
+        const current = deps.authority.getFile(exportId);
+        if (current !== undefined && current.exportEvidenceJson === null) deps.authority.fail(exportId, registration.version);
+        throw error;
+      }
     },
   });
 }

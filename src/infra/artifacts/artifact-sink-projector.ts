@@ -12,16 +12,15 @@
  * - after the head, before... does not exist: head and ack are one
  *   transaction, so a row is never acknowledged against an unrecorded hash.
  *
- * The lease is LOCAL and exclusive — an `O_EXCL` lock file per sink — which
+ * The lease is LOCAL and exclusive — an `O_EXCL` lock file per canonical destination — which
  * is exactly the scope ref data-intake-and-edit-data §4.1 names ("the local exclusive lease"). A
- * held lock refuses loudly rather than queueing behind an unknown holder;
- * the multi-worker story is 2j's soak, not silent contention here.
+ * held lock refuses loudly rather than queueing behind an unknown holder.
+ * Prepared intent is durable before staging; interrupted intent refuses automatic retry.
  */
 import { mkdir, open, unlink } from "node:fs/promises";
-import { join } from "node:path";
 import type { Clock } from "../../domain/clock.js";
 import type { AuthorityRepositories } from "../sqlite/authority-database.js";
-import type { ArtifactSink } from "./xlsx-retention-sink.js";
+import { ArtifactSinkConflictError, type ArtifactSink } from "./xlsx-retention-sink.js";
 
 /**
  * Structurally identical to the executor's `RunArtifactProjector` seam — the
@@ -40,19 +39,20 @@ export class ArtifactSinkBusyError extends Error {
 }
 
 export interface ArtifactSinkProjectorOptions {
-  readonly authority: Pick<AuthorityRepositories, "artifactOutbox" | "artifactSinkHeads">;
+  readonly authority: Pick<AuthorityRepositories, "artifactOutbox" | "artifactSinkHeads" | "generatedArtifacts">;
   /** Head + ack must commit together; the caller supplies the one transaction door. */
   readonly withAuthorityTransaction: <Result>(work: () => Result) => Result;
   readonly sinks: Readonly<Partial<Record<string, ArtifactSink>>>;
-  /** Where the per-sink lock files live; created on demand. */
+  /** Existing composition root; destination locks are beside the canonical workbook. */
   readonly lockDir: string;
   readonly clock: Clock;
+  readonly fault?: (point: "before-settlement" | "after-head" | "after-ack") => void;
 }
 
 export function createArtifactSinkProjector(options: ArtifactSinkProjectorOptions): ArtifactSinkProjector {
-  const withSinkLock = async <Result>(sinkId: string, work: () => Promise<Result>): Promise<Result> => {
+  const withSinkLock = async <Result>(sinkId: string, sink: ArtifactSink, work: () => Promise<Result>): Promise<Result> => {
     await mkdir(options.lockDir, { recursive: true });
-    const lockPath = join(options.lockDir, `${sinkId}.lock`);
+    const lockPath = await sink.writerLockPath();
     let handle;
     try {
       handle = await open(lockPath, "wx");
@@ -88,26 +88,45 @@ export function createArtifactSinkProjector(options: ArtifactSinkProjectorOption
             `no ${row.sinkId} sink is composed; a blocking projection cannot proceed without its sink`,
           );
         }
-        await withSinkLock(row.sinkId, async () => {
+        const settled = await withSinkLock(row.sinkId, sink, async () => {
           const current = options.authority.artifactOutbox.get(outboxId);
           if (current === undefined) throw new Error("generated-artifact-update-disappeared");
-          if (current.state === "projected") return;
+          if (current.state === "projected") return false;
           const first = options.authority.artifactOutbox.listPending().find((pending) => pending.sinkId === row.sinkId);
           if (first?.outboxId !== row.outboxId) throw new Error("generated-artifact-out-of-order");
           const head = options.authority.artifactSinkHeads.get(row.sinkId);
-          const { contentSha256, artifact } = await sink.project({ row, head });
-          const projectedAt = options.clock.now().toISOString();
-          options.withAuthorityTransaction(() => {
-            options.authority.artifactSinkHeads.record({
-              sinkId: row.sinkId,
-              contentSha256, artifact, expectedGeneration: head?.generation ?? 0,
-              lastOutboxId: row.outboxId,
-              projectedAt,
+          const identity = { sinkId: row.sinkId, updateId: row.outboxId, expectedGeneration: head?.generation ?? 0 };
+          const publication = options.authority.generatedArtifacts.publication;
+          publication.assertAvailable(identity);
+          try {
+            let prepared = false;
+            const version = options.authority.generatedArtifacts.get(`sink:${row.sinkId}`)?.versions.at(-1);
+            const previousArtifact = version?.state === "verified" ? version.artifact : undefined;
+            const { contentSha256, artifact } = await sink.project({ row, head, previousArtifact, prepare: (artifact) => {
+              publication.prepare({ ...identity, artifact });
+              prepared = true;
+            }, assertPrepared: artifact => publication.assertPrepared({ ...identity, artifact }) });
+            if (!prepared) throw new Error("generated-artifact-publication-not-prepared");
+            options.fault?.("before-settlement");
+            const projectedAt = options.clock.now().toISOString();
+            options.withAuthorityTransaction(() => {
+              options.authority.artifactSinkHeads.record({
+                sinkId: row.sinkId,
+                contentSha256, artifact, expectedGeneration: head?.generation ?? 0,
+                lastOutboxId: row.outboxId,
+                projectedAt,
+              });
+              options.fault?.("after-head");
+              options.authority.artifactOutbox.markProjected({ outboxId: row.outboxId, projectedAt });
+              options.fault?.("after-ack");
             });
-            options.authority.artifactOutbox.markProjected({ outboxId: row.outboxId, projectedAt });
-          });
+            return true;
+          } catch (error) {
+            publication.fail({ ...identity, state: error instanceof ArtifactSinkConflictError ? "conflict" : "failed" });
+            throw error;
+          }
         });
-        projected += 1;
+        if (settled) projected += 1;
       }
       return Object.freeze({ projected });
     },
