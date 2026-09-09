@@ -641,7 +641,9 @@ requires explicit selection of the original verified copy. Current doctor/root r
 retired files cannot resurrect events. Restore reconciliation also inspects preserved SQLite copies
 under the configured `suspects` directory as diagnostic evidence only. A displaced run absent from
 current authority and its tombstones is reported as `missing`; a retained run with a newer preserved
-version or missing write attempt is reported as `restore-loss`. Both carry `possibleExternalWrite`
+version, missing write attempt, or missing/divergent immutable confirmation is reported as `restore-loss`.
+Confirmation content is compared independently of run versions and delivery cursors; a heartbeat or
+stale-claim recovery cannot account for a lost confirmation. Both carry `possibleExternalWrite`
 when a retained fence/attempt establishes that possibility. No run or event is re-admitted. Damaged,
 unsupported, changed or unsafe copies produce an explicit unavailable finding, never healthy absence.
 Inspection bounds are 128 databases, 384 directory entries and 256 MiB total bytes. Database/WAL

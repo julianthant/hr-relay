@@ -766,7 +766,8 @@ function displacedAuthorityProblems(current: ReturnType<typeof timelineAuthority
           throw new SafeSpanCorpusError("preserved authority conflicts with a current run identity");
         }
         if (owner !== undefined && owner.version >= run.version
-          && run.attemptIds.every((id) => owner.attemptIds.includes(id))) continue;
+          && run.attemptIds.every((id) => owner.attemptIds.includes(id))
+          && run.confirmations.every((digest) => owner.confirmations.includes(digest))) continue;
         const prior = findings.get(run.runId);
         findings.set(run.runId, { state: owner === undefined ? "missing" : "restore-loss", runId: run.runId,
           ...(run.possibleExternalWrite || prior?.possibleExternalWrite === true ? { possibleExternalWrite: true as const } : {}) });

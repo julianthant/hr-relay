@@ -3,7 +3,7 @@
 ## Assignment and approval
 
 **Owner: `side/timeline-history`. T1 IN PROGRESS under the parallel execution amendment;
-accepted rename master is consumed; repaired candidate gates pass; R1 and R1b exhausted native review context, and the operator approved standalone complete review R1c, with verified root-context recovery.** This is a separate successor, not an amendment to
+accepted rename master is consumed; R1c completed all 98 paths and P1–P5/P9 with one required restore-warning correction; its repair is under renewed gates and review.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -734,13 +734,79 @@ repairs, renewed gates/review, final evidence and cleanup responsibility. Master
 application, T2 dispatch and push remain outside this approval. The temporary approval handoff was
 consumed after git/evidence verification; all surviving state is in this owner and the launch prompt.
 
+### R1c completed review and F1 repair — 2026-09-08
+
+Independent standalone task `01a084d4-8279-7490-ade2-cd7e2fdfa19b` (Astra/high) returned
+**CHANGES REQUIRED**, covering all 98 paths and P1–P5/P9 at implementation `8747821c5fbc88567efd6b95b1b2e21a6bf8ff98`
+and frozen evidence `67ef93c50f8538123c83c2d95cbbbdc39707767f`. R1-1 and R1-2 were resolved;
+R1-3 retained one P2 finding, F1. The review otherwise reconciled the complete candidate and prior
+proof/gate history. It supplies no acceptance until F1's repair is reviewed.
+
+F1's production diagnostic backed up a running v4 fenced attempt, committed it through
+`executeSequencedWriteCommit` with the real lifecycle port (v5), restored the v4 backup, then ran
+`sweepWorkerClaims`. Recovery parked the run at v5 without the committed attempt/checkpoint/event,
+but doctor incorrectly changed from exit 1 to exit 0. The preserved database still held the confirmation.
+This is loss of the required warning, not evidence of an automatic repeated click.
+Deciding source: `/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/timeline-r1c-sweep-probe-tsxs9dnl/restore.test.ts`;
+measurement `/tmp/timeline-events-R1c-post-restore-sweep.json`; selected diagnostic and matching
+repository lint logs `/tmp/timeline-events-R1c-post-restore-sweep.log` and
+`/tmp/timeline-events-R1c-post-restore-sweep-lint.log`, both exit 0. The earlier direct-adapter probe
+was insufficient on its own; the real settlement and startup sweep established reachability.
+
+The permanent two-arm regression now uses that same production path. The clean red run
+`/tmp/timeline-events-R1c-regression-red-2.log` failed only the lost-confirmation arm (expected doctor
+exit 1, received 0); the already-accounted confirmation control passed. The initial red harness also
+had an invalid heartbeat request; that setup error was corrected before the deciding red run.
+The repair projects hashes of immutable confirmation content (excluding database-local cursor)
+from the same read-only snapshot and requires preserved confirmations to remain accounted for
+independently of run version/attempt IDs. Existing deletion identity and unsafe-copy checks remain.
+The control restores a backup containing the confirmation and advances its run by a real heartbeat,
+which must remain healthy. The full storage-command family passed 22 tests in
+`/tmp/timeline-events-R1c-regression-green-3.log`. Initial typecheck/lint exposed missing branded
+claim fields and a missing diagnostic-union narrowing in the copied harness. Those were corrected;
+the intermediate `green-2` run exposed use of the full heartbeat-bearing claim schema where only
+claim identity was needed. The final test parses the two branded identity fields and all 22 cases
+pass. These were test construction defects, not additional production findings. Full renewed gates and commit-bound repair review
+remain pending. No live authority was read or migrated.
+
+### R1c repair candidate gates and renewed-review binding
+
+The F1 repair is **awaiting independent repair review**. Runtime gate tree:
+`b2169a5047408b08f48606b55562d6dfb97a00c1`; subsequent candidate-record prose in this owner is the
+only difference. No code, test, contract, configuration, dependency or generated input changed.
+D191 permits this recording commit to reuse those runtime gates with scoped documentation checks.
+
+| Gate | Command / evidence | Result |
+| --- | --- | --- |
+| Typecheck | `npm run typecheck`; `/tmp/timeline-events-R1c-typecheck-3.log` | Exit 0 |
+| Lint | `npm run lint`; `/tmp/timeline-events-R1c-lint-3.log` | Exit 0, zero warnings |
+| Full coverage | `npm exec -- tsx scripts/test-runner.ts run --coverage --config /tmp/timeline-events-vitest.config.mts` then `npm exec -- tsx scripts/suite-size.ts`; `/tmp/timeline-events-R1c-coverage.log` | Exit 0; 5,839 tests, 450 files; 506.75 s |
+| Coverage floors | Same full run | Statements 86.01%, functions 90.17%, lines 88.28%; floors pass. Branches 78.05%, report-only. |
+| Membership/scheduling | Real config imported by scheduling-only adapter; observed two fork workers with no compiler/linter contention | 353 unit, 17 scenario, 80 architecture files; unchanged isolation, assertions, deadlines and floors |
+| Desktop parity | `npm run test:parity -- --workers=4`; `/tmp/timeline-events-R1c-parity.log` | Exit 0; 262/262, 66.054 s runner duration; references unchanged |
+| Production build | `npm run web:build`; `/tmp/timeline-events-R1c-build.log` | Exit 0; existing bundle-size warning |
+| Generated freshness | `npm run build:manifest:check`, `npm run stores:catalog:check`, `npm run roadmap:check`; `/tmp/timeline-events-R1c-{manifest,catalog,roadmap}-check.log` | All exit 0; generated outputs unchanged |
+| Documentation/whitespace | `python3 /tmp/timeline-events-doc-check.py`, `git diff --check`, `git diff --cached --check` | Nine equal instruction pairs, maximum chain 16,659 bytes, 16 valid owner links/anchors; whitespace clean |
+
+Scoped recording checks also passed: `/tmp/timeline-events-R1c-record-doc-guard.log` (24/24)
+and `/tmp/timeline-events-R1c-record-lint.log` (exit 0); roadmap freshness, instruction/link
+checks and both whitespace checks passed after the evidence-only update.
+
+Renewed review remains with independent standalone task `01a084d4-8279-7490-ade2-cd7e2fdfa19b`,
+under the explicitly admitted same-task repair rule. It authored no repair. This bounded correction
+restores the existing loss-warning requirement and changes no architecture or lifecycle identity.
+It must reopen the six changed paths and relevant recovery/confirmation/deletion neighbors, verify
+unchanged coverage against its complete R1c verdict, reconcile R1-1/R1-2/R1-3/F1 and P1–P5/P9, and
+return a complete exact-candidate verdict. The supervisor pins the resulting implementation commit
+and tree in the follow-up after scoped recording checks; no acceptance is inferred from green tests.
+
 - Approval: the operator's 2026-09-08 instruction to make this separate plan, retaining two tables
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
 - Notification: `Process operation names` acknowledged unchanged scope; no integration window
   was assigned there at the time of coordination.
-- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. Repaired candidate gates pass; complete review remains open after two context-blocked native reviews.
+- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. R1c complete review requires F1 repair; renewed gates and repair review remain open.
 - T2: **WAITING ON** accepted T1 integration. No base SHA is invented for either future result.
-- T1 repairs and renewed candidate gates are complete; P1–P5/P9 independent acceptance remains open. R1/R2, T2, integration, cleanup and real database application remain open.
+- T1 F1 repair and renewed runtime gates are complete; P1–P5/P9 independent acceptance remains open. R1/R2, T2, integration, cleanup and real database application remain open.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 24 tests;
   `npm run lint` exits 0 with zero warnings; `npm run roadmap:check` reports fresh output.
   Sixteen plan links/anchors and owning-contract backlinks resolve; all test selectors exist.

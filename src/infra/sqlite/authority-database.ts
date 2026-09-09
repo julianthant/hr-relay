@@ -1,6 +1,6 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../domain/command-groups.js";
 import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../events/confirmed-operation.js";
-import { timelineCheckpointReference } from "../../events/timeline.js";
+import { timelineAppendContent, timelineCheckpointReference } from "../../events/timeline.js";
 import { deriveStableUuid } from "../../domain/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
@@ -2954,7 +2954,7 @@ export class AuthorityDatabase implements Disposable {
     let timeline: ReturnType<typeof readTimelineRecords> | undefined;
     let recoveryEvidence: Readonly<{
       runs: readonly Readonly<{ runId: RunRecord["envelope"]["runId"]; workflow: string; traceId: string; version: number;
-        possibleExternalWrite: boolean; attemptIds: readonly string[] }>[];
+        possibleExternalWrite: boolean; attemptIds: readonly string[]; confirmations: readonly string[] }>[];
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
     const identity = inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
@@ -2970,6 +2970,16 @@ export class AuthorityDatabase implements Disposable {
         if (owned === undefined) attemptsByRun.set(attempt.runId, [attempt]);
         else owned.push(attempt);
       }
+      // Confirmations survive ordinary retention. Compare their immutable content,
+      // independently of mutable run versions and database-local delivery cursors.
+      const confirmationsByRun = new Map<string, string[]>();
+      for (const record of timeline.records) {
+        if (record.payload.kind !== "operation-confirmed" || record.scope.kind !== "run") continue;
+        const digest = createHash("sha256").update(timelineAppendContent(record)).digest("hex");
+        const owned = confirmationsByRun.get(record.scope.runId);
+        if (owned === undefined) confirmationsByRun.set(record.scope.runId, [digest]);
+        else owned.push(digest);
+      }
       const fenced = new Set(timeline.records.flatMap((row) => row.payload.kind === "span"
         && row.payload.event.t === "transaction.fenced" ? [row.payload.event.runId] : []));
       const runs = database.prepare("SELECT record_key, record_json FROM workflow_runs ORDER BY record_key").all().map((raw) => {
@@ -2979,7 +2989,8 @@ export class AuthorityDatabase implements Disposable {
         const owned = attemptsByRun.get(run.envelope.runId) ?? [];
         return { runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
           version: run.version, possibleExternalWrite: owned.length > 0 || fenced.has(run.envelope.runId),
-          attemptIds: owned.map((attempt) => attempt.writeAttemptId) };
+          attemptIds: owned.map((attempt) => attempt.writeAttemptId),
+          confirmations: confirmationsByRun.get(run.envelope.runId) ?? [] };
       });
       const deleted = database.prepare("SELECT record_json FROM deleted_runs").all().map((row) =>
         parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json));
