@@ -243,12 +243,32 @@ automations or dispatch. Full gates and complete independent review remain in 2.
 live database application, HR submission, sibling launch or cleanup of other lanes.
 
 
-S now uses the [approved S01–S06 brief](decisions.md#approved-s-execution-brief--2026-09-09).
-The obsolete C0 prompt is retired. Its complete plan commit and exact implementation base are
-resolved by the planning persistence verification below before a READY prompt is supplied; the
-runtime prerequisite alone is not the S plan. Full gates/review stay 2.6.9, with local merge and
-owned cleanup after focused PASS. Follow the updated parallel protocol: default no peer messages,
-only necessary action by an exact affected owner for a concrete unresolved conflict or duty transfer.
+### S verified supervisor prompt — 2026-09-09
+
+**READY for operator launch**, subject to execution-time capacity/ownership checks. The complete
+[approved S01–S06 plan](decisions.md#approved-s-execution-brief--2026-09-09) is committed at
+`d22b6e8e657e442f2c287b679833e96c1e7173f8`, also the exact implementation base. Repaired F
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` is an ancestor and its cleanup receipt is complete.
+The branch and physical S path were absent at verification; no task was launched. This replaces
+S's obsolete C0 prompt and does not change another peer's approved prompt or current ownership.
+
+```text
+/supervise 2.6.6.4 (S), GPT-6 Astra/high.
+
+Repository: /Users/julianhein/Projects/hr-automation-rebuild
+Owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md
+Section: Approved S execution brief — 2026-09-09
+Approved plan and exact implementation base: d22b6e8e657e442f2c287b679833e96c1e7173f8
+Required F ancestor: 2bb25b6efbe62ca88d64a429f01dc567a76ecfbc
+
+Execute S01–S06. Verify the committed full brief, F ancestry and complete resolver-repair cleanup receipt. Recheck path/ref ownership and the four-auxiliary-worktree capacity including unrelated work. Create codex/settings-activation at /Users/julianhein/Projects/hr-worktree-settings-activation from the exact base above; never implement on master. One supervisor, zero workers/reviewers here. Preserve the eleven production paths, two bounded settings-test amendments, isolated desktop proof and every safety/replay/rollback requirement in the brief.
+
+Read the updated ~/.agents/skill-library/parallel-agent-work/REFERENCE.md and Parallel coordination in ~/.agents/skill-library/focused-sessions/REFERENCE.md. Default to independent work and no peer messages. Use primary evidence first; contact only the exact affected owner whose action is necessary for a concrete unresolved conflict/input/duty transfer. No check-ins, broadcasts, acknowledgments, reservation rounds, speculative queues or observer loops. Serialize only actual shared mutations and evidenced resource conflicts; preserve ownership and grants. L/final 2.6.9 already own downstream duties and need no new acceptance handshake.
+
+Run and repair all assigned focused tests/guards, lint, affected freshness and /ui desktop proof with the recorded one-worker adapter. Full typecheck/coverage, broad architecture/parity/build/performance and independent review remain at 2.6.9; do not run them merely to commit or merge S. Freeze exact candidate/tree/evidence. Merge only S locally into master after focused PASS and verified target ownership/cleanliness; rerun invalidated integration checks or prove input-identical reuse. Record the release for L and complete owned worktree/branch cleanup with preserved proof and verified absence. No push, operator database upgrade, HR submission, sibling launch or unrelated cleanup.
+
+Send Done / Now / Remaining at start/resume and after every verified step, keeping integration/cleanup and deferred phase acceptance visible. Finish assigned work, then stop; no automatic successor or monitoring.
+```
 
 
 ## Approved D binding — 2.6.6.2

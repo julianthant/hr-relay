@@ -904,6 +904,29 @@ or child launch occurs in this planning session. The dated verification record b
 plan/base identities after commit; the runtime prerequisite alone is never the S plan SHA.
 
 
+### S planning verification — 2026-09-09
+
+Approved plan and exact implementation base: `d22b6e8e657e442f2c287b679833e96c1e7173f8`; plan tree
+`83d2cb244030bb26437ca9feffda9d334df1c0c3`. The planner read the complete section back with
+`git show`, matched the prepared full proposal, verified repaired F ancestry and its complete
+resolver cleanup receipt, and verified S branch/path absence. All source/test/configuration/
+dependency inputs match repaired F. One unrelated auxiliary worktree remains; capacity is a
+mandatory volatile recheck at launch, not a promised reservation.
+
+The documentation-only plan passed 24 roadmap-binding tests, lint, roadmap generation/freshness,
+210 local links, nine instruction-pair comparisons, the 17,333-byte maximum project instruction
+chain and whitespace. Logs, exact changed paths, plan hash and command exits are retained in
+`/Users/julianhein/Projects/hr-settings-plan-evidence-20260909/`. Full runtime gates and review
+were not run and are not claimed; they remain in 2.6.9.
+
+The resolved prompt in PROMPTS uses this exact plan/base, the isolated branch/path, updated
+no-default-messaging protocol and scoped merge/cleanup conditions. This prompt/verification
+record changes only documentation; rerun affected document checks and reuse lint only after
+confirming its executable inputs are unchanged. The planner holds the actual shared write only
+through final validation/commit and releases it to the already identified waiting P owner after
+verified completion. This is a specific resource release, not a group scheduling protocol.
+Implementation remains unstarted; planning creates no worktree, implementation agent or new task.
+
 ## C0 execution allocation — 2.6.7.1 A
 
 Prerequisite: **one frozen L release, identical to Q base**. One Astra/high supervisor, zero implementation workers.
