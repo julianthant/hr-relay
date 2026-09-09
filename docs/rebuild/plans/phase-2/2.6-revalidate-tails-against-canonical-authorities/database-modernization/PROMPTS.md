@@ -5,6 +5,11 @@ the phase. No intermediate or nested finalizers. Earlier implementation tasks us
 lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
 integration when assigned, handover and cleanup. Other phases retain their existing rules.
 
+**L-specific operator approval, 2026-09-09:** [L01–L06](prerequisites.md#approved-l-execution-brief--2026-09-09)
+assigns 2.6.7 local master merge and owned worktree/ref cleanup after focused PASS to the L
+supervisor. Full gates and complete independent review remain at 2.6.9. This supersedes generic
+retention/no-master wording for L only; it does not launch implementation or its children.
+
 ## Readiness
 
 R/C0/T/C development releases are incorporated in master. C integration
@@ -310,3 +315,17 @@ source blocks the dependent boundary until verified rebind. Keep progress in thi
 stop after owned completion, without a sibling observer loop. The planner returns the exact amended
 plan/base SHA after document checks and committed-content verification. No product scope or gate
 schedule changes: full gates and independent review remain at 2.6.9.
+
+## Resolved L supervisor prompt — 2.6.7
+
+Approved plan: `c3eb6725e3607a7df82a6c2a94a4765e8579efbd`.
+Prerequisite base `de636910cdec61045e965b6c9dd653df15cebefe` and all four recorded domain
+integrations are ancestors of that plan. Planning checks: 24 roadmap binding tests, lint,
+roadmap generation/freshness, six added links/anchors, nine instruction twins, maximum instruction
+chain 17,333 bytes and whitespace PASS. No runtime inputs changed or runtime gates claimed.
+This prompt becomes READY after its authorized planning integration and cleanup are verified;
+its implementation base is the plan commit itself, which contains all required runtime inputs.
+
+```text
+/supervise 2.6.7 L. READY: use approved plan and implementation base c3eb6725e3607a7df82a6c2a94a4765e8579efbd in /Users/julianhein/Projects/hr-automation-rebuild. Read /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md, section “Approved L execution brief — 2026-09-09”, plus its retained L allocation, exact paths and proof selectors. Use GPT-6 Astra/high, one supervisor and zero implementation workers. Verify plan content and P/D/G/S plus F/T/C/R ancestry; create codex/lifecycle-foundation at /Users/julianhein/Projects/hr-worktree-database-contracts from the exact implementation base after checking availability/capacity. Never implement on master. Execute L01–L06 completely, resolving routine in-scope choices and combination defects autonomously. Deliver real archive/summary baseline ports, verified shared evidence ownership, atomic lifecycle hooks and paired database/file recovery; prove A/Q independent baseline capability orders before release. Preserve historical migrations, protected identity, UNKNOWN refusal and source data until verified capture. Run the committed focused tests, lint and affected freshness; full gates and fresh complete independent review belong only to 2.6.9. Commit exact paths, merge the focused-PASS candidate into local master at /Users/julianhein/Projects/hr-automation-rebuild, rerun invalidated checks, record release evidence and remove the owned worktree/branch. Send Done / Now / Remaining at start/resume and after each verified step, keeping merge, cleanup and deferred review visible. No push, operator database mutation, sibling dispatch or implementation of A/Q beyond the assigned baseline extraction. Stop after 2.6.7 is integrated and cleaned up; report its scoped release without claiming phase acceptance.
+```
