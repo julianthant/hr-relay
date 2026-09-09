@@ -14,14 +14,14 @@ This is a **Phase 2.6-only trial**; other phases retain their existing gate requ
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
-**Status: R, C0 and T development releases are integrated; C (2.6.5) is approved for planning handoff.**
+**Status: R, C0, T and C development releases are integrated; F (2.6.6) remains unlaunched.**
 T integration is `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; its candidate, repairs, retained
 proof and incomplete independent-review status are recorded in [timeline.md](timeline.md#operator-directed-merge-and-cleanup--2026-09-09).
 R, C0 and accepted T1 are ancestors; removed predecessor branches are not launch prerequisites.
-C remains unimplemented. Its [approved execution brief](run-completion.md#approved-execution-brief--2026-09-09)
+C is integrated at `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`; its [release and closure evidence](run-completion.md#c-scoped-release-and-local-integration--2026-09-09) supplies F’s source prerequisite. Its [approved execution brief](run-completion.md#approved-execution-brief--2026-09-09)
 supersedes generic retention/integration wording for C: one supervisor implements, passes focused
 checks, merges locally into master and cleans up its owned checkout/ref. Full gates and complete
-independent review remain in 2.6.9. Readiness requires the planner's verified committed-plan handoff.
+independent review remain in 2.6.9. F still requires its own verified committed-plan handoff.
 No other task's scope or launch is authorized by this amendment.
 
 The [product decisions](decisions.md) retain every approved settings/version/archive/read-model
@@ -60,7 +60,7 @@ Completed 2.6.1 and Phase 3 identities, scope and gate schedules remain unchange
 A prerequisite/peer card becomes complete only on its named scoped development release: committed
 working behavior, focused proof and exact handoff. It does not claim independent review or master
 acceptance. This lets dependency edges unlock the actual next tasks while Phase 2.6 and finalizer
-remain unfinished. All full product acceptance remains with 2.6.9; R and C0 have scoped completed cards; later tasks remain planned.
+remain unfinished. All full product acceptance remains with 2.6.9; R, C0, T and C have scoped completed cards; F and later tasks remain planned.
 
 ## Workflow and concurrency
 

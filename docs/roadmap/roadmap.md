@@ -1055,14 +1055,14 @@ log:
 - 2026-09-09 | T merged development release | candidate 58376a7d7, integration 5e446a90f including repairs; scoped completion and owned cleanup recorded in timeline owner. Complete independent review and inherited performance failures remain 2.6.9; no phase acceptance claimed
 
 #### 5 · Store completion directly on workflow runs {#p2db-run-completion}
-status: planned
+status: done
 doc: 2.6 §Task 5 · Store completion directly on workflow runs
 
 > Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.9.
 
 builds:
-- [ ] BE retain canonical completion and run_failures while retiring terminal authorizations and terminal outbox
-- [ ] PROOF preserve ownership fences, retries, receipts, historical evidence and UNKNOWN refusal
+- [x] BE retain canonical completion and run_failures while retiring terminal authorizations and terminal outbox
+- [x] PROOF preserve ownership fences, retries, receipts, historical evidence and UNKNOWN refusal
 
 needs:
 - p2db-timeline-history
@@ -1070,6 +1070,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.4; assignment C; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | 2.6.5 C plan approved | complete C01–C05 brief; T prerequisite integrated at 5e446a90f; one supervisor, focused checks, local master merge and owned cleanup. Full gates and complete independent review remain 2.6.9; implementation unstarted
+- 2026-09-09 | C focused development release | candidate 89d167332; master integration 0dd02a890; 524 unit + 134 focused architecture tests, lint, freshness and four Storage Doctor cases PASS. Cleanup receipt and F prerequisite at C owner; full acceptance/review remain 2.6.9
 
 #### 6 · Prepare independent database domain tasks {#p2db-domain-foundation}
 status: planned
@@ -1087,6 +1088,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5; assignment F; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | C source prerequisite recorded | master 0dd02a890; F remains unlaunched and needs its own committed execution brief
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
 status: planned
