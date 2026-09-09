@@ -669,7 +669,12 @@ fresh complete independent review and phase acceptance remain 2.6.9. P is a scop
 release; no independent-review PASS is asserted here.
 
 
-The final recording merge is documentation-only relative to the fixed combined runtime candidate.
-The closure receipt records its exact SHA/tree after the final master comparison and cleanup.
+After the fixed combined run, master added S's test-only follow-up in
+`tests/unit/settings-activation/mixed-execution.test.ts` plus completion documentation.
+Production code, P's selected tests, configuration and dependencies remain identical. The changed
+S test is not imported by P's selected suites and passes `late-test-lint.json`; unchanged repository
+lint inputs reuse `combined-lint.json`. `final-reuse.json` binds the exact comparison. The merged
+roadmap was regenerated, all 24 bindings passed again, and local links/twins/chains were rechecked.
+The closure receipt records the final SHA/tree after master comparison and physical cleanup.
 This late source synchronization is an external integration change, not a P scope amendment or a
 reason to reschedule a sibling. P retained its own verification duty and sent no peer messages.
