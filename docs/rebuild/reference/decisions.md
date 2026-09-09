@@ -2371,3 +2371,14 @@ and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-
 own this C-specific execution exception; the complete [C brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09)
 owns its bindings and proof. Full gates and complete independent review remain in 2.6.9. Product
 requirements and other assignments are unchanged; no implementation or live application is claimed.
+
+### 2026-09-09 — 2.6.6 F merge and cleanup timing
+
+The operator approved F01–F07 with local master merge and owned cleanup after focused checks and
+working baseline proof. The [roadmap workflow amendment](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12)
+own this F-specific execution exception; the [complete F brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#approved-execution-brief--2026-09-09)
+owns its source/checkout bindings, steps, proof and release. Full gates and complete independent
+review remain in 2.6.9. Four future child checkouts are distinct and consume one actual integrated
+F release after cleanup. Product requirements are unchanged; no implementation, live application,
+child dispatch or push is claimed.

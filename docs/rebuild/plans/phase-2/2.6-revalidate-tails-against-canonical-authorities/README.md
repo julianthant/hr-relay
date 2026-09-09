@@ -165,9 +165,11 @@ independent review remain in 2.6.9. C’s focused development release is integra
 ### Task 6 · Prepare independent database domain tasks
 <!-- roadmap: p2db-domain-foundation -->
 
-Assignment **F**, display **2.6.6**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#f--domain-foundation-unlock-p-d-g-and-s).
-Follow the [combined release and final-validation rules](database-modernization/README.md);
-this card does not assign duplicate implementation or bypass C0 admission.
+Assignment **F**, display **2.6.6**. Single execution owner: [approved F01–F07 brief](database-modernization/foundation.md#approved-execution-brief--2026-09-09).
+The operator approved one supervisor, focused tests/lint/freshness, local master merge and owned
+cleanup. C integration `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645` is the verified prerequisite.
+Full gates and complete independent review remain in 2.6.9. F is planned and unimplemented;
+the planner verifies committed-plan availability before returning its supervisor prompt.
 
 #### Task 6.1 · Track provider requests and usage
 <!-- roadmap: p2db-provider-usage -->

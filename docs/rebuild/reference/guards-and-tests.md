@@ -1295,6 +1295,17 @@ Full typecheck/coverage, broad architecture/parity/build/performance and fresh c
 review remain in 2.6.9. C completion is a merged development release, not final phase acceptance.
 No live application, push or automatic successor is authorized. Other assignments retain their rules.
 
+**2026-09-09 F integration exception.** The operator approved 2.6.6 F local master merge and
+owned cleanup after its [F01–F07 focused proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#approved-execution-brief--2026-09-09).
+This overrides generic no-master/retention timing for F only. Run its explicit focused unit and
+architecture selectors, lint, affected freshness and filtered existing UI proof; prove real baseline
+transactions/recovery and four-domain independence before release. Integration repairs require
+invalidated checks again; unchanged-result reuse requires tested input comparison. Full typecheck,
+coverage, broad architecture/parity/build/performance, complete phase acceptance and fresh independent
+review remain in 2.6.9. F completion is a merged scoped development release, not final acceptance.
+Preserve all inherited proof, floors and failure semantics; no operator database application,
+automatic successor, push or waiver of a failing focused check is authorized.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->

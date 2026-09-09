@@ -7,17 +7,19 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 
 ## Readiness
 
-R, C0 and T development releases are incorporated in master through T integration
-`5e446a90f018456d11ad38442c0fe3ba13e31dd1`. T's source owner and merge message supersede its
-historical unstarted registry entry. C (2.6.5) has operator approval for the complete
-[C01–C05 brief](run-completion.md#approved-execution-brief--2026-09-09); the planner returns its
-exact committed-plan SHA after documentation gates and verifies READY. C is not implemented.
-F/P/D/G/S/L/A/Q/V/U/H and 2.6.9 remain WAITING ON their actual named prerequisite releases.
+R/C0/T/C development releases are incorporated in master. C integration
+`0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645` and its
+[scoped release/cleanup](run-completion.md#c-scoped-release-and-local-integration--2026-09-09)
+are verified prerequisites for F. C's removed branch/path must not be recreated as a prerequisite.
 
-For C only, the approved brief overrides generic prompt/retention rules: implement with one
-supervisor and zero workers, pass focused checks, merge locally into master and remove C's owned
-worktree/ref. No task-local review or full gates; both remain in 2.6.9. R/C0/T refs and checkouts
-were removed after integration and must not be required or recreated as retained prerequisites.
+F (2.6.6) has operator approval for the complete
+[F01–F07 brief](foundation.md#approved-execution-brief--2026-09-09). Its planner verifies the exact
+committed plan SHA, documentation gates and ancestry before issuing READY. F is unimplemented.
+P/D/G/S and all later tasks remain WAITING ON their actual named prerequisite releases.
+
+For C and F, their approved briefs override generic prompt/retention rules: one supervisor, zero
+workers, focused PASS, local master merge and owned worktree/ref cleanup. Full gates and independent
+review stay in 2.6.9. Other tasks retain their approved integration boundaries.
 
 ## Visible task IDs
 
@@ -31,7 +33,8 @@ The old single-card numbering is historical; do not assign timeline T2 to the fi
 
 Create task branches only at authorized execution after availability/capacity checks. Create a missing
 physical lane once; later tasks may reuse it only after its previous owner releases a clean committed
-checkout. Candidate branches remain immutable and retained for final verification.
+checkout. Candidate commits remain immutable and reachable for final verification; C/F remove
+their integrated branches after approved cleanup. Other retained candidate refs remain protected.
 The prefix for every checkout below is `/Users/julianhein/Projects/`. Proposed names are not reserved.
 C0 records R and its own actual release; later prerequisite cells remain unresolved until those tasks finish.
 
@@ -41,11 +44,11 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | C0 | codex/database-contracts | hr-worktree-database-contracts | R release + admitted C0 brief |
 | T | codex/history-views | hr-worktree-database-contracts | Accepted T1 + R + C0 |
 | C | codex/run-completion | hr-worktree-database-contracts | T |
-| F | codex/database-foundation | hr-worktree-database-contracts | C |
-| P | codex/provider-usage | hr-worktree-database-peer | F |
-| D | codex/diagnostics | hr-worktree-database-other | F |
-| G | codex/artifact-outputs | hr-worktree-database-peer | F |
-| S | codex/settings-activation | hr-worktree-database-other | F |
+| F | codex/database-foundation | hr-worktree-database-foundation | Repaired C release + approved F plan |
+| P | codex/provider-usage | hr-worktree-provider-usage | F |
+| D | codex/diagnostics | hr-worktree-diagnostics | F |
+| G | codex/artifact-outputs | hr-worktree-artifact-outputs | F |
+| S | codex/settings-activation | hr-worktree-settings-activation | F |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
 | A | codex/archive-transfer | hr-worktree-database-peer | L |
 | Q | codex/run-summaries | hr-worktree-database-other | L |
@@ -62,7 +65,9 @@ L/V use prerequisites.md. Do not launch before the brief exists and is complete.
 ## Implementation prompt — one resolved copy per assignment
 
 C0/prerequisite release fills the five binding fields from verified evidence; placeholders must
-never be presented as READY. Each emitted prompt retains this exact control language:
+never be presented as READY. The following template applies except where the approved C/F brief
+explicitly assigns local merge/cleanup; F uses its resolved handoff below. Preserve that exception
+when producing its prompt:
 
 ```text
 /supervise EXACT_NUMERIC_TASK (ASSIGNMENT_ID), using the single owning folder /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/. Read README.md, prerequisites.md and the assigned product/execution brief at APPROVED_PLAN_SHA. Use GPT-6 Astra/high. Verify prerequisite BASE_SHA, create or verify the task-owned BRANCH at ABSOLUTE_WORKTREE from the registry, and confirm the exact approved file/test ownership before edits. Never use another task's checkout or master for implementation. Implement the entire assigned scope, fix in-scope failures and run meaningful focused tests, lint and affected freshness checks. No intermediate finalizers; 2.6.9 is the final task including handover and cleanup. Follow the Phase 2.6-only gate trial: full heavy gates and fresh independent review belong to final 2.6.9; this handoff is a development candidate only. Record proof rows and unverified heavy requirements explicitly. A prerequisite must deliver working composed interfaces and verify both descendant peer merge orders before release. Return a compact committed candidate handoff with base/head/tree, paths, tests/exits and remaining work. Do not launch siblings, poll idle tasks, merge into master or push. The operator opens tasks; 2.6.9 owns final integration and all later repairs. Send Done / Now / Remaining at start and each verified step.
@@ -76,32 +81,62 @@ never be presented as READY. Each emitted prompt retains this exact control lang
 
 ## Four-checkout capacity and ownership transfer
 
-The repository limit is four auxiliary worktrees, including unrelated work. At C0 inspection only
-R and C0 occupy auxiliary slots; the primary master checkout is integration-only. Preserve R's
-retained branch/path. The registry reserves no extra checkout and permits these exclusive lanes:
+The repository limit is four auxiliary worktrees, including unrelated work. On 2026-09-09 F
+planning inspection, only the primary master checkout was registered; R/C0/T/C had integrated and
+cleaned their old refs/paths. C subsequently reopened its old lane for a migration repair. F uses its own absent
+`/Users/julianhein/Projects/hr-worktree-database-foundation`, then merges and removes its owned
+worktree/ref. F waits for C's verified repaired integration before launch. These names are proposals, not reservations.
 
-- Sequential lane `/Users/julianhein/Projects/hr-worktree-database-contracts`: C0 → T → C → F → L → V → 2.6.9.
-- Peer lane `/Users/julianhein/Projects/hr-worktree-database-peer`: P → G → A → U.
-- Peer lane `/Users/julianhein/Projects/hr-worktree-database-other`: D → S → Q → H.
+After F cleanup, P/D/G/S may use up to four independent worktrees on the same integrated F release:
 
-P/D/G/S remain independent on one F base; at most two execute concurrently because R and the
-sequential lane occupy the other slots. P-before-G and D-before-S are physical capacity scheduling,
-not API or merge dependencies. A/Q and U/H may execute in parallel on their common release.
-Both semantic merge orders remain permitted and required to pass. Any unrelated occupied slot
-reduces available concurrency; never exceed four or borrow an active checkout.
+- P: `/Users/julianhein/Projects/hr-worktree-provider-usage`.
+- D: `/Users/julianhein/Projects/hr-worktree-diagnostics`.
+- G: `/Users/julianhein/Projects/hr-worktree-artifact-outputs`.
+- S: `/Users/julianhein/Projects/hr-worktree-settings-activation`.
 
-Before reuse, verify the sender completed its scoped release, recorded exact base/head/tree/gates,
-committed all owned work, stopped its processes and explicitly released exclusive checkout ownership.
-The receiving operator-started task accepts that record, verifies clean status and retained candidate
-ref, then creates its own named branch at its verified prerequisite with `git switch -c` in that lane.
-Do not reset/rewrite the sender's branch or delete its candidate. For a fan-in prerequisite, create
-its branch on the named common base and assemble the exact inputs under its admitted merge order.
-If ownership is uncertain, do not switch: resolve ownership or wait. Mere idle status is insufficient.
+This supersedes the old P-before-G and D-before-S physical lane schedule for these unstarted
+children. It adds no dependency or automatic launch. Any unrelated occupied slot reduces capacity;
+never exceed four or borrow an active checkout. Each child's actual file/test/contract manifest
+and common base must be released by F before launch. Either semantic merge order remains required.
+The batch test budget is at most four effective file workers, normally one per active child;
+verify resolved configuration/observed workers and release only the task's own process allocation.
 
-This implements the repository's existing sequential exclusive-checkout option and resolves the
-otherwise impossible accumulation of retained worktrees. Only future unused registry paths change;
-R's in-flight/retained binding is untouched. Final 2.6.9 owns integration when assigned and cleanup
-of all retained candidate refs and the actual remaining physical lanes after acceptance.
+L needs capacity after the four candidates finish. Each child records its exact committed
+base/head/tree/proof and preserves ignored evidence outside its checkout, stops owned processes,
+and releases its physical checkout when verified safe to remove. Retain unintegrated candidate
+branches/commits for L and final 2.6.9; physical cleanup never authorizes deleting their refs.
+L may reclaim a verified released physical checkout to free its own slot, preserving candidate refs
+and evidence. Do not remove another task's active checkout or infer release from idle status.
+A/Q and U/H retain their registry lane assignments and existing release/integration rules.
+
+For any later lane reuse, verify the prior owner has committed its work, preserved evidence,
+stopped owned processes and released exclusive ownership. The receiving operator-started task
+verifies the record and creates its own branch at the exact prerequisite. Never reset or rewrite
+the sender's candidate. Fan-in prerequisites assemble their named committed inputs under their
+admitted boundaries; no extra coordinator, full intermediate gate or review is introduced.
+Final 2.6.9 owns final acceptance and cleanup of remaining retained resources. The operator opens
+tasks; no cross-task messaging or dispatch is authorized by this registry.
+
+## Resolved next assignment — 2.6.6 F
+
+The operator approved [F01–F07](foundation.md#approved-execution-brief--2026-09-09) on 2026-09-09.
+The planning source is master `977805e200a2788b2ba8d2d75854d7346b32329b`, with verified C integration
+`0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`, schema41/floor40 and unchanged C code/test/config inputs.
+C reopened during persistence for schema39 → 41 repair candidate
+`47a64d33a6b20569a7e3598e74463694bc8c4c9d`. After documentation gates and C's focused release/merge,
+the planner returns the exact approved-plan SHA and a verified implementation base containing
+both it and the repaired integration. Until then F is WAITING ON C, not READY on the earlier release.
+Verify F01–F07, both ancestries and the repaired C evidence before editing.
+
+Create `codex/database-foundation` at `/Users/julianhein/Projects/hr-worktree-database-foundation`
+from that verified base after rechecking absent ref/path and capacity. Execute only F with one
+Astra/high supervisor and zero workers. Run focused tests/lint/freshness and affected filtered UI
+proof; no full gates or independent reviewer here. Commit, merge locally to master after focused
+PASS, repair invalidated integration proof and remove only F's owned worktree/ref after preserving
+its evidence. Full gates and complete independent review remain 2.6.9. Record one actual integrated
+F release for all four children and stop; no live application, push or successor dispatch.
+Readiness is established by committed-plan content, successful documentation checks and prerequisite
+availability, not by this planning record alone. No implementation is claimed.
 
 ## Resolved next assignment — 2.6.4 T
 

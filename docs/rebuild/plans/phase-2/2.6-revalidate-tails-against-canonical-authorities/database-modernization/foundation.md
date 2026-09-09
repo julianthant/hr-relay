@@ -1,5 +1,11 @@
 # F · Shared database/domain foundation
 
+**Current execution owner:** [Approved F01–F07 brief](#approved-execution-brief--2026-09-09).
+The operator approved it on 2026-09-09, including local master merge and owned cleanup after
+focused PASS. It supersedes this file's historical A/B names, prerequisite/master barriers,
+per-task full gates/review and old release wording. Product scope and proof allocations below
+remain binding. F is 2.6.6; C is already integrated; no implementation is claimed by this plan.
+
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
 lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
@@ -285,3 +291,216 @@ sequential owner. Historical-only matches retain versioned compatibility rather 
 - `src/server/dashboard/exports/operator-xlsx-workbook.ts`
 - `src/server/dashboard/routes/data.ts`
 - `src/services/trust/knowledge-service.ts`
+
+## Approved execution brief — 2026-09-09
+
+The operator approved the complete F01–F07 proposal in this planning session and explicitly
+required merge and cleanup at the end, with full gates at the end of Phase 2.6, not here.
+This is one sequential Astra/high supervisor assignment with zero implementation workers and
+zero task-local reviewers. Shared migrations, transaction interfaces, composition and integration
+are coupled and stay with that supervisor. No children are dispatched. Fresh complete independent
+read-only `sup_review` on Astra/high and full acceptance belong to 2.6.9.
+
+### Binding and source admission
+
+| Binding | Approved value / required verification |
+| --- | --- |
+| Task and owner | 2.6.6 F; this section owns execution, current state, evidence and delivery assessment. The prerequisite card and registry link here. |
+| Inspected source | Clean master `977805e200a2788b2ba8d2d75854d7346b32329b`; schema 41, upgrade floor 40. Source/test/script/package/config inputs match C's tested candidate `89d167332e3eebe99519adc85f92607e9dbef1e8`. |
+| Required ancestry | C master integration `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`, with R/C0/T ancestry; consume [C's scoped release and cleanup](run-completion.md#c-scoped-release-and-local-integration--2026-09-09). C's removed branch/worktree is not required. |
+| Implementation base | The verified master commit returned by the planner containing both the exact approved-plan commit and C's repaired release described below. Verify both ancestries and the committed owner before edits. If repair integration is still pending, F is WAITING ON it; never start from the known-defective earlier C release. |
+| Creation mode | Create `codex/database-foundation` at `/Users/julianhein/Projects/hr-worktree-database-foundation` from that plan commit. The original reusable lane became C-owned again during persistence; this dedicated F path and ref are absent. Recheck capacity, ownership and availability. Never reset a colliding ref or reuse another task's checkout. |
+| Integration | The same supervisor merges locally into `master` in `/Users/julianhein/Projects/hr-automation-rebuild` after committed focused PASS and baseline release proof, preferably with `--no-ff`. Recheck target state/ownership; fix in-scope integration defects and repeat invalidated checks. |
+| Release | A merged scoped development release with retained candidate/integration/tree identities, proof and cleanup receipt. P/D/G/S all consume its same pinned integrated release. Phase 2.6 acceptance stays open. |
+
+**Prerequisite correction discovered during persistence.** C was reopened to fix schema39 → 41
+conversion: migration 40 used the current run parser before migration 41 adds completion.
+C owns repair candidate `47a64d33a6b20569a7e3598e74463694bc8c4c9d` and its success/failure
+regressions in `tests/unit/run-completion-migration.test.ts`. The planner inspected the diff;
+C must pass its focused checks and integrate the repair before F becomes READY. Resolve C's
+actual repaired integration and evidence at its existing owner; do not adopt a pending candidate,
+reimplement the fix, or require the old reusable checkout to be available. This prerequisite repair
+and safe checkout correction preserve approved product scope and require no new operator decision.
+F retains the historical schema39/40 → current conversion tests in its focused regression set.
+
+Planning inspected code and retained C evidence; it did not run product proof or inspect/upgrade
+an operator database. F's migration/recovery targets are populated synthetic roots and historical
+fixtures. No actual-target application is assigned. Preserve supported historical formats and
+released fingerprints; choose appended migration versions from the reverified base at execution.
+
+### Scope and ownership
+
+Retain the [C0 F allocation](#c0-prerequisite-allocation--266-f), its prerequisite-owned shared
+paths, [direct consumers](#direct-consumer-closure-additions), and [foundation proof allocation](#b-proof-allocation).
+F owns those shared schemas, registries, repositories, recovery/deletion, command/wire unions,
+composition roots, shared fixtures, guards and affected generated inputs. It creates/extracts and
+reconnects the exact child production paths before freezing them:
+
+- [P allocation](provider-usage.md#c0-execution-allocation--2661-p): provider-accounting storage and real legacy provider admission.
+- [D allocation](diagnostics.md#c0-execution-allocation--2662-d): annotation storage, command/query/capture contracts and diagnostic composition, retaining functional capture/readback.
+- [G allocation](artifacts.md#c0-execution-allocation--2663-g): generated-artifact storage/projection and export factory with working existing output behavior.
+- [S allocation](decisions.md#c0-execution-allocation--2664-s): settings activation storage, run-settings, run-claim-admission, run-resources and settings/start/query callers.
+
+The child allocations describe future changing paths; F may edit them now to finish the baseline.
+After F release each child edits only its own frozen set, tests and authored evidence. No child
+may need a sibling's API, migrations, root wiring, common fixture or generated source. F records
+the actual file/export/caller/test manifest and pairwise intersections before releasing the group.
+Additional shared fixture ownership beyond the admitted manifest requires a scoped amendment.
+
+Authored execution evidence stays here. F may update the existing prerequisite, registry, parent
+phase and combined README pointers, roadmap source, affected owner contracts/decision pointers and
+guard inventory, and regenerate their registered outputs. Contract updates describe this approved
+scope; they do not redesign other authorities. Generator outputs are never hand edited. Instruction
+pairs change only if their rules change, with both existing twins kept identical.
+
+### Feasibility and required proof
+
+| Inspected mechanism / risk | Required change and acceptance |
+| --- | --- |
+| `authority-database.ts` owns nested authority transactions, dirty-generation tracking and most repositories. Extracting a method can accidentally commit part of an outer command. | F supplies strict typed transaction ports preserving the actual SQLite transaction and generation/integrity behavior. Inject repository/audit/event failure inside composed commands and prove complete rollback, including checkpoint/output writes. No raw-SQL escape hatch or unused factory counts as a released interface. |
+| Intake uses `intakeSessions` plus immutable `intakeManifests`; command-kernel freezes the manifest, creates runs and updates the session together. | One imported row retains verified old IDs and frozen submitted content. Preserve distinct same-byte imports, historical manifest-only records, active upload reuse, command/run origins and immutable digests. Missing/conflicting linkage refuses atomically; exact replay returns the same fan-out. Complete artifacts P1–P3 and relevant P8 here. |
+| Executor commits checkpoint plus artifact-outbox entries; separate sink heads track publication. XLSX service verifies stored bytes before recording export evidence. | Move queue/head/export evidence into generated-artifact rows while preserving identities and current working output/download behavior. Prove ordered distinct updates, CAS, rollback and immutable historical references with independent connections; do not expose a weaker writer while G is pending. F owns P4 storage and P7/P8 conversion; G owns remaining publication/file-fault P4–P6/P8. |
+| Provider admission combines reservations with capability counters and snapshot-bound execution. | Supply final strict provider request/usage schemas and callable baseline repository, honest legacy attribution/coverage, deletion and backup conversion. Existing admission/replay/quota behavior must work through P's module. P later implements generic accounting; F must not fabricate key/model attribution or reset usage. Preserve provider P1/P5/P6 migration/baseline allocation. |
+| Diagnostic evidence and immutable failures coexist with knowledge/fix authority and historical pins. | Consume R/C names; supply separate resolution storage and capture contracts, preserve failure/receipt bytes and pins, and remove retired live authority only with verified historical preservation. Historical unresolved state is explicit. D's action capability stays unavailable until implemented; capture/readback remains usable. Preserve diagnostic P1/P2 and storage P6. |
+| Settings still read `settingsCurrent` and a boot-selected `runtimeConfig`; worker composition captures an active identity. | Consolidate physical authority into `app_settings` plus retained `settings_snapshots`; preserve bootstrap, replay, audit and current working behavior. Extract all real save/create/claim/resource paths so S can implement activation without changing shared files or P. Separate ownership fencing from configuration selection. F does not claim S's no-restart behavior complete. |
+| SQL spans/gates/notes and OCR placeholders have storage scaffolding; durable gate answers use checkpoints, and timeline/log files have separate readers. | Remove only approved unused scaffolding with absence and retained-consumer proof. Unknown authoritative population blocks conversion for classification. Nonempty knowledge/fix history requires verified source-bound preservation; missing/mismatched backup refuses before destructive retirement. Preserve logs, timeline events, historical spans, gate resumption, future OCR dispatch requirements and live-read results. |
+
+Authority remains with the linked [artifact/approval contract](../../../../reference/data-intake-and-edit-data.md#c0-artifact-and-approval-continuity--2026-09-09),
+[settings contract](../../../../reference/clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09),
+[execution contract](../../../../reference/execution-and-sessions.md#c0-mixed-snapshot-execution-and-completion--2026-09-09),
+[retirement contract](../../../../reference/dashboard-surfaces.md#c0-archive-summary-and-surface-contract--2026-09-09)
+and [evidence contract](../../../../reference/operator-trust.md#c0-archived-evidence-and-privacy--2026-09-09).
+The domain owners retain their complete proof tables; the rows above allocate rather than replace them.
+
+### Ordered execution and early negative controls
+
+1. **F01 — Admit baseline.** Recheck the approved commit, C ancestry, schema/floor, clean isolated
+   branch and existing ownership. Preserve migration bytes and pin populated historical fixtures,
+   accepted command/replay identities and immutable archive/receipt inputs before conversion.
+2. **F02 — Shared storage.** Append complete schemas/migrations, strict historical adapters,
+   repositories and transaction ports. Extend integrity, deletion, backup/restore and conversion
+   registries together. Prove transaction rollback and schema/history identity at this first stable boundary.
+3. **F03 — Imports and outputs.** Finish the one-row imported/extracted scope and generated
+   queue/head/XLSX conversion. Reconnect current submission, replay, exports and checkpoint output.
+   Prove atomic fan-out, old-ID lookup, immutable sources, ordered updates and rollback before moving on.
+4. **F04 — Safe retirement.** Retire approved unused projections/placeholders and knowledge/fix
+   runtime authority with verified historical preservation. Prove gate/log/timeline/diagnostic
+   continuity and refusal of missing, contradictory or unclassified preservation inputs.
+5. **F05 — Four working boundaries.** Finish P/D/G/S modules, shared callers, unions, factories,
+   fixtures and generated inputs. Route actual provider, diagnostic, export and settings/run flows
+   through them. Freeze exact API/test/file ownership. Preserve current settings behavior while
+   leaving S its complete selection/claim/resource policy; no placeholder success or exposed action.
+6. **F06 — Release proof.** Run all assigned focused proof on the frozen candidate, including
+   populated mixed-domain conversion, pre/postcommit interruption, exact resume/no-write repeat,
+   backup/restore, historical replay, deletion, pins, protected references and composed baselines.
+   For six pairs P/D, P/G, P/S, D/G, D/S and G/S, test each boundary independently and both orders
+   against real baseline contracts with independent fixtures. This is baseline independence proof,
+   not a claim to have tested nonexistent future implementations. L rechecks actual candidate
+   combinations; 2.6.9 retains final peer-order and complete acceptance proof.
+7. **F07 — Merge and cleanup.** Commit logical categories using exact staged paths, preserve the
+   tested candidate and integrate locally after focused PASS. Repair in-scope integration defects,
+   rerun invalidated proof, preserve evidence and remove only F's owned resources. Record a single
+   integrated release for all four children, with their unresolved implementation/full-phase duties.
+
+For migration tests, a valid preserved historical fixture must succeed; missing/mismatched backup
+and contradictory import links must fail without partial conversion. After interrupted commit,
+exact resume verifies durable facts while changed input refuses. For commands, wrong/stale identity
+and failure at audit/event/repository writes leave no partial submission or checkpoint output;
+exact accepted replay remains unchanged after restart. For generated outputs, concurrent enqueue
+cannot disappear when another update is acknowledged, and stale/head-conflicting publication
+cannot produce a successful download. Positive controls must reach the intended boundary so these
+negative cases cannot pass merely through unrelated setup failure. Retain UNKNOWN-submit refusal,
+worker/claim fencing, old command fingerprints and immutable failure/completion/receipt/archive facts.
+
+### Focused gate schedule
+
+Run the [required unit selectors](#required-focused-selectors), including the two new meaningful
+database-foundation tests. Add directly affected existing/new tests within F's owned seams; record
+exact selectors and replacement provenance if a retired module moves. Empty selectors are failures.
+Use one effective Vitest file worker, verified from resolved configuration or observed processes,
+and independent database connections for race cases. The batch ceiling remains four workers.
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/intake-session.test.ts tests/unit/intake-command-arms.test.ts tests/unit/intake-validation.test.ts tests/unit/server/intake-surface.test.ts tests/unit/ocr-extraction-admission.test.ts tests/unit/ocr-command.test.ts tests/unit/provider-admission.test.ts tests/unit/diagnostic-capture.test.ts tests/unit/evidence-receipt-repository.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/run-completion-migration.test.ts tests/unit/database-foundation/baseline-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/sqlite-settings-authority.test.ts tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/artifact-effect-boundary.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/architecture/guard-manifest.test.ts
+npm run lint
+npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'intake-|settings|loaded storage doctor|diagnostic-'
+npm run test:parity -- tests/parity/intake-accessibility.spec.ts
+git diff --check
+```
+
+Use `/ui`'s unchanged-rendering route locally for wiring: preserve values, reference identity,
+DOM/copy/styles, accessibility and loading/error behavior. Run the filtered existing affected
+states above; add exact existing diagnostic cases if the baseline selector does not cover a changed
+consumer. Inspect any failure rather than refreezing or weakening it. A visible/interaction change
+requires the relevant UI verification route and an amendment if outside approved scope. A build
+needed by the focused harness is setup, not the full phase build gate. Broad parity remains 2.6.9.
+
+At the earliest stable F02–F05 boundary run the relevant subset and neighboring negative controls.
+Before release rerun the complete affected focused set on the committed candidate; lint and focused
+failures cannot be deferred as PASS. Run affected `npm run build:manifest`, `npm run stores:catalog`
+and `npm run roadmap` before their corresponding `:check` commands. Record any generator exclusion
+with unchanged input evidence. Serialize mutations of the same generated/parity outputs. Use only
+owned synthetic roots; retain command/exits, effective workers, logs and tested input objects/tree.
+
+After integration changes, repeat invalidated focused/lint/freshness checks. Reuse unchanged checks
+only with explicit comparison of their code/test/config/dependency and other inputs under D191.
+Documentation-only recording runs roadmap binding, local links/anchors, instruction-pair/chain,
+affected generation/freshness and whitespace checks; reuse unaffected lint by input identity.
+
+Do not run full typecheck/coverage, whole architecture, broad parity/build/performance or independent
+review here. 2.6.9 owns those plus complete migration/recovery/scenario/concurrency/redaction and
+production-route acceptance, repairs and fresh complete read-only review. Keep T's incomplete
+reviews and measured performance failures (day statements 5,574 > 5,569; archive freeze 3,234 > 13)
+recorded there; they are not green and are not new F gates. Preserve floors, assertions, membership,
+isolation, deadlines and all inherited proof obligations.
+
+### Integration, cleanup and stop conditions
+
+F-specific master merge/cleanup permission supersedes generic retained-candidate/no-master wording
+in this folder. It does not waive focused gates or claim final acceptance. Verify target HEAD,
+cleanliness, exclusive mutation access, candidate identity and mergeability before integration.
+Changed target input requires relevant reconciliation/proof; never overwrite unrelated work.
+Routine in-scope fixes remain with F. Stop dependent release for a changed prerequisite, unresolved
+ownership, missing common mechanism, historical incompatibility or material scope/contract choice.
+
+No live database upgrade, HR submit, provider/key activation, automatic child dispatch, new OCR
+dispatcher, archive transfer, run summaries, alternate authority, dual write, retention redesign,
+push or unrelated cleanup is assigned. P owns generic accounting, D live resolution actions, G
+remaining publication behavior and S activation without restart; F supplies their working baseline.
+Historical renames and C completion are consumed, not repeated or weakened.
+
+Before deleting the checkout, preserve ignored proof/logs and hashes outside it. Verify the candidate
+is incorporated into master, stop only owned processes, and move to the safe primary checkout.
+Remove only `/Users/julianhein/Projects/hr-worktree-database-foundation` when it is verified F-owned,
+then delete its integrated `codex/database-foundation` branch. Verify registered/physical/ref absence
+and clean final master. Retain candidate/integration/tree identities, exact changed paths, contract
+versions, test/exits, evidence location, cleanup receipt and the common integrated F prerequisite.
+The [registry](PROMPTS.md#binding-registry) gives P/D/G/S distinct paths; they stay unlaunched.
+
+Send Done / Now / Remaining at start/resume and after each verified F01–F07 completion before the
+next tool call. Keep integration, cleanup and final-phase deferred review/gates visible. Update
+current state here; use `/handoff` only for unique interrupted state. Stop after F's merged scoped
+release and cleanup; the operator opens subsequent tasks.
+
+### Planning verification and handoff
+
+Operator approval was received on 2026-09-09. Persistence changes only the approved F execution
+brief, its shared registry/status pointers, the roadmap/D191 merge exception and generated roadmap.
+The F checkout was rebound to an absent dedicated path when C reopened the old lane; no checkout
+was created by planning. C's newly discovered historical-upgrade defect is an explicit start
+prerequisite, not work silently passed to F. Planning makes no runtime/phase-acceptance claim.
+
+| Planning check | Evidence |
+| --- | --- |
+| Roadmap binding | `VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/roadmap-doc-binding.test.ts`: PASS, 1 file / 24 tests, exit 0; `/tmp/database-foundation-plan-binding.log`. Repeat after final recording changes and check the committed plan. |
+| Lint | `npm run lint`: PASS, exit 0; `/tmp/database-foundation-plan-lint.log`. All F planning changes are outside lint inputs; compare input objects before reuse after another task integrates. |
+| Roadmap generation/freshness | `npm run roadmap` and `npm run roadmap:check`: PASS, exit 0; `/tmp/database-foundation-plan-roadmap.log` and `/tmp/database-foundation-plan-freshness.log`. Regenerate after final evidence edits. |
+| Links/instructions | 177 local links/anchors resolved, nine existing instruction pairs byte-identical, maximum project instruction chain 17,333 UTF-8 bytes; `/tmp/database-foundation-plan-doccheck.py` reproduces checks for changed or committed paths. |
+| Focused selector preflight | All existing named unit/architecture/parity selectors exist; only the two expressly assigned database-foundation tests are new. No product tests were run by planning. |
+| Scope/whitespace | `git diff --check` passes; exact staged paths are documentation/generated roadmap only. Verify the final committed owner against all approved F01–F07 controls before handing off. |
+
+The outgoing handoff identifies the exact approved-plan commit and implementation base separately
+when necessary. READY requires both the committed plan/document checks and C's repaired focused
+release integrated in that base. Until the latter is verified, status is WAITING ON C's repair.
+The supervisor rechecks volatile ownership and refs before creation; absent planned refs are normal.

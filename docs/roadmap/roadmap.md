@@ -1089,6 +1089,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5; assignment F; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | C source prerequisite recorded | master 0dd02a890; F remains unlaunched and needs its own committed execution brief
+- 2026-09-09 | 2.6.6 F plan approved | F01–F07 at foundation owner; verified C ancestry and schema41/floor40. One supervisor, focused checks, local master merge and owned cleanup; full gates and independent review remain 2.6.9. F and its four children remain unimplemented
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
 status: planned
@@ -3710,7 +3711,17 @@ in-flight tasks retain their original gates and reviews. No implementation is au
 merge and owned cleanup after focused PASS to the same supervisor. This supersedes the generic
 retention/final-master-integration timing for C, while full gates and complete independent review
 remain in 2.6.9. See [C01–C05](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09)
-and the matching D191 exception. C remains unimplemented; its planning commit is not phase acceptance.
+and the matching D191 exception. C is now a merged scoped development release; its evidence is at
+the same owner. Its completion is not phase acceptance.
+
+**F-specific operator exception, 2026-09-09:** the approved 2.6.6
+[F01–F07 brief](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#approved-execution-brief--2026-09-09)
+assigns the same supervisor local master merge and owned cleanup after focused PASS and working
+four-domain baseline proof. This supersedes generic retained-candidate/final-master timing for F.
+Full gates and complete independent review remain in 2.6.9 under D191; F completion means a merged
+scoped development release only. P/D/G/S receive distinct checkouts and one actual integrated F
+base after its cleanup; no child launch, live database application or push is authorized. F is
+planned, not implemented, and planning creates no checkouts.
 
 ### Parallel group shape for future plans (2026-09-09)
 

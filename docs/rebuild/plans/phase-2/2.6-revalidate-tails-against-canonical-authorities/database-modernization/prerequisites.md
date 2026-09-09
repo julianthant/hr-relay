@@ -7,7 +7,8 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 
 Use the [workflow](README.md) for scope, identities, integration ownership and gate timing.
 All prerequisites have one Astra/high supervisor, zero implementation workers by default, their
-own branch/worktree at execution, and no master integration. This file describes outputs and
+own branch/worktree at execution, and no master integration except the approved C/F scoped
+merge-and-cleanup exceptions. This file describes outputs and
 acceptance; the exact path manifest and verified bases must be recorded before implementation.
 
 ## R · Approved naming-only changes
@@ -137,7 +138,14 @@ source facts become stable inputs to F. Do not implement run_summaries or archiv
 
 ## F · Domain foundation; unlock P, D, G and S
 
-**Verified source prerequisite:** C master integration `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`; focused release and closure evidence are [at C’s owner](run-completion.md#c-scoped-release-and-local-integration--2026-09-09). F remains unlaunched; its own committed plan must bind a descendant base.
+**Approved execution owner:** [F01–F07](foundation.md#approved-execution-brief--2026-09-09), approved
+2026-09-09. C master integration `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645` is verified; focused
+release and closure evidence are [at C's owner](run-completion.md#c-scoped-release-and-local-integration--2026-09-09).
+F remains unlaunched. Its committed plan binds a descendant base, one supervisor, focused checks,
+local master merge and owned cleanup. This overrides generic no-master/retention rules for F;
+full gates and complete independent review stay in 2.6.9. C reopened during persistence for a
+schema39 → 41 conversion repair; the F brief requires its verified focused release and integration
+before launch. The original C release alone is insufficient. The following scope is retained.
 
 Consume C. Retain all [foundation proof allocation](foundation.md#b-proof-allocation) and
 [artifact import/extraction](artifacts.md#t1--imported-and-extracted-artifacts) requirements.

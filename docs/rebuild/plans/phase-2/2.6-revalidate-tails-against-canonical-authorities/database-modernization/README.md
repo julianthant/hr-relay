@@ -21,8 +21,16 @@ R, C0 and accepted T1 are ancestors; removed predecessor branches are not launch
 C is integrated at `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`; its [release and closure evidence](run-completion.md#c-scoped-release-and-local-integration--2026-09-09) supplies F’s source prerequisite. Its [approved execution brief](run-completion.md#approved-execution-brief--2026-09-09)
 supersedes generic retention/integration wording for C: one supervisor implements, passes focused
 checks, merges locally into master and cleans up its owned checkout/ref. Full gates and complete
-independent review remain in 2.6.9. F still requires its own verified committed-plan handoff.
-No other task's scope or launch is authorized by this amendment.
+independent review remain in 2.6.9.
+
+**F-specific approval, 2026-09-09:** the operator approved the complete
+[F01–F07 execution brief](foundation.md#approved-execution-brief--2026-09-09), including local master
+merge and owned cleanup after focused PASS. This supersedes generic retention/no-master wording
+for F as well as C; full gates and independent review remain in 2.6.9. F's source is verified C
+integration plus its committed approved plan. The planner verifies that commit before handoff;
+F and its four children remain unimplemented. The registry assigns distinct P/D/G/S checkout paths
+after F cleanup; their common base is F's future actual integrated release, not a guessed SHA.
+No child launch or product implementation is authorized by this planning record.
 
 The [product decisions](decisions.md) retain every approved settings/version/archive/read-model
 choice. The domain files retain the detailed earlier product contracts and proof rows. This README,
