@@ -399,6 +399,66 @@ without an unmerged sibling API. Either sibling merge order remains permitted. S
 shared-target merge/regeneration and evidenced resource conflicts; D has no permission to merge a
 sibling. L/final 2.6.9 retain combined actual-candidate pair/order verification.
 
+### Parallel coordination — operator-requested protocol amendment
+
+The operator requested this plan/prompt correction and then directed a reread of the updated
+protocol on 2026-09-09. Follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination)
+and the linked isolation/gate rules. This section supersedes earlier coordination wording in this
+owner; historical planning/rebind orders below are evidence, not a standing queue or reservation.
+Product scope, D01–D05, the three ownership amendments and the 2.6.9 gate exception are unchanged.
+
+**Default to independent work and no peer messages.** This protocol is not a request for check-ins,
+peer availability surveys, start/finish notices, readiness broadcasts or acknowledgment rounds.
+Do not contact another task merely because it exists, shares master or has completed work. First
+read the committed plan, Git state and existing primary evidence. Message only a known affected
+owner when a concrete unresolved blocker, conflicting claim, changed required input or necessary
+transfer requires that owner's action and the evidence cannot resolve it. State that needed action
+before sending; otherwise stay silent. Use the exact returned task ID and one concise message
+with the relevant resource/commit and requested action. Do not relay progress or copy gate results
+that records/native delivery already provide. This grants no new dispatch or messaging authority.
+
+| Boundary | D's bound responsibility |
+| --- | --- |
+| Implementation | The operator-started D supervisor implements and repairs D in `codex/diagnostics` at `/Users/julianhein/Projects/hr-worktree-diagnostics`, with the exact approved files and one effective test file worker. No P/G/S dependency, new workers or coordinator. Recheck `git worktree list --porcelain`, actual branch/path and available ownership evidence before writing. |
+| Shared writes | Planning documents, the Git index and shared generated output are writes too. D's worktree-local owner/evidence and generated artifacts remain isolated. Shared master mutation is limited to D's authorized integration/recording; verify exclusive access at that boundary. Never edit shared files concurrently and rely on selective staging to repair ownership afterward. |
+| Actual resource conflict | Serialize only the conflicting operation. Prefer an existing verified acquisition mechanism; otherwise request once from the known current owner. Begin only on a valid grant or verified supported mechanism, never clean status alone, silence, elapsed time or a peer title. Preserve an already agreed order while an operation is in flight; crossed/contradictory claims stop that operation until the current owner resolves the conflict. No group-wide slot, speculative queue, broadcast or repeated reminder. |
+| Gates | Continue independent work and isolated checks while an actual shared operation is blocked. Preserve the existing worker budget and scoped gates; release a conflicting resource when its operation/process has finished, including failure. Send a release only if a named waiter needs it to proceed, with verified completion/exit evidence. |
+| Integration and cleanup | The same D supervisor retains D05: exact-path commit, local master merge after focused PASS, invalidated integration rechecks, preserved evidence and owned worktree/ref cleanup. D cannot merge siblings. L consumes the recorded D release; 2.6.9 owns full gates, complete independent review and remaining phase repairs. An already assigned downstream owner needs no new acceptance handshake just to read D's completed release. |
+
+Before READY, before the first implementation edit and before integration, verify the current
+required F release at its owning record, exact ancestry and complete cleanup receipt. If primary
+evidence shows the required release reopened or superseded, establish whether the admitted source
+is still valid; do not dismiss a known change as unrelated without the owning evidence. If that
+cannot be established, mark the dependent boundary WAITING ON the specific release/repair. Rebind
+the actual completed prerequisite, inspect changed inputs and rerun invalidated checks before
+issuing a replacement READY prompt. Do not guess a future SHA, silently adopt a new master, or
+launch on a source already declared superseded. Unrelated peer progress does not itself create a
+new dependency or require a survey.
+
+Keep one compact current-state/evidence record here during execution: actual D task ID, branch/path,
+approved plan/base/candidate/tree, owned scope, tested inputs/commands/exits, unresolved blocker and
+remaining integration/cleanup owner. Resolve actual supervisor IDs at execution; these planning
+sessions are not future implementation identities. Record the final integrated release and residue
+here so L/finalization can verify it without a coordination conversation.
+
+Retain every owned duty until complete or explicitly transferred with the receiving owner's
+acceptance; a delivered message cannot transfer unfinished work. Native returns and existing
+completion waits suffice for already assigned work; do not duplicate them with messages. For a
+necessary owned dependency, use supported waits with cursors/backoff only while its result is
+needed and continue independent work. No sibling observer loop or invented automation/subscription.
+When no local work/process remains and other duties already belong to an authorized owner, end
+the turn with D's contribution status and remaining owner. If a required resume has no established
+authorized delivery mechanism, state the operator resume point. Keep Done / Now / Remaining in
+this task's user-facing chat; do not forward those updates to peers.
+
+Amendment persistence used clean master `391686035bc85a0587958e09dae7cf0feceadbed` after G's
+explicit release of the actual shared PROMPTS/index operation; no repository writes preceded that
+release. Only this owner and D's prompt entry changed. The exact amendment passed 24 roadmap binding
+tests, a fresh `npm run lint`, roadmap generation/freshness, 46 local links, nine instruction pairs
+(maximum chain 17,333 bytes) and whitespace checks. Evidence and final committed-content/ancestry
+verification are retained at `/tmp/diagnostics-plan-evidence-20260909/protocol/`. Original feature
+approval, completed F prerequisite, focused merge/cleanup and deferred 2.6.9 acceptance are preserved.
+
 ### Feasibility and proof bindings
 
 | Requirement / inspected mechanism | Required change and earliest proof |
@@ -424,11 +484,11 @@ status/version and receipt bytes/digests before and after, rather than merely ch
 
 | Step | Outcome / completion boundary |
 | --- | --- |
-| D01 — Bind scope | Verify the approved plan and repaired F, create the isolated branch/worktree, inspect applicable server/dashboard rules and the three amended paths, and preserve unrelated ownership. |
+| D01 — Bind scope | Read the linked Parallel coordination protocol; verify the approved plan, current F release/closure and exact ownership from primary evidence; create the isolated branch/worktree and inspect the three amended paths. No routine peer check-in or reservation round. |
 | D02 — Resolution commands | Implement resolve/reopen with exact target/version and admitted actor/time, optional bounded note, typed refusals and atomic annotation/command/audit/timeline history. Preserve replay, immutable evidence and the unavailable-port negative control. |
 | D03 — Live controls | Use /ui locally: Components lead with Verification support, no delegated UI agents. Use the existing specimen/design system for status, actor/time, optional note, Mark resolved/Reopen, pending/failed feedback and keyboard access. Keep archived rendering read-only and provide durable cross-process refresh. |
 | D04 — Focused proof | Complete D-owned P3/P4, live P5 and annotation-specific P6, link unchanged R/F P1/P2/storage evidence, run the exact focused gates below, repair failures and record the candidate SHA/tree and logs. |
-| D05 — Merge and cleanup | Commit exact paths, merge D locally after focused PASS, revalidate affected integration inputs, record the actual integrated release for L, preserve evidence externally, stop owned processes and remove only D's clean worktree and merged branch from the safe primary checkout. |
+| D05 — Merge and cleanup | Retain ownership through completion: commit exact paths, serialize only the actual shared-target mutation, merge D locally after focused PASS, revalidate invalidated inputs, record release for L, preserve evidence and remove only D's owned worktree/ref after stopping owned processes. Follow the actual-conflict rule above; no routine completion broadcast or downstream acceptance round. |
 
 One supervisor fits the coupled command/annotation/UI seam and proof on an already composed F base.
 No workers, per-peer reviewer, nested finalizer or separate repair task is assigned. Independent

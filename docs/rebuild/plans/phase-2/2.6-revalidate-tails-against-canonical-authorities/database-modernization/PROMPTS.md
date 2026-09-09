@@ -264,3 +264,18 @@ desktop proof, local master merge after focused PASS, invalidated integration re
 evidence and owned worktree/ref cleanup. This overrides generic no-peer-merge/retention rules for
 D only. Full gates and independent complete review stay in 2.6.9. Record integrated D for L; no
 push, live application, unrelated cleanup or sibling dispatch. Implementation remains unstarted.
+
+
+D also applies its [operator-requested coordination amendment](diagnostics.md#parallel-coordination--operator-requested-protocol-amendment)
+and [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination).
+Default to independent work and no peer messages; no check-ins, availability surveys, reservations,
+readiness broadcasts or acknowledgment rounds. Read primary evidence first. Contact only the known
+affected owner when an actual unresolved conflict, required-input change or necessary duty transfer
+needs that owner's action. Isolate all implementation/owner writes; serialize only actual shared
+master/index/generated-output mutation, with a valid grant/acquisition check when contested. Retain
+D's merge, verification and cleanup duties; existing downstream assignments need no new handshake.
+Verify current F ancestry/release/closure before READY, first edit and integration; a superseded
+source blocks the dependent boundary until verified rebind. Keep progress in this task's chat and
+stop after owned completion, without a sibling observer loop. The planner returns the exact amended
+plan/base SHA after document checks and committed-content verification. No product scope or gate
+schedule changes: full gates and independent review remain at 2.6.9.
