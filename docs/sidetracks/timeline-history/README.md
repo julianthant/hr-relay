@@ -2,8 +2,9 @@
 
 ## Assignment and approval
 
-**Owner: `side/timeline-history`. T1 IN PROGRESS under the parallel execution amendment;
-accepted rename master is consumed; R1c completed all 98 paths and P1–P5/P9 with one required restore-warning correction; its repair is under renewed gates and review.** This is a separate successor, not an amendment to
+**Owner: `side/timeline-history`. T1 CANDIDATE ACCEPTED under the parallel execution amendment;
+implementation, required candidate gates and complete independent review are finished. Master
+integration remains separately operator-assigned; T2 is waiting on that integration.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -800,13 +801,94 @@ unchanged coverage against its complete R1c verdict, reconcile R1-1/R1-2/R1-3/F1
 return a complete exact-candidate verdict. The supervisor pins the resulting implementation commit
 and tree in the follow-up after scoped recording checks; no acceptance is inferred from green tests.
 
+### Accepted T1 candidate and cleanup — 2026-09-08
+
+**Candidate accepted; integration is not yet assigned or completed.** Independent standalone R1c
+(`01a084d4-8279-7490-ade2-cd7e2fdfa19b`, GPT-6 Astra/high) returned **PASS** for implementation/evidence
+commit `84d9158de1305a0cc790bee271de4e96e9f54fa1`, tree
+`63be4ea9dc88f4e413259f5543d3771d4b20edc0`. Repair-review turn
+`01a084f2-f365-78f0-ade4-f386ef926ad2` completed in 135.302 seconds. It independently reopened all
+six repair paths and relevant confirmation/recovery/deletion neighbors, verified the other 92 paths
+unchanged, and accepted the complete 98-path candidate (36 production, 57 tests/fixtures, five docs).
+P1–P5/P9 all PASS. R1-1, R1-2, R1-3 and F1 are resolved; no required finding or proof gap remains.
+The earlier native R1/R1b verdicts remain historical BLOCKED reviews and provide no acceptance credit.
+The full verdict is retained in the review task and `/tmp/timeline-events-R1c-pass-verdict.md`;
+its preceding complete path ledger remains `/tmp/timeline-events-R1c-complete-verdict.md`.
+Reviewer gates were independently inspected supervisor logs, not reviewer-executed test runs.
+
+The accepted implementation remains byte-unchanged while this owner records final provenance.
+The runtime gate tree and all required passing candidate gates are recorded immediately above.
+Final evidence uses D191 scoped documentation checks and verified reuse of unchanged code/test/
+contract/configuration/dependency inputs; it does not require a new implementation review.
+
+| Cleanup item | Verified disposition |
+| --- | --- |
+| Owned recovery stash `a7058d8198b4cefc08076e5cf7e1a607b8c838fc` | Removed after exact identity and clean accepted HEAD verification. All 68 tracked plus 10 untracked draft paths were incorporated; 50 match exactly and the other 28 have recorded accepted-base reconciliation or independently reviewed later changes. |
+| Five temporary R1/R1b/R1c probe harnesses | Removed after review; their local `node_modules` symlinks were unlinked without touching the target. Logs, JSON measurements, review verdicts and permanent regressions remain. Historical probe-source paths above are now cleanup history. |
+| `codex/timeline-events` / `/Users/julianhein/Projects/hr-worktree-timeline-events` | Retained for separately assigned integration; this is deliberate residue, not an integrated or stale worktree. |
+| Peer worktree and stash | Preserved. Peer stash `b5ba4102748f304ab4c22a10dddf0f5a52f317be` remains; no peer branch, checkout or task was modified. |
+| Standalone review task | Kept available with the accepted verdict; no task was archived as part of repository integration. |
+
+The initial harness cleanup refused dependency symlinks before removing any harness directory.
+Their exact local targets were then inspected, and only the symlink entries plus owned harness files
+were removed. No active test, compiler, linter or parity process from this assignment remains.
+
+Integration handback: use the accepted base `1c8e294fe3510969c3a0f27dcf3506b922e4e42b` and reviewed
+candidate above; include this final evidence commit. Recheck current master drift and destination
+ownership, obtain the separately assigned integration window, merge with required integration gates,
+renew review for behavioral conflicts, then remove the incorporated branch/worktree. Do not infer a
+future master SHA from this record. T2 remains a separately operator-opened unit after accepted T1
+integration. No push, live database upgrade, HR transaction or T2 execution occurred.
+
+Final recording checks: `/tmp/timeline-events-final-doc-guard.log` passed 24/24;
+`/tmp/timeline-events-final-lint.log` exited 0 with zero warnings. Roadmap freshness, nine equal
+instruction pairs, the 16 owner links/anchors and whitespace checks passed. Diff against accepted
+`84d9158de1305a0cc790bee271de4e96e9f54fa1` contains only this owner evidence prose, so all accepted
+implementation gates and the exact-candidate review remain applicable.
+
+### Delivery assessment — accepted T1 candidate
+
+The approved scope remained T1/P1–P5/P9, with one complete independent reviewer at a time and no
+implementation workers. The operator's parallel execution amendment changed launch sequencing;
+accepted naming integration changed the prerequisite schema/base. These are documented operator and
+external/prerequisite changes, not evidence that timeline product requirements were omitted.
+
+The first candidate required fixture/reader reconciliation after consuming the accepted naming base.
+R1 then identified implementation/proof defects within already assigned lifecycle, retention and
+recovery requirements: transitive retry evidence collection, duplicate gate openings on rename, and
+lost possible-write warnings after restore. These findings form one repair round. Tracing the restore
+finding through the strict dashboard wire and Settings renderer exposed another missing consumer;
+the complete repair gate exposed one old deletion expectation. Earlier production-entry and
+consumer-path checks for P4/P9 could have caught these before full candidate gates. No requirement
+or test floor was waived.
+
+Two native complete reviews suffered automatic compaction and returned BLOCKED; neither supplied
+complete acceptance. R1b retained complete scope with a revised bounded reading allocation, but
+still did not finish. The operator then approved standalone root review R1c with verified recovery
+after compaction. Exact review outcomes remain in the provenance record. Gate logs distinguish initial
+fixture failures, a default-four-worker lifecycle-scan timeout, the proven two-worker schedule, an
+interrupted repair run, a completed stale-expectation failure and the final green run. These are
+observed events, not an estimate of wasted time or quality. Total planning/implementation time and
+parent-context counts were not measured; no savings or broader comparison is claimed.
+
+R1c completed the full 98-path review and found one residual restoration defect: a real startup
+stale-claim sweep advanced a restored run to the preserved run's version while confirmation evidence
+remained lost. R1's comparison had conflated mutable lifecycle progress with retained evidence.
+This was a second repair round within the existing restore-warning requirement. The correction
+compares immutable confirmation content independently; the permanent regression uses the real
+sequenced commit, backup/restore and worker recovery entrypoints, with an already-accounted control.
+The first typed harness iterations exposed claim-schema and union-narrowing mistakes; those are
+recorded separately from the product defect. Full renewed candidate gates passed and R1c repair review supplied final candidate acceptance. Earlier production-path recovery probes would have caught
+this gap before candidate gating. No scope, safety rule, test floor or acceptance requirement changed.
+
+
 - Approval: the operator's 2026-09-08 instruction to make this separate plan, retaining two tables
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
 - Notification: `Process operation names` acknowledged unchanged scope; no integration window
   was assigned there at the time of coordination.
-- T1: **IN PROGRESS**; accepted rename master consumed at `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. R1c complete review requires F1 repair; renewed gates and repair review remain open.
+- T1: **CANDIDATE ACCEPTED, AWAITING ASSIGNED INTEGRATION**; accepted rename base `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`, reviewed implementation `84d9158de1305a0cc790bee271de4e96e9f54fa1`.
 - T2: **WAITING ON** accepted T1 integration. No base SHA is invented for either future result.
-- T1 F1 repair and renewed runtime gates are complete; P1–P5/P9 independent acceptance remains open. R1/R2, T2, integration, cleanup and real database application remain open.
+- T1 implementation, candidate gates, complete R1 acceptance and owned temporary cleanup are complete. Master integration and subsequent branch/worktree cleanup remain separately assigned; T2/R2 and real database application have not started.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 24 tests;
   `npm run lint` exits 0 with zero warnings; `npm run roadmap:check` reports fresh output.
   Sixteen plan links/anchors and owning-contract backlinks resolve; all test selectors exist.
