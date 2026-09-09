@@ -196,6 +196,15 @@ original six-file scope. The same supervisor performs focused checks, local mast
 cleanup. This overrides generic retained-candidate/no-master timing for G only; full gates and
 complete independent review remain in 2.6.9. Implementation is not started by this record.
 
+### P input release — 2026-09-09
+
+P's provider accounting implementation is `594490f8e0dc78c1f7c0efd5319057fde30119c9`,
+with proof record `f00515fb278a2571152100dd17efedd97757dc32` and local integration
+`4818223c9da0231481da6051f73f2c33ee16abf0`. The [P execution owner](provider-usage.md#p06-integration-and-closure)
+retains focused gates, tested input identities, integration verification and owned cleanup evidence.
+L consumes those immutable records; P does not dispatch L or wait for siblings. Full gates and
+independent review remain 2.6.9. Other input releases and S's assignment are unchanged.
+
 ## L · Lifecycle foundation; unlock A and Q
 
 Consume the exact P/D/G/S committed development candidates on F, with all C/T/R ancestry.

@@ -552,8 +552,8 @@ only root/project maxWorkers differ. Dependency installation is reused through a
 node_modules symlink; no secrets or operator database were accessed. No resource collision
 or required peer action was found; no peer messages were sent.
 
-P01–P04 are implemented and focused boundary proof is passing. P05 complete selected gates
-and P06 local integration/owned cleanup remain open.
+P01–P05 are complete. P06 is locally merged and integration-verified; completion recording and
+owned cleanup are the final actions, recorded in the linked closure receipt below.
 Full gates and independent review belong to 2.6.9. L consumes the recorded release; no launch
 or monitoring duty is assigned to P.
 
@@ -631,3 +631,34 @@ The five implementation/test paths are committed; this record adds no runtime in
 command, cwd, source HEAD and exit. `observed-workers.json` confirms one effective file worker.
 P01–P05 are complete. P06 local merge, integration verification and owned cleanup remain open.
 This is a scoped development release, without independent review or full gates; those remain 2.6.9.
+
+### P06 integration and closure
+
+P's immutable implementation is `594490f8e0dc78c1f7c0efd5319057fde30119c9`; its proof record
+is `f00515fb278a2571152100dd17efedd97757dc32`. Local master integration is
+`4818223c9da0231481da6051f73f2c33ee16abf0`, tree
+`b1020dbdc5d73e67bb701db6af29a1b8eaecb61c`. The merge retained later D/G work.
+Its sole conflict was P's appended evidence against an empty master hunk; no behavior conflict
+or contract change occurred. The original P production proof ran on exact F alone.
+
+Integration validation passed 215 unit cases and 183 architecture cases against master,
+using the separately verified one-worker integration adapter. Repository lint and affected
+manifest/catalog generation and freshness passed. Exact commands, file hashes and exit results are retained in `integration-*.json`.
+Completion-record commits change only the approved documentation paths and generated roadmap;
+unchanged runtime inputs retain those integration gate results. The final documentation gate
+rechecks roadmap bindings, local links, instruction pairs/chains, freshness and whitespace.
+
+A completion-roadmap formatting error was corrected by keeping its new log entry inside the
+existing contiguous `log:` block; the corrected generator/freshness checks pass.
+
+The source-bound [closure receipt](/Users/julianhein/Projects/hr-provider-usage-evidence-20260909/closure.json)
+records final release/master/tree identities, integration results, actual branch/worktree/path
+removal and process cleanup. Its state is set to complete only after those checks. All proof and
+failed logs remain outside the removed worktree in the evidence root; committed tests and
+implementation remain reachable from master. Historical launch names in the binding registry
+are no longer prerequisites.
+
+L consumes the immutable candidate/integration and closure record under its existing assignment.
+No peer messages, worker dispatch, successor launch, live application or push occurred. Full gates,
+fresh complete independent review and phase acceptance remain 2.6.9. P is a scoped development
+release; no independent-review PASS is asserted here.

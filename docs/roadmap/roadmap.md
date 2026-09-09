@@ -1099,14 +1099,14 @@ log:
 - 2026-09-09 | F resolver prerequisite repaired | common P/D/G/S prerequisite 2bb25b6efbe62ca88d64a429f01dc567a76ecfbc; complete resolver result reaches settings application, both composition callers repaired, display-clear host default proved. 1195 focused unit cases across verified runs, 199 guards, 67 filtered UI plus lint/freshness PASS; P/D/G plans preserved, S scope/gates unchanged. Resolver cleanup receipt at F owner; no child launch; full gates/review remain 2.6.9
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
-status: planned
+status: done
 doc: 2.6 §Task 6.1 · Track provider requests and usage
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BE implement provider-neutral accounting, quota windows, all-time usage and remaining allowance without real key/provider wiring
-- [ ] PROOF prove concurrent admission, replay, uncertainty, retention and unchanged legacy capability behavior
+- [x] BE implement provider-neutral accounting, quota windows, all-time usage and remaining allowance without real key/provider wiring
+- [x] PROOF prove concurrent admission, replay, uncertainty, retention and unchanged legacy capability behavior
 
 needs:
 - p2db-domain-foundation
@@ -1114,6 +1114,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.1; assignment P; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | P plan approved | P01–P06 at provider owner; repaired F 51e4c087a prerequisite, narrow reservation-integrity/historical exception, focused checks and local master merge/owned cleanup. Full gates/review stay 2.6.9; implementation unstarted
+- 2026-09-09 | P scoped development release | implementation 594490f8e; local integration 4818223c9; 215 selected unit and 183 architecture cases plus lint/freshness PASS. Exact combined-input verification and owned cleanup at P owner; L consumes the release, full gates/review remain 2.6.9
 
 ##### 2 · Add diagnostic failure resolution {#p2db-diagnostics}
 status: planned

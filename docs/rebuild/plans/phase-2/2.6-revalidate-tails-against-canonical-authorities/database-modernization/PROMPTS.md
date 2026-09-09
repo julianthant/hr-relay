@@ -211,9 +211,13 @@ its existing ownership and focused gate schedule remain unchanged. P/D/G planner
 approved plan commits and rebind their exact implementation bases to a verified descendant
 containing this F release. This records one common runtime prerequisite, not a child launch.
 
-```text
-/supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the operator-approved P01–P06 brief in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09 at the full plan commit supplied by the verified planning handoff. Verify repaired F prerequisite 2bb25b6efbe62ca88d64a429f01dc567a76ecfbc and complete repair closure receipt. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite; load the approved owner from its pinned plan commit. One supervisor, zero workers. Read /Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination and the owner’s Parallel coordination and remaining duties section. Default to independent work and no peer messages; use primary evidence first and contact only an exact affected owner who must act on a concrete unresolved blocker/conflict/input change or necessary duty transfer. No routine check-ins, reservation rounds, broadcasts, acknowledgment rounds or observer loops. P retains its assigned gates, integration, verification and cleanup; handle only evidenced shared-resource conflicts with verified acquisition/release, and require acceptance only for reassigned remaining duties. L and 2.6.9 consume their preassigned records without a new completion handshake. Implement generic accounting and the exact approved provider-active-reservations-match/historical-adaptation exception in authority-database.ts; preserve other frozen shared inputs and sibling ownership. Complete P1–P6 with real concurrency, mixed-kind/current/historical corruption controls, replay, uncertainty, retention and legacy runtime proof. Run the brief’s focused tests, lint and affected freshness; full gates and independent review remain 2.6.9. Commit, merge locally into clean master after focused PASS, rerun invalidated integration checks, preserve evidence, remove only the owned worktree/merged branch and record L’s immutable release. No push, live database upgrade, real provider/key wiring, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step; stop after P.
-```
+**P is a merged scoped development release; do not relaunch its original prompt.**
+Candidate `594490f8e0dc78c1f7c0efd5319057fde30119c9`, proof
+`f00515fb278a2571152100dd17efedd97757dc32`, local integration
+`4818223c9da0231481da6051f73f2c33ee16abf0`. L consumes the
+[P release and cleanup record](provider-usage.md#p06-integration-and-closure).
+The binding table retains P's historical checkout names; its removed branch/path is not a
+prerequisite. Full gates/review remain 2.6.9; no successor is dispatched.
 
 D uses its [approved D01–D05 brief](diagnostics.md#approved-execution-brief--2026-09-09) and the resolved binding below,
 not the older C0 no-merge prompt. The planner supplies its exact verified plan/base SHA after

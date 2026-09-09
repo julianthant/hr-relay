@@ -182,8 +182,9 @@ See the [execution record](database-modernization/foundation.md#f-execution-reco
 Assignment **P**, display **2.6.6.1**.
 The [approved P01–P06 brief](database-modernization/provider-usage.md#approved-execution-brief--2026-09-09)
 owns the repaired F base, narrow integrity/historical shared-file exception, focused proof and local
-master merge/owned cleanup. Full gates and independent review remain 2.6.9. Approved, unimplemented;
-this card does not duplicate execution scope.
+master merge/owned cleanup. P is a merged scoped development release at
+`4818223c9da0231481da6051f73f2c33ee16abf0`; its [release record](database-modernization/provider-usage.md#p06-integration-and-closure)
+binds proof, integration verification and cleanup. Full gates and independent review remain 2.6.9.
 
 #### Task 6.2 · Add diagnostic failure resolution
 <!-- roadmap: p2db-diagnostics -->
