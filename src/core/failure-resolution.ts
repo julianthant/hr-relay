@@ -1,14 +1,12 @@
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
-import { FailureResolutionCapabilitySchema, FailureResolutionSchema } from "../domain/trust/failure-resolution.js";
+import { FailureResolutionSchema } from "../domain/trust/failure-resolution.js";
 import type { CommandApplication } from "./command-application.js";
 import type { FailureResolutionCommand } from "../domain/commands.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { rejectCommandRequest } from "./command-kernel.js";
 import { lifecycleCommandId } from "./run-record-service.js";
 
-export function failureResolutionCapability() {
-  return FailureResolutionCapabilitySchema.parse({ state: "available" });
-}
+export { failureResolutionCapability } from "../domain/trust/failure-resolution.js";
 
 /** The command kernel owns the surrounding annotation/journal/audit/event transaction. */
 export function executeFailureResolution(
