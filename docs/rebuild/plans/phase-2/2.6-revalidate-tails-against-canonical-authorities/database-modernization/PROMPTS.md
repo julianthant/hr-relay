@@ -21,6 +21,14 @@ For C and F, their approved briefs override generic prompt/retention rules: one 
 workers, focused PASS, local master merge and owned worktree/ref cleanup. Full gates and independent
 review stay in 2.6.9. G / 2.6.6.3 also includes focused tests, lint, local merge and owned cleanup by operator direction. Its task-specific proposal/approval remains separate; full gates/review stay in 2.6.9. Other tasks retain their approved integration boundaries.
 
+**P-specific approval, 2026-09-09:** the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09) consumes repaired F
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. It assigns P local master merge and owned
+worktree/ref cleanup after focused PASS, with full gates and complete independent review in 2.6.9.
+It also reserves to P only the named provider reservation invariant and its historical adaptation
+in `authority-database.ts`; all other frozen shared inputs and sibling ownership remain unchanged.
+This supersedes conflicting generic retention/no-master/shared-file prohibitions for P only.
+L consumes the immutable recorded P candidate/integration; no P implementation or launch is claimed.
+
 ## Visible task IDs
 
 R=2.6.2; C0=2.6.3; T=2.6.4; C=2.6.5; F=2.6.6; P/D/G/S=2.6.6.1/2/3/4;
@@ -34,7 +42,7 @@ The old single-card numbering is historical; do not assign timeline T2 to the fi
 Create task branches only at authorized execution after availability/capacity checks. Create a missing
 physical lane once; later tasks may reuse it only after its previous owner releases a clean committed
 checkout. Candidate commits remain immutable and reachable for final verification; C/F remove
-their integrated branches after approved cleanup. Other retained candidate refs remain protected.
+their integrated branches after approved cleanup. P also removes its branch only after its approved local integration and verified cleanup. Other retained candidate refs remain protected.
 The prefix for every checkout below is `/Users/julianhein/Projects/`. Proposed names are not reserved.
 C0 records R and its own actual release; later prerequisite cells remain unresolved until those tasks finish.
 
@@ -201,7 +209,7 @@ The repaired F callers remove the proposed G/S shared-file scope expansion: pres
 exclusive allocations. G and S planning consume the repair record; no child is approved anew or launched here.
 
 ```text
-/supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.1 P in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
+/supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the operator-approved P01–P06 brief in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09 at the full plan commit supplied by the verified planning handoff. Verify repaired F prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48 and complete repair closure receipt. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite; load the approved owner from its pinned plan commit. One supervisor, zero workers. Implement generic accounting and the exact approved provider-active-reservations-match/historical-adaptation exception in authority-database.ts; preserve other frozen shared inputs and sibling ownership. Complete P1–P6 with real concurrency, mixed-kind/current/historical corruption controls, replay, uncertainty, retention and legacy runtime proof. Run the brief’s focused tests, lint and affected freshness; full gates and independent review remain 2.6.9. Commit, merge locally into clean master after focused PASS, rerun invalidated integration checks, preserve evidence, remove only the owned worktree/merged branch and record L’s immutable release. No push, live database upgrade, real provider/key wiring, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step; stop after P.
 ```
 
 D uses its [approved D01–D05 brief](diagnostics.md#approved-execution-brief--2026-09-09) and the resolved binding below,

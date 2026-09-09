@@ -14,6 +14,12 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 > alternate launch instructions. Every product proof remains required; heavy proof and independent
 > review run in the final session. Existing in-flight timeline T1 keeps its own schedule.
 
+**P-specific approval, 2026-09-09:** the operator approved the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09)
+with the repaired F prerequisite, the exact shared integrity-check exception, local master merge
+and owned cleanup after focused PASS. That brief supersedes conflicting older allocation,
+WAITING ON, no-master and retention instructions below. Full gates and independent review remain
+2.6.9; implementation is unstarted.
+
 ## Archive-report amendment — 2026-09-08
 
 This plan retains sole ownership of provider request/usage accounting. Archive transfer removes
@@ -220,7 +226,7 @@ Use [the combined workflow](README.md), [prerequisite releases](prerequisites.md
 implementation workers. Shared migrations, composition and fixture work belongs to its prerequisite.
 Return a committed development candidate after focused checks, lint and affected freshness; final
 2.6.9 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
-No per-peer review, master merge, provider-owned integration or automatic task dispatch remains.
+No per-peer independent review or automatic task dispatch. The approved P01–P06 exception below assigns local master integration and owned cleanup to P.
 
 ## Focused checks and final proof
 
@@ -242,7 +248,7 @@ is authorized here. An operator-root upgrade/cleanup is a separately assigned ac
 integration, verified stopped ownership, source-bound backup, supported upgrade plan/apply/doctor
 and sanitized before/after identity/count evidence. This planning work changes no runtime data.
 
-**WAITING ON:** the assignment's actual prerequisite development release. C0's execution allocation is admitted below; no future base is guessed.
+**Prerequisite resolved:** repaired F `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`; the approved P01–P06 brief below owns current launch conditions.
 All earlier planning checks remain historical Git evidence, not gates for the new implementation.
 
 ## C0 execution allocation — 2.6.6.1 P
@@ -288,3 +294,176 @@ integration, independent review, heavy-gate waiver, sibling dispatch or live dat
 Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
 
 Authored evidence stays in this task's existing `provider-usage.md` owner; shared indices remain read-only.
+
+
+## Approved execution brief — 2026-09-09
+
+The operator approved P01–P06 after consultation with “Explain database tables”, then verified
+F's repaired release and replied “approve”. This is the complete execution owner for **2.6.6.1 P**.
+It retains all product requirements and P1–P6 above. Earlier statements assigning integration
+only to 2.6.9 or prohibiting every shared-file edit are superseded only by the exceptions below.
+This approval implements no product code and does not mark P or Phase 2.6 complete.
+
+### Binding and allocation
+
+| Field | Binding |
+| --- | --- |
+| Supervisor | One operator-started GPT-6 Astra/high supervisor; zero implementation workers. One cohesive accounting/retention assignment. No child dispatch. |
+| Inspected checkout | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; schema47/floor46. F repair changed no P-owned source files or provider integrity query. |
+| Source prerequisite | Exact common repaired F release `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, superseding initial `7ec279750817934b7da69ce433e0e5a44fed6a58`. Require F's complete repair closure receipt and ancestry. |
+| Mode / branch / path | Create `codex/provider-usage` in a new worktree `/Users/julianhein/Projects/hr-worktree-provider-usage` from that exact prerequisite. These names are proposals until execution rechecks absence/ownership. |
+| Plan availability | The planning handoff supplies the full committed plan SHA on master. Read this section and its linked controls with `git show PLAN_SHA:path`; restore only this owner from that committed plan into P's worktree before recording implementation evidence. Do not replace other shared documents with the older F versions. |
+| Capacity | One unrelated auxiliary worktree, `hr-separation-accounting-final`, existed at approval. Preserve it; recheck the four-auxiliary-worktree ceiling and ownership before creating P. |
+| Integration | This supervisor merges the committed focused-PASS candidate locally into clean master at `/Users/julianhein/Projects/hr-automation-rebuild`, verifies input reuse or reruns invalidated checks, and removes only P's owned worktree/ref. No push. |
+| Release consumer | L consumes P's recorded immutable candidate and local integration SHA/tree together with the other actual child releases. P does not wait for or launch D/G/S; their repaired F source base and allocations remain unchanged. |
+| Review / final acceptance | No independent reviewer or full gates here. Final 2.6.9 owns fresh complete read-only `sup_review` on Astra/high, full gates, remaining repairs and phase acceptance. A P completion is a merged scoped development release. |
+
+**Production ownership:** `src/infra/sqlite/provider-accounting.ts` and
+`src/core/provider-admission.ts`, plus exactly these two boundaries in
+`src/infra/sqlite/authority-database.ts`: the named `provider-active-reservations-match`
+entry and that entry's pre-43 handling in `inspectHistoricalAuthorityInvariants`.
+The shared-file exception grants no other database, composition, DDL or global type/API edits.
+Other peers retain read-only ownership of that file. A conflicting active owner must be resolved
+before the shared edit; serialize only the conflicting operation, not independent peers.
+
+**Test ownership:** `tests/unit/provider-admission.test.ts`, `tests/unit/provider-pool.test.ts`,
+`tests/unit/advisory-provider-exhaustion.test.ts`, new
+`tests/unit/provider-accounting/accounting.test.ts`, and fixture/support files beside that new test.
+Existing F fixtures and other suites can be read/run but remain unchanged. Keep implementation
+progress, evidence and delivery assessment in this file; do not create a competing plan/evidence Markdown file.
+
+**Completion-document ownership:** serialize narrowly scoped P status/release/prompt updates in
+this file, the combined README, prerequisites and PROMPTS, parent Phase 2.6 README and roadmap
+source/generated site. Never overwrite sibling edits or change their allocations. Generate any
+necessary manifest/catalog outputs only through their existing generators; no source catalog or
+guard-inventory changes are admitted by this task. Preserve released migrations and guard semantics.
+
+### Feasibility and required proof
+
+Inspection is distinct from execution proof. F's retained receipt reports 961 unit, 199 affected
+architecture and 67 filtered UI tests plus lint/freshness PASS. Those prove the repaired baseline,
+not P's unimplemented generic behavior. Its mixed-history fixture covers a settled legacy request;
+P must extend missing lifecycle/boundary cases rather than claim all historical proof from that fixture.
+
+| Requirement / current mechanism | Permitted change and proof |
+| --- | --- |
+| Generic persistence | Frozen `ProviderAccountingStorage` supplies transactions, get/list usage and versioned writes; strict domain schemas and SQL support generic attribution, meter/windows and immutable request allocations. P supplies callable generic storage policy within its owned modules. Round-trip two synthetic vendors/credentials, model/shared/keyless/unattributed scopes, tokens/costs and explicit unknowns; no real provider activation. |
+| Atomic admission and replay | `withAuthorityTransaction` uses BEGIN IMMEDIATE; writes have CAS and immutable request/attribution/allocation guards. Prove genuine independent-connection contention for the final allowance, complete rollback after either request or aggregate failure, exact no-op replay and divergent attribution/budget/usage refusal. Validate execution/config identity before allocating; refusals cannot invoke an adapter. |
+| Windows and uncertainty | Existing schema retains per-request original window allocations and independent aggregate tracking. Implement overlapping limits without duplicate scope charging, late settlement against original windows, reset without lifetime loss, explicit overage/unknown remaining and conservative finalization of unknown outcomes. Unknown/expired outcomes release active reservations without inventing measured usage or erasing charges. |
+| Legacy and generic coexistence | The current reservation invariant counts every reserved request of a capability against its legacy counter. Two independent in-memory probes confirmed a false mismatch for legacy active=0 plus one generic reservation. Filter both counter and request to legacy kind. Prove mixed valid rows with zero and nonzero legacy reservations, genuine corrupt legacy counts, and unrelated capability isolation. Generic consistency must be proven separately; excluding it from a legacy check is not validation. |
+| Historical integrity | The existing pre-43 adapter rewrites table/JSON names but cannot safely remove new aliased kind filters. Use an explicit historical SQL branch for this named invariant retaining unwrapped semantics; do not weaken all queries through broad replacements. Prove actual historical invariant/backup validation with both valid and corrupt populated schema42 fixtures and wrapped43 boundary controls. Missing-table/parser acceptance alone is insufficient. |
+| Retention and callbacks | Shared deletion invokes P-owned `finalizeProviderRun` inside its tombstone/authority transaction before removing requests. Its generic branch currently refuses. Complete generic conservative finalization there; prove aggregate/tracking survival, no usage added by capture/archive, deletion rollback restoring both halves, and late callbacks refusing without recreation or double accounting. Future archive storage/wiring remains L/A-owned. |
+| Historical conversion and compatibility | Reuse only applicable unchanged F P5 evidence. Add provider-owned populated fixtures covering reserved/denied/settled/interrupted/expired history, active leases, blocked budgets, midnight and incomplete tracking; preserve IDs, evidence, replay and pre-tracking origin. Prove supported conversion, before/after-commit faults, exact resume/no-write repeat and source-bound backup/restore. No fabricated key or all-time history. |
+| Runtime exclusion proof | Existing capability admission, advisory exhaustion and pool suites pin budget refusal, retry times, single invocation and UNKNOWN behavior. Preserve pool/adapter/secret behavior and retained configuration. Generic rows have no new dashboard/CLI producer; no visual output or wire contract is changed. No new UI, live provider or operator-root preflight is required for this synthetic storage assignment. |
+
+### Ordered execution
+
+1. **P01 — Bind execution.** Verify committed plan, repaired F ancestry and complete receipt;
+   recheck branch/path/capacity and identify other active owners. Create the isolated checkout;
+   verify source inputs against F, load this approved owner from the plan SHA, and bind evidence
+   directory and effective test worker. Report Done / Now / Remaining before subsequent work.
+2. **P02 — Correct integrity checks.** Reproduce mixed-kind corruption reporting through the real
+   current invariant; implement only the named shared query/historical mapping exception. Add
+   current/historical positive and corrupt negative controls in the P-owned test. Preserve genuine
+   corruption detection. This bounded exception is approved; no separate F task is required.
+3. **P03 — Implement accounting.** Complete generic reserve/settle/interrupt/expiry, scope/meter
+   accounting, cumulative tracking, remaining read models, windows and replay fences on the frozen
+   storage interfaces. Preserve legacy capability behavior and no real provider/key wiring.
+4. **P04 — Prove safety and retention.** Complete P1–P6 at the boundaries above, including real
+   connection races, denied/divergent requests with no effects, rollover plus late settlement,
+   uncertainty plus expiry/deletion, deletion fault plus retry/late callback, and historical recovery.
+   Each refusal test also needs a valid control reaching that same boundary. Repair in-scope failures.
+5. **P05 — Focused release.** Run the assigned/affected selectors, lint and freshness below; preserve
+   failed logs and record exact commands/exits, tested commit/tree, proof coverage and deferred full
+   checks. Commit logical categories with exact staging paths. No failing focused check is waived.
+6. **P06 — Merge and cleanup.** Verify master cleanliness/ownership and all intended candidate
+   ancestry; serialize the local merge. Repair in-scope integration failures and rerun invalidated
+   focused checks. Preserve candidate/evidence reachability; compare all execution inputs before
+   reuse. Update P status to a merged development release, preserve proof outside its worktree,
+   stop only owned processes and remove only the owned auxiliary worktree and merged branch.
+   Verify registration/path/ref absence and clean master, record actual cleanup and L's release,
+   and stop. No automatic successor. Keep review/full gates explicitly deferred to 2.6.9.
+
+### Focused gate schedule and resource recipe
+
+Use one effective file worker and at most four across active tasks. Independent connection races
+must still be real; file-worker limits do not replace concurrency proof. Recreate the F resource-only
+adapter at `/Users/julianhein/Projects/hr-provider-usage-evidence-20260909/vitest-one.config.mts`
+(after checking that evidence path is free or owned; use a unique suffix if occupied):
+
+```typescript
+import baseline from "/Users/julianhein/Projects/hr-worktree-provider-usage/vitest.config.ts";
+export default { ...baseline, test: { ...baseline.test, maxWorkers: 1,
+  projects: baseline.test!.projects!.map((project) => {
+    if (typeof project !== "object") throw new Error("unexpected project configuration");
+    return { ...project, test: { ...project.test, maxWorkers: 1 } };
+  }),
+} };
+```
+
+Verify resolved configuration/observed workers and compare with the authoritative config: only
+root/project maxWorkers may differ. Preserve includes/excludes, assertions, isolation, timeouts,
+reporters and coverage floors. Store the adapter, comparison and exact actual path with evidence.
+Run commands from the P worktree; substitute the recorded path only if the evidence directory changed.
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-provider-usage-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/provider-admission.test.ts tests/unit/provider-pool.test.ts tests/unit/advisory-provider-exhaustion.test.ts tests/unit/provider-accounting/accounting.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-provider-usage-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/secrets-single-source.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts
+npm run lint
+npm run build:manifest
+npm run build:manifest:check
+npm run stores:catalog
+npm run stores:catalog:check
+npm run roadmap
+npm run roadmap:check
+git diff --check
+```
+
+During iteration, run the changed boundary and neighboring refusal combinations plus lint. Before
+each implementation candidate release, run the complete focused sets above and affected freshness;
+new tests must exist and collect meaningful cases. Generation precedes its check and shared-target
+operations are serialized. At integration, rerun invalidated tests/lint/generation; otherwise record
+compared code/test/config/dependency inputs and exact accepted reuse under D191. Documentation-only
+recording checks local links, instruction-pair equality and complete chains below 32,768 bytes,
+roadmap generation/freshness/bindings and whitespace; reuse unaffected implementation evidence.
+
+No full typecheck, coverage, whole architecture suite, broad parity/build/performance or independent
+review is due here; all remain 2.6.9. Do not describe deferred proof as PASS. Browser/UI gates are
+excluded because admission/pool behavior and presentation contracts remain unchanged, not merely
+because P edits no UI file. Reopen that exclusion if implementation would change those outputs.
+
+### Stop conditions and current state
+
+Fix routine defects within this ownership. Return for amendment only if a new required DDL/type/API,
+shared composition/sibling change, real provider wiring, visual behavior or other material scope
+change is discovered. No operator database mutation, credential/configuration setup, live HR
+submission, UNKNOWN-submit retry, push or deletion of another task's resources is authorized.
+The specifically approved integrity hunks and merge/cleanup require no renewed permission.
+
+Planning state: operator-approved, implementation unstarted; prerequisite available and plan
+persistence/validation owned by the planning session. The outgoing handoff supplies the verified
+plan commit and readiness after documentation gates. No implementation PASS is asserted here.
+
+
+### Planning validation — 2026-09-09
+
+Approval persistence used an isolated documentation snapshot to exclude concurrent D/G edits.
+The unchanged roadmap generator/freshness and all 24 roadmap-binding tests passed; repository
+lint passed with zero warnings. Local-link, nine instruction-pair, 17,333-byte maximum project
+chain and whitespace checks passed. No runtime, tests, configuration, dependencies or released
+migrations changed. Full gates and independent review remain deferred to 2.6.9. Exact candidate
+verification and logs are retained in [planning evidence](/Users/julianhein/Projects/hr-provider-plan-evidence-20260909-81pg5uis); the handoff supplies the committed
+plan SHA only after staged-content, prerequisite and reachability verification. No implementation
+checkout was created and no product completion is claimed.
+
+
+### Launch hold — subsequent F resolver repair
+
+During approval persistence, F reopened its owned lane for resolver-port candidate
+`283bbe88440fafb0b44224b8fc085003b7b91dba`. F confirmed this will supersede the released
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` with a new common integrated prerequisite after
+focused PASS and complete cleanup. P scope, approved integrity exception and gate/merge rules
+are unchanged. **WAITING ON:** that actual integrated F release and complete closure receipt.
+The planner must rebind the exact source SHA, verify changed inputs and committed plan availability,
+and rerun affected documentation checks before issuing a READY prompt. Do not launch from the
+older binding while this explicit prerequisite repair is outstanding; no future SHA is guessed.

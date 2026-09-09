@@ -46,6 +46,14 @@ its original paths. The same supervisor merges D locally after focused PASS and 
 worktree/ref. This supersedes generic frozen-path, no-peer-merge and retained-candidate wording
 for D only. Full gates and complete independent review remain in 2.6.9; implementation is unstarted.
 
+**P-specific approval, 2026-09-09:** the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09) consumes repaired F
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. It assigns P local master merge and owned
+worktree/ref cleanup after focused PASS, with full gates and complete independent review in 2.6.9.
+It also reserves to P only the named provider reservation invariant and its historical adaptation
+in `authority-database.ts`; all other frozen shared inputs and sibling ownership remain unchanged.
+This supersedes conflicting generic retention/no-master/shared-file prohibitions for P only.
+L consumes the immutable recorded P candidate/integration; no P implementation or launch is claimed.
+
 ## Roadmap identity
 
 The operator requested visible prerequisite and parallel-child cards matching Phase 3.1. The

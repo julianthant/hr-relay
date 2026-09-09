@@ -1112,6 +1112,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.1; assignment P; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | P plan approved | P01–P06 at provider owner; repaired F 51e4c087a prerequisite, narrow reservation-integrity/historical exception, focused checks and local master merge/owned cleanup. Full gates/review stay 2.6.9; implementation unstarted
 
 ##### 2 · Add diagnostic failure resolution {#p2db-diagnostics}
 status: planned
@@ -3737,6 +3738,15 @@ explicit timeline/live-context/test ownership additions supersede D's former fro
 other P/G/S ownership stays unchanged. This overrides generic retained-candidate/no-peer-merge timing
 for D only. Full gates and complete independent review remain at 2.6.9 under D191. D completion is
 a merged focused development release, not phase acceptance; no push, live application or dispatch.
+
+**P-specific operator exception, 2026-09-09:** the approved
+[P01–P06 brief](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09)
+assigns local master merge and owned cleanup after focused PASS. It reserves the named provider
+reservation invariant and historical adaptation to P without changing sibling ownership or the
+repaired common F prerequisite. This supersedes generic P retention/final-master timing and the
+absolute shared-file prohibition for those exact hunks. Full gates and complete independent review
+remain 2.6.9 under D191; P completion means a merged scoped development release, not phase acceptance.
+No implementation, child launch, live application or push is authorized by planning.
 
 ### Parallel group shape for future plans (2026-09-09)
 

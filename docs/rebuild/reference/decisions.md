@@ -2394,3 +2394,15 @@ test changes while preserving other peer ownership. [Roadmap governance](../../r
 and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12)
 own D's local merge and owned cleanup after focused PASS. Full gates and complete independent review
 remain in 2.6.9. Implementation is unstarted; no live application, push or task dispatch is claimed.
+
+
+### 2026-09-09 — 2.6.6.1 P integrity ownership and merge timing
+
+The operator approved [P01–P06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09)
+on repaired F `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, including the exact provider reservation
+invariant/historical-adaptation exception recorded at the [F ownership pointer](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#p-ownership-amendment-after-f-release--2026-09-09).
+The [roadmap workflow amendment](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12)
+own local master merge/owned cleanup after focused PASS; full gates and complete independent review
+remain 2.6.9. Other frozen inputs and sibling allocations stay unchanged. No product implementation,
+operator database application, child dispatch or push is claimed.

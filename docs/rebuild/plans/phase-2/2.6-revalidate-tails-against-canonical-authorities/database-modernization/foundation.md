@@ -553,6 +553,16 @@ All repositories participate in the owning SQLite transaction through typed `mut
 connections prove enqueue/ack order and stale CAS refusal; immutable file evidence remains retained.
 No public raw-SQL callback, alternate database, dual write or retired runtime knowledge door is supplied.
 
+### P ownership amendment after F release — 2026-09-09
+
+The operator-approved [P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09)
+reserves to P exactly `provider-active-reservations-match` and that invariant's pre-43 adaptation
+in `authority-database.ts`, with current/historical valid and corruption regression proof. This
+supersedes the absolute frozen-file prohibition below for those hunks only. No migration, global
+schema/API or sibling allocation changes. F's completed evidence remains historical; it does not
+claim the newly discovered mixed generic/legacy invariant defect was repaired. P merges and cleans
+its owned lane after focused PASS; full gates/review remain 2.6.9.
+
 ### Frozen four-child API and caller manifest
 
 Shared strict schemas in `src/domain/`, `src/base/provider-accounting.ts`, migrations, authority

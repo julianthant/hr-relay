@@ -179,9 +179,11 @@ See the [execution record](database-modernization/foundation.md#f-execution-reco
 #### Task 6.1 · Track provider requests and usage
 <!-- roadmap: p2db-provider-usage -->
 
-Assignment **P**, display **2.6.6.1**. Single scope/proof owner: [owning plan](database-modernization/provider-usage.md).
-Follow the [combined release and final-validation rules](database-modernization/README.md);
-this card does not assign duplicate implementation or bypass C0 admission.
+Assignment **P**, display **2.6.6.1**.
+The [approved P01–P06 brief](database-modernization/provider-usage.md#approved-execution-brief--2026-09-09)
+owns the repaired F base, narrow integrity/historical shared-file exception, focused proof and local
+master merge/owned cleanup. Full gates and independent review remain 2.6.9. Approved, unimplemented;
+this card does not duplicate execution scope.
 
 #### Task 6.2 · Add diagnostic failure resolution
 <!-- roadmap: p2db-diagnostics -->

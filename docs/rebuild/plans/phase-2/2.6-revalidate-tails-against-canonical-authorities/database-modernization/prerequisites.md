@@ -11,6 +11,14 @@ own branch/worktree at execution, and no master integration except the approved 
 merge-and-cleanup exceptions. This file describes outputs and
 acceptance; the exact path manifest and verified bases must be recorded before implementation.
 
+**P-specific approval, 2026-09-09:** the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09) consumes repaired F
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. It assigns P local master merge and owned
+worktree/ref cleanup after focused PASS, with full gates and complete independent review in 2.6.9.
+It also reserves to P only the named provider reservation invariant and its historical adaptation
+in `authority-database.ts`; all other frozen shared inputs and sibling ownership remain unchanged.
+This supersedes conflicting generic retention/no-master/shared-file prohibitions for P only.
+L consumes the immutable recorded P candidate/integration; no P implementation or launch is claimed.
+
 ## R · Approved naming-only changes
 
 Execute [2.6.2 R](renames.md) first. Release its renamed, focused-tested candidate to C0;

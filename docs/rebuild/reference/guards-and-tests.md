@@ -1316,6 +1316,14 @@ build/performance and fresh complete independent review remain at 2.6.9. The fil
 may build its required candidate bundle. Preserve every product proof, assertion, floor, isolation
 and timeout; scoped PASS is not phase acceptance and a failing focused check cannot be deferred.
 
+**2026-09-09 P integration exception.** The operator approved 2.6.6.1 P local master merge
+and owned cleanup after the [P01–P06 focused proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09),
+including mixed generic/legacy reservation integrity and historical valid/corrupt controls. This
+supersedes generic no-master/retained-candidate timing for P only. Run assigned/affected focused
+units/guards, lint and freshness; rerun invalidated integration checks or verify exact input reuse.
+Full typecheck/coverage, broad architecture/parity/build/performance and complete independent review
+remain 2.6.9. No proof, floor, failure semantics or sibling ownership is waived.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->
