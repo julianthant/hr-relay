@@ -49,6 +49,71 @@ C0 closes with docs binding/link/freshness/whitespace checks and complete execut
 not implement a schema or claim code gates prove new behavior. If a consequential choice is still
 open, name it and keep affected tasks WAITING ON; do not hand the conflict to a peer to discover.
 
+### C0 execution brief — preapproved 2026-09-09
+
+The operator scheduled `/phase-plan 2.6.3`, preapproved the plan, and explicitly requested
+execution immediately after planning instead of a returned supervisor prompt. This assignment
+is C0 documentation and admission, not T2 or the entire downstream batch. The phase-specific
+focused-development/final-review cadence above remains in force. One Astra/high supervisor,
+zero implementation workers; no intermediate independent review or master integration.
+
+| Binding | Verified value / required action |
+| --- | --- |
+| Inspected master | `27e073c0c69e1ff54fb699c805175589e8f016b3`, clean at admission |
+| R development release | `60b356dd119140dc972a077751ad16af934acb2e`, clean `codex/database-renames`; implementation `37ed00d19a8b410c3fb542bea8328c0eef962b4c`, tree `4ed36a7091bb577373d7e3a86eaed04eeab9ab1e` |
+| Accepted T1 | `46930920696ab214b036d5f2681b8ffb4e5620ea`, verified ancestor of R; consume original proof, do not rerun T1 |
+| C0 checkout | After this brief is committed, create `codex/database-contracts` at `/Users/julianhein/Projects/hr-worktree-database-contracts` from R and cherry-pick the exact planning commit. Ref/path absent at planning inspection; recheck before creation. |
+| Scope | This prerequisite owner, existing files in this database-modernization folder, parent Phase 2.6 task cards, roadmap source/generated site, and affected owning reference contracts plus decision pointers. No runtime/schema/test/configuration edits. |
+| Release | Committed documentation development candidate containing R ancestry and complete C0 admission; T consumes it in its own registry checkout. Other tasks remain waiting on their actual prerequisite releases. No automatic T launch, master merge, push, or deletion of retained candidate worktrees. |
+
+Ordered work and acceptance:
+
+1. **C01 — verify admission.** Recheck R/T1 ancestry, clean checkout, exact plan content,
+   migration39/floor37, retained R proof and unchanged released migration history. Reconcile the
+   stale pre-rename numeric labels with the current identity map. Record source evidence, not
+   a new claim that C0 ran R's 342 focused tests.
+2. **C02 — settle contract cases.** Ratify the approved product directions at their existing
+   reference owners with same-commit decision pointers. Apply the general new-run/current-settings
+   rule to every newly created run, including explicit retries and children; existing runs keep
+   their snapshot. A stale reviewed start request requires renewed review before creation.
+   Preserve deployment-only sources and separate protected credentials; no new restart exemption
+   for editable ordinary settings. Preserve retry-shared evidence using verified retained owner
+   references and archive transfer receipts; do not introduce cascading deletion or equate operation
+   generation with workflow attempt. These are C0 selections under this task's preapproval, not
+   retrospective claims of earlier operator decisions.
+3. **C03 — bind execution ownership.** Trace production import/call boundaries and assign exact
+   existing/new module and test paths for T/C/F/P/D/G/S/L/A/Q/V/U/H in their existing owners.
+   Common migrations, commands, wires, composition, fixtures and generated inputs belong to the
+   relevant prerequisite. Require functional baseline modules and complete composed proof before
+   peer release. Preserve every inherited proof and explicitly test each peer merge order.
+4. **C04 — validate and release.** Resolve only T's executable next-step binding against the
+   actual C0 candidate. Future dependency SHAs remain conditional; never fabricate them. Validate
+   documentation, commit exact paths, verify committed content and record all deferred full gates,
+   independent review, master integration and cleanup under 2.6.9. Complete C0 alone.
+
+| Consequential evidence | Required admission result / proof |
+| --- | --- |
+| R release appends migration39, keeps floor37 and preserves old fingerprint grammars. | Bind R's actual candidate and inspect code-input equality between implementation and evidence commit. C0 adds no schema migration or operator DB conversion. |
+| `run-record-service.ts:retrySource` copies the source envelope and rejects active-config mismatch; `start-plan-service.ts` captures configuration at composition. | S owns new-run snapshot selection and stale-preview refusal through F-owned extracted entry modules, with concurrent save/create, replay, mixed-snapshot execution and UNKNOWN negative controls. No source-snapshot exception is invented. |
+| `runDeletionEvidence` already retains entire shared operation groups and validates owners, unlike the older operation-name finding. | Consume existing T1 semantics; L/A extend live ownership to verified archive transfers without retaining an unvalidated fallback or erasing a live retry's key/evidence. T owns the earlier retained-history query. |
+| Current P/D/G candidates still expose shared command/composition/authority edits. | F must finish those shared targets and route real application callers through frozen peer APIs. S cannot share D's command files. L and V repeat the same extraction/proof rule for their peer groups. |
+| New archive and summary mechanisms do not exist on R. | Assign their construction to L and their bounded consumers to A/Q; future peers remain WAITING ON the proven baseline, not READY merely because names appear in a plan. |
+
+Gate schedule: C0 is documentation-only under D191. After planning and after substantive admission
+changes run `VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1
+tests/unit/architecture/roadmap-doc-binding.test.ts`, `npm run lint`, `npm run roadmap`,
+`npm run roadmap:check`, changed-link/anchor checks, existing instruction-pair equality/chain checks,
+and `git diff --check`. Generation precedes freshness. Use one effective test worker and logs under
+`/tmp/database-contracts-*`; no coverage/compiler contention. Record command exits and tested inputs.
+For evidence-only edits repeat affected document checks; reuse unchanged lint with its exact input
+identity. No typecheck/coverage/parity/live/benchmark PASS is claimed by this contract-only task.
+
+Stop dependent work for a changed prerequisite, conflicting actual ownership, a violated admitted
+product boundary, or a missing consequential decision that cannot be resolved within the user's
+preapproval. Ask the explicitly authorized `Explain database tables` task for contextual evidence;
+its recommendations are not operator decisions. Routine design choices and scoped documentation
+repairs remain with C0. No browser, production migration, live submit or unrelated Phase 0.3 rewrite.
+
 ## T · Remaining timeline T2
 
 Follow [timeline.md](timeline.md). Deliver a working history query and stable confirmed-operation
