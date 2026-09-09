@@ -8,7 +8,8 @@ acceptance; the exact path manifest and verified bases must be recorded before i
 ## C0 · Contract and execution admission
 
 **Planning only.** Consume accepted timeline T1, including actual commit/tree, review/gates and
-schema/floor; the inspected active task has not provided this acceptance yet. Preserve T1's
+schema/floor; the timeline owner records accepted integration `46930920696ab214b036d5f2681b8ffb4e5620ea`;
+verify its evidence and ancestry at admission. Preserve T1's
 immutable migrations, source conversion evidence and original in-flight gate schedule.
 
 1. Resolve the maintenance-table discussion (`authority_meta`, `authority_upgrades`) with the
@@ -76,10 +77,10 @@ source. S cannot launch until its extraction makes that four-way proof true.
 
 ## L · Lifecycle foundation; unlock A and Q
 
-Consume D/G/S development candidates on F. P is not an input unless verified code evidence proves
-otherwise; a discovered dependency requires an explicit plan amendment, not a hidden barrier.
-Shared schema, archive capture source adapters and provider aggregate preservation must already
-work on F without P's new accounting policy. Include all C/T ancestry.
+Consume the exact **2.6.5.5 Finalization** development release, which includes P/D/G/S on F
+and all C/T ancestry. Do not individually assemble unfinalized peers or bypass their group's last
+child. Shared schema, capture adapters and provider aggregate preservation must be present in that
+verified release; L does not change the finalized domain ownership without an explicit amendment.
 
 Before A/Q launch, complete their common migrations, actual run/archive/summary interfaces,
 transaction hooks for state changes and annotations, version-application progress model, deletion
@@ -99,7 +100,7 @@ with both merge orders preserving counts, saved reports, deletes, settings bindi
 
 ## V · Served interface release; unlock U and H
 
-Consume A and Q, preserving their focused proof. Integrate real served queries and report interfaces,
+Consume **2.6.6.3 Finalization**, preserving the combined A/Q focused proof. Integrate real served queries and report interfaces,
 root route/command registration, shared dashboard wire types, download authorization and UI shell
 wiring. Finish shared archive relaunch removal without removing current-run retry/start. Separate
 Queue/Activity U paths from generic Archive H paths, including fixtures, snapshot/reference files,
@@ -120,5 +121,5 @@ endpoint, shared unmerged component or another peer's screenshot reference. Reco
 - Exact resolved child prompts and no unexplained consumer/ownership/contract gaps.
 
 Return that compact record in the owner file and chat. Do not create observer tasks, automatically
-launch children, reserve idle worktrees or mark 2.6.2 done. The next operator-started prerequisite
-assembles only its explicit input candidates. Final master integration belongs to 2.6.3.
+launch children, reserve idle worktrees or mark final product acceptance done. The next operator-started prerequisite
+assembles only its explicit input candidates. Final master integration belongs to 2.6.7.3.

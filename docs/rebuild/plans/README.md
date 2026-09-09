@@ -80,14 +80,20 @@ D342 (2026-09-07) moves `phase-3/3.4-co-operate-with-claude/README.md` to
 `phase-3/3.5-co-operate-with-claude/README.md`; historical 03.4 cooperation citations resolve there.
 Phase 3.4 now owns optional document tools, with distinct node IDs.
 
-## Phase 3 prerequisite tasks (D344)
+## Parallel prerequisite tasks and finalization children (D344)
 
 `3.P.N` names an actual standalone task or prerequisite; `3.P.N.1`, `3.P.N.2`, etc. name
 independent parallel children unlocked by the completed parent. Each Phase 3 and future parallel
-group binds a separate finalizer after all workers: focused worker tests and quick checks, then
+group places a sequential **Finalization** node as the last numbered child of its prerequisite: focused worker tests and quick checks, then
 full gates and repairs on the combined result under
 [D344](../../roadmap/roadmap.md#parallel-finalizer-cadence). Sequential consumers get separate
 numbers and require accepted finalizer output. The [3.1 identity map](phase-3/3.1-finish-the-dashboard/README.md#current-task-identities)
 and [3.2 plan](phase-3/3.2-finish-workflow-authoring/README.md) own current assignments.
 Existing execution files and stable anchors remain citation targets. Former organizational group
 files redirect to the 3.1 map; they no longer create non-executable roadmap tasks.
+
+New parallel plans use the [parent/child shape](../../roadmap/roadmap.md#parallel-group-shape-for-future-plans-2026-09-09):
+`P.N` prerequisite → independent `P.N.1`, `P.N.2`, … → last child `P.N.K · Finalization`.
+The last child requires every worker; implementation workers never depend on one another. Next
+prerequisites require that finalization release. Preserve already admitted/in-flight identities;
+apply the exact gate cadence in the owning plan, including the database batch's final-test exception.

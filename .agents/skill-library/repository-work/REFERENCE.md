@@ -30,8 +30,9 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
   Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
   prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
-  Parents complete before children launch; a named sequential finalizer combines each group, runs
-  full gates and fixes failures before downstream consumers start. Workers use D191 focused checks. The
+  Parents complete before workers launch; new plans place **Finalization** as the last numbered
+  child, requiring every worker. That sequential child combines the group, runs
+  full gates and fixes failures before downstream consumers start. Workers use D191 focused checks; explicit scoped batch exceptions retain their gate timing. The
   operator chooses launches and integration under Authorized orchestration below. D328's numeric
   wave members remain valid for Phase 0–2 and preserved in-flight briefs.
   Phase 4

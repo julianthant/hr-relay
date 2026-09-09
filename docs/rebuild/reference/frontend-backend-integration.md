@@ -1215,7 +1215,7 @@ is a true sentence about a stale basis rather than a partial re-offer.
 
 #### 5.1.1 Run modal — plan, confirm, enqueue
 
-**Request-table naming amendment (2026-09-08; [side/worker-names](../../sidetracks/worker-names/README.md)).**
+**Request-table naming amendment (2026-09-08; [side/worker-names](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md)).**
 Since schema 35, the saved proposal is stored in `workflow_run_requests` (formerly `start_plans`).
 A request can produce zero or several runs. Confirmation uses the existing Start command
 and audit; successful consumption retains the request with `consumedBy`. `startPlans`,

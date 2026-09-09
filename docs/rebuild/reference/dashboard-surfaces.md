@@ -610,7 +610,7 @@ reading twice. The draft said *"run span tree's notes ⊕ the owning worker span
 <a id="sqlite-timeline-history"></a>
 
 **2026-09-08 — T1 implementation candidate; T2 remains pending.**
-[Side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) owns a SQLite
+[Side plan `side/timeline-history`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md) owns a SQLite
 timeline, database-derived transaction Activity/exports and frozen archive transaction sections.
 It consumes accepted worker, operation and command-group integration at schema 37. T1 uses
 schema 38/floor 37. The following T1 rules supersede the older file-backed span descriptions
@@ -1890,9 +1890,9 @@ Released migrations 1–34 retain their statement bytes and digests; historical 
 and 36 retain their own exact table sets, command grammars, fingerprint order and invariant
 queries. An unfinished committed schema-32–36 conversion must settle with its original build
 before a newer conversion. Historical migration/trigger identifiers keep their spellings.
-The [worker](../../sidetracks/worker-names/README.md),
-[operation](../../sidetracks/operation-names/README.md) and
-[command-group integration](../../sidetracks/command-groups/README.md#assigned-combined-integration--2026-09-08)
+The [worker](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md),
+[operation](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md) and
+[command-group integration](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md#assigned-combined-integration--2026-09-08)
 records own implementation and acceptance evidence. No operator database application is authorized.
 
 The upgrade is **`npm run cli -- storage upgrade [--plan] [--json]`**, a fourth `storage` subcommand
@@ -4693,7 +4693,7 @@ and historical families before claiming a combined current schema.
 
 
 **2026-09-08 command-group storage — combined implementation and independent review accepted; local integration recorded in the task owner.**
-[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) moves the
+[Side task `side/command-groups`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md) moves the
 exact accepted bulk envelope from `bulk_command_acceptances` into a non-executable parent
 row in `commands`, with direct individual commands linked by nullable `parent_command_id`.
 The parent retains original selection/order, versions, options, fingerprint and acceptance
@@ -7073,11 +7073,11 @@ dropped, and this table is how a citation to the old flat list resolves.
 ## Run completion storage
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/run-completion`](../../sidetracks/database-parallel/00a-run-completion.md) amends D110/D114 and
+[Side task `side/run-completion`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md) amends D110/D114 and
 D330 storage: move `run_terminal_authorizations` evidence into a strict immutable completion record
 on `workflow_runs`, rename `failures` to `run_failures`, and retire the unused `run_terminal_outbox`.
 It follows accepted timeline T2 integration, before the shared database foundation, under the
-[parallel execution binding](../../sidetracks/database-parallel/README.md). Running predecessor plans remain unchanged.
+[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). Running predecessor plans remain unchanged.
 
 Active ownership remains the run's worker/claim generation and expected-version protocol. Completion
 preserves the exact accepted worker, generation, version, timestamp and result/failure identity after
@@ -7096,9 +7096,9 @@ implementation claim or authorization to convert the operator database.
 ## Failure resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) adds Mark resolved and Reopen
+[Side task `side/diagnostics`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md) adds Mark resolved and Reopen
 after the shared foundation supplies run completion and annotation storage. Its independent parallel
-assignment follows the [parallel execution binding](../../sidetracks/database-parallel/README.md). The actions appear in existing failure details. The current annotation is stored on the
+assignment follows the [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). The actions appear in existing failure details. The current annotation is stored on the
 owning `run_failures` row separately from immutable occurrence evidence, with its own version,
 operator actor/time and optional bounded note. It needs no fix/lesson table, required commit or
 verification report. Historical failures start unresolved; matching fingerprints or later successful
@@ -7116,7 +7116,7 @@ evidence. This records approved scope, not a current feature or database applica
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) owns one-row `imported_artifacts`,
+[Side task `side/artifacts`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md) owns one-row `imported_artifacts`,
 `extracted_artifacts` and `generated_artifacts`; [data intake](data-intake-and-edit-data.md#artifact-storage-model)
 owns their lifecycle/identity rules. Preserve intake mapping/validation/correction/exclusion, frozen
 submission, batch origin/grouping, command replay and current duplicate/re-upload behavior. Historical

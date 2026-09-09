@@ -1,5 +1,12 @@
 # Worker and workflow request table names
 
+> **Historical evidence, relocated 2026-09-09.** Original source: `46930920696ab214b036d5f2681b8ffb4e5620ea:docs/sidetracks/worker-names/README.md`;
+> source SHA-256 `918b1ad3c89d7f70d200710aa2ed59e2ac5157a9cfbf7a68e1953356509d329c`. Only this banner and Markdown link
+> destinations changed during relocation. Requirements, candidate/review/gate/cleanup records below
+> are preserved as recorded; old pending instructions are historical, not launch authority.
+> Current remaining work belongs to [the combined workflow](../README.md), including
+> [timeline T2](../timeline.md). Do not rerun completed work from an old prompt here.
+
 ## Assignment, approval, and status
 
 **Task ID: `side/worker-names`.** This is the single owner of this side-work assignment;
@@ -45,23 +52,23 @@ into `workflow_runs`. Internal start-plan terminology and its existing interface
 
 ## Authorities and prerequisites
 
-- [Document routing](../../README.md) and [root instructions](../../../AGENTS.md).
-- [Task 2.6.1-3](../../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/task-1-3-revalidate-operator-read-models.md)
-  and its [part ledger](../../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/README.md)
+- [Document routing](../../../../../../README.md) and [root instructions](../../../../../../../AGENTS.md).
+- [Task 2.6.1-3](../../task-1-3-revalidate-operator-read-models.md)
+  and its [part ledger](../../README.md)
   own the prerequisite, A2/A3 retirement, accepted integration evidence, and current phase status.
-- [Execution and sessions](../../rebuild/reference/execution-and-sessions.md), particularly
+- [Execution and sessions](../../../../../reference/execution-and-sessions.md), particularly
   sections 3, 10 (D267), and 11 (D269/D271), own worker ownership, Duo serialization, and pools.
-- [Dashboard surfaces](../../rebuild/reference/dashboard-surfaces.md), D330/D332, and
-  [clock/config/secrets](../../rebuild/reference/clock-config-secrets.md), D331/D332,
+- [Dashboard surfaces](../../../../../reference/dashboard-surfaces.md), D330/D332, and
+  [clock/config/secrets](../../../../../reference/clock-config-secrets.md), D331/D332,
   own boot/upgrade, settings preservation, and operator surfaces.
-- [Guards and tests](../../rebuild/reference/guards-and-tests.md), section 3.14 D191 and
+- [Guards and tests](../../../../../reference/guards-and-tests.md), section 3.14 D191 and
   section 5.2, own validation and compatibility boundaries.
-- [Operating reference](../../../.agents/skill-library/repository-work/REFERENCE.md),
+- [Operating reference](../../../../../../../.agents/skill-library/repository-work/REFERENCE.md),
   especially isolation, environment, and authorized orchestration, and
-  [roadmap governance](../../roadmap/roadmap.md), especially D344, govern execution controls.
-- [Server instructions](../../../src/server/AGENTS.md),
-  [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md),
-  and [operator trust](../../rebuild/reference/operator-trust.md) apply to affected consumers.
+  [roadmap governance](../../../../../../roadmap/roadmap.md), especially D344, govern execution controls.
+- [Server instructions](../../../../../../../src/server/AGENTS.md),
+  [frontend/backend integration](../../../../../reference/frontend-backend-integration.md),
+  and [operator trust](../../../../../reference/operator-trust.md) apply to affected consumers.
   Frontend/backend integration section 5.1 also owns start planning and confirmation;
   the approved request-table name does not change that protocol.
 
@@ -540,7 +547,7 @@ mandatory future integration gates are separate from this iteration rework.
 ### Assigned combined integration — 2026-09-08
 
 The operator's **“do it”** assigns S6 integration and cleanup. This task yielded shared-target
-ownership to the command-groups task. The [combined integration record](../command-groups/README.md#assigned-combined-integration--2026-09-08)
+ownership to the command-groups task. The [combined integration record](command-groups.md#assigned-combined-integration--2026-09-08)
 binds the exact three candidates, primary base, isolated integration branch, migration order,
 gates, repairs, independent review and cleanup. Original rejection/repair and accepted-candidate
 evidence above is retained. Final numbering is worker 35, operation 36, command groups 37, with
@@ -555,5 +562,5 @@ The combined owner records fresh complete review PASS at `445fe424`, full gates
 merge `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. This assignment's exact clean,
 inactive candidate checkout and branch were removed after ancestry verification; physical
 path and ref absence passed. The observer task remains visible by its explicit request.
-See the [combined closeout](../command-groups/README.md#accepted-local-integration-and-cleanup--2026-09-08)
+See the [combined closeout](command-groups.md#accepted-local-integration-and-cleanup--2026-09-08)
 for exact candidate, review, integration and cleanup bindings. No push or database conversion.

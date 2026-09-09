@@ -2611,4 +2611,4 @@ preserves D331/D336 settings and independent credential authority. Conversion of
 32–36 sources retains the exact ordinary settings revisions/journals and credential bytes;
 it does not replay schema 33's batch defaults or reimport environment values. `config_snapshots`
 keeps its name, rows and references. Existing source-change refusal and interrupted settlement
-remain required. The [side assignment](../../sidetracks/worker-names/README.md) owns execution evidence.
+remain required. The [side assignment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md) owns execution evidence.

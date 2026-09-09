@@ -1,5 +1,12 @@
 # Command groups and delegation table names
 
+> **Historical evidence, relocated 2026-09-09.** Original source: `46930920696ab214b036d5f2681b8ffb4e5620ea:docs/sidetracks/command-groups/README.md`;
+> source SHA-256 `0d169934cfde65172bd65f73de17a866096b647826ba8652ce8116103dedb4de`. Only this banner and Markdown link
+> destinations changed during relocation. Requirements, candidate/review/gate/cleanup records below
+> are preserved as recorded; old pending instructions are historical, not launch authority.
+> Current remaining work belongs to [the combined workflow](../README.md), including
+> [timeline T2](../timeline.md). Do not rerun completed work from an old prompt here.
+
 ## Approved assignment and status
 
 **Task: `side/command-groups`. S1–S6 complete: combined implementation, gates, independent review, master integration and candidate cleanup verified. Integration scratch is removed after this final record lands.** This file is the single
@@ -18,7 +25,7 @@ database application. The execution amendment and progress below record this sup
 | 2 | Rename `dependencies` to `delegation_dependencies`. |
 | 3 | Rename `delegation_manifests` to `run_delegations`. Keep these two tables separate. |
 
-The existing three-rename [worker/request plan](../worker-names/README.md) is unchanged.
+The existing three-rename [worker/request plan](worker-names.md) is unchanged.
 The original serial binding followed its reviewed integration because both affect the same
 migration chain, registries, adapter and backup machinery. The explicit parallel execution
 amendment below replaces that ordering: each candidate validates independently against schema 34,
@@ -27,21 +34,21 @@ Do not take either peer's scope or dirty files.
 
 ## Authorities and inspection evidence
 
-- [Root instructions](../../../AGENTS.md), [document routing](../../README.md), and
-  [operating reference](../../../.agents/skill-library/repository-work/REFERENCE.md).
-- [Dashboard surfaces, command-group amendment](../../rebuild/reference/dashboard-surfaces.md#command-group-storage)
+- [Root instructions](../../../../../../../AGENTS.md), [document routing](../../../../../../README.md), and
+  [operating reference](../../../../../../../.agents/skill-library/repository-work/REFERENCE.md).
+- [Dashboard surfaces, command-group amendment](../../../../../reference/dashboard-surfaces.md#command-group-storage)
   and D235 own bulk behavior and storage consolidation.
-- [Frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md),
+- [Frontend/backend integration](../../../../../reference/frontend-backend-integration.md),
   section 5.1 and actor/Host/Origin admission, owns unchanged command doors and envelopes.
-- [Workflow model, delegation names](../../rebuild/reference/workflow-model.md#delegation-table-names)
+- [Workflow model, delegation names](../../../../../reference/workflow-model.md#delegation-table-names)
   and section 3.2 own delegation manifests, dependency policies, and replay/join semantics.
-- [Clock/config/secrets](../../rebuild/reference/clock-config-secrets.md), D331/D332,
-  [dashboard surfaces](../../rebuild/reference/dashboard-surfaces.md), D330/D332,
-  and [guards/tests](../../rebuild/reference/guards-and-tests.md), sections 3.14 D191 and 5.2,
+- [Clock/config/secrets](../../../../../reference/clock-config-secrets.md), D331/D332,
+  [dashboard surfaces](../../../../../reference/dashboard-surfaces.md), D330/D332,
+  and [guards/tests](../../../../../reference/guards-and-tests.md), sections 3.14 D191 and 5.2,
   own safe upgrade, immutable history, identity, and gates.
-- [Server instructions](../../../src/server/AGENTS.md),
-  [operator trust](../../rebuild/reference/operator-trust.md), and
-  [roadmap governance](../../roadmap/roadmap.md), D344, govern affected consumers and integration.
+- [Server instructions](../../../../../../../src/server/AGENTS.md),
+  [operator trust](../../../../../reference/operator-trust.md), and
+  [roadmap governance](../../../../../../roadmap/roadmap.md), D344, govern affected consumers and integration.
 
 Planning inspected code, tests, contracts, Git, and sanitized read-only database metadata.
 It did not execute product tests, migrate a database, create a backup, run workflows, or

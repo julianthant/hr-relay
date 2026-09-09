@@ -470,7 +470,7 @@ instrumentation failure.
 
 **2026-09-08 operation names — combined implementation and independent review accepted; local integration recorded in the task owner.** The current SQL tables are renamed
 `write_intents` → `run_operations`, `write_attempts` → `run_operation_attempts`, and
-`durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../../sidetracks/operation-names/README.md)
+`durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md)
 owns execution; the operator authorized isolated parallel implementation on 2026-09-08. The names change no write,
 retry, outbox, deletion or retention behavior. Operations can span workflow retries;
 operation generations and workflow attempt numbers remain distinct. Preserve stored JSON
@@ -1439,7 +1439,7 @@ that parsed them can drift apart. There is no unchecked cast from the generic ca
 <a id="sqlite-operation-history"></a>
 
 **2026-09-08 — T1 implementation candidate; T2 remains pending.**
-[Side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) follows the
+[Side plan `side/timeline-history`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md) follows the
 accepted operation-name assignment without amending that assignment. Its first unit introduces
 SQLite timeline events and atomically records required state/event facts while retaining existing
 operation outboxes temporarily. Its second unit replaces ledger-file Activity/archive consumers,

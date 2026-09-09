@@ -4,7 +4,7 @@ This file retains the approved common product scope and proof allocation from da
 [The workflow](README.md), [prerequisites](prerequisites.md) and [launch registry](PROMPTS.md)
 are the only execution-control owners. Earlier A means current C; earlier B means current F;
 P/D/G retain their product meanings. All product proof remains required. Heavy gates/review and
-final repairs occur in 2.6.3, not separately per domain. Active timeline T1 remains unchanged;
+final repairs occur in 2.6.7.3, not separately per domain. Active timeline T1 remains unchanged;
 pending T2 is now [T](timeline.md), not an external completed assumption.
 
 C0/F must reconcile the inspected P/D/G paths below with S settings activation and the later L
@@ -12,7 +12,7 @@ lifecycle foundation before admitting peers. The paths are extraction candidates
 post-T1 frozen allocation. No peer may edit common schema/composition/command/fixture files merely
 because an old ownership table once assigned them; the resolved C0/F manifest is required first.
 Archive reports and run summaries each retain their one owner in [decisions.md](decisions.md).
-There is no provider-owned integration task; 2.6.3 is the sole final integration/repair owner.
+There is no provider-owned integration task; 2.6.7.3 is the sole final integration/repair owner.
 
 ## Evidence behind the split
 

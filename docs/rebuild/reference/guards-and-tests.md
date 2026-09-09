@@ -1259,14 +1259,17 @@ membership, isolation, worker ceilings and deadlines. Coverage still runs withou
 contention. A red finalizer leaves the group and its downstream release blocked.
 
 **2026-09-09 scoped combined-database exception (operator-approved).** Only newly planned
-Phase 2.6.2 assignments in the [combined workflow](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)
+Phase 2.6 database-modernization assignments in the [combined workflow](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)
 use focused tests, lint and affected generation/freshness checks for iteration and committed
 development releases. Record actual commands, exits, tested SHA/tree and proof rows; these releases
 may unlock their explicit dependents before independent review. They are not accepted master
-integrations or completed roadmap tasks. Existing in-flight timeline T1 and other admitted tasks
+integrations or full product acceptance. Completed prerequisite/peer cards mean their scoped development
+release only; full acceptance-finalizer/phase completion still requires full gates and review. Existing in-flight timeline T1 and other admitted tasks
 keep their original cadence.
 
-One fresh final 2.6.3 session combines all candidates, fixes remaining defects itself, runs typecheck,
+Intermediate finalization children 2.6.5.5 and 2.6.6.3 combine their groups with focused
+checks/lint/freshness and repair, then release the next prerequisite. They defer heavy proof/review.
+One fresh final 2.6.7.3 session combines all candidates, fixes remaining defects itself, runs typecheck,
 lint, full coverage, architecture, parity/build, generated and the original recovery/scenario/concurrency/
 redaction/production-route proofs, then obtains fresh independent review of the complete candidate.
 Findings and integration defects are fixed in that session with required reruns/review; no repair

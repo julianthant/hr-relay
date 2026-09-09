@@ -1,5 +1,16 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-09 finalization-child convention:** new parallel plans use a prerequisite task with
+independent implementation children and a last numbered Finalization child; next groups require its
+release. Database finalization children are 2.6.5.5/2.6.6.3/2.6.7.3, closure 2.6.8. Owner:
+[roadmap group shape](../../roadmap/roadmap.md#parallel-group-shape-for-future-plans-2026-09-09).
+Existing admitted/in-flight maps remain unchanged; the database's heavy-gates/review-last exception remains.
+
+**2026-09-09 database roadmap expansion:** expose C0/T/C/F/L/V as 2.6.2–7 with independent
+children under 5/6/7; final proof/close move to 2.6.8/9 with stable IDs and all proof retained.
+Scoped development-card completion unlocks dependencies; product acceptance remains with the final
+review/gate session. Owner: [combined database governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09).
+
 **2026-09-09 combined database planning amendment:** Phase 2.6 admits the named database redesign,
 preserves active T1, renumbers only pending proof/closure, and defers heavy gates/review to the single
 final repair session. Owners: [roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
@@ -2223,7 +2234,7 @@ The same side assignment renames `dependencies` → `delegation_dependencies` an
 `delegation_manifests` → `run_delegations`, keeping those two tables separate.
 Requirements live at [dashboard surfaces, command-group storage](dashboard-surfaces.md#command-group-storage)
 and [workflow model, delegation table names](workflow-model.md#delegation-table-names).
-[Side task `side/command-groups`](../../sidetracks/command-groups/README.md) owns execution. The operator subsequently authorized parallel isolated implementation; the task
+[Side task `side/command-groups`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md) owns execution. The operator subsequently authorized parallel isolated implementation; the task
 records migration reconciliation, combined gates and review required at assigned integration.
 Candidate implementation does not imply phase completion or permission to convert the operator database.
 
@@ -2233,7 +2244,7 @@ Operator approved `write_intents` → `run_operations`, `write_attempts` →
 `run_operation_attempts`, and `durable_outbox` → `operation_outbox`. These are three
 storage renames with unchanged identities, write safety, replay and deletion behavior.
 [Write safety, operation names](write-safety.md#operation-table-names) owns the requirements;
-[side task `side/operation-names`](../../sidetracks/operation-names/README.md) owns execution
+[side task `side/operation-names`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md) owns execution
 under the operator's subsequent isolated-parallel execution amendment. Stronger linkage to workflow runs remains
 a separate investigation; no relationship/deletion redesign or database application is
 approved by this naming decision.
@@ -2242,7 +2253,7 @@ approved by this naming decision.
 
 Operator selected separate `run_checkpoints` and `timeline_events`, database-derived Activity,
 on-demand exports, and transaction details frozen in the existing `archived_runs` row. The separate
-[side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) follows the running
+[side plan `side/timeline-history`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md) follows the running
 operation-name assignment unchanged. Two sequential implementation units introduce SQLite event
 authority, then retire daily ledger delivery and its two management tables plus the superseded
 operation outbox. Requirements live in [dashboard surfaces](dashboard-surfaces.md#sqlite-timeline-history)
@@ -2259,7 +2270,7 @@ recorded at the side owner; T2 Activity/export/archive conversion and outbox ret
 **2026-09-08 worker/request naming amendment:** D267/D269's [execution authority](execution-and-sessions.md#3-worker-lifecycle-and-claiming)
 uses `workflow_workers` and `worker_auth`; the [Start proposal](frontend-backend-integration.md#511-run-modal--plan-confirm-enqueue)
 uses `workflow_run_requests`. [D332's combined schema-37 stopped upgrade](dashboard-surfaces.md#d3321--one-command-stopped-system-never-at-boot)
-preserves historical names/readers, rows, settings and credentials. [Approved assignment and evidence](../../sidetracks/worker-names/README.md).
+preserves historical names/readers, rows, settings and credentials. [Approved assignment and evidence](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md).
 
 ### 2026-09-08 — provider-neutral request and usage storage (pending implementation)
 
@@ -2270,8 +2281,8 @@ continues through a compatibility mapping. Usage supports tracked cumulative tot
 reservations and locally calculated remaining amounts with honest attribution and unknown values;
 run deletion preserves aggregate usage. Requirements live at
 [execution and sessions, provider storage foundation](execution-and-sessions.md#provider-storage-foundation);
-[side task `side/provider-usage`](../../sidetracks/database-parallel/01-provider-usage.md) retains the product/proof scope; shared storage precedes its generic-accounting peer under the
-[parallel execution binding](../../sidetracks/database-parallel/README.md). This records planning approval, not implementation or
+[side task `side/provider-usage`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md) retains the product/proof scope; shared storage precedes its generic-accounting peer under the
+[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). This records planning approval, not implementation or
 permission to migrate the operator database.
 
 ### 2026-09-08 — completion evidence on workflow runs (pending implementation)
@@ -2281,9 +2292,9 @@ to `run_failures`, and removing the unused `run_terminal_outbox`. Current assign
 accepted completion remain distinct; claim/version fencing, exact replay, result/failure authority
 and atomic timeline persistence survive the consolidation. Requirements live at
 [dashboard surfaces, run completion storage](dashboard-surfaces.md#run-completion-storage);
-[side task `side/run-completion`](../../sidetracks/database-parallel/00a-run-completion.md) owns execution after
+[side task `side/run-completion`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md) owns execution after
 accepted timeline T2 integration, before the shared database foundation. The
-[parallel execution binding](../../sidetracks/database-parallel/README.md) replaces the former provider-first ordering. No running plan is amended.
+[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) replaces the former provider-first ordering. No running plan is amended.
 This records planning approval, not implementation, database application or a new delivery consumer.
 
 ### 2026-09-08 — diagnostic evidence and lightweight resolution (pending implementation)
@@ -2293,9 +2304,9 @@ proposed lesson/fix renames with removal of their unused database tables. Useful
 in linked workflow/module documentation. A separate annotation on `run_failures` records explicit
 resolution/reopening, actor/time and optional note without rewriting the original failure, completion,
 receipt or archive. The operator requested both parts in one diagnostic plan; the earlier names were
-chat-only, so [side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) is the single
+chat-only, so [side task `side/diagnostics`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md) is the single
 persisted product owner. Shared storage is implemented in prerequisite B; operator resolution is an
-independent peer under the [parallel execution binding](../../sidetracks/database-parallel/README.md). Requirements live in
+independent peer under the [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). Requirements live in
 [operator trust](operator-trust.md#diagnostic-evidence-and-resolution) and
 [dashboard surfaces](dashboard-surfaces.md#failure-resolution). No prior running plan is amended;
 this is planning approval, not implementation or operator-database conversion.
@@ -2308,20 +2319,20 @@ and updates. This replaces two intake tables and consolidates output pending/hea
 logical-file row while retaining every pending update and exact historical file references. Requirements
 live at [data intake](data-intake-and-edit-data.md#artifact-storage-model) and
 [dashboard surfaces](dashboard-surfaces.md#artifact-storage-model).
-[Side task `side/artifacts`](../../sidetracks/database-parallel/03-artifacts.md) retains the combined product scope. The
-[parallel execution binding](../../sidetracks/database-parallel/README.md) moves T1 and shared T2 storage into prerequisite B,
+[Side task `side/artifacts`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md) retains the combined product scope. The
+[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) moves T1 and shared T2 storage into prerequisite B,
 then makes T2 publication/export an independent peer. The four running plans remain unchanged; this
 records planning approval, not implementation, new workflow activation or operator file/database conversion.
 
 ### 2026-09-08 — one database prerequisite launch and three parallel peers
 
 The operator requested one folder for the remaining plans and one prerequisite entry point before
-launching all peers. [Database prerequisites](../../sidetracks/database-parallel/00-prerequisites.md)
+launching all peers. [Database prerequisites](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md)
 executes run completion (A), then the shared foundation (B), in one Astra/high supervisor task while
 preserving both units' separate review, gates, accepted integration and cleanup. The explicit
 prerequisite launch assigns its local integration. Only its verified B release permits the three
 independent provider/diagnostic/generated-artifact tasks to start. All plans and prompts now live in
-[the database batch folder](../../sidetracks/database-parallel/README.md); product contracts and the
+[the database batch folder](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md); product contracts and the
 four in-flight plans remain unchanged. No implementation or peer launch is claimed.
 
 ### 2026-09-09 — prerequisite, parallel workers, finalizer (D344/D191 amendment)

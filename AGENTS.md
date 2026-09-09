@@ -131,7 +131,11 @@ duplicate work within approved boundaries; plan changes return to the operator. 
 or merge. The operator chooses integration; completion requires review, gates and cleanup. Phase 3
 uses `3.P.N` for standalone prerequisites/tasks and `3.P.N.1`, `3.P.N.2`, etc. for independent parallel
 children unlocked by the completed parent; downstream consumers wait for the named finalizer.
-Use current identity maps and D344’s 2026-09-09 cadence; preserve other in-flight briefs.
+New parallel plans make the task node the prerequisite, independent numbered children the workers,
+and the last numbered child **Finalization**, requiring every worker. Sequential downstream tasks
+require that child's release; do not create a detached finalizer or an empty container. See D344's
+“Parallel group shape for future plans” amendment; preserve already admitted/in-flight identities.
+Use current identity maps and the owning plan's D191 gate cadence, including explicit scoped exceptions.
 At start/resume and after every verified task/step completion, send Done / Now / Remaining in chat
 before the next tool call: completed work with evidence, current action, and all unfinished items.
 Keep review, integration and cleanup visible; tool logs or plan UI never replace this update.

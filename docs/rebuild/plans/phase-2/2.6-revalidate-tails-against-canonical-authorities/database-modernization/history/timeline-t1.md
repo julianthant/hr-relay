@@ -1,7 +1,14 @@
 # SQLite timeline and transaction history
 
+> **Historical evidence, relocated 2026-09-09.** Original source: `46930920696ab214b036d5f2681b8ffb4e5620ea:docs/sidetracks/timeline-history/README.md`;
+> source SHA-256 `ca29a158c724ab7a54bfacdf36e8a75375c4c0b53e1ed6b7ba2bf06f52c4d7ee`. Only this banner and Markdown link
+> destinations changed during relocation. Requirements, candidate/review/gate/cleanup records below
+> are preserved as recorded; old pending instructions are historical, not launch authority.
+> Current remaining work belongs to [the combined workflow](../README.md), including
+> [timeline T2](../timeline.md). Do not rerun completed work from an old prompt here.
+
 > **Pending T2 ownership amendment — 2026-09-09.** The operator moved remaining T2 into
-> [Phase 2.6.2's combined workflow](../../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/timeline.md).
+> [Phase 2.6.2's combined workflow](../timeline.md).
 > The T2 allocation/launch instructions below are historical and must not launch duplicate work.
 > Active T1, its candidate, requirements, gate schedule, review and evidence remain unchanged.
 > Reconcile this pointer when integrating T1's plan evidence; do not replace that evidence.
@@ -35,25 +42,25 @@ neither implementation unit is complete.
 
 ## Authorities and execution boundaries
 
-- [Document routing](../../README.md), [root instructions](../../../AGENTS.md),
-  [operating reference](../../../.agents/skill-library/repository-work/REFERENCE.md), and
-  [roadmap governance](../../roadmap/roadmap.md), D1/D263/D344.
-- [Dashboard surfaces, database history amendment](../../rebuild/reference/dashboard-surfaces.md#sqlite-timeline-history)
+- [Document routing](../../../../../../README.md), [root instructions](../../../../../../../AGENTS.md),
+  [operating reference](../../../../../../../.agents/skill-library/repository-work/REFERENCE.md), and
+  [roadmap governance](../../../../../../roadmap/roadmap.md), D1/D263/D344.
+- [Dashboard surfaces, database history amendment](../../../../../reference/dashboard-surfaces.md#sqlite-timeline-history)
   owns the pending event-storage, Activity, archive and retention changes to D218/D236/D301/D308.
-- [Write safety, database history amendment](../../rebuild/reference/write-safety.md#sqlite-operation-history)
+- [Write safety, database history amendment](../../../../../reference/write-safety.md#sqlite-operation-history)
   owns replacing the committed-write outboxes while preserving fencing and exact evidence.
-- [Operator trust](../../rebuild/reference/operator-trust.md),
-  [workflow model](../../rebuild/reference/workflow-model.md), and
-  [execution and sessions](../../rebuild/reference/execution-and-sessions.md) own evidence,
+- [Operator trust](../../../../../reference/operator-trust.md),
+  [workflow model](../../../../../reference/workflow-model.md), and
+  [execution and sessions](../../../../../reference/execution-and-sessions.md) own evidence,
   checkpoint reuse, claims and lifecycle semantics.
-- [Clock/config/secrets](../../rebuild/reference/clock-config-secrets.md), D321/D322/D332/D343,
-  [guards and tests](../../rebuild/reference/guards-and-tests.md), §3.14 D191 and §5.2, and
-  [frontend/backend integration](../../rebuild/reference/frontend-backend-integration.md) own
+- [Clock/config/secrets](../../../../../reference/clock-config-secrets.md), D321/D322/D332/D343,
+  [guards and tests](../../../../../reference/guards-and-tests.md), §3.14 D191 and §5.2, and
+  [frontend/backend integration](../../../../../reference/frontend-backend-integration.md) own
   upgrade/backup, protected data, gates, transport and parity.
-- [Operation names](../operation-names/README.md), [command groups](../command-groups/README.md),
-  and [worker names](../worker-names/README.md) remain unchanged. Consume their actual accepted
+- [Operation names](operation-names.md), [command groups](command-groups.md),
+  and [worker names](worker-names.md) remain unchanged. Consume their actual accepted
   integrations. Their old names in inspection evidence below are historical observations.
-- [Phase 2.6 owner](../../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/README.md)
+- [Phase 2.6 owner](../../README.md)
   retains its adapter-retirement, proof and closure work. This side assignment does not complete
   those tasks or resurrect retired historical formats/adapters. Reconcile newly admitted overlapping
   implementation before starting; shared migration/upgrade edits cannot run against moving owners.

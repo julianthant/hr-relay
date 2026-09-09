@@ -3,10 +3,10 @@
 ## Assignment and boundary
 
 The operator explicitly included remaining timeline T2 on 2026-09-09. This is its current pending
-execution owner inside [2.6.2](README.md). The original
-[timeline plan](../../../../../sidetracks/timeline-history/README.md) continues to own active T1,
-its proof/evidence and its existing review/gate schedule. T1 is not complete according to the
-inspected active task; consume only its accepted, reviewed integration. Do not start a second T1.
+execution owner inside [Phase 2.6](README.md). The original
+[timeline plan](history/timeline-t1.md) retains completed T1
+proof/evidence and its original review/gate schedule. T1 is integrated at `46930920696ab214b036d5f2681b8ffb4e5620ea`; consume its
+recorded reviewed integration and verify ancestry. Do not start a second T1.
 
 T owns lossless transaction history, existing Activity transaction queries/exports, explicit CLI
 transaction export, old archive transaction-section compatibility, ledger/outbox retirement and
@@ -77,6 +77,6 @@ inventory with deciding evidence. Tests always accompany lint. Record exact comm
 
 The combined workflow replaces T2's former per-candidate heavy/review cadence: focused proof,
 lint and affected freshness now; every full coverage, architecture, parity, build and recovery proof
-remains due in 2.6.3 with fresh independent review. No operator DB upgrade or live submit is included.
+remains due in 2.6.7.3 with fresh independent review. No operator DB upgrade or live submit is included.
 
-**WAITING ON:** accepted T1 and C0 execution admission; no future base or schema number is guessed.
+**WAITING ON:** accepted T1 and C0 execution admission; T1 integration is recorded, but no future task base or schema number is guessed.

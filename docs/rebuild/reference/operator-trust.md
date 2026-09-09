@@ -2808,7 +2808,7 @@ six named extras as a closed list. An Explorer fact that is neither in §5.2's b
 ## Diagnostic evidence and resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../../sidetracks/database-parallel/02-diagnostics.md) combines the approved renames
+[Side task `side/diagnostics`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md) combines the approved renames
 `diagnostic_bundles` → `diagnostic_snapshots`, `diagnostic_attachments` → `diagnostic_files`, and
 `evidence_receipts` → `run_receipts` with retirement of `knowledge_records` and `fix_records`.
 The operator superseded the earlier suggested lesson/fix renames with removal: workflow/module and
@@ -2827,5 +2827,5 @@ all receipt derivation bindings remain unchanged. Resolution records an operator
 problem was addressed; it does not prove a fix, change the failed outcome or resolve uncertain
 external writes. [Dashboard surfaces](dashboard-surfaces.md#failure-resolution) owns explicit actions
 and live/archived presentation. This amendment is approved design, not implementation or permission
-to apply a database upgrade. The [parallel execution binding](../../sidetracks/database-parallel/README.md) assigns shared diagnostic
+to apply a database upgrade. The [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) assigns shared diagnostic
 storage/retirement to prerequisite B and operator resolution to an independent peer after B.

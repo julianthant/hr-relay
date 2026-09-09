@@ -192,7 +192,7 @@ registered and poisoned — §7.1 row C6/C7 execute both.
 
 ## 3. Worker lifecycle and claiming
 
-**Worker-table naming amendment (2026-09-08; [side/worker-names](../../sidetracks/worker-names/README.md)).**
+**Worker-table naming amendment (2026-09-08; [side/worker-names](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md)).**
 Since schema 35, the worker lifecycle authority is named `workflow_workers` (formerly `leases`)
 and the credential-scoped Duo lock is named `worker_auth` (formerly `duo_ceremony_leases`).
 `worker_pools` retains its name and declaration/CAS role. Worker repository interfaces,
@@ -1298,12 +1298,12 @@ authority/pool distinction and D181/D200 recovery/identity rules remain unchange
 ## Provider storage foundation
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/provider-usage`](../../sidetracks/database-parallel/01-provider-usage.md) owns the successor to
+[Side task `side/provider-usage`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md) owns the successor to
 D112's two storage tables: `provider_admissions` → `provider_requests` and
 `provider_budget_counters` → `provider_usage`. The operator explicitly limited this assignment to
 provider-neutral tables/storage logic and compatibility; real API keys, provider-specific adapters,
 pool selection, quota retrieval and presentation remain future work. The
-[parallel execution binding](../../sidetracks/database-parallel/README.md) assigns shared schema/conversion and legacy adapters to
+[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) assigns shared schema/conversion and legacy adapters to
 prerequisite B, then generic accounting to the independently testable provider-usage peer.
 
 Request records retain exact execution/config/request identity, budgets, reservations, lifecycle

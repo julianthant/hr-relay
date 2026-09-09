@@ -1,13 +1,13 @@
-# 2.6.3 · Final integration, validation and repairs
+# 2.6.7.3 · Final integration, validation and repairs
 
 This is the one fresh final session requested by the operator. It owns the complete combined
-candidate and all remaining fixes. The [parent Task 3](../README.md#task-3--run-the-non-mutating-migration-and-recovery-proof)
+candidate and all remaining fixes. The [parent Task 7.3](../README.md#task-73--finalization)
 retains its original migration/adapter-retirement proof; this file supplies the combined batch's
-execution contract. Former numeric alias: 2.6.2; stable roadmap node: p2f-proof.
+execution contract. Former numeric aliases: 2.6.2, then 2.6.3; stable roadmap node: p2f-proof.
 
 ## Inputs and ownership
 
-Consume exact C0/T/C/F/P/D/G/S/L/A/Q/V/U/H plan and development candidate records, accepted T1
+Consume exact C0/T/C/F/P/D/G/S/2.6.5.5/L/A/Q/2.6.6.3/V/U/H plan and development candidate records, accepted T1
 and the existing completed 2.6.1 input evidence. Reject missing candidates, unexplained failed
 focused tests or a claimed pass without tested identity. Inspect owned refs/checkouts and create
 only the final task's isolated branch/worktree at execution. Never reset or modify another task.
@@ -43,7 +43,7 @@ resolve the explicit model override before dispatch. Review implements nothing a
    Obtain the operator-assigned local integration only after PASS and required gates. Recheck actual
    target; material integration changes need gates/review, while recording-only changes use D191's
    verified unchanged-input rules. Never push.
-6. Record acceptance in 2.6.2/2.6.3 and finish 2.6.4 handover when its criteria pass: fixture matrix,
+6. Record final acceptance for the database tasks and 2.6.7.3 and finish 2.6.8 handover when its criteria pass: fixture matrix,
    exact 3.1 contract consumers, remaining defect disposition and verified cleanup of owned resources.
    Do not mark done before actual integration and required cleanup, or silently absorb other 3.1 work.
 

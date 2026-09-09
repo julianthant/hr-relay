@@ -1,5 +1,12 @@
 # Operation table names
 
+> **Historical evidence, relocated 2026-09-09.** Original source: `46930920696ab214b036d5f2681b8ffb4e5620ea:docs/sidetracks/operation-names/README.md`;
+> source SHA-256 `4a93918da07f0d13db34646c05aa577409d8f71a8ca8a416e3a1d3e41a8a692a`. Only this banner and Markdown link
+> destinations changed during relocation. Requirements, candidate/review/gate/cleanup records below
+> are preserved as recorded; old pending instructions are historical, not launch authority.
+> Current remaining work belongs to [the combined workflow](../README.md), including
+> [timeline T2](../timeline.md). Do not rerun completed work from an old prompt here.
+
 ## Approved assignment and status
 
 **Task `side/operation-names`: candidate implemented, gated and independently reviewed on an isolated parallel branch; combined review, gates, master integration and owned candidate cleanup complete.** This file owns the assignment, not a roadmap phase.
@@ -25,21 +32,21 @@ existing envelope attempt and retry lineage; do not create a `run_attempts` tabl
 
 ## Authorities, prerequisites and scope
 
-- [Root instructions](../../../AGENTS.md) and [document routing](../../README.md).
-- [Write safety, operation naming amendment](../../rebuild/reference/write-safety.md#operation-table-names)
+- [Root instructions](../../../../../../../AGENTS.md) and [document routing](../../../../../../README.md).
+- [Write safety, operation naming amendment](../../../../../reference/write-safety.md#operation-table-names)
   owns these names and unchanged fencing, settlement, recovery and outbox semantics.
-- [Dashboard surfaces](../../rebuild/reference/dashboard-surfaces.md), D308/D330/D332,
+- [Dashboard surfaces](../../../../../reference/dashboard-surfaces.md), D308/D330/D332,
   owns deletion/tombstones, storage presentation and upgrade admission.
-- [Clock/config/secrets](../../rebuild/reference/clock-config-secrets.md), D321/D322/D331/D332,
+- [Clock/config/secrets](../../../../../reference/clock-config-secrets.md), D321/D322/D331/D332,
   owns settings coupling, explicit verified backup and safe upgrade.
-- [Guards and tests](../../rebuild/reference/guards-and-tests.md), §3.14 D191 and §5.2,
+- [Guards and tests](../../../../../reference/guards-and-tests.md), §3.14 D191 and §5.2,
   owns gates, historical immutability and conversion proof.
-- [Operating reference](../../../.agents/skill-library/repository-work/REFERENCE.md),
-  [roadmap governance](../../roadmap/roadmap.md) D344, and nearest module instructions
+- [Operating reference](../../../../../../../.agents/skill-library/repository-work/REFERENCE.md),
+  [roadmap governance](../../../../../../roadmap/roadmap.md) D344, and nearest module instructions
   govern execution and integration. Read scoped lessons before editing.
-- [Command/delegation plan](../command-groups/README.md) was originally sequenced first;
+- [Command/delegation plan](command-groups.md) was originally sequenced first;
   the parallel execution amendment below supersedes that launch prerequisite. Its original
-  predecessor is [worker/request names](../worker-names/README.md),
+  predecessor is [worker/request names](worker-names.md),
   which follows Task 2.6.1-3. These assignments share migrations, registries, historical
   inspection and deletion machinery; reconcile shared integration inputs without taking peer scope.
 
@@ -381,7 +388,7 @@ integration occurred in this task.
 ### Assigned combined integration — 2026-09-08
 
 The operator's **“do it”** assigns S5 integration and cleanup. This task yielded shared-target
-ownership to the command-groups task. The [combined integration record](../command-groups/README.md#assigned-combined-integration--2026-09-08)
+ownership to the command-groups task. The [combined integration record](command-groups.md#assigned-combined-integration--2026-09-08)
 binds the exact three candidates, primary base, isolated integration branch, migration order,
 gates, repairs, independent review and cleanup. Original rejection/repair and accepted-candidate
 evidence above is retained. Final numbering is worker 35, operation 36, command groups 37, with
@@ -396,5 +403,5 @@ The combined owner records fresh complete review PASS at `445fe424`, full gates
 merge `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`. This assignment's exact clean,
 inactive candidate checkout and branch were removed after ancestry verification; physical
 path and ref absence passed. The observer task remains visible by its explicit request.
-See the [combined closeout](../command-groups/README.md#accepted-local-integration-and-cleanup--2026-09-08)
+See the [combined closeout](command-groups.md#accepted-local-integration-and-cleanup--2026-09-08)
 for exact candidate, review, integration and cleanup bindings. No push or database conversion.

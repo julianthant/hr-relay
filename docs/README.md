@@ -51,3 +51,8 @@ The former `docs/migrations/`, `docs/guides/`, and `docs/findings/` folders now 
 `docs/rebuild/`, with their filenames retained. Source-pinned citations, frozen history, and temporary handoffs may still
 cite those earlier paths. Source comments participate in workflow fingerprints, so their historical
 citations are resolved through this map without changing runtime identities. Former flat phase paths resolve through the [plans index](rebuild/plans/README.md#earlier-paths); current roadmap bindings name the split files. Reference paths are unchanged.
+
+The former `docs/sidetracks/` database plans are consolidated in
+[Phase 2.6 database modernization](rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md).
+Its `history/` folder retains completed timeline T1 and worker/operation/command rename evidence;
+current task cards and launch prompts use the combined owner. No old sidetrack entry point is active.

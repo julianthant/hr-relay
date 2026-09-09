@@ -1,20 +1,17 @@
-# Phase 2.6.2 · Database modernization
+# Phase 2.6 · Database modernization
 
 ## Approval and scope
 
 On 2026-09-09 the operator approved combining database-parallel, database-remaining and the
 remaining timeline T2 into one prerequisite-driven workflow before the former 2.6.2 proof task.
-This folder is the single substantive plan owner. Earlier folders are navigation/history only.
+This folder is the single substantive plan owner. The old sidetrack folders are removed; completed evidence is retained in this folder's history/.
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
 **Status: organization and approved product directions recorded; execution admission remains open.**
-No runtime changes, implementation gates or accepted prerequisite releases are claimed here.
-The active **Review timeline history** task was inspected on 2026-09-09: it is implementing T1 in
-`hr-worktree-timeline-events`, with focused repairs, full gates and review still outstanding.
-T1 is an external input whose in-flight ownership, plan, gates and evidence remain unchanged.
-A later coordination message reports candidate `535c16c6650ac0aa7cd818cd4480c58de51b0f87`
-and R1c PASS, with integration gates still running; this is not yet an accepted master release.
+No database-modernization implementation releases are claimed here. T1 is a separately completed input.
+Timeline T1 is now integrated at `46930920696ab214b036d5f2681b8ffb4e5620ea`; its existing owner
+records R1c PASS, integration gates and cleanup. Its implementation/evidence remain unchanged.
 T2 is included here as pending work; do not run the old standalone T2 prompt as well.
 
 The [product decisions](decisions.md) retain every approved settings/version/archive/read-model
@@ -25,54 +22,71 @@ implemented behavior until prerequisite C0 ratifies the approved changes at thei
 
 ## Roadmap identity
 
-| Current identity | Meaning | Earlier identity |
-| --- | --- | --- |
-| 2.6.2 / `p2-db-modernization` | This combined planning and development workflow | database-parallel + database-remaining + pending timeline T2 |
-| 2.6.3 / `p2f-proof` | Fresh final integration, migration/recovery proof, heavy tests, repairs and independent review | Former 2.6.2; stable node ID unchanged |
-| 2.6.4 / `p2f-close` | Final evidence and fixture handover to 3.1 | Former 2.6.3; stable node ID unchanged |
+The operator requested visible prerequisite and parallel-child cards matching Phase 3.1. The
+previous single 2.6.2 container is replaced by actual tasks. Assignment letters remain aliases
+for the existing product owners; this changes display/binding, not the approved implementation split.
 
-Completed 2.6.1 tasks retain their identities and evidence. The existing task titled
-“Plan phase 2.6.2” refers to the old proof assignment: resume it as **2.6.3**, not as this new scope.
-The final 2.6.3 session may record the 2.6.4 handover after satisfying that task's criteria; do not
-repeat unchanged heavy gates merely to record a second task number. Broader Phase 3.1 dashboard
-work remains with its existing owner; only the approved database-driven surfaces move here.
+| Roadmap task | Assignment | Outcome |
+| --- | --- | --- |
+| 2.6.2 | C0 / p2-db-modernization | Contracts and exact execution admission |
+| 2.6.3 | T | Remaining timeline T2 |
+| 2.6.4 | C | Direct run completion |
+| 2.6.5 | F | Shared domain foundation |
+| 2.6.5.1–4 | P / D / G / S | Independent provider / diagnostic / artifact / settings tasks |
+| 2.6.5.5 | Domain finalization | Combine all four domain peers |
+| 2.6.6 | L | Lifecycle foundation; consumes 2.6.5.5 |
+| 2.6.6.1–2 | A / Q | Independent archive transfer / run summaries |
+| 2.6.6.3 | Lifecycle finalization | Combine archive/summary peers |
+| 2.6.7 | V | Served interface foundation; consumes 2.6.6.3 |
+| 2.6.7.1–2 | U / H | Independent Queue/Activity / archive viewer |
+| 2.6.7.3 | p2f-proof | Final integration, heavy tests, repairs and independent review |
+| 2.6.8 | p2f-close | Final handover and cleanup evidence |
+
+Historical aliases: proof was 2.6.2, then 2.6.3; closure was 2.6.3, then 2.6.4. Both stable
+node IDs remain unchanged. The existing task titled “Plan phase 2.6.2” referred to the old proof:
+resume it as 2.6.7.3. Completed 2.6.1 and Phase 3 tasks remain unchanged. Broader dashboard work stays
+with its existing 3.1 owner. The final session may record Task 8 when its criteria pass without
+rerunning unchanged heavy checks just for another task number.
+
+A prerequisite/peer card becomes complete only on its named scoped development release: committed
+working behavior, focused proof and exact handoff. It does not claim independent review or master
+acceptance. This lets dependency edges unlock the actual next tasks while Phase 2.6 and finalizer
+remain unfinished. All full product acceptance remains with 2.6.7.3; no completed cards are claimed now.
 
 ## Workflow and concurrency
 
-These are bounded assignments within 2.6.2, not additional top-level roadmap phases. An arrow
+These are visible tasks within Phase 2.6, with independent peers nested under their prerequisite. An arrow
 means a real input dependency. “Release” means a committed, focused-tested development candidate,
 not reviewed master acceptance. All releases are audited again on the combined final tree.
 
 ```text
-accepted T1 ── C0: contracts and precise allocation
-                    │
-                    T: remaining timeline T2
-                    │
-                    C: run completion
-                    │
-                    F: shared database/domain foundation
-                    ├── P: provider usage ─────────────────────────────┐
-                    ├── D: diagnostic resolution ──┐                 │
-                    ├── G: generated artifacts ───┼── L: lifecycle   │
-                    └── S: settings activation ───┘   foundation     │
-                                                       ├── A: archive/version transfer
-                                                       └── Q: run summaries
-                                                              │ (A + Q)
-                                                       V: served interface release
-                                                       ├── U: Queue/Activity consumers
-                                                       └── H: generic archive viewer
-                                                              │ (U + H + P)
-                                               2.6.3: combine, heavy gates, fixes, review
-                                                              │
-                                               2.6.4: handover and cleanup evidence
+2.6.2 C0 → 2.6.3 Timeline T2 → 2.6.4 Completion → 2.6.5 Domain prerequisite
+                                                      ├─ 2.6.5.1 Provider
+                                                      ├─ 2.6.5.2 Diagnostics
+                                                      ├─ 2.6.5.3 Artifacts
+                                                      ├─ 2.6.5.4 Settings
+                                                      └─ 2.6.5.5 Finalization (after 1–4)
+                                                               ↓
+                                                2.6.6 Lifecycle prerequisite
+                                                      ├─ 2.6.6.1 Archive transfer
+                                                      ├─ 2.6.6.2 Run summaries
+                                                      └─ 2.6.6.3 Finalization (after 1–2)
+                                                               ↓
+                                                2.6.7 Served-interface prerequisite
+                                                      ├─ 2.6.7.1 Queue/Activity
+                                                      ├─ 2.6.7.2 Archive viewer
+                                                      └─ 2.6.7.3 Finalization (full batch gates/review)
+                                                               ↓
+                                                2.6.8 Handover and cleanup evidence
 ```
 
 F unlocks up to **four implementation sessions** (P/D/G/S), subject to actual available checkout
-and test capacity. L needs D/G/S, not P; an unfinished provider implementation alone cannot block
-archive/summary work. P plus A/Q, or P plus U/H, permits up to three active implementers. V needs
-both A and Q. These are separate supervisor tasks because each owns a full behavior/proof seam;
+and test capacity. L consumes finalization 2.6.5.5 after all four domain peers; V consumes 2.6.6.3
+after both archive/summary peers. These are explicit group-release barriers. The later groups each allow two active implementers. Their finalization children run afterward. These are separate supervisor tasks because each owns a full behavior/proof seam;
 default zero implementation subagents. The final session uses one fresh read-only `sup_review`.
-All Codex work uses **GPT-6 Astra/high**. No coordinator session or idle observer is needed.
+Planning, supervision and independent review use **GPT-6 Astra/high**. Any separately authorized
+supporting implementation worker follows the current native Sol/Terra role policy; none is assigned here. Intermediate finalization is owned by [its last child](group-finalization.md), not an idle observer.
+The sole full-batch acceptance/repair owner remains 2.6.7.3.
 
 This graph is the approved scheduling direction, **not a claim that the future seams already
 exist or peers can launch today**. C0 closes decision/ownership questions; each implementation
@@ -91,13 +105,15 @@ If the proposed split cannot satisfy both merge orders, amend it before launchin
 | D | Live diagnostic resolution and remaining diagnostic UI/command behavior; no lessons/fixes machinery | diagnostics.md, all P1–P6 |
 | G | Generated artifact publication/update lifecycle, file verification and existing XLSX exports | artifacts.md generated-output P4–P8 |
 | S | Save/validate/activate app_settings + settings_snapshots for new runs without restart; preserve each existing run's configuration | decisions.md group 2 settings |
+| 2.6.5.5 | Combine all domain candidates and release L after focused integration checks | group-finalization.md |
 | L | Shared archive/version/summary lifecycle contracts, schemas, atomic mutation hooks, deletion/backup/source adapters and live API baseline | prerequisites.md; decisions.md groups 2–5 |
 | A | version_changes and verified archive.sqlite/archive_records transfer, old archive conversion, deletion/recovery and no relaunch backend | decisions.md version/archive/deletion sections |
 | Q | run_summaries derivation, incremental maintenance, rebuild, indexed queries and validated aggregate identity counts | decisions.md group 5 |
+| 2.6.6.3 | Combine archive/summary candidates and release V after focused integration checks | group-finalization.md |
 | V | Freeze working served APIs and shared UI wiring from accepted development A/Q candidates; remove remaining shared relaunch wiring | prerequisites.md |
 | U | Queue/Activity consumers and exports through served queries; benchmark query count/latency with isolated fixtures | decisions.md group 5; timeline.md transaction metric boundary |
 | H | Generic saved archive report list/detail/filter/download viewer; remove archive relaunch UI | decisions.md group 3 |
-| 2.6.3 | Sole final integration/repair owner; required migration/recovery, full gates, fresh independent review; no repair handbacks | final-validation.md and parent phase Task 3 |
+| 2.6.7.3 | Sole final integration/repair owner; required migration/recovery, full gates, fresh independent review; no repair handbacks | final-validation.md and parent phase Task 7.3 |
 
 F owns approved removal of unused gates, ocr_approvals and SQL notes projections, and the
 `dryrun_results` rename with all its consumers; it preserves actual approvals, logs and live-read
@@ -130,9 +146,9 @@ for an order label or substitute a clean textual merge for behavior proof.
 
 ## Candidate flow, integration owner and resources
 
-The operator launches assignments. Each prerequisite supervisor may assemble its named development
-inputs in its own isolated candidate branch as part of its assigned work; this is not master
-integration or acceptance. **2.6.3 is the single final integration and repair owner.** No peer has
+The operator launches assignments. Each group finalization supervisor assembles its named worker candidates in its own isolated
+branch and passes a verified development release to the next prerequisite; this is not master
+integration or acceptance. **2.6.7.3 is the single full-batch acceptance, master-integration and remaining-repair owner.** No peer has
 permission to merge into master, dispatch siblings, restart T1, or push. Local master integration
 still requires the operator's assignment after full gates and review. Progress/evidence belong to
 the assigned file; no peer edits this shared index concurrently.
@@ -140,7 +156,8 @@ the assigned file; no peer edits this shared index concurrently.
 Compact handoff: ID, plan commit, base/head/tree, branch/worktree, exact changed paths and contract
 versions, focused commands/exits/proof rows, unverified heavy rows and concrete remaining defects.
 No repeated status polling. Continue unrelated owned work when blocked, then return the exact blocker.
-Fix in-scope defects during implementation; after candidate handoff, remaining fixes belong to 2.6.3.
+Fix in-scope defects during implementation; group finalization owns immediate combination defects, and the final
+2.6.7.3 session owns all remaining acceptance/review failures without repair handbacks.
 Use /handoff only for unique interrupted state not already captured by that record.
 
 Known contention from the earlier allocation: simultaneous default Vitest invocations can each
@@ -160,20 +177,19 @@ record owner, acquisition and release checks in the affected brief before using 
 
 [Prerequisites](prerequisites.md) define each release. [Prompts](PROMPTS.md) give exact planning and
 conditional execution wording. No base SHA for a future release is fabricated. All implementation
-assignments currently **WAITING ON C0 and accepted T1**, then their explicit inputs in the graph.
+assignments currently **WAITING ON C0** (T1 integration is complete), then their explicit inputs in the graph.
 The architecture graph is recorded now; executable file allocations and resolved launch prompts
 are completed in C0 and checked at each release, not left for parallel peers to negotiate.
 
 Final acceptance requires every retained product proof, required heavy gate, independent review,
-review-finding repair, operator-assigned integration and exact cleanup/evidence. Development release
-never sets a roadmap task to done. No live external submission or operator database upgrade is
+review-finding repair, operator-assigned integration and exact cleanup/evidence. A completed development card means its scoped release only; final product acceptance remains open. No live external submission or operator database upgrade is
 included in this planning or candidate workflow.
 
-## Planning verification — 2026-09-09
+## Initial consolidation verification — a524b70bf
 
 Planning was prepared on `58d4fbcba` and reconciled with `d61dc6fe6`, preserving that commit's
 Phase 3 finalizer amendments and instruction twins. The specific database exception preserves the
-operator's stronger request to defer prerequisite/peer reviews as well as heavy gates to 2.6.3.
+operator's stronger request to defer prerequisite/peer reviews as well as heavy gates to 2.6.7.3.
 
 - Roadmap binding guard: 24/24 tests passed; full repository lint passed.
 - Roadmap generation/freshness and whitespace checks passed.
@@ -187,3 +203,31 @@ operator's stronger request to defer prerequisite/peer reviews as well as heavy 
 
 Exact planning commit and checks are also recorded in the commit message. T1's integration owner
 was notified to preserve this pending-T2 pointer and its own evidence; no T2 execution was requested.
+
+## Sidetrack cleanup and evidence routing
+
+All remaining sidetrack work is now represented here. The original database-parallel and
+database-remaining entry points are removed after repointing current links. Completed timeline T1
+and worker/operation/command rename records are retained under [history](history/timeline-t1.md),
+with exact original commit/path and source digests. Relocation preserves their recorded evidence;
+historical instructions cannot launch duplicate work. Untracked handoffs outside sidetracks remain
+untouched. Use the roadmap's current identities and this folder for all remaining implementation.
+
+## Roadmap expansion and cleanup verification — 2026-09-09
+
+On the documentation candidate based on accepted T1 integration `469309206`:
+
+- Roadmap binding and desktop interaction tests: 2 files, 30 tests passed with one test worker.
+- Full repository lint, roadmap generation/freshness, whitespace and docs instruction audit passed.
+- Three generated groups verified: 4/2/2 mutually independent workers, each followed by its last
+  numbered Finalization child; the next prerequisite requires that child. Full acceptance is
+  2.6.7.3, followed by 2.6.8 handover. Completed 2.6.1 and existing Phase 3 node IDs are preserved.
+- Forty-four scoped Markdown files, including moved history, have no missing local links/anchors.
+- All 26 original domain proof rows and all four historical evidence bodies are preserved;
+  historical source hashes verified, with only relocation banners and Markdown destinations changed.
+- The old sidetracks directory is absent. Already missing completed-plan paths were included in
+  the operator-requested cleanup after preserving their exact committed history; untracked handoffs
+  outside this directory remain untouched.
+
+This is documentation and planning only. No implementation, worktree/task launch, database mutation,
+heavy runtime gate or independent implementation review is claimed. C0 execution admission remains.
