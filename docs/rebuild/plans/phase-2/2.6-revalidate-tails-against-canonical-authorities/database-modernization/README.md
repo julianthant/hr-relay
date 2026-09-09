@@ -27,8 +27,8 @@ independent review remain in 2.6.9.
 [F01–F07 execution brief](foundation.md#approved-execution-brief--2026-09-09), including local master
 merge and owned cleanup after focused PASS. This supersedes generic retention/no-master wording
 for F as well as C; full gates and independent review remain in 2.6.9. F consumed verified C
-integration and its approved plan. Its [focused release and closure](foundation.md#f-prerequisite-repair--2026-09-09)
-record common prerequisite `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` for all four children.
+integration and its approved plan. Its [focused release and closure](foundation.md#f-resolver-port-repair--2026-09-09)
+record common prerequisite `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` for all four children.
 Their distinct registry paths remain absent and unlaunched; later operator sessions recheck capacity.
 Full acceptance and review remain in 2.6.9.
 
@@ -47,7 +47,7 @@ worktree/ref. This supersedes generic frozen-path, no-peer-merge and retained-ca
 for D only. Full gates and complete independent review remain in 2.6.9; implementation is unstarted.
 
 **P-specific approval, 2026-09-09:** the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09) consumes repaired F
-`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. It assigns P local master merge and owned
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. It assigns P local master merge and owned
 worktree/ref cleanup after focused PASS, with full gates and complete independent review in 2.6.9.
 It also reserves to P only the named provider reservation invariant and its historical adaptation
 in `authority-database.ts`; all other frozen shared inputs and sibling ownership remain unchanged.

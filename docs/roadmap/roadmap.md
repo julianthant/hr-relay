@@ -1096,6 +1096,7 @@ log:
 - 2026-09-09 | F06 focused PASS | candidate e32979d0a; 949 unit, 199 affected architecture and 49 filtered UI cases; lint/freshness PASS. Local integration and cleanup pending; final acceptance/review remain 2.6.9
 - 2026-09-09 | F integrated focused release | common P/D/G/S prerequisite 7ec279750817934b7da69ce433e0e5a44fed6a58; 949 unit, 199 guard and 49 filtered UI tests plus lint/freshness PASS. Owned cleanup receipt at F owner; all four children unlaunched; full acceptance/review remain 2.6.9
 - 2026-09-09 | F prerequisite repaired | common P/D/G/S prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48 supersedes initial F; exact checkpoint replay and shared settings callers repaired. 961 unit, 199 guards, 67 filtered UI plus lint/freshness PASS. Repair cleanup receipt at F owner; children unlaunched; full gates/review remain 2.6.9
+- 2026-09-09 | F resolver prerequisite repaired | common P/D/G/S prerequisite 2bb25b6efbe62ca88d64a429f01dc567a76ecfbc; complete resolver result reaches settings application, both composition callers repaired, display-clear host default proved. 1195 focused unit cases across verified runs, 199 guards, 67 filtered UI plus lint/freshness PASS; P/D/G plans preserved, S scope/gates unchanged. Resolver cleanup receipt at F owner; no child launch; full gates/review remain 2.6.9
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
 status: planned

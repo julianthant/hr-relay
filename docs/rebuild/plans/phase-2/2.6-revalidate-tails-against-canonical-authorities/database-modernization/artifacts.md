@@ -551,13 +551,12 @@ full-phase gate or independent review. Command logs are at `/tmp/g-plan-20260909
 
 ### Launch prerequisite update — resolver-port repair
 
-During approved-plan persistence F reopened for the settings resolver callback’s complete
-`ResolvedConfig` result and its dashboard/storage-upgrade callers. Candidate
-`283bbe88440fafb0b44224b8fc085003b7b91dba` is evidence of pending work, not a launch base.
-F confirmed G’s six-file ownership, product requirements and focused/merge/cleanup schedule are
-unchanged. The new integrated F release supersedes `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`
-for all four children. G readiness remains **WAITING ON F’s verified resolver-port integration
-and complete owned cleanup** until the committed current prerequisite record supplies that SHA
-and receipt. The planner then verifies the final committed G plan plus current F ancestry/runtime
-inputs and returns the exact resolved plan/base. No new G product approval or scope expansion is
-implied; this carries the existing prerequisite-repair decision through its verified release.
+F’s complete resolver-port repair is locally integrated at `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. It supersedes
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` as the common P/D/G/S runtime prerequisite. The
+[F resolver release](foundation.md#f-resolver-port-repair--2026-09-09) and its
+[cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json), required to be complete, resolve this F dependency.
+G’s six-file ownership, product requirements and focused/merge/cleanup schedule remain unchanged.
+The planner retains approved G plan `4e84dbcb1b696c5d4d1f99f8a73a5bf25d085dd3`, verifies a final
+committed descendant containing that plan and this F release against F’s tested runtime inputs,
+and returns the exact resolved implementation base. No new G product approval, scope expansion,
+implementation or child launch is implied. P/D/G’s concurrent planning commits were preserved.

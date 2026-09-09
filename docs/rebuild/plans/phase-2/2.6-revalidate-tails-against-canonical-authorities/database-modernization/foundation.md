@@ -986,3 +986,28 @@ floor46 and released migration/pin bytes remain unchanged. Full typecheck, cover
 architecture/parity/build/performance and independent review were not run; they stay in 2.6.9.
 No push, operator database upgrade, HR submission or child launch occurred. The local integration
 and replacement common prerequisite are recorded below after verified merge.
+
+
+### Resolver repair integration and cleanup
+
+**The single current F prerequisite for P, D, G and S is
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`.** It supersedes both earlier F integrations. This local merge contains tested
+candidate `f917ffe7b2308b4746e2aba16719a68cbafdb56c` and evidence commit
+`30a6a3b322c0b15889587642f66f37756b22ba21`. Its tree is `ce5cd9193a1a5f18fa91ed709b703a7ebf19dfd6`.
+The intervening D/P/G approved planning commits (`950c5b617`, `c6b481773`, `4e84dbcb1`) were
+preserved in full after their planners released the shared index. Master was clean before merge;
+no conflicts occurred. All non-document objects exactly match the tested candidate. The
+[launch registry](PROMPTS.md#resolved-f-child-prerequisite--2026-09-09), prerequisite record,
+phase summary and G’s explicit resolver prerequisite row use this same integration.
+
+S’s complete resolver-port blocker is repaired without expanding its ownership or rescheduling
+its focused gates. P/D/G retain their approved plans and rebind their exact implementation bases
+to a verified descendant containing those plans and this F release. No children were launched.
+
+The [resolver repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+is pending until final documentation/freshness checks, unchanged-input verification, preservation
+of ignored outputs, stopped owned processes, ordinary worktree removal and branch deletion succeed.
+The completed receipt binds final master/tree, exact cleanup commands, registration/path/ref absence
+and the evidence manifest. Original F and previous repair receipts remain unchanged. The unrelated
+`codex/separation-accounting-final` lane and calling task remain untouched. Full phase gates and
+independent review remain 2.6.9; no push, operator database upgrade or HR submission occurred.

@@ -12,7 +12,7 @@ merge-and-cleanup exceptions. This file describes outputs and
 acceptance; the exact path manifest and verified bases must be recorded before implementation.
 
 **P-specific approval, 2026-09-09:** the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09) consumes repaired F
-`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. It assigns P local master merge and owned
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. It assigns P local master merge and owned
 worktree/ref cleanup after focused PASS, with full gates and complete independent review in 2.6.9.
 It also reserves to P only the named provider reservation invariant and its historical adaptation
 in `authority-database.ts`; all other frozen shared inputs and sibling ownership remain unchanged.
@@ -149,7 +149,7 @@ source facts become stable inputs to F. Do not implement run_summaries or archiv
 **Approved execution owner:** [F01–F07](foundation.md#approved-execution-brief--2026-09-09), approved
 2026-09-09. C master integration `e43a8d8515486c73c276fa319bbe06d196b309e3` is verified; focused
 release and closure evidence are [at C's owner](run-completion.md#c-schema-39-upgrade-repair--2026-09-09).
-F is locally integrated at `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`; [focused release and closure](foundation.md#f-prerequisite-repair--2026-09-09) supply the single P/D/G/S prerequisite. Its committed plan binds a descendant base, one supervisor, focused checks,
+F is locally integrated at `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`; [focused release and closure](foundation.md#f-resolver-port-repair--2026-09-09) supply the single P/D/G/S prerequisite. Its committed plan binds a descendant base, one supervisor, focused checks,
 local master merge and owned cleanup. This overrides generic no-master/retention rules for F;
 full gates and complete independent review stay in 2.6.9. C reopened during persistence for a
 schema39 → 41 conversion repair; the F brief requires its verified focused release and integration
@@ -516,7 +516,7 @@ D owns `src/events/timeline.ts` for strict resolution history, `src/dashboard/su
 for live action context, and the resolution cases in `tests/unit/command-kernel.test.ts` and
 `tests/unit/database-foundation/four-way-independence.test.ts`. Preserve unrelated assertions and
 all P/G/S ownership. These paths do not intersect P/G/S's changing sets, and require no unmerged
-sibling API. Repaired F `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` remains the common runtime
+sibling API. Repaired F `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` remains the common runtime
 prerequisite. D starts from its committed approved-plan descendant, runs focused proof/lint/freshness,
 merges locally and cleans up its owned worktree/ref. Other shared edits require amendment; full
 phase gates and independent review stay in 2.6.9. L consumes the recorded integrated D commit.
