@@ -84,6 +84,17 @@
     "Legacy candidate: 69 focused separation tests passed; full unit, configured serial, architecture, source lint, and legacy test-lint ratchet passed. Logs: /tmp/sep-standard-comments-test.txt, /tmp/sep-standard-full-unit.txt, /tmp/sep-standard-serial.txt, /tmp/sep-standard-architecture.txt, /tmp/sep-standard-comments-lint.txt, /tmp/sep-standard-test-lint.txt.",
     "Live operational verification: seven replacements and ten new separations were read back with correct jobs, dates and exact standard Comments plus Initiator Comments; Kuali Task 1 saves and dashboard plain/typed transaction IDs were independently read back. Candidate code remains pending independent review and integration."
    ]
+  },
+  {
+   "id": "separation-receipt-review-fixes-2026-09-09",
+   "closedAt": "2026-09-09",
+   "evidence": [
+    "D150 retirement is unchanged. Archival accounting required by the operator standing instruction; no rebuild runtime port or reactivated guard is claimed.",
+    "Exact first-parent and commit blobs checked for all 11 changed src/tests paths.",
+    "Negative controls fail on the prior commit: copied number reuse, omitted canonical text, future reconciled leave, extra receipt narratives and unrelated receipt displayed. Repaired focused suite: 88 passed.",
+    "Candidate gates: 4781 unit tests, 20 serial tests, 166 architecture tests passed; typecheck:all and source lint passed; legacy test lint ratchet zero new/replaced fingerprints. /tmp/sep-review-gate-inputs.json binds input hashes to candidate 91240398; /tmp/sep-review-{full-unit,serial,architecture,typecheck,source-lint,test-lint}.txt.",
+    "Rebuild manifest remains unused by src/tests/scripts; existing retirement and prior records preserved. Review/integration pending; no live write occurred from this patch."
+   ]
   }
  ],
  "commits": [
@@ -2221,6 +2232,156 @@
      "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
      "rebuildRecheckIds": [
       "separation-standard-comments-audit-2026-09-08"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "91240398a4ca0cd226518ebfbf31bfb61972f128",
+   "parentCommit": "0398201b759383f71be277916a5978cefc0b3a7d",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "8a0501cf8d9e3a11215ac8c6caeb68e74e9b1f82555693e8879616b59d7c99c7",
+     "afterSha256": "766a1ad3b0efc7acd9e9782a0f2c2e3b6e213e65435fb4685e7685e4c2bd47af",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f3db03e9157f63ef9fb4ad55b4a76dca463a3a9ab9365cc952b399c9b96a38ca",
+     "afterSha256": "a77391a4e12b95e82cf1f0711d75e3f2fb3a91f31d89851b3648356cfef3dee2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3da7c9c80490c7baf81e471262989837cbfd042074048af86a8749f765250a09",
+     "afterSha256": "7c1648444c84b40c4e786cebb7504ee5c0a39660e875426d54440176ccbcf800",
+     "capabilityIds": [
+      "legacy-workflow-separations",
+      "legacy-workflow-onboarding"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "4cbeb4d3cb1fb32ef8e66f4c182ec3c636f718ed946c196e961cf72e17e94077",
+     "afterSha256": "4cd4f31fb1ba8d03f6fcdeaf62e2329dbce5f6205058e91d8e7f0deede5dc30d",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/transaction-check.ts",
+     "changeKind": "modified",
+     "beforeSha256": "67dbdf388a8a1aa70aa288b44ab1fa12a7a7aee45e18f5e37e1c13fa760f3323",
+     "afterSha256": "4f25dfb92e6aed9d35cfdc08874385ba976f2a3b7c1bedc75f39750a05665ac0",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/ucpath-transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f1807fc7812fcb12e3bb64836f6e1f9f5f5f107dadf6c50d4cdbf4008e4a9a23",
+     "afterSha256": "0b690a59ade9595d77be1731cdafaf09aec63a58fed7aa7ad6226bfbaeb17ee0",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "15280ca74dd845a8930589cdceeee6a1cd3fb53b146b7cccfdc3450a9e6d6f6c",
+     "afterSha256": "8f61cdec82d87473da315f9b6766d6bb43e732e9ac3b2237095f5bccae009a9e",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/live/separations-dryrun.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b68fd8936928f0a03120cbe3dad86c93a9789ab42ec3837c3a60ca35489d7cd5",
+     "afterSha256": "45d79b9d6b3fa3a2039c8e2b21b97e260a51150ce83aa8f98c78fe512e020500",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/separation-receipt.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "5d108566cb042841e4366ae7656b85ce5150b5a51de231e471053224a17fb40e",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9fa1d8bc3f77b8b3295ac6ab132f02804569ccf01723fa643a265efb58a69d70",
+     "afterSha256": "cadfcfacb763aa8985bd8586676cccd7cf99694c92d3b135dcedb8e6504066f7",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/transaction-check.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b785e250b5bb7bcd3bc41ccf270ebde396ac7844b0051df31fa6eb0b95b3c3ed",
+     "afterSha256": "4637fe37d89c5b3b1dcf34820efea23aaeab053619a4202673c909c9eaa37600",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
      ]
     }
    ]
