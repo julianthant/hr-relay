@@ -1093,6 +1093,7 @@ log:
 - 2026-09-09 | C prerequisite superseded by repair | use integrated e43a8d851 together with F approved plan; earlier C release alone is insufficient; no F dispatch
 - 2026-09-09 | 2.6.6 F plan approved | F01–F07 at foundation owner; verified C ancestry and schema41/floor40. One supervisor, focused checks, local master merge and owned cleanup; full gates and independent review remain 2.6.9. F and its four children remain unimplemented
 - 2026-09-09 | F01–F05 implemented | schema47/floor46, composed P/D/G/S baseline and pairwise proof; committed F06 and F07 integration/cleanup pending. Full acceptance/review remain 2.6.9
+- 2026-09-09 | F06 focused PASS | candidate e32979d0a; 949 unit, 199 affected architecture and 49 filtered UI cases; lint/freshness PASS. Local integration and cleanup pending; final acceptance/review remain 2.6.9
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
 status: planned

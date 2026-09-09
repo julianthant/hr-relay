@@ -168,7 +168,7 @@ independent review remain in 2.6.9. C’s focused development release is integra
 Assignment **F**, display **2.6.6**. Single execution owner: [approved F01–F07 brief](database-modernization/foundation.md#approved-execution-brief--2026-09-09).
 The operator approved one supervisor, focused tests/lint/freshness, local master merge and owned
 cleanup. C integration `e43a8d8515486c73c276fa319bbe06d196b309e3` is the verified prerequisite.
-Full gates and complete independent review remain in 2.6.9. F01–F05 are implemented; committed F06 proof and F07 integration/cleanup are pending.
+Full gates and complete independent review remain in 2.6.9. F01–F06 have focused PASS; F07 local integration and cleanup are pending.
 See the [execution record](database-modernization/foundation.md#f-execution-record--2026-09-09).
 
 #### Task 6.1 · Track provider requests and usage

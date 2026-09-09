@@ -507,7 +507,7 @@ The supervisor rechecks volatile ownership and refs before creation; absent plan
 
 ## F execution record — 2026-09-09
 
-**State: F01–F05 complete; candidate freezing for F06.** F07 integration and cleanup remain pending.
+**State: F01–F06 focused PASS.** F07 integration and cleanup remain pending.
 One Astra/high supervisor, zero workers and zero reviewers. This is the approved focused
 foundation release; full acceptance and independent review remain assigned to 2.6.9.
 
@@ -710,3 +710,56 @@ no invalid running-run failure row substitutes for the production lifecycle. The
 repair run passed; full committed focused rerun follows. These are implementation/fixture defects
 within approved F scope, not changed product requirements. The export-service test is a necessary
 closure of G's existing allocated baseline; it preserves every old assertion's purpose.
+
+
+### F06 committed release proof
+
+Tested candidate `e32979d0ac54c440a8805743d5c5a357e50e01f8`, tree `e4ea9deebaa4e3067684528ec3a81be56164e80d`.
+The full assigned and affected set was rerun on this committed candidate after repairs. All commands
+below exited zero. `f06-pass.json` binds each command, selector, duration, log digest and tested
+commit/tree; `candidate.json` records all exact changed paths against the implementation base.
+`candidate-tree-objects.txt` and `input-identity.json` retain source/test/config/dependency/runtime
+inputs. The ten original copied baseline files were rehashed and matched before release.
+
+| Check | Verified result | External evidence |
+| --- | --- | --- |
+| Focused unit scope | 42 files / 949 tests PASS; includes all assigned selectors plus directly affected consumers, annotation rollback/CAS and actual terminal baseline | `committed-unit.log` / `.json` |
+| Affected architecture | 11 files / 199 tests PASS, including roadmap binding | `committed-guards.log` / `.json` |
+| Lint | PASS, zero warnings | `committed-lint.log` / `.json` |
+| Manifest, store catalog, roadmap | All three generators and all three freshness checks PASS; no generated drift | `committed-build-manifest*`, `committed-stores-catalog*`, `committed-roadmap*` |
+| Filtered dashboard | 42 cases PASS | `committed-ui-dashboard.log`, `committed-ui-dashboard-output/` |
+| Intake accessibility | 4 cases and wrapper admission PASS | `committed-ui-intake.log`, `committed-ui-intake-output/` |
+| Diagnostic dialog/gallery | 3 cases PASS, including served download/focus behavior | `committed-ui-diagnostic.log`, `committed-ui-diagnostic-output/` |
+| Links/instructions/whitespace | 146 local links, 9 identical instruction pairs, longest chain 17,333 bytes; committed diff check PASS | `committed-doccheck.log` |
+
+Exact executed focused commands (the external resource-only adapter enforces one Vitest file worker):
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/advisory-zero-authority.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-retention.test.ts tests/unit/artifact-projection.test.ts tests/unit/command-kernel-restart.test.ts tests/unit/command-kernel.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/database-foundation/baseline-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/diagnostic-capture.test.ts tests/unit/diagnostic-safety-projection.test.ts tests/unit/evidence-receipt-repository.test.ts tests/unit/infra/server-verified-artifact-reader.test.ts tests/unit/intake-command-arms.test.ts tests/unit/intake-session.test.ts tests/unit/intake-validation.test.ts tests/unit/ocr-command.test.ts tests/unit/ocr-extraction-admission.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/provider-admission.test.ts tests/unit/receipt-derivation-binding.test.ts tests/unit/run-completion-migration.test.ts tests/unit/run-record-service/service.test.ts tests/unit/server/diagnostic-bundle-readback.test.ts tests/unit/server/intake-surface.test.ts tests/unit/server/operator-xlsx-export-service.test.ts tests/unit/server/settings-facts.test.ts tests/unit/server/settings-runtime-reader.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/sqlite-authority-database.test.ts tests/unit/sqlite-settings-authority.test.ts tests/unit/start-plan.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-diagnostic-redaction.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-upgrade.test.ts tests/unit/worker-composition.test.ts tests/unit/worker-loop.test.ts tests/unit/worker-sessions.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/ai-advisory-no-authority.test.ts tests/unit/architecture/artifact-effect-boundary.test.ts tests/unit/architecture/guard-manifest.test.ts tests/unit/architecture/knowledge-fix-integrity.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/sqlite-settings-authority.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts
+npm run lint
+npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'intake-|settings|loaded storage doctor|diagnostic-'
+npm run test:parity -- tests/parity/intake-accessibility.spec.ts
+npm run test:parity -- tests/parity/diagnostic-bundle-dialog.spec.ts --grep 'opens the strict bundle dialog|captures the exact-identity screenshot gallery'
+npm run build:manifest && npm run build:manifest:check
+npm run stores:catalog && npm run stores:catalog:check
+npm run roadmap && npm run roadmap:check
+python3 /tmp/database-foundation-plan-doccheck.py 4037b6b38395b77d3bcb71d2ccc99954da7d733f..HEAD
+git diff --check 4037b6b38395b77d3bcb71d2ccc99954da7d733f..HEAD
+```
+
+F02–F04 conversion/retirement, F05 actual boundaries and F06 baseline independence are focused PASS.
+The mixed-history proof preserves source-bound backup bytes and semantic restored authority,
+including pre/postcommit faults and no-write repeat; it does not equate native SQLite backup file
+headers with the original source file. Historical missing generated bytes remain explicitly
+unavailable. Generic provider policy, D actions, G remaining publication and S no-restart behavior
+are unimplemented child duties. The six pair/twelve order cases do not claim future branch acceptance.
+
+F07 must verify target cleanliness and ancestry, incorporate this exact candidate, compare all
+execution inputs before D191 reuse, preserve ignored outputs, and remove only F's branch/worktree.
+No final-phase gate/review, provider activation, live database upgrade, push or HR submission occurred.
+
+F06 evidence-only recording reran roadmap generation/freshness, 24 roadmap-binding tests,
+local links/instruction pairs/chain and whitespace checks. Runtime, tests, configuration and
+dependency objects are unchanged from `e32979d0ac54c440a8805743d5c5a357e50e01f8`;
+its focused tests, lint, manifest/catalog and filtered UI checks are reused by that D191 input identity.
