@@ -47,6 +47,11 @@ export const DeletedRunTableSchema = z.enum([
   "durable_outbox",
   "write_attempts",
   "write_intents",
+  "diagnostic_files",
+  "diagnostic_snapshots",
+  "run_receipts",
+  "dryrun_results",
+  // Pre-v39 deletion receipts retain the four original names.
   "diagnostic_attachments",
   "diagnostic_bundles",
   "evidence_receipts",

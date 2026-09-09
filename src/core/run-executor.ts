@@ -546,7 +546,7 @@ export async function executeClaimedRun(
    *
    * The ordering is forced by the schema, not chosen: `FailureRecord`
    * carries the bundle id as a forward reference, while
-   * `diagnostic_bundles.failure_id` references the failure row. So the bundle
+   * `diagnostic_snapshots.failure_id` references the failure row. So the bundle
    * is PREPARED first (redaction and content-addressed attachments, nothing in
    * authority yet), the failure is terminalized carrying its id, and the bundle
    * row lands in the SAME authority transaction — a failure can never point at

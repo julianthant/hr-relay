@@ -346,7 +346,7 @@ describe("dry-run scenario production composition boundary", () => {
     const settings = selectedSettingsFixture(root, clock);
     const record = settings.apply({ browser: { headless: false }, concurrency: { defaultWorkers: 3 } });
     const { active, snapshot } = settings.activate();
-    const snapshotsBefore = startEffects(settings.path).find(({ table }) => table === "config_snapshots");
+    const snapshotsBefore = startEffects(settings.path).find(({ table }) => table === "settings_snapshots");
     const scenarioCase = TEST_MANIFEST.cases[0];
     if (scenarioCase === undefined) throw new Error("the finalization manifest lost its ordinary case");
     const canonicalInput = SeparationsKualiFinalizationCanonicalInput.parse({
@@ -397,7 +397,7 @@ describe("dry-run scenario production composition boundary", () => {
       assert.equal(snapshot?.config.browser.headless, false);
       assert.equal(snapshot?.config.concurrency.defaultWorkers, 3);
       assert.deepEqual(database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
-      assert.deepEqual(startEffects(settings.path).find(({ table }) => table === "config_snapshots"), snapshotsBefore);
+      assert.deepEqual(startEffects(settings.path).find(({ table }) => table === "settings_snapshots"), snapshotsBefore);
       assert.equal(run?.envelope.dryRun, true);
       assert.equal(run?.envelope.workflow, "separations-kuali-finalization");
       assert.equal(run?.envelope.traceId, started.traceId);
@@ -633,13 +633,13 @@ describe("dry-run scenario production composition boundary", () => {
     assert.equal(snapshot?.config.browser.headless, false);
     assert.equal(snapshot?.provenance["concurrency.defaultWorkers"], "settings");
     assert.equal(snapshot?.provenance["browser.headless"], "settings");
-    const before = startEffects(fixture.path).find(({ table }) => table === "config_snapshots");
+    const before = startEffects(fixture.path).find(({ table }) => table === "settings_snapshots");
     const started = await fixture.runtime.start(fixture.request);
     const run = fixture.database.authority.runs.get(started.runId);
     assert.equal(run?.envelope.configSnapshotId, active.configSnapshotId);
     assert.equal(run?.envelope.configFingerprint, active.configFingerprint);
     assert.deepEqual(fixture.database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
-    assert.deepEqual(startEffects(fixture.path).find(({ table }) => table === "config_snapshots"), before);
+    assert.deepEqual(startEffects(fixture.path).find(({ table }) => table === "settings_snapshots"), before);
   });
 
   it("refuses a concurrent SQLite Settings change after initial read before any start effects", async () => {
@@ -670,7 +670,7 @@ describe("dry-run scenario production composition boundary", () => {
     try {
       raw.exec("PRAGMA foreign_keys = OFF");
       afterSettingsRead = () => {
-        raw.prepare("DELETE FROM config_snapshots WHERE record_key = ?").run(active.configSnapshotId);
+        raw.prepare("DELETE FROM settings_snapshots WHERE record_key = ?").run(active.configSnapshotId);
       };
       await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 1 does not bind exact snapshot/);
       before = startEffects(fixture.path);
@@ -688,7 +688,7 @@ describe("dry-run scenario production composition boundary", () => {
     const { active } = fixture.activate();
     const raw = new DatabaseSync(fixture.path);
     try {
-      raw.prepare("UPDATE config_snapshots SET record_json = json_set(record_json, '$.fingerprint', ?) WHERE record_key = ?")
+      raw.prepare("UPDATE settings_snapshots SET record_json = json_set(record_json, '$.fingerprint', ?) WHERE record_key = ?")
         .run("f".repeat(64), active.configSnapshotId);
     } finally {
       raw.close();
@@ -709,7 +709,7 @@ describe("dry-run scenario production composition boundary", () => {
     try {
       // A real SQLite failure at the outer commit's metadata write, after the
       // start audit exists. No transaction counts or mocked kernel are involved.
-      raw.exec(`CREATE TRIGGER refuse_start_commit BEFORE UPDATE ON authority_meta
+      raw.exec(`CREATE TRIGGER refuse_start_commit BEFORE UPDATE ON database_state
         WHEN EXISTS (SELECT 1 FROM command_audits WHERE json_extract(record_json, '$.request.family') = 'start')
         BEGIN SELECT RAISE(ABORT, 'synthetic outer start commit refusal'); END`);
       await assert.rejects(fixture.runtime.start(fixture.request), /synthetic outer start commit refusal/);

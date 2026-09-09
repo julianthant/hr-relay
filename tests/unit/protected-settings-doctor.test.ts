@@ -209,7 +209,7 @@ describe("D332 read-only upgrade phase reporting", () => {
         orphanGateRecordsRemoved: 0, historicalExposure: [], envKeysToRemove: ["PRIVATE_ENV_NAME"],
       });
       const raw = new DatabaseSync(f.options.authorityPath);
-      raw.prepare("INSERT INTO authority_upgrades (record_key, upgrade_id, phase, record_json, created_at) VALUES (?, ?, ?, ?, ?)")
+      raw.prepare("INSERT INTO database_upgrades (record_key, upgrade_id, phase, record_json, created_at) VALUES (?, ?, ?, ?, ?)")
         .run(record.recordKey, record.upgradeId, phase, JSON.stringify(record), record.recordedAt);
       raw.close();
       const before = snapshot(f.root);
@@ -238,7 +238,7 @@ describe("D332 read-only upgrade phase reporting", () => {
   it("keeps a corrupt journal explicitly unavailable without exposing its payload or mutating it", async () => {
     const f = fixture();
     const raw = new DatabaseSync(f.options.authorityPath);
-    raw.prepare("INSERT INTO authority_upgrades (record_key, upgrade_id, phase, record_json, created_at) VALUES (?, ?, ?, ?, ?)")
+    raw.prepare("INSERT INTO database_upgrades (record_key, upgrade_id, phase, record_json, created_at) VALUES (?, ?, ?, ?, ?)")
       .run("broken", "private-upgrade-identity", "planned", JSON.stringify({ private: "private-journal-payload" }), "2026-09-06T20:00:00.000Z");
     raw.close();
     const before = snapshot(f.root);

@@ -79,7 +79,7 @@ function databaseWithSnapshotMissing(removed: string): string {
 
   const raw = new DatabaseSync(path);
   raw.exec("PRAGMA journal_mode = WAL");
-  raw.prepare("UPDATE config_snapshots SET record_json = json_remove(record_json, ?)")
+  raw.prepare("UPDATE settings_snapshots SET record_json = json_remove(record_json, ?)")
     .run(`$.config.${removed}`);
   raw.close();
   return path;
@@ -118,7 +118,7 @@ describe("pre-D125 config snapshots are read forward", () => {
 
     assert.throws(
       () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK),
-      /config_snapshots record .* failed strict record schema validation/,
+      /settings_snapshots record .* failed strict record schema validation/,
     );
     const boot = AuthorityBootStore.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
     const report = boot.report();
@@ -132,7 +132,7 @@ describe("pre-D125 config snapshots are read forward", () => {
 
     assert.throws(
       () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK),
-      /config_snapshots record .* failed strict record schema validation/,
+      /settings_snapshots record .* failed strict record schema validation/,
     );
   });
 

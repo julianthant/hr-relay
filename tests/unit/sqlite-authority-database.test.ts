@@ -1,3 +1,4 @@
+import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
 import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -417,7 +418,7 @@ function applyReleasedMigrationChainForTest(path: string, fromVersion: number): 
     for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > fromVersion)) {
       for (const statement of migration.statements) database.exec(statement);
       database.prepare(`
-        UPDATE authority_meta
+        UPDATE ${databaseStateTable(migration.version)}
         SET schema_version = ?, updated_at = ?
         WHERE singleton_id = 1
       `).run(migration.version, NOW);
@@ -478,14 +479,14 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
     for (const statement of migration.statements) source.exec(statement);
   }
   source.prepare(`
-    INSERT INTO authority_meta (
+    INSERT INTO ${databaseStateTable(version)} (
       singleton_id, schema_version, authority_generation, updated_at,
       migration_owner, migration_started_at
     ) VALUES (1, ?, 0, ?, NULL, NULL)
@@ -911,7 +912,7 @@ describe("native SQLite authority schema", () => {
       assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
       const row = raw.prepare(`
         SELECT record_key, upgrade_id, phase, record_json
-        FROM authority_upgrades
+        FROM database_upgrades
       `).get() ?? {};
       const record = JSON.parse(String(Reflect.get(row, "record_json"))) as Record<string, unknown>;
       assert.deepEqual({
@@ -1068,7 +1069,7 @@ describe("native SQLite authority schema", () => {
     createExactReleasedDatabase(path, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const raw = new DatabaseSync(path);
     raw.prepare(`
-      INSERT INTO authority_upgrades (
+      INSERT INTO database_upgrades (
         record_key, upgrade_id, phase, record_json, created_at
       ) VALUES (?, 'fresh', 'baseline', ?, ?)
     `).run(UUID_1, JSON.stringify({
@@ -1084,7 +1085,7 @@ describe("native SQLite authority schema", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /authority table authority_upgrades record .* failed strict record schema validation/u,
+      /authority table database_upgrades record .* failed strict record schema validation/u,
     );
   });
 
@@ -1256,16 +1257,16 @@ describe("native SQLite authority schema", () => {
       });
       for (const row of [planned(UUID_1), planned(UUID_2)]) {
         raw.prepare(`
-          INSERT INTO authority_upgrades
+          INSERT INTO database_upgrades
             (record_key, upgrade_id, phase, record_json, created_at)
           VALUES (?, ?, ?, ?, ?)
         `).run(row.record_key, row.upgrade_id, row.phase, row.record_json, row.created_at);
       }
       assert.equal(Reflect.get(raw.prepare(`
-        SELECT count(*) AS count FROM authority_upgrades WHERE upgrade_id = ? AND phase = 'planned'
+        SELECT count(*) AS count FROM database_upgrades WHERE upgrade_id = ? AND phase = 'planned'
       `).get(HASH_A) ?? {}, "count"), 2);
       assert.throws(() => raw.prepare(`
-        INSERT INTO authority_upgrades
+        INSERT INTO database_upgrades
           (record_key, upgrade_id, phase, record_json, created_at)
         VALUES (?, 'fresh', 'baseline', '{}', ?)
       `).run(UUID_3, NOW), /UNIQUE constraint failed/u);
@@ -1792,7 +1793,7 @@ describe("native SQLite authority schema", () => {
     openDatabase(markedPath).close();
     const marked = new DatabaseSync(markedPath);
     marked.prepare(`
-      UPDATE authority_meta
+      UPDATE database_state
       SET migration_owner = ?, migration_started_at = ?
       WHERE singleton_id = 1
     `).run("other-process", NOW);
@@ -1945,7 +1946,7 @@ describe("authority generation accounting", () => {
   });
 
   type MutationCase = Readonly<{
-    table: Exclude<AuthorityTableName, "authority_meta">;
+    table: Exclude<AuthorityTableName, "database_state">;
     prepare?: (database: AuthorityDatabase) => void;
     mutate: (database: AuthorityDatabase) => void;
   }>;
@@ -1997,22 +1998,22 @@ describe("authority generation accounting", () => {
       },
     },
     {
-      table: "diagnostic_bundles",
+      table: "diagnostic_snapshots",
       prepare: (db) => { terminalizeForTrust(db); },
       mutate: (db) => { db.authority.diagnosticBundles.insert(DIAGNOSTIC_BUNDLE); },
     },
     {
-      table: "diagnostic_attachments",
+      table: "diagnostic_files",
       prepare: (db) => { terminalizeForTrust(db); },
       mutate: (db) => { db.authority.diagnosticBundles.insert(DIAGNOSTIC_BUNDLE); },
     },
     {
-      table: "evidence_receipts",
+      table: "run_receipts",
       prepare: (db) => { terminalizeForTrust(db); },
       mutate: (db) => { db.authority.evidenceReceipts.insert(EVIDENCE_RECEIPT); },
     },
     {
-      table: "dry_run_scenario_results",
+      table: "dryrun_results",
       mutate: (db) => { db.authority.dryRunScenarioResults.insert(DRY_RUN_SCENARIO_RESULT); },
     },
     {
@@ -2119,7 +2120,7 @@ describe("authority generation accounting", () => {
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
-    { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
+    { table: "settings_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     {
       table: "settings_current",
       prepare: (db) => {
@@ -2218,7 +2219,7 @@ describe("authority generation accounting", () => {
   it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
-        && !["authority_meta", "authority_upgrades"].includes(name))
+        && !["database_state", "database_upgrades"].includes(name))
       .map(({ name }) => name)
       .sort());
     for (const mutation of cases) {
@@ -2272,7 +2273,7 @@ describe("authority generation accounting", () => {
         mutation.prepare?.(database);
         mutation.mutate(database);
       } else {
-        assert.equal(trigger.tableName, "authority_upgrades", `${trigger.name} has no fixture`);
+        assert.equal(trigger.tableName, "database_upgrades", `${trigger.name} has no fixture`);
       }
       const sqlite = new DatabaseSync(path);
       const count = sqlite.prepare(`SELECT count(*) AS count FROM "${trigger.tableName}"`).get() as { count: number };

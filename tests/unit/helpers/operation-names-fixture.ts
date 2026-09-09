@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
 import { DeletedRunRecordSchema } from "../../../src/domain/run/deleted-run.js";
@@ -103,7 +103,7 @@ export function createOperationRenameSource(path: string, version = 34): void {
     db.prepare("DELETE FROM workflow_runs WHERE record_key=?").run(deleted.runId);
     for (const migration of SQLITE_MIGRATIONS.filter((m) => m.version > sourceVersion && m.version <= version)) {
       for (const statement of migration.statements) db.exec(statement);
-      db.prepare("UPDATE authority_meta SET schema_version=?").run(migration.version);
+      db.prepare(`UPDATE ${databaseStateTable(migration.version)} SET schema_version=?`).run(migration.version);
       db.exec(`PRAGMA user_version=${String(migration.version)}`);
     }
   } finally { db.close(); }

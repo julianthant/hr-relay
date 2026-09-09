@@ -233,7 +233,7 @@ export const ProjectionStorageRecordSchema = z.strictObject({
   updatedAt: IsoInstantSchema,
 });
 
-type AuthorityRecordTableName = Exclude<AuthorityTableName, "authority_meta">;
+type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
@@ -245,10 +245,10 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   failures: FailureRecordSchema,
   run_results: RunResultRecordSchema,
   run_terminal_outbox: RunTerminalOutboxRecordSchema,
-  diagnostic_bundles: DiagnosticBundleSchema,
-  diagnostic_attachments: DiagnosticAttachmentStorageRecordSchema,
-  evidence_receipts: RunEvidenceReceiptSchema,
-  dry_run_scenario_results: DryRunScenarioResultSchema,
+  diagnostic_snapshots: DiagnosticBundleSchema,
+  diagnostic_files: DiagnosticAttachmentStorageRecordSchema,
+  run_receipts: RunEvidenceReceiptSchema,
+  dryrun_results: DryRunScenarioResultSchema,
   operator_xlsx_exports: OperatorXlsxExportEvidenceSchema,
   activity_person_pseudonyms: ActivityPersonPseudonymEvidenceSchema,
   activity_person_pseudonym_generations: ActivityPersonPseudonymGenerationBindingSchema,
@@ -265,7 +265,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
   command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
   notifications: NotificationRecordSchema,
-  config_snapshots: ConfigSnapshotRecordSchema,
+  settings_snapshots: ConfigSnapshotRecordSchema,
   settings_current: SettingsCurrentRecordSchema,
   runtime_config: ActiveRuntimeConfigRecordSchema,
   version_plans: VersionPlanStorageRecordSchema,
@@ -296,7 +296,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   workflow_run_batches: RunSessionRecordSchema,
   /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
   deleted_runs: DeletedRunRecordSchema,
-  authority_upgrades: AuthorityUpgradeRecordSchema,
+  database_upgrades: AuthorityUpgradeRecordSchema,
   timeline_events: TimelineEventRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 

@@ -2,7 +2,7 @@
  * Ref operator-trust §2.2 — automatic diagnostic capture.
  *
  * Capture is TWO phases on purpose, and the reason is a foreign key:
- * `diagnostic_bundles.failure_id` references `failures(record_key)`, while
+ * `diagnostic_snapshots.failure_id` references `failures(record_key)`, while
  * `FailureRecord.diagnosticBundleId` is a forward reference the failure row
  * must already carry. Neither row can be written second on its own, so the
  * only honest ordering is

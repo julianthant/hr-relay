@@ -5,7 +5,30 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 37;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 38;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 39;
+
+/** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
+export const DATABASE_TABLE_RENAMES = deepFreeze({
+  authority_meta: "database_state",
+  authority_upgrades: "database_upgrades",
+  diagnostic_bundles: "diagnostic_snapshots",
+  diagnostic_attachments: "diagnostic_files",
+  evidence_receipts: "run_receipts",
+  config_snapshots: "settings_snapshots",
+  dry_run_scenario_results: "dryrun_results",
+} as const);
+
+export function databaseStateTable(schemaVersion: number): "authority_meta" | "database_state" {
+  return schemaVersion < 39 ? "authority_meta" : "database_state";
+}
+
+export function databaseUpgradesTable(schemaVersion: number): "authority_upgrades" | "database_upgrades" {
+  return schemaVersion < 39 ? "authority_upgrades" : "database_upgrades";
+}
+
+export function settingsSnapshotsTable(schemaVersion: number): "config_snapshots" | "settings_snapshots" {
+  return schemaVersion < 39 ? "config_snapshots" : "settings_snapshots";
+}
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
@@ -22,7 +45,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
+type MigrationTableName = "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -784,6 +807,7 @@ export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, rea
   35: V35_TABLES,
   36: V36_TABLES,
   37: V37_TABLES,
+  38: [...V37_TABLES, "timeline_events"].sort(),
 });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
@@ -1899,12 +1923,25 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     version: 38,
     statements: [TIMELINE_EVENT_TABLE_DDL, ...TIMELINE_EVENT_INDEX_DDL],
   },
+  {
+    version: 39,
+    statements: [
+      "ALTER TABLE authority_meta RENAME TO database_state",
+      "ALTER TABLE authority_upgrades RENAME TO database_upgrades",
+      "ALTER TABLE diagnostic_bundles RENAME TO diagnostic_snapshots",
+      "ALTER TABLE diagnostic_attachments RENAME TO diagnostic_files",
+      "ALTER TABLE evidence_receipts RENAME TO run_receipts",
+      "ALTER TABLE config_snapshots RENAME TO settings_snapshots",
+      "ALTER TABLE dry_run_scenario_results RENAME TO dryrun_results",
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
   const renamed = (name: string): string => {
     const renames: Readonly<Record<string, string>> = {
+      ...DATABASE_TABLE_RENAMES,
       write_intents: "run_operations", write_attempts: "run_operation_attempts", durable_outbox: "operation_outbox",
       dependencies: "delegation_dependencies", delegation_manifests: "run_delegations",
       tasks: "workflow_runs", run_sessions: "workflow_run_batches",

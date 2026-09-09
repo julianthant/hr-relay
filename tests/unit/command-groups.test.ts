@@ -217,7 +217,7 @@ describe("command groups", () => {
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("after-conversion-commit"); } } }, clock), /after-conversion-commit/);
     const inspection = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(inspection.schemaVersion, 38);
+    assert.equal(inspection.schemaVersion, 39);
     assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
     const raw = new DatabaseSync(f.path); try { assert.equal(raw.prepare("SELECT count(*) AS count FROM commands WHERE family='bulk-parent'").get()?.count, 1); } finally { raw.close(); }
   });
