@@ -1021,19 +1021,20 @@ log:
 - 2026-09-09 | operator rename-first amendment | new 2.6.2 R; current C0 and later tasks shift by one; planning only in this commit
 
 #### 3 · Settle database contracts and task ownership {#p2-db-modernization}
-status: planned
+status: done
 doc: 2.6 §Task 3 · Settle database contracts and task ownership
 
 > Database modernization now uses visible prerequisite and parallel-child cards, matching 3.1. This planning prerequisite retains the original p2-db-modernization anchor. Scope and exact execution admission remain with the combined folder.
 
 builds:
-- [ ] DOCS close remaining product decisions and ratify approved table/lifecycle contracts
-- [ ] DOCS bind exact disjoint files, tests, migration owners, resources and verified execution prompts
+- [x] DOCS close remaining product decisions and ratify approved table/lifecycle contracts
+- [x] DOCS bind exact disjoint files, tests, migration owners, resources and verified execution prompts
 
 needs:
 - p2db-simple-renames
 
 log:
+- 2026-09-09 | C0010c51c4 · C0 scoped documentation release | R/T1 verified; six contract owners ratified; exact task/test/capacity bindings and resolved T prompt saved; 24 document-binding tests, lint and freshness pass; full runtime gates/review/integration/cleanup remain 2.6.9
 - 2026-09-09 | database roadmap expansion | 2.6.2; assignment C0; visible dependency card only; no implementation or launch readiness claimed
 
 #### 4 · Finish database transaction history and retire ledgers {#p2db-timeline-history}

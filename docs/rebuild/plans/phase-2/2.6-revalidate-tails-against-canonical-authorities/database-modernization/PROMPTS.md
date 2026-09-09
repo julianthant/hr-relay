@@ -8,8 +8,8 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 ## Readiness
 
 R is released at `60b356dd119140dc972a077751ad16af934acb2e`. C0 consumed it and accepted T1;
-C0's recorded scoped validation and committed handoff determine T readiness. Only T can be the next
-READY assignment. C/F/P/D/G/S/L/A/Q/V/U/H and final 2.6.9 remain **WAITING ON** their actual
+C0's scoped-validated handoff is `c7b8b1e037bf27dd70d4df62bbfcac407e475631`
+(admitted plan `0010c51c4189f14a8aa61dac55984c2df791045e`). **T is READY** for an operator-started task. C/F/P/D/G/S/L/A/Q/V/U/H and final 2.6.9 remain **WAITING ON** their actual
 named prerequisite releases. No placeholder SHA or old side-task prompt is executable.
 
 C0 planning/execution was explicitly preapproved and run in the same scheduled task. Its single
@@ -99,3 +99,13 @@ This implements the repository's existing sequential exclusive-checkout option a
 otherwise impossible accumulation of retained worktrees. Only future unused registry paths change;
 R's in-flight/retained binding is untouched. Final 2.6.9 owns integration when assigned and cleanup
 of all retained candidate refs and the actual remaining physical lanes after acceptance.
+
+## Resolved next assignment — 2.6.4 T
+
+This prompt is saved, not dispatched. C0 is complete as a documentation development release;
+T remains unstarted. Later tasks remain WAITING ON their named releases. The receiving supervisor
+must confirm C0 released its clean checkout and retain C0's branch before switching it.
+
+```text
+/supervise 2.6.4 (T), using /Users/julianhein/Projects/hr-worktree-database-contracts/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/timeline.md and its C0 execution allocation. Approved plan commit: 0010c51c4189f14a8aa61dac55984c2df791045e. Verified C0 release/base: c7b8b1e037bf27dd70d4df62bbfcac407e475631, containing R 60b356dd119140dc972a077751ad16af934acb2e and accepted T1 46930920696ab214b036d5f2681b8ffb4e5620ea. Use GPT-6 Astra/high and the Phase 2.6 focused-development/final-2.6.9 gate schedule. Verify the exact base, committed plan, C04 evidence, clean status and exclusive checkout release. Retain codex/database-contracts unchanged. In that released checkout create codex/history-views from c7b8b1e037bf27dd70d4df62bbfcac407e475631; do not create another auxiliary worktree or reset a colliding branch. Implement the entire T scope: retained database transaction history, existing Activity CSV/XLSX and explicit safe CLI export, compatible frozen archive transaction capture, and source-complete ledger/outbox retirement. Preserve every T P1–P9 proof, original source/protected identities, historical fingerprints, shared retry evidence and UNKNOWN refusal. Do not rerun T1 or implement archive.sqlite, run summaries or run-completion retirement. Follow exact path/test ownership in timeline.md and the C0 prerequisite/registry records; run meaningful focused tests, lint and affected freshness. Commit and release the focused-tested development candidate to C, recording exact base/head/tree, commands/exits, source/schema interfaces and unverified heavy proof. Release clean exclusive checkout ownership only after the record is committed and owned processes stop. No intermediate review/finalizer, master merge, push, operator DB upgrade, live submit or automatic next-task dispatch. Full gates, remaining repairs, independent complete review, operator-assigned integration and final cleanup remain 2.6.9. Send Done / Now / Remaining at start and every verified step.
+```

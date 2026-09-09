@@ -609,3 +609,15 @@ choices were selected under current task preapproval after contextual consultati
 historical operator decisions. No speed, quality-score or runtime-correctness claim follows from
 these document gates. The final registry/roadmap record is documentation-only and reuses unchanged
 lint inputs while repeating affected binding/link/freshness checks.
+
+### C0 final release status
+
+**C01–C04 complete as a scoped documentation development release.** Candidate
+`0010c51c4189f14a8aa61dac55984c2df791045e` and recorded release
+`c7b8b1e037bf27dd70d4df62bbfcac407e475631` bind all source contracts, task paths/proofs,
+capacity and evidence. The final recording commit saves the exact [T launch binding](PROMPTS.md#resolved-next-assignment--264-t)
+and marks only C0 complete. The T input is the verified recorded release; final recording changes
+only readiness, status and prompt text. The branch remains retained and checkout ownership is
+released under the registry protocol after clean final verification. No task-specific process remains.
+The operator chooses the next task; C0 did not dispatch T. Final 2.6.9 retains product validation,
+independent review, assigned integration and cleanup.

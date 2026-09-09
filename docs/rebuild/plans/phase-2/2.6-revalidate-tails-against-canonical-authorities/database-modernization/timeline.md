@@ -84,7 +84,7 @@ The combined workflow replaces T2's former per-candidate heavy/review cadence: f
 lint and affected freshness now; every full coverage, architecture, parity, build and recovery proof
 remains due in 2.6.9 with fresh independent review. No operator DB upgrade or live submit is included.
 
-**WAITING ON:** accepted T1 and C0 execution admission; T1 integration is recorded, but no future task base or schema number is guessed.
+**READY after C0 release:** use the saved resolved 2.6.4 T prompt in [PROMPTS.md](PROMPTS.md#resolved-next-assignment--264-t). Base `c7b8b1e037bf27dd70d4df62bbfcac407e475631` contains verified R/T1 and C0 admission. T implementation has not started; select a new migration only after inspecting that base.
 
 ## C0 execution allocation — 2.6.4 T
 

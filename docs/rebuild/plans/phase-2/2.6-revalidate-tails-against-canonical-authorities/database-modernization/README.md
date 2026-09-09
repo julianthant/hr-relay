@@ -14,8 +14,9 @@ This is a **Phase 2.6-only trial**; other phases retain their existing gate requ
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
-**Status: R development release consumed; C0 contracts and execution allocations drafted, pending scoped validation.**
-R is released at `60b356dd119140dc972a077751ad16af934acb2e`. C0 owns admission below; later
+**Status: R and C0 development releases complete; T is ready for its operator-started implementation.**
+R is released at `60b356dd119140dc972a077751ad16af934acb2e`; C0 at
+`c7b8b1e037bf27dd70d4df62bbfcac407e475631`. Later
 product implementation and final 2.6.9 acceptance remain pending. T1 is a separately completed input.
 Timeline T1 is now integrated at `46930920696ab214b036d5f2681b8ffb4e5620ea`; its existing owner
 records R1c PASS, integration gates and cleanup. Its implementation/evidence remain unchanged.
@@ -57,7 +58,7 @@ Completed 2.6.1 and Phase 3 identities, scope and gate schedules remain unchange
 A prerequisite/peer card becomes complete only on its named scoped development release: committed
 working behavior, focused proof and exact handoff. It does not claim independent review or master
 acceptance. This lets dependency edges unlock the actual next tasks while Phase 2.6 and finalizer
-remain unfinished. All full product acceptance remains with 2.6.9; no completed cards are claimed now.
+remain unfinished. All full product acceptance remains with 2.6.9; R and C0 have scoped completed cards; later tasks remain planned.
 
 ## Workflow and concurrency
 
@@ -286,3 +287,13 @@ tables distinguished recommendations from prior decisions; these selections use 
 preapproval. Current shared-operation retention is preserved and extended through verified archive
 ownership, without direct historical-attempt cascades or fabricated tombstones. The owning reference
 contracts and decision pointers record the target behavior separately from implementation facts.
+
+### C0 release
+
+Admission candidate `0010c51c4189f14a8aa61dac55984c2df791045e`, recorded release
+`c7b8b1e037bf27dd70d4df62bbfcac407e475631`, branch `codex/database-contracts` at
+`/Users/julianhein/Projects/hr-worktree-database-contracts`. The [C04 evidence](prerequisites.md#c04--verified-development-candidate-and-release-evidence)
+records 24 document-binding tests, lint, freshness, 270 scoped links and instruction checks.
+The [resolved T prompt](PROMPTS.md#resolved-next-assignment--264-t) is saved without dispatch.
+C0's checkout is released for the registry's verified sequential reuse; its branch remains retained.
+No runtime implementation or independent product acceptance is claimed by this documentation task.

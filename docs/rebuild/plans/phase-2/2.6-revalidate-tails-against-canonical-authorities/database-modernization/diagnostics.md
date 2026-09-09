@@ -260,7 +260,7 @@ is authorized here. An operator-root upgrade/cleanup is a separately assigned ac
 integration, verified stopped ownership, source-bound backup, supported upgrade plan/apply/doctor
 and sanitized before/after identity/count evidence. This planning work changes no runtime data.
 
-**WAITING ON:** C0's exact execution brief and the assignment's actual prerequisite release.
+**WAITING ON:** the assignment's actual prerequisite development release. C0's execution allocation is admitted below; no future base is guessed.
 All earlier planning checks remain historical Git evidence, not gates for the new implementation.
 
 ## C0 execution allocation — 2.6.6.2 D
