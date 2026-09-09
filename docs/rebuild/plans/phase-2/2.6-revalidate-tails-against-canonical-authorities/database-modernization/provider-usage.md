@@ -338,6 +338,52 @@ source/generated site. Never overwrite sibling edits or change their allocations
 necessary manifest/catalog outputs only through their existing generators; no source catalog or
 guard-inventory changes are admitted by this task. Preserve released migrations and guard semantics.
 
+### Parallel coordination and remaining duties
+
+The operator requested this plan/prompt amendment after updating the parallel protocol on
+2026-09-09. Read and follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination)
+before any coordination. This section binds that protocol to P; it adds no coordinator, routine
+check-in, reservation round, peer launch or acceptance handshake.
+
+- **Independent assignment:** one P supervisor owns P01–P06, its isolated branch/worktree,
+  focused gates, local master integration, integration verification and owned cleanup. The operator
+  opens D/G/S separately. Their existence does not require messages or a group-wide resource slot.
+  L already owns consuming the recorded P/D/G/S releases; 2.6.9 already owns complete review,
+  full gates and final acceptance. Those existing duties need no new acceptance handshake.
+- **Message necessity:** inspect committed owners, Git and primary evidence first. Default to no
+  peer messages. Contact an exact verified recipient only when that owner must take a necessary
+  action on an unresolved blocker, changed required input, actual write/resource conflict or duty
+  transfer. Send the fact, resource/commit and requested action once. No broadcasts, availability
+  surveys, acknowledgments, readiness reports, progress relays or duplicate native result delivery.
+  Do not reuse planning-task IDs as future implementation recipients or infer ownership from titles.
+- **Isolation and actual conflicts:** shared planning documents, generated output and Git indexes
+  are shared writes. Keep independent edits and checks in P's isolated checkout; serialize only
+  the actual shared-target operation under the existing isolation policy. The earlier planning-only
+  D/P/G commit exchanges create no implementation queue or sibling dependency. For an evidenced
+  conflict, use a verified supported acquisition mechanism; otherwise request once from the known
+  owner and require a valid grant. Silence, elapsed time and clean Git alone grant no ownership.
+  Release after the conflicting operation, including failure; notify only a named waiter who needs
+  that release, with verified process exit or mutation completion. Do not invent locks or queues.
+- **Durable state:** maintain one compact execution record here with P's actual task ID,
+  branch/worktree, base/candidate/tree, owned scope, gate evidence and tested inputs, dirty state,
+  pending verification and remaining-duty owner. Only when a real conflict exists, add its exact
+  resource, owner, needed action, acquisition evidence and release condition. No pre-emptive peer
+  roster or speculative waiter list is required.
+- **Transfer and resume:** P retains its required gates, final verification, integration and cleanup
+  until complete or explicitly transferred to an authorized recipient who accepts those remaining
+  duties. Sending a message is not acceptance. A preassigned L/2.6.9 duty is not a new transfer.
+  If an owned dependency is unresolved, continue independent work and use supported completion waits
+  with cursors/backoff only while its result is needed. Use an existing authorized return/resume
+  mechanism; otherwise state the operator resume point. Do not add monitoring or dispatch.
+- **Finish:** after P's owned work/processes are complete, record the scoped development release
+  and end the turn. Do not monitor siblings, broadcast completion or seek acceptance from L merely
+  because P finished. If duties were explicitly transferred and none remain locally, end with the
+  contribution status and remaining owner; keep overall completion open where appropriate.
+  Done / Now / Remaining updates go to the operator, not to peers.
+
+Product scope, P's narrow shared integrity amendment, exact F prerequisite, focused checks,
+local merge/cleanup and final 2.6.9 full-gate/review timing are unchanged.
+
 ### Feasibility and required proof
 
 Inspection is distinct from execution proof. F's retained receipt reports 961 unit, 199 affected
@@ -361,7 +407,8 @@ P must extend missing lifecycle/boundary cases rather than claim all historical 
 1. **P01 — Bind execution.** Verify committed plan, repaired F ancestry and complete receipt;
    recheck branch/path/capacity and identify other active owners. Create the isolated checkout;
    verify source inputs against F, load this approved owner from the plan SHA, and bind evidence
-   directory and effective test worker. Report Done / Now / Remaining before subsequent work.
+   directory and effective test worker. Read the linked Parallel coordination protocol and initialize
+   the local execution record; no peer check-in is required. Report Done / Now / Remaining before subsequent work.
 2. **P02 — Correct integrity checks.** Reproduce mixed-kind corruption reporting through the real
    current invariant; implement only the named shared query/historical mapping exception. Add
    current/historical positive and corrupt negative controls in the P-owned test. Preserve genuine
@@ -382,7 +429,8 @@ P must extend missing lifecycle/boundary cases rather than claim all historical 
    reuse. Update P status to a merged development release, preserve proof outside its worktree,
    stop only owned processes and remove only the owned auxiliary worktree and merged branch.
    Verify registration/path/ref absence and clean master, record actual cleanup and L's release,
-   and stop. No automatic successor. Keep review/full gates explicitly deferred to 2.6.9.
+   and end the turn without monitoring siblings or broadcasting completion. No automatic successor.
+   Keep review/full gates explicitly deferred to 2.6.9.
 
 ### Focused gate schedule and resource recipe
 
