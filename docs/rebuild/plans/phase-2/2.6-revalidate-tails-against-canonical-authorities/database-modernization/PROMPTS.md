@@ -249,7 +249,7 @@ live database application, HR submission, sibling launch or cleanup of other lan
 
 ### S verified supervisor prompt — 2026-09-09
 
-**READY for operator launch**, subject to execution-time capacity/ownership checks. The complete
+**Completed scoped release; historical launch prompt retired.** S01–S06 passed focused integration and owned cleanup; L consumes the [committed S06 release](decisions.md#s06-scoped-release-and-cleanup--2026-09-09). Full gates and independent review remain at 2.6.9. The complete
 [approved S01–S06 plan](decisions.md#approved-s-execution-brief--2026-09-09) is committed at
 `d22b6e8e657e442f2c287b679833e96c1e7173f8`, also the exact implementation base. Repaired F
 `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` is an ancestor and its cleanup receipt is complete.

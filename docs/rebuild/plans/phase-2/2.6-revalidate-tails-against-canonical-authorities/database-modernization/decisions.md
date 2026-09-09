@@ -674,7 +674,7 @@ This section supersedes the C0 S allocation's obsolete prerequisite, no-master/r
 and separate `04-settings-evidence.md` instructions. Product requirements remain at
 [group 2 settings](#approved-group-2-settings-current-settings-and-retained-snapshots) and
 [the C0 settings contract](../../../../reference/clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09).
-S01–S05 are complete at the frozen candidate below; S06 integration/cleanup remains open.
+S01–S06 are complete: focused integration PASS and owned worktree/ref cleanup verified.
 A scoped S release is not final Phase 2.6 acceptance.
 
 ### Prerequisite, allocation and isolation
@@ -930,7 +930,7 @@ Implementation remains unstarted; planning creates no worktree, implementation a
 
 ### S execution record — 2026-09-09
 
-Current state: S01–S05 complete; S06 local integration, invalidated checks and cleanup remain open. This is a scoped development release only. L and final 2.6.9 retain their existing
+Current state: S01–S06 complete, integrated locally with focused PASS and verified owned cleanup. This is a scoped development release only. L and final 2.6.9 retain their existing
 assigned duties; no messages, new acceptance handshake, worker or reviewer were dispatched.
 
 - Exact approved plan/base: `d22b6e8e657e442f2c287b679833e96c1e7173f8`; required ancestor
@@ -1024,6 +1024,56 @@ resized or recycled. Exact total historical repair/time telemetry is not inferre
 and integration runs are required validation, separate from those repair rechecks. Future briefs
 should validate current schema fixtures and the filtered runner's accessibility requirement before
 freezing their test ownership/commands.
+
+
+
+#### S06 scoped release and cleanup — 2026-09-09
+
+S is released to L through this committed record. L and final 2.6.9 retain their previously assigned
+combined proof, repairs and independent review; no new acceptance handshake or successor launch occurred.
+
+| Identity / result | Verified evidence |
+| --- | --- |
+| Original runtime/UI candidate | `e2f65428f0f580381121d8be1bda9d754cdcb2b3`, tree `64d279ca59050d4b3d1dbd667550cfa02f9f75c2` |
+| Original S evidence tip | `8c060098cbfb1854cdd12e2c0cdc09f217612aaf` |
+| First local integration | `2fa5a9166ef25af970c2e5585c1e1912faea01dd`, tree `8adf8854729ce7a7f6daf6617bb360da3e57720c` |
+| Final test-only candidate | `d2744ea658f44730eadbc35f7fa83a68ee7b7ff7`, tree `ce1d486e96addbb75a1515367d33db0a92eb1bf7` |
+| Test-only local integration | `c7336ec9ba6557a9980c2996a04c68ff027e7284`, tree `b64f534119ab7c601d19ac30d79f0adf44cce9d8` |
+| Integration focused units | PASS, all 18 files / 350 tests on merged P/D/G/S inputs |
+| Integration guards / lint / freshness | PASS, six guards / 49 tests; lint and all six generation/check commands |
+| Integration desktop | PASS, dedicated two cases plus unchanged settings/start and dedicated evidence: 34 cases |
+| Final resource proof | PASS, four cases; six guards / 49 tests and lint rerun after the test-only strengthening |
+| Cleanup | Ordinary worktree removal and `git branch -d` PASS; physical path, registration and branch ref absent |
+
+[Integration commands and log hashes](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/integration-gates.json),
+[final resource proof](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/provider-final-gates.json),
+[input-identical reuse](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/provider-reuse.json), and
+[complete closure receipt](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/closure.json)
+retain the exact candidate/tree, final master/tree, input/log hashes and cleanup commands. The
+integration run observed no changing inputs. Final strengthening changed only the owned resource
+test: actual OCR adapters now prove both ordered retained model chains with fixed synthetic process
+credentials. All 17 other unit files (346 cases), production/dependency/configuration and desktop
+inputs are byte-identical; reuse is explicitly proven rather than assumed. The complete original
+candidate remains reachable through local master.
+
+The only merge conflict joined two independent additions at the same location in this S section:
+planning receipt `21786a207` and execution receipt `8c060098c`. Both complete sections were kept;
+no product or sibling content was dropped. Primary HEAD/index/cleanliness were checked immediately
+before each shared mutation. All implementation and the test-only follow-up were made in S's
+worktree. The final record/pointer update changes documentation and generated roadmap output only;
+its affected documentation/roadmap gates and executable-input reuse are preserved in the receipt.
+
+Ignored bundle, parity output and manual browser evidence were copied outside the worktree before
+removal. The owned manual browser/server and gate processes exited; the dependency symlink's target
+was preserved. Other worktrees/branches and operator state were untouched. No push, operator DB
+upgrade, HR submission, task archive, peer message, worker/reviewer or sibling launch occurred.
+Full typecheck/coverage, broad architecture/parity/build/performance, combined pair/order and
+phase-wide recovery/scenario proof, and complete independent review remain explicitly at 2.6.9.
+
+The final proof inspection added the actual provider-construction assertion because stored snapshot
+checks alone did not prove the production adapter received the model chain. This was one further
+owned proof repair, with no production change or new product scope. Its affected rechecks are
+separate from the required first integration run.
 
 
 ## C0 execution allocation — 2.6.7.1 A

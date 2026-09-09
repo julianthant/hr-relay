@@ -557,9 +557,9 @@ orders, and 2.6.9 both U/H orders on disposable trees. Preserve aggregate counts
 source identities, archive custody, deletion and UNKNOWN results in either order. If a fixture or
 registration change breaks independence, repair the prerequisite and revalidate before dispatch.
 
-P/D/G author their own existing owner files. S/A/Q/U/H read shared `decisions.md` and write only
-`04-settings-evidence.md`, `05-archive-evidence.md`, `06-summary-evidence.md`,
-`07-activity-ui-evidence.md`, `08-archive-ui-evidence.md`, respectively, in this folder.
+P/D/G author their own existing owner files. S uses only its [approved execution section and completed scoped release](decisions.md#s06-scoped-release-and-cleanup--2026-09-09), superseding the obsolete separate settings evidence file. A/Q/U/H read shared `decisions.md` and write only
+`05-archive-evidence.md`, `06-summary-evidence.md`, `07-activity-ui-evidence.md`,
+`08-archive-ui-evidence.md`, respectively, in this folder.
 Shared roadmap, contract/index and registry changes belong to the consuming prerequisite/finalizer.
 
 D owns new `tests/parity/failure-resolution.spec.ts`, its local
