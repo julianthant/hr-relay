@@ -8,8 +8,8 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 ## Readiness
 
 R is released at `60b356dd119140dc972a077751ad16af934acb2e`. C0 consumed it and accepted T1;
-C0's recorded scoped validation and committed handoff determine T readiness. Only T can be the next
-READY assignment. C/F/P/D/G/S/L/A/Q/V/U/H and final 2.6.9 remain **WAITING ON** their actual
+C0's scoped-validated handoff is `c7b8b1e037bf27dd70d4df62bbfcac407e475631`
+(admitted plan `0010c51c4189f14a8aa61dac55984c2df791045e`). **T is READY** for an operator-started task. C/F/P/D/G/S/L/A/Q/V/U/H and final 2.6.9 remain **WAITING ON** their actual
 named prerequisite releases. No placeholder SHA or old side-task prompt is executable.
 
 C0 planning/execution was explicitly preapproved and run in the same scheduled task. Its single
@@ -99,3 +99,27 @@ This implements the repository's existing sequential exclusive-checkout option a
 otherwise impossible accumulation of retained worktrees. Only future unused registry paths change;
 R's in-flight/retained binding is untouched. Final 2.6.9 owns integration when assigned and cleanup
 of all retained candidate refs and the actual remaining physical lanes after acceptance.
+
+## Resolved next assignment — 2.6.4 T
+
+The operator approved the expanded [T01–T06 execution brief](timeline.md#approved-execution-brief--2026-09-09)
+on 2026-09-09. It supersedes the former C0-only launch prompt here. T remains unstarted;
+this planning update neither dispatches it nor changes later dependency releases.
+
+The fresh supervisor consumes the exact approved planning commit containing that brief, verified
+by the planning session after commit. Create `codex/history-views` at
+`/Users/julianhein/Projects/hr-worktree-database-contracts` from C0 release
+`c7b8b1e037bf27dd70d4df62bbfcac407e475631`, then cherry-pick that planning commit and verify
+identical brief content before implementation. C0 final record
+`dc26c74fde0bb5ec9436e1409884451cd5dd698d` is incorporated in master through
+`8cf605a426553b6eeb169fffb0ec3ccc5b2f94d0`; its removed task branch is not required.
+Recheck absence or clean explicit ownership release of the lane, branch availability, prerequisite
+ancestry and the four-auxiliary-worktree limit. Preserve unrelated worktrees.
+
+Use `/supervise 2.6.4 (T)` with Astra/high, one supervisor and zero implementation workers.
+The linked owner contains the complete approved allocation, ordered steps, P1–P9, failure controls,
+exact focused commands, exclusions and release conditions. Full gates, remaining repairs, fresh
+independent complete review, operator-assigned master integration and final cleanup remain 2.6.9.
+Return the committed development candidate to C only; no master merge, push, live application or
+automatic next-task dispatch. The planning session returns the copy-ready prompt with the full
+verified plan SHA after documentation gates and commit verification.
