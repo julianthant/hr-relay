@@ -1,3 +1,4 @@
+import { FailureResolutionCaptureSchema, type FailureResolutionCapture } from "../../../domain/trust/failure-resolution.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { failureResolutionCapability } from "../../../core/failure-resolution.js";
 export function createFailureResolutionQuery(authority:Pick<AuthorityRepositories,"failures"|"failureResolution">){
@@ -10,4 +11,12 @@ export function createFailureResolutionQuery(authority:Pick<AuthorityRepositorie
   },
   read(runId:string,failureId:string){return authority.failureResolution.read(runId,failureId);},
  });
+}
+
+/** Keep raw capture identity separate from the operator-facing protected-text projection. */
+export function projectFailureResolution(capture: FailureResolutionCapture, protectedInput: boolean): FailureResolutionCapture {
+  const parsed = FailureResolutionCaptureSchema.parse(capture);
+  return protectedInput && parsed.resolution.status === "resolved" && parsed.resolution.note !== undefined
+    ? { ...parsed, resolution: { ...parsed.resolution, note: "Protected resolution note withheld." } }
+    : parsed;
 }

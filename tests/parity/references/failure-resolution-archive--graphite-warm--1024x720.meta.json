@@ -1,0 +1,11 @@
+{
+  "stateId": "failure-resolution-archive",
+  "viewport": "1024x720",
+  "theme": "graphite-warm",
+  "adapter": "captured-presentation-fixture",
+  "fixtureId": "diagnostic-resolution",
+  "descriptorHash": "6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-09-09T12:00:00.000Z",
+  "variant": "default"
+}

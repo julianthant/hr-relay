@@ -115,3 +115,22 @@ describe("failureFingerprintHistory — the fingerprint's history (E30)", () => 
     assert.throws(() => failureFingerprintHistory(Number.NaN), /positive integer/);
   });
 });
+
+import { acceptFailureResolutionReadback } from "../../../src/dashboard/surfaces/trust-model.js";
+import { FIXTURE_IDS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-day.js";
+it("accepts only the exact selected failure and nested annotation identity", () => {
+  const section = FIXTURE_SECTIONS[FIXTURE_IDS.failedRun]?.failure;
+  assert.ok(section?.section === "failure" && section.payload.state === "available");
+  const detail = section.payload.value;
+  const response = { section: "failure", payload: { state: "available", value: { ...detail,
+    resolution: { capability: { state: "available" }, capture: { runId: detail.runId, failureId: detail.failureId, resolution: { status: "unresolved", version: 1 } } },
+  } } };
+  assert.equal(acceptFailureResolutionReadback(detail.runId, detail.failureId, response).capture.resolution.version, 1);
+  for (const capture of [
+    { ...response.payload.value.resolution.capture, runId: "11111111-1111-4111-8111-111111111111" },
+    { ...response.payload.value.resolution.capture, failureId: "11111111-1111-4111-8111-111111111111" },
+  ]) assert.throws(() => acceptFailureResolutionReadback(detail.runId, detail.failureId, { ...response, payload: { ...response.payload, value: {
+    ...response.payload.value, resolution: { ...response.payload.value.resolution, capture },
+  } } }), /did not match/u);
+  assert.throws(() => acceptFailureResolutionReadback(detail.runId, detail.failureId, { section: "failure", payload: { state: "missing", reason: "moved source" } }), /unavailable/u);
+});

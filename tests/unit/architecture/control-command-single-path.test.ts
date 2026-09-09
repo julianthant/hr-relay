@@ -62,6 +62,12 @@ import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
   {
+    commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard",
+    family: "failure-resolution", type: "annotate-failure",
+    target: { runId: UUID_2, failureId: UUID_4, expectedVersion: 1 }, payload: { action: "resolve" },
+  },
+  {
     commandId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard",
     family: "workflow-batch", type: "set-batch-grouping",
@@ -86,6 +92,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 /* ── the ratified Phase-1f partition (ref dashboard-surfaces §Phase-1f authority) ────────── */
 
 const EXPECTED_ACTIVE = {
+  "failure-resolution": ["annotate-failure"],
   start: ["start-run"],
   "workflow-batch": ["set-batch-grouping"],
   "worker-browser": [

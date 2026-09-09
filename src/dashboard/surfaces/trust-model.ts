@@ -1,3 +1,8 @@
+import { settleCommandResult } from "../app/command-result.js";
+import { useEffect, useRef, useState } from "react";
+import { FailureResolutionCommandSchema } from "../../domain/commands.js";
+import { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import type { DashboardClient } from "../client/index.js";
 /**
  * The pure half of `trust.tsx` (the surface/model pairing rule, ref
  * frontend-backend-integration §8.14 — a `.tsx` module exports components only).
@@ -472,4 +477,96 @@ export function writeProofAbsence(composition: 2 | 3 | 4 | undefined): string {
   return composition === undefined
     ? "derived before receipts carried write proof (composition 1) — what proved this write was not recorded on it"
     : "no completion proof is in authority for this write — no settled write intent reached it";
+}
+
+
+export interface LiveFailureContext {
+  readonly actorId: string;
+  readonly nowIso: string;
+}
+
+type ResolutionWire = NonNullable<FailureDetailWire["resolution"]>;
+
+export function acceptFailureResolutionReadback(runId: string, failureId: string, input: unknown): ResolutionWire {
+  const response = RunDetailSectionResponseSchema.parse(input);
+  if (response.section !== "failure" || response.payload.state !== "available") {
+    throw new Error("Failure resolution is unavailable. Refresh the run.");
+  }
+  const detail = response.payload.value;
+  if (detail.runId !== runId || detail.failureId !== failureId || detail.resolution === undefined
+    || detail.resolution.capture.runId !== runId || detail.resolution.capture.failureId !== failureId) {
+    throw new Error("Failure resolution readback did not match the selected failure.");
+  }
+  return detail.resolution;
+}
+
+/** One in-flight durable read; selection/unmount aborts it and stops its timer. */
+export function useFailureResolution(
+  client: DashboardClient, initial: ResolutionWire, context: LiveFailureContext | undefined,
+) {
+  const { runId, failureId } = initial.capture;
+  const [current, setCurrent] = useState(initial);
+  const [readError, setReadError] = useState<string>();
+  const [commandError, setCommandError] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const [note, setNote] = useState("");
+  const lifecycle = useRef<{ active: boolean; read: () => Promise<void> } | undefined>(undefined);
+  const busy = useRef(false);
+  const active = context !== undefined;
+  useEffect(() => {
+    if (!active) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight: Promise<void> | undefined;
+    const controller = new AbortController();
+    const owner = { active: true, read: (): Promise<void> => {
+      if (inFlight !== undefined) return inFlight;
+      inFlight = client.runSection(runId, "failure", undefined, controller.signal).then(response => {
+        const accepted = acceptFailureResolutionReadback(runId, failureId, response);
+        if (owner.active) { setCurrent(accepted); setReadError(undefined); }
+      }).catch((error: unknown) => {
+        if (owner.active) setReadError(error instanceof Error ? error.message : "Failure resolution could not be read.");
+      }).finally(() => { inFlight = undefined; });
+      return inFlight;
+    } };
+    lifecycle.current = owner;
+    const tick = async (): Promise<void> => {
+      if (!busy.current) await owner.read();
+      if (owner.active) timer = setTimeout(() => { void tick(); }, 3000);
+    };
+    void tick();
+    return () => { owner.active = false; controller.abort(); clearTimeout(timer); };
+  }, [active, client, failureId, runId]);
+  const submit = async (): Promise<void> => {
+    const owner = lifecycle.current;
+    if (context === undefined || owner === undefined || !owner.active || busy.current || readError !== undefined) return;
+    busy.current = true;
+    setPending(true);
+    setCommandError(undefined);
+    try {
+      const resolution = current.capture.resolution;
+      const request = FailureResolutionCommandSchema.parse({ commandId: crypto.randomUUID(),
+        requestedAt: context.nowIso, requestedBy: context.actorId, source: "dashboard",
+        reason: resolution.status === "resolved" ? "Reopen failure" : "Mark failure resolved",
+        family: "failure-resolution", type: "annotate-failure",
+        target: { runId, failureId, expectedVersion: resolution.version },
+        payload: resolution.status === "resolved" ? { action: "reopen" }
+          : { action: "resolve", ...(note.trim() === "" ? {} : { note: note.trim() }) },
+      });
+      const result = await client.executeCommand(request);
+      if (!owner.active) return;
+      const settlement = settleCommandResult(result);
+      if (settlement.kind === "refused") {
+        setCommandError(settlement.problem);
+      } else { setNote(""); }
+      // Even an acknowledged write is not an optimistic label. Read authority.
+      await owner.read();
+      await owner.read(); // Drain any read begun before the command, then read its committed state.
+    } catch (error) {
+      if (owner.active) setCommandError(error instanceof Error ? error.message : "Failure resolution could not be saved.");
+    } finally {
+      busy.current = false;
+      if (owner.active) setPending(false);
+    }
+  };
+  return { current, readError, commandError, pending, note, setNote, submit };
 }
