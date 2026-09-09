@@ -4,7 +4,7 @@
 The operator approved it on 2026-09-09, including local master merge and owned cleanup after
 focused PASS. It supersedes this file's historical A/B names, prerequisite/master barriers,
 per-task full gates/review and old release wording. Product scope and proof allocations below
-remain binding. F is 2.6.6; C is already integrated; no implementation is claimed by this plan.
+remain binding. F is 2.6.6; C is already integrated. The [repair release below](#f-prerequisite-repair--2026-09-09) supersedes the initial F prerequisite once integrated.
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
@@ -769,7 +769,7 @@ its focused tests, lint, manifest/catalog and filtered UI checks are reused by t
 
 ### F07 integrated prerequisite and closure
 
-**The single common F prerequisite for P, D, G and S is `7ec279750817934b7da69ce433e0e5a44fed6a58`.**
+**Initial F prerequisite: `7ec279750817934b7da69ce433e0e5a44fed6a58`.** The [repair release](#f-prerequisite-repair--2026-09-09) below supersedes this initial prerequisite; preserve this receipt as historical evidence.
 This local master merge contains tested candidate `e32979d0ac54c440a8805743d5c5a357e50e01f8`
 and focused evidence commit `1feed4eb276df570c5bc19c087132b48fba8c10f`. Integration tree
 `3511094170b05dbcf1e4c3e1a977d61559c0f8b4` exactly equals the evidence candidate tree.
@@ -817,3 +817,67 @@ The final integration-record amendment reran roadmap generation/freshness, 24 bi
 roadmap documents only; final object comparison and the exact documentation commit are recorded
 in the external closure receipt. Full focused/lint/UI evidence remains bound to the unchanged
 execution inputs of `e32979d0ac54c440a8805743d5c5a357e50e01f8`.
+
+
+## F prerequisite repair — 2026-09-09
+
+The operator reopened F after G planning exposed replay by reusable record key and S planning
+exposed shared creation, acceptance and composition gaps. “Also consider this and do the necessary
+repairs” authorizes the repair here, retaining the already approved focused gates, local merge and
+owned cleanup. No child allocation is broadened. The 27 disjoint P/D/G/S production paths remain
+unchanged; the proposed shared-file additions to S are unnecessary after this F repair. Product
+requirements and the 2.6.9 full-gate/independent-review boundary remain unchanged.
+
+Repair base `9942ac5209556a8589ada2a295377d0c6e0192bd` contains the initial integrated F release,
+approved plan `b5ba39efbca023b673be3c4aac509ca42b2a751c`, original implementation base and repaired
+C prerequisite `e43a8d8515486c73c276fa319bbe06d196b309e3`. Their ancestry and the original complete
+cleanup receipt were verified before repair. The reopened owned lane is `codex/database-foundation`
+at `/Users/julianhein/Projects/hr-worktree-database-foundation`; no workers or reviewers were launched.
+
+### Repaired boundaries and retained child ownership
+
+| Boundary | Repair and remaining owner |
+| --- | --- |
+| Exact generated-output replay | The shared executor delegates to G's `generated-artifact-projection.ts`. New update IDs commit to the complete checkpoint and derived row, including run, item, attempt, claim generation and output. Replay reads checkpoint witnesses and pending rows in one authority transaction. Historical random IDs require a unique source/run/node/schema/payload/key/sink witness; ambiguity and unbound version-five commitments refuse without acknowledgement. Newer same-key work is never selected by record key alone. G retains ordered publication and file-fault policy. |
+| New run identity | Shared `RunRecordService` creation, retry/restart and archive relaunch select through S's `run-settings.ts` within the creation transaction. Current active snapshot selection replaces the old source-fingerprint rejection and retained-source selection for a new run. Original source runs, immutable inputs, operation keys, safety admission and exact command replay remain unchanged. Existing fan-out and intake callers reach the same selector; no producer is added. |
+| Start acceptance | The shared command kernel invokes S's reviewed-settings predicate before plan consumption. A changed current snapshot returns `replan-required` with an explicit settings-change message and creates no run. Accepted-command replay still returns the original run/snapshot. Fresh plans select current settings inside the plan transaction. |
+| Dashboard composition | Settings runtime identity and status config are read through S's `settings-runtime.ts` on each request. The composed HTTP reader observes a later activation. Boot identity arguments to intake/start planning are validated retained candidates; the authoritative selection happens in S's transaction-local selector. Host probes, runtime isolation and provider environment families retain their process scope. |
+| Worker composition | Claim admission obtains S's current token inside the existing directive/claim transaction. It no longer retains the boot token. Actual execution still uses S's retained-run resource factory, and idle cadence uses its existing current-settings boundary. Process ownership, stale-owner refusal and UNKNOWN handling remain intact. |
+
+S still implements atomic save-and-activate, its result/readback/UI policy and mixed-snapshot claim
+eligibility. The new shared hooks allow that work within its existing files. P and D retain their
+original duties. These baseline tests and the twelve pair/order cases do not claim completion of
+any child or of final acceptance. No storage grammar or migration changes were needed: released
+migrations and pins through47, current schema47 and floor46 remain unchanged. Historical evidence
+and the original F proof directory remain untouched.
+
+### Committed focused repair proof
+
+Candidate `a1e963445bc05d57f1eb9abbff95a9238300ab3a`, tree
+`6d97254e993d00621765704d04cb09d283fb8024`, passed every assigned/affected focused check.
+The [repair evidence directory](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909)
+retains `candidate.json`, the exact patch and tree objects, ancestry, worker configuration, all
+commands/selectors and hashed logs in `focused-pass.json`. The resource-only Vitest adapter keeps
+one file worker and preserves project membership and isolation. UI uses the repository's existing
+filtered parity lane without reference changes.
+
+| Check | Committed result |
+| --- | --- |
+| Assigned/affected unit tests | 42 files, 961 tests PASS, including unchanged four-way independence and mixed-history/UNKNOWN/rollback proof |
+| Affected architecture guards | 11 files, 199 tests PASS |
+| Lint | PASS, zero warnings |
+| Manifest, store catalog, roadmap | All three generators and all three freshness checks PASS; no generated drift |
+| Filtered UI | 60 dashboard cases including Start Run, 4 intake accessibility cases, 3 diagnostic dialog/gallery cases: 67 PASS |
+
+The initial three-suite regression run reproduced four failures: other-source publication was
+acknowledged, retry/restart refused changed settings, and start acceptance returned a generic schema
+refusal. The expanded preflight exposed four start-plan fixture failures because the fixture had
+no active settings record; it now seeds the real activation boundary and tests later selection.
+A new HTTP assertion was corrected to the existing full-URL wire contract. All failed logs remain
+preserved. Committed reruns include the repairs plus same-run claim isolation, historical ambiguity,
+unbound-commitment refusal, two-connection replay exclusion, original source/journal preservation,
+active dashboard HTTP reads and worker claim-token refresh.
+
+Full typecheck, coverage, whole architecture/parity/build/performance and independent review were
+not run; they remain in 2.6.9. No push, operator database upgrade, HR submission or child launch
+occurred. Integration and the new common prerequisite are recorded below after verified local merge.

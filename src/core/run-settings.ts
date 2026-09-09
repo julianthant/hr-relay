@@ -12,10 +12,21 @@ export function selectRunSettings(repositories:Pick<AuthorityRepositories,"confi
  return snapshot;
 }
 
-/** This single S-owned selection point covers direct, intake, start and relaunch identities. */
-export function selectNewRunIdentity(repositories:Pick<AuthorityRepositories,"configSnapshots">,candidate:Readonly<{configSnapshotId:string;configFingerprint:string}>) {
+/** New identities are selected in the caller's creation/planning transaction. */
+export function selectNewRunIdentity<T extends Readonly<{configSnapshotId:string;configFingerprint:string}>>(repositories:Pick<AuthorityRepositories,"configSnapshots"|"runtimeConfig">,candidate:T):T {
  selectRunSettings(repositories,candidate);
- return candidate;
+ const active=selectActiveRunSettings(repositories);
+ return {...candidate,configSnapshotId:active.configSnapshotId,configFingerprint:active.fingerprint};
+}
+export function selectActiveRunSettings(repositories:Pick<AuthorityRepositories,"configSnapshots"|"runtimeConfig">) {
+ const active=repositories.runtimeConfig.get();
+ if(active===undefined)throw new Error("run-settings-active-missing");
+ return selectRunSettings(repositories,active);
+}
+/** Reviewed plans cannot silently retarget; accepted command replay precedes this check. */
+export function reviewedRunSettingsCurrent(repositories:Pick<AuthorityRepositories,"configSnapshots"|"runtimeConfig">,identity:Readonly<{configSnapshotId:string;configFingerprint:string}>):boolean {
+ const active=selectActiveRunSettings(repositories);
+ return active.configSnapshotId===identity.configSnapshotId && active.fingerprint===identity.configFingerprint;
 }
 export function runSettingsAvailable(repositories:Pick<AuthorityRepositories,"configSnapshots">,identity:Readonly<{configSnapshotId:string;configFingerprint:string}>) {
  const snapshot=repositories.configSnapshots.get(identity.configSnapshotId);

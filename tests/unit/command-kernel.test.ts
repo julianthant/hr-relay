@@ -2337,3 +2337,42 @@ it("F refuses resolution capability before journaling or changing failure/run au
   assert.equal(h.database.authority.commandAudits.findByCommand(commandId),undefined);
   assert.equal(h.database.getMeta().authorityGeneration,generation);
 });
+
+
+describe("F repaired reviewed settings fence", () => {
+  it("requires a fresh review without consuming a plan after active settings change", () => {
+    const h = createHarness();
+    const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
+    const snapshot = h.database.authority.configSnapshots.get(UUID_4);
+    assert.ok(snapshot !== undefined);
+    h.database.authority.configSnapshots.insert({ ...snapshot, configSnapshotId: UUID_7, fingerprint: HASH_A });
+    h.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+      configSnapshotId: UUID_7, configFingerprint: HASH_A, activatedAt: NOW });
+    const result = h.kernel.execute(startCommand(plan));
+    assert.equal(result.state, "rejected");
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "replan-required");
+    assert.match(result.message, /settings changed/iu);
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.deepEqual(h.database.authority.runs.listByWorkflow(plan.workflowId), []);
+  });
+});
+
+
+it("F accepted start replay keeps its original run after active settings change", () => {
+ const h = createHarness();
+ const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
+ const command = startCommand(plan);
+ const first = h.kernel.execute(command);
+ const runId = singleAppliedRunId(first);
+ const original = h.database.authority.runs.get(runId);
+ const snapshot = h.database.authority.configSnapshots.get(UUID_4);
+ assert.ok(snapshot !== undefined);
+ h.database.authority.configSnapshots.insert({ ...snapshot, configSnapshotId: UUID_7, fingerprint: HASH_A });
+ h.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+  configSnapshotId: UUID_7, configFingerprint: HASH_A, activatedAt: NOW });
+ const replay = h.kernel.execute(command);
+ assert.equal(replay.state, "already-applied");
+ assert.equal(singleAppliedRunId(replay), runId);
+ assert.deepEqual(h.database.authority.runs.get(runId), original);
+});

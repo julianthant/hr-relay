@@ -1,3 +1,4 @@
+import { selectRunRuntime } from "../../core/run-settings.js";
 import { createRunResourcesFactory } from "./run-resources.js";
 import { bindFailureCapture } from "../../core/failure-resolution.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
@@ -450,7 +451,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
   }));
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
-  let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
   try {
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readSettings(repositories));
@@ -460,7 +460,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       revision: persistedSettings.revision,
       settingsFingerprint: persistedSettings.settingsFingerprint,
     });
-    runtimeConfig = database.withAuthorityTransaction((repositories) =>
+    database.withAuthorityTransaction((repositories) =>
       withCurrentSettings(repositories, settingsExpectation, () => {
         requireCurrentSettings(persistedSettings, repositories);
         return repositories.runtimeConfig.requireActive({
@@ -701,14 +701,14 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         // claimNext owns the one SQLite write transaction that compares the active
         // runtime token, settings epoch and queued snapshot before changing the run.
         // The filesystem authority is needed at boot and apply, not on every poll.
-        claimNext: (request) => database.withAuthorityTransaction(() => {
+        claimNext: (request) => database.withAuthorityTransaction((repositories) => {
           const directive = controlPoll();
           if (directive !== "run") {
             throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
           }
           input.afterClaimAdmissionCheck?.();
           const outcome = lifecycle.claimNext({ commandId: request.commandId,
-            workflow: request.workflow, workerId: request.workerId, runtimeConfig });
+            workflow: request.workflow, workerId: request.workerId, runtimeConfig: selectRunRuntime(repositories) });
           if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);
           return outcome;
         }),

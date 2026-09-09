@@ -1,3 +1,7 @@
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
+import { SettingsFactsWireSchema } from "../../src/domain/dashboard/settings.js";
+import { EditableSettingsWireSchema } from "../../src/domain/dashboard/settings-editor.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
@@ -1235,4 +1239,70 @@ describe("dashboard-composed worker-browser command arms", () => {
       assert.equal(harness.database.authority.commands.get(commandId), undefined);
     }
   });
+});
+
+
+it("F live worker selects the claim token after a later activation", async () => {
+ const { repoRoot, stateRoot } = repoRootWithState();
+ const clock = manualClock(new Date(NOW));
+ seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+ let database: AuthorityDatabase | undefined;
+ let advanced = false;
+ await composeWorkerRuntime({ ...composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }),
+  openDatabase: (options, openClock) => { database = AuthorityDatabase.open(options, openClock); return database; },
+  afterClaimAdmissionCheck: () => {
+   assert.ok(database !== undefined);
+   if (advanced) return;
+   const active = database.authority.runtimeConfig.get();
+   assert.ok(active !== undefined);
+   const { generation: _generation, ...activation } = active;
+   database.authority.runtimeConfig.activate(activation);
+   advanced = true;
+  },
+ });
+ assert.equal(advanced, true);
+ assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "terminal");
+});
+
+
+it("F composed dashboard reads active settings after boot through real HTTP", async () => {
+ const { repoRoot, stateRoot } = repoRootWithState();
+ const clock = manualClock(new Date(NOW));
+ for (const name of ["package.json", "package-lock.json"])
+  writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
+ const dashboard = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
+  backendPortOverride: 0, frontendPortOverride: 0 });
+ try {
+  const database = reopen(stateRoot, clock);
+  const before = database.authority.runtimeConfig.get();
+  assert.ok(before !== undefined);
+  const snapshot = database.authority.configSnapshots.get(before.configSnapshotId);
+  assert.ok(snapshot !== undefined);
+  const settings = persistUnjournaledWorkerSettings(repoRoot, clock, { display: { screenWidth: 1980, screenHeight: 1080 } });
+  journalWorkerSettings(database, settings, stateRoot);
+  const record = readSettings(database.authority);
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
+  database.authority.configSnapshots.insert({ configSnapshotId: UUID_7, revision: 1,
+   fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
+   capturedAt: NOW, capturedBy: "local-operator" });
+  database.authority.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
+   configSnapshotId: UUID_7, configFingerprint: resolved.fingerprint, activatedAt: NOW });
+  const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/editable`);
+  assert.equal(response.status, 200);
+  const editor = EditableSettingsWireSchema.parse(await response.json());
+  assert.equal(editor.runtimeStatus.state, "current");
+  assert.equal(editor.revision, record.revision);
+  // Facts must follow the active snapshot as well; a synthetic endpoint is never contacted.
+  const config = structuredClone(resolved.config);
+  config.urls.crm.prod.entry = "https://synthetic.example.invalid/";
+  const nextId = "83000000-0000-4000-8000-000000000098";
+  const fingerprint = sha256Hex(canonicalJsonStringify(config));
+  database.authority.configSnapshots.insert({ ...snapshot, configSnapshotId: nextId, config, fingerprint });
+  database.authority.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
+   configSnapshotId: nextId, configFingerprint: fingerprint, activatedAt: NOW });
+  const factsResponse = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/facts`);
+  assert.equal(factsResponse.status, 200);
+  const facts = SettingsFactsWireSchema.parse(await factsResponse.json());
+  assert.equal(facts.systemHosts.find(entry => entry.system === "crm")?.production, "https://synthetic.example.invalid/");
+ } finally { await dashboard.stop(); }
 });

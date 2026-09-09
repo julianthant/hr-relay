@@ -85,7 +85,7 @@ import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
-import { SETTINGS_SCHEMA_HASH, settingsRuntimeIdentity } from "../../domain/config/settings.js";
+import { SETTINGS_SCHEMA_HASH } from "../../domain/config/settings.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -120,7 +120,7 @@ import { createContentAddressedArtifactWriter } from "../../infra/artifacts/cont
 import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server-verified-artifact-reader.js";
 
 import { createIntakeParser } from "../intake/intake-parser.js";
-import { createCredentialSecretSource, createSettingsRuntimeReader, readSettings } from "../settings-runtime.js";
+import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createSettingsRuntimeReader, readSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createExplorerEditService } from "./commands/explorer-edit-service.js";
@@ -517,7 +517,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     database,
     hostFacts,
     clock,
-    active: settingsRuntimeIdentity(persistedSettings, resolved.fingerprint),
+    active: activeSettingsRuntimeIdentity,
   });
 
   const now = clock.now().toISOString();
@@ -996,16 +996,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     startPlans,
     intake,
     hub,
-    /**
-     * D274 item 6 — the two READ-ONLY Settings status sections.
-     *
-     * Both halves are the SAME values the rest of this composition already runs
-     * on: `resolved.config` is the config a run's `resolveSystemEntryUrl`
-     * resolves against, and `DESCRIPTORS` is the tuple the kernel plans with and
-     * the bootstrap projects. Neither is re-read, re-resolved or snapshotted, so
-     * the page cannot state a host or a capability this process does not have.
-     */
-    settings: { config: resolved.config, descriptors: DESCRIPTORS },
+    settings: { get config() { return database.withAuthorityTransaction(activeSettingsConfig); }, descriptors: DESCRIPTORS },
     settingsEditor: { settings: settingsReader, environment: env, clock },
     storage: {
       doctorOptions: {

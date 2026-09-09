@@ -15,7 +15,7 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { executeSettingsCommand, type CommandAuthority } from "../../../src/core/command-kernel.js";
 import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import { createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../src/server/settings-runtime.js";
+import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../src/server/settings-runtime.js";
 import { requireSecret } from "../../../src/domain/secrets.js";
 
 const cleanups: (() => void)[] = [];
@@ -135,4 +135,20 @@ describe("independent protected Settings reader", () => {
     writeFileSync(path, readFileSync(path, "utf8").replace("synthetic-owned-value", "synthetic-altered-value"));
     assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
   });
+});
+
+
+it("F long-lived dashboard reader follows active settings and retains saved-only distinction", () => {
+ const f = fixture();
+ const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock,
+  active: activeSettingsRuntimeIdentity });
+ const original = reader.read();
+ const originalConfig = f.database.withAuthorityTransaction(activeSettingsConfig);
+ const record = f.apply();
+ assert.equal(reader.read().runtimeStatus.state, "restart-required");
+ assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig), originalConfig);
+ const active = activate(f.database, record, f.clock);
+ assert.deepEqual(reader.read(), { record, runtimeStatus: { state: "current", identity: active } });
+ assert.notDeepEqual(reader.read(), original);
+ assert.equal(f.database.withAuthorityTransaction(activeSettingsConfig).display.screenWidth, 1980);
 });

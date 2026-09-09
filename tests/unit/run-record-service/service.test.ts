@@ -1,3 +1,4 @@
+import { selectRunRuntime } from "../../../src/core/run-settings.js";
 import { makeWorld } from "../server/helpers/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
@@ -2211,4 +2212,48 @@ it("C P1 competing connections cannot accept conflicting failure settlements", a
     assert.equal(f.database.authority.failures.get(UUID_5), undefined);
     assert.equal(f.database.authority.lifecycleJournal.getCommand(secondRequest.commandId), undefined);
   } finally { await Promise.all(connections.map(({ worker }) => worker.terminate())); }
+});
+
+
+describe("F repaired settings selection", () => {
+  for (const operation of ["retry", "restart"] as const) {
+    it(`${operation} selects active settings and preserves source and journal replay`, () => {
+      const f = fixture();
+      const source = created(f.service, { ...f.request,
+        contractFingerprint: personLookupDescriptor.contractFingerprint });
+      const terminal = requireLifecycleApplied(f.service.transition({ commandId: UUID_5,
+        runId: source.envelope.runId, expectedVersion: source.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
+      f.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT,
+        configSnapshotId: UUID_6, fingerprint: HASH_C });
+      f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+        configSnapshotId: UUID_6, configFingerprint: HASH_C, activatedAt: NOW });
+      const request = { commandId: "83000000-0000-4000-8000-000000000091",
+        runId: terminal.envelope.runId, expectedVersion: terminal.version,
+        runtimeConfig: selectRunRuntime(f.database.authority) };
+      const next = requireLifecycleApplied(f.service[operation](request, personLookupDescriptor));
+      assert.equal(next.envelope.configSnapshotId, UUID_6);
+      assert.equal(next.envelope.configFingerprint, HASH_C);
+      assert.deepEqual(next.input, terminal.input);
+      assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId), terminal);
+      f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+        configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+      assert.deepEqual(requireLifecycleApplied(f.service[operation](request, personLookupDescriptor)), next);
+    });
+  }
+});
+
+
+it("F direct creation selects current settings while exact replay retains the original snapshot", () => {
+ const f = fixture();
+ f.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_6, fingerprint: HASH_C });
+ f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+  configSnapshotId: UUID_6, configFingerprint: HASH_C, activatedAt: NOW });
+ const request = { ...f.request, runtimeConfig: selectRunRuntime(f.database.authority) };
+ const next = created(f.service, request);
+ assert.equal(next.envelope.configSnapshotId, UUID_6);
+ assert.equal(next.envelope.configFingerprint, HASH_C);
+ f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+  configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+ assert.deepEqual(requireLifecycleApplied(f.service.create(request)), next);
 });
