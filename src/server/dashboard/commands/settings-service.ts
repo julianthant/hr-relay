@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { sha256Hex } from "../../../domain/sha256.js";
 import type { SettingsApplicationExecutor, SettingsCommand } from "../../../core/command-kernel.js";
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../domain/commands.js";
 import { ResolvedConfigSchema, type ResolvedConfig } from "../../../domain/config/resolve.js";
@@ -60,9 +62,13 @@ export function createSettingsApplicationExecutor(
         return SettingsApplyRefusalSchema.parse({ state: "conflict", currentRevision: current.revision, message: "settings revision conflict" });
       }
       let settings: SettingsFileRecord["settings"];
+      let resolved: ResolvedConfig;
       try {
         settings = mergeSettingsPatch(current.settings, command.payload.patch);
-        ResolvedConfigSchema.parse(resolveCandidate(settings));
+        resolved = ResolvedConfigSchema.parse(resolveCandidate(settings));
+        if (sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) {
+          throw new Error("settings-resolution-fingerprint-mismatch");
+        }
       } catch (error) {
         const keys = error instanceof z.ZodError
           ? [...new Set(error.issues.map((issue) => issue.path.map(String).join(".")))].sort()
@@ -72,8 +78,16 @@ export function createSettingsApplicationExecutor(
       if (Buffer.byteLength(canonicalJsonStringify(settings), "utf8") > 1_048_576) {
         return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "document-too-large", message: "ordinary settings document-too-large" });
       }
-      return { state: "applied", revision: current.revision + 1, settings, restartRequired: true,
-        settingsFingerprint: derivePersistedSettingsFingerprint(settings) };
+      const revision = current.revision + 1;
+      const settingsFingerprint = derivePersistedSettingsFingerprint(settings);
+      const configSnapshotId = randomUUID();
+      repositories.configSnapshots.insert({ configSnapshotId, revision, fingerprint: resolved.fingerprint,
+        config: resolved.config, provenance: resolved.provenance,
+        capturedAt: command.requestedAt, capturedBy: command.requestedBy });
+      repositories.runtimeConfig.activate({ settingsRevision: revision, settingsFingerprint,
+        configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: command.requestedAt });
+      // The kernel journals the audit and saved row before committing this same transaction.
+      return { state: "applied", revision, settings, restartRequired: false, settingsFingerprint };
     },
     reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {
       const outcome = credentials.verifyReplay(protectedInput(command));

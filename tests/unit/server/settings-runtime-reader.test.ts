@@ -42,7 +42,7 @@ function fixture(probe: () => void = () => {}) {
   const authority: CommandAuthority = { withAuthorityTransaction: (work) => database.withAuthorityTransaction((repositories) => work({ ...repositories,
     settingsCurrent: { ...repositories.settingsCurrent, get: () => { reads += 1; probe(); return repositories.settingsCurrent.get(); } },
   })) };
-  const reader = createSettingsRuntimeReader({ database: authority, hostFacts: hostConfigFacts({}), clock, active });
+  const reader = createSettingsRuntimeReader({ database: authority, hostFacts: hostConfigFacts({}), clock, active: activeSettingsRuntimeIdentity });
   const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), store);
   const execute = (command: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, command);
   const apply = () => {
@@ -69,10 +69,10 @@ describe("SQLite Settings reader snapshot", () => {
     }
     assert.equal(existsSync(join(f.root, "settings")), false);
   });
-  it("pairs fresh values and restart-required status without caching a previous read", () => {
+  it("pairs fresh values and current status without caching a previous read", () => {
     const f = fixture(); f.reader.read(); const record = f.apply();
     const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance(record.settings, hostConfigFacts({}), f.clock).fingerprint);
-    const expectedStatus = { state: "restart-required", active: f.active, persisted };
+    const expectedStatus = { state: "current", identity: persisted };
     assert.deepEqual(f.reader.read(), { record, runtimeStatus: expectedStatus });
     const editor = buildSettingsEditor({ settings: f.reader, environment: {}, clock: f.clock });
     assert.deepEqual(editor.runtimeStatus, expectedStatus);
@@ -81,7 +81,8 @@ describe("SQLite Settings reader snapshot", () => {
   });
   it("refuses a stale process identity before reading settings after another activation", () => {
     const f = fixture(); const record = f.apply(); const active = activate(f.database, record, f.clock); const before = f.reads();
-    assert.throws(() => f.reader.read(), /are not dashboard-active; restart activation is required/u); assert.equal(f.reads(), before);
+    const stale = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active: f.active });
+    assert.throws(() => stale.read(), /are not dashboard-active; restart activation is required/u); assert.equal(f.reads(), before);
     const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active });
     assert.deepEqual(reader.read(), { record, runtimeStatus: { state: "current", identity: active } });
   });
@@ -138,15 +139,15 @@ describe("independent protected Settings reader", () => {
 });
 
 
-it("F long-lived dashboard reader follows active settings and retains saved-only distinction", () => {
+it("S long-lived dashboard reader follows newly saved active settings", () => {
  const f = fixture();
  const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock,
   active: activeSettingsRuntimeIdentity });
  const original = reader.read();
  const originalConfig = f.database.withAuthorityTransaction(activeSettingsConfig);
  const record = f.apply();
- assert.equal(reader.read().runtimeStatus.state, "restart-required");
- assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig), originalConfig);
+ assert.equal(reader.read().runtimeStatus.state, "current");
+ assert.notDeepEqual(f.database.withAuthorityTransaction(activeSettingsConfig), originalConfig);
  const active = activate(f.database, record, f.clock);
  assert.deepEqual(reader.read(), { record, runtimeStatus: { state: "current", identity: active } });
  assert.notDeepEqual(reader.read(), original);

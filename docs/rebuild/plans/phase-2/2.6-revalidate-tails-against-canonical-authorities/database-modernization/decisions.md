@@ -674,7 +674,8 @@ This section supersedes the C0 S allocation's obsolete prerequisite, no-master/r
 and separate `04-settings-evidence.md` instructions. Product requirements remain at
 [group 2 settings](#approved-group-2-settings-current-settings-and-retained-snapshots) and
 [the C0 settings contract](../../../../reference/clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09).
-Implementation remains unstarted; a scoped S release is not final Phase 2.6 acceptance.
+S01–S05 are complete at the frozen candidate below; S06 integration/cleanup remains open.
+A scoped S release is not final Phase 2.6 acceptance.
 
 ### Prerequisite, allocation and isolation
 
@@ -926,6 +927,104 @@ confirming its executable inputs are unchanged. The planner holds the actual sha
 through final validation/commit and releases it to the already identified waiting P owner after
 verified completion. This is a specific resource release, not a group scheduling protocol.
 Implementation remains unstarted; planning creates no worktree, implementation agent or new task.
+
+### S execution record — 2026-09-09
+
+Current state: S01–S05 complete; S06 local integration, invalidated checks and cleanup remain open. This is a scoped development release only. L and final 2.6.9 retain their existing
+assigned duties; no messages, new acceptance handshake, worker or reviewer were dispatched.
+
+- Exact approved plan/base: `d22b6e8e657e442f2c287b679833e96c1e7173f8`; required ancestor
+  `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` verified by `git merge-base --is-ancestor`.
+- Branch `codex/settings-activation`, checkout `/Users/julianhein/Projects/hr-worktree-settings-activation`.
+  The branch/path were absent before creation. Three unrelated auxiliary worktrees existed;
+  S brought the total to four. All unrelated work was preserved.
+- The complete F resolver cleanup receipt was read and its branch, physical checkout and
+  worktree registration were confirmed absent. S does not infer its own runtime proof from F.
+- Test-only schema amendment explicitly approved in this session: repair exactly the three
+  unchanged `compose-real-port.test.ts` fixtures that still expected schema40/floor39 and a
+  future schema41. They now test schema47/floor46 and future schema48. Downgrade refusal,
+  zero early settings/resolver reads, untouched database bytes and process-lock release remain.
+- Implementation retains the resolver's complete result, authenticates its fingerprint, inserts
+  the immutable snapshot and activates it inside the kernel transaction before the exact audit
+  and saved-row advance. Both historical `restartRequired: true` and current `false` audits
+  remain authenticated; a new false audit must bind its active saved identity.
+- Mixed-snapshot admission preserves current generation authorization and independent claim
+  ownership. The existing claim path still checks each run's exact retained snapshot. F's
+  creation, reviewed-plan, retained-resource and idle-cadence hooks remain the shared inputs.
+- Iteration logs and the one-worker adapter are retained in `/tmp/hr-settings-activation-proof`.
+  Save/create rollback, malformed resolution, restored host defaults, retained snapshots, real
+  connection exclusion and reopen passed. Production worker and HTTP tests preserve corruption,
+  protected next-use and historical replay controls. Stale-plan refusal followed by fresh
+  confirmation and accepted replay passed without run/session publication on refusal.
+
+The old restart-expectation tests were changed under the approved contract, not merely to match
+implementation output. The nested-save rollback test now injects an ownership failure after the
+valid save; separate current/stale-token and real stale-owner controls distinguish this from the
+newly valid save-before-claim ordering. Source-preserving proof uses the actual seeded retained
+snapshot identity rather than the fixture's pre-seeding placeholder fingerprint.
+
+
+#### S05 focused candidate and evidence
+
+Runtime/UI/tests candidate: `e2f65428f0f580381121d8be1bda9d754cdcb2b3`; tested index and committed
+tree: `64d279ca59050d4b3d1dbd667550cfa02f9f75c2`. All 28 changed production/test/reference paths
+are inside the admitted scope and explicit three-fixture amendment. Six of the eleven permitted
+production files changed; the other five retain F's real composition hooks.
+
+| Focused gate | Result and preserved primary evidence |
+| --- | --- |
+| All 18 assigned unit selectors | PASS, 350 tests; `candidate-unit.log` |
+| All six assigned architecture selectors | PASS, 49 tests; `candidate-guards.log` |
+| `npm run lint` | PASS, zero warnings; `candidate-lint.log` |
+| Manifest, store catalog, roadmap generators and freshness checks | All six commands PASS; no generated diff |
+| Dedicated desktop assertion | PASS, both themes, two cases; `candidate-desktop.log` |
+| Existing settings/start + dedicated accessibility evidence | PASS, 34 cases; `candidate-filtered-desktop.log` |
+| Documentation checks | PASS, local links, nine instruction twins, longest chain 17,333 bytes; `git diff --check` PASS |
+
+[Preserved freeze receipt](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/freeze.json),
+[exact commands/exits/log hashes](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/candidate-gates.json),
+and [complete tested input hashes](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/candidate-inputs.json)
+bind this candidate. The final run reported no changed inputs. The adapter's object comparison
+proves only root/project `maxWorkers` changed; each project resolves to one. Observed effective
+Vitest concurrency was two including peers, below four. At creation S was the fourth auxiliary;
+a later P checkout briefly brought the observed total to five, then G's independently completed
+cleanup restored four. S created no additional lane and never removed or borrowed peer resources.
+
+The exact prescribed existing-only parity filter passed all 32 tests but its wrapper failed because
+it selected no required body-backed accessibility evidence. The repair adds the owned Settings spec
+to that same command: `npm run test:parity -- tests/parity/dashboard-reference.spec.ts tests/parity/settings-activation.spec.ts --grep 'settings|start' --workers=1`.
+This retains every original selected test and reference, adds two cases and satisfies the wrapper;
+no failure was waived. Dedicated saved/reset references were deliberately created, visually inspected
+in both themes at 1024×720 and 125% zoom, then asserted. Keyboard focus, pending save, current
+readback, revision conflict, network error, invalid path and reset-to-host-default are covered.
+The invalid-path case exposed a synchronous validation exception; the UI now reports it inline.
+
+Mixed execution proof reaches the real browser factory's launch boundary with synthetic, isolated
+profiles and a launch sentinel. It verifies retained viewport, headless mode, task/session limits,
+provider model chains and the same authority accounting object without authentication or HR writes.
+The explicit idle proof verifies an existing wait is unchanged by save and the next wait uses the
+saved cadence. Retry/new child select current settings; same-run resume retains the original envelope.
+
+The manual `settings-activation` browser session and owned specimen Vite server are stopped.
+S06 will recheck master ownership/cleanliness, merge only S and rerun invalidated focused evidence
+on its actual integration tree. Independent review, full typecheck/coverage, broad architecture,
+parity/build/performance and original phase-wide recovery/scenario acceptance stay at 2.6.9.
+
+#### Delivery assessment
+
+The schema-fixture scope omission and parity wrapper/filter incompatibility were discoverable
+planning omissions. The operator authorized exactly three schema fixture repairs; this adds no
+product scope. The invalid-path handling defect was found by the planned desktop proof and fixed
+inside S's owned UI model. Synthetic resource fixtures required corrections for process-only paths,
+artifact-root identity, session timeout bounds and explicit instance; these are proof implementation
+repairs, not weakened runtime constraints. Iteration and failed-run logs remain preserved alongside
+final PASS evidence. Review count is zero by the explicit S approval; review belongs to 2.6.9.
+Supervisor work crossed automatic compaction and resumed from verified files/gates; no worker was
+resized or recycled. Exact total historical repair/time telemetry is not inferred. Final candidate
+and integration runs are required validation, separate from those repair rechecks. Future briefs
+should validate current schema fixtures and the filtered runner's accessibility requirement before
+freezing their test ownership/commands.
+
 
 ## C0 execution allocation — 2.6.7.1 A
 

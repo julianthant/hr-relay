@@ -313,7 +313,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeOlderBuild({
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), /authority schema 40 is newer than supported 29/u);
+        }), /authority schema 47 is newer than supported 29/u);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -336,12 +336,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
+    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 47);
   });
 
   it.each([
-    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 39 \}/u },
-    { version: 41, refusal: /authority schema 41 is newer than supported 40/u },
+    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 46 \}/u },
+    { version: 48, refusal: /authority schema 48 is newer than supported 47/u },
   ])("releases its acquired server process record when authority v$version refuses open", async ({
     version,
     refusal,
@@ -800,7 +800,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     },
   );
 
-  it("refuses new start plans after settings apply until this dashboard restarts", async () => {
+  it("plans new runs with saved settings without a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -823,16 +823,13 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const applied = await client.executeCommand(command);
     assert.equal(applied.state, "applied");
 
-    await assert.rejects(
-      client.submitStartPlan({
-        workflowId: "person-lookup",
-        submissions: [{ emplId: "10800000" }],
-        dryRun: true,
-        browserMode: "headless",
-        captureBrowserScreenshots: false,
-      }),
-      /dashboard runtime settings are stale; restart activation is required/u,
-    );
+    const plan = await client.submitStartPlan({
+      workflowId: "person-lookup", submissions: [{ emplId: "10800000" }], dryRun: true,
+      browserMode: "headless", captureBrowserScreenshots: false,
+    });
+    assert.equal(plan.fingerprints.configFingerprint,
+      resolveConfigWithProvenance(readPersistedSettings(repoRoot, clock).settings, hostConfigFacts({}), clock).fingerprint);
+    assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
   });
 
   it("activates the exact persisted settings generation after a dashboard restart", async () => {
@@ -861,7 +858,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       state: "applied",
       commandId: command.commandId,
       affectedTargets: [{ family: "settings", revision: 2 }],
-      restartRequired: true,
+      restartRequired: false,
       settingsRevision: 2,
       settingsFingerprint: persisted.settingsFingerprint,
     });
@@ -968,7 +965,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(permissions, 0o700);
   });
 
-  it("keeps an applied revision restart-required until a dashboard restart activates it", async () => {
+  it("activates a saved revision immediately and retains it through restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
@@ -1003,18 +1000,18 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       assert.equal(before.revision, 1);
       const applied = await client.applySettings(command);
       assert.equal(applied.state, "applied");
-      if (applied.state === "applied") assert.equal(applied.restartRequired, true);
+      if (applied.state === "applied") assert.equal(applied.restartRequired, false);
       const readback = await client.editableSettings();
       assert.equal(readback.revision, 2);
-      assert.equal(readback.runtimeStatus.state, "restart-required");
+      assert.equal(readback.runtimeStatus.state, "current");
       const screenWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
       assert.equal(screenWidth?.effectiveValue, 1980);
       assert.equal(screenWidth?.settingsValue, 1980);
       assert.equal(readPersistedSettings(repoRoot, manualClock(new Date(command.requestedAt))).settings.display?.screenWidth, 1980);
-      assert.equal(readRuntimeSettingsRevision(repoRoot), 1);
+      assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
       const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");
-      if (replay.state === "already-applied") assert.equal(replay.restartRequired, true);
+      if (replay.state === "already-applied") assert.equal(replay.restartRequired, false);
     } finally {
       await first.stop();
     }

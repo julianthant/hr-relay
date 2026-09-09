@@ -31,7 +31,7 @@ export function readSettings(repositories: AuthorityRepositories): SettingsFileR
   if (audit === undefined) throw new Error(`settings revision ${String(current.revision)} has no durable audit`);
   if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || audit.result.state !== "applied" || audit.result.commandId !== current.commandId
-    || audit.result.restartRequired !== true || audit.result.settingsRevision !== current.revision
+    || typeof audit.result.restartRequired !== "boolean" || audit.result.settingsRevision !== current.revision
     || audit.result.settingsFingerprint !== current.settingsFingerprint
     || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
     || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{ target, before: command.target.expectedRevision, after: current.revision }])

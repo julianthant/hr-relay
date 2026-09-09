@@ -49,7 +49,7 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
               || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
               || audit.result.state !== "applied"
               || audit.result.commandId !== record.commandId
-              || audit.result.restartRequired !== true
+              || typeof audit.result.restartRequired !== "boolean"
               || audit.result.settingsRevision !== record.revision
               || audit.result.settingsFingerprint !== record.settingsFingerprint
               || canonicalJsonStringify(audit.result.affectedTargets)
@@ -66,6 +66,11 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
               );
             }
             const app = readAppSettings(ports.database);
+            if (audit.result.restartRequired === false && (app?.active == null
+              || app.active.settingsRevision !== record.revision
+              || app.active.settingsFingerprint !== record.settingsFingerprint)) {
+              throw new Error("settings-activation-current-mismatch");
+            }
             writeAppSettings(ports.database, { format: 1, saved: record, active: app?.active ?? null });
             const changes = 1;
             return { result: record, changes };
@@ -82,7 +87,12 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
           return current?.saved == null ? token.settingsRevision === 1
             : current.saved.revision === token.settingsRevision && current.saved.settingsFingerprint === token.settingsFingerprint;
         },
-        matchesRun(configFingerprint: string, runFingerprint: string): boolean { return configFingerprint === runFingerprint; },
+        matchesRun(configFingerprint: string, runFingerprint: string): boolean {
+          // Current authorization permits retained runs; claimEligible still authenticates
+          // each run's exact snapshot and enforces worker/claim ownership independently.
+          return configFingerprint === runFingerprint
+            || readAppSettings(ports.database)?.active?.configFingerprint === configFingerprint;
+        },
         get: () => readRecord("runtime_config", "active", ActiveRuntimeConfigRecordSchema),
         activate: (input: unknown) => {
           const request = ActiveRuntimeConfigActivationSchema.parse(input);

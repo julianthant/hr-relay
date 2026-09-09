@@ -1,0 +1,11 @@
+{
+  "stateId": "settings-activation-saved",
+  "viewport": "1024x720",
+  "theme": "paper-ink",
+  "adapter": "real-settings",
+  "fixtureId": "settings-activation",
+  "descriptorHash": "settings-activation-v1",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-09-09T12:00:00.000Z",
+  "variant": "default"
+}
