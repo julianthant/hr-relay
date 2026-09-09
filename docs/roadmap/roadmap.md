@@ -1152,14 +1152,14 @@ log:
 - 2026-09-09 | G scoped development release | candidate 272b35676; local merge 4328ce56a; 104 unit and 155 focused architecture/document tests, lint/freshness PASS; owned worktree/ref removed. Exact receipt at G owner; full gates and independent review remain 2.6.9
 
 ##### 4 · Activate settings for new runs without restart {#p2db-settings-activation}
-status: planned
+status: done
 doc: 2.6 §Task 6.4 · Activate settings for new runs without restart
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BOTH save and activate app_settings/settings_snapshots for newly created runs without restarting
-- [ ] PROOF keep existing runs on their snapshots; prove validation, save/claim races and replay
+- [x] BOTH save and activate app_settings/settings_snapshots for newly created runs without restarting
+- [x] PROOF keep existing runs on their snapshots; prove validation, save/claim races and replay
 
 needs:
 - p2db-domain-foundation
@@ -1167,7 +1167,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.4; assignment S; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | S plan approved | S01–S06 on repaired F 2bb25b6ef; eleven production paths, bounded settings test amendments and isolated desktop proof. Focused checks, local master merge and owned cleanup here; full gates/review remain 2.6.9. Updated parallel protocol, no implementation launched
-
+- 2026-09-09 | S scoped release complete | Atomic current activation, retained-run resources and replay; 350 focused unit tests, 49 guards, lint/freshness and desktop proof PASS. Integrated locally, owned worktree/ref removed; full gates and independent review remain 2.6.9. See the S06 release in the approved brief.
 
 #### 7 · Prepare independent archive and summary tasks {#p2db-lifecycle-foundation}
 status: planned

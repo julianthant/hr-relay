@@ -201,7 +201,7 @@ Assignment **G**, display **2.6.6.3**. The approved [G01–G06 brief](database-m
 #### Task 6.4 · Activate settings for new runs without restart
 <!-- roadmap: p2db-settings-activation -->
 
-Assignment **S**, display **2.6.6.4**. The approved [S01–S06 brief](database-modernization/decisions.md#approved-s-execution-brief--2026-09-09) owns atomic activation, retained-run execution, focused tests/UI proof, local master merge and owned cleanup on repaired F. It retains eleven production paths, adds two bounded settings test amendments, and follows the updated no-default-messaging parallel protocol. Full gates and independent review remain in 2.6.9. Planning is approved; implementation remains unstarted.
+Assignment **S**, display **2.6.6.4**. The approved [S01–S06 brief](database-modernization/decisions.md#approved-s-execution-brief--2026-09-09) owns atomic activation, retained-run execution, focused tests/UI proof, local master merge and owned cleanup on repaired F. It retains eleven production paths, adds two bounded settings test amendments, and follows the updated no-default-messaging parallel protocol. Full gates and independent review remain in 2.6.9. S01–S06 are complete: focused integration PASS and owned worktree/ref cleanup verified. [Scoped release](database-modernization/decisions.md#s06-scoped-release-and-cleanup--2026-09-09) is recorded for L.
 
 
 ### Task 7 · Prepare independent archive and summary tasks

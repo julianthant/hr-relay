@@ -70,7 +70,7 @@ supervisor runs focused tests, lint and affected freshness, merges locally and c
 worktree/ref. Full gates and complete independent review remain in 2.6.9. Updated parallel
 coordination defaults to no peer messages and serializes only actual shared mutations/conflicts;
 no reservation round, speculative queue or successor dispatch is implied. This supersedes S's
-generic no-master/retained-candidate and separate evidence-file wording. Implementation is unstarted.
+generic no-master/retained-candidate and separate evidence-file wording. S01–S06 are complete with focused integration PASS and verified owned cleanup; [release evidence](decisions.md#s06-scoped-release-and-cleanup--2026-09-09) is available to L.
 
 ## Roadmap identity
 
