@@ -3,7 +3,7 @@
 ## Assignment and approval
 
 **Owner: `side/timeline-history`. T1 IN PROGRESS under the parallel execution amendment;
-accepted rename master is consumed; repaired candidate gates pass; R1 and R1b exhausted native review context, and a standalone review arrangement is awaiting operator approval.** This is a separate successor, not an amendment to
+accepted rename master is consumed; repaired candidate gates pass; R1 and R1b exhausted native review context, and the operator approved standalone complete review R1c, with verified root-context recovery.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -691,16 +691,48 @@ complete independent acceptance.
 A concrete standalone root-review prompt is prepared at
 `/tmp/timeline-events-standalone-review-prompt.md`. It preserves complete 98-path/P1–P5/P9 coverage,
 read-only independence, exact-candidate acceptance and all prior findings, while permitting verified
-root-context recovery after compaction. **This arrangement and creation of a new review task are
-proposed, not approved.** The operator was asked to approve creating that standalone task using the
-existing project/checkout, or to request the launch prompt for manual opening. No new app task,
-material review amendment, master integration, push, live migration or T2 dispatch has occurred.
+root-context recovery after compaction. The operator subsequently answered **“do it”** to the
+standalone-review approval request, authorizing that arrangement and creation of the independent
+Astra/high review task using the existing saved project directly and the pinned timeline checkout.
+The explicit review amendment below replaces the pending proposal; integration remains separately
+operator-assigned.
 
 Cleanup is held pending acceptance. Recovery stash
 `a7058d8198b4cefc08076e5cf7e1a607b8c838fc` contains 68 tracked plus 10 untracked draft paths;
 all 78 exist in the committed candidate, with accepted-base reconciliation recorded above. Both
 owned probe directories remain available for the next review; unrelated stash
 `b5ba4102748f304ab4c22a10dddf0f5a52f317be` and peer resources remain untouched.
+
+### Approved standalone complete review R1c — 2026-09-08
+
+The operator's **“do it”** approves one fresh standalone root review task on GPT-6 Astra/high,
+using the existing saved project directly and reading the stable timeline checkout. This complete
+verdict replaces the unfinished native R1/R1b acceptance arrangement; neither partial review carries
+acceptance credit. Scope remains all 98 candidate paths, P1–P5/P9 and relevant shared-boundary
+interactions. R1c must independently reconcile every prior finding and the latest external probes.
+No implementation worker or additional product scope is introduced.
+
+Bind base `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`, implementation
+`8747821c5fbc88567efd6b95b1b2e21a6bf8ff98`, implementation tree
+`89ac2d3c1683e1d42b5f8d6bd0aa03207eb7c35d`, and the evidence commit containing this amendment.
+The supervisor resolves its exact SHA and pins it as frozen checkout HEAD in the launch prompt;
+only owner evidence prose differs from implementation. R1c regenerates inventory and checks identity
+before source reads and its verdict. Review is independent and read-only: no edits, write-producing
+gates, servers, browsers, delegation, integration or external effects. Required validation returns
+to the original supervisor task `01a082a8-92ac-7031-8eb2-31708e7b0aad`.
+
+Automatic compaction is allowed for this standalone ROOT reviewer only. Before compaction it
+checkpoints exact identities, evidence-backed per-path/proof dispositions, findings, remaining scope
+and next checks in visible working state. On resume it verifies checkout/branch/SHAs/dirty state,
+reconciles coverage and reopens uncertain deciding evidence. Missing state reopens coverage;
+summaries alone cannot establish PASS. No context-limit increase, nested review or native-subagent
+exception is authorized.
+
+Acceptance requires one complete exact-candidate PASS, no required open finding or proof gap,
+all prior-finding dispositions and verified mandatory gate provenance. Original supervisor retains
+repairs, renewed gates/review, final evidence and cleanup responsibility. Master integration, live
+application, T2 dispatch and push remain outside this approval. The temporary approval handoff was
+consumed after git/evidence verification; all surviving state is in this owner and the launch prompt.
 
 - Approval: the operator's 2026-09-08 instruction to make this separate plan, retaining two tables
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
