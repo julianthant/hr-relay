@@ -2382,3 +2382,21 @@ it does not activate I-9 projections or invent a workbook path/column layout. In
 extraction file references retain their existing owners. Populated historical conversion requires
 verified stopped DB/file source preservation and exact identity checks. This records approved design,
 not implemented behavior, provider/workflow activation or permission to convert the operator database.
+
+## C0 artifact and approval continuity — 2026-09-09
+
+F owns the complete imported/extracted artifact conversion and working generated-file baseline;
+G owns generated publication and explicit XLSX completion on frozen F interfaces. Each explicit
+XLSX request has one generated_artifacts row containing request/status/verified file evidence,
+with independent request identities, immutable previous versions and authenticated downloads.
+Retire operator_xlsx_exports after populated conversion and compatibility proof; no dual writer
+or second export receipt table. Preserve submitted import values, protected source bindings,
+run origins, independent same-byte imports and checkpoint/update atomicity.
+
+F's removal of unused gates/ocr_approvals projections does not remove durable checkpoint gate
+answers or the future OCR acceptance/replay-safe child-dispatch requirement. New child snapshot
+selection follows the C0 settings contract; it does not implement an otherwise absent dispatcher.
+L/A take verified report and attachment custody before reference-aware live cleanup. Archive viewing
+uses the saved generic report, not a dependency on live import or current workflow schemas.
+
+This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

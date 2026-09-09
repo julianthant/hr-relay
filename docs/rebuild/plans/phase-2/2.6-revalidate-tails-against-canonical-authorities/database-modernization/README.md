@@ -14,8 +14,9 @@ This is a **Phase 2.6-only trial**; other phases retain their existing gate requ
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
-**Status: organization and approved product directions recorded; execution admission remains open.**
-No database-modernization implementation releases are claimed here. T1 is a separately completed input.
+**Status: R development release consumed; C0 contracts and execution allocations drafted, pending scoped validation.**
+R is released at `60b356dd119140dc972a077751ad16af934acb2e`. C0 owns admission below; later
+product implementation and final 2.6.9 acceptance remain pending. T1 is a separately completed input.
 Timeline T1 is now integrated at `46930920696ab214b036d5f2681b8ffb4e5620ea`; its existing owner
 records R1c PASS, integration gates and cleanup. Its implementation/evidence remain unchanged.
 T2 is included here as pending work; do not run the old standalone T2 prompt as well.
@@ -269,3 +270,19 @@ instruction twins passed. Generated UI shows final 2.6.9 and no obsolete finaliz
 all 80 Phase 3 identities are unchanged. The source graph has one final task at the end and direct
 L/V input edges. Frozen evidence history is unchanged. This is documentation only: no product
 implementation, worktree launch, database mutation, full runtime gates or independent review claimed.
+
+## C0 admission ownership — 2026-09-09
+
+The operator preapproved 2.6.3 and authorized execution immediately after planning. C0's exact
+brief/proof/release owner is [prerequisites.md](prerequisites.md#c0-execution-brief--preapproved-2026-09-09).
+The current C0 allocation sections in each existing product owner supersede historical side-task
+paths and gate instructions; all original product proof remains required. F/L/V own common schemas,
+commands, production wiring, fixtures and generations before their peers. S/A/Q/U/H read shared
+product decisions and publish isolated evidence files. No future prerequisite SHA is fabricated.
+
+C0 selects the literal approved settings rule for newly created retries and children, stale-plan
+re-review and existing deployment-only process exceptions. Advisory context from Explain database
+tables distinguished recommendations from prior decisions; these selections use this task's
+preapproval. Current shared-operation retention is preserved and extended through verified archive
+ownership, without direct historical-attempt cascades or fabricated tombstones. The owning reference
+contracts and decision pointers record the target behavior separately from implementation facts.

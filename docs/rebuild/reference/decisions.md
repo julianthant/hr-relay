@@ -2351,3 +2351,14 @@ Phase 3 maps bind 3.1.23–3.1.25, 3.2.7–3.2.8 and existing 3.5.3 as finalizer
 task identities and separate audit/freeze boundaries. Exact execution bindings still precede launch;
 no implementation, automatic dispatch, push, controlled write or amendment of other in-flight work
 is claimed.
+
+### 2026-09-09 — C0 database contracts and execution admission
+
+Task 2.6.3 preapproval ratifies the target [settings lifecycle and backup set](clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09),
+[archive, summaries and retired projections](dashboard-surfaces.md#c0-archive-summary-and-surface-contract--2026-09-09),
+[transaction history/shared ownership](write-safety.md#c0-transaction-history-and-shared-ownership--2026-09-09),
+[mixed-snapshot execution](execution-and-sessions.md#c0-mixed-snapshot-execution-and-completion--2026-09-09),
+[archive evidence/privacy](operator-trust.md#c0-archived-evidence-and-privacy--2026-09-09), and
+[artifact/approval continuity](data-intake-and-edit-data.md#c0-artifact-and-approval-continuity--2026-09-09).
+These are pending implementation contracts; [C0](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md#c0--contract-and-execution-admission)
+owns admission and exact downstream allocation. No live upgrade or downstream launch is claimed.

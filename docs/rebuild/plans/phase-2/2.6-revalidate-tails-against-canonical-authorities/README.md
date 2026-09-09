@@ -142,28 +142,28 @@ full gates and independent review remain at 2.6.9. Release its committed candida
 ### Task 3 · Settle database contracts and task ownership
 <!-- roadmap: p2-db-modernization -->
 
-Assignment **C0**, display **2.6.2**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#c0--contract-and-execution-admission).
+Assignment **C0**, display **2.6.3**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#c0--contract-and-execution-admission).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
 ### Task 4 · Finish database transaction history and retire ledgers
 <!-- roadmap: p2db-timeline-history -->
 
-Assignment **T**, display **2.6.3**. Single scope/proof owner: [owning plan](database-modernization/timeline.md).
+Assignment **T**, display **2.6.4**. Single scope/proof owner: [owning plan](database-modernization/timeline.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
 ### Task 5 · Store completion directly on workflow runs
 <!-- roadmap: p2db-run-completion -->
 
-Assignment **C**, display **2.6.4**. Single scope/proof owner: [owning plan](database-modernization/run-completion.md).
+Assignment **C**, display **2.6.5**. Single scope/proof owner: [owning plan](database-modernization/run-completion.md).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
 ### Task 6 · Prepare independent database domain tasks
 <!-- roadmap: p2db-domain-foundation -->
 
-Assignment **F**, display **2.6.5**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#f--domain-foundation-unlock-p-d-g-and-s).
+Assignment **F**, display **2.6.6**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#f--domain-foundation-unlock-p-d-g-and-s).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
@@ -199,7 +199,7 @@ this card does not assign duplicate implementation or bypass C0 admission.
 ### Task 7 · Prepare independent archive and summary tasks
 <!-- roadmap: p2db-lifecycle-foundation -->
 
-Assignment **L**, display **2.6.6**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#l--lifecycle-foundation-unlock-a-and-q).
+Assignment **L**, display **2.6.7**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#l--lifecycle-foundation-unlock-a-and-q).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
@@ -221,7 +221,7 @@ this card does not assign duplicate implementation or bypass C0 admission.
 ### Task 8 · Prepare independent dashboard consumers
 <!-- roadmap: p2db-served-interfaces -->
 
-Assignment **V**, display **2.6.7**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#v--served-interface-release-unlock-u-and-h).
+Assignment **V**, display **2.6.8**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#v--served-interface-release-unlock-u-and-h).
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 

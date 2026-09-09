@@ -334,3 +334,52 @@ and sanitized before/after identity/count evidence. This planning work changes n
 
 **WAITING ON:** C0's exact execution brief and the assignment's actual prerequisite release.
 All earlier planning checks remain historical Git evidence, not gates for the new implementation.
+
+## C0 execution allocation — 2.6.6.3 G
+
+Prerequisite: **one frozen F release, identical to P/D/S base**. One Astra/high supervisor, zero implementation workers.
+Use the exact `G` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Verify generated-file storage and working explicit XLSX baseline; implement ordered fenced publication/verification; prove filesystem and DB failure windows plus old version downloads; release to L.
+
+### Exclusive changing paths
+
+- `src/core/generated-artifact-projection.ts` (new target)
+- `src/infra/sqlite/generated-artifacts.ts` (new target)
+- `src/infra/artifacts/artifact-sink-projector.ts`
+- `src/infra/artifacts/xlsx-retention-sink.ts`
+- `src/server/dashboard/exports/operator-xlsx-export-service.ts`
+- `src/server/dashboard/compose/generated-exports.ts` (new target)
+
+### Proof and test ownership
+
+P1–P8 remain with F owning complete import/extraction and shared conversion. G owns publication-specific P4–P6/P8 on F alone. F supplies stable artifact metadata/retention and SQLite methods so D/S/P cannot require changes here.
+
+- `tests/unit/artifact-projection.test.ts`
+- `tests/unit/infra/server-verified-artifact-reader.test.ts`
+- `tests/unit/operator-xlsx-export.test.ts`
+- `tests/unit/server/operator-xlsx-export-service.test.ts`
+- `tests/unit/generated-artifacts/publication.test.ts` (new required test)
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored evidence stays in this task's existing `artifacts.md` owner; shared indices remain read-only.

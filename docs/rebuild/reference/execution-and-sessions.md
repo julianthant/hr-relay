@@ -1323,3 +1323,22 @@ The application-only usage assumption governs future local accounting, not a cla
 verification. The plan follows accepted timeline/history T2 integration and carries migration,
 restore, concurrency and deletion proof. This amendment records approved scope; it does not assert
 implementation, authorize operator-database conversion or amend any running predecessor plan.
+
+## C0 mixed-snapshot execution and completion — 2026-09-09
+
+F/S implement [C0 settings activation](clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09)
+through real creation, claim and execution paths. Worker/process ownership and lease fencing remain
+current authority; a run's immutable configuration is a separate retained execution input. Mixed old
+and new snapshots must not strand queued/paused work or accidentally reuse resources configured for
+another snapshot. Existing session isolation and provider reservation accounting remain required.
+New child configuration selection does not add delegation capabilities or relax inherited safety.
+
+C stores terminal settlement evidence directly on workflow_runs with result/failure and required
+timeline event in one transaction, preserving exact worker/generation/version/replay/fence identities;
+run_terminal_authorizations and run_terminal_outbox retire after supported historical conversion.
+The shared phase prerequisites own composition changes. F supplies provider schema and working
+legacy capability mapping; P owns generic accounting on those frozen interfaces. Settings changes
+cannot reset provider usage or invent credential/model attribution. L's cleanup port preserves
+cumulative usage and rejects late settlement for deleted owners.
+
+This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

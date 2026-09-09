@@ -2619,3 +2619,46 @@ Naming-only 2.6.2 R changes config_snapshots → settings_snapshots, preserving 
 existing run bindings, protected-value exclusions and current activation behavior. Released history
 retains its original names. Settings consolidation and no-restart activation remain with F/S after
 C0; R does not implement them. [Approved scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
+
+## C0 settings activation and recovery — 2026-09-09
+
+Under the operator's preapproval of 2.6.3, F/S replace the ordinary-settings generation behavior
+in D331.7: `app_settings` owns saved overrides, revision, command/audit identity and the selected
+immutable `settings_snapshots` reference. Preserve unset-versus-explicit values. Save resolves and
+validates the complete snapshot, inserts it, changes the current reference and journals the action
+atomically. Failure activates nothing. No credential or protected-derived digest enters a snapshot.
+
+Every newly created run selects the current committed snapshot in its creation transaction.
+This includes explicit retry/restart runs and newly created delegated children; C0 selects the
+literal new-run rule, without a parent/source-snapshot exception. Existing queued, running, paused
+and resumed runs retain their snapshot. An internal retry of the same run is not new creation.
+This changes configuration selection only: preserve inputs/protected bindings, instance/dry-run
+constraints, delegation admission, permanent operation keys, checkpoint eligibility and UNKNOWN
+refusal. It does not authorize a new child producer or repeated external effect. A changed snapshot
+must not relabel reused observations or count a replay as a new transaction.
+
+A reviewed but unaccepted start plan binds its snapshot. If current settings changed, refuse
+acceptance with a distinct review-required result and no run creation; a replacement plan uses
+current settings and needs fresh confirmation. Exact replay of an already accepted command returns
+its original run and snapshot, including after a later settings save. Concurrent save/create chooses
+one complete committed configuration. A group created atomically uses one selection; a child created
+later selects at its own creation boundary. Parent identity and safety constraints remain enforced.
+
+Separate process ownership/claim fencing from configuration selection so a worker can execute old
+and new snapshots without restart. Ordinary pool, timeout, browser and saved display overrides
+must take effect according to the retained run configuration, including actual resources, not just
+stored fingerprints. Shared quota consumption is never reset by creating a snapshot. Preserve the
+existing process-scoped runtime-isolation sources, host probe and provider environment families;
+saved display overrides are not the probe. Protected next-use/next-start/input rules remain unchanged.
+No additional restart exemption for editable ordinary settings is admitted.
+Ordinary idle scheduling reads current saved cadence at the next idle boundary; it does not
+retime an active run, held claim or established deadline. Run-bound resources continue using that
+run snapshot. Shared admission limits preserve active work and cumulative quota accounting.
+
+L/A extend explicit-only D322 backup/restore to a verified set containing the live database,
+`archive.sqlite` under the isolation state root and retained report files. Bind exact source versions,
+transfer/deletion progress and file inventories; restore cannot revive moved/deleted runs or guess
+missing ownership. Preserve old backup grammars and settings/credential coupling. No live database
+upgrade is authorized by C0.
+
+This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

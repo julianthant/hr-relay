@@ -2840,3 +2840,25 @@ exact snapshot selection, byte verification and authorized downloads. Owners:
 [artifact conversion and proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#xlsx-consolidation-amendment--2026-09-09)
 and [naming scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
 This is an approved future contract, not implementation evidence.
+
+## C0 archived evidence and privacy — 2026-09-09
+
+After A transfers a run, the archive displays captured resolution read-only, superseding any earlier
+requirement for a live annotation lookup from the archive viewer. Live Mark resolved/Reopen remains
+D's versioned annotation, separate from immutable failure/receipt/completion identity and external
+write state. L supplies the common capture contract; A freezes it before deleting owned live rows;
+H renders the generic report. No current workflow or failure parser is needed to view that evidence.
+
+Archive files have durable verified custody independent of live pruning. Explicit deletion removes
+only exclusively owned files; old issued receipt/download references remain authenticated against
+canonical live/archive membership and immutable version bytes. Historical knowledge/fix records and
+pins receive verified preservation before retirement; they are never automatically published as
+agent instructions. Source/archive digests are separate, neither reconstructed from current values.
+
+Queue/Activity summaries may retain validated canonical identity only inside the server counting
+boundary. Activity returns protected aggregates and explicit unavailable counts; no identity or
+protected-derived digest may escape via responses, exports, logs or provenance. Preserve existing
+non-Activity authorized projections and retained protected-input authentication. No new key/pseudonym
+mechanism replaces the retired Activity tables.
+
+This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

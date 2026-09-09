@@ -7,29 +7,14 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 
 ## Readiness
 
-R is first: its complete [execution brief](renames.md#approved-execution-brief--2026-09-09) was
-approved on 2026-09-09. Use the planner's verified plan SHA and resolved supervisor prompt after
-scoped planning checks; R implementation has not started.
-All later implementation prompts are **WAITING ON** R and completed C0 (T1 is integrated), and their explicit
-prerequisite releases. These are exact conditional task instructions, not permission to guess SHAs
-or start all tasks today. At release, persist each resolved plan/base/head/path binding in the
-assignment's owner file and return that task's fully resolved prompt. Never copy an old sideplan
-prompt, rerun completed T1, or treat a planning commit as an implementation release.
+R is released at `60b356dd119140dc972a077751ad16af934acb2e`. C0 consumed it and accepted T1;
+C0's recorded scoped validation and committed handoff determine T readiness. Only T can be the next
+READY assignment. C/F/P/D/G/S/L/A/Q/V/U/H and final 2.6.9 remain **WAITING ON** their actual
+named prerequisite releases. No placeholder SHA or old side-task prompt is executable.
 
-## Execute the approved rename task first
-
-The substantive R1–R5 steps, exact proof commands, base and checkout binding are in
-[renames.md](renames.md#approved-execution-brief--2026-09-09). Planning is approved; do not repeat
-planning or launch against an uncommitted brief. The planner returns a copy-ready `/supervise 2.6.2`
-prompt with the verified full plan SHA. R creates its isolated checkout from that commit, releases
-only a focused-tested development candidate to C0, and retains its worktree/ref. No master merge
-or independent review occurs in R; final 2.6.9 retains both after the required gates.
-
-## Continue C0 planning after R
-
-```text
-Continue planning Phase 2.6.3 C0 in /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md and prerequisites.md. Use GPT-6 Astra/high. This session is planning only: no implementation, subagent dispatch, new task or worktree. Consume the committed 2.6.2 R development release and T1 integration 46930920696ab214b036d5f2681b8ffb4e5620ea and its recorded evidence, settle the listed open decisions with the operator, ratify approved contracts, finish exact exclusive file/test/proof allocations, verify both peer merge orders and resource ownership, and update the existing plans rather than creating overlapping owners. Commit exact planning paths with scoped checks and no push. Return resolved execution prompts only for assignments whose prerequisites and approved plan commits are verified; otherwise name the precise WAITING ON condition. Keep focused tests/lint during development and one fresh final session for heavy gates, all remaining repairs and independent review.
-```
+C0 planning/execution was explicitly preapproved and run in the same scheduled task. Its single
+owner is [prerequisites.md](prerequisites.md#c0-execution-brief--preapproved-2026-09-09). Do not
+repeat C0 or interpret its completion as authorization to implement every downstream task.
 
 ## Visible task IDs
 
@@ -41,27 +26,30 @@ The old single-card numbering is historical; do not assign timeline T2 to the fi
 
 ## Binding registry
 
-Create these branches/worktrees only at authorized execution after availability/capacity checks.
+Create task branches only at authorized execution after availability/capacity checks. Create a missing
+physical lane once; later tasks may reuse it only after its previous owner releases a clean committed
+checkout. Candidate branches remain immutable and retained for final verification.
 The prefix for every checkout below is `/Users/julianhein/Projects/`. Proposed names are not reserved.
-C0 records actual SHAs after inspecting releases; all future-base cells are unresolved today.
+C0 records R and its own actual release; later prerequisite cells remain unresolved until those tasks finish.
 
 | Assignment | Branch | Checkout name | Required release |
 | --- | --- | --- | --- |
-| R | codex/database-renames | hr-worktree-database-renames | Completed 2.6.1 + accepted T1 + admitted R brief |
-| T | codex/history-views | hr-worktree-history-views | Accepted T1 + R + C0 |
-| C | codex/run-completion | hr-worktree-run-completion | T |
-| F | codex/database-foundation | hr-worktree-database-foundation | C |
-| P | codex/provider-usage | hr-worktree-provider-usage | F |
-| D | codex/diagnostics | hr-worktree-diagnostics | F |
-| G | codex/artifact-outputs | hr-worktree-artifact-outputs | F |
-| S | codex/settings-activation | hr-worktree-settings-activation | F |
-| L | codex/lifecycle-foundation | hr-worktree-lifecycle-foundation | P + D + G + S |
-| A | codex/archive-transfer | hr-worktree-archive-transfer | L |
-| Q | codex/run-summaries | hr-worktree-run-summaries | L |
-| V | codex/database-surfaces | hr-worktree-database-surfaces | A + Q |
-| U | codex/activity-views | hr-worktree-activity-views | V |
-| H | codex/archive-viewer | hr-worktree-archive-viewer | V |
-| 2.6.9 | codex/database-validation | hr-worktree-database-validation | U + H and their complete prerequisite ancestry |
+| R | codex/database-renames | hr-worktree-database-renames | Retained completed R release |
+| C0 | codex/database-contracts | hr-worktree-database-contracts | R release + admitted C0 brief |
+| T | codex/history-views | hr-worktree-database-contracts | Accepted T1 + R + C0 |
+| C | codex/run-completion | hr-worktree-database-contracts | T |
+| F | codex/database-foundation | hr-worktree-database-contracts | C |
+| P | codex/provider-usage | hr-worktree-database-peer | F |
+| D | codex/diagnostics | hr-worktree-database-other | F |
+| G | codex/artifact-outputs | hr-worktree-database-peer | F |
+| S | codex/settings-activation | hr-worktree-database-other | F |
+| L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
+| A | codex/archive-transfer | hr-worktree-database-peer | L |
+| Q | codex/run-summaries | hr-worktree-database-other | L |
+| V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
+| U | codex/activity-views | hr-worktree-database-peer | V |
+| H | codex/archive-viewer | hr-worktree-database-other | V |
+| 2.6.9 | codex/database-validation | hr-worktree-database-contracts | U + H and their complete prerequisite ancestry |
 
 The task-to-file map in README.md is authoritative. R uses renames.md; T uses timeline.md; C uses run-completion.md;
 F uses foundation.md plus prerequisites.md; P/D/G use provider-usage.md/diagnostics.md/artifacts.md;
@@ -82,3 +70,32 @@ never be presented as READY. Each emitted prompt retains this exact control lang
 ```text
 /supervise 2.6.9 (p2f-proof; historical numbers are not launch IDs) using /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md and the parent phase Task 9. Use GPT-6 Astra/high. Verify the approved plan commit and every recorded development candidate before creating the registry's task-owned validation branch/worktree. You are the single final integration/repair owner. Combine the exact candidates, check peer merge order independence, run all required heavy gates and original migration/recovery/adapter-retirement proof, and fix every remaining failure here. Do not send repair work back to completed peers. Obtain fresh independent read-only sup_review on Astra/high for the complete frozen candidate; fix findings here and rerun required gates/review. Preserve all assertions, coverage floors, historical recovery evidence, UNKNOWN refusal and no-second-controlled-write boundaries. Integrate locally only when the operator assigns it after PASS and gates; never push. Complete fixture handover and owned cleanup within this same final task after acceptance, reusing unchanged gate evidence only under D191. Keep Done / Now / Remaining visible. No automatic next-task dispatch or idle observers.
 ```
+
+## Four-checkout capacity and ownership transfer
+
+The repository limit is four auxiliary worktrees, including unrelated work. At C0 inspection only
+R and C0 occupy auxiliary slots; the primary master checkout is integration-only. Preserve R's
+retained branch/path. The registry reserves no extra checkout and permits these exclusive lanes:
+
+- Sequential lane `/Users/julianhein/Projects/hr-worktree-database-contracts`: C0 → T → C → F → L → V → 2.6.9.
+- Peer lane `/Users/julianhein/Projects/hr-worktree-database-peer`: P → G → A → U.
+- Peer lane `/Users/julianhein/Projects/hr-worktree-database-other`: D → S → Q → H.
+
+P/D/G/S remain independent on one F base; at most two execute concurrently because R and the
+sequential lane occupy the other slots. P-before-G and D-before-S are physical capacity scheduling,
+not API or merge dependencies. A/Q and U/H may execute in parallel on their common release.
+Both semantic merge orders remain permitted and required to pass. Any unrelated occupied slot
+reduces available concurrency; never exceed four or borrow an active checkout.
+
+Before reuse, verify the sender completed its scoped release, recorded exact base/head/tree/gates,
+committed all owned work, stopped its processes and explicitly released exclusive checkout ownership.
+The receiving operator-started task accepts that record, verifies clean status and retained candidate
+ref, then creates its own named branch at its verified prerequisite with `git switch -c` in that lane.
+Do not reset/rewrite the sender's branch or delete its candidate. For a fan-in prerequisite, create
+its branch on the named common base and assemble the exact inputs under its admitted merge order.
+If ownership is uncertain, do not switch: resolve ownership or wait. Mere idle status is insufficient.
+
+This implements the repository's existing sequential exclusive-checkout option and resolves the
+otherwise impossible accumulation of retained worktrees. Only future unused registry paths change;
+R's in-flight/retained binding is untouched. Final 2.6.9 owns integration when assigned and cleanup
+of all retained candidate refs and the actual remaining physical lanes after acceptance.

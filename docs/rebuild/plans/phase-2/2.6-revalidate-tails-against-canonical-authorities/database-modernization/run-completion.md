@@ -234,3 +234,83 @@ and sanitized before/after identity/count evidence. This planning work changes n
 
 **WAITING ON:** C0's exact execution brief and the assignment's actual prerequisite release.
 All earlier planning checks remain historical Git evidence, not gates for the new implementation.
+
+## C0 execution allocation — 2.6.5 C
+
+Prerequisite: **T committed development release**. One Astra/high supervisor, zero implementation workers.
+Use the exact `C` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
+This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
+Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
+Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+
+Ordered outcomes: Validate exact settlement provenance; append completion conversion and failure rename; replace terminal factories/composites and retire terminal outbox consumers; prove replay/rollback and current served behavior; release to F.
+
+### Exclusive changing paths
+
+- `src/infra/sqlite/migrations.ts`
+- `src/infra/sqlite/authority-database.ts`
+- `src/infra/sqlite/storage-records.ts`
+- `src/infra/sqlite/recovery-contracts.ts`
+- `src/infra/compat/backup-inspection.ts`
+- `src/infra/compat/settings-database-upgrade.ts`
+- `src/domain/authority.ts`
+- `src/domain/run/deleted-run.ts`
+- `src/server/storage/compose.ts`
+- `src/server/storage/upgrade.ts`
+- `src/core/command-kernel.ts`
+- `src/domain/commands.ts`
+- `src/server/dashboard/compose.ts`
+- `src/server/worker/compose.ts`
+- `src/server/dashboard/commands/command-service.ts`
+- `src/cli.ts`
+- `src/domain/run/record.ts`
+- `src/domain/run/terminal-authorization.ts`
+- `src/domain/run/terminal-outbox.ts`
+- `src/domain/trust/failure.ts`
+- `src/core/terminal-authorization.ts`
+- `src/core/run-executor.ts`
+- `src/core/run-record-service.ts`
+- `src/infra/sqlite/run-terminal-contracts.ts`
+- `src/server/dashboard/queries/storage.ts`
+- `src/domain/dashboard/storage.ts`
+- `src/dashboard/surfaces/settings.tsx`
+- `src/dashboard/surfaces/settings-model.ts`
+- `src/server/dashboard/projectors/run-queue-projection.ts`
+- `src/server/dashboard/queries/run-trust.ts`
+- `src/services/archive/archive-service.ts`
+
+### Proof and test ownership
+
+All P1–P6 remain. C proves current same-row archive compatibility; A/H/2.6.9 own independent-report rendering after source deletion. Read /ui before the admitted Storage Doctor metric removal; no unrelated layout changes.
+
+- `tests/unit/terminal-authorization.test.ts`
+- `tests/unit/run-terminal-authority.test.ts`
+- `tests/unit/run-result.test.ts`
+- `tests/unit/run-executor.test.ts`
+- `tests/unit/storage-upgrade.test.ts`
+- `tests/unit/storage-upgrade-tombstones.test.ts`
+- `tests/unit/storage-backup.test.ts`
+- `tests/unit/storage-restore-drill.test.ts`
+- `tests/unit/archive-model.test.ts`
+- `tests/unit/archive-protected-identity.test.ts`
+- `tests/unit/dashboard/settings-storage-doctor.test.ts`
+
+Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
+followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
+and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
+with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
+before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
+Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
+and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+
+The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
+owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
+prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
+or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
+prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+
+Release committed candidate/base/tree and focused evidence to the next named consumer. No master
+integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
+Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+
+Authored evidence stays in this task's existing `run-completion.md` owner; shared indices remain read-only.
