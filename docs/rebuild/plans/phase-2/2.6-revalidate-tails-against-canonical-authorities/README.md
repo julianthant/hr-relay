@@ -211,7 +211,8 @@ Assignment **L**, display **2.6.7**. Single scope/proof owner: [owning plan](dat
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
-Focused candidate `08d9f4f53` passed L01–L05 and all scoped runtime gates.
+L01–L06 complete: candidate `08d9f4f53` passed all scoped gates, merged locally as
+`a8ee826dc`, and its owned worktree/ref were removed.
 See the [L06 release record](database-modernization/prerequisites.md#l06-scoped-release--2026-09-09)
 for exact identities, local integration and cleanup; final phase acceptance remains 2.6.9.
 

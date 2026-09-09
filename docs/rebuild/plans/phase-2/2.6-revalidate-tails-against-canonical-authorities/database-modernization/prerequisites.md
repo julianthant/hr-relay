@@ -796,7 +796,7 @@ the original handoff; this explicit later instruction owns current cleanup and l
 
 ## L06 scoped release — 2026-09-09
 
-Status: focused candidate PASS; local integration and cleanup pending. No A/Q launch or phase acceptance is claimed.
+Status: L01–L06 complete; focused release integrated locally and owned cleanup verified. No A/Q launch or phase acceptance is claimed.
 The approved base is `c3eb6725e3607a7df82a6c2a94a4765e8579efbd`; L used
 `codex/lifecycle-foundation` at `/Users/julianhein/Projects/hr-worktree-database-contracts`.
 The integration target is local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`.
@@ -891,3 +891,24 @@ Documentation release checks passed: roadmap generation/freshness, focused roadm
 changed local link/anchor verification, instruction pairs/chains and whitespace. Documentation-only
 release edits leave all 2,088 frozen runtime/test/tooling hashes unchanged; lint and runtime gates
 are reused under the approved D191 cadence. Integration and cleanup receipt follows below.
+
+### Local integration and cleanup receipt
+
+Local master merge `a8ee826dcf9a8a378e361b7d60b74e398041ba33` incorporated release
+`5d548dfe33476a5927e064a10c63b2082805bb3a` over target
+`7ea1ef8df124e4e554a0aa63a7977036ffefc140`. The only difference from the released candidate
+was the target's existing fourteen-line resolved supervisor prompt, preserved by a clean merge.
+All 2,088 runtime/test/tooling hashes match the passing candidate. Roadmap freshness, focused
+roadmap binding, changed links/anchors and whitespace passed again after integration; unchanged
+runtime/lint evidence was reused under D191. No intermediate independent review was required
+by the approved L exception; all 2.6.9 acceptance remains outstanding.
+
+The clean, incorporated `/Users/julianhein/Projects/hr-worktree-database-contracts` was removed
+with ordinary `git worktree remove`, after unlinking only its owned `node_modules` symlink.
+The shared dependency target was preserved. `git branch -d codex/lifecycle-foundation` succeeded;
+physical path, worktree registration and exact ref are absent. Only the primary worktree remains.
+The consumed handoff and gate evidence are retained in the external evidence directory; no
+auxiliary task was created and the calling task is not archived. No push occurred.
+
+L01–L06 are complete. The completion record changes documentation only. A/Q remain unlaunched,
+and their own implementation/gates plus the full 2.6.9 integration/review remain due.

@@ -1170,15 +1170,15 @@ log:
 - 2026-09-09 | S scoped release complete | Atomic current activation, retained-run resources and replay; 350 focused unit tests, 49 guards, lint/freshness and desktop proof PASS. Integrated locally, owned worktree/ref removed; full gates and independent review remain 2.6.9. See the S06 release in the approved brief.
 
 #### 7 · Prepare independent archive and summary tasks {#p2db-lifecycle-foundation}
-status: planned
+status: done
 doc: 2.6 §Task 7 · Prepare independent archive and summary tasks
 
 > Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.9.
 
 builds:
-- [ ] BOTH assemble P/D/G/S candidates and fix immediate combination defects with focused checks
-- [ ] BE finish shared lifecycle contracts, source adapters, archive/version/summary registration, deletion and backup interfaces
-- [ ] PROOF release working A/Q boundaries and verify either merge order; provider policy is not an additional barrier
+- [x] BOTH assemble P/D/G/S candidates and fix immediate combination defects with focused checks
+- [x] BE finish shared lifecycle contracts, source adapters, archive/version/summary registration, deletion and backup interfaces
+- [x] PROOF release working A/Q boundaries and verify either merge order; provider policy is not an additional barrier
 
 needs:
 - p2db-provider-usage
@@ -1188,6 +1188,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.6; assignment L; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | L scoped release complete | L01–L06; 263 unit tests, 139 architecture tests, lint and freshness PASS. Candidate 08d9f4f53 merged locally as a8ee826dc; owned worktree/ref removed. A/Q remain unlaunched; full gates and independent review remain 2.6.9. Exact contracts and evidence: L06 release in prerequisites.md.
 
 ##### 1 · Transfer runs into independent archive reports {#p2db-archive-transfer}
 status: planned
