@@ -810,7 +810,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
-    settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostFacts, clock); }, protectedSettingsAuthority),
+    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostFacts, clock), protectedSettingsAuthority),
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
     explorerEdits,
   });

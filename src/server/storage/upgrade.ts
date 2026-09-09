@@ -173,7 +173,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
           requestedAt: pending.recordedAt, requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "storage-upgrade", reason: pending.upgradeId,
           target: { expectedRevision: 1 }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: pending.credentialWriteId, entries: sources.protectedPatch } });
         const result = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-          settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock); }, store) }, request);
+          settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock), store) }, request);
         if (result.state !== "applied" && result.state !== "already-applied") throw new Error("credential-import-refused: SQLite conversion remains committed");
       }
       database.close();

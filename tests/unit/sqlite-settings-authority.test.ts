@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CommandIdentityConflictError } from "../../src/domain/commands.js";
 import { afterEach, describe, it } from "vitest";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { createCommandKernel, executeSettingsCommand, type CommandAuthority } from "../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
@@ -38,7 +39,7 @@ function fixture(hooks?: CredentialStoreHooks) {
   const path = join(root, "state.db");
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "settings-test" }, clock); databases.push(database);
   const store = createCredentialStore({ stateRoot: root, ...(hooks === undefined ? {} : { hooks }) });
-  const settings = createSettingsApplicationExecutor(() => {}, store);
+  const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
   const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
   return { repoRoot, root, path, database, store, execute, clock };
 }
@@ -163,13 +164,14 @@ describe("D336 SQLite settings authority", () => {
       import { randomUUID } from 'node:crypto';
       import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
       import { manualClock } from './src/domain/clock.ts';
+      import { resolveConfigWithProvenance } from './src/domain/config/resolve.ts';
       import { executeSettingsCommand } from './src/core/command-kernel.ts';
       import { createCredentialStore } from './src/infra/config/credential-store.ts';
       import { createSettingsApplicationExecutor } from './src/server/dashboard/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
       const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
       try {
-        const settings = createSettingsApplicationExecutor(() => {}, createCredentialStore({ stateRoot: ${JSON.stringify(f.root)} }));
+        const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), createCredentialStore({ stateRoot: ${JSON.stringify(f.root)} }));
         const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
         assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
       } finally { db.close(); }

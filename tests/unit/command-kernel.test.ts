@@ -38,6 +38,7 @@ import {
   deriveSettingsCommandFingerprint,
   type CommandRequest,
 } from "../../src/domain/commands.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -294,7 +295,7 @@ function createHarness(
     },
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
-    settings: settingsOverride ?? createSettingsApplicationExecutor(() => undefined, credentials),
+    settings: settingsOverride ?? createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials),
   });
   return {
     database,
@@ -1960,7 +1961,7 @@ describe("apply-protected-settings authority", () => {
     assert.notEqual(HASH_A, PROTECTED_SETTINGS_SCHEMA_HASH);
     const stateRoot = databasePath("invalid-credential-root");
     const credentials = createCredentialStore({ stateRoot });
-    const harness = createHarness(undefined, createSettingsApplicationExecutor(() => undefined, credentials));
+    const harness = createHarness(undefined, createSettingsApplicationExecutor(() => { throw new Error("protected fixture reached ordinary settings"); }, credentials));
     const command = protectedSettingsCommand({
       protectedSchemaHash: HASH_A,
       value: "must-not-reach-authority",

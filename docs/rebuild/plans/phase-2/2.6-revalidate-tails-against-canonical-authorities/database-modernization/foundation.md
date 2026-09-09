@@ -4,7 +4,7 @@
 The operator approved it on 2026-09-09, including local master merge and owned cleanup after
 focused PASS. It supersedes this file's historical A/B names, prerequisite/master barriers,
 per-task full gates/review and old release wording. Product scope and proof allocations below
-remain binding. F is 2.6.6; C is already integrated. The [repair release below](#f-prerequisite-repair--2026-09-09) supersedes the initial F prerequisite.
+remain binding. F is 2.6.6; C is already integrated. The [resolver-port repair release below](#f-resolver-port-repair--2026-09-09) supersedes the previous F prerequisites.
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
@@ -919,3 +919,70 @@ and tree, integration identity, commands and evidence manifest. Preserve the ori
 receipt separately. The unrelated `codex/separation-accounting-final` worktree and the calling
 Codex task remain untouched. No child launch, push, operator database upgrade or HR submission is
 part of this closure. Full phase gates and independent review remain 2.6.9.
+
+
+## F resolver-port repair — 2026-09-09
+
+The operator requested the remaining resolver port repair, preserving S's ownership and focused
+gate schedule. This repair starts from `0eeedcadad5ed4f686799be4dd190133372d5e2b`, after verifying
+the committed F plan, original implementation base, repaired C ancestry, prior F integration and
+complete cleanup receipts. The exclusively owned lane is `codex/database-foundation` at
+`/Users/julianhein/Projects/hr-worktree-database-foundation`. One Astra/high supervisor performs
+this repair; no workers, reviewers or child tasks are launched. Local merge and owned cleanup
+remain authorized; full gates and independent review remain 2.6.9.
+
+### Complete resolver port and retained S allocation
+
+`createSettingsApplicationExecutor` now requires `(settings) => ResolvedConfig`, including effective
+configuration, complete provenance and fingerprint, and validates the returned result before the
+kernel commits an ordinary save. Both production composition callbacks return that result:
+`dashboard/compose.ts` supplies its established host facts; `storage/upgrade.ts` retains its explicit
+no-display host context. Neither callback discards the resolver result. Fixtures use the same
+real resolver contract; protected-only refusal fixtures retain their deliberate throwing boundary.
+
+S can consume the result inside its existing `settings-service.ts` allocation when implementing
+atomic save-and-activate. This baseline does not change the public settings result, saved-only
+restart behavior, activation policy, storage schema or migration history. S still owns its
+activation/readback/UI and mixed-snapshot work. Its eleven production paths, exclusive tests and
+focused gate schedule are unchanged; no additional shared-file edits are admitted into S. G's
+six-file allocation remains unchanged. Other separately approved child amendments remain intact.
+
+The new real-kernel regression proves that clearing both display leaves restores the established
+2560×1440 host default, default provenance and original fingerprint. The saved override object
+becomes empty; host defaults are not materialized into settings. Exact command replay performs no
+new resolution, and the prior resolved object remains unchanged. Another regression supplies a
+malformed resolver result and proves refusal before settings, active configuration, generation,
+command journal or audit can change. The original code accepted that result; the preserved red
+run reproduces the failure. The first test attempt used a one-leaf patch rejected by the existing
+cross-field rule; the corrected two-leaf patch isolates the missing return-contract validation.
+
+### Focused resolver repair proof
+
+Candidate `f917ffe7b2308b4746e2aba16719a68cbafdb56c`, tree `6d7a7e539e42c93fa395d7e7a69281f393d2dcdf`, includes the resolver repair and
+focused fixture repairs. The [resolver repair evidence directory](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909) retains exact patches,
+commands, selectors, input-object comparisons, hashes, failed logs and the successful reruns.
+`focused-pass.json` and `gate-reuse.json` bind the combined result to this candidate.
+
+| Check | Result |
+| --- | --- |
+| Assigned/affected unit suites | 47 files, 1,195 cases PASS across focused runs: 45 unchanged files/1,022 cases plus 2 repaired files/173 cases |
+| Affected guards | 11 files, 199 tests PASS, including immutable migrations and four-child boundary guards |
+| Lint | PASS, zero warnings on final candidate |
+| Manifest, store catalog, roadmap | All three generators and all three freshness checks PASS; no generated drift |
+| Filtered UI | 60 dashboard, 4 intake accessibility and 3 diagnostic dialog/gallery cases: 67 PASS |
+
+The expanded run exposed old BFF fixture assumptions: the retired projection container, copied
+completion timestamps and the retired export table. Those fixtures now assert complete projection
+capability retirement, exact terminal timestamps and absence of generated export registrations.
+The dry-run corruption case now expects the earlier current snapshot-binding invariant; its distinct
+post-open missing-snapshot refusal and all no-start-effects assertions remain. One intermediate
+assertion edit changed both refusal expectations; its failing log is preserved and only the actually
+changed boundary was corrected. No assertions, membership, isolation, timeouts or coverage floors
+were weakened. The final two-file repair changed no other tracked input; unaffected unit, guard,
+UI and generated evidence is reused by exact object comparison under D191. Lint was rerun.
+
+The original and previous F proof directories and complete receipts remain immutable. Schema47,
+floor46 and released migration/pin bytes remain unchanged. Full typecheck, coverage, whole
+architecture/parity/build/performance and independent review were not run; they stay in 2.6.9.
+No push, operator database upgrade, HR submission or child launch occurred. The local integration
+and replacement common prerequisite are recorded below after verified merge.
