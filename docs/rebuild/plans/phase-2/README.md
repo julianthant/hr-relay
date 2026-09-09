@@ -1,5 +1,11 @@
 # Phase 2 · Prove writes and build the tails
 
+**2026-09-09 planning amendment.** The reopened [Phase 2.6](2.6-revalidate-tails-against-canonical-authorities/README.md)
+now includes the approved database modernization at 2.6.2 before final proof/closure at 2.6.3/2.6.4.
+Its [single folder](2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)
+includes remaining timeline T2; active T1 and completed earlier work are preserved. Historical
+Phase-2 completion statements below do not claim this new work is implemented or accepted.
+
 This doc is the dedicated home of **Phase 2**, tree node `{#phase-2}`: what historical Parts 2.1–2.5
 proved and built, what they left by explicit disposition, and reopened 2.6 downstream revalidation
 after 1.6; contracts it built live in `reference/`.

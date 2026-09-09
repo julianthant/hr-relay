@@ -77,24 +77,31 @@ for scheduling, ownership, operator integration and in-flight exceptions. The op
 and chooses merges. Agents return independently reviewed candidates. Targeted peer coordination is allowed when
 necessary to resolve blockers, overlap or duplicate work under D344; no automatic dispatch or merging. Completion still requires integration, gates and cleanup.
 
-| Complete and merge this prerequisite | Independent tasks it unlocks |
-| --- | --- |
-| 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive |
-| 3.1.11 · Sessions (after Settings and Storage) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun |
-| 3.1.14 · Detail foundation (after Run/Rerun and Queue) | 3.1.14.1–3.1.14.5: Timeline, Context/Data, Logs, Receipts, Gates |
+| Complete and merge this prerequisite | Independent workers: focused tests and quick checks | Finalizer: full gates and fixes |
+| --- | --- | --- |
+| 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive | [3.1.23 · Finalize dashboard surfaces](parallel-finalizers.md#task-23--finalize-dashboard-surfaces) |
+| 3.1.11 · Sessions (after accepted 3.1.23) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun | [3.1.24 · Finalize run operations](parallel-finalizers.md#task-24--finalize-run-operations) |
+| 3.1.14 · Detail foundation (after accepted 3.1.24 and Queue) | 3.1.14.1–3.1.14.5: Timeline, Context/Data, Logs, Receipts, Gates | [3.1.25 · Finalize run detail](parallel-finalizers.md#task-25--finalize-run-detail) |
 
 A parent closes on its own acceptance, before its children. Every child explicitly requires its
-parent; no child requires a sibling. Independent tasks can merge in either order. Separate numbers
-such as Date (3.1.10), Activity (3.1.12), Queue (3.1.13) and Runtime (3.1.15) retain their exact
-producer dependencies and need not wait for unrelated tasks. Integrated proofs 3.1.16–3.1.19 retain
-all required inputs. Optional 3.1.20–3.1.22 never gate release.
+parent; no child requires a sibling. Workers can enter the finalizer in either order after focused
+checks and independent review. They remain pending finalizer acceptance, not complete. Consumers
+of their output now require that group's finalizer: Date/Activity/Sessions require 3.1.23;
+Queue/Runtime/Detail foundation require 3.1.24; integrated detail consumers require 3.1.25.
+Tasks unrelated to a group's output do not gain a new dependency. Integrated proofs 3.1.16–3.1.19
+retain all required inputs; audit-only 3.1.19 still fixes nothing. Optional 3.1.20–3.1.22 never gate release.
 
 Before launch, focused plans identify exact paths, prerequisite commit, branch/worktree, shared
 contract and generated-output ownership, isolated tests/resources and either-order merge evidence.
-Parents complete necessary shared changes before consumers start. Sessions also proves Setup and
+Bind the finalizer branch/base/target, quick worker commands and every deferred broad proof before
+launch. Full coverage, broad parity and combination repairs belong to the finalizer under D191;
+focused failures must be fixed by the worker. Parents complete shared changes before workers start.
+Sessions also proves Setup and
 Run/Rerun can consume its accepted interface independently. Peers clarify unexpected overlap; changes to the approved plan return to the operator.
 The four-auxiliary-worktree ceiling includes unrelated work: seven ready tasks are selectable work,
-not permission to run seven simultaneous worktrees. No roadmap label makes an unfinished brief ready.
+not permission to run seven simultaneous worktrees. Stopped workers may release clean worktrees
+after preserving reviewed commits and evidence under D344; retain candidate branches for finalizer
+intake and reserve its worktree slot. No roadmap label makes an unfinished brief ready.
 
 Phase 2.6 still closes before dashboard implementation. Optional inventory can prepare a read-only
 draft; baseline 3.1.8 freezes acceptance against the final 2.6 handoff. Final acceptance executes that
@@ -133,6 +140,9 @@ matrix unchanged. Workflow-specific work and frozen-candidate proof remain in 3.
 | 3.1.20 | [Prepare dashboard inventory during tail revalidation](prerequisite-early-inventory.md) | `dash-early-inventory` |
 | 3.1.21 | [Assess further prerequisite extractions](prerequisite-smaller-prerequisites.md) | `dash-smaller-prerequisites` |
 | 3.1.22 | [Generic Review and People pages — deferred until needed](task-14-generic-review-and-people-pages-deferred-until-needed.md) | `dash-review-people` |
+| 3.1.23 | [Finalize dashboard surfaces](parallel-finalizers.md#task-23--finalize-dashboard-surfaces) | `dash-surfaces-finalizer` |
+| 3.1.24 | [Finalize run operations](parallel-finalizers.md#task-24--finalize-run-operations) | `dash-operations-finalizer` |
+| 3.1.25 | [Finalize run detail](parallel-finalizers.md#task-25--finalize-run-detail) | `dash-detail-finalizer` |
 
 The former six organizational containers are retired; they were never executable prerequisites.
 Their old files remain redirects to this map: `dash-foundations`, `dash-shell-configuration`,

@@ -1,5 +1,11 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-09 combined database planning amendment:** Phase 2.6 admits the named database redesign,
+preserves active T1, renumbers only pending proof/closure, and defers heavy gates/review to the single
+final repair session. Owners: [roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191 scoped gate cadence](guards-and-tests.md#314-testing-standard-d85--what-replaces-the-e2e-ritual). Product contracts
+remain subject to the combined plan's C0 ratification; this pointer does not claim implementation.
+
 **D325/D326 session-workflow amendment (2026-09-04):** the operator opens planning and supervisor
 sessions; supervision includes a fresh read-only reviewer subagent, fixes and finalization. Task
 completion requires accepted review plus
@@ -2317,3 +2323,16 @@ prerequisite launch assigns its local integration. Only its verified B release p
 independent provider/diagnostic/generated-artifact tasks to start. All plans and prompts now live in
 [the database batch folder](../../sidetracks/database-parallel/README.md); product contracts and the
 four in-flight plans remain unchanged. No implementation or peer launch is claimed.
+
+### 2026-09-09 — prerequisite, parallel workers, finalizer (D344/D191 amendment)
+
+Operator approved this cadence for Phase 3 and future parallel work: accept the prerequisite,
+run independent workers with focused tests/scoped lint/quick verification, then use an explicit
+sequential finalizer for combined full gates, fixes, review and accepted integration. Scheduling,
+readiness versus completion and downstream release are owned by
+[roadmap D344](../../roadmap/roadmap.md#parallel-finalizer-cadence); gate commands, retained floors
+and evidence requirements are owned by [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12).
+Phase 3 maps bind 3.1.23–3.1.25, 3.2.7–3.2.8 and existing 3.5.3 as finalizers, preserving existing
+task identities and separate audit/freeze boundaries. Exact execution bindings still precede launch;
+no implementation, automatic dispatch, push, controlled write or amendment of other in-flight work
+is claimed.

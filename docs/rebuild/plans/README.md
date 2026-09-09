@@ -83,8 +83,11 @@ Phase 3.4 now owns optional document tools, with distinct node IDs.
 ## Phase 3 prerequisite tasks (D344)
 
 `3.P.N` names an actual standalone task or prerequisite; `3.P.N.1`, `3.P.N.2`, etc. name
-independent parallel children unlocked by the completed parent. Sequential consumers get separate
-numbers. The [3.1 identity map](phase-3/3.1-finish-the-dashboard/README.md#current-task-identities)
+independent parallel children unlocked by the completed parent. Each Phase 3 and future parallel
+group binds a separate finalizer after all workers: focused worker tests and quick checks, then
+full gates and repairs on the combined result under
+[D344](../../roadmap/roadmap.md#parallel-finalizer-cadence). Sequential consumers get separate
+numbers and require accepted finalizer output. The [3.1 identity map](phase-3/3.1-finish-the-dashboard/README.md#current-task-identities)
 and [3.2 plan](phase-3/3.2-finish-workflow-authoring/README.md) own current assignments.
 Existing execution files and stable anchors remain citation targets. Former organizational group
 files redirect to the 3.1 map; they no longer create non-executable roadmap tasks.

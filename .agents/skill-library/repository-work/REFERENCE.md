@@ -30,7 +30,8 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
   Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
   prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
-  Parents complete before children launch; sequential consumers receive separate numbers. The
+  Parents complete before children launch; a named sequential finalizer combines each group, runs
+  full gates and fixes failures before downstream consumers start. Workers use D191 focused checks. The
   operator chooses launches and integration under Authorized orchestration below. D328's numeric
   wave members remain valid for Phase 0–2 and preserved in-flight briefs.
   Phase 4
@@ -111,8 +112,9 @@ limits intact. Run full coverage without a concurrent compiler/linter gate; redu
 before treating a full-suite timeout as permission to weaken a check.
 
 D191 in `docs/rebuild/reference/guards-and-tests.md` §3.14 owns documentation-only checks,
-unchanged-input evidence reuse and concurrent gate scheduling; existing assignments keep their
-explicit cadence until revised.
+unchanged-input evidence reuse and concurrent gate scheduling. Its 2026-09-09 amendment assigns
+focused tests/scoped lint/quick checks to Phase 3 and future parallel workers, and full gates plus
+fixes to the named finalizer. Other in-flight assignments keep their explicit cadence until revised.
 
 The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
 a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
@@ -319,11 +321,12 @@ canary from `.env`, expose its value, silently substitute another target, or inf
 
 For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
 supersedes automatic integration and required coordinator orchestration below. The operator launches tasks
-from accepted prerequisites and assigns serial integration. Agents return independently reviewed
-candidates; targeted peer coordination is permitted when necessary to resolve blockers, overlap or
+from accepted prerequisites and assigns the group finalizer. Workers return independently reviewed
+candidates after focused checks; the finalizer owns full gates, fixes and accepted integration.
+Targeted peer coordination is permitted when necessary to resolve blockers, overlap or
 duplicate effort within approved boundaries. Plan changes return to the operator; no taking shared
 files, automatic merging or launching other tasks. Existing
-in-flight ownership/gates/integration permissions remain unchanged. The four-worktree ceiling
+in-flight work outside Phase 3 keeps its ownership/gates/integration permissions. The four-worktree ceiling
 includes unrelated work; an additional lane requires explicit capacity approval.
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).

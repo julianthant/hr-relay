@@ -1,10 +1,16 @@
 # SQLite timeline and transaction history
 
+> **Pending T2 ownership amendment — 2026-09-09.** The operator moved remaining T2 into
+> [Phase 2.6.2's combined workflow](../../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/timeline.md).
+> The T2 allocation/launch instructions below are historical and must not launch duplicate work.
+> Active T1, its candidate, requirements, gate schedule, review and evidence remain unchanged.
+> Reconcile this pointer when integrating T1's plan evidence; do not replace that evidence.
+
 ## Assignment and approval
 
-**Owner: `side/timeline-history`. T1 CANDIDATE ACCEPTED under the parallel execution amendment;
-implementation, required candidate gates and complete independent review are finished. Master
-integration remains separately operator-assigned; T2 is waiting on that integration.** This is a separate successor, not an amendment to
+**Owner: `side/timeline-history`. T1 COMPLETE under the parallel execution amendment;
+implementation, independent review, master integration gates and owned cleanup are finished.
+Remaining T2 work belongs to the combined Phase 2.6.2 plan linked above.** This is a separate successor, not an amendment to
 any running rename assignment and not a roadmap phase.
 
 On 2026-09-08 the operator selected separate checkpoints and timeline events, Activity derived
@@ -886,9 +892,9 @@ this gap before candidate gating. No scope, safety rule, test floor or acceptanc
   for checkpoint versus timeline responsibilities and leaving the running rename plan unchanged.
 - Notification: `Process operation names` acknowledged unchanged scope; no integration window
   was assigned there at the time of coordination.
-- T1: **CANDIDATE ACCEPTED, AWAITING ASSIGNED INTEGRATION**; accepted rename base `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`, reviewed implementation `84d9158de1305a0cc790bee271de4e96e9f54fa1`.
-- T2: **WAITING ON** accepted T1 integration. No base SHA is invented for either future result.
-- T1 implementation, candidate gates, complete R1 acceptance and owned temporary cleanup are complete. Master integration and subsequent branch/worktree cleanup remain separately assigned; T2/R2 and real database application have not started.
+- T1: **COMPLETE — INTEGRATED AND CLEANED UP**; accepted rename base `1c8e294fe3510969c3a0f27dcf3506b922e4e42b`, reviewed implementation `84d9158de1305a0cc790bee271de4e96e9f54fa1`.
+- T2: **MOVED** to the combined Phase 2.6.2 owner linked above; no duplicate launch from this historical plan. T1 integration is complete.
+- T1 implementation, complete R1 acceptance, candidate/integration gates and owned branch/worktree cleanup are complete. T2 and real database application have not started here.
 - Planning validation (2026-09-08): roadmap document-binding guard passes 24 tests;
   `npm run lint` exits 0 with zero warnings; `npm run roadmap:check` reports fresh output.
   Sixteen plan links/anchors and owning-contract backlinks resolve; all test selectors exist.
@@ -911,3 +917,73 @@ prerequisites and operator-assigned integration conditions, and this adaptation:
 > refers to a task/phase section. Record progress, review, gate evidence and completion there.
 > Do not create a phase number or mark roadmap tasks complete. Preserve repository contracts,
 > independent review, required gates and authorized integration/cleanup conditions.
+
+### Operator-assigned T1 integration — 2026-09-09
+
+The operator's “do it” assigned local master integration of accepted T1. Preparation reused
+`/Users/julianhein/Projects/hr-worktree-timeline-events` on temporary branch `codex/timeline-merge`;
+no additional worktree or worker was created. The original candidate remains
+`535c16c6650ac0aa7cd818cd4480c58de51b0f87`, including accepted implementation
+`84d9158de1305a0cc790bee271de4e96e9f54fa1` and complete R1c PASS.
+
+Initial target `58d4fbcba32197e088a7fd162a54854ae73f8fbe` merged without conflicts. Tested tree
+`707c506ad3dbf1f8841ff10984345eee6886bc7c` was committed as the no-ff checkpoint
+`6bbf8492cc027dc5e10123c4b3a608b6d8bfc86a`. All integration runtime gates were rerun:
+
+| Gate | Evidence | Result |
+| --- | --- | --- |
+| Typecheck and lint | `/tmp/timeline-integration-typecheck.log`, `/tmp/timeline-integration-lint.log` | Exit 0 |
+| Full coverage | `/tmp/timeline-integration-coverage.log` | 5,839 tests / 450 files; 528.84 s; exit 0 |
+| Floors and membership | Same coverage run; imported real config, observed two forks, no compiler/linter contention | Statements 86.01%, functions 90.17%, lines 88.28%; floors pass. Branches 78.05%, report-only. 353 unit / 17 scenario / 80 architecture files. |
+| Desktop parity | `/tmp/timeline-integration-parity.log`, retained JSON `/tmp/timeline-integration-parity-results.json` | 262/262; exit 0, 68.253 s runner duration; references unchanged |
+| Build | `/tmp/timeline-integration-build.log` | Exit 0; existing bundle-size warning |
+| Generated freshness | `/tmp/timeline-integration-{manifest,catalog,roadmap}.log` | All exit 0 |
+
+During those gates, master received policy commit `d61dc6fe6efc3f0c47ebe5581991a2d45e7ee2fc` and
+combined planning commit `a524b70bf43e0c5ad0587d8c0ce38d7054a78686`. Planning task
+`01a07ea4-e289-73a2-a4b4-2f0a4b461f48` explicitly released shared-target writes at the latter SHA.
+Both commits are preserved. Their merge was conflict-free; its only T1 owner change was the six-line
+T2 ownership pointer above. T2 belongs to the combined Phase 2.6.2 plan and is not dispatched here.
+
+The final combined tree differs from the runtime gate tree only in committed planning/policy docs,
+their generated roadmap, and this integration record. An explicit diff proved unchanged `src`,
+`tests`, `scripts`, runtime config, package files and build/test configuration. New policy preserves
+T1's in-flight requirements/cadence. D191 therefore permits verified runtime-gate reuse while rerunning
+the affected roadmap/documentation checks. Those pass 24/24 in
+`/tmp/timeline-integration-doc-guard.log`; instruction/link checks verify nine equal twins,
+a 16,921-byte maximum chain and 17 owner links. The inherited `parallel-finalizers.md` had one extra
+blank line at EOF; it was removed without changing prose after the whitespace gate identified it.
+No behavioral conflict or acceptance change requires another implementation review.
+
+Shared-master uncommitted deletions of the three predecessor sidetrack READMEs and the two untracked
+handoffs remain outside T1 ownership. They must survive the master update unchanged. Candidate
+integration and final cleanup will be verified before this task reports completion; no live upgrade,
+HR transaction, T2 execution or push is included.
+
+### Verified T1 closure — 2026-09-09
+
+Local master was advanced to the combined no-ff merge, initially `40c43b5cdbf9974cf3bf2272fc2a1c9e50e17576`,
+with accepted T1 and planning release `a524b70bf43e0c5ad0587d8c0ce38d7054a78686` in its ancestry.
+This final evidence update amends that merge commit; no implementation or acceptance input changes.
+The complete independent PASS and full integration gates recorded above remain applicable.
+
+After master advancement, exact comparisons verified all three unrelated predecessor-plan deletions,
+two untracked handoffs and the unstaged/index patches unchanged. No uncommitted peer content entered
+the merge. Cleanup verified no process held the T1 checkout as cwd; its ignored contents were only
+inspected generated coverage/build/parity outputs, local dependencies and a zero-byte parity lock.
+Ordinary `git worktree remove` succeeded without force; the physical path and registration are absent.
+`git branch -d` removed both incorporated `codex/timeline-events` and `codex/timeline-merge` refs.
+Only the main checkout remains registered; peer removals were performed by their respective tasks.
+The completed standalone R1c task was archived by its exact recorded identity. The calling task
+remains available. The unrelated stash and handoffs are preserved; there is no owned cleanup residue.
+
+T1 is complete. No push, live authority upgrade, HR transaction or T2 execution occurred. The next
+work is governed by the combined Phase 2.6.2 owner, not this plan's historical T2 launch instructions.
+
+Closure recording gates: `/tmp/timeline-integration-closure-doc-guard.log` passed 24/24,
+`/tmp/timeline-integration-closure-lint.log` exited 0, and the closure roadmap freshness check passed.
+Nine instruction twins remain equal, maximum chain 16,921 bytes, and all 17 owner links resolve in
+the candidate tree. The three predecessor files intentionally absent from the shared working copy
+were checked through their committed blobs; this does not label those unrelated deletions clean.
+Only owner evidence prose changes after the final gated combined tree; runtime acceptance remains
+bound to the recorded code/test/configuration identity. Whitespace checks pass.

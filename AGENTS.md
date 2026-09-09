@@ -16,8 +16,10 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 - Keep existing `AGENTS.md` / `CLAUDE.md` pairs byte-identical. Write one shared text; update both.
   Change instructions when their rules change, not after every feature edit. Put requested lessons
   in the module's linked ledger. Use `/docs` for broader documentation cleanup; `/docs audit` is read-only.
-- Implementation commits/candidates and materially changed integration trees require typecheck, lint
-  and full coverage (D191). Documentation-only commits use D191's scoped checks and verified reuse;
+- Default implementation candidates and finalizers require typecheck, lint and full coverage (D191).
+  Phase 3 and future parallel workers run focused tests, scoped lint and quick checks; the named
+  finalizer combines candidates, runs full gates and fixes failures before group completion.
+  Documentation-only commits use D191's scoped checks and verified reuse;
   classify by affected inputs, not extension. Read `ref guards-and-tests` §3.14 D191 for gate cadence,
   concurrent groups, evidence requirements and existing-plan exceptions.
   Update relevant tests for feature changes; say when none exist. Lint failures are task failures.
@@ -123,12 +125,13 @@ session. Separate review sessions remain an explicit operator option. Read roadm
 finalization. The supervisor records the candidate as awaiting independent review and marks the
 phase/roadmap task complete only after accepted review, required integration gates and cleanup.
 Use the exact assigned task including parallel suffixes; no required agent coordinator or next-task dispatch.
-D344 (roadmap Governance) governs newly planned parallel work: independent worktrees and completed
-prerequisites are the default. Agents may coordinate when necessary to resolve blockers, overlap or
+D344 (roadmap Governance) requires prerequisite → independent workers → finalizer for Phase 3 and
+future parallel groups, with independent worktrees. Agents may coordinate to resolve blockers, overlap or
 duplicate work within approved boundaries; plan changes return to the operator. No automatic dispatch
 or merge. The operator chooses integration; completion requires review, gates and cleanup. Phase 3
 uses `3.P.N` for standalone prerequisites/tasks and `3.P.N.1`, `3.P.N.2`, etc. for independent parallel
-children unlocked by the completed parent. Use current identity maps; preserve in-flight briefs.
+children unlocked by the completed parent; downstream consumers wait for the named finalizer.
+Use current identity maps and D344’s 2026-09-09 cadence; preserve other in-flight briefs.
 At start/resume and after every verified task/step completion, send Done / Now / Remaining in chat
 before the next tool call: completed work with evidence, current action, and all unfinished items.
 Keep review, integration and cleanup visible; tool logs or plan UI never replace this update.
