@@ -12,7 +12,7 @@ import { historicalLedgerSources } from "../events/timeline-import.js";
 import { AtomicWriteCommitInputSchema } from "./write-commit-contracts.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { RunRecordSchema } from "../../domain/run/record.js";
+import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../domain/run/record.js";
 import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { timelineImportRecords, type TimelineSourceSnapshot } from "../events/timeline-import.js";
@@ -97,7 +97,8 @@ export function convertOperationHistory(database: DatabaseSync, source: Timeline
   const attempts = read(WriteAttemptRecordSchema, "run_operation_attempts");
   const operations = read(WriteIntentRecordSchema, "run_operations");
   const checkpoints = read(RunCheckpointRecordSchema, "run_checkpoints");
-  const runs = read(RunRecordSchema, "workflow_runs");
+  // Migration 40 precedes the completion enrichment in migration 41.
+  const runs = read(HistoricalRunRecordV40Schema, "workflow_runs");
   const deleted = read(DeletedRunRecordSchema, "deleted_runs");
   const files = historicalLedgerSources(source);
   const repository = createTimelineRepository({ database, read: (work) => work(), mutate: (work) => work().result, assertOwner: () => {} });
