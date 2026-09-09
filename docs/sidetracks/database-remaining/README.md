@@ -43,7 +43,7 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | --- | --- | --- |
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
 | Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
-| Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Open |
+| Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Approved: remove archive relaunch; preserve version-independent archive viewing. Historical relaunch storage disposition and deletion naming remain open. |
 | Messages and notes | `notifications`, `notes` | Open |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
 | Database maintenance | `authority_meta`, `authority_upgrades` | Open |
@@ -221,7 +221,7 @@ rewrite immutable historical configuration values merely to adopt the new name.
 - Separate current worker authorization/ownership checks from the run's retained configuration.
   Preserve stale-owner rejection, lease fencing and command replay protection; do not remove these
   checks wholesale to permit multiple configuration snapshots.
-- Resolve retry/new-attempt, relaunch and delegated-child inheritance rules before execution
+- Resolve retry/new-attempt and delegated-child inheritance rules before execution
   admission. Distinguish resuming an existing run from creating a new run; the current retry path
   also compares its source configuration with the active runtime. Inventory process-wide settings
   separately from run-bound settings and specify how updates take effect without operator restarts.
@@ -233,7 +233,8 @@ Focused tests must cover a settings save followed by a new run without restart, 
 configuration for existing running/queued/paused runs, mixed-snapshot worker execution, concurrent
 save/create ordering, invalid saves/rollback, restart recovery, and preserved ownership fencing.
 Assert effective execution settings as well as stored fingerprints. Add proof for the resolved
-retry/relaunch/start-request rules and affected command/UI contracts.
+retry/start-request rules and affected command/UI contracts. Archive relaunch is being removed by
+the approved group 3 decision below, so do not build a new settings activation path for it.
 
 This crosses settings application, run creation, worker execution and shared authority contracts;
 it is a behavior change, not a mechanical table rename. Resolve shared prerequisites and existing
@@ -301,9 +302,62 @@ Before admitting the execution brief:
   candidate review requirements, blockers, minor no-archive behavior, transaction rollback and
   preservation of populated historical archives through upgrade/restore. Use targeted UI proof for
   the updated-preview path. Final heavy gates and independent review follow this folder's cadence.
-- Resolve overlap with the pending relaunch/deletion discussion and the shared database prerequisite.
+- Resolve overlap with the approved archive-relaunch retirement below, remaining deletion discussion
+  and the shared database prerequisite.
   Do not assign competing archive-schema, migration or command-kernel edits to independent peers.
 
 Status: product direction and name approved; complete execution allocation, migration policy,
 review-replacement protocol, contract admission and launch prompts remain pending. No implementation
 or separate task is launched by this record.
+
+## Approved group 3: remove archive relaunch and preserve historical viewing
+
+On 2026-09-08 the operator directed: “remove the relaunch from archive feature” and confirmed that
+archive records remain viewable when workflow versions differ because their original data is
+preserved. This supersedes the unapproved suggestions to move relaunch lineage onto `workflow_runs`
+or add a prefilled archive-relaunch review form. Do neither as a new feature.
+
+### Required behavior and scope
+
+- Remove the archive Relaunch action and its execution entry points, including
+  `relaunch-archived-run`. Retire producer-only planning, fan-out and lifecycle wiring when no
+  supported caller remains. A stale client/direct command cannot create a run through the retired
+  action. Keep historical command/audit envelopes readable without re-enabling execution.
+- Archive viewing renders the stored run details, workflow identity and captured results even if
+  the current workflow changed or is no longer registered. Current descriptor availability cannot
+  gate historical viewing. Preserve existing honest absence/retention behavior for old fields or
+  separately stored evidence; do not invent unavailable data.
+- Preserve normal new-run creation and existing non-archive retry/restart behavior. Removing archive
+  relaunch does not authorize deleting archives, rewriting original run data or changing these other
+  actions. Archive delete remains a separate operation under its current safety rules.
+- Inventory populated `archive_relaunches`, historical command/audit/batch-origin references and
+  existing descendant runs. Decide historical storage disposition before admitting execution.
+  Removing the feature does not automatically authorize deleting its historical lineage evidence;
+  do not migrate that evidence into a second new table without an approved need.
+
+### Schema changes versus historical data
+
+Changing table structure does not itself authorize changing every record's values. The planned
+`workflow_runs` and archive migrations must declare exactly which live fields, reference mappings
+or indexes they transform. A new column does not prove that an old run had a historical value for
+it. Preserve a meaningful absent/unknown state instead of backfilling invented facts.
+
+`archived_runs` stores its own frozen payload. Changing the current workflow/run schema must not
+rebuild that payload from today's descriptor or overwrite captured content and digests. Readers
+must continue accepting supported historical archive schema generations and render only what is
+present. The version-change consolidation must preserve this rule while updating its references.
+Schema compatibility and historical workflow-version differences are distinct concerns.
+
+### Proof and ownership before launch
+
+Use the same plan owner for retirement, archive query/UI changes and migration implications.
+Check shared ownership with `version_changes`, settings and earlier database prerequisites before
+allocating peers. Ratify archive contract changes at their existing owner when admitting the brief.
+Focused tests must prove action/command retirement, no writes from stale relaunch requests, readable
+historical command/lineage data, unchanged archive payloads/digests through supported upgrades, and
+archive viewing after workflow version changes or descriptor removal. Cover older schema generations
+with missing fields, plus preserved ordinary creation/retry and archive-delete behavior. Apply the
+agreed final-session heavy gates and independent review cadence.
+
+Status: removal and historical-viewing behavior approved for planning. Implementation, historical
+lineage storage disposition, complete allocation and launch prompts remain pending.
