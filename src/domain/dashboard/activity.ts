@@ -119,8 +119,8 @@ export type ActivityCompletion = z.infer<typeof ActivityCompletionSchema>;
  * the axis without exporting an identifier.
  *
  * `present` carries only a COUNT. The projection deduplicates compatible,
- * generation-bound HMAC pseudonym evidence for current Separations rows; the
- * pseudonym and generation never cross this wire. `evidenceRows` says how
+ * validated canonical result identity for current Separations rows; the
+ * identifier never crosses this wire. `evidenceRows` says how
  * many person-bearing run/member rows supplied one locally valid evidence row,
  * which matters because an operation counts once as a run while each of its
  * members may be a different person.
@@ -591,9 +591,9 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
     + "could not check instead of reporting them as clean.",
     report.people.state === "present"
       ? `Distinct people deduplicates ${String(report.people.evidenceRows)} current Separations run/member rows using `
-        + "one complete compatible generation of keyed pseudonym evidence. Only the aggregate count crosses this wire."
+        + "validated identities from the canonical result schema. Only the aggregate count crosses this wire."
       : `Distinct people is unavailable: ${report.people.reason}. This absence is not zero; a full identifier, `
-        + "last-four suffix, item id, row title or receipt digest is never substituted for keyed pseudonym evidence.",
+        + "last-four suffix, item id, row title or receipt digest is never substituted for validated canonical identity.",
     "The Who column samples up to five runs per open state and names them only where the day on "
     + "screen holds the row; every other run in a state is named by its id. The count beside it is "
     + "the whole bucket, never the sample.",

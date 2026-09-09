@@ -17,3 +17,7 @@ export const FailureResolutionCapabilitySchema = z.discriminatedUnion("state", [
 ]);
 export type FailureResolution = z.infer<typeof FailureResolutionSchema>;
 export type FailureResolutionCapture = z.infer<typeof FailureResolutionCaptureSchema>;
+
+export function failureResolutionCapability() {
+  return FailureResolutionCapabilitySchema.parse({ state: "available" });
+}

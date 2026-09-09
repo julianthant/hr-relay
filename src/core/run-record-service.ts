@@ -1,3 +1,4 @@
+import { createRunLifecycleStorage } from "./run-lifecycle-storage.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "./run-settings.js";
 import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../domain/clock.js";
@@ -164,6 +165,8 @@ export class RunRecordService {
     private readonly hooks?: Readonly<{ afterCreateReservation?: () => void }>,
   ) {}
 
+  lifecycleStorage() { return createRunLifecycleStorage(this.dependencies.database); }
+
   read(input: string): RunExistence {
     const runId = RunIdSchema.parse(input);
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
@@ -172,7 +175,11 @@ export class RunRecordService {
       const run = runs.get(runId);
       if (tombstone !== undefined && run !== undefined) throw new Error(`run ${runId} has both lifecycle authority and a tombstone`);
       if (tombstone !== undefined) return RunExistenceSchema.parse({ state: "deleted", tombstone });
-      if (run === undefined) return RunExistenceSchema.parse({ state: "absent", runId });
+      if (run === undefined) {
+        const transfer = this.dependencies.database.transferredRun(runId);
+        return RunExistenceSchema.parse(transfer === undefined ? {state:"absent",runId}
+          : {state:"present",run:transfer.run,disposition:"archived"});
+      }
       const archived = archivedRuns.isArchived(runId);
       if (archived && run.lifecycle.state !== "terminal") throw new Error(`archived run ${runId} is not terminal`);
       return RunExistenceSchema.parse({
@@ -194,10 +201,12 @@ export class RunRecordService {
       }
       const workflows = request.workflow === undefined
         ? database.authority.runs.listWorkflows() : [request.workflow];
-      const rows = workflows.flatMap((workflow) => database.authority.runs.listByWorkflow(workflow))
+      const liveRows = workflows.flatMap((workflow) => database.authority.runs.listByWorkflow(workflow))
         .filter((run) => database.authority.archivedRuns.isArchived(run.envelope.runId)
           === (request.disposition === "archived"))
         .sort(compareRuns);
+      const rows = [...liveRows,...(request.disposition === "archived" ? database.listTransferredRuns()
+        .filter(run=>request.workflow===undefined || run.envelope.workflow===request.workflow) : [])].sort(compareRuns);
       const offset = cursor === undefined ? 0 : cursor.offset;
       const page = rows.slice(offset, offset + request.limit);
       return {
@@ -221,7 +230,7 @@ export class RunRecordService {
       if (!runSettingsAvailable(repositories, request)) return refused({ reason: "runtime-stale" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+      if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const itemId = deriveItemId(request.workflow, request.matchKey);
       if (request.parent !== undefined) {
         const parent = this.read(request.parent.runId);
@@ -787,7 +796,7 @@ export class RunRecordService {
       }
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+      if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const now = this.dependencies.clock.now().toISOString();
       const itemId = deriveItemId(create.workflow, create.matchKey);
       const { code, matchKey, runtimeConfig, input: storedInput, sessionId, appVersion, ...envelope } = create;
@@ -858,7 +867,7 @@ export class RunRecordService {
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+      if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const now = this.dependencies.clock.now().toISOString();
       const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
@@ -923,7 +932,13 @@ export class RunRecordService {
 
   deleteArchived(input: unknown) {
     const request = CanonicalDeleteArchivedRequestSchema.parse(input);
-    return this.deleteTree({ ...request, origin: "archive" });
+    const outcome = this.deleteTree({ ...request, origin: "archive" });
+    if ((outcome.state === "deleted" || outcome.state === "applied-already") && "tombstones" in outcome) {
+      for (const receipt of outcome.tombstones) {
+        if (receipt.removed.some(entry=>entry.table === "archive_transfers")) this.dependencies.database.settleArchivedDeletion(receipt.runId);
+      }
+    }
+    return outcome;
   }
 
   purge(input: unknown): RunPurgeOutcome {
@@ -974,7 +989,7 @@ export class RunRecordService {
         if (existence.disposition === "archived") return refused({ reason: "use-archive-door" });
       } else {
         const archive = repositories.archivedRuns.get(request.runId);
-        if (archive === undefined || archivedRunReferenceFingerprint(archive) !== request.archiveFingerprint) {
+        if (archive === undefined ? this.dependencies.database.transferredRun(request.runId)?.reportDigest !== request.archiveFingerprint : archivedRunReferenceFingerprint(archive) !== request.archiveFingerprint) {
           return refused({ reason: "schema-mismatch", digest: FingerprintSchema.parse(request.archiveFingerprint) });
         }
       }
@@ -985,7 +1000,7 @@ export class RunRecordService {
       const collect = (parent: RunRecord): void => {
         if (visited.has(parent.envelope.runId)) throw new Error(`cycle in run parent tree ${parent.envelope.runId}`);
         visited.add(parent.envelope.runId);
-        for (const child of repositories.runs.listChildren(parent.envelope.runId)) collect(child);
+        for (const child of [...repositories.runs.listChildren(parent.envelope.runId),...this.dependencies.database.listTransferredRuns().filter(run=>run.envelope.parent?.runId===parent.envelope.runId)]) collect(child);
         leaves.push(parent);
       };
       collect(run);
@@ -995,7 +1010,7 @@ export class RunRecordService {
       const tombstones = leaves.map((member) => {
         const runId = member.envelope.runId;
         return repositories.runs.delete({ runId, commandId: request.commandId, now,
-          origin: repositories.archivedRuns.isArchived(runId) ? "archive" : "queue" });
+          origin: repositories.archivedRuns.isArchived(runId) || this.dependencies.database.transferredRun(runId) !== undefined ? "archive" : "queue" });
       });
       this.recordJournal(repositories, journal.command, {
         kind: "deletion",
@@ -1146,7 +1161,7 @@ export class RunRecordService {
       throw new Error("terminalize replay does not carry a run result and terminal fence");
     }
     const existence = this.read(journal.result.runId);
-    if (existence.state !== "present") return this.replayRun(journal.result);
+    if (existence.state !== "present" || existence.disposition === "archived") return this.replayRun(journal.result);
     const { run } = existence;
     const authorization = run.completion;
     const failureCount = repositories.failures.listByRun(journal.result.runId).length;

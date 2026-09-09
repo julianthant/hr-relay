@@ -1,3 +1,4 @@
+import { backupLifecyclePair, verifyLifecyclePair } from "../../core/run-lifecycle-storage.js";
 import { verifyGeneratedSelection, readGeneratedSourcesAtPath, generatedSourceDigest, preserveGeneratedSources, readPreservedGeneratedSources } from "../../infra/sqlite/generated-conversion.js";
 import { timelineSourcesForUpgrade, preserveTimelineSources, readPreservedTimelineSources } from "../../infra/events/timeline-import.js";
 /** D336 stopped conversion: SQLite settles first; credentials settle independently. */
@@ -14,7 +15,7 @@ import { derivePersistedSettingsFingerprint } from "../../domain/config/settings
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../domain/config/protected-settings.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
+import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
 import { executeSettingsCommand } from "../../core/command-kernel.js";
@@ -56,8 +57,7 @@ export async function backupStoppedAuthority(stateRoot: string, clock: Clock) {
   const { openAuthorityBackupSourceReadOnly } = await import("../../infra/compat/backup-inspection.js");
   const source = openAuthorityBackupSourceReadOnly(path);
   try {
-    const service = new AuthorityBackupService(source, { directory: join(stateRoot, "backups", "authority") }, clock);
-    return await service.request({ trigger: "operator", requiredGeneration: source.getMeta().authorityGeneration });
+    return await backupLifecyclePair(source,stateRoot,clock);
   } finally { source.close(); }
 }
 
@@ -71,6 +71,12 @@ async function requiredBackup(stateRoot: string, generation: number, fingerprint
     if (verified.manifest.authorityGeneration === generation && verified.manifest.authorityContentFingerprint === fingerprint) matching = verified;
   }
   if (matching === undefined) throw new Error("backup-stale: run storage backup against the current authority first");
+  if (existsSync(join(stateRoot,"archive.sqlite"))) {
+    const paired=await verifyLifecyclePair(`${matching.manifestPath}.lifecycle.json`);
+    const {ArchiveDatabase}=await import("../../infra/sqlite/archive-database.js");
+    const archive=new ArchiveDatabase(join(stateRoot,"archive.sqlite"),{readOnly:true});
+    try{if(archive.fingerprint()!==paired.pair.archiveFingerprint)throw new Error("archive-backup-stale");}finally{archive.close();}
+  }
   return matching;
 }
 

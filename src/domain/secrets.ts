@@ -21,7 +21,6 @@ import { establishHostPrimaryDisplay, hostPrimaryDisplayEnvironment, type HostDi
 import { FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import {
-  createActivityPersonPseudonymDomain,
   type ActivityPersonPseudonymDomain,
 } from "./trust/activity-person-pseudonym.js";
 import {
@@ -548,14 +547,8 @@ export function requireSecret(
 export function requireActivityPersonPseudonymDomain(
   source: ProtectedSecretSource,
 ): ActivityPersonPseudonymDomain {
-  const reference = ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE;
-  const stored = readProtectedStore(reference.name, source).entries.activityPersonPseudonym;
-  if (stored === undefined) {
-    throw new SecretMissingError(
-      `${reference.name} is missing from registered source protected-store`,
-    );
-  }
-  return createActivityPersonPseudonymDomain(stored.value);
+  void source;
+  throw new Error("activity-person-pseudonyms-retired");
 }
 
 export function optionalSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {

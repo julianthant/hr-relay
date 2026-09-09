@@ -29,6 +29,14 @@ function mutator(declaration: ts.Declaration | undefined): boolean {
 const BACKFILL_SQL = "UPDATE deleted_runs SET item_id=?, attempt=?, run_number=NULL, ordinal_source=?, record_json=json_set(record_json,'$.itemId',?,'$.attempt',?,'$.runNumber',NULL,'$.ordinalSource',?) WHERE record_key=? AND item_id IS NULL AND attempt IS NULL AND run_number IS NULL";
 // T/P7 permits only this one-time section enrichment inside the stopped converter.
 const ARCHIVE_SECTION_SQL = "UPDATE archived_runs SET transactions_json=?, transactions_digest=? WHERE record_key=? AND transactions_json IS NULL";
+const COMPLETION_SQL = "UPDATE workflow_runs SET record_json = ? WHERE record_key = ?";
+function allowedCompletionSql(relative: string, node: ts.Node): boolean {
+  if (relative !== "src/infra/sqlite/completion-conversion.ts" || !ts.isStringLiteralLike(node) || node.text !== COMPLETION_SQL) return false;
+  for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
+    if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "convertRunCompletions";
+  }
+  return false;
+}
 function allowedArchiveSectionSql(relative: string, node: ts.Node): boolean {
   if (relative !== "src/infra/sqlite/timeline-conversion.ts" || !ts.isStringLiteralLike(node)
     || node.text !== ARCHIVE_SECTION_SQL) return false;
@@ -80,7 +88,7 @@ function audit(fixtures = false): string[] {
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
-        && !allowedArchiveSectionSql(relative, node)
+        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node)
         && !(relative === "src/infra/compat/settings-database-upgrade.ts" && ts.isStringLiteralLike(node) && node.text === BACKFILL_SQL)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
@@ -109,6 +117,18 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.equal(check(ARCHIVE_SECTION_SQL, path, "ordinaryRuntime"), false);
     assert.equal(check(ARCHIVE_SECTION_SQL.replace(" AND transactions_json IS NULL", ""), path, "freezeConvertedArchiveTransactions"), false);
     assert.equal(check("UPDATE archived_runs SET record_json=? WHERE record_key=?", path, "freezeConvertedArchiveTransactions"), false);
+  });
+  it("admits only the exact validated stopped completion conversion statement", () => {
+    const check = (path: string, name: string, sql: string) => {
+      const source = ts.createSourceFile(path, `function ${name}() { db.prepare(${JSON.stringify(sql)}); }`, ts.ScriptTarget.Latest, true);
+      let admitted = false;
+      const visit = (node: ts.Node): void => { if (allowedCompletionSql(path,node)) admitted = true; ts.forEachChild(node,visit); };
+      visit(source); return admitted;
+    };
+    assert.equal(check("src/infra/sqlite/completion-conversion.ts","convertRunCompletions",COMPLETION_SQL),true);
+    assert.equal(check("src/core/unsafe.ts","convertRunCompletions",COMPLETION_SQL),false);
+    assert.equal(check("src/infra/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
+    assert.equal(check("src/infra/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
   });
   it("limits lifecycle writes to the service/adapter and exact stopped ordinal backfill", () => { assert.deepEqual(audit(), []); });
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {

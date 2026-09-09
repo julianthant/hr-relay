@@ -1,3 +1,6 @@
+export const VERSION_CHANGES_DDL = `CREATE TABLE version_changes (record_key TEXT PRIMARY KEY, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL) STRICT`;
+import { ARCHIVE_TRANSFER_DDL } from "./run-evidence-ownership.js";
+import { RUN_SUMMARIES_DDL, SUMMARY_PUBLICATION_DDL } from "./run-summaries.js";
 import { GENERATED_ARTIFACT_DDL, GENERATED_ARTIFACT_CONSTRAINTS } from "./generated-conversion.js";
 import { APP_SETTINGS_DDL } from "./settings-storage.js";
 import { PROVIDER_REQUEST_DDL, PROVIDER_USAGE_DDL, PROVIDER_STORAGE_CONSTRAINTS } from "./provider-storage.js";
@@ -9,7 +12,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 47;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 48;
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -49,7 +52,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "spans" | "gates" | "notes" | "ocr_approvals" | "knowledge_records" | "fix_records" | "artifact_outbox" | "artifact_sink_heads" | "operator_xlsx_exports" | "settings_current" | "runtime_config" | "provider_admissions" | "provider_budget_counters" | "intake_sessions" | "intake_manifests" | "ocr_extractions" | "failures" | "run_terminal_authorizations" | "run_terminal_outbox" | "ledger_partitions" | "ledger_projections" | "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
+type MigrationTableName = "activity_person_pseudonyms" | "activity_person_pseudonym_generations" | "spans" | "gates" | "notes" | "ocr_approvals" | "knowledge_records" | "fix_records" | "artifact_outbox" | "artifact_sink_heads" | "operator_xlsx_exports" | "settings_current" | "runtime_config" | "provider_admissions" | "provider_budget_counters" | "intake_sessions" | "intake_manifests" | "ocr_extractions" | "failures" | "run_terminal_authorizations" | "run_terminal_outbox" | "ledger_partitions" | "ledger_projections" | "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -79,6 +82,10 @@ const jsonRecordTable = (name: string): string => `
 `;
 
 export const SQLITE_TABLE_DDL = deepFreeze({
+  version_changes: VERSION_CHANGES_DDL,
+  archive_transfers: ARCHIVE_TRANSFER_DDL,
+  run_summaries: RUN_SUMMARIES_DDL,
+  summary_publication: SUMMARY_PUBLICATION_DDL,
   generated_artifacts: GENERATED_ARTIFACT_DDL,
   app_settings: APP_SETTINGS_DDL,
   provider_requests: PROVIDER_REQUEST_DDL,
@@ -2072,6 +2079,32 @@ export const SQLITE_MIGRATIONS = deepFreeze([
   ] },
   { version: 46, statements: [GENERATED_ARTIFACT_DDL, ...GENERATED_ARTIFACT_CONSTRAINTS, "DROP TABLE artifact_outbox", "DROP TABLE artifact_sink_heads", "DROP TABLE operator_xlsx_exports"] },
   { version: 47, statements: ["DROP TABLE spans", "DROP TABLE gates", "DROP TABLE notes", "DROP TABLE ocr_approvals", "DROP TABLE knowledge_records", "DROP TABLE fix_records"] },
+  { version: 48, statements: ["DROP TABLE activity_person_pseudonyms", "DROP TABLE activity_person_pseudonym_generations", VERSION_CHANGES_DDL, ARCHIVE_TRANSFER_DDL, RUN_SUMMARIES_DDL, SUMMARY_PUBLICATION_DDL,
+    `CREATE TRIGGER archive_transfers_immutable BEFORE UPDATE ON archive_transfers BEGIN SELECT RAISE(ABORT,'archive transfer identity is immutable'); END`,
+    `CREATE TRIGGER archive_transfers_no_replace BEFORE INSERT ON archive_transfers WHEN EXISTS (SELECT 1 FROM archive_transfers WHERE record_key=NEW.record_key) BEGIN SELECT RAISE(ABORT,'archive transfer identity already exists'); END`,
+    `CREATE TRIGGER archive_transfers_delete BEFORE DELETE ON archive_transfers WHEN NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key=OLD.record_key) BEGIN SELECT RAISE(ABORT,'archive transfer requires deletion receipt'); END`,
+    `CREATE TRIGGER workflow_runs_reserved_identity BEFORE INSERT ON workflow_runs WHEN EXISTS (SELECT 1 FROM archive_transfers WHERE record_key=NEW.record_key) BEGIN SELECT RAISE(ABORT,'run identity is archived'); END`,
+    "DROP TRIGGER timeline_events_confirmed_retained",
+    `CREATE TRIGGER timeline_events_confirmed_retained BEFORE DELETE ON timeline_events
+      WHEN OLD.retention_class='confirmed-operation'
+        AND NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key=OLD.run_id)
+        AND NOT EXISTS (SELECT 1 FROM archive_transfers WHERE record_key=OLD.run_id)
+      BEGIN SELECT RAISE(ABORT,'confirmed timeline history requires owner deletion or verified transfer'); END`,
+    "DROP TRIGGER deleted_runs_require_live_run_insert",
+    `CREATE TRIGGER deleted_runs_require_live_run_insert BEFORE INSERT ON deleted_runs
+      WHEN NOT EXISTS (SELECT 1 FROM workflow_runs WHERE record_key=NEW.record_key)
+        AND NOT EXISTS (SELECT 1 FROM archive_transfers WHERE record_key=NEW.record_key)
+      BEGIN SELECT RAISE(ABORT,'a deleted run tombstone names a run that authority does not hold'); END`,
+    ...[
+      ["archived_runs_never_deleted","archived_runs","record_key"],
+      ["archive_relaunches_never_deleted","archive_relaunches","record_key"],
+      ["dry_run_scenario_results_never_deleted","dryrun_results","run_id"],
+    ].flatMap(([trigger,table,key]) => [`DROP TRIGGER ${trigger}`,
+      `CREATE TRIGGER ${trigger} BEFORE DELETE ON ${table}
+       WHEN NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key=OLD.${key})
+         AND NOT EXISTS (SELECT 1 FROM archive_transfers WHERE record_key=OLD.${key})
+       BEGIN SELECT RAISE(ABORT,'owned evidence is never deleted outside deletion or verified transfer'); END`]),
+    "CREATE INDEX run_summaries_filter_idx ON run_summaries(workflow,local_day,state,record_key)", "CREATE INDEX run_summaries_parent_idx ON run_summaries(parent_run_id)"] },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
@@ -2088,7 +2121,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
   };
   const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox", "intake_sessions", "intake_manifests", "provider_admissions", "provider_budget_counters", "settings_current", "runtime_config", "artifact_outbox", "artifact_sink_heads", "operator_xlsx_exports", "spans", "gates", "notes", "ocr_approvals", "knowledge_records", "fix_records"];
+  const retiredNames: readonly string[] = ["activity_person_pseudonyms", "activity_person_pseudonym_generations", ...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox", "intake_sessions", "intake_manifests", "provider_admissions", "provider_budget_counters", "settings_current", "runtime_config", "artifact_outbox", "artifact_sink_heads", "operator_xlsx_exports", "spans", "gates", "notes", "ocr_approvals", "knowledge_records", "fix_records"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {
@@ -2096,7 +2129,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
     }
   }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
-  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
   for (const name of retiredNames) {
     if (!TABLE_ORDER.some((migrationName) => migrationName === name || renamed(migrationName) === name)) {
       violations.push(`retired table ${name} is absent from migration history`);

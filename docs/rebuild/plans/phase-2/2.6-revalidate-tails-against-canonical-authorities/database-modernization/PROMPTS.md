@@ -63,8 +63,8 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | G | codex/artifact-outputs | hr-worktree-artifact-outputs | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | S | codex/settings-activation | hr-worktree-settings-activation | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
-| A | codex/archive-transfer | hr-worktree-database-peer | L |
-| Q | codex/run-summaries | hr-worktree-database-other | L |
+| A | codex/archive-transfer | hr-worktree-database-peer | L `08d9f4f5334eb20a49334acda268727b622b1163`; consume after local incorporation |
+| Q | codex/run-summaries | hr-worktree-database-other | L `08d9f4f5334eb20a49334acda268727b622b1163`; consume after local incorporation |
 | V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
 | U | codex/activity-views | hr-worktree-database-peer | V |
 | H | codex/archive-viewer | hr-worktree-database-other | V |

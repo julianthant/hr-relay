@@ -62,7 +62,7 @@ import {
 } from "../../../domain/ids.js";
 import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
-import type { ActivityPersonPseudonymEvidence } from "../../../domain/trust/activity-person-pseudonym.js";
+import type { RunSummary } from "../../../domain/run/summary.js";
 import {
   projectReceiptForOperator,
   type OperatorReceiptProjection,
@@ -211,7 +211,7 @@ export interface RunQueueProjectionDeps {
      * intentionally range-scoped by the exact served Separations run ids;
      * receipts are still read for the independent warning/Unread axis only.
      */
-    listActivityPersonPseudonyms(runIds: readonly string[]): readonly ActivityPersonPseudonymEvidence[];
+    canonicalPerson?(runId: string): RunSummary["person"];
     /**
      * Ref workflow-model §5.7's "latest compatible attempt wins" read, for the ONE fact the
      * row derives from a stored node output: the subject's display name, at the
@@ -358,76 +358,12 @@ function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
  * absent with zero unavailable rows when its locally complete rows span more
  * than one generation; that is not a missing row, it is an incomparable set.
  */
-function activityPeopleOf(
-  personRows: readonly RunRecord[],
-  evidence: readonly ActivityPersonPseudonymEvidence[],
-) {
-  if (personRows.length === 0) return { state: "present" as const, distinct: 0, evidenceRows: 0 };
-
-  const expectedRunIds = new Set(personRows.map((row) => row.envelope.runId));
-  const rowsByRun = new Map<string, ActivityPersonPseudonymEvidence[]>();
-  let foreignEvidence = 0;
-  for (const record of evidence) {
-    if (!expectedRunIds.has(record.runId) || record.workflowId !== "separations") {
-      foreignEvidence += 1;
-      continue;
-    }
-    const records = rowsByRun.get(record.runId) ?? [];
-    records.push(record);
-    rowsByRun.set(record.runId, records);
-  }
-
-  const compatible = new Map<string, ActivityPersonPseudonymEvidence>();
-  let unavailableRows = 0;
-  let duplicateRows = 0;
-  let multiGenerationRows = 0;
-  for (const runId of expectedRunIds) {
-    const records = rowsByRun.get(runId) ?? [];
-    const generations = new Set(records.map((record) => record.keyGeneration));
-    if (records.length === 0) {
-      unavailableRows += 1;
-      continue;
-    }
-    if (generations.size > 1) {
-      multiGenerationRows += 1;
-      unavailableRows += 1;
-      continue;
-    }
-    if (records.length !== 1) {
-      duplicateRows += 1;
-      unavailableRows += 1;
-      continue;
-    }
-    compatible.set(runId, records[0]);
-  }
-
-  const evidenceRows = compatible.size;
-  const generations = new Set([...compatible.values()].map((record) => record.keyGeneration));
-  const absent = (reason: string) => ({
-    state: "absent" as const,
-    evidenceRows,
-    unavailableRows,
-    reason,
-  });
-  if (foreignEvidence > 0) {
-    return absent(`${String(foreignEvidence)} pseudonym evidence row${foreignEvidence === 1 ? " is" : "s are"} outside the served current Separations run/member range; distinct people is unavailable`);
-  }
-  if (unavailableRows > 0) {
-    const cause = multiGenerationRows > 0
-      ? `${String(multiGenerationRows)} run/member row${multiGenerationRows === 1 ? " carries" : "s carry"} more than one pseudonym key generation`
-      : duplicateRows > 0
-        ? `${String(duplicateRows)} run/member row${duplicateRows === 1 ? " carries" : "s carry"} more than one pseudonym evidence row for one generation`
-        : `${String(unavailableRows)} of ${String(personRows.length)} current Separations run/member rows lack pseudonym evidence`;
-    return absent(`${cause}; distinct people is unavailable`);
-  }
-  if (generations.size !== 1) {
-    return absent("current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable");
-  }
-  return {
-    state: "present" as const,
-    distinct: new Set([...compatible.values()].map((record) => record.pseudonym)).size,
-    evidenceRows,
-  };
+function activityPeopleOf(personRows: readonly RunRecord[], read: ((runId:string)=>RunSummary["person"]) | undefined) {
+  const identities=personRows.map(run=>read?.(run.envelope.runId) ?? {state:"unavailable" as const,reason:"canonical-result-reader-unavailable"});
+  const available=identities.filter(row=>row.state==="available"),unavailableRows=identities.length-available.length;
+  if(unavailableRows!==0)return {state:"absent" as const,evidenceRows:available.length,unavailableRows,
+    reason:`${String(unavailableRows)} of ${String(personRows.length)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
+  return {state:"present" as const,distinct:new Set(available.map(row=>row.identity)).size,evidenceRows:available.length};
 }
 
 /**
@@ -1809,7 +1745,7 @@ export class RunQueueProjection {
 
     const people = activityPeopleOf(
       personRows,
-      this.#deps.authority.listActivityPersonPseudonyms(personRows.map((row) => row.envelope.runId)),
+      this.#deps.authority.canonicalPerson === undefined ? undefined : (runId) => this.#deps.authority.canonicalPerson!(runId),
     );
 
     const days = new Map<string, number>();

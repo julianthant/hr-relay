@@ -211,6 +211,10 @@ Assignment **L**, display **2.6.7**. Single scope/proof owner: [owning plan](dat
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
+Focused candidate `08d9f4f53` passed L01–L05 and all scoped runtime gates.
+See the [L06 release record](database-modernization/prerequisites.md#l06-scoped-release--2026-09-09)
+for exact identities, local integration and cleanup; final phase acceptance remains 2.6.9.
+
 #### Task 7.1 · Transfer runs into independent archive reports
 <!-- roadmap: p2db-archive-transfer -->
 

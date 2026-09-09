@@ -26,6 +26,7 @@
       "cli": "tsx scripts/secure-env-bootstrap.ts cli"
     },
     "stateRoot": ".tracker",
+    "archiveDatabaseFile": "archive.sqlite",
     "artifactRoot": ".tracker/artifacts",
     "backendPort": 3938,
     "frontendPort": 5174,
