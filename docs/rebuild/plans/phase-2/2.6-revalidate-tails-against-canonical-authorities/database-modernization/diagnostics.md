@@ -4,7 +4,7 @@
 after verification of repaired F on 2026-09-09. That brief supersedes this file's earlier waiting,
 no-master-merge, retained-branch and frozen-path wording for D only. It includes three explicit
 ownership amendments, focused checks, local master merge and owned cleanup. Full gates and fresh
-independent review remain at 2.6.9. Implementation is unstarted.
+independent review remain at 2.6.9. D implementation is in progress; see the current execution record below.
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
@@ -653,3 +653,106 @@ receipt are retained at `/tmp/diagnostics-plan-evidence-20260909/rebind/`. D wor
 and capacity are rechecked before handoff; the supervisor repeats volatile checks before creation.
 The shared registry's current D binding already names this F release in `e06a1c82e`; no peer or
 shared registry edits are needed here. The factual rebind slot is P → D → G after F's release.
+
+## D execution record — 2026-09-09
+
+Current assignment: **2.6.6.2 D**, one GPT-6 Astra supervisor, zero workers. Branch
+`codex/diagnostics`, checkout `/Users/julianhein/Projects/hr-worktree-diagnostics`, approved
+plan/implementation base `883ae264c170e4c82fd2240078cd3a4b25bb0976`. Required F integration
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` is an ancestor. F's resolver closure receipt was
+read and its absent worktree/ref verified. D's path/ref were absent before creation; two auxiliary
+worktrees existed. Shared master had unrelated documentation edits, which were preserved.
+
+D01–D03 are implemented. D04 candidate checks and D05 integration/cleanup are recorded below.
+Full gates and fresh independent review remain with 2.6.9. Iteration evidence is
+`/tmp/diagnostics-20260909/`; retained evidence is
+`/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/`.
+
+**Operator-approved bounded test ownership amendment:** the required focused guard
+`tests/unit/architecture/control-command-single-path.test.ts` omitted failure-resolution from its
+expected active partition and command corpus even though the admitted F base registered the arm.
+The operator explicitly approved adding that one family/action and its missing valid fixture on
+2026-09-09. All existing assertions, partition/corpus equality and unavailable-port controls remain.
+No guard was added or retired, so guard-inventory ownership is unchanged. The failing evidence is
+`architecture-first.log`; the unrelated command-result fold failure in the same run is repaired in
+D's owned model using the existing exhaustive settlement function.
+
+**Operator-approved bounded database ownership amendment:** same-ID changed-content resolution
+reaches the shared database's identity check before D's executor. Only settings mapped that mismatch
+to `CommandIdentityConflictError`; other families threw a generic Error. The operator explicitly
+approved adding failure-resolution beside settings in that single condition in
+`src/infra/sqlite/authority-database.ts` on 2026-09-09. No other database behavior or family changes.
+`commands-render.log` and `command-capture.log` retain the reproducer. Regression proof checks
+kernel and actual HTTP typed `command-divergent` refusal, no protected note in errors, and unchanged
+rows/generation after rejection.
+
+### D implementation and focused proof
+
+D02 activates the admitted failure-resolution command inside the kernel's existing authority
+transaction. Exact run/failure identity, independent annotation version and archived/deleted
+refusals precede mutation. Annotation, command journal, audit and strict native timeline history
+commit together. History contains identity/action/version/time, never optional free text. No run,
+failure, fingerprint, receipt or completion bytes change. Same-state/stale commands refuse without
+burning their IDs. Protected note projection leaves raw captured evidence separate.
+
+D03 uses existing Field/Textarea/Button/Banner components. Live Logs passes admitted actor/time;
+shared and archived rendering has no action context and remains read-only. The component displays
+pending/refused/read-error states, reads durable authority after commands, and polls every three
+seconds with one in-flight read and selection/unmount cancellation. Exact nested annotation
+identity is checked. Two independent OS processes prove version competition and another process's
+updates appear in the desktop without changing run version.
+
+| Proof allocation | D evidence and remaining stage |
+| --- | --- |
+| P1/P2 foundation, naming and storage | Reuse R/F prerequisites and F's complete resolver closure above. D changes no SQL migration, table catalog, fingerprint registry or naming authority. Combined storage/conversion acceptance remains 2.6.9. |
+| P3 authority and atomicity | `commands.test.ts`: resolve/reopen, exact replay after lost acknowledgement/restart, divergent identity, stale/mismatched/malformed targets, ordinary timeline retention and same-version competing OS processes. Injected post-annotation/event/audit failures roll back rows, journal and generation; identical commands then succeed as positive controls. |
+| P4 immutable evidence and safety | `capture.test.ts`: populated receipt/run/failure bytes and receipt identity remain exact across resolve/reopen; protected notes are absent from served views/errors/history. Corrupt annotation fails by name. Matching fingerprints remain separate. Parked UNKNOWN write and generic retry refusal remain unchanged. |
+| P5 served behavior | Unit rendering/readback plus two-theme dedicated desktop: keyboard/focus, pending/refusal, read failure/recovery, cross-process refresh, protected long note, minimum desktop, zoom and archived read-only presentation. Archive fixture is explicitly a captured presentation snapshot, not an archive producer. Saved-report transfer, post-source-deletion readability and full archive conversion remain L/A/H and 2.6.9. |
+| P6 lifecycle/recovery | Exact lost-ack replay, concurrent annotation CAS, deletion/tombstone refusal, bounded refresh cancellation and unavailable-executor negative control pass. Upgrade/recovery and combined archive lifecycle remain downstream. |
+
+The external Vitest adapter imports the real configuration and changes only root/project
+`test.maxWorkers` to 1. `resolved-workers.json` records forks, isolation, membership and timeouts.
+Final gates run serial test lanes. No full typecheck/coverage, whole architecture/parity, broad
+build/performance, live application, independent review or peer dispatch occurred.
+
+### Delivery assessment
+
+Two discoverable foundation/plan allocation omissions required operator-approved bounded ownership
+amendments: the active command guard omitted F's registered arm, and shared identity admission did
+not provide failure-resolution's required typed divergent-ID refusal. Checking the executable
+partition corpus and the pre-executor identity path during planning would have exposed both.
+Neither amendment expands the product scope. Existing assertions and unavailable-port negative
+controls remain; no guard was added or retired.
+
+Implementation repair rounds corrected fixture migration-owner spelling, historical SQL table
+names, receipt schema/hash binding, HTTP malformed-request status, a write-proof binding and lint
+issues; adopted the existing exhaustive command-result fold; and fixed desktop wrapper attachment
+names and archive viewport position. Failed logs remain under `iteration/`. The extra guessed
+roadmap selector collected no tests alongside the five real architecture files; the actual
+`roadmap-doc-binding.test.ts` is run separately. These are setup/implementation defects, not waived
+requirements. One context compaction occurred; elapsed work/wait attribution is not measured.
+Full independent assessment remains 2.6.9; this supervisor's inspection is not a review verdict.
+
+### D candidate gates and integration disposition
+
+Implementation commit `c702be5c6c685ffa70a476774085e66a7088b411` contains exactly 32 owned
+production/test/reference paths, including the two explicitly approved bounded shared amendments.
+The tested non-document manifest is unchanged across the final gates and commit. The exact
+recording candidate SHA/tree is bound externally in `candidate.json`.
+
+| Candidate check | Result / retained log under `iteration/` |
+| --- | --- |
+| Exact 16-file unit lane | 293 PASS, exit 0; `unit-final.log` |
+| Exact five-file architecture lane | 58 PASS, exit 0; `architecture-final.log` |
+| Roadmap document binding | 24 PASS, exit 0; `doc-binding-candidate.log` |
+| Lint | `npm run lint`, exit 0; `lint-final.log` |
+| Freshness | Manifest/catalog/roadmap generation then check, all exit 0; `*-final-generate.log`, `*-final-check.log` |
+| Dedicated desktop | Both themes PASS, exit 0; `parity-candidate.log`; four D-only PNG/a11y/meta reference sets. Manual specimen inspected using owned playwright-cli session, then closed. |
+| Documents/instructions | Local links resolve, nine existing twin pairs equal, maximum chain 17,333 bytes; `doccheck-candidate.log`; whitespace PASS. |
+
+D05 retains merge and cleanup. Master advanced through G's completed release, including artifact
+source/test changes; D will rerun its full focused unit/architecture/desktop/lint set on the combined
+tree rather than reuse uncertain transitive inputs. No merge conflict or contested ownership has
+been observed. G's complete closure is primary evidence that its shared mutation finished. D uses
+Git's actual index/ref locking for its authorized merge; no peer message or reservation queue.
+Full independent review and phase acceptance remain at 2.6.9.

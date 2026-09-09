@@ -3061,7 +3061,7 @@ export class AuthorityDatabase implements Disposable {
     if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
     const row = this.#database.prepare("SELECT record_json FROM commands WHERE record_key = ?").get(record.commandId);
     if (row !== undefined && canonicalJsonStringify(JSON.parse(JsonRowSchema.parse(row).record_json) as unknown) !== canonicalJsonStringify(record)) {
-      if ("family" in record && record.family === "settings") throw new CommandIdentityConflictError();
+      if ("family" in record && (record.family === "settings" || record.family === "failure-resolution")) throw new CommandIdentityConflictError();
       throw new Error(`command id ${record.commandId} was reused with different content`);
     }
   }

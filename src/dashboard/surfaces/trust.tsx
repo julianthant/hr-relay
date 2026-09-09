@@ -29,6 +29,8 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
+  Field,
+  Textarea,
   Badge,
   Chip,
   Banner,
@@ -54,6 +56,9 @@ import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, shortHash } from "./format.js";
 import {
+  acceptFailureResolutionReadback,
+  useFailureResolution,
+  type LiveFailureContext,
   FAILURE_WRITE_STATE,
   acceptDiagnosticBundleReadback,
   evidenceSourceMeta,
@@ -322,7 +327,33 @@ export function FailureRecordHead({ detail }: { detail: FailureDetailWire }) {
   );
 }
 
-export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
+function FailureResolutionControls({ initial, context }: {
+  initial: NonNullable<FailureDetailWire["resolution"]>; context?: LiveFailureContext;
+}) {
+  const client = useDashboardClient();
+  const state = useFailureResolution(client, initial, context);
+  const resolution = state.current.capture.resolution;
+  const editable = context !== undefined && state.current.capability.state === "available";
+  return <TrustSection label="Problem follow-up">
+    <p className={dsText.body} role="status">{resolution.status === "resolved" ? "Resolved" : "Unresolved"}</p>
+    {resolution.status === "resolved" && <>
+      <MetaLine items={[`by ${resolution.by}`, `at ${fmtClock(resolution.at)}`]} />
+      {resolution.note !== undefined && <p className={cn(dsText.body, "min-w-0 whitespace-pre-wrap break-words")}>{resolution.note}</p>}
+    </>}
+    {state.readError !== undefined && <Banner tone="danger" title="Resolution could not be refreshed">{state.readError}</Banner>}
+    {state.commandError !== undefined && <Banner tone="danger" title="Resolution was not confirmed">{state.commandError}</Banner>}
+    {editable && <>
+      {resolution.status === "unresolved" && <Field label="Resolution note (optional)" hint={`${String(state.note.length)}/1000`} disabled={state.pending}>
+        <Textarea rows={2} maxLength={1000} value={state.note} onChange={event => state.setNote(event.target.value)} />
+      </Field>}
+      <Button variant="secondary" disabled={state.pending || state.readError !== undefined} onClick={() => { void state.submit(); }}>
+        {state.pending ? "Saving…" : resolution.status === "resolved" ? "Reopen" : "Mark resolved"}
+      </Button>
+    </>}
+  </TrustSection>;
+}
+
+export function FailureDetailBody({ detail, liveContext }: { detail: FailureDetailWire; liveContext?: LiveFailureContext }) {
   const subject = detail.subject;
   const writeState = FAILURE_WRITE_STATE[detail.writeState];
   const history = failureFingerprintHistory(detail.sameFingerprintSeen);
@@ -449,6 +480,11 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
           </span>
         ))}
       </TrustSection>
+
+      {detail.resolution !== undefined && <FailureResolutionControls
+        key={`${detail.runId}:${detail.failureId}:${liveContext === undefined ? "read-only" : liveContext.actorId}`}
+        initial={acceptFailureResolutionReadback(detail.runId, detail.failureId, { section: "failure", payload: { state: "available", value: detail } })} context={liveContext}
+      />}
 
       {/*
         THE DISCLOSURE (E15 — DemoFailure.tsx:266-284). Everything below it

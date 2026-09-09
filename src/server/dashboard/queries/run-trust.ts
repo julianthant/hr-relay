@@ -1,3 +1,4 @@
+import { projectFailureResolution } from "./failure-resolution.js";
 import { protectIdentityEvidencePacket } from "../../../domain/separations/identity-evidence.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest } from "../../../domain/protected-input.js";
 import { deriveIdentityEvidenceDigest } from "../../../domain/separations/identity-evidence.js";
@@ -671,7 +672,7 @@ function failureDetailWire(
   return FailureDetailWireSchema.parse({
     runId,
     failureId: projected.failureId,
-    ...(resolution === undefined ? {} : {resolution:{capability:trust.failureResolution?.capability(),capture:resolution}}),
+    ...(resolution === undefined ? {} : {resolution:{capability:trust.failureResolution?.capability(),capture:projectFailureResolution(resolution, protectedInput)}}),
     traceId: projected.traceId,
     attempt: projected.attempt,
     workflowId: projected.workflowId,

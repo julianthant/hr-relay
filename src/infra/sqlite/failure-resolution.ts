@@ -10,7 +10,10 @@ export function createFailureResolutionRepository(ports:FailureResolutionPorts) 
  const read=(runId:string,failureId:string)=>{
   const raw=ports.database.prepare("SELECT record_key,run_id,resolution_json,resolution_version FROM run_failures WHERE record_key=? AND run_id=?").get(failureId,runId);
   if(raw===undefined)return undefined;
-  const row=RowSchema.parse(raw);const resolution=FailureResolutionSchema.parse(JSON.parse(row.resolution_json));
+  const row=RowSchema.parse(raw);
+  let resolution;
+  try { resolution=FailureResolutionSchema.parse(JSON.parse(row.resolution_json)); }
+  catch { throw new Error("failure-resolution-annotation-invalid"); }
   if(resolution.version!==row.resolution_version)throw new Error("failure-resolution-version-mismatch");
   return FailureResolutionCaptureSchema.parse({failureId:row.record_key,runId:row.run_id,resolution});
  };

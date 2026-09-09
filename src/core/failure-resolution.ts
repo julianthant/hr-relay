@@ -1,11 +1,59 @@
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
-import { FailureResolutionCapabilitySchema } from "../domain/trust/failure-resolution.js";
+import { FailureResolutionCapabilitySchema, FailureResolutionSchema } from "../domain/trust/failure-resolution.js";
 import type { CommandApplication } from "./command-application.js";
 import type { FailureResolutionCommand } from "../domain/commands.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
-export function failureResolutionCapability(){return FailureResolutionCapabilitySchema.parse({state:"unavailable",reason:"resolution-not-implemented"});}
-export function executeFailureResolution(_repositories:AuthorityRepositories,request:FailureResolutionCommand,_now:string):CommandApplication {
- return {result:{state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."},versionChanges:[],affectedDependencyIds:[]};
+import { rejectCommandRequest } from "./command-kernel.js";
+import { lifecycleCommandId } from "./run-record-service.js";
+
+export function failureResolutionCapability() {
+  return FailureResolutionCapabilitySchema.parse({ state: "available" });
+}
+
+/** The command kernel owns the surrounding annotation/journal/audit/event transaction. */
+export function executeFailureResolution(
+  repositories: AuthorityRepositories, request: FailureResolutionCommand, now: string,
+): CommandApplication {
+  const { runId, failureId, expectedVersion } = request.target;
+  if (repositories.deletedRuns.get(runId) !== undefined) {
+    rejectCommandRequest(request, "target-deleted", "The failure's run was deleted.");
+  }
+  const run = repositories.runs.get(runId);
+  const failure = repositories.failures.get(failureId);
+  if (run === undefined || failure === undefined || failure.runId !== runId) {
+    rejectCommandRequest(request, "target-not-found", "The exact live run and failure are unavailable.");
+  }
+  if (repositories.archivedRuns.get(runId) !== undefined) {
+    rejectCommandRequest(request, "invalid-state", "Archived failures are read-only.");
+  }
+  const current = repositories.failureResolution.read(runId, failureId);
+  if (current === undefined) throw new Error("failure-resolution-annotation-missing");
+  if (current.resolution.version !== expectedVersion) {
+    rejectCommandRequest(request, "invalid-state", "The failure resolution changed. Refresh before trying again.");
+  }
+  const status = request.payload.action === "resolve" ? "resolved" : "unresolved";
+  if (current.resolution.status === status) {
+    rejectCommandRequest(request, "invalid-state", "The failure already has this resolution status. Refresh before trying again.");
+  }
+  const resolution = FailureResolutionSchema.parse(status === "resolved" && request.payload.action === "resolve"
+    ? { status, version: expectedVersion + 1, by: request.requestedBy, at: now,
+        ...(request.payload.note === undefined ? {} : { note: request.payload.note }) }
+    : { status, version: expectedVersion + 1 });
+  repositories.failureResolution.update({ runId, failureId, expectedVersion, resolution });
+  // History carries identity and action, never free text. The raw note belongs to
+  // the annotation/command evidence; the served projection protects it separately.
+  repositories.timelineEvents.append({
+    schemaVersion: 1,
+    eventId: lifecycleCommandId("failure-resolution", { commandId: request.commandId }),
+    workflow: run.envelope.workflow, scope: { kind: "run", runId },
+    occurredAt: now, recordedAt: now, retentionDate: now.slice(0, 10), source: { kind: "native" },
+    payload: { kind: "failure-resolution", runId, workflow: run.envelope.workflow, failureId,
+      commandId: request.commandId, actorId: request.requestedBy, action: request.payload.action,
+      annotationVersion: resolution.version, at: now },
+  });
+  const target = { family: "failure-resolution" as const, runId, failureId };
+  return { result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
+    versionChanges: [{ target, before: expectedVersion, after: resolution.version }], affectedDependencyIds: [] };
 }
 /** Real capture passes through D's boundary without changing immutable evidence. */
 export function bindFailureCapture(capture:RunDiagnosticCapture):RunDiagnosticCapture {

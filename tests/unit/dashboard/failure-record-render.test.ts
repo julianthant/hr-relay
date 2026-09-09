@@ -651,3 +651,100 @@ describe("the observed subject reads as the thing that is wrong (E22)", () => {
     assert.ok(host.textContent.includes("expected eid ••••5001"));
   });
 });
+
+/* D: live annotations use durable reads; archived bodies never request a live annotation. */
+import { vi } from "vitest";
+import { CommandRequestSchema } from "../../../src/domain/commands.js";
+import type { RunDetailSectionResponse } from "../../../src/domain/dashboard/run-detail.js";
+
+function annotatedDetail(version = 1, resolved = false): FailureDetailWire {
+  const detail = failureDetail();
+  return failureDetail({ resolution: { capability: { state: "available" }, capture: {
+    runId: detail.runId, failureId: detail.failureId,
+    resolution: resolved ? { status: "resolved", version, by: "local-operator", at: detail.occurredAt, note: "Updated page control." }
+      : { status: "unresolved", version },
+  } } });
+}
+function failureResponse(detail: FailureDetailWire): RunDetailSectionResponse {
+  return { section: "failure", payload: { state: "available", value: detail } };
+}
+async function mountResolution(client: DashboardClient, detail = annotatedDetail()) {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host); mountedRoot = root;
+  await act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FailureDetailBody, { detail, liveContext: { actorId: "local-operator", nowIso: detail.occurredAt } }),
+  })));
+  return host;
+}
+function namedButton(host: HTMLElement, name: string) {
+  const button = [...host.querySelectorAll("button")].find(candidate => candidate.textContent === name);
+  assert.ok(button, `missing button ${name}`); return button;
+}
+
+describe("D live failure resolution", () => {
+  it("keeps archived/shared rendering read-only while displaying captured status, actor, time and note", () => {
+    const html = renderBody(annotatedDetail(2, true));
+    assert.match(html, /Resolved/u); assert.match(html, /local-operator/u); assert.match(html, /Updated page control/u);
+    assert.doesNotMatch(html, /Mark resolved|>Reopen<|Resolution note \(optional\)/u);
+  });
+  it("submits exact target/actor/version and waits for durable readback before showing success", async () => {
+    let current = annotatedDetail(); let finish: (() => void) | undefined;
+    const client = { runSection: async () => failureResponse(current), executeCommand: async (input: unknown) => {
+      const command = CommandRequestSchema.parse(input); assert.equal(command.family, "failure-resolution");
+      if (command.family !== "failure-resolution") throw new Error("wrong command family");
+      assert.deepEqual(command.target, { runId: current.runId, failureId: current.failureId, expectedVersion: 1 });
+      assert.equal(command.requestedBy, "local-operator");
+      await new Promise<void>(resolve => { finish = resolve; });
+      current = annotatedDetail(2, true);
+      return { state: "applied", commandId: command.commandId, affectedTargets: [{ family: "failure-resolution", runId: current.runId, failureId: current.failureId }] };
+    } } as unknown as DashboardClient;
+    const host = await mountResolution(client);
+    await act(async () => namedButton(host, "Mark resolved").click());
+    assert.equal(namedButton(host, "Saving…").disabled, true); assert.match(host.textContent ?? "", /Unresolved/u);
+    assert.ok(finish); await act(async () => finish?.());
+    assert.equal(namedButton(host, "Reopen").disabled, false); assert.match(host.textContent ?? "", /Updated page control/u);
+  });
+  it("shows a refusal and readback failure without an optimistic resolved label", async () => {
+    let readsFail = false;
+    const client = { runSection: async () => { if (readsFail) throw new Error("Synthetic read unavailable"); return failureResponse(annotatedDetail()); },
+      executeCommand: async () => { readsFail = true; return { state: "rejected", commandId: "11111111-1111-4111-8111-111111111111", code: "invalid-state", message: "Annotation version changed" }; },
+    } as unknown as DashboardClient;
+    const host = await mountResolution(client);
+    await act(async () => namedButton(host, "Mark resolved").click());
+    assert.match(host.textContent ?? "", /Annotation version changed/u); assert.match(host.textContent ?? "", /Synthetic read unavailable/u);
+    assert.match(host.textContent ?? "", /Unresolved/u); assert.equal(namedButton(host, "Mark resolved").disabled, true);
+  });
+  it("observes another process without a run-version change and stops polling on unmount", async () => {
+    vi.useFakeTimers();
+    try {
+      let current = annotatedDetail(); let reads = 0; let signal: AbortSignal | undefined;
+      const client = { runSection: async (_run: string, _section: string, _cursor: string | undefined, inputSignal: AbortSignal) => {
+        reads++; signal = inputSignal; return failureResponse(current);
+      } } as unknown as DashboardClient;
+      const host = await mountResolution(client);
+      current = annotatedDetail(2, true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      assert.equal(reads, 2); assert.ok(namedButton(host, "Reopen"));
+      await act(async () => mountedRoot?.unmount()); mountedRoot = undefined;
+      assert.equal(signal?.aborted, true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); }); assert.equal(reads, 2);
+    } finally { vi.useRealTimers(); }
+  });
+  it("rejects a different failure returned by a read and stops its obsolete read on selection change", async () => {
+    let resolveOld: ((response: RunDetailSectionResponse) => void) | undefined;
+    let oldSignal: AbortSignal | undefined;
+    const client = { runSection: async (_run: string, _section: string, _cursor: string | undefined, signal: AbortSignal) => {
+      oldSignal = signal;
+      return await new Promise<RunDetailSectionResponse>(resolve => { resolveOld = resolve; });
+    } } as unknown as DashboardClient;
+    const host = await mountResolution(client);
+    const wrong = failureDetail({ failureId: "33333333-3333-4333-8333-333333333333" });
+    assert.ok(resolveOld); await act(async () => resolveOld?.(failureResponse(wrong)));
+    assert.match(host.textContent ?? "", /did not match/u);
+    assert.equal(namedButton(host, "Mark resolved").disabled, true);
+    await act(async () => mountedRoot?.render(createElement(DashboardClientProvider, { client,
+      children: createElement(FailureDetailBody, { detail: annotatedDetail(2, true) }),
+    })));
+    assert.equal(oldSignal?.aborted, true); assert.doesNotMatch(host.textContent ?? "", /Mark resolved|Reopen/u);
+  });
+});

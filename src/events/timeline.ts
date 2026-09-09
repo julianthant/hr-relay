@@ -3,7 +3,7 @@ import type { RunCheckpointRecord } from "../domain/workflow/checkpoint.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
-  WorkerIdSchema, WorkflowIdSchema, WriteAttemptIdSchema } from "../domain/ids.js";
+  WorkerIdSchema, WorkflowIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../domain/ids.js";
 import { AtomicOutboxRecordSchema } from "../domain/outbox.js";
 import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema, deriveLedgerLineDigest } from "../domain/ledger-projection.js";
 import { LedgerEntryPayloadSchema } from "../domain/ledger.js";
@@ -27,6 +27,12 @@ const { proof: _proof, ...historicalLedgerFields } = LedgerEntryPayloadSchema.sh
 const ConfirmedOperationFactsSchema = z.strictObject(historicalLedgerFields);
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("failure-resolution"), runId: RunIdSchema, workflow: WorkflowIdSchema,
+    failureId: FailureIdSchema, commandId: CommandIdSchema, actorId: ActorIdSchema,
+    action: z.enum(["resolve", "reopen"]), annotationVersion: PositiveIntSchema.min(2),
+    at: IsoInstantSchema,
+  }),
   z.strictObject({ kind: z.literal("span"), event: SpanEventWireSchema }),
   z.strictObject({
     kind: z.enum(["checkpoint-replayed", "checkpoint-recorded"]),
@@ -81,6 +87,10 @@ export const TimelineAppendSchema = z.strictObject({
     || (runId === undefined ? record.scope.kind !== "worker"
       : record.scope.kind !== "run" || record.scope.runId !== runId)) {
     context.addIssue({ code: "custom", message: "timeline scope must match its exact event identity" });
+  }
+  if (payload.kind === "failure-resolution" && (record.occurredAt !== payload.at
+    || record.recordedAt !== payload.at || record.source.kind !== "native")) {
+    context.addIssue({ code: "custom", message: "failure resolution must bind its command time and native source" });
   }
   if (payload.kind === "span") {
     if (record.occurredAt !== payload.event.ts || (record.scope.kind === "worker"

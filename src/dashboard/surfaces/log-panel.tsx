@@ -1,3 +1,4 @@
+import type { LiveFailureContext } from "./trust-model.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoLogPanel.tsx
@@ -964,7 +965,9 @@ export function InlineFailureRecord({
   anchorRef,
   runId,
   aiAdvisory,
+  liveContext,
 }: {
+  liveContext?: LiveFailureContext;
   failure: FailurePayload;
   errorNotes: readonly NotePage["notes"][number][];
   completedAt?: string;
@@ -1042,7 +1045,7 @@ export function InlineFailureRecord({
         {failure.state === "available" ? (
           <>
             {completedAt !== undefined && <MetaLine items={[`failed ${fmtClock(completedAt)}`]} />}
-            <FailureDetailBody detail={failure.value} />
+            <FailureDetailBody detail={failure.value} liveContext={liveContext} />
             {/* Below the record's own remediation, never above it: the record
                 is the evidence and the advisory is a reading of it (D178). */}
             <FailureAdvisoryPanel runId={runId} availability={aiAdvisory} />
@@ -1564,6 +1567,7 @@ function LogsTab({
   servedDescriptorHash,
   aiAdvisory,
   nowIso,
+  actorId,
 }: {
   detail: RunDetailWire;
   captures: RunCapturesState | undefined;
@@ -1589,6 +1593,7 @@ function LogsTab({
   aiAdvisory: CapabilityAvailability;
   /** The served instant (D256) — the decision card's age and the live dot. */
   nowIso: string;
+  actorId: string;
 }) {
   const client = useDashboardClient();
   const [query, setQuery] = useState("");
@@ -1640,6 +1645,7 @@ function LogsTab({
   const failureRecord =
     failure !== undefined && failureAt !== undefined ? (
       <InlineFailureRecord
+        liveContext={{ actorId, nowIso }}
         failure={failure}
         errorNotes={errorNotes}
         {...(detail.outcome.state === "terminal" ? { completedAt: detail.outcome.completedAt } : {})}
@@ -2555,6 +2561,7 @@ export const LogPanel = memo(function LogPanel({
           {/* THE TAB BODY, in the same scroller as the head above it. */}
           {effectiveTab === "logs" && (
             <LogsTab
+              actorId={actorId}
               detail={detail}
               captures={captures}
               notes={sections.logs}

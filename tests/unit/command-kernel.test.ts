@@ -167,6 +167,7 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
+  readonly failureResolution?: import("../../src/core/command-kernel.js").CommandKernelDependencies["failureResolution"];
   readonly explorerEdits?: ExplorerEditExecutor;
   readonly afterAuthorityCommit?: () => void;
 }
@@ -252,6 +253,7 @@ function createHarness(
   const credentials = createCredentialStore({ stateRoot });
   const explorerCalls: unknown[] = [];
   const kernel = createCommandKernel({
+    ...(options.failureResolution === undefined ? {} : { failureResolution: options.failureResolution }),
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -2331,7 +2333,7 @@ describe("workflow batch queue presentation", () => {
 });
 
 it("F refuses resolution capability before journaling or changing failure/run authority", () => {
-  const h=createHarness();const commandId=randomUUID();const generation=h.database.getMeta().authorityGeneration;
+  const h=createHarness(undefined, { failureResolution: { capability: () => ({ state: "unavailable", reason: "resolution-not-implemented" }), execute: () => { throw new Error("unavailable executor reached"); } } });const commandId=randomUUID();const generation=h.database.getMeta().authorityGeneration;
   const result=h.kernel.execute({commandId,requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",reason:"Synthetic annotation capability probe",family:"failure-resolution",type:"annotate-failure",target:{runId:randomUUID(),failureId:randomUUID(),expectedVersion:1},payload:{action:"resolve",note:"Synthetic follow-up"}});
   assert.deepEqual(result,{state:"rejected",commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."});
   assert.equal(h.database.authority.commands.get(commandId),undefined);
