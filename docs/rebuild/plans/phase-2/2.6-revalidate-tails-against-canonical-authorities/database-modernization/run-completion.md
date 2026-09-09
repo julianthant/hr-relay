@@ -2,7 +2,7 @@
 
 **Current assignment:** the operator approved the [C01–C05 execution brief](#approved-execution-brief--2026-09-09)
 on 2026-09-09. It supersedes this file's older waiting, retained-checkout, no-master-merge and
-per-task review instructions. T is integrated; C remains unimplemented. C merges and cleans up
+per-task review instructions. T is integrated; C is implementing the approved scoped development release. C merges and cleans up
 after focused checks; full gates and complete independent review remain in 2.6.9.
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
@@ -71,7 +71,7 @@ No worker-history table, new run-attempt table, replacement outbox or separate c
   [roadmap governance](../../../../../roadmap/roadmap.md), and
   [operating reference](../../../../../../.agents/skill-library/repository-work/REFERENCE.md).
 - [Dashboard surfaces: run completion storage](../../../../reference/dashboard-surfaces.md#run-completion-storage)
-  owns this pending amendment to D110/D114 and D330 completion, replay and storage presentation.
+  owns this amendment to D110/D114 and D330 completion, replay and storage presentation.
 - [Execution and sessions](../../../../reference/execution-and-sessions.md),
   [workflow model](../../../../reference/workflow-model.md),
   [operator trust](../../../../reference/operator-trust.md), and
@@ -513,3 +513,62 @@ The planner verifies the final committed owner and returns its exact SHA as C's 
 C is READY only after the exact committed plan content, reachability, final documentation checks
 and clean branch/path availability are verified by the outgoing handoff. No implementation checkout
 or agent is created by this planning stage. C remains planned; F waits for C's actual merged release.
+
+
+## C execution evidence — 2026-09-09
+
+**Current state:** C01–C04 implemented with focused proof; C05 committed-candidate checks,
+integration and cleanup pending. Supervisor only, zero
+workers/reviewers. Plan/base `dce3efc91685a33fc868376c054b15b7c0aad6f3`; prerequisite
+`5e446a90f018456d11ad38442c0fe3ba13e31dd1` is an ancestor. Branch `codex/run-completion`, owned
+checkout `/Users/julianhein/Projects/hr-worktree-database-contracts`; master remains the local
+integration target. Logs and capture recipe: `/tmp/run-completion-evidence` (preserve before cleanup).
+
+C01 captured synthetic schema-40 success/failure requests, accepted lifecycle commands/audits and
+frozen archives before implementation. The committed JSON fixtures record the exact source commit;
+no operator database or HR system was used. The capture recipe is preserved with the gate logs.
+
+Representation: `workflow_runs.record_json.completion` is a strict version-1 value binding accepted
+worker/generation, expected version, timestamp and result digest/failure ID. Run/envelope identity
+remains on its existing owner. Initial settlement requires the current claim; later completion is
+immutable. Supported later revisions require the existing lifecycle journal. Migration 41 appends
+failure-table rename and authorization/outbox retirement; floor 40 requires the stopped upgrade path.
+Released migrations 1–40 are unchanged. Historical authorization and receipt JSON bytes live in a
+versioned inert completion extension; current success requests create no outbox identity. The
+historical request parser retains the complete old request before journal hashing, so old command
+fingerprints are never rewritten. Archive content and issued reference fingerprints remain unchanged.
+
+Focused proof already observed (pre-candidate inputs; repeat the complete affected set at release):
+
+| Boundary | Result | Evidence |
+| --- | --- | --- |
+| Initial service + stopped upgrade | PASS, 129 tests | `c02-c03-first.log` |
+| Historical conversion + terminal controls | PASS, 23 tests | `c02-c03-expanded.log` |
+| Actual settlement writes, timeline and journal; reopened replay | PASS, 24 tests | `c03-faults.log` |
+| Lost generation 1, B generation 2, A generation 3, competing connections, Retry | PASS, 54 tests | `c03-ownership.log` |
+| Recovery guard replacement | PASS, 94 tests; followed by complete five-suite PASS (112 tests) | `c04-guards.log` |
+
+Vitest's root `--maxWorkers=1` did not override the inherited per-project value (4). The temporary
+`/tmp/run-completion-vitest.config.mts` imports the real repository config and changes only root and
+per-project `maxWorkers` to 1. `runner-config.json` verifies unit/architecture each use one isolated
+fork. Membership, assertions, timeouts and coverage settings are unchanged. Release commands use this
+config with the approved explicit selectors. Full typecheck, coverage, architecture, parity/build,
+performance and complete independent review remain assigned to 2.6.9. T's two context-blocked reviews
+and performance failures (day 5,574 > 5,569; archive freeze 3,234 > 13) remain unresolved there.
+
+Direct caller/fixture adaptations include receipt, seeded parity, lifecycle-walk and performance
+fixtures; these retire the old settlement argument without changing their underlying expectations.
+The pure activity projection fixture now declares completion explicitly instead of constructing a
+current done run without evidence. Terminal events add optional historical-compatible worker/claim
+fields and current producers fill them. No unrelated workflow behavior or archive transfer changed.
+
+C04 follow-up: four filtered Storage Doctor cases pass in both themes and 1440×900/1024×768.
+Visual inspection and all four accessibility reference diffs show only removal of `terminal outbox 0`.
+The prescribed wrapper initially rejected a filtered run with no declared body-backed a11y evidence;
+the four owned cases now declare and attach their actual body snapshot with its exact digest, using
+the existing parity evidence protocol. The wrapper was not weakened. Current-source bundle freshness
+is verified by the harness. Terminal timeline identity also required the existing executor-event
+schema to admit optional worker/generation fields. Populated schema-40 backup restore and re-upgrade
+preserve frozen archive identities and original journal replay; active/queued/requeued/cancelled/
+interrupted records remain byte-identical without invented completion. Pure receipt and pseudonym
+fixtures explicitly declare synthetic completion; frozen pre-D309 receipt files are unchanged.

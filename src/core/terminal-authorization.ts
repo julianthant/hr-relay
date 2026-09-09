@@ -8,11 +8,11 @@
  * invariants are only checkable against the CURRENT run record at the moment
  * of authorization. This factory takes that current record, refuses to
  * authorize anything a worker does not actually own, and binds the exact
- * consequence identity (the failure, or the result plus its outbox) that the
+ * consequence identity (the failure, or the result) that the
  * atomic terminal composites will re-validate.
  */
 import { z } from "zod";
-import { IsoInstantSchema, OutboxIdSchema } from "../domain/ids.js";
+import { IsoInstantSchema } from "../domain/ids.js";
 import { runClaim, RunRecordSchema } from "../domain/run/record.js";
 import { RunResultRecordSchema } from "../domain/run/result.js";
 import {
@@ -30,7 +30,6 @@ const FailureConsequenceSchema = z.strictObject({
 const SuccessConsequenceSchema = z.strictObject({
   kind: z.literal("done"),
   result: RunResultRecordSchema,
-  outboxId: OutboxIdSchema,
 });
 
 export const TerminalConsequenceSchema = z.discriminatedUnion("kind", [
@@ -126,6 +125,5 @@ export function buildTerminalAuthorization(
     kind: "done",
     ...identity,
     resultDigest: result.resultDigest,
-    outboxId: consequence.outboxId,
   });
 }

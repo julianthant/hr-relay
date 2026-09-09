@@ -4,8 +4,8 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 39;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 40;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 40;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 41;
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -45,7 +45,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "ledger_partitions" | "ledger_projections" | "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
+type MigrationTableName = "failures" | "run_terminal_authorizations" | "run_terminal_outbox" | "ledger_partitions" | "ledger_projections" | "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -810,6 +810,9 @@ export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, rea
   37: V37_TABLES,
   38: [...V37_TABLES, "timeline_events"].sort(),
   39: [...V37_TABLES, "timeline_events"].map((name) => DATABASE_TABLE_RENAMES[name as keyof typeof DATABASE_TABLE_RENAMES] ?? name).sort(),
+  40: [...V37_TABLES, "timeline_events", "timeline_operation_sources"]
+    .filter((name) => !["ledger_partitions", "ledger_projections", "operation_outbox"].includes(name))
+    .map((name) => DATABASE_TABLE_RENAMES[name as keyof typeof DATABASE_TABLE_RENAMES] ?? name).sort(),
 });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
@@ -1962,13 +1965,81 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN SELECT RAISE(ABORT, 'historical operation source requires owner deletion'); END`,
     ],
   },
+  {
+    // C: stopped conversion validates and enriches every row before these retirements.
+    version: 41,
+    statements: [
+      "ALTER TABLE failures RENAME TO run_failures",
+      "DROP INDEX failures_run_id_idx",
+      "CREATE INDEX run_failures_run_id_idx ON run_failures(run_id)",
+      "DROP INDEX failures_fingerprint_idx",
+      "CREATE INDEX run_failures_fingerprint_idx ON run_failures(fingerprint, created_at)",
+      "DROP TRIGGER failures_require_fingerprint_insert",
+      `CREATE TRIGGER run_failures_require_fingerprint_insert BEFORE INSERT ON run_failures
+        WHEN NEW.fingerprint IS NULL OR NEW.fingerprint IS NOT json_extract(NEW.record_json, '$.fingerprint')
+        BEGIN SELECT RAISE(ABORT, 'run_failures requires the searchable fingerprint column'); END`,
+      "DROP TABLE run_terminal_outbox",
+      "DROP TABLE run_terminal_authorizations",
+      `CREATE TRIGGER workflow_runs_completion_insert BEFORE INSERT ON workflow_runs
+        WHEN COALESCE(json_extract(NEW.record_json, '$.lifecycle.outcome') IN ('done','failed'), 0)
+          IS NOT (json_type(NEW.record_json, '$.completion') IS 'object')
+          OR (json_type(NEW.record_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.record_json, '$.completion.schemaVersion') IS NOT 1
+            OR json_extract(NEW.record_json, '$.lifecycle.state') IS NOT 'terminal'
+            OR json_extract(NEW.record_json, '$.completion.kind') IS NOT json_extract(NEW.record_json, '$.lifecycle.outcome')
+            OR json_extract(NEW.record_json, '$.completion.authorizedAt') IS NOT json_extract(NEW.record_json, '$.lifecycle.endedAt')
+            OR json_extract(NEW.record_json, '$.completion.claim.claimGeneration') IS NOT NEW.claim_generation
+            OR json_type(NEW.record_json, '$.completion.claim.workerId') IS NOT 'text'
+            OR json_type(NEW.record_json, '$.completion.expectedVersion') IS NOT 'integer'
+            OR json_extract(NEW.record_json, '$.completion.expectedVersion') < 1
+            OR NEW.version < json_extract(NEW.record_json, '$.completion.expectedVersion') + 1
+            OR (json_extract(NEW.record_json, '$.completion.kind') = 'failed' AND
+              json_extract(NEW.record_json, '$.completion.failureId') IS NOT json_extract(NEW.record_json, '$.lifecycle.failureId'))
+            OR (json_extract(NEW.record_json, '$.completion.kind') = 'done' AND
+              json_type(NEW.record_json, '$.completion.resultDigest') IS NOT 'text')
+          ))
+        BEGIN SELECT RAISE(ABORT, 'run completion must bind its exact terminal consequence'); END`,
+      `CREATE TRIGGER workflow_runs_completion_update BEFORE UPDATE ON workflow_runs
+        WHEN COALESCE(json_extract(NEW.record_json, '$.lifecycle.outcome') IN ('done','failed'), 0)
+          IS NOT (json_type(NEW.record_json, '$.completion') IS 'object')
+          OR (json_type(NEW.record_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.record_json, '$.completion.schemaVersion') IS NOT 1
+            OR json_extract(NEW.record_json, '$.lifecycle.state') IS NOT 'terminal'
+            OR json_extract(NEW.record_json, '$.completion.kind') IS NOT json_extract(NEW.record_json, '$.lifecycle.outcome')
+            OR json_extract(NEW.record_json, '$.completion.authorizedAt') IS NOT json_extract(NEW.record_json, '$.lifecycle.endedAt')
+            OR json_extract(NEW.record_json, '$.completion.claim.claimGeneration') IS NOT NEW.claim_generation
+            OR json_type(NEW.record_json, '$.completion.claim.workerId') IS NOT 'text'
+            OR json_type(NEW.record_json, '$.completion.expectedVersion') IS NOT 'integer'
+            OR json_extract(NEW.record_json, '$.completion.expectedVersion') < 1
+            OR NEW.version < json_extract(NEW.record_json, '$.completion.expectedVersion') + 1
+            OR (json_extract(NEW.record_json, '$.completion.kind') = 'failed' AND
+              json_extract(NEW.record_json, '$.completion.failureId') IS NOT json_extract(NEW.record_json, '$.lifecycle.failureId'))
+            OR (json_extract(NEW.record_json, '$.completion.kind') = 'done' AND
+              json_type(NEW.record_json, '$.completion.resultDigest') IS NOT 'text')
+          ))
+        BEGIN SELECT RAISE(ABORT, 'run completion must bind its exact terminal consequence'); END`,
+      `CREATE TRIGGER workflow_runs_completion_immutable BEFORE UPDATE ON workflow_runs
+        WHEN (json_type(OLD.record_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.record_json, '$.completion') IS NOT json_extract(OLD.record_json, '$.completion')
+            OR json_extract(NEW.record_json, '$.lifecycle') IS NOT json_extract(OLD.record_json, '$.lifecycle')
+            OR NEW.claim_generation IS NOT OLD.claim_generation))
+          OR (json_type(OLD.record_json, '$.completion') IS NULL AND json_type(NEW.record_json, '$.completion') IS 'object' AND (
+            OLD.state NOT IN ('claimed','validating','running')
+            OR json_extract(NEW.record_json, '$.completion.claim.workerId') IS NOT OLD.owner_worker_id
+            OR json_extract(NEW.record_json, '$.completion.claim.claimGeneration') IS NOT OLD.claim_generation
+            OR json_extract(NEW.record_json, '$.completion.expectedVersion') IS NOT OLD.version
+            OR NEW.version IS NOT OLD.version + 1
+            OR json_extract(NEW.record_json, '$.updatedAt') IS NOT json_extract(NEW.record_json, '$.completion.authorizedAt')))
+        BEGIN SELECT RAISE(ABORT, 'run completion is immutable and requires the exact current claim'); END`,
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
   const renamed = (name: string): string => {
     const renames: Readonly<Record<string, string>> = {
-      ...DATABASE_TABLE_RENAMES,
+      ...DATABASE_TABLE_RENAMES, failures: "run_failures",
       write_intents: "run_operations", write_attempts: "run_operation_attempts", durable_outbox: "operation_outbox",
       dependencies: "delegation_dependencies", delegation_manifests: "run_delegations",
       tasks: "workflow_runs", run_sessions: "workflow_run_batches",
@@ -1978,7 +2049,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
   };
   const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox"];
+  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {

@@ -1,3 +1,4 @@
+import { convertRunCompletions } from "../sqlite/completion-conversion.js";
 import { deriveBulkChildCommand } from "../../domain/command-groups.js";
 import { timelineSourcesForUpgrade, readPreservedTimelineSources, type TimelineSourceSnapshot } from "../events/timeline-import.js";
 import { convertOperationHistory, freezeConvertedArchiveTransactions, importTimelineSources } from "../sqlite/timeline-conversion.js";
@@ -237,6 +238,7 @@ export function convertSettingsDatabase(args: Readonly<{
         const currentTombstones = tombstoneBackfill(existed ? database : undefined, input.stateRoot);
         if (canonicalJsonStringify(currentTombstones) !== canonicalJsonStringify(tombstones)) throw new Error("source-changed: tombstone span evidence");
         for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > from)) {
+          if (migration.version === 41) convertRunCompletions(database);
           const links = migration.version === 37 ? commandGroupLinks(database, args.ownsCredentialCommandId) : undefined;
           for (const [index, statement] of migration.statements.entries()) {
             if (migration.version === 32 && index === 2 && sources.ordinary.revision > 1) {

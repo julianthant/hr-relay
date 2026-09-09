@@ -340,7 +340,6 @@ const COUNT_LABELS = [
   ["pendingCommands", "pending commands"],
   ["unresolvedWriteIntents", "unresolved write intents"],
   ["leases", "leases"],
-  ["runTerminalOutbox", "terminal outbox"],
   ["providerReservations", "provider reservations"],
   ["artifactOutbox", "artifact outbox"],
 ] as const;

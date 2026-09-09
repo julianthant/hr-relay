@@ -1,3 +1,4 @@
+import { RunCompletionSchema, completionFromAuthorization } from "../../../src/domain/run/completion.js";
 import { currentAtomicWriteFixture } from "../helpers/timeline-write-fixture.js";
 import { CredentialStoreApplyOutcomeSchema } from "../../../src/domain/config/credential-store.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
@@ -121,7 +122,7 @@ import {
   TerminalAuthorizationRecordSchema,
   TerminalizationClaimSchema,
 } from "../../../src/domain/run/terminal-authorization.js";
-import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
+import { HistoricalTerminalOutboxRecordSchema } from "../../../src/domain/run/completion-history.js";
 import {
   DataPointSchema,
   RecordedDataPointSchema,
@@ -473,24 +474,6 @@ const FAILURE = {
   causeChain: [{ code: "UNEXPECTED_PAGE_STATE", summary: "Page mismatch", role: "primary", transient: false }],
   remediation: [{ kind: "code-change", message: "Repair the state recipe" }], occurredAt: NOW,
 };
-const FAILED_RUN = {
-  ...QUEUED_RUN,
-  lifecycle: {
-    state: "terminal",
-    outcome: "failed",
-    endedAt: NOW,
-    failureId: FAILURE.failureId,
-    errorSummary: FAILURE.summary,
-  },
-  claimGeneration: 1,
-  version: 2,
-};
-const DONE_RUN = {
-  ...QUEUED_RUN,
-  lifecycle: { state: "terminal", outcome: "done", endedAt: NOW },
-  claimGeneration: 1,
-  version: 2,
-};
 const FAILURE_TERMINAL_AUTHORIZATION = {
   kind: "failed",
   runId: FAILURE.runId,
@@ -514,9 +497,28 @@ const SUCCESS_TERMINAL_AUTHORIZATION = {
   claim: { workerId: "worker-1", claimGeneration: 1 },
   authorizedAt: NOW,
   resultDigest: RUN_RESULT.resultDigest,
-  outboxId: RUN_TERMINAL_OUTBOX.outboxId,
 };
 
+const FAILED_RUN = {
+  completion: completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(FAILURE_TERMINAL_AUTHORIZATION)),
+  ...QUEUED_RUN,
+  lifecycle: {
+    state: "terminal",
+    outcome: "failed",
+    endedAt: NOW,
+    failureId: FAILURE.failureId,
+    errorSummary: FAILURE.summary,
+  },
+  claimGeneration: 1,
+  version: 2,
+};
+const DONE_RUN = {
+  completion: completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(SUCCESS_TERMINAL_AUTHORIZATION)),
+  ...QUEUED_RUN,
+  lifecycle: { state: "terminal", outcome: "done", endedAt: NOW },
+  claimGeneration: 1,
+  version: 2,
+};
 const RECEIPT = {
   receiptId: UUID_1, runId: UUID_2, traceId: "on-120000-2222", workflowId: "onboarding", attempt: 1,
   generatedAt: NOW, descriptorFingerprint: HASH_A, configFingerprint: HASH_A,
@@ -746,7 +748,6 @@ const AUTHORITY_PENDING_COUNTS = {
   pendingCommands: 1,
   unresolvedWriteIntents: 1,
   leases: 1,
-  runTerminalOutbox: 1,
   providerReservations: 1,
   artifactOutbox: 1,
 };
@@ -1083,7 +1084,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "NotRunTerminalDependency", schema: NotRunTerminalDependencySchema, fixtures: [NOT_RUN_TERMINAL_DEPENDENCY] },
   { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY] },
   { name: "RunResultRecord", schema: RunResultRecordSchema, fixtures: [RUN_RESULT], openFixturePaths: ["result.value"] },
-  { name: "RunTerminalOutboxRecord", schema: RunTerminalOutboxRecordSchema, fixtures: [
+  { name: "HistoricalTerminalOutboxRecord", schema: HistoricalTerminalOutboxRecordSchema, fixtures: [
     RUN_TERMINAL_OUTBOX,
     { ...RUN_TERMINAL_OUTBOX, projection: { state: "projected", projectedAt: NOW, projectionFingerprint: HASH_A } },
   ] },
@@ -1315,6 +1316,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     transaction: LEDGER_OUTBOX_RECORD.payload.entry,
     committedSpan: SPAN_OUTBOX_RECORD.payload,
   }], openFixturePaths: ["committedSpan.outcome.output.value"] },
+  { name: "RunCompletion", schema: RunCompletionSchema, fixtures: [FAILED_RUN.completion, DONE_RUN.completion] },
   { name: "TerminalizationClaim", schema: TerminalizationClaimSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION.claim] },
   { name: "FailureTerminalAuthorizationRecord", schema: FailureTerminalAuthorizationRecordSchema, fixtures: [FAILURE_TERMINAL_AUTHORIZATION] },
   { name: "SuccessTerminalAuthorizationRecord", schema: SuccessTerminalAuthorizationRecordSchema, fixtures: [SUCCESS_TERMINAL_AUTHORIZATION] },
@@ -1330,12 +1332,11 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "FailureTerminalizationStorageStep", schema: FailureTerminalizationStorageStepSchema, fixtures: FailureTerminalizationStorageStepSchema.options },
   { name: "SuccessTerminalizationRequest", schema: SuccessTerminalizationRequestSchema, fixtures: [{
     result: RUN_RESULT,
-    outbox: RUN_TERMINAL_OUTBOX,
     authorization: SUCCESS_TERMINAL_AUTHORIZATION,
   }], openFixturePaths: ["result.result.value"] },
   { name: "SuccessTerminalizationReport", schema: SuccessTerminalizationReportSchema, fixtures: [
-    { state: "applied", authorization: SUCCESS_TERMINAL_AUTHORIZATION, result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
-    { state: "replayed", authorization: SUCCESS_TERMINAL_AUTHORIZATION, result: RUN_RESULT, outbox: RUN_TERMINAL_OUTBOX, run: DONE_RUN },
+    { state: "applied", authorization: SUCCESS_TERMINAL_AUTHORIZATION, result: RUN_RESULT, run: DONE_RUN },
+    { state: "replayed", authorization: SUCCESS_TERMINAL_AUTHORIZATION, result: RUN_RESULT, run: DONE_RUN },
   ], openFixturePaths: ["result.result.value", "run.input.raw", "run.input.parsed.value"] },
   { name: "SuccessTerminalizationStorageStep", schema: SuccessTerminalizationStorageStepSchema, fixtures: SuccessTerminalizationStorageStepSchema.options },
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },

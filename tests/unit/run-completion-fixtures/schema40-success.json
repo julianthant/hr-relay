@@ -1,0 +1,450 @@
+{
+  "sourceCommit": "dce3efc91685a33fc868376c054b15b7c0aad6f3",
+  "schemaVersion": 40,
+  "request": {
+    "kind": "success",
+    "commandId": "99000000-0000-4000-8000-000000000001",
+    "terminal": {
+      "result": {
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "attempt": 1,
+        "workflowId": "person-lookup",
+        "descriptorVersion": 1,
+        "contractFingerprint": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a",
+        "configFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "configSnapshotId": "44444444-4444-4444-8444-444444444444",
+        "resultSchemaHash": "c1db3f170363e7bd1d46f3912ccac6c7fed58e10c781dfc84f57da7d8aad5604",
+        "result": {
+          "schemaHash": "c1db3f170363e7bd1d46f3912ccac6c7fed58e10c781dfc84f57da7d8aad5604",
+          "value": {
+            "activeStatus": {
+              "state": "active",
+              "reason": "UCPath reports an active HDH appointment and CRM onboarding is complete",
+              "hdh": true
+            },
+            "crmDates": {
+              "state": "not-requested"
+            }
+          },
+          "protectedBindings": [
+            {
+              "kind": "legacy-protected-input",
+              "inputPath": "emplId",
+              "name": "personLookupCanaryEid"
+            }
+          ]
+        },
+        "resultDigest": "8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98",
+        "dependencies": [
+          {
+            "state": "resolved",
+            "nodeId": "active-status",
+            "checkpoint": {
+              "workflowId": "person-lookup",
+              "itemId": "33333333-3333-4333-8333-333333333333",
+              "attempt": 1,
+              "claimGeneration": 1,
+              "runId": "22222222-2222-4222-8222-222222222222"
+            },
+            "outputSchemaHash": "3bc0b9e9baefdb6a3eb8d124353e007a63ac8b5670c057b52cbb453aa176b608",
+            "descriptorVersion": 1,
+            "contractFingerprint": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a",
+            "implFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "outputDigest": "411d26f1383b395f2092e993860ef2f5c1243b89a71956031e5958447927d287",
+            "provenanceDigest": "ac2bfa9de5467c67f0532f262745f2203a7bfefcc3beb55c9ce718d4a4336cce"
+          },
+          {
+            "state": "not-run",
+            "nodeId": "crm-dates",
+            "reason": "condition-false"
+          }
+        ],
+        "dependencyDigest": "c47f58e67a4ccff70be86bd8da2c9a5afa9a6dab2558af8f82d7704a6c400b95",
+        "createdAt": "2026-07-31T17:01:00.000Z"
+      },
+      "outbox": {
+        "outboxId": "77777777-7777-4777-8777-777777777777",
+        "payload": {
+          "kind": "run-terminal-result",
+          "runId": "22222222-2222-4222-8222-222222222222",
+          "workflowId": "person-lookup",
+          "attempt": 1,
+          "resultDigest": "8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98"
+        },
+        "projection": {
+          "state": "pending"
+        },
+        "createdAt": "2026-07-31T17:01:00.000Z"
+      },
+      "authorization": {
+        "kind": "done",
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "workflowId": "person-lookup",
+        "attempt": 1,
+        "descriptorVersion": 1,
+        "contractFingerprint": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a",
+        "expectedVersion": 4,
+        "claim": {
+          "workerId": "worker-1",
+          "claimGeneration": 1
+        },
+        "authorizedAt": "2026-07-31T17:01:00.000Z",
+        "resultDigest": "8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98",
+        "outboxId": "77777777-7777-4777-8777-777777777777"
+      }
+    }
+  },
+  "archive": {
+    "archiveSchemaGeneration": 1,
+    "runId": "22222222-2222-4222-8222-222222222222",
+    "applicationId": "66666666-6666-4666-8666-666666666666",
+    "workflowId": "person-lookup",
+    "workflowLabel": {
+      "state": "present",
+      "value": "Person Lookup"
+    },
+    "traceId": "pl-170000-2222",
+    "archivedIdentity": {
+      "workflowId": "person-lookup",
+      "descriptorVersion": 1,
+      "contractFingerprint": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a"
+    },
+    "appVersion": {
+      "state": "present",
+      "value": "0.1.0"
+    },
+    "drift": [
+      "descriptor-version",
+      "contract-fingerprint"
+    ],
+    "archivedAt": "2026-07-31T17:00:00.000Z",
+    "archivedBy": "local-operator",
+    "row": {
+      "runId": "22222222-2222-4222-8222-222222222222",
+      "itemId": "33333333-3333-4333-8333-333333333333",
+      "workflowId": "person-lookup",
+      "traceId": "pl-170000-2222",
+      "attempt": 1,
+      "lineage": {
+        "state": "root"
+      },
+      "actorId": "local-operator",
+      "appVersion": {
+        "state": "present",
+        "value": "0.1.0"
+      },
+      "descriptorVersion": 1,
+      "descriptorHash": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a",
+      "configFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resolvedInstances": [
+        {
+          "system": "ucpath",
+          "instance": "prod"
+        }
+      ],
+      "dryRun": false,
+      "priority": "bulk",
+      "runNumber": {
+        "state": "absent",
+        "reason": "historical run had no ordinal"
+      },
+      "containment": "root",
+      "linkedRuns": [],
+      "facts": {
+        "state": "absent",
+        "reason": "this run's evidence receipt records no output fact"
+      },
+      "startedAt": "2026-07-31T17:00:00.000Z",
+      "updatedAt": "2026-07-31T17:00:00.000Z",
+      "endedAt": {
+        "state": "present",
+        "value": "2026-07-31T17:01:00.000Z"
+      },
+      "gateOpenedAt": {
+        "state": "absent",
+        "reason": "run is done and is not waiting on a gate"
+      },
+      "title": "EID 10873698",
+      "displayName": {
+        "state": "absent",
+        "reason": "the operator has not renamed this run"
+      },
+      "subtitle": {
+        "state": "absent",
+        "reason": "the start plan proposed no subtitle"
+      },
+      "status": "done",
+      "liveMessage": {
+        "state": "absent",
+        "reason": "an archived run has no live message"
+      },
+      "warnings": {
+        "state": "absent",
+        "reason": "this run's evidence receipt records no warning"
+      },
+      "pipeline": [
+        {
+          "id": "ucpath-person",
+          "label": "ucpath-person",
+          "state": "done"
+        }
+      ],
+      "panelKind": "run",
+      "availableSections": [
+        "logs"
+      ],
+      "actions": [],
+      "rowRevision": 5,
+      "surfaceKind": "single"
+    },
+    "detail": {
+      "runId": "22222222-2222-4222-8222-222222222222",
+      "rowRevision": 5,
+      "panelKind": "run",
+      "header": {
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "traceId": "pl-170000-2222",
+        "workflowId": "person-lookup",
+        "actorId": "local-operator",
+        "title": "EID 10873698",
+        "status": "done",
+        "attempt": 1
+      },
+      "timeline": {
+        "events": [
+          {
+            "noteId": "11111111-1111-4111-8111-111111111111",
+            "sequence": 0,
+            "at": "2026-07-31T17:00:00.000Z",
+            "label": "UCPath person read",
+            "state": "done",
+            "notRun": {
+              "state": "absent",
+              "reason": "the step ran"
+            }
+          }
+        ]
+      },
+      "gate": {
+        "state": "absent",
+        "reason": "this workflow declares no gate"
+      },
+      "outcome": {
+        "state": "terminal",
+        "result": "verified-done",
+        "completedAt": "2026-07-31T17:01:00.000Z"
+      },
+      "context": {
+        "dataFacts": 4,
+        "evidenceFacts": 1,
+        "attempts": 1
+      },
+      "availableSections": [
+        "logs"
+      ]
+    },
+    "receipt": {
+      "state": "absent",
+      "reason": "this run settled before receipts were derived"
+    },
+    "failure": {
+      "state": "absent",
+      "reason": "the run did not fail"
+    },
+    "evidence": {
+      "artifactIds": [],
+      "checkpointNodeIds": [
+        "ucpath-person"
+      ],
+      "writeIntentIds": [],
+      "ledgerPartitions": []
+    },
+    "input": {
+      "raw": {
+        "emplId": "10873698"
+      },
+      "parsed": {
+        "schemaHash": "1b0526d0b76cb7ba738ce4f455166c6d9a5a8d0361ee3f8788e06f834f516df6",
+        "value": {
+          "emplId": "10873698",
+          "includeCrmDates": false,
+          "keepNonHdh": false
+        }
+      },
+      "ingressSchemaHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "contentDigest": "7ba3a2b33fea2392e988ddf0365b42633011e6a51abca2b4d56152b1c6d63c77"
+  },
+  "rows": {
+    "archived_runs": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "application_id": "66666666-6666-4666-8666-666666666666",
+        "workflow": "person-lookup",
+        "descriptor_version": 1,
+        "contract_fingerprint": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a",
+        "app_version": "0.1.0",
+        "content_digest": "7ba3a2b33fea2392e988ddf0365b42633011e6a51abca2b4d56152b1c6d63c77",
+        "record_json": "{\"appVersion\":{\"state\":\"present\",\"value\":\"0.1.0\"},\"applicationId\":\"66666666-6666-4666-8666-666666666666\",\"archiveSchemaGeneration\":1,\"archivedAt\":\"2026-07-31T17:00:00.000Z\",\"archivedBy\":\"local-operator\",\"archivedIdentity\":{\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"workflowId\":\"person-lookup\"},\"contentDigest\":\"7ba3a2b33fea2392e988ddf0365b42633011e6a51abca2b4d56152b1c6d63c77\",\"detail\":{\"availableSections\":[\"logs\"],\"context\":{\"attempts\":1,\"dataFacts\":4,\"evidenceFacts\":1},\"gate\":{\"reason\":\"this workflow declares no gate\",\"state\":\"absent\"},\"header\":{\"actorId\":\"local-operator\",\"attempt\":1,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"status\":\"done\",\"title\":\"EID 10873698\",\"traceId\":\"pl-170000-2222\",\"workflowId\":\"person-lookup\"},\"outcome\":{\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"result\":\"verified-done\",\"state\":\"terminal\"},\"panelKind\":\"run\",\"rowRevision\":5,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"timeline\":{\"events\":[{\"at\":\"2026-07-31T17:00:00.000Z\",\"label\":\"UCPath person read\",\"notRun\":{\"reason\":\"the step ran\",\"state\":\"absent\"},\"noteId\":\"11111111-1111-4111-8111-111111111111\",\"sequence\":0,\"state\":\"done\"}]}},\"drift\":[\"descriptor-version\",\"contract-fingerprint\"],\"evidence\":{\"artifactIds\":[],\"checkpointNodeIds\":[\"ucpath-person\"],\"ledgerPartitions\":[],\"writeIntentIds\":[]},\"failure\":{\"reason\":\"the run did not fail\",\"state\":\"absent\"},\"input\":{\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parsed\":{\"schemaHash\":\"1b0526d0b76cb7ba738ce4f455166c6d9a5a8d0361ee3f8788e06f834f516df6\",\"value\":{\"emplId\":\"10873698\",\"includeCrmDates\":false,\"keepNonHdh\":false}},\"raw\":{\"emplId\":\"10873698\"}},\"receipt\":{\"reason\":\"this run settled before receipts were derived\",\"state\":\"absent\"},\"row\":{\"actions\":[],\"actorId\":\"local-operator\",\"appVersion\":{\"state\":\"present\",\"value\":\"0.1.0\"},\"attempt\":1,\"availableSections\":[\"logs\"],\"configFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"containment\":\"root\",\"descriptorHash\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"displayName\":{\"reason\":\"the operator has not renamed this run\",\"state\":\"absent\"},\"dryRun\":false,\"endedAt\":{\"state\":\"present\",\"value\":\"2026-07-31T17:01:00.000Z\"},\"facts\":{\"reason\":\"this run's evidence receipt records no output fact\",\"state\":\"absent\"},\"gateOpenedAt\":{\"reason\":\"run is done and is not waiting on a gate\",\"state\":\"absent\"},\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"lineage\":{\"state\":\"root\"},\"linkedRuns\":[],\"liveMessage\":{\"reason\":\"an archived run has no live message\",\"state\":\"absent\"},\"panelKind\":\"run\",\"pipeline\":[{\"id\":\"ucpath-person\",\"label\":\"ucpath-person\",\"state\":\"done\"}],\"priority\":\"bulk\",\"resolvedInstances\":[{\"instance\":\"prod\",\"system\":\"ucpath\"}],\"rowRevision\":5,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"runNumber\":{\"reason\":\"historical run had no ordinal\",\"state\":\"absent\"},\"startedAt\":\"2026-07-31T17:00:00.000Z\",\"status\":\"done\",\"subtitle\":{\"reason\":\"the start plan proposed no subtitle\",\"state\":\"absent\"},\"surfaceKind\":\"single\",\"title\":\"EID 10873698\",\"traceId\":\"pl-170000-2222\",\"updatedAt\":\"2026-07-31T17:00:00.000Z\",\"warnings\":{\"reason\":\"this run's evidence receipt records no warning\",\"state\":\"absent\"},\"workflowId\":\"person-lookup\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"traceId\":\"pl-170000-2222\",\"workflowId\":\"person-lookup\",\"workflowLabel\":{\"state\":\"present\",\"value\":\"Person Lookup\"}}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "transactions_json": "{\"capturedAt\":\"2026-07-31T17:00:00.000Z\",\"contentDigest\":\"7ba3a2b33fea2392e988ddf0365b42633011e6a51abca2b4d56152b1c6d63c77\",\"eventIds\":[],\"lines\":[],\"runId\":\"22222222-2222-4222-8222-222222222222\",\"sourceDigests\":[],\"version\":1}",
+        "transactions_digest": "a88d4b04e11dca8fb914552b4fe0858d3edda6f122b1aef6319c67709baefe3f"
+      }
+    ],
+    "command_audits": [
+      {
+        "record_key": "99000000-0000-4000-8000-000000000001",
+        "command_id": "99000000-0000-4000-8000-000000000001",
+        "record_json": "{\"auditId\":\"99000000-0000-4000-8000-000000000001\",\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"99000000-0000-4000-8000-000000000001\",\"fence\":{\"claimGeneration\":1,\"expectedVersion\":4,\"kind\":\"terminal\",\"workerId\":\"worker-1\"},\"kind\":\"run-lifecycle\",\"operation\":\"terminalize\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"adcb9b5b35bc4ba6c9fc3f398b6852f522ed459e4fde511e796b930923deaa97\"},\"result\":{\"appliedVersion\":5,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      },
+      {
+        "record_key": "99000000-0000-4000-8000-000000000002",
+        "command_id": "99000000-0000-4000-8000-000000000002",
+        "record_json": "{\"auditId\":\"99000000-0000-4000-8000-000000000002\",\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"99000000-0000-4000-8000-000000000002\",\"fence\":{\"expectedVersion\":5,\"kind\":\"version\"},\"kind\":\"run-lifecycle\",\"operation\":\"archive\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"e790ee4fb714ccef7efcf51f0a2d41d8598030093b9e6b3c23a79bc935141f55\"},\"result\":{\"appliedVersion\":6,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "commands": [
+      {
+        "record_key": "99000000-0000-4000-8000-000000000001",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"99000000-0000-4000-8000-000000000001\",\"fence\":{\"claimGeneration\":1,\"expectedVersion\":4,\"kind\":\"terminal\",\"workerId\":\"worker-1\"},\"kind\":\"run-lifecycle\",\"operation\":\"terminalize\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"adcb9b5b35bc4ba6c9fc3f398b6852f522ed459e4fde511e796b930923deaa97\"}",
+        "created_at": "2026-07-31T17:01:00.000Z",
+        "parent_command_id": null
+      },
+      {
+        "record_key": "99000000-0000-4000-8000-000000000002",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"99000000-0000-4000-8000-000000000002\",\"fence\":{\"expectedVersion\":5,\"kind\":\"version\"},\"kind\":\"run-lifecycle\",\"operation\":\"archive\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"e790ee4fb714ccef7efcf51f0a2d41d8598030093b9e6b3c23a79bc935141f55\"}",
+        "created_at": "2026-07-31T17:01:00.000Z",
+        "parent_command_id": null
+      }
+    ],
+    "database_state": [
+      {
+        "singleton_id": 1,
+        "schema_version": 40,
+        "authority_generation": 9,
+        "updated_at": "2026-07-31T17:01:00.000Z",
+        "migration_owner": null,
+        "migration_started_at": null
+      }
+    ],
+    "database_upgrades": [
+      {
+        "record_key": "d80f1913-1fd5-4b98-b7e1-79e5a95f571f",
+        "upgrade_id": "fresh",
+        "phase": "baseline",
+        "record_json": "{\"by\":\"local-operator\",\"fromSchemaVersion\":0,\"phase\":\"baseline\",\"recordKey\":\"d80f1913-1fd5-4b98-b7e1-79e5a95f571f\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"toSchemaVersion\":40,\"upgradeId\":\"fresh\"}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "run_checkpoints": [
+      {
+        "record_key": "person-lookup\u000033333333-3333-4333-8333-333333333333\u0000active-status\u00001\u00001",
+        "workflow": "person-lookup",
+        "item_id": "33333333-3333-4333-8333-333333333333",
+        "node_id": "active-status",
+        "attempt": 1,
+        "claim_generation": 1,
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"attempt\":1,\"claimGeneration\":1,\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"implFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"active-status\",\"output\":{\"schemaHash\":\"3bc0b9e9baefdb6a3eb8d124353e007a63ac8b5670c057b52cbb453aa176b608\",\"value\":{\"hdh\":true,\"reason\":\"UCPath reports an active HDH appointment and CRM onboarding is complete\",\"state\":\"active\"}},\"provenance\":[{\"observedAt\":\"2026-07-31T17:00:00.000Z\",\"originalObservedAt\":\"2026-07-31T17:00:00.000Z\",\"path\":\"state\",\"source\":\"derived\"}],\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"person-lookup\",\"writtenAt\":\"2026-07-31T17:00:00.000Z\"}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      }
+    ],
+    "run_results": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "workflow": "person-lookup",
+        "attempt": 1,
+        "result_digest": "8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98",
+        "record_json": "{\"attempt\":1,\"configFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"configSnapshotId\":\"44444444-4444-4444-8444-444444444444\",\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"createdAt\":\"2026-07-31T17:01:00.000Z\",\"dependencies\":[{\"checkpoint\":{\"attempt\":1,\"claimGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"person-lookup\"},\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"implFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"nodeId\":\"active-status\",\"outputDigest\":\"411d26f1383b395f2092e993860ef2f5c1243b89a71956031e5958447927d287\",\"outputSchemaHash\":\"3bc0b9e9baefdb6a3eb8d124353e007a63ac8b5670c057b52cbb453aa176b608\",\"provenanceDigest\":\"ac2bfa9de5467c67f0532f262745f2203a7bfefcc3beb55c9ce718d4a4336cce\",\"state\":\"resolved\"},{\"nodeId\":\"crm-dates\",\"reason\":\"condition-false\",\"state\":\"not-run\"}],\"dependencyDigest\":\"c47f58e67a4ccff70be86bd8da2c9a5afa9a6dab2558af8f82d7704a6c400b95\",\"descriptorVersion\":1,\"result\":{\"protectedBindings\":[{\"inputPath\":\"emplId\",\"kind\":\"legacy-protected-input\",\"name\":\"personLookupCanaryEid\"}],\"schemaHash\":\"c1db3f170363e7bd1d46f3912ccac6c7fed58e10c781dfc84f57da7d8aad5604\",\"value\":{\"activeStatus\":{\"hdh\":true,\"reason\":\"UCPath reports an active HDH appointment and CRM onboarding is complete\",\"state\":\"active\"},\"crmDates\":{\"state\":\"not-requested\"}}},\"resultDigest\":\"8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98\",\"resultSchemaHash\":\"c1db3f170363e7bd1d46f3912ccac6c7fed58e10c781dfc84f57da7d8aad5604\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"person-lookup\"}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "run_terminal_authorizations": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "kind": "done",
+        "expected_version": 4,
+        "worker_id": "worker-1",
+        "claim_generation": 1,
+        "record_json": "{\"attempt\":1,\"authorizedAt\":\"2026-07-31T17:01:00.000Z\",\"claim\":{\"claimGeneration\":1,\"workerId\":\"worker-1\"},\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"expectedVersion\":4,\"kind\":\"done\",\"outboxId\":\"77777777-7777-4777-8777-777777777777\",\"resultDigest\":\"8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"person-lookup\"}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "run_terminal_outbox": [
+      {
+        "record_key": "77777777-7777-4777-8777-777777777777",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "state": "pending",
+        "record_json": "{\"createdAt\":\"2026-07-31T17:01:00.000Z\",\"outboxId\":\"77777777-7777-4777-8777-777777777777\",\"payload\":{\"attempt\":1,\"kind\":\"run-terminal-result\",\"resultDigest\":\"8663858158eab7f0b9b95a5b213a4df8eec00036873ea600865a5ed9a3b7ba98\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"person-lookup\"},\"projection\":{\"state\":\"pending\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "timeline_events": [
+      {
+        "cursor": 1,
+        "record_key": "9a28a974-68f9-5d56-8417-ba8cf0155a20",
+        "workflow": "person-lookup",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "worker_id": null,
+        "retention_date": "2026-07-31",
+        "retention_class": "ordinary",
+        "record_json": "{\"eventId\":\"9a28a974-68f9-5d56-8417-ba8cf0155a20\",\"occurredAt\":\"2026-07-31T17:00:00.000Z\",\"payload\":{\"attempt\":1,\"checkpoint\":{\"attempt\":1,\"claimGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"active-status\",\"outputDigest\":\"442f9facf4f5c8b6ed41f00f7a8d5718be526afa200a944660f751025560a396\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"person-lookup\",\"writtenAt\":\"2026-07-31T17:00:00.000Z\"},\"claimGeneration\":1,\"kind\":\"checkpoint-recorded\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflow\":\"person-lookup\"},\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"retentionDate\":\"2026-07-31\",\"schemaVersion\":1,\"scope\":{\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"},\"source\":{\"kind\":\"native\"},\"workflow\":\"person-lookup\",\"cursor\":1}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      },
+      {
+        "cursor": 2,
+        "record_key": "4137456f-1d5b-4186-8373-98cd7452629b",
+        "workflow": "person-lookup",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "worker_id": null,
+        "retention_date": "2026-07-31",
+        "retention_class": "ordinary",
+        "record_json": "{\"eventId\":\"4137456f-1d5b-4186-8373-98cd7452629b\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"payload\":{\"event\":{\"attempt\":1,\"kind\":\"run\",\"outcome\":\"done\",\"pid\":14725,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"spanPath\":\"pl-170000-2222\",\"t\":\"span.ended\",\"traceId\":\"pl-170000-2222\",\"ts\":\"2026-07-31T17:01:00.000Z\",\"workflow\":\"person-lookup\"},\"kind\":\"span\"},\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"retentionDate\":\"2026-07-31\",\"schemaVersion\":1,\"scope\":{\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"},\"source\":{\"kind\":\"native\"},\"workflow\":\"person-lookup\",\"cursor\":2}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "version_bump_applications": [
+      {
+        "record_key": "66666666-6666-4666-8666-666666666666",
+        "version_plan_id": "77777777-7777-4777-8777-777777777777",
+        "scope_kind": "workflows",
+        "target_version": "0.2.0",
+        "applied_app_version": "0.1.0",
+        "archived_count": 1,
+        "record_json": "{\"applicationId\":\"66666666-6666-4666-8666-666666666666\",\"appliedAppVersion\":\"0.1.0\",\"appliedAt\":\"2026-07-31T17:00:00.000Z\",\"appliedBy\":\"local-operator\",\"appliedIdentities\":[{\"contractFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"descriptorVersion\":2,\"workflowId\":\"person-lookup\"}],\"archiveSchemaGeneration\":1,\"archivedRunIds\":[\"22222222-2222-4222-8222-222222222222\"],\"changeFingerprint\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"scope\":{\"kind\":\"workflows\",\"workflowIds\":[\"person-lookup\"]},\"targetVersion\":\"0.2.0\",\"versionPlanId\":\"77777777-7777-4777-8777-777777777777\"}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      }
+    ],
+    "version_plans": [
+      {
+        "record_key": "77777777-7777-4777-8777-777777777777",
+        "record_json": "{\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"plan\":{\"archiveSchemaGeneration\":1,\"blockers\":[],\"candidates\":[{\"drift\":[\"descriptor-version\",\"contract-fingerprint\"],\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"title\":\"EID 10873698\",\"traceId\":\"pl-170000-2222\",\"workflowId\":\"person-lookup\"}],\"changeFingerprint\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"observedAppVersion\":\"0.1.0\",\"observedIdentities\":[{\"contractFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"descriptorVersion\":2,\"workflowId\":\"person-lookup\"}],\"plannedAt\":\"2026-07-31T17:00:00.000Z\",\"plannedBy\":\"local-operator\",\"scope\":{\"kind\":\"workflows\",\"workflowIds\":[\"person-lookup\"]},\"targetVersion\":\"0.2.0\",\"versionPlanId\":\"77777777-7777-4777-8777-777777777777\"},\"planFingerprint\":\"d6f471538d5fff76e51b8f45c0de390cbabc782b9418a14773ae6d2110661c5d\",\"state\":\"planned\",\"version\":1,\"versionPlanId\":\"77777777-7777-4777-8777-777777777777\"}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      }
+    ],
+    "workflow_runs": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"claimGeneration\":1,\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"envelope\":{\"attempt\":1,\"configFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"configSnapshotId\":\"44444444-4444-4444-8444-444444444444\",\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"dryRun\":false,\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"priority\":\"bulk\",\"resolvedInstance\":{\"crm\":\"prod\",\"ucpath\":\"prod\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"shape\":\"single\",\"traceId\":\"pl-170000-2222\",\"workflow\":\"person-lookup\"},\"input\":{\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parsed\":{\"schemaHash\":\"1b0526d0b76cb7ba738ce4f455166c6d9a5a8d0361ee3f8788e06f834f516df6\",\"value\":{\"emplId\":\"10873698\",\"includeCrmDates\":false,\"keepNonHdh\":false}},\"raw\":{\"emplId\":\"10873698\"}},\"lifecycle\":{\"endedAt\":\"2026-07-31T17:01:00.000Z\",\"outcome\":\"done\",\"state\":\"terminal\"},\"updatedAt\":\"2026-07-31T17:01:00.000Z\",\"version\":6}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "workflow": "person-lookup",
+        "item_id": "33333333-3333-4333-8333-333333333333",
+        "state": "terminal",
+        "priority": "bulk",
+        "attempt": 1,
+        "not_before": null,
+        "owner_worker_id": null,
+        "claim_generation": 1,
+        "heartbeat_at": null,
+        "version": 6,
+        "parent_run_id": null,
+        "run_number": null,
+        "session_id": null
+      }
+    ]
+  }
+}

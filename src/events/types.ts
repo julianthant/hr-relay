@@ -170,6 +170,7 @@ const RunQueuedSchema = z.strictObject({
 
 const RunClaimedSchema = z.strictObject({
   t: z.literal("run.claimed"),
+  claimGeneration: z.number().int().positive().optional(),
   ...BaseFields,
   ...RunSpanIdentityFields,
   workerId: SlugSchema,
@@ -354,6 +355,8 @@ const TaskSpanEndedSchema = z.strictObject({
 
 const RunSpanEndedSchema = z.strictObject({
   t: z.literal("span.ended"),
+  workerId: SlugSchema.optional(),
+  claimGeneration: z.number().int().positive().optional(),
   kind: z.literal("run"),
   ...BaseFields,
   ...RunSpanIdentityFields,

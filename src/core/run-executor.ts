@@ -61,7 +61,6 @@ import {
   GateIdSchema,
   IsoInstantSchema,
   NodeIdSchema,
-  OutboxIdSchema,
   ProviderCapabilityIdSchema,
   TaskIdSchema,
 } from "../domain/ids.js";
@@ -77,7 +76,6 @@ import type {
   RunResultRecord,
   TerminalDependencyEvidence,
 } from "../domain/run/result.js";
-import { RunTerminalOutboxRecordSchema } from "../domain/run/terminal-outbox.js";
 import type { SessionNeed } from "../domain/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../domain/trust/failure.js";
 import {
@@ -659,7 +657,7 @@ export async function executeClaimedRun(
     });
 
     /**
-     * The ONE terminal-success settlement: outbox, authorization, and the
+     * The ONE terminal-success settlement: completion, result, and the
      * authority transaction that writes them with the run CAS. A derived result
      * and D210's preview record differ in what they SAY and not in how they
      * settle, so they share this — a second copy would be a second place for the
@@ -671,27 +669,14 @@ export async function executeClaimedRun(
     ): RunExecutionOutcome => {
       checkCancellation();
       requireOriginalClaim(current);
-      const outboxId = OutboxIdSchema.parse(deps.ids.uuid());
-      const outbox = RunTerminalOutboxRecordSchema.parse({
-        outboxId,
-        payload: {
-          kind: "run-terminal-result",
-          runId: built.record.runId,
-          workflowId: built.record.workflowId,
-          attempt: built.record.attempt,
-          resultDigest: built.record.resultDigest,
-        },
-        projection: { state: "pending" },
-        createdAt: built.record.createdAt,
-      });
       const authorization = buildTerminalAuthorization({
         run: current,
         authorizedAt: built.record.createdAt,
-        consequence: { kind: "done", result: built.record, outboxId },
+        consequence: { kind: "done", result: built.record },
       });
       requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "success",
         commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest }),
-        terminal: { result: built.record, outbox, authorization },
+        terminal: { result: built.record, authorization },
       }, descriptor, built.authorization));
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });
     };

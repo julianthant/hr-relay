@@ -47,7 +47,7 @@ import { RunExistenceSchema, RunRecordRefusalSchema } from "../../domain/authori
 import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import {
   FailureTerminalizationRequestSchema,
-  SuccessTerminalizationRequestSchema,
+  SuccessTerminalizationReplayInputSchema,
 } from "./run-terminal-contracts.js";
 
 /** Proof that the caller still owns the row it is about to change. */
@@ -339,7 +339,7 @@ export const CanonicalFailureTerminalizeRequestSchema = z.strictObject({
 
 export const CanonicalSuccessTerminalizeRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
-  terminal: SuccessTerminalizationRequestSchema,
+  terminal: SuccessTerminalizationReplayInputSchema,
 });
 
 export const CanonicalCancellationTerminalizeRequestSchema = z.strictObject({
@@ -361,7 +361,7 @@ export const CanonicalTerminalizeRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("success"),
     commandId: CommandIdSchema,
-    terminal: SuccessTerminalizationRequestSchema,
+    terminal: SuccessTerminalizationReplayInputSchema,
   }),
 ]);
 

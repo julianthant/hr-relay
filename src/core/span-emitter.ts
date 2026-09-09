@@ -124,6 +124,7 @@ export type ObservedDataPoint = z.infer<typeof ObservedDataPointSchema>;
 export const ExecutorSpanEventSchema = z.union([
   z.strictObject({
     t: z.literal("run.claimed"),
+    claimGeneration: PositiveIntSchema.optional(),
     ...BaseFields,
     ...RunSpanIdentityFields,
     workerId: WorkerIdSchema,
@@ -159,6 +160,8 @@ export const ExecutorSpanEventSchema = z.union([
   z.strictObject({
     t: z.literal("span.ended"),
     kind: z.literal("run"),
+    workerId: WorkerIdSchema.optional(),
+    claimGeneration: PositiveIntSchema.optional(),
     ...BaseFields,
     ...RunSpanIdentityFields,
     outcome: SpanOutcomeSchema,

@@ -46,12 +46,7 @@ const TEST_PSEUDONYM_DOMAIN = createActivityPersonPseudonymDomain({
   keyHex: KEY_HEX,
 });
 
-const TERMINAL_RUN = RunRecordSchema.parse({
-  ...compositionQueuedRun(),
-  lifecycle: { state: "terminal", outcome: "done", endedAt: COMPOSITION_NOW },
-  version: 2,
-  updatedAt: COMPOSITION_NOW,
-});
+
 
 const SEPARATIONS_RESULT = SeparationsResultSchema.parse({
   documentNumber: COMPOSITION_DOCUMENT,
@@ -106,6 +101,17 @@ const SEPARATIONS_RESULT = SeparationsResultSchema.parse({
 });
 
 const RESULT_SCHEMA_HASH = deriveSchemaHash(SeparationsResultSchema, "output");
+const TERMINAL_RUN = RunRecordSchema.parse({
+  ...compositionQueuedRun(),
+  lifecycle: { state: "terminal", outcome: "done", endedAt: COMPOSITION_NOW },
+  claimGeneration: 1,
+  completion: { schemaVersion: 1, kind: "done", expectedVersion: 1,
+    claim: { workerId: "projection-fixture", claimGeneration: 1 }, authorizedAt: COMPOSITION_NOW,
+    resultDigest: deriveRunResultDigest({ schemaHash: RESULT_SCHEMA_HASH, value: SEPARATIONS_RESULT }) },
+  version: 2,
+  updatedAt: COMPOSITION_NOW,
+});
+
 const RESULT_RECORD = RunResultRecordSchema.parse({
   runId: TERMINAL_RUN.envelope.runId,
   attempt: TERMINAL_RUN.envelope.attempt,
@@ -386,6 +392,9 @@ describe("reviewed activity person pseudonym backfill", () => {
     const queued = RunRecordSchema.parse(compositionQueuedRun());
     const failed = RunRecordSchema.parse({
       ...TERMINAL_RUN,
+      completion: { schemaVersion: 1, kind: "failed", expectedVersion: 1,
+        claim: { workerId: "projection-fixture", claimGeneration: 1 }, authorizedAt: COMPOSITION_NOW,
+        failureId: "66666666-6666-4666-8666-666666666666" },
       lifecycle: {
         state: "terminal",
         outcome: "failed",

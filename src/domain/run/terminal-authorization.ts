@@ -1,5 +1,5 @@
 /**
- * Durable authorization for a terminal run settlement. The row preserves the
+ * Request authorization for a terminal run settlement. The run completion preserves the
  * exact pre-terminal CAS and claim so a later replay cannot substitute a stale
  * or unrelated authorization after the run has dropped its live claim fields.
  */
@@ -8,7 +8,6 @@ import {
   FailureIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
-  OutboxIdSchema,
   PositiveIntSchema,
   RunIdSchema,
   WorkerIdSchema,
@@ -41,7 +40,6 @@ export const SuccessTerminalAuthorizationRecordSchema = z.strictObject({
   kind: z.literal("done"),
   ...TerminalAuthorizationIdentity,
   resultDigest: FingerprintSchema,
-  outboxId: OutboxIdSchema,
 });
 
 export const TerminalAuthorizationRecordSchema = z.discriminatedUnion("kind", [

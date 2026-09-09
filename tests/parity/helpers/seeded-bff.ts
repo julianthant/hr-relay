@@ -45,7 +45,6 @@ import {
 } from "../../../src/domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
@@ -424,7 +423,7 @@ function terminalizeFailed(world: SeedWorld, run: RunRecord, failureId: string):
 }
 
 /** The real D110/D114 atomic success terminalization, sealed by the descriptor factory. */
-function terminalizeDone(world: SeedWorld, run: RunRecord, outboxId: string): void {
+function terminalizeDone(world: SeedWorld, run: RunRecord, _outboxId: string): void {
   const checkpoint = RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow,
     itemId: run.envelope.itemId,
@@ -458,21 +457,8 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, outboxId: string): vo
     manualClock(SEEDED_AT),
   );
   const result = built.record;
-  const outbox = RunTerminalOutboxRecordSchema.parse({
-    outboxId,
-    payload: {
-      kind: "run-terminal-result",
-      runId: result.runId,
-      workflowId: result.workflowId,
-      attempt: result.attempt,
-      resultDigest: result.resultDigest,
-    },
-    projection: { state: "pending" },
-    createdAt: result.createdAt,
-  });
   world.database.terminalizeSuccess({
     result,
-    outbox,
     authorization: {
       kind: "done",
       runId: result.runId,
@@ -484,7 +470,6 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, outboxId: string): vo
       claim: claimOf(run),
       authorizedAt: SEEDED_NOW,
       resultDigest: result.resultDigest,
-      outboxId,
     },
   }, built.authorization);
 }

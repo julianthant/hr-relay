@@ -28,7 +28,6 @@ import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { RunTerminalOutboxRecordSchema } from "../../src/domain/run/terminal-outbox.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
@@ -395,7 +394,7 @@ function terminalizeFailed(context: SeedContext, run: RunRecord, seed: number): 
   });
 }
 
-function terminalizeDone(context: SeedContext, run: RunRecord, seed: number): void {
+function terminalizeDone(context: SeedContext, run: RunRecord, _seed: number): void {
   const now = run.envelope.enqueuedAt;
   const checkpoint = RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow,
@@ -430,21 +429,8 @@ function terminalizeDone(context: SeedContext, run: RunRecord, seed: number): vo
     manualClock(new Date(now)),
   );
   const result = built.record;
-  const outbox = RunTerminalOutboxRecordSchema.parse({
-    outboxId: uuidOf(ID_SPACE.outbox + seed),
-    payload: {
-      kind: "run-terminal-result",
-      runId: result.runId,
-      workflowId: result.workflowId,
-      attempt: result.attempt,
-      resultDigest: result.resultDigest,
-    },
-    projection: { state: "pending" },
-    createdAt: result.createdAt,
-  });
   context.database.terminalizeSuccess({
     result,
-    outbox,
     authorization: {
       kind: "done",
       runId: result.runId,
@@ -456,7 +442,6 @@ function terminalizeDone(context: SeedContext, run: RunRecord, seed: number): vo
       claim: claimOf(run),
       authorizedAt: now,
       resultDigest: result.resultDigest,
-      outboxId: outbox.outboxId,
     },
   }, built.authorization);
 }

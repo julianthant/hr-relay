@@ -26,7 +26,6 @@ import {
   KualiSaveSeparationFinalization,
   kualiFinalizationIdempotencyKey,
 } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
-import { RunTerminalOutboxRecordSchema } from "../../src/domain/run/terminal-outbox.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import {
   deriveIdempotencyKeyDigest,
@@ -292,21 +291,8 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
     ],
     manualClock(new Date(EXIT_TERMINAL_AT)),
   );
-  const outboxId = "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e0e";
   database.terminalizeSuccess({
     result: built.record,
-    outbox: RunTerminalOutboxRecordSchema.parse({
-      outboxId,
-      payload: {
-        kind: "run-terminal-result",
-        runId: built.record.runId,
-        workflowId: built.record.workflowId,
-        attempt: built.record.attempt,
-        resultDigest: built.record.resultDigest,
-      },
-      projection: { state: "pending" },
-      createdAt: built.record.createdAt,
-    }),
     authorization: {
       kind: "done",
       runId: built.record.runId,
@@ -318,7 +304,6 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
       claim,
       authorizedAt: EXIT_TERMINAL_AT,
       resultDigest: built.record.resultDigest,
-      outboxId,
     },
   }, built.authorization);
 
@@ -532,6 +517,11 @@ export function kualiReceiptEvidence(input?: Readonly<{ readonly contractFingerp
     manualClock(new Date(KUALI_CONFIRMED_AT)),
   );
   const result = built.record;
+  const completedRun = RunRecordSchema.parse({ ...run, completion: {
+    schemaVersion: 1, kind: "done", expectedVersion: 4,
+    claim: { workerId: RUNNING_LIFECYCLE.workerId, claimGeneration: 1 },
+    authorizedAt: KUALI_CONFIRMED_AT, resultDigest: result.resultDigest,
+  } });
 
   const bindingProofDigest = deriveWriteBindingProofDigest(KUALI_BINDING_PROOF);
   const writeAttemptId = "3d5f8a12-9b04-4c6e-8a33-77e1c2b9d045";
@@ -577,10 +567,10 @@ export function kualiReceiptEvidence(input?: Readonly<{ readonly contractFingerp
 
   const checkpoints = [approvalCheckpoint, departmentCheckpoint, transactionCheckpoint];
   if (storedContractFingerprint === descriptor.contractFingerprint) {
-    return { run, result, checkpoints, writes: [{ intent, attempts: [attempt] }] };
+    return { run: completedRun, result, checkpoints, writes: [{ intent, attempts: [attempt] }] };
   }
   const storedRun = RunRecordSchema.parse({
-    ...run,
+    ...completedRun,
     envelope: { ...run.envelope, contractFingerprint: storedContractFingerprint },
   });
   const storedCheckpoints = checkpoints.map((record) => RunCheckpointRecordSchema.parse({
@@ -761,7 +751,11 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
   );
 
   return {
-    run,
+    run: RunRecordSchema.parse({ ...run, completion: {
+      schemaVersion: 1, kind: "done", expectedVersion: 17,
+      claim: { workerId: "identity-check-worker-1", claimGeneration: 1 },
+      authorizedAt: GATE_TERMINAL_AT, resultDigest: built.record.resultDigest,
+    } }),
     result: built.record,
     checkpoints: [approvalCheckpoint],
     gateResults: [gateResult],

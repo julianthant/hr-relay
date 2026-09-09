@@ -71,7 +71,6 @@ import { manualClock } from "../../src/domain/clock.js";
 import { CommandResultSchema } from "../../src/domain/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { RunTerminalOutboxRecordSchema } from "../../src/domain/run/terminal-outbox.js";
 import { deriveEvidenceReceiptId } from "../../src/domain/trust/evidence-identity.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -125,7 +124,6 @@ const REJECTED_SOURCE_ROW = 2;
 const APP_VERSION = "0.1.0";
 const WORKER_ID = "intake-fixture-worker-1";
 const TERMINAL_AT = "2026-07-31T17:05:00.000Z";
-const OUTBOX_ID = "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e0e";
 
 const INTAKE_V1 = defineIntakeFixtureDescriptor({
   id: INTAKE_FIXTURE_WORKFLOW_ID,
@@ -455,18 +453,6 @@ function settleOneQueuedRunDone(world: World, descriptor: AnyWorkflowDescriptor)
   );
   world.database.terminalizeSuccess({
     result: built.record,
-    outbox: RunTerminalOutboxRecordSchema.parse({
-      outboxId: OUTBOX_ID,
-      payload: {
-        kind: "run-terminal-result",
-        runId: built.record.runId,
-        workflowId: built.record.workflowId,
-        attempt: built.record.attempt,
-        resultDigest: built.record.resultDigest,
-      },
-      projection: { state: "pending" },
-      createdAt: built.record.createdAt,
-    }),
     authorization: {
       kind: "done",
       runId: built.record.runId,
@@ -478,7 +464,6 @@ function settleOneQueuedRunDone(world: World, descriptor: AnyWorkflowDescriptor)
       claim,
       authorizedAt: TERMINAL_AT,
       resultDigest: built.record.resultDigest,
-      outboxId: OUTBOX_ID,
     },
   }, built.authorization);
   return runId;

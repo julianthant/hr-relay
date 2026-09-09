@@ -1082,9 +1082,10 @@ export class RunRecordService {
     if (["claim-next", "transition", "worker-transition", "terminalize", "requeue"].includes(operation)) {
       const lifecycle = run.lifecycle;
       const event = operation === "claim-next" && lifecycle.state === "claimed"
-        ? { t: "run.claimed", workerId: lifecycle.workerId }
+        ? { t: "run.claimed", workerId: lifecycle.workerId, claimGeneration: run.claimGeneration }
         : lifecycle.state === "terminal"
           ? { t: "span.ended", kind: "run", outcome: lifecycle.outcome,
+              ...(run.completion === undefined ? {} : run.completion.claim),
               ...(lifecycle.outcome === "failed" ? { failureId: lifecycle.failureId } : {}) }
           : lifecycle.state === "parked-gate"
             ? { t: "gate.opened", gate: lifecycle.gateId }
@@ -1159,7 +1160,7 @@ export class RunRecordService {
     const existence = this.read(journal.result.runId);
     if (existence.state !== "present") return this.replayRun(journal.result);
     const { run } = existence;
-    const authorization = repositories.terminalAuthorizations.get(journal.result.runId);
+    const authorization = run.completion;
     const failureCount = repositories.failures.listByRun(journal.result.runId).length;
     const result = repositories.runResults.get(journal.result.runId);
     if (journal.result.appliedVersion !== journal.command.fence.expectedVersion + 1

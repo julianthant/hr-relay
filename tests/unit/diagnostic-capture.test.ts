@@ -291,7 +291,7 @@ describe("the failure and its bundle land together", () => {
       assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
       assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
       assert.deepEqual(database.authority.diagnosticBundles.listByRun(RUN_ID), []);
-      assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+      assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
       assert.ok(terminalCommandId);
       assert.equal(database.authority.lifecycleJournal.getCommand(terminalCommandId), undefined);
       assert.equal(emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
