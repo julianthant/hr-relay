@@ -46,7 +46,7 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
 | Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Keep `deleted_runs` for explicit live/archive deletion, separate from transfer. |
 | Messages and notes | `notifications`, `notes` | Approved: keep `notifications`; remove unused SQL `notes` projection only. Preserve diagnostic log files/readers and handle notification links after archive transfer. |
-| Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
+| Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Approved: rename scenario results to `dryrun_results`. Need/design of the two Activity identity tables remains open. |
 | Database maintenance | `authority_meta`, `authority_upgrades` | Open |
 | Run/operation relationships | Historical `run_operation_attempts` links to `workflow_runs` across retry, re-fencing, archive and deletion | Open; use the [existing deferred finding](../operation-names/README.md#inspected-feasibility-and-separate-relationship-finding) |
 
@@ -510,3 +510,33 @@ competing peer migrations. Reconcile any newly accepted timeline changes at admi
 rewriting in-flight evidence. Apply this batch's focused-test/lint/freshness cadence and final-session
 heavy gates/independent review. Complete allocation, migration policy and launch prompts remain
 pending; no implementation or database writes are performed by this approval record.
+
+## Group 5: dryrun results and Activity identity discussion
+
+On 2026-09-08 the operator directed “change it to dryrun results” and questioned the necessity of
+the two Activity identity tables. Rename `dry_run_scenario_results` to **`dryrun_results`**. This
+supersedes the unapproved `workflow_test_results` suggestion; no Activity-table rename or removal
+has been approved.
+
+Preserve the scenario-result behavior: assertion verdicts, scenario/manifest identity, subject label,
+duration and execution identity when a run started. A subject-unavailable result can exist without a
+run. Keep both dry-run-preview and transaction-free live-read arms; this naming decision does not
+change execution safety or merge test assertions into workflow outputs. It does not include general
+unit-test results. `src/server/dry-run-scenario/compose.ts` writes the result through the existing
+repository; `src/domain/trust/dry-run-scenario-result.ts` owns its shape.
+
+Plan the rename, source/consumer/registration changes and supported upgrade/restore proof at the
+existing shared database prerequisite. Preserve IDs and result content, started/not-started checks,
+execution-arm validation, run deletion and capture of displayed results during archive transfer.
+Coordinate with the archive owner rather than creating another result-export plan. Focused tests
+and lint/freshness precede final-session heavy gates and independent review; execution remains pending.
+
+Read-only investigation of Activity found a possible simpler source: the current Separations
+backfill already reads validated `run_results.result.value.approved.emplId` before deriving its
+pseudonym. The pseudonym table provides per-run comparison identifiers; the generation table binds
+one generation label to one key identity. They support the current privacy design rather than being
+mathematically necessary to count distinct people. A server-side count over existing canonical
+identities, returning only aggregates to Activity, is an alternative for operator discussion.
+It requires explicit source/coverage rules and contract review before adoption, including missing or
+ambiguous identities, retries/group members, and archive metadata if archives enter the selected
+count. Do not invent identities or implement a replacement from this observation alone.
