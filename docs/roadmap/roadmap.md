@@ -1133,14 +1133,14 @@ log:
 - 2026-09-09 | D01–D05 plan approved | repaired F prerequisite 51e4c087a; strict resolution history/live-context/test ownership amendments; one supervisor, focused checks, local merge and owned cleanup. Full gates/review remain 2.6.9; implementation unstarted
 
 ##### 3 · Publish and update generated artifacts {#p2db-generated-artifacts}
-status: planned
+status: done
 doc: 2.6 §Task 6.3 · Publish and update generated artifacts
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BE implement ordered generated-file lifecycle and XLSX exports with request/completion evidence on the same generated-artifact row
-- [ ] PROOF prove pending/completed updates, fault recovery, idempotency and shared-file retention
+- [x] BE implement ordered generated-file lifecycle and XLSX exports with request/completion evidence on the same generated-artifact row
+- [x] PROOF prove pending/completed updates, fault recovery, idempotency and shared-file retention
 
 needs:
 - p2db-domain-foundation
@@ -1148,6 +1148,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.3; assignment G; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | G plan approved | G01–G06 consumes repaired F 51e4c087a; six production paths, focused checks, local master merge and owned cleanup. Full gates and independent review remain 2.6.9; implementation unstarted
+- 2026-09-09 | G scoped development release | candidate 272b35676; local merge 4328ce56a; 104 unit and 155 focused architecture/document tests, lint/freshness PASS; owned worktree/ref removed. Exact receipt at G owner; full gates and independent review remain 2.6.9
 
 ##### 4 · Activate settings for new runs without restart {#p2db-settings-activation}
 status: planned

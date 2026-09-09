@@ -14,7 +14,7 @@ This is a **Phase 2.6-only trial**; other phases retain their existing gate requ
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
-**Status: R, C0, T, C and F development releases are integrated; P/D/G/S remain unlaunched.**
+**Status: R, C0, T, C, F and G development releases are integrated.** G's [release and cleanup](artifacts.md#g-scoped-development-release-and-cleanup) are complete; P/D/S release status remains with their owners.
 T integration is `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; its candidate, repairs, retained
 proof and incomplete independent-review status are recorded in [timeline.md](timeline.md#operator-directed-merge-and-cleanup--2026-09-09).
 R, C0 and accepted T1 are ancestors; removed predecessor branches are not launch prerequisites.

@@ -644,8 +644,9 @@ prompt while preserving the current F prerequisite and all execution requirement
 
 ## G execution record — 2026-09-09
 
-**Current state:** G01–G04 implemented and focused proof passed; G05 final committed checks and
-G06 integration/cleanup remain owned by this supervisor. This is a scoped development release;
+**Current state:** G01–G06 complete. Candidate `272b35676bef9b0dd7e9da72e15a243148ec2842`
+is locally integrated at `4328ce56a05e91c34700a2c5df7dc9fb8e25907f`; owned worktree and branch
+cleanup are verified. The completed receipt below binds final recording verification. This is a scoped development release;
 full acceptance and independent review remain in 2.6.9. No workers, reviewers or siblings were
 launched. No peer messages or transfers were needed.
 
@@ -701,3 +702,30 @@ Full typecheck/coverage, whole architecture, broad parity/build/performance, com
 original cross-domain recovery/scenario/production-route proof and fresh complete `sup_review` remain
 in **2.6.9**. This task adds no live producer, UI behavior, automatic recovery/GC, export format,
 provider wiring or HR submission. No push or operator-database upgrade occurred.
+
+
+### G scoped development release and cleanup
+
+| Release fact | Exact evidence |
+| --- | --- |
+| Implementation commit | `91a4b93c7` (full identity in `candidate.json`) |
+| Tested candidate / tree | `272b35676bef9b0dd7e9da72e15a243148ec2842` / `7be1a5338e309e442408ccb08cee04c6a1d7a122` |
+| Local master merge / tree | `4328ce56a05e91c34700a2c5df7dc9fb8e25907f` / `b6555a80f650037ddfe9a40bc823ec01a24dbefa` |
+| Candidate unit gate | Exact seven-file command from this brief: **104 tests PASS**, exit 0; `candidate-unit.json` records command, clean tested SHA/tree and hashed log |
+| Candidate architecture gate | The four assigned boundary files plus roadmap binding: **155 tests PASS** (131 boundary + 24 documentation), exit 0; `candidate-architecture.json` |
+| Candidate lint/freshness | `npm run lint`; manifest, catalog and roadmap generation then freshness; local links, 9 instruction pairs, 17,333-byte maximum project chain and diff whitespace: all exit 0, `candidate-*.json` |
+| Integration verification | Clean local merge without conflicts. Exact candidate-to-merge diff contains only concurrent planning documents; runtime, tests, configuration, dependencies, guard inventory and migrations are unchanged. Reuse candidate code gates under D191. Main-checkout roadmap generation/freshness and **24 binding tests** reran with exit 0; `integration.json`, `integration-*.json` |
+| Cleanup | Owned process audit empty; dependency symlink removed without touching its target; `git worktree remove` and `git branch -d` exit 0. Registration, physical path and ref absence verified. Other worktrees preserved. All command logs and retained-failure-root identities remain outside the checkout. |
+| Final recording | Only this G evidence/status and its shared launch/roadmap pointers change. Re-run documentation/link/instruction/freshness checks; reuse candidate lint and code tests only after exact non-document input equality. Final SHA/tree and command results are bound by the external receipt. |
+
+The [complete G closure receipt](/Users/julianhein/Projects/hr-artifact-outputs-evidence-20260909/closure.json)
+and [integration evidence](/Users/julianhein/Projects/hr-artifact-outputs-evidence-20260909/integration.json)
+are the release for L and 2.6.9. G retained and finished all duties; no transfer or acceptance handshake
+occurred. Shared mutations used inspected Git/worktree/plan ownership and Git's actual index/ref
+locking, with no conflicting mutation observed, no invented reservation queue and no peer messages.
+The four-auxiliary cap was available at G creation; later independently opened lanes were preserved,
+and G's cleanup reduced the registered auxiliary count. G neither launched nor monitored peers.
+
+**Consumer boundary:** L already owns combined P/D/G/S consumption. This G release satisfies only
+G's prerequisite; it does not assert P/D/S completion or launch L. Final product acceptance, full
+gates, combined archive/recovery proof and independent review remain open in **2.6.9**. G ends here.

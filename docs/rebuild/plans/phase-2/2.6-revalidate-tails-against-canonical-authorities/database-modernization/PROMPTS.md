@@ -14,7 +14,7 @@ are verified prerequisites for F. C's removed branch/path must not be recreated 
 
 F (2.6.6) is locally integrated at `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` with focused PASS.
 Its [release/closure record](foundation.md#f-resolver-port-repair--2026-09-09) and complete
-external cleanup receipt supply one common prerequisite for P/D/G/S. All four remain unlaunched;
+external cleanup receipt supply one common prerequisite for P/D/G/S. G's [scoped release](artifacts.md#g-scoped-development-release-and-cleanup) is complete;
 later tasks still wait for their actual named candidates. Full gates/review remain 2.6.9.
 
 For C and F, their approved briefs override generic prompt/retention rules: one supervisor, zero
@@ -220,6 +220,10 @@ not the older C0 no-merge prompt. The planner supplies its exact verified plan/b
 persistence checks; the common runtime prerequisite remains repaired F above.
 
 ### G task-specific approved handoff
+
+**Completed:** G01–G06 released candidate `272b35676`, integrated locally at `4328ce56a`,
+with focused gates and owned cleanup verified. See [G release/receipt](artifacts.md#g-scoped-development-release-and-cleanup).
+Do not relaunch this completed assignment from the historical binding below. Full gates/review remain 2.6.9.
 
 G’s operator-approved [G01–G06 brief](artifacts.md#approved-execution-brief--2026-09-09) supersedes
 its earlier C0-only launch prompt. The planner retains the immutable approved-plan SHA and returns a verified committed descendant
