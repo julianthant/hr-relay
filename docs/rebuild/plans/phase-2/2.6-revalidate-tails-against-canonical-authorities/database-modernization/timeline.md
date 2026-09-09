@@ -307,3 +307,75 @@ unexplained orphan history, or a necessary material contract/ownership change ou
 Resolve the exact conflict rather than transferring it to C or claiming retirement succeeded.
 Send Done / Now / Remaining at start/resume and after every verified step, keeping all unfinished
 acceptance, final review, integration and cleanup visible.
+
+## T execution checkpoint — 2026-09-09
+
+**Blocked during T01; no development candidate and no release to C.** The implementation
+checkout is `/Users/julianhein/Projects/hr-worktree-database-contracts` on `codex/history-views`,
+created from the approved C0 base `c7b8b1e037bf27dd70d4df62bbfcac407e475631`.
+C0 admission `0010c51c4189f14a8aa61dac55984c2df791045e`, R
+`60b356dd119140dc972a077751ad16af934acb2e` and T1
+`46930920696ab214b036d5f2681b8ffb4e5620ea` were verified as ancestors.
+The approved planning commit `52558d04eafca64fe0771b3d8dc995d769f93550` was applied as
+`36a20db324c0890ecf277d02b0791fd307996534` (tree
+`540b5e9e707f0daafb90d4569cf9289dbbbfc9aa`). Its two documentation conflicts were resolved
+from the verified C0 release and approved readiness text; both resulting planning files were
+byte-identical to the approved commit before this execution checkpoint was added. No product,
+test, migration or configuration source has changed. Schema39/floor37 remains unchanged.
+
+### Allocation issue requiring operator disposition
+
+T02/P6/P8 require exact historical outbox and file provenance to survive retirement, and T05
+replaces the current atomic outbox input. The following directly coupled files are absent from
+T's exclusive allocation. The proposed amendment is limited to these existing paths:
+
+| Proposed additional path | Required bounded work |
+| --- | --- |
+| `src/events/timeline.ts` | Admit strict versioned historical operation source evidence, including exact outbox/file identities. Keep existing event bytes, event identity, payload facts and old source grammar readable; no rewriting of released events. |
+| `src/events/confirmed-operation.ts` | Bind the confirmation constructor/resolver to the admitted evidence representation, preserving exact attempt/checkpoint authentication and native confirmation identity. |
+| `tests/unit/helpers/timeline-write-fixture.ts` | Adapt the shared atomic-write fixture helper to the replacement typed commit facts while preserving explicitly historical outbox fixtures and their negative controls. |
+
+The current `TimelineAppendSchema` accepts only native or span-import sources. Its strict
+operation-confirmed payload contains facts, attempt/checkpoint references, proof digest and
+span time, but no original outbox identity, ledger assignment or file-source identity. A bounded
+synthetic probe on the tree above accepted the native confirmation control and refused both a
+ledger-import source and an added ledger outbox identity. The shared fixture helper parses the
+current atomic input and directly reads `commit.ledgerOutbox.payload.entry`; the probe also
+confirmed that a replacement transaction/span-facts input is refused. This is an allocation
+question, not permission to retain a current outbox alias, invent another history authority,
+weaken the schema, change shared paths unilaterally or drop the required provenance proof.
+
+The approved brief's stop condition for a necessary material ownership change applies. The
+proposal above is **not approved by this checkpoint**. No subordinate agents or reviewer were
+started. The unrelated separation-accounting worktree was preserved. The task lane is retained
+for resumption and has not been released to C.
+
+### Verified baseline and remaining proof
+
+- Node `v26.1.0`; dependency access is an ignored `node_modules` symlink to the primary
+  repository's existing installation. No dependency installation or shared dependency mutation.
+- Vitest's resolved unit and architecture projects both report `maxWorkers: 1`, `pool: forks`,
+  `isolate: true` under `VITEST_MAX_WORKERS=1` and the explicit `maxWorkers: 1` option.
+- `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/events/timeline-history.test.ts`:
+  exit 0, 23 tests, log `/tmp/history-views-baseline-timeline.log`, tested commit/tree above.
+  This is baseline T1 regression evidence only, not T02–T05 implementation proof.
+- T1's recorded restore-warning repair is present: immutable confirmation digests are compared
+  independently of mutable run progress. Its historical accepted proof is consumed, not rerun
+  as a new T recovery claim.
+
+T01's checkout/schema checks are complete; its conversion inventory/admission remains open.
+T02 conversion, T03 history queries/export, T04 archive transaction freeze, T05 ledger retirement,
+T06 focused-gated commit/release and all new P1–P9 changed-seam evidence remain unperformed.
+The two new required test files do not exist yet. Full gates, independent review, remaining
+repairs, operator-assigned master integration and final cleanup remain 2.6.9. No operator database
+upgrade, live submit, master merge, push or successor dispatch occurred.
+
+Checkpoint documentation validation: full `npm run lint` exited 0
+(`/tmp/history-views-baseline-lint.log`); its source/test/configuration inputs are unchanged
+from `36a20db324c0890ecf277d02b0791fd307996534`. The documentation-only delta is this
+execution checkpoint. The scoped `roadmap-doc-binding.test.ts` architecture selector passed
+24 tests with exit 0 (`/tmp/history-views-checkpoint-binding.log`). Roadmap generation and
+freshness exited 0 with no generated change (`/tmp/history-views-checkpoint-roadmap.log`,
+`/tmp/history-views-checkpoint-freshness.log`). All five owner links/anchors resolved, nine
+existing instruction pairs matched, the maximum project instruction chain was 17,333 bytes,
+and `git diff --check` passed. No full product gate or independent review is claimed.
