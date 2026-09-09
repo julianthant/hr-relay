@@ -248,7 +248,7 @@ is authorized here. An operator-root upgrade/cleanup is a separately assigned ac
 integration, verified stopped ownership, source-bound backup, supported upgrade plan/apply/doctor
 and sanitized before/after identity/count evidence. This planning work changes no runtime data.
 
-**Prerequisite resolved:** repaired F `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`; the approved P01–P06 brief below owns current launch conditions.
+**Prerequisite resolved:** repaired F `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`; the approved P01–P06 brief below owns current launch conditions.
 All earlier planning checks remain historical Git evidence, not gates for the new implementation.
 
 ## C0 execution allocation — 2.6.6.1 P
@@ -310,7 +310,7 @@ This approval implements no product code and does not mark P or Phase 2.6 comple
 | --- | --- |
 | Supervisor | One operator-started GPT-6 Astra/high supervisor; zero implementation workers. One cohesive accounting/retention assignment. No child dispatch. |
 | Inspected checkout | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; schema47/floor46. F repair changed no P-owned source files or provider integrity query. |
-| Source prerequisite | Exact common repaired F release `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, superseding initial `7ec279750817934b7da69ce433e0e5a44fed6a58`. Require F's complete repair closure receipt and ancestry. |
+| Source prerequisite | Exact common F resolver repair release `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, superseding `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` and initial `7ec279750817934b7da69ce433e0e5a44fed6a58`. Require the complete resolver repair closure receipt linked below and ancestry. |
 | Mode / branch / path | Create `codex/provider-usage` in a new worktree `/Users/julianhein/Projects/hr-worktree-provider-usage` from that exact prerequisite. These names are proposals until execution rechecks absence/ownership. |
 | Plan availability | The planning handoff supplies the full committed plan SHA on master. Read this section and its linked controls with `git show PLAN_SHA:path`; restore only this owner from that committed plan into P's worktree before recording implementation evidence. Do not replace other shared documents with the older F versions. |
 | Capacity | One unrelated auxiliary worktree, `hr-separation-accounting-final`, existed at approval. Preserve it; recheck the four-auxiliary-worktree ceiling and ownership before creating P. |
@@ -457,13 +457,33 @@ plan SHA only after staged-content, prerequisite and reachability verification. 
 checkout was created and no product completion is claimed.
 
 
-### Launch hold — subsequent F resolver repair
+### Resolved launch prerequisite — F resolver repair
 
-During approval persistence, F reopened its owned lane for resolver-port candidate
-`283bbe88440fafb0b44224b8fc085003b7b91dba`. F confirmed this will supersede the released
-`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` with a new common integrated prerequisite after
-focused PASS and complete cleanup. P scope, approved integrity exception and gate/merge rules
-are unchanged. **WAITING ON:** that actual integrated F release and complete closure receipt.
-The planner must rebind the exact source SHA, verify changed inputs and committed plan availability,
-and rerun affected documentation checks before issuing a READY prompt. Do not launch from the
-older binding while this explicit prerequisite repair is outstanding; no future SHA is guessed.
+The launch hold recorded during persistence is resolved. The common integrated F source is
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, with final release record
+`e06a1c82e9983deb281c5400671f6ce330214000` and tested candidate
+`f917ffe7b2308b4746e2aba16719a68cbafdb56c`. The
+[resolver repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+is complete; F's registered worktree, physical path and branch are absent. P's approved plan commit
+`c6b481773c799f9ef801a5fbacd083fe2a4b01d9` is preserved in master ancestry.
+
+The follow-up changes settings resolver application/composition and related fixtures only. P's two
+production modules, reservation-integrity query, historical mapping, frozen provider schemas/API
+and migrations are unchanged from the previously inspected F prerequisite. The mixed-kind defect
+and the approved P-only shared-file exception therefore remain as planned. No scope, ownership,
+gate, review, merge or cleanup decision is reopened. Preserve the new shared settings fixtures.
+
+F's source-bound focused evidence reports 1195 unit cases, 199 affected guards and 67 filtered UI
+checks plus lint/freshness PASS. All non-document inputs of its final record match its tested
+candidate; the planning rebind verifies that equality and reuses F's lint under D191. It reruns
+roadmap generation/freshness, all 24 binding tests, links, instruction-pair/chain and whitespace
+checks for the new documentation. These are planning checks, not P implementation acceptance.
+
+**Launch binding:** create `codex/provider-usage` at
+`/Users/julianhein/Projects/hr-worktree-provider-usage` from exactly
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. Before editing, read this complete owner from the
+final verified plan commit supplied by the planner, then restore only this owner from that commit
+into P's worktree. Recheck prerequisite ancestry, the complete receipt, available branch/path and
+four-worktree capacity; preserve the unrelated separation worktree. The planner returns READY
+only after this factual rebind is committed and read back. No implementation or child launch
+occurs in planning; full gates and independent review remain 2.6.9.
