@@ -1,3 +1,5 @@
+import { runSettingsAvailable } from "./run-settings.js";
+import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../domain/clock.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -217,8 +219,7 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       if (!this.runtimeMatches(request.runtimeConfig)
         || request.configFingerprint !== request.runtimeConfig.configFingerprint) return refused({ reason: "runtime-stale" });
-      const snapshot = repositories.configSnapshots.get(request.configSnapshotId);
-      if (snapshot === undefined || snapshot.fingerprint !== request.configFingerprint) return refused({ reason: "runtime-stale" });
+      if (!runSettingsAvailable(repositories, request)) return refused({ reason: "runtime-stale" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
       if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
@@ -777,8 +778,7 @@ export class RunRecordService {
         || create.configFingerprint !== create.runtimeConfig.configFingerprint) {
         return refused({ reason: "runtime-stale" });
       }
-      const snapshot = repositories.configSnapshots.get(create.configSnapshotId);
-      if (snapshot === undefined || snapshot.fingerprint !== create.configFingerprint) {
+      if (!runSettingsAvailable(repositories, create)) {
         return refused({ reason: "runtime-stale" });
       }
       if (create.sessionId !== undefined) {
@@ -1009,16 +1009,7 @@ export class RunRecordService {
   }
 
   private runtimeMatches(token: RuntimeConfigClaimToken): boolean {
-    const { runtimeConfig, settingsCurrent } = this.dependencies.database.authority;
-    const active = runtimeConfig.get();
-    if (active === undefined || active.generation !== token.generation
-      || active.settingsRevision !== token.settingsRevision
-      || active.settingsFingerprint !== token.settingsFingerprint
-      || active.configFingerprint !== token.configFingerprint) return false;
-    const settings = settingsCurrent.get();
-    // The never-applied baseline has no settings_current journal row (D331.4).
-    return settings === undefined ? token.settingsRevision === 1
-      : settings.revision === token.settingsRevision && settings.settingsFingerprint === token.settingsFingerprint;
+    return runRuntimeMatches(this.dependencies.database.authority, token);
   }
 
   private inspectJournal(

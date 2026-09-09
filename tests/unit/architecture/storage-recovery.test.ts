@@ -110,7 +110,6 @@ const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
 });
 const AFTER_NOW = "2026-07-31T17:01:00.000Z";
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
-const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
   artifactId: UUID_8,
@@ -2751,6 +2750,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         if (arm.kind === "done") {
           raw.prepare("UPDATE workflow_runs SET record_json=json_set(record_json,'$.completion.resultDigest',?) WHERE record_key=?").run(HASH_B, arm.runId);
         } else {
+          raw.exec("DROP TRIGGER run_failures_evidence_immutable; DROP TRIGGER run_failures_resolution_advances");
           raw.prepare("UPDATE run_failures SET record_json=json_set(record_json,'$.summary','Changed summary') WHERE record_key=?").run(seeded.failure.failureId);
         }
       } finally { raw.close(); }
@@ -2970,7 +2970,7 @@ describe("offline exact-backup restore", () => {
     );
   });
 
-  it("preserves the suspect DB, rebuilds projections only, and atomically restores authority", async () => {
+  it("preserves the suspect DB and restores authority without resurrecting retired projections", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     const directory = backupDirectory(root);
@@ -2985,7 +2985,8 @@ describe("offline exact-backup restore", () => {
 
     const restore = new OfflineAuthorityRestoreService(restoreOptions(root, authorityPath, suspects), async (stagedPath) => {
       const staged = AuthorityDatabase.open(databaseOptions(stagedPath), CLOCK);
-      staged.projections.spans.upsert(PROJECTION_RECORD);
+      assert.equal("projections" in staged,false);
+      assert.deepEqual(staged.authority.commands.get(UUID_1),COMMAND_FIXTURES[0]);
       staged.close();
     }, CLOCK);
     const report = await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
@@ -2999,7 +3000,7 @@ describe("offline exact-backup restore", () => {
     const restored = openDatabase(authorityPath);
     assert.deepEqual(restored.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(restored.authority.notifications.get(UUID_3), undefined);
-    assert.deepEqual(restored.projections.spans.get(HASH_A), PROJECTION_RECORD);
+    assert.equal("projections" in restored,false);
   });
 
   it("refuses restore without the explicit stopped-system proof before preserving or swapping", async () => {
@@ -3743,6 +3744,15 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/infra/compat/settings-database-upgrade.ts",
       "src/infra/sqlite/timeline-conversion.ts",
       "src/infra/sqlite/timeline-repository.ts",
+      "src/infra/sqlite/failure-resolution.ts",
+      "src/infra/sqlite/foundation-retirement.ts",
+      "src/infra/sqlite/generated-artifacts.ts",
+      "src/infra/sqlite/generated-conversion.ts",
+      "src/infra/sqlite/imported-artifacts.ts",
+      "src/infra/sqlite/provider-accounting.ts",
+      "src/infra/sqlite/provider-storage.ts",
+      "src/infra/sqlite/settings-activation.ts",
+      "src/infra/sqlite/settings-storage.ts",
     ].sort();
     const sourceFiles = gitVisibleFiles(["src"]).filter(
       (path) => (path.endsWith(".ts") || path.endsWith(".tsx"))

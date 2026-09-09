@@ -1,6 +1,12 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
+import { activeKnowledgeView, projectKnowledgePages } from "../../../src/domain/trust/knowledge-projection.js";
 /**
  * Guard: `knowledge-fix-integrity` (ref guards-and-tests §3.10; ref operator-trust §4 + §9).
  *
+ * Live guidance authority retired by F (2.6.6). These historical schema-41 controls remain.
  * Knowledge records carry status/scope/evidence/validity and supersession refs;
  * no two ACTIVE records may claim the same scoped rule without an explicit
  * conflict link. Fix records link failure, changed contracts/UI ids, scenarios,
@@ -29,7 +35,6 @@ import {
   triageLesson,
 } from "../../../src/domain/trust/knowledge-projection.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { createKnowledgeService, type KnowledgeService } from "../../../src/services/trust/knowledge-service.js";
 import { HASH_A, NOW, UUID_1, UUID_2, UUID_3, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -84,18 +89,47 @@ function fix(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   });
 }
 
-function serviceFor(): { readonly service: KnowledgeService; readonly database: AuthorityDatabase } {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-knowledge-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "knowledge-fix-integrity" },
-    manualClock(new Date(NOW)),
-  );
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
-  return { service: createKnowledgeService({ authority: database }), database };
+/** Frozen schema-41 adapter exercises historical semantics after live retirement. */
+function serviceFor() {
+  const history = new DatabaseSync(":memory:");
+  for (const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=41)) for(const statement of migration.statements)history.exec(statement);
+  disposers.push(()=>history.close());
+  const knowledgeRows=()=>history.prepare("SELECT record_json FROM knowledge_records ORDER BY created_at,record_key").all().map(row=>KnowledgeRecordSchema.parse(JSON.parse(String(row.record_json))));
+  const fixRows=()=>history.prepare("SELECT record_json FROM fix_records ORDER BY created_at,record_key").all().map(row=>FixRecordSchema.parse(JSON.parse(String(row.record_json))));
+  const service={
+    recordKnowledge(candidate:unknown){
+      const result=auditKnowledgeAdmission({candidate,existing:knowledgeRows()});
+      if(result.state==="admit")history.prepare("INSERT INTO knowledge_records VALUES(?,?,?,?)").run(result.record.id,result.record.status,JSON.stringify(result.record),NOW);
+      return result;
+    },
+    recordFix(candidate:unknown){
+      const result=auditFixAdmission({candidate,existingFixes:fixRows(),knowledge:knowledgeRows()});
+      if(result.state==="admit")history.prepare("INSERT INTO fix_records VALUES(?,?,?,?,?)").run(result.record.id,result.record.status,result.record.failureFingerprint,JSON.stringify(result.record),NOW);
+      return result;
+    },
+    activeKnowledge:()=>activeKnowledgeView(knowledgeRows()),
+    fixesForFailure:(fingerprint:string)=>fixRows().filter(row=>row.failureFingerprint===fingerprint),
+    projectPages:()=>projectKnowledgePages(knowledgeRows()),
+    writeKnowledgeProjection(root:string){
+      const pages=projectKnowledgePages(knowledgeRows());
+      for(const page of pages){const path=join(root,page.path);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,page.markdown);}
+      return {pages};
+    },
+  };
+  return {service,database:{authority:{knowledgeRecords:{get:(id:string)=>knowledgeRows().find(row=>row.id===id)}}}};
 }
+
+describe("F retired guidance authority",()=>{
+ it("has neither live tables nor repository doors",()=>{
+  const root=mkdtempSync(join(tmpdir(),"foundation-retired-guidance-"));
+  const database=AuthorityDatabase.open({path:join(root,"state.db"),busyTimeoutMs:250,migrationOwner:"retirement-proof"},manualClock(new Date(NOW)));
+  try {
+   assert.equal("knowledgeRecords" in database.authority,false);assert.equal("fixRecords" in database.authority,false);
+   const raw=new DatabaseSync(join(root,"state.db"),{readOnly:true});
+   try{assert.deepEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name IN ('knowledge_records','fix_records')").all(),[]);}finally{raw.close();}
+  }finally{database.close();rmSync(root,{recursive:true,force:true});}
+ });
+});
 
 describe("knowledge-fix-integrity: status, scope, evidence, and validity", () => {
   it("refuses a record whose status its own fields cannot support", () => {

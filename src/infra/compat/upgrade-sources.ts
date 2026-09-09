@@ -1,3 +1,4 @@
+import { readAppSettings } from "../sqlite/settings-storage.js";
 /** A0 migration-only sources. Phase 2.6 owns removal; never imported by runtime resolution. */
 import { constants, openSync, closeSync, fstatSync, readFileSync, existsSync, lstatSync, readdirSync } from "node:fs";
 import { join, resolve, basename, dirname } from "node:path";
@@ -186,8 +187,8 @@ export function readUpgradeSources(stateRoot: string, environmentFile: string, d
   // Schema-only upgrades consume the SQLite singleton, never retired import files.
   const version = database === undefined ? 0 : z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
   if (version >= 32) {
-    const row = database?.prepare("SELECT record_json FROM settings_current WHERE record_key='current'").get();
-    const current = row === undefined ? undefined : SettingsCurrentRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json));
+    const row = version >= 44 ? undefined : database?.prepare("SELECT record_json FROM settings_current WHERE record_key='current'").get();
+    const current = version >= 44 && database !== undefined ? readAppSettings(database)?.saved ?? undefined : row === undefined ? undefined : SettingsCurrentRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json));
     const ordinary = current ?? initialSettingsFileRecord();
     return { ordinary, settings: ordinary.settings, protectedRecord: initialProtectedStoreRecord(),
       protectedPatch: {}, sourceFiles: [], importedKeys: [], envKeysToRemove: [] };

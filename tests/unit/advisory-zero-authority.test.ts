@@ -58,7 +58,7 @@ function snapshotAuthority(database: AuthorityDatabase): readonly string[] {
     `receipt=${String(authority.evidenceReceipts.findByRun(RUN_ID) !== undefined)}`,
     `bundles=${String(authority.diagnosticBundles.listByRun(RUN_ID).length)}`,
     `dependencies=${String(authority.dependencies.listByParentRun(RUN_ID).length)}`,
-    `knowledge=${String(authority.knowledgeRecords.list().length)}`,
+    `knowledge-retired=${String(!("knowledgeRecords" in authority))}`,
     `notifications=${String(authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).length)}`,
   ];
 }

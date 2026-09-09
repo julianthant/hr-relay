@@ -59,6 +59,7 @@ export const DeletedRunTableSchema = z.enum([
   "dry_run_scenario_results",
   "activity_person_pseudonyms",
   "provider_admissions",
+  "provider_requests",
   "failures", // historical tombstones retain their issued fingerprint
   "run_failures",
   "run_terminal_outbox",

@@ -2328,3 +2328,12 @@ describe("workflow batch queue presentation", () => {
     assert.equal(h.database.authority.runSessions.get(batchId)?.groupInQueue, false);
   });
 });
+
+it("F refuses resolution capability before journaling or changing failure/run authority", () => {
+  const h=createHarness();const commandId=randomUUID();const generation=h.database.getMeta().authorityGeneration;
+  const result=h.kernel.execute({commandId,requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",reason:"Synthetic annotation capability probe",family:"failure-resolution",type:"annotate-failure",target:{runId:randomUUID(),failureId:randomUUID(),expectedVersion:1},payload:{action:"resolve",note:"Synthetic follow-up"}});
+  assert.deepEqual(result,{state:"rejected",commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."});
+  assert.equal(h.database.authority.commands.get(commandId),undefined);
+  assert.equal(h.database.authority.commandAudits.findByCommand(commandId),undefined);
+  assert.equal(h.database.getMeta().authorityGeneration,generation);
+});

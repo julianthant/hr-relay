@@ -61,6 +61,12 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 39, sha256: "f15605b5eb310cb3633e6bef344bc1286da29fa676f35f3a92333210ef7a324b" },
   { version: 40, sha256: "b4672caf9fee1ebd8a624da4103e4be92c37db2d2e7c29dac3e6a9734e399da9" },
   { version: 41, sha256: "f0a3af4468464673a09aafd7d22ff4f25bf939a67f302d174f315e2d6133b886" },
+  { version: 42, sha256: "726b45f7f0992b323ed54cb3607e1469104dd8af6bc7f61d2efd6a3add3d85bd" },
+  { version: 43, sha256: "6d1a7cc142b9a8dc382eafb723aefecb3168c517519b140606d0df2c0a04f19e" },
+  { version: 44, sha256: "ddb10ca4decf101959ffa200ec30b0b2dc626fd08b9aa4b9d5cfe8758e984512" },
+  { version: 45, sha256: "2fdb9d16bab229dd5f91a69d0c7bc4a98d5fdad772dcc08bc1a3f129a7efb988" },
+  { version: 46, sha256: "6e773a6bea4655e1a46be2ebfe2225f3b3c49d41f52d07e2a88ef055ff9371b6" },
+  { version: 47, sha256: "6543066f191996475d3fac4d8262a202f496402d73429af13d499a9ba5eac0fa" },
 ] as const);
 
 const DCC1_SOURCE_SUFFIX_DIGESTS = Object.freeze([

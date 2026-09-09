@@ -1,3 +1,4 @@
+import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../protected-input.js";
 import { z } from "zod";
 import {
@@ -792,6 +793,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
  * separate 2g slice, so an absent bundle says why instead of rendering empty.
  */
 export const FailureDetailWireSchema = z.strictObject({
+  resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
   traceId: TraceIdSchema,

@@ -1,3 +1,14 @@
+import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
+import { KnowledgeRecordSchema, FixRecordSchema } from "../../domain/trust/knowledge.js";
+import { OpaqueAuthorityRecordSchema } from "../sqlite/storage-records.js";
+import { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../domain/generated-artifact.js";
+import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
+import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
+import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../domain/provider-admission.js";
+import { IntakeSessionSchema } from "../../domain/intake/session.js";
+import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
+import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { HistoricalRunRecordV40Schema } from "../../domain/run/record.js";
 import { HistoricalTerminalAuthorizationSchema, HistoricalTerminalOutboxRecordSchema } from "../../domain/run/completion-history.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
@@ -24,7 +35,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -53,6 +64,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "dry_run_scenario_results",
   "dryrun_results",
   "operator_xlsx_exports",
+  "generated_artifacts",
   "activity_person_pseudonyms",
   "activity_person_pseudonym_generations",
   "knowledge_records",
@@ -61,6 +73,8 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "ledger_projections",
   "provider_budget_counters",
   "provider_admissions",
+  "provider_usage",
+  "provider_requests",
   "leases",
   "workflow_workers",
   "dependencies",
@@ -75,6 +89,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "settings_snapshots",
   "settings_current",
   "runtime_config",
+  "app_settings",
   "version_plans",
   "checkpoint_payloads",
   "run_checkpoints",
@@ -92,6 +107,8 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "operation_outbox",
   "artifact_outbox",
   "artifact_sink_heads",
+  "imported_artifacts",
+  "extracted_artifacts",
   "intake_sessions",
   "intake_manifests",
   "ocr_extractions",
@@ -335,11 +352,12 @@ function authorityContentFingerprint(database: DatabaseSync, tableNames: Readonl
     } else {
       hash.update("[");
       let rowIndex = 0;
-      const schema = name === "commands" && groupedCommands ? FingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" && schemaVersion >= 40 ? FingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : FingerprintRowSchema;
+      const schema = name === "run_failures" && schemaVersion >= 45 ? FingerprintRowSchema.extend({ resolution_json: z.string(), resolution_version: z.number().int().positive() }) : name === "commands" && groupedCommands ? FingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" && schemaVersion >= 40 ? FingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : FingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json${name === "commands" && groupedCommands ? ", parent_command_id" : name === "archived_runs" && schemaVersion >= 40 ? ", transactions_json, transactions_digest" : ""} FROM ${quoteIdentifier(name)} ORDER BY record_key
+        SELECT record_key, record_json${name === "run_failures" && schemaVersion >= 45 ? ", resolution_json, resolution_version" : name === "commands" && groupedCommands ? ", parent_command_id" : name === "archived_runs" && schemaVersion >= 40 ? ", transactions_json, transactions_digest" : ""} FROM ${quoteIdentifier(name)} ORDER BY record_key
       `).iterate()) {
         const row = schema.parse(rawRow);
+        if("resolution_json" in row && FailureResolutionSchema.parse(JSON.parse(row.resolution_json)).version!==row.resolution_version)throw new Error("failure-resolution-version-mismatch");
         if (rowIndex > 0) hash.update(",");
         hash.update(canonicalJsonStringify(row));
         rowIndex += 1;
@@ -369,8 +387,8 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
     leases: count(database, schemaVersion < 35 ? "SELECT count(*) AS count FROM leases" : "SELECT count(*) AS count FROM workflow_workers"),
     ...(schemaVersion >= 40 ? {} : { durableOutbox: count(database, `SELECT count(*) AS count FROM ${outbox} WHERE json_extract(record_json, '$.projection.state') = 'pending'`) }),
     ...(schemaVersion <= 40 ? { runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'") } : {}),
-    providerReservations: countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
-    artifactOutbox: count(database, "SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
+    providerReservations: schemaVersion >= 43 ? count(database, "SELECT count(*) AS count FROM provider_requests WHERE state='reserved'") : countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
+    artifactOutbox: count(database, schemaVersion >= 46 ? "SELECT count(*) AS count FROM generated_artifacts f,json_each(f.record_json,'$.updates') u WHERE json_extract(u.value,'$.record.state')='pending'" : "SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
   });
 }
 
@@ -378,6 +396,11 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
 function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number, tables: ReadonlySet<string>): void {
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    knowledge_records: KnowledgeRecordSchema, fix_records: FixRecordSchema, ocr_approvals: OpaqueAuthorityRecordSchema,
+    operator_xlsx_exports: OperatorXlsxExportEvidenceSchema, artifact_outbox: ArtifactOutboxStorageRecordSchema, artifact_sink_heads: ArtifactSinkHeadRecordSchema,
+    provider_admissions: ProviderAdmissionRecordSchema, provider_budget_counters: ProviderBudgetCounterSchema,
+    settings_current: SettingsCurrentRecordSchema, runtime_config: ActiveRuntimeConfigRecordSchema,
+    intake_sessions: IntakeSessionSchema, intake_manifests: IntakePlanManifestSchema, ocr_extractions: AdmittedExtractionSchema,
     authority_upgrades: AUTHORITY_RECORD_SCHEMA_REGISTRY.database_upgrades,
     diagnostic_bundles: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_snapshots,
     diagnostic_attachments: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_files,

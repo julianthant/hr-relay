@@ -1,3 +1,5 @@
+import { insertImportedArtifact } from "../../src/infra/sqlite/imported-artifacts.js";
+import { importedArtifact } from "../../src/domain/intake/imported-artifact.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 /**
  * D170 — the five non-enqueue intake arms, driven through the REAL kernel over
@@ -159,19 +161,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
   if (preReservation) {
     const legacy = new DatabaseSync(path);
     try {
-      legacy.prepare(`
-        INSERT INTO intake_sessions
-          (record_key, workflow, source_sha256, state, record_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        session.intakeSessionId,
-        session.workflow,
-        session.artifact.sha256,
-        session.state,
-        JSON.stringify(session),
-        session.createdAt,
-        session.updatedAt,
-      );
+      insertImportedArtifact(legacy, importedArtifact(JSON.stringify(session), null));
     } finally {
       legacy.close();
     }

@@ -1,3 +1,10 @@
+import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
+import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
+import { createFailureResolutionRepository } from "./failure-resolution.js";
+import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
+import { createSettingsActivationRepositories } from "./settings-activation.js";
+import { SqliteProviderAccounting, finalizeProviderRun } from "./provider-accounting.js";
+import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { completionFromAuthorization } from "../../domain/run/completion.js";
 import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../domain/run/completion-history.js";
 import { lifecycleCommandId } from "../../domain/identifiers.js";
@@ -38,7 +45,6 @@ import {
   AuthorityTableNameSchema,
   ProjectionTableNameSchema,
   type AuthorityTableName,
-  type ProjectionTableName,
   type TableName,
   type RunRecordRefusal,
 } from "../../domain/authority.js";
@@ -55,24 +61,16 @@ import {
   CommandRequestSchema,
   RunLifecycleCommandAuditRecordSchema,
   RunLifecycleCommandRecordSchema,
-  deriveSettingsCommandFingerprint,
 } from "../../domain/commands.js";
-import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
 import {
   ConfigSnapshotRecordSchema,
   ConfigSnapshotWriteSchema,
-  type ConfigSnapshotRecord,
 } from "../../domain/config/snapshot.js";
 import {
-  ActiveRuntimeConfigActivationSchema,
-  ActiveRuntimeConfigExpectationSchema,
-  ActiveRuntimeConfigRecordSchema,
-  RuntimeConfigClaimTokenSchema,
   type ActiveRuntimeConfigRecord,
   type RuntimeConfigClaimToken,
 } from "../../domain/config/runtime-generation.js";
 import {
-  SettingsCurrentRecordSchema,
   type SettingsCurrentRecord,
 } from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
@@ -89,8 +87,6 @@ import {
   ItemIdSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   NonNegativeIntSchema,
-  ProviderAdmissionIdSchema,
-  ProviderCapabilityIdSchema,
   RunIdSchema,
   RunSessionIdSchema,
   TraceIdSchema,
@@ -111,11 +107,8 @@ import {
   CrossDateSearchSystemFacetSchema,
   CrossDateSearchWorkflowFacetSchema,
 } from "../../domain/dashboard/search.js";
-import {
-  OperatorXlsxExportEvidenceSchema,
-  OperatorXlsxExportIdSchema,
-  type OperatorXlsxExportEvidence,
-} from "../../domain/dashboard/xlsx-export.js";
+
+
 import {
   RunPrioritySchema,
   nextAttemptEnvelope,
@@ -267,28 +260,10 @@ import {
   type ActivityPersonPseudonymBackfillOutcome,
 } from "../../domain/trust/activity-person-pseudonym-backfill.js";
 import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
-import {
-  FixRecordSchema,
-  KnowledgeRecordSchema,
-  type FixRecord,
-  type KnowledgeRecord,
-} from "../../domain/trust/knowledge.js";
-import {
-  ProviderAdmissionDenyRequestSchema,
-  ProviderAdmissionInterruptRequestSchema,
-  ProviderAdmissionMutationOutcomeSchema,
-  ProviderAdmissionRecordSchema,
-  ProviderAdmissionReserveOutcomeSchema,
-  ProviderAdmissionReserveRequestSchema,
-  ProviderAdmissionSettleRequestSchema,
-  ProviderAdmissionSweepOutcomeSchema,
-  ProviderAdmissionSweepRequestSchema,
-  ProviderBudgetCounterSchema,
-  ProviderUnavailableReasonSchema,
-  isRunNodeExecutionIdentity,
-  type ProviderAdmissionRecord,
-  type ProviderBudgetCounter,
-} from "../../domain/provider-admission.js";
+
+
+
+
 import {
   IdempotencyKeySchema,
   WriteAttemptRecordSchema,
@@ -323,14 +298,8 @@ import {
 import {
   ArchivedRunStorageRecordSchema,
   ArchiveRelaunchStorageRecordSchema,
-  ArtifactOutboxAckRequestSchema,
-  ArtifactOutboxStorageRecordSchema,
-  ArtifactSinkHeadRecordRequestSchema,
-  ArtifactSinkHeadRecordSchema,
   AUTHORITY_RECORD_SCHEMA_REGISTRY,
   DiagnosticAttachmentStorageRecordSchema,
-  OpaqueAuthorityRecordSchema,
-  ProjectionStorageRecordSchema,
   VersionBumpApplicationStorageRecordSchema,
   VersionPlanConsumeRequestSchema,
   VersionPlanStorageRecordSchema,
@@ -339,8 +308,6 @@ import {
   type ArtifactOutboxStorageRecord,
   type ArtifactSinkHeadRecord,
   type DiagnosticAttachmentStorageRecord,
-  type OpaqueAuthorityRecord,
-  type ProjectionStorageRecord,
   type VersionBumpApplicationStorageRecord,
   type VersionPlanConsumeOutcome,
   type VersionPlanStorageRecord,
@@ -451,6 +418,8 @@ type RunLifecycleJournalRepository = Readonly<{
 }>;
 
 type RuntimeConfigRepository = Readonly<{
+  matchesClaim(input: unknown): boolean;
+  matchesRun(configFingerprint: string, runFingerprint: string): boolean;
   get(): ActiveRuntimeConfigRecord | undefined;
   activate(input: unknown): ActiveRuntimeConfigRecord;
   requireActive(input: unknown): RuntimeConfigClaimToken;
@@ -747,11 +716,7 @@ export type ActivityPersonPseudonymBackfillWriteCapability = Readonly<{
 }>;
 
 /** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
-export type OperatorXlsxExportRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<OperatorXlsxExportEvidence>;
-  get(exportId: string): OperatorXlsxExportEvidence | undefined;
-  listByArtifact(artifactId: string): readonly OperatorXlsxExportEvidence[];
-}>;
+export type OperatorXlsxExportRepository = ReturnType<typeof createGeneratedArtifactRepository>["exports"];
 
 /**
  * Ref operator-trust §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
@@ -759,20 +724,6 @@ export type OperatorXlsxExportRepository = Readonly<{
  * to see retired and superseded records too, or a candidate could claim to
  * supersede something that never existed.
  */
-type KnowledgeRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<KnowledgeRecord>;
-  get(knowledgeId: string): KnowledgeRecord | undefined;
-  list(): readonly KnowledgeRecord[];
-  listByStatus(status: unknown): readonly KnowledgeRecord[];
-}>;
-
-type FixRecordRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<FixRecord>;
-  get(fixId: string): FixRecord | undefined;
-  list(): readonly FixRecord[];
-  listByFailureFingerprint(fingerprint: string): readonly FixRecord[];
-}>;
-
 /**
  * Ref dashboard-surfaces §2.6 / ref operator-trust §6. This is the ONE authority repository that updates a
  * row rather than appending: a repeated identical trigger folds into the row
@@ -845,9 +796,6 @@ type WorkerLeaseRepository = Readonly<{
   sweepExpired(input: unknown): readonly WorkerLeaseRecord[];
 }>;
 
-type OpaqueAuthorityRepositories = Readonly<{
-  ocrApprovals: ImmutableRepository<OpaqueAuthorityRecord>;
-}>;
 
 /**
  * Ref dashboard-surfaces §2.1 (D45) / ref data-intake-and-edit-data §4.1: the stable-keyed local artifact outbox.
@@ -966,10 +914,10 @@ export type AuthorityRepositories = Readonly<{
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
-  knowledgeRecords: KnowledgeRepository;
-  fixRecords: FixRecordRepository;
   historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
+  failureResolution: ReturnType<typeof createFailureResolutionRepository>;
   providerAdmissions: ProviderAdmissionRepository;
+  providerAccounting: ProviderAccountingStorage;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   duoCeremonyLeases: DuoCeremonyLeaseRepository;
@@ -1003,26 +951,10 @@ export type AuthorityRepositories = Readonly<{
   writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
   }>;
+  generatedArtifacts: ReturnType<typeof createGeneratedArtifactRepository>;
   artifactOutbox: ArtifactOutboxRepository;
   artifactSinkHeads: ArtifactSinkHeadRepository;
-  opaque: OpaqueAuthorityRepositories;
 }>;
-
-type ProjectionRepository = Readonly<{
-  upsert(input: unknown): ProjectionStorageRecord;
-  get(projectionKey: string): ProjectionStorageRecord | undefined;
-  clear(): number;
-}>;
-
-export type ProjectionRepositories = Readonly<{
-  spans: ProjectionRepository;
-  gates: ProjectionRepository;
-  notes: ProjectionRepository;
-}>;
-
-const OpaqueAuthorityTableSchema = z.enum([
-  "ocr_approvals",
-]);
 
 const JsonRowSchema = z.strictObject({ record_json: z.string() });
 const RecordKeyRowSchema = z.strictObject({ record_key: z.string() });
@@ -1106,18 +1038,6 @@ const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().posi
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
-const OperatorXlsxExportRowSchema = z.strictObject({
-  record_key: OperatorXlsxExportIdSchema,
-  selection_kind: z.enum(["search", "activity"]),
-  artifact_id: ArtifactIdSchema,
-  digest: FingerprintSchema,
-  byte_length: z.number().int().positive(),
-  media_type: z.string().min(1),
-  filename: z.string().min(1),
-  requested_by: ActorIdSchema.nullable(),
-  record_json: z.string(),
-  created_at: IsoInstantSchema,
-});
 const AuthorityMetaFingerprintRowSchema = z.strictObject({
   singleton_id: z.literal(1),
   schema_version: z.number().int().positive(),
@@ -1132,25 +1052,6 @@ export type RunSearchAuthorityRow = Readonly<{
   matchRank: number;
 }>;
 
-function operatorXlsxEvidenceFromRow(input: unknown): OperatorXlsxExportEvidence {
-  const row = OperatorXlsxExportRowSchema.parse(input);
-  const record = parseJsonRecord(OperatorXlsxExportEvidenceSchema, row.record_json);
-  const requestedBy = record.workbookVersion === 1 ? null : record.requestedBy;
-  if (row.record_key !== record.exportId
-    || row.selection_kind !== record.selection.kind
-    || row.artifact_id !== record.artifact.id
-    || row.digest !== record.download.sha256
-    || row.byte_length !== record.download.byteLength
-    || row.media_type !== record.download.mediaType
-    || row.filename !== record.download.filename
-    || row.requested_by !== requestedBy
-    || row.created_at !== record.createdAt) {
-    throw new Error(
-      `operator XLSX export ${record.exportId} mirrored columns disagree with its strict record JSON`,
-    );
-  }
-  return record;
-}
 
 export type RunSearchAuthorityPage = Readonly<{
   totalMatches: number;
@@ -1347,20 +1248,6 @@ function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
   return record;
 }
 
-function fixedUtcMinuteStart(instant: string): string {
-  const milliseconds = Date.parse(instant);
-  return new Date(Math.floor(milliseconds / 60_000) * 60_000).toISOString();
-}
-
-function fixedUtcDayStart(instant: string): string {
-  const at = new Date(Date.parse(instant));
-  return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate())).toISOString();
-}
-
-function nextFixedWindow(start: string, milliseconds: number): string {
-  return new Date(Date.parse(start) + milliseconds).toISOString();
-}
-
 function readIntPragma(
   database: DatabaseSync,
   name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout",
@@ -1434,12 +1321,8 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM workflow_run_batches WHERE record_key IS NOT json_extract(record_json, '$.sessionId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR started_at IS NOT json_extract(record_json, '$.startedAt') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR group_in_queue IS NOT json_extract(record_json, '$.groupInQueue') OR version IS NOT json_extract(record_json, '$.version')",
   },
   {
-    name: "settings-current-columns-match-record",
-    sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
-  },
-  {
-    name: "runtime-config-columns-match-record",
-    sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
+    name: "app-settings-snapshot-binding",
+    sql: "SELECT count(*) AS count FROM app_settings a LEFT JOIN settings_snapshots s ON s.record_key=a.config_snapshot_id WHERE a.record_key IS NOT 'current' OR a.config_snapshot_id IS NOT json_extract(a.record_json,'$.active.configSnapshotId') OR (a.config_snapshot_id IS NOT NULL AND (s.record_key IS NULL OR json_extract(s.record_json,'$.fingerprint') IS NOT json_extract(a.record_json,'$.active.configFingerprint')))",
   },
   {
     name: "run-columns-match-record",
@@ -1511,15 +1394,15 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "provider-counter-columns-match-record",
-    sql: "SELECT count(*) AS count FROM provider_budget_counters WHERE record_key IS NOT capability OR capability IS NOT json_extract(record_json, '$.capability') OR minute_window_started_at IS NOT json_extract(record_json, '$.minuteWindowStartedAt') OR minute_requests IS NOT json_extract(record_json, '$.minuteRequests') OR day_window_started_at IS NOT json_extract(record_json, '$.dayWindowStartedAt') OR day_requests IS NOT json_extract(record_json, '$.dayRequests') OR day_reserved_cost_usd_micros IS NOT json_extract(record_json, '$.dayReservedCostUsdMicros') OR active_reservations IS NOT json_extract(record_json, '$.activeReservations') OR blocked_by_admission_id IS NOT json_extract(record_json, '$.blockedByAdmissionId') OR version IS NOT json_extract(record_json, '$.version')",
+    sql: "SELECT count(*) AS count FROM provider_usage WHERE json_extract(record_json, '$.kind') = 'legacy-capability' AND (record_key IS NOT capability OR capability IS NOT json_extract(record_json, '$.record.capability') OR minute_window_started_at IS NOT json_extract(record_json, '$.record.minuteWindowStartedAt') OR minute_requests IS NOT json_extract(record_json, '$.record.minuteRequests') OR day_window_started_at IS NOT json_extract(record_json, '$.record.dayWindowStartedAt') OR day_requests IS NOT json_extract(record_json, '$.record.dayRequests') OR day_reserved_cost_usd_micros IS NOT json_extract(record_json, '$.record.dayReservedCostUsdMicros') OR active_reservations IS NOT json_extract(record_json, '$.record.activeReservations') OR blocked_by_admission_id IS NOT json_extract(record_json, '$.record.blockedByAdmissionId') OR version IS NOT json_extract(record_json, '$.record.version'))",
   },
   {
     name: "provider-admission-columns-match-record",
-    sql: "SELECT count(*) AS count FROM provider_admissions WHERE record_key IS NOT json_extract(record_json, '$.admissionId') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR capability IS NOT json_extract(record_json, '$.capability') OR config_snapshot_id IS NOT json_extract(record_json, '$.configSnapshotId') OR config_fingerprint IS NOT json_extract(record_json, '$.configFingerprint') OR request_fingerprint IS NOT json_extract(record_json, '$.requestFingerprint') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR reserved_cost_usd_micros IS NOT json_extract(record_json, '$.reservation.maximumCostUsdMicros') OR actual_cost_usd_micros IS NOT json_extract(record_json, '$.lifecycle.actualUsage.costUsdMicros') OR lease_expires_at IS NOT json_extract(record_json, '$.lifecycle.leaseExpiresAt') OR deadline_at IS NOT json_extract(record_json, '$.lifecycle.deadlineAt') OR version IS NOT json_extract(record_json, '$.version')",
+    sql: "SELECT count(*) AS count FROM provider_requests WHERE json_extract(record_json, '$.kind') = 'legacy-capability' AND (record_key IS NOT json_extract(record_json, '$.record.admissionId') OR run_id IS NOT json_extract(record_json, '$.record.execution.runId') OR capability IS NOT json_extract(record_json, '$.record.capability') OR config_snapshot_id IS NOT json_extract(record_json, '$.record.configSnapshotId') OR config_fingerprint IS NOT json_extract(record_json, '$.record.configFingerprint') OR request_fingerprint IS NOT json_extract(record_json, '$.record.requestFingerprint') OR state IS NOT json_extract(record_json, '$.record.lifecycle.state') OR reserved_cost_usd_micros IS NOT json_extract(record_json, '$.record.reservation.maximumCostUsdMicros') OR actual_cost_usd_micros IS NOT json_extract(record_json, '$.record.lifecycle.actualUsage.costUsdMicros') OR lease_expires_at IS NOT json_extract(record_json, '$.record.lifecycle.leaseExpiresAt') OR deadline_at IS NOT json_extract(record_json, '$.record.lifecycle.deadlineAt') OR version IS NOT json_extract(record_json, '$.record.version'))",
   },
   {
     name: "provider-active-reservations-match",
-    sql: "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')",
+    sql: "SELECT count(*) AS count FROM provider_usage AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_requests AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')",
   },
   {
     name: "duo-ceremony-lease-columns-match-record",
@@ -1574,6 +1457,10 @@ const INVARIANT_QUERIES = Object.freeze([
   },
 
   {
+    name: "failure-resolution-version-matches-record",
+    sql: "SELECT count(*) AS count FROM run_failures WHERE resolution_version IS NOT json_extract(resolution_json, '$.version')",
+  },
+  {
     name: "failure-fingerprint-column-matches-record",
     sql: "SELECT count(*) AS count FROM run_failures WHERE fingerprint IS NOT json_extract(record_json, '$.fingerprint')",
   },
@@ -1613,10 +1500,7 @@ const INVARIANT_QUERIES = Object.freeze([
     name: "dry-run-scenario-result-columns-match-record",
     sql: "SELECT count(*) AS count FROM dryrun_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
   },
-  {
-    name: "operator-xlsx-export-columns-match-record",
-    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR CASE json_extract(record_json, '$.workbookVersion') WHEN 1 THEN requested_by IS NOT NULL OR json_type(record_json, '$.requestedBy') IS NOT NULL WHEN 2 THEN requested_by IS NULL OR requested_by IS NOT json_extract(record_json, '$.requestedBy') ELSE 1 END",
-  },
+
   {
     name: "activity-person-pseudonym-columns-match-record",
     sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
@@ -1650,20 +1534,7 @@ const INVARIANT_QUERIES = Object.freeze([
       )
     `,
   },
-  {
-    name: "knowledge-and-fix-columns-match-record",
-    sql: `
-      SELECT (
-        SELECT count(*) FROM knowledge_records
-        WHERE record_key IS NOT json_extract(record_json, '$.id') OR status IS NOT json_extract(record_json, '$.status')
-      ) + (
-        SELECT count(*) FROM fix_records
-        WHERE record_key IS NOT json_extract(record_json, '$.id')
-          OR status IS NOT json_extract(record_json, '$.status')
-          OR failure_fingerprint IS NOT json_extract(record_json, '$.failureFingerprint')
-      ) AS count
-    `,
-  },
+
 
 
 
@@ -1919,6 +1790,35 @@ const RETIRED_HISTORY_INVARIANT_QUERIES = [
   },
 ] as const;
 
+const HISTORICAL_FOUNDATION_QUERIES = [
+  {
+    name: "knowledge-and-fix-columns-match-record",
+    sql: `
+      SELECT (
+        SELECT count(*) FROM knowledge_records
+        WHERE record_key IS NOT json_extract(record_json, '$.id') OR status IS NOT json_extract(record_json, '$.status')
+      ) + (
+        SELECT count(*) FROM fix_records
+        WHERE record_key IS NOT json_extract(record_json, '$.id')
+          OR status IS NOT json_extract(record_json, '$.status')
+          OR failure_fingerprint IS NOT json_extract(record_json, '$.failureFingerprint')
+      ) AS count
+    `,
+  },
+  {
+    name: "operator-xlsx-export-columns-match-record",
+    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR CASE json_extract(record_json, '$.workbookVersion') WHEN 1 THEN requested_by IS NOT NULL OR json_type(record_json, '$.requestedBy') IS NOT NULL WHEN 2 THEN requested_by IS NULL OR requested_by IS NOT json_extract(record_json, '$.requestedBy') ELSE 1 END",
+  },
+  {
+    name: "settings-current-columns-match-record",
+    sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
+  },
+  {
+    name: "runtime-config-columns-match-record",
+    sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
+  },
+] as const;
+
 const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
 /** Historical backups retain every invariant executable in their released DDL.
  * Compile against an empty immutable replay, never against operator state; only
@@ -1930,7 +1830,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
     try {
       for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= version)) for (const statement of migration.statements) reference.exec(statement);
       const taskColumns = new Set(reference.prepare(`PRAGMA table_info(${version < 33 ? "tasks" : "workflow_runs"})`).all().map((row) => row.name));
-      queries = [...INVARIANT_QUERIES.filter((entry) => !entry.name.startsWith("run-completion-")), ...RETIRED_HISTORY_INVARIANT_QUERIES, ...HISTORICAL_COMPLETION_INVARIANT_QUERIES].flatMap((entry) => {
+      queries = [...INVARIANT_QUERIES.filter((entry) => version >= 41 || !entry.name.startsWith("run-completion-")), ...HISTORICAL_FOUNDATION_QUERIES, ...RETIRED_HISTORY_INVARIANT_QUERIES, ...HISTORICAL_COMPLETION_INVARIANT_QUERIES].flatMap((entry) => {
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
@@ -1948,6 +1848,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
           sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
           if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
         }
+        if (version < 43) sql = sql.replace("json_extract(record_json, '$.kind') = 'legacy-capability' AND (", "(").replaceAll("provider_requests", "provider_admissions").replaceAll("provider_usage", "provider_budget_counters").replaceAll("'$.record.", "'$.");
         if (version < 41) sql = sql.replaceAll("run_failures", "failures");
         if (version < 39) {
           for (const [old, current] of Object.entries(DATABASE_TABLE_RENAMES)) sql = sql.replaceAll(current, old);
@@ -2186,6 +2087,10 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
 }
 
 function authorityContentFingerprint(database: DatabaseSync): string {
+  for (const raw of database.prepare("SELECT resolution_json FROM run_failures").all()) {
+    const row = z.strictObject({resolution_json:z.string()}).parse(raw);
+    FailureResolutionSchema.parse(JSON.parse(row.resolution_json));
+  }
   const hash = createHash("sha256");
   hash.update("[");
   for (const [tableIndex, name] of AuthorityTableNameSchema.options.entries()) {
@@ -2201,9 +2106,9 @@ function authorityContentFingerprint(database: DatabaseSync): string {
     } else {
       hash.update("[");
       let rowIndex = 0;
-      const schema = name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" ? AuthorityRecordFingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
+      const schema = name === "run_failures" ? AuthorityRecordFingerprintRowSchema.extend({ resolution_json: z.string(), resolution_version: z.number().int().positive() }) : name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" ? AuthorityRecordFingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json${name === "commands" ? ", parent_command_id" : name === "archived_runs" ? ", transactions_json, transactions_digest" : ""} FROM ${name} ORDER BY record_key
+        SELECT record_key, record_json${name === "run_failures" ? ", resolution_json, resolution_version" : name === "commands" ? ", parent_command_id" : name === "archived_runs" ? ", transactions_json, transactions_digest" : ""} FROM ${name} ORDER BY record_key
       `).iterate()) {
         const row = schema.parse(rawRow);
         if (rowIndex > 0) hash.update(",");
@@ -2224,8 +2129,8 @@ function pendingCounts(database: DatabaseSync) {
     pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count("SELECT count(*) AS count FROM workflow_workers"),
-    providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
-    artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
+    providerReservations: count("SELECT count(*) AS count FROM provider_requests WHERE state = 'reserved'"),
+    artifactOutbox: count("SELECT count(*) AS count FROM generated_artifacts f,json_each(f.record_json,'$.updates') u WHERE json_extract(u.value,'$.record.state')='pending'"),
   };
 }
 
@@ -2904,7 +2809,6 @@ export class AuthorityDatabase implements Disposable {
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
 
   readonly authority: AuthorityRepositories;
-  readonly projections: ProjectionRepositories;
 
   private constructor(
     input: unknown,
@@ -2967,7 +2871,6 @@ export class AuthorityDatabase implements Disposable {
     }
 
     this.authority = this.#buildAuthorityRepositories();
-    this.projections = this.#buildProjectionRepositories();
   }
 
   static open(
@@ -3331,10 +3234,6 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
     return this.#withReadSnapshot(read);
-  }
-
-  withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result {
-    return this.#withTransaction("projection", () => work(this.projections));
   }
 
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
@@ -4122,11 +4021,6 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #projectionWrite<Result>(table: ProjectionTableName, operation: () => Result): Result {
-    ProjectionTableNameSchema.parse(table);
-    return this.#withTransaction("projection", operation);
-  }
-
   #readRecord<Schema extends z.ZodType>(table: TableName, recordKey: string, schema: Schema): z.output<Schema> | undefined {
     const row = this.#database.prepare(`SELECT record_json FROM ${table} WHERE record_key = ?`).get(recordKey);
     if (row === undefined) return undefined;
@@ -4144,15 +4038,6 @@ export class AuthorityDatabase implements Disposable {
       throw new Error("archive private input integrity mismatch");
     }
     return record;
-  }
-
-  #readOperatorXlsxExport(exportId: string): OperatorXlsxExportEvidence | undefined {
-    const row = this.#database.prepare(`
-      SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
-             filename, requested_by, record_json, created_at
-      FROM operator_xlsx_exports WHERE record_key = ?
-    `).get(OperatorXlsxExportIdSchema.parse(exportId));
-    return row === undefined ? undefined : operatorXlsxEvidenceFromRow(row);
   }
 
   #insertSimpleRecord<Schema extends z.ZodType>(
@@ -4427,17 +4312,19 @@ export class AuthorityDatabase implements Disposable {
 
 
   #buildAuthorityRepositories(): AuthorityRepositories {
-    const opaque = (tableInput: z.input<typeof OpaqueAuthorityTableSchema>): ImmutableRepository<OpaqueAuthorityRecord> => {
-      const table = OpaqueAuthorityTableSchema.parse(tableInput);
-      return Object.freeze({
-        insert: (input: unknown) => {
-          const record = OpaqueAuthorityRecordSchema.parse(input);
-          return this.#insertSimpleRecord(table, record.recordId, record, OpaqueAuthorityRecordSchema, record.createdAt);
-        },
-        get: (recordKey: string) => this.#readRecord(table, recordKey, OpaqueAuthorityRecordSchema),
+    const provider = new SqliteProviderAccounting({ database: this.#database,
+        transaction: (work) => this.withAuthorityTransaction(work),
+        mutate: (table, work) => this.#authorityWrite(table, work),
+        readRecord: (table, key, schema) => this.#readRecord(table, key, schema),
+        readRun: (id) => this.#readRunRow(id),
       });
-    };
 
+    const settings = createSettingsActivationRepositories({ database: this.#database,
+      mutate: (work) => this.#authorityWrite("app_settings", work),
+      readRecord: (table,key,schema) => this.#readRecord(table,key,schema) });
+    const generated = createGeneratedArtifactRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("generated_artifacts", work) });
+    const imports = createImportedArtifactRepositories({ database: this.#database,
+      mutate: (work) => this.#authorityWrite("imported_artifacts", work) });
     return Object.freeze({
       timelineEvents: createTimelineRepository({
         database: this.#database,
@@ -4474,111 +4361,8 @@ export class AuthorityDatabase implements Disposable {
        * column that lagged its own JSON would make "open session for this
        * file" a lie.
        */
-      intakeSessions: Object.freeze({
-        create: (input: unknown) => {
-          const record = IntakeSessionSchema.parse(input);
-          if (record.reservedManifestId === undefined) {
-            throw new Error(
-              `intake session ${record.intakeSessionId} cannot be created with reserved manifest id absent`,
-            );
-          }
-          if (record.state !== "mapping" || record.version !== 1) {
-            throw new Error(
-              `intake session ${record.intakeSessionId} must be created in mapping state at version 1`,
-            );
-          }
-          return this.#authorityWrite("intake_sessions", () => {
-            this.#database.prepare(`
-              INSERT INTO intake_sessions
-                (record_key, workflow, source_sha256, state, record_json, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              record.intakeSessionId, record.workflow, record.artifact.sha256, record.state,
-              canonicalJsonStringify(record), record.createdAt, record.updatedAt,
-            );
-            return { result: record, changes: 1 };
-          });
-        },
-        get: (intakeSessionId: string) =>
-          this.#readRecord("intake_sessions", intakeSessionId, IntakeSessionSchema),
-        update: (input: unknown) => {
-          const record = IntakeSessionSchema.parse(input);
-          return this.#authorityWrite("intake_sessions", () => {
-            const current = this.#readRecord(
-              "intake_sessions",
-              record.intakeSessionId,
-              IntakeSessionSchema,
-            );
-            if (
-              current !== undefined
-              && current.reservedManifestId !== record.reservedManifestId
-            ) {
-              const currentReservation = current.reservedManifestId === undefined
-                ? "absent"
-                : current.reservedManifestId;
-              const nextReservation = record.reservedManifestId === undefined
-                ? "absent"
-                : record.reservedManifestId;
-              throw new Error(
-                `intake session ${record.intakeSessionId} cannot change reserved manifest id from `
-                + `${currentReservation} to ${nextReservation}`,
-              );
-            }
-            const outcome = this.#database.prepare(`
-              UPDATE intake_sessions SET record_json = ?, state = ?, updated_at = ?
-              WHERE record_key = ? AND json_extract(record_json, '$.version') = ?
-            `).run(
-              canonicalJsonStringify(record), record.state, record.updatedAt,
-              record.intakeSessionId, record.version - 1,
-            );
-            const changes = sqliteChanges(outcome.changes);
-            if (changes !== 1) {
-              throw new Error(
-                `intake session ${record.intakeSessionId} update to version ${String(record.version)} `
-                + `raced past its expected predecessor; ${String(changes)} rows changed`,
-              );
-            }
-            return { result: record, changes: 1 };
-          });
-        },
-        /** Open sessions for these exact bytes — a re-upload finds its session instead of forking one. */
-        findActiveBySource: (sourceSha256: string) => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM intake_sessions
-          WHERE source_sha256 = ? AND state IN ('mapping', 'validated')
-          ORDER BY created_at, record_key
-        `).all(sourceSha256).map((row) =>
-          parseJsonRecord(IntakeSessionSchema, JsonRowSchema.parse(row).record_json))),
-      }),
-      intakeManifests: Object.freeze({
-        insert: (input: unknown) => {
-          const record = IntakePlanManifestSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("intake_manifests", () => {
-            const existing = this.#readRecord("intake_manifests", record.manifestId, IntakePlanManifestSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`intake manifest ${record.manifestId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO intake_manifests
-                (record_key, workflow, source_sha256, workflow_contract_fingerprint, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `).run(
-              record.manifestId, record.workflow, record.source.sha256,
-              record.workflowContractFingerprint, json, record.createdAt,
-            );
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
-        get: (manifestId: string) => this.#readRecord("intake_manifests", manifestId, IntakePlanManifestSchema),
-        /** "Has this exact file been run before" — a lookup, not a scan. */
-        findBySource: (sourceSha256: string) => this.#database.prepare(`
-          SELECT record_json FROM intake_manifests WHERE source_sha256 = ? ORDER BY created_at
-        `).all(sourceSha256).map((row) =>
-          parseJsonRecord(IntakePlanManifestSchema, JsonRowSchema.parse(row).record_json)),
-      }),
+      intakeSessions: imports.sessions,
+      intakeManifests: imports.manifests,
       /**
        * Ref data-intake-and-edit-data §4.3's admitted page extraction (D159). One page, read once, for
        * one form: a second producer reading the same page is a REPLACEMENT a
@@ -4589,8 +4373,8 @@ export class AuthorityDatabase implements Disposable {
           const record = AdmittedExtractionSchema.parse(input);
           const key = `${record.sourceSha256}#${String(record.sourcePage)}#${record.formType}`;
           const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("ocr_extractions", () => {
-            const existing = this.#readRecord("ocr_extractions", key, AdmittedExtractionSchema);
+          return this.#authorityWrite("extracted_artifacts", () => {
+            const existing = this.#readRecord("extracted_artifacts", key, AdmittedExtractionSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {
                 throw new Error(
@@ -4601,7 +4385,7 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO ocr_extractions
+              INSERT INTO extracted_artifacts
                 (record_key, form_type, source_sha256, source_page, page_kind, page_fingerprint, source_kind, record_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
@@ -4612,9 +4396,9 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (sourceSha256: string, sourcePage: number, formType: string) =>
-          this.#readRecord("ocr_extractions", `${sourceSha256}#${String(sourcePage)}#${formType}`, AdmittedExtractionSchema),
+          this.#readRecord("extracted_artifacts", `${sourceSha256}#${String(sourcePage)}#${formType}`, AdmittedExtractionSchema),
         findByDocument: (sourceSha256: string) => this.#database.prepare(`
-          SELECT record_json FROM ocr_extractions WHERE source_sha256 = ? ORDER BY source_page
+          SELECT record_json FROM extracted_artifacts WHERE source_sha256 = ? ORDER BY source_page
         `).all(sourceSha256).map((row) =>
           parseJsonRecord(AdmittedExtractionSchema, JsonRowSchema.parse(row).record_json)),
       }),
@@ -4715,52 +4499,7 @@ export class AuthorityDatabase implements Disposable {
         `).all().map((row) =>
           parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
       }),
-      operatorXlsxExports: Object.freeze({
-        insert: (input: unknown) => {
-          const record = OperatorXlsxExportEvidenceSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("operator_xlsx_exports", () => {
-            const existing = this.#readOperatorXlsxExport(record.exportId);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`operator XLSX export ${record.exportId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const inserted = this.#database.prepare(`
-              INSERT INTO operator_xlsx_exports
-                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename,
-                 requested_by, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              record.exportId,
-              record.selection.kind,
-              record.artifact.id,
-              record.download.sha256,
-              record.download.byteLength,
-              record.download.mediaType,
-              record.download.filename,
-              record.workbookVersion === 1 ? null : record.requestedBy,
-              json,
-              record.createdAt,
-            );
-            return {
-              result: Object.freeze({ state: "inserted" as const, record }),
-              changes: sqliteChanges(inserted.changes),
-            };
-          });
-        },
-        get: (exportId: string) => this.#readOperatorXlsxExport(exportId),
-        listByArtifact: (artifactId: string) => {
-          const selectedArtifactId = ArtifactIdSchema.parse(artifactId);
-          const records = this.#database.prepare(`
-            SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
-                   filename, requested_by, record_json, created_at
-            FROM operator_xlsx_exports ORDER BY created_at, record_key
-          `).all().map(operatorXlsxEvidenceFromRow);
-          return Object.freeze(records.filter((record) => record.artifact.id === selectedArtifactId));
-        },
-      }),
+      operatorXlsxExports: generated.exports,
       activityPersonPseudonyms: Object.freeze({
         get: (runId: string, keyGeneration: string) => this.#readRecord(
           "activity_person_pseudonyms",
@@ -4792,85 +4531,6 @@ export class AuthorityDatabase implements Disposable {
           )));
         },
       }),
-      knowledgeRecords: Object.freeze({
-        insert: (input: unknown) => {
-          const record = KnowledgeRecordSchema.parse(input);
-          const createdAt = record.verifiedAt ?? this.#now();
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("knowledge_records", () => {
-            const existing = this.#readRecord("knowledge_records", record.id, KnowledgeRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`knowledge record ${record.id} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO knowledge_records (record_key, status, record_json, created_at) VALUES (?, ?, ?, ?)
-            `).run(record.id, record.status, json, createdAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
-        get: (knowledgeId: string) => this.#readRecord("knowledge_records", knowledgeId, KnowledgeRecordSchema),
-        list: () => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM knowledge_records ORDER BY created_at, record_key
-          `).all();
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            KnowledgeRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
-        },
-        listByStatus: (status: unknown) => {
-          const parsed = KnowledgeRecordSchema.shape.status.parse(status);
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM knowledge_records WHERE status = ? ORDER BY created_at, record_key
-          `).all(parsed);
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            KnowledgeRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
-        },
-      }),
-      fixRecords: Object.freeze({
-        insert: (input: unknown) => {
-          const record = FixRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("fix_records", () => {
-            const existing = this.#readRecord("fix_records", record.id, FixRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`fix record ${record.id} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO fix_records (record_key, status, failure_fingerprint, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?)
-            `).run(record.id, record.status, record.failureFingerprint ?? null, json, record.createdAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
-        get: (fixId: string) => this.#readRecord("fix_records", fixId, FixRecordSchema),
-        list: () => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM fix_records ORDER BY created_at, record_key
-          `).all();
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            FixRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
-        },
-        listByFailureFingerprint: (fingerprint: string) => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM fix_records WHERE failure_fingerprint = ? ORDER BY created_at, record_key
-          `).all(FailureFingerprintSchema.parse(fingerprint));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            FixRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
-        },
-      }),
       historicalOperationSources: { list: () => this.#database.prepare("SELECT record_json FROM timeline_operation_sources ORDER BY record_key").all().map((row) => readHistoricalOperationSource(this.#database, JsonRowSchema.parse(row).record_json)) },
       runResults: Object.freeze({
         get: (runId: string) => this.#readRecord(
@@ -4879,7 +4539,9 @@ export class AuthorityDatabase implements Disposable {
           RunResultRecordSchema,
         ),
       }),
-      providerAdmissions: this.#buildProviderAdmissionRepository(),
+      failureResolution: createFailureResolutionRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("run_failures", work) }),
+      providerAdmissions: provider.repository(),
+      providerAccounting: provider.accounting(),
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
@@ -5216,223 +4878,8 @@ export class AuthorityDatabase implements Disposable {
         },
         get: (snapshotId: string) => this.#readRecord("settings_snapshots", snapshotId, ConfigSnapshotRecordSchema),
       }),
-      settingsCurrent: Object.freeze({
-        get: () => this.#readRecord("settings_current", "current", SettingsCurrentRecordSchema),
-        advance: (input: unknown) => {
-          const record = SettingsCurrentRecordSchema.parse(input);
-          return this.#authorityWrite("settings_current", () => {
-            const current = this.#readRecord(
-              "settings_current",
-              "current",
-              SettingsCurrentRecordSchema,
-            );
-            const expectedRevision = current === undefined ? 2 : current.revision + 1;
-            if (record.revision !== expectedRevision) {
-              throw new Error(
-                `settings current revision ${String(record.revision)} does not exactly advance `
-                + `${String(current?.revision ?? 1)} to ${String(expectedRevision)}`,
-              );
-            }
-            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
-            const audit = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
-            const target = { family: "settings" as const, revision: record.revision };
-            if (command === undefined
-              || command.family !== "settings"
-              || command.type !== "apply-settings"
-              || deriveSettingsCommandFingerprint(command) !== record.commandFingerprint
-              || audit === undefined
-              || audit.request.commandId !== record.commandId
-              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
-              || audit.result.state !== "applied"
-              || audit.result.commandId !== record.commandId
-              || audit.result.restartRequired !== true
-              || audit.result.settingsRevision !== record.revision
-              || audit.result.settingsFingerprint !== record.settingsFingerprint
-              || canonicalJsonStringify(audit.result.affectedTargets)
-                !== canonicalJsonStringify([target])
-              || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
-                target,
-                before: record.revision - 1,
-                after: record.revision,
-              }])
-              || audit.affectedDependencyIds.length !== 0
-              || audit.completedAt !== record.committedAt) {
-              throw new Error(
-                `settings current revision ${String(record.revision)} does not bind its exact command and audit result`,
-              );
-            }
-            const json = canonicalJsonStringify(record);
-            const result = current === undefined
-              ? this.#database.prepare(`
-                  INSERT INTO settings_current
-                    (record_key, revision, settings_fingerprint, command_id,
-                      command_fingerprint, audit_id, record_json, created_at)
-                  VALUES ('current', ?, ?, ?, ?, ?, ?, ?)
-                `).run(
-                  record.revision,
-                  record.settingsFingerprint,
-                  record.commandId,
-                  record.commandFingerprint,
-                  record.auditId,
-                  json,
-                  record.committedAt,
-                )
-              : this.#database.prepare(`
-                  UPDATE settings_current
-                  SET revision = ?, settings_fingerprint = ?, command_id = ?,
-                    command_fingerprint = ?, audit_id = ?, record_json = ?, created_at = ?
-                  WHERE record_key = 'current' AND revision = ?
-                `).run(
-                  record.revision,
-                  record.settingsFingerprint,
-                  record.commandId,
-                  record.commandFingerprint,
-                  record.auditId,
-                  json,
-                  record.committedAt,
-                  current.revision,
-                );
-            const changes = sqliteChanges(result.changes);
-            if (changes !== 1) {
-              throw new Error(
-                `settings current revision ${String(record.revision)} affected ${String(changes)} rows`,
-              );
-            }
-            return { result: record, changes };
-          });
-        },
-      }),
-      runtimeConfig: Object.freeze({
-        get: () => this.#readRecord("runtime_config", "active", ActiveRuntimeConfigRecordSchema),
-        activate: (input: unknown) => {
-          const request = ActiveRuntimeConfigActivationSchema.parse(input);
-          return this.#authorityWrite("runtime_config", () => {
-            const snapshot = this.#readRecord(
-              "settings_snapshots",
-              request.configSnapshotId,
-              ConfigSnapshotRecordSchema,
-            );
-            if (snapshot === undefined || snapshot.fingerprint !== request.configFingerprint) {
-              throw new Error(
-                `runtime config activation does not bind exact snapshot ${request.configSnapshotId} `
-                + `at fingerprint ${request.configFingerprint}`,
-              );
-            }
-            const current = this.#readRecord(
-              "runtime_config",
-              "active",
-              ActiveRuntimeConfigRecordSchema,
-            );
-            const record = ActiveRuntimeConfigRecordSchema.parse({
-              ...request,
-              generation: current === undefined ? 1 : current.generation + 1,
-            });
-            const json = canonicalJsonStringify(record);
-            const result = current === undefined
-              ? this.#database.prepare(`
-                  INSERT INTO runtime_config
-                    (record_key, generation, settings_revision, settings_fingerprint,
-                      config_snapshot_id, config_fingerprint, record_json, created_at)
-                  VALUES ('active', ?, ?, ?, ?, ?, ?, ?)
-                `).run(
-                  record.generation,
-                  record.settingsRevision,
-                  record.settingsFingerprint,
-                  record.configSnapshotId,
-                  record.configFingerprint,
-                  json,
-                  record.activatedAt,
-                )
-              : this.#database.prepare(`
-                  UPDATE runtime_config
-                  SET generation = ?, settings_revision = ?, settings_fingerprint = ?,
-                    config_snapshot_id = ?, config_fingerprint = ?, record_json = ?, created_at = ?
-                  WHERE record_key = 'active' AND generation = ?
-                `).run(
-                  record.generation,
-                  record.settingsRevision,
-                  record.settingsFingerprint,
-                  record.configSnapshotId,
-                  record.configFingerprint,
-                  json,
-                  record.activatedAt,
-                  current.generation,
-                );
-            const changes = sqliteChanges(result.changes);
-            if (changes !== 1) {
-              throw new Error(`runtime config generation ${String(record.generation)} activation affected ${String(changes)} rows`);
-            }
-            return { result: record, changes };
-          });
-        },
-        requireActive: (input: unknown) => {
-          const request = ActiveRuntimeConfigExpectationSchema.parse(input);
-          const current = this.#readRecord(
-            "runtime_config",
-            "active",
-            ActiveRuntimeConfigRecordSchema,
-          );
-          if (current === undefined) {
-            throw new Error("runtime config has no dashboard-activated generation");
-          }
-          if (current.settingsRevision !== request.settingsRevision
-            || current.settingsFingerprint !== request.settingsFingerprint
-            || current.configFingerprint !== request.configFingerprint) {
-            throw new Error(
-              `settings revision ${String(request.settingsRevision)} at ${request.settingsFingerprint} `
-              + `and config ${request.configFingerprint} are not dashboard-active; restart activation is required`,
-            );
-          }
-          const snapshot = this.#readRecord(
-            "settings_snapshots",
-            current.configSnapshotId,
-            ConfigSnapshotRecordSchema,
-          );
-          if (snapshot === undefined || snapshot.fingerprint !== current.configFingerprint) {
-            throw new Error(
-              `active runtime config generation ${String(current.generation)} does not bind exact `
-              + `snapshot ${current.configSnapshotId}`,
-            );
-          }
-          return RuntimeConfigClaimTokenSchema.parse({
-            generation: current.generation,
-            settingsRevision: current.settingsRevision,
-            settingsFingerprint: current.settingsFingerprint,
-            configFingerprint: current.configFingerprint,
-          });
-        },
-        requireSettingsCurrent: () => {
-          const settingsCurrent = this.#readRecord(
-            "settings_current",
-            "current",
-            SettingsCurrentRecordSchema,
-          );
-          if (settingsCurrent === undefined) return;
-          const runtime = this.#readRecord(
-            "runtime_config",
-            "active",
-            ActiveRuntimeConfigRecordSchema,
-          );
-          if (runtime === undefined
-            || runtime.settingsRevision !== settingsCurrent.revision
-            || runtime.settingsFingerprint !== settingsCurrent.settingsFingerprint) {
-            throw new Error(
-              "dashboard runtime settings are stale; restart activation is required",
-            );
-          }
-          const snapshot = this.#readRecord(
-            "settings_snapshots",
-            runtime.configSnapshotId,
-            ConfigSnapshotRecordSchema,
-          );
-          if (snapshot === undefined || snapshot.fingerprint !== runtime.configFingerprint) {
-            throw new Error(
-              `active runtime config generation ${String(runtime.generation)} does not bind exact `
-              + `snapshot ${runtime.configSnapshotId}`,
-            );
-          }
-        },
-      }),
+      settingsCurrent: settings.settingsCurrent,
+      runtimeConfig: settings.runtimeConfig,
       versionPlans: Object.freeze({
         insert: (input: unknown) => {
           const record = VersionPlanStorageRecordSchema.parse(input);
@@ -5896,89 +5343,9 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
 
-      artifactOutbox: Object.freeze({
-        insert: (input: unknown) => {
-          const record = ArtifactOutboxStorageRecordSchema.parse(input);
-          return this.#insertSimpleRecord("artifact_outbox", record.outboxId, record, ArtifactOutboxStorageRecordSchema, record.createdAt);
-        },
-        get: (outboxId: string) => this.#readRecord("artifact_outbox", outboxId, ArtifactOutboxStorageRecordSchema),
-        listPending: () => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM artifact_outbox
-            WHERE json_extract(record_json, '$.state') = 'pending'
-            ORDER BY created_at, record_key
-          `).all();
-          return Object.freeze(rows.map((row) =>
-            parseJsonRecord(ArtifactOutboxStorageRecordSchema, JsonRowSchema.parse(row).record_json)));
-        },
-        markProjected: (input: unknown) => {
-          const request = ArtifactOutboxAckRequestSchema.parse(input);
-          return this.#authorityWrite("artifact_outbox", () => {
-            const existing = this.#readRecord("artifact_outbox", request.outboxId, ArtifactOutboxStorageRecordSchema);
-            if (existing === undefined) {
-              throw new Error(`artifact outbox row ${request.outboxId} does not exist; nothing to acknowledge`);
-            }
-            if (existing.state === "projected") {
-              return {
-                result: Object.freeze({ state: "already-projected" as const, record: existing }),
-                changes: 0,
-              };
-            }
-            const projected = ArtifactOutboxStorageRecordSchema.parse({
-              ...existing,
-              state: "projected",
-              projectedAt: request.projectedAt,
-            });
-            const outcome = this.#database.prepare(`
-              UPDATE artifact_outbox SET record_json = ?
-              WHERE record_key = ? AND json_extract(record_json, '$.state') = 'pending'
-            `).run(canonicalJsonStringify(projected), request.outboxId);
-            const changes = sqliteChanges(outcome.changes);
-            if (changes !== 1) {
-              throw new Error(`artifact outbox ${request.outboxId} acknowledgement affected ${String(changes)} rows`);
-            }
-            return {
-              result: Object.freeze({ state: "acknowledged" as const, record: projected }),
-              changes: 1,
-            };
-          });
-        },
-      }),
-      artifactSinkHeads: Object.freeze({
-        get: (sinkId: string) => this.#readRecord("artifact_sink_heads", sinkId, ArtifactSinkHeadRecordSchema),
-        record: (input: unknown) => {
-          const request = ArtifactSinkHeadRecordRequestSchema.parse(input);
-          return this.#authorityWrite("artifact_sink_heads", () => {
-            const existing = this.#readRecord("artifact_sink_heads", request.sinkId, ArtifactSinkHeadRecordSchema);
-            if (existing === undefined) {
-              const head = ArtifactSinkHeadRecordSchema.parse({ ...request, generation: 1 });
-              this.#database.prepare(`
-                INSERT INTO artifact_sink_heads (record_key, record_json, created_at) VALUES (?, ?, ?)
-              `).run(head.sinkId, canonicalJsonStringify(head), head.projectedAt);
-              return { result: head, changes: 1 };
-            }
-            const head = ArtifactSinkHeadRecordSchema.parse({
-              ...request,
-              generation: existing.generation + 1,
-            });
-            const outcome = this.#database.prepare(`
-              UPDATE artifact_sink_heads SET record_json = ?
-              WHERE record_key = ? AND json_extract(record_json, '$.generation') = ?
-            `).run(canonicalJsonStringify(head), head.sinkId, existing.generation);
-            const changes = sqliteChanges(outcome.changes);
-            if (changes !== 1) {
-              throw new Error(
-                `artifact sink head ${head.sinkId} update raced past generation ${String(existing.generation)}; `
-                + `${String(changes)} rows changed`,
-              );
-            }
-            return { result: head, changes: 1 };
-          });
-        },
-      }),
-      opaque: Object.freeze({
-        ocrApprovals: opaque("ocr_approvals"),
-      }),
+      generatedArtifacts: generated,
+      artifactOutbox: generated.outbox,
+      artifactSinkHeads: generated.heads,
     });
   }
 
@@ -6170,39 +5537,9 @@ export class AuthorityDatabase implements Disposable {
     }
     return this.withAuthorityTransaction((): CanonicalRunClaimOutcome => {
       if (request.runtimeConfig !== undefined) {
-        const active = this.#readRecord(
-          "runtime_config",
-          "active",
-          ActiveRuntimeConfigRecordSchema,
-        );
-        const activeToken = active === undefined
-          ? undefined
-          : RuntimeConfigClaimTokenSchema.parse({
-              generation: active.generation,
-              settingsRevision: active.settingsRevision,
-              settingsFingerprint: active.settingsFingerprint,
-              configFingerprint: active.configFingerprint,
-            });
-        if (activeToken === undefined
-          || canonicalJsonStringify(activeToken) !== canonicalJsonStringify(request.runtimeConfig)) {
+        if (!this.authority.runtimeConfig.matchesClaim(request.runtimeConfig)) {
           if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
-          throw new Error(
-            `worker boot runtime config generation ${String(request.runtimeConfig.generation)} `
-            + "is no longer dashboard-active; restart activation is required",
-          );
-        }
-        const settingsCurrent = this.#readRecord(
-          "settings_current",
-          "current",
-          SettingsCurrentRecordSchema,
-        );
-        if (settingsCurrent !== undefined
-          && (settingsCurrent.revision !== request.runtimeConfig.settingsRevision
-            || settingsCurrent.settingsFingerprint !== request.runtimeConfig.settingsFingerprint)) {
-          if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
-          throw new Error(
-            "dashboard runtime settings are stale; restart activation is required",
-          );
+          throw new Error("dashboard runtime settings are stale; restart activation is required");
         }
       }
       // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
@@ -6250,7 +5587,7 @@ export class AuthorityDatabase implements Disposable {
       }
       const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
       if (request.configFingerprint !== undefined) {
-        if (current.envelope.configFingerprint !== request.configFingerprint) {
+        if (!this.authority.runtimeConfig.matchesRun(request.configFingerprint, current.envelope.configFingerprint)) {
           if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
           throw new Error(
             `queued run ${current.envelope.runId} config fingerprint `
@@ -6652,7 +5989,8 @@ export class AuthorityDatabase implements Disposable {
           remove("run_receipts", "DELETE FROM run_receipts WHERE run_id = ?", runId);
           remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
           remove("activity_person_pseudonyms", "DELETE FROM activity_person_pseudonyms WHERE run_id = ?", runId);
-          remove("provider_admissions", "DELETE FROM provider_admissions WHERE run_id = ?", runId);
+          finalizeProviderRun(this.#database, this.authority.providerAdmissions, runId, now);
+          remove("provider_requests", "DELETE FROM provider_requests WHERE run_id = ?", runId);
           remove("run_failures", "DELETE FROM run_failures WHERE run_id = ?", runId);
           // Terminal authority.
           remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
@@ -6980,509 +6318,6 @@ export class AuthorityDatabase implements Disposable {
           return Object.freeze(outcomes);
         });
       },
-    });
-  }
-
-  #readProviderCounter(capability: string): ProviderBudgetCounter | undefined {
-    return this.#readRecord(
-      "provider_budget_counters",
-      ProviderCapabilityIdSchema.parse(capability),
-      ProviderBudgetCounterSchema,
-    );
-  }
-
-  #writeProviderCounter(record: ProviderBudgetCounter, mode: "insert" | "update"): void {
-    const json = canonicalJsonStringify(record);
-    this.#authorityWrite("provider_budget_counters", () => {
-      const result = mode === "insert"
-        ? this.#database.prepare(`
-          INSERT INTO provider_budget_counters (
-            record_key, capability, minute_window_started_at, minute_requests,
-            day_window_started_at, day_requests, day_reserved_cost_usd_micros,
-            active_reservations, blocked_by_admission_id, version, record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          record.capability, record.capability, record.minuteWindowStartedAt,
-          record.minuteRequests, record.dayWindowStartedAt, record.dayRequests,
-          record.dayReservedCostUsdMicros, record.activeReservations,
-          record.blockedByAdmissionId ?? null, record.version, json, record.createdAt,
-        )
-        : this.#database.prepare(`
-          UPDATE provider_budget_counters SET
-            minute_window_started_at = ?, minute_requests = ?,
-            day_window_started_at = ?, day_requests = ?,
-            day_reserved_cost_usd_micros = ?, active_reservations = ?,
-            blocked_by_admission_id = ?, version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
-        `).run(
-          record.minuteWindowStartedAt, record.minuteRequests,
-          record.dayWindowStartedAt, record.dayRequests,
-          record.dayReservedCostUsdMicros, record.activeReservations,
-          record.blockedByAdmissionId ?? null, record.version, json,
-          record.capability, record.version - 1,
-        );
-      const changes = sqliteChanges(result.changes);
-      if (changes !== 1) {
-        throw new Error(`provider counter ${record.capability} ${mode} affected ${String(changes)} rows`);
-      }
-      return { result: undefined, changes };
-    });
-  }
-
-  #writeProviderAdmission(record: ProviderAdmissionRecord, mode: "insert" | "update"): void {
-    const json = canonicalJsonStringify(record);
-    const lifecycle = record.lifecycle;
-    const actualCost = lifecycle.state === "settled" ? lifecycle.actualUsage.costUsdMicros : null;
-    const leaseExpiresAt = lifecycle.state === "reserved" ? lifecycle.leaseExpiresAt : null;
-    const deadlineAt = lifecycle.state === "reserved" ? lifecycle.deadlineAt : null;
-    this.#authorityWrite("provider_admissions", () => {
-      const result = mode === "insert"
-        ? this.#database.prepare(`
-          INSERT INTO provider_admissions (
-            record_key, run_id, capability, config_snapshot_id, config_fingerprint,
-            request_fingerprint, state, reserved_cost_usd_micros,
-            actual_cost_usd_micros, lease_expires_at, deadline_at, version,
-            record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          record.admissionId, record.execution.runId, record.capability,
-          record.configSnapshotId, record.configFingerprint, record.requestFingerprint,
-          lifecycle.state, record.reservation.maximumCostUsdMicros, actualCost,
-          leaseExpiresAt, deadlineAt, record.version, json, record.createdAt,
-        )
-        : this.#database.prepare(`
-          UPDATE provider_admissions SET
-            state = ?, actual_cost_usd_micros = ?, lease_expires_at = ?,
-            deadline_at = ?, version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
-        `).run(
-          lifecycle.state, actualCost, leaseExpiresAt, deadlineAt,
-          record.version, json, record.admissionId, record.version - 1,
-        );
-      const changes = sqliteChanges(result.changes);
-      if (changes !== 1) {
-        throw new Error(`provider admission ${record.admissionId} ${mode} affected ${String(changes)} rows`);
-      }
-      return { result: undefined, changes };
-    });
-  }
-
-  #providerAdmissionContext(request: z.infer<typeof ProviderAdmissionReserveRequestSchema>
-    | z.infer<typeof ProviderAdmissionDenyRequestSchema>): ConfigSnapshotRecord {
-    const run = this.#readRunRow(request.execution.runId);
-    if (run === undefined) throw new Error(`provider admission run ${request.execution.runId} does not exist`);
-    if (run.envelope.attempt !== request.execution.attempt
-      || run.envelope.configSnapshotId !== request.configSnapshotId
-      || run.envelope.configFingerprint !== request.configFingerprint) {
-      throw new Error(`provider admission ${request.admissionId} does not match run ${request.execution.runId} execution/config identity`);
-    }
-    // A run-NODE admission must be the node the run is executing right now.
-    // An operator-advisory admission (D178) deliberately makes no such claim:
-    // ref operator-trust §4.4's advisory reads FINISHED authority on the presentation lane,
-    // so requiring a live node would either make the feature impossible or
-    // force it to name a node the descriptor never reached. What it still
-    // binds is everything that is true — the run's identity, its retained
-    // attempt, and its own config snapshot, all checked directly above.
-    if (isRunNodeExecutionIdentity(request.execution)
-      && (run.lifecycle.state !== "running" || run.lifecycle.currentNodeId !== request.execution.nodeId)) {
-      throw new Error(`provider admission ${request.admissionId} run ${request.execution.runId} is not executing node ${request.execution.nodeId}`);
-    }
-    const snapshot = this.#readRecord(
-      "settings_snapshots",
-      request.configSnapshotId,
-      ConfigSnapshotRecordSchema,
-    );
-    if (snapshot === undefined) throw new Error(`provider config snapshot ${request.configSnapshotId} does not exist`);
-    if (snapshot.fingerprint !== request.configFingerprint) {
-      throw new Error(`provider config snapshot ${request.configSnapshotId} fingerprint mismatch`);
-    }
-    return snapshot;
-  }
-
-  #assertProviderAdmissionRequestMatches(
-    existing: ProviderAdmissionRecord,
-    request: z.infer<typeof ProviderAdmissionReserveRequestSchema>
-      | z.infer<typeof ProviderAdmissionDenyRequestSchema>,
-  ): void {
-    const expected = {
-      admissionId: request.admissionId,
-      execution: request.execution,
-      capability: request.capability,
-      configSnapshotId: request.configSnapshotId,
-      configFingerprint: request.configFingerprint,
-      requestFingerprint: request.requestFingerprint,
-      estimate: request.estimate,
-    };
-    const actual = {
-      admissionId: existing.admissionId,
-      execution: existing.execution,
-      capability: existing.capability,
-      configSnapshotId: existing.configSnapshotId,
-      configFingerprint: existing.configFingerprint,
-      requestFingerprint: existing.requestFingerprint,
-      estimate: existing.estimate,
-    };
-    if (canonicalJsonStringify(actual) !== canonicalJsonStringify(expected)) {
-      throw new Error(`provider admission id ${request.admissionId} was reused with different content`);
-    }
-  }
-
-  #createProviderCounter(capability: z.infer<typeof ProviderCapabilityIdSchema>, now: string): ProviderBudgetCounter {
-    const record = ProviderBudgetCounterSchema.parse({
-      capability,
-      minuteWindowStartedAt: fixedUtcMinuteStart(now),
-      minuteRequests: 0,
-      dayWindowStartedAt: fixedUtcDayStart(now),
-      dayRequests: 0,
-      dayReservedCostUsdMicros: 0,
-      activeReservations: 0,
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-    });
-    this.#writeProviderCounter(record, "insert");
-    return record;
-  }
-
-  #rollProviderCounter(counter: ProviderBudgetCounter, now: string): ProviderBudgetCounter {
-    const minuteWindowStartedAt = fixedUtcMinuteStart(now);
-    const dayWindowStartedAt = fixedUtcDayStart(now);
-    const minuteRolled = minuteWindowStartedAt !== counter.minuteWindowStartedAt;
-    const dayRolled = dayWindowStartedAt !== counter.dayWindowStartedAt;
-    if (!minuteRolled && !dayRolled) return counter;
-    const rolled = ProviderBudgetCounterSchema.parse({
-      ...counter,
-      minuteWindowStartedAt,
-      minuteRequests: minuteRolled ? 0 : counter.minuteRequests,
-      dayWindowStartedAt,
-      dayRequests: dayRolled ? 0 : counter.dayRequests,
-      dayReservedCostUsdMicros: dayRolled ? 0 : counter.dayReservedCostUsdMicros,
-      ...(dayRolled ? { blockedByAdmissionId: undefined } : {}),
-      version: counter.version + 1,
-      updatedAt: now,
-    });
-    this.#writeProviderCounter(rolled, "update");
-    return rolled;
-  }
-
-  #expireProviderLeases(counter: ProviderBudgetCounter, now: string): {
-    readonly counter: ProviderBudgetCounter;
-    readonly expired: readonly ProviderAdmissionRecord[];
-  } {
-    const rows = this.#database.prepare(`
-      SELECT record_json FROM provider_admissions
-      WHERE capability = ? AND state = 'reserved' AND lease_expires_at <= ?
-      ORDER BY lease_expires_at, record_key
-    `).all(counter.capability, now);
-    if (rows.length === 0) return { counter, expired: Object.freeze([]) };
-    const expired: ProviderAdmissionRecord[] = [];
-    for (const row of rows) {
-      const current = parseJsonRecord(
-        ProviderAdmissionRecordSchema,
-        JsonRowSchema.parse(row).record_json,
-      );
-      const record = ProviderAdmissionRecordSchema.parse({
-        ...current,
-        lifecycle: {
-          state: "lease-expired",
-          expiredAt: now,
-          accounting: "full-reservation-retained",
-        },
-        version: current.version + 1,
-        updatedAt: now,
-      });
-      this.#writeProviderAdmission(record, "update");
-      expired.push(record);
-    }
-    if (counter.activeReservations < expired.length) {
-      throw new Error(`provider counter ${counter.capability} cannot release ${String(expired.length)} expired leases from ${String(counter.activeReservations)} active reservations`);
-    }
-    const updated = ProviderBudgetCounterSchema.parse({
-      ...counter,
-      activeReservations: counter.activeReservations - expired.length,
-      version: counter.version + 1,
-      updatedAt: now,
-    });
-    this.#writeProviderCounter(updated, "update");
-    return { counter: updated, expired: Object.freeze(expired) };
-  }
-
-  #prepareProviderCounter(capability: z.infer<typeof ProviderCapabilityIdSchema>, now: string): ProviderBudgetCounter {
-    const initial = this.#readProviderCounter(capability) ?? this.#createProviderCounter(capability, now);
-    const expired = this.#expireProviderLeases(initial, now).counter;
-    return this.#rollProviderCounter(expired, now);
-  }
-
-  #providerBudgetDenial(
-    counter: ProviderBudgetCounter,
-    budget: ProviderBudget,
-    estimate: number,
-  ): z.infer<typeof ProviderUnavailableReasonSchema> | undefined {
-    if (counter.activeReservations >= budget.concurrency) {
-      const row = this.#database.prepare(`
-        SELECT MIN(lease_expires_at) AS next_eligible_at FROM provider_admissions
-        WHERE capability = ? AND state = 'reserved'
-      `).get(counter.capability);
-      const retryAt = NextEligibleRowSchema.parse(row).next_eligible_at;
-      if (retryAt === null) throw new Error(`provider counter ${counter.capability} reports exhausted concurrency without an active lease`);
-      return ProviderUnavailableReasonSchema.parse({
-        code: "concurrency-exhausted",
-        message: `${counter.capability} concurrency is exhausted`,
-        retryAt,
-      });
-    }
-    if (counter.minuteRequests >= budget.requestsPerMinute) {
-      return ProviderUnavailableReasonSchema.parse({
-        code: "rate-exhausted",
-        message: `${counter.capability} fixed UTC-minute request budget is exhausted`,
-        retryAt: nextFixedWindow(counter.minuteWindowStartedAt, 60_000),
-      });
-    }
-    if (counter.dayRequests >= budget.dailyRequestLimit) {
-      return ProviderUnavailableReasonSchema.parse({
-        code: "daily-request-exhausted",
-        message: `${counter.capability} fixed UTC-day request budget is exhausted`,
-        retryAt: nextFixedWindow(counter.dayWindowStartedAt, 86_400_000),
-      });
-    }
-    if (counter.blockedByAdmissionId !== undefined
-      || counter.dayReservedCostUsdMicros + estimate > budget.costLimitUsdMicros) {
-      return ProviderUnavailableReasonSchema.parse({
-        code: "daily-cost-exhausted",
-        message: counter.blockedByAdmissionId === undefined
-          ? `${counter.capability} fixed UTC-day cost budget is exhausted`
-          : `${counter.capability} admission ${counter.blockedByAdmissionId} breached its maximum cost estimate`,
-        retryAt: nextFixedWindow(counter.dayWindowStartedAt, 86_400_000),
-      });
-    }
-    return undefined;
-  }
-
-  #newProviderAdmission(
-    request: z.infer<typeof ProviderAdmissionReserveRequestSchema>
-      | z.infer<typeof ProviderAdmissionDenyRequestSchema>,
-    snapshot: ConfigSnapshotRecord,
-    lifecycle: ProviderAdmissionRecord["lifecycle"],
-  ): ProviderAdmissionRecord {
-    const budget = providerBudget(snapshot.config, request.capability);
-    return ProviderAdmissionRecordSchema.parse({
-      admissionId: request.admissionId,
-      execution: request.execution,
-      capability: request.capability,
-      configSnapshotId: request.configSnapshotId,
-      configFingerprint: request.configFingerprint,
-      requestFingerprint: request.requestFingerprint,
-      budget,
-      estimate: request.estimate,
-      reservation: { requestCount: 1, maximumCostUsdMicros: request.estimate.maximumCostUsdMicros },
-      lifecycle,
-      version: 1,
-      createdAt: request.now,
-      updatedAt: request.now,
-    });
-  }
-
-  #buildProviderAdmissionRepository(): ProviderAdmissionRepository {
-    return Object.freeze({
-      reserve: (input: unknown) => {
-        const request = ProviderAdmissionReserveRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          const existing = this.#readRecord(
-            "provider_admissions",
-            request.admissionId,
-            ProviderAdmissionRecordSchema,
-          );
-          if (existing !== undefined) {
-            this.#assertProviderAdmissionRequestMatches(existing, request);
-            return ProviderAdmissionReserveOutcomeSchema.parse({ state: "existing", admission: existing });
-          }
-          const snapshot = this.#providerAdmissionContext(request);
-          let counter = this.#prepareProviderCounter(request.capability, request.now);
-          const budget = providerBudget(snapshot.config, request.capability);
-          const denial = this.#providerBudgetDenial(
-            counter,
-            budget,
-            request.estimate.maximumCostUsdMicros,
-          );
-          if (denial !== undefined) {
-            const admission = this.#newProviderAdmission(request, snapshot, {
-              state: "denied", deniedAt: request.now, reason: denial,
-            });
-            this.#writeProviderAdmission(admission, "insert");
-            return ProviderAdmissionReserveOutcomeSchema.parse({ state: "denied", admission, counter });
-          }
-          counter = ProviderBudgetCounterSchema.parse({
-            ...counter,
-            minuteRequests: counter.minuteRequests + 1,
-            dayRequests: counter.dayRequests + 1,
-            dayReservedCostUsdMicros:
-              counter.dayReservedCostUsdMicros + request.estimate.maximumCostUsdMicros,
-            activeReservations: counter.activeReservations + 1,
-            version: counter.version + 1,
-            updatedAt: request.now,
-          });
-          this.#writeProviderCounter(counter, "update");
-          const admission = this.#newProviderAdmission(request, snapshot, {
-            state: "reserved",
-            reservedAt: request.now,
-            leaseExpiresAt: request.leaseExpiresAt,
-            deadlineAt: request.deadlineAt,
-          });
-          this.#writeProviderAdmission(admission, "insert");
-          return ProviderAdmissionReserveOutcomeSchema.parse({ state: "reserved", admission, counter });
-        });
-      },
-      deny: (input: unknown) => {
-        const request = ProviderAdmissionDenyRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          const existing = this.#readRecord(
-            "provider_admissions",
-            request.admissionId,
-            ProviderAdmissionRecordSchema,
-          );
-          if (existing !== undefined) {
-            this.#assertProviderAdmissionRequestMatches(existing, request);
-            if (existing.lifecycle.state !== "denied"
-              || canonicalJsonStringify(existing.lifecycle.reason) !== canonicalJsonStringify(request.reason)) {
-              throw new Error(`provider admission id ${request.admissionId} was reused with a different denial`);
-            }
-            return ProviderAdmissionReserveOutcomeSchema.parse({ state: "existing", admission: existing });
-          }
-          const snapshot = this.#providerAdmissionContext(request);
-          const counter = this.#prepareProviderCounter(request.capability, request.now);
-          const admission = this.#newProviderAdmission(request, snapshot, {
-            state: "denied", deniedAt: request.now, reason: request.reason,
-          });
-          this.#writeProviderAdmission(admission, "insert");
-          return ProviderAdmissionReserveOutcomeSchema.parse({ state: "denied", admission, counter });
-        });
-      },
-      settle: (input: unknown) => {
-        const request = ProviderAdmissionSettleRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          const current = this.#readRecord(
-            "provider_admissions", request.admissionId, ProviderAdmissionRecordSchema,
-          );
-          if (current === undefined) throw new Error(`provider admission ${request.admissionId} does not exist`);
-          let counter = this.#prepareProviderCounter(current.capability, request.now);
-          if (current.lifecycle.state === "settled") {
-            const exact = current.version === request.expectedVersion + 1
-              && current.lifecycle.adapterDisposition === request.adapterDisposition
-              && canonicalJsonStringify(current.lifecycle.actualUsage) === canonicalJsonStringify(request.actualUsage)
-              && canonicalJsonStringify(current.lifecycle.evidence) === canonicalJsonStringify(request.evidence)
-              && current.lifecycle.settledAt === request.now;
-            if (!exact) throw new Error(`provider admission ${request.admissionId} settlement replay differs from durable content`);
-            return ProviderAdmissionMutationOutcomeSchema.parse({ admission: current, counter });
-          }
-          if (current.lifecycle.state !== "reserved" || current.version !== request.expectedVersion) {
-            throw new Error(`provider admission ${request.admissionId} is ${current.lifecycle.state} at version ${String(current.version)}`);
-          }
-          if (request.actualUsage.costUsdMicros > current.estimate.maximumCostUsdMicros) {
-            throw new Error(`provider admission ${request.admissionId} actual cost exceeds its conservative maximum estimate`);
-          }
-          const sameDay = fixedUtcDayStart(current.lifecycle.reservedAt) === counter.dayWindowStartedAt;
-          if (counter.activeReservations < 1) throw new Error(`provider counter ${current.capability} has no active reservation to settle`);
-          counter = ProviderBudgetCounterSchema.parse({
-            ...counter,
-            activeReservations: counter.activeReservations - 1,
-            dayReservedCostUsdMicros: sameDay
-              ? counter.dayReservedCostUsdMicros
-                - (current.estimate.maximumCostUsdMicros - request.actualUsage.costUsdMicros)
-              : counter.dayReservedCostUsdMicros,
-            version: counter.version + 1,
-            updatedAt: request.now,
-          });
-          this.#writeProviderCounter(counter, "update");
-          const admission = ProviderAdmissionRecordSchema.parse({
-            ...current,
-            lifecycle: {
-              state: "settled",
-              settledAt: request.now,
-              adapterDisposition: request.adapterDisposition,
-              actualUsage: request.actualUsage,
-              evidence: request.evidence,
-            },
-            version: current.version + 1,
-            updatedAt: request.now,
-          });
-          this.#writeProviderAdmission(admission, "update");
-          return ProviderAdmissionMutationOutcomeSchema.parse({ admission, counter });
-        });
-      },
-      interrupt: (input: unknown) => {
-        const request = ProviderAdmissionInterruptRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          const current = this.#readRecord(
-            "provider_admissions", request.admissionId, ProviderAdmissionRecordSchema,
-          );
-          if (current === undefined) throw new Error(`provider admission ${request.admissionId} does not exist`);
-          let counter = this.#prepareProviderCounter(current.capability, request.now);
-          if (current.lifecycle.state === "interrupted") {
-            const exact = current.version === request.expectedVersion + 1
-              && current.lifecycle.code === request.code
-              && current.lifecycle.message === request.message
-              && canonicalJsonStringify(current.lifecycle.evidence) === canonicalJsonStringify(request.evidence)
-              && current.lifecycle.interruptedAt === request.now;
-            if (!exact) throw new Error(`provider admission ${request.admissionId} interruption replay differs from durable content`);
-            return ProviderAdmissionMutationOutcomeSchema.parse({ admission: current, counter });
-          }
-          if (current.lifecycle.state !== "reserved" || current.version !== request.expectedVersion) {
-            throw new Error(`provider admission ${request.admissionId} is ${current.lifecycle.state} at version ${String(current.version)}`);
-          }
-          if (counter.activeReservations < 1) throw new Error(`provider counter ${current.capability} has no active reservation to interrupt`);
-          counter = ProviderBudgetCounterSchema.parse({
-            ...counter,
-            activeReservations: counter.activeReservations - 1,
-            ...(request.code === "cost-estimate-breach"
-              ? { blockedByAdmissionId: current.admissionId }
-              : {}),
-            version: counter.version + 1,
-            updatedAt: request.now,
-          });
-          this.#writeProviderCounter(counter, "update");
-          const admission = ProviderAdmissionRecordSchema.parse({
-            ...current,
-            lifecycle: {
-              state: "interrupted",
-              interruptedAt: request.now,
-              code: request.code,
-              message: request.message,
-              accounting: "full-reservation-retained",
-              ...(request.evidence === undefined ? {} : { evidence: request.evidence }),
-            },
-            version: current.version + 1,
-            updatedAt: request.now,
-          });
-          this.#writeProviderAdmission(admission, "update");
-          return ProviderAdmissionMutationOutcomeSchema.parse({ admission, counter });
-        });
-      },
-      sweepExpired: (input: unknown) => {
-        const request = ProviderAdmissionSweepRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM provider_budget_counters ORDER BY capability
-          `).all();
-          const expired: ProviderAdmissionRecord[] = [];
-          const counters: ProviderBudgetCounter[] = [];
-          for (const row of rows) {
-            const initial = parseJsonRecord(
-              ProviderBudgetCounterSchema,
-              JsonRowSchema.parse(row).record_json,
-            );
-            const swept = this.#expireProviderLeases(initial, request.now);
-            expired.push(...swept.expired);
-            counters.push(this.#rollProviderCounter(swept.counter, request.now));
-          }
-          return ProviderAdmissionSweepOutcomeSchema.parse({ expired, counters });
-        });
-      },
-      get: (admissionId: string) => this.#readRecord(
-        "provider_admissions",
-        ProviderAdmissionIdSchema.parse(admissionId),
-        ProviderAdmissionRecordSchema,
-      ),
-      getCounter: (capability: string) => this.#readProviderCounter(capability),
     });
   }
 
@@ -8129,30 +6964,4 @@ export class AuthorityDatabase implements Disposable {
 
   }
 
-  #buildProjectionRepositories(): ProjectionRepositories {
-    const repository = (table: ProjectionTableName): ProjectionRepository => Object.freeze({
-      upsert: (input: unknown) => {
-        const record = ProjectionStorageRecordSchema.parse(input);
-        return this.#projectionWrite(table, () => {
-          this.#database.prepare(`
-            INSERT INTO ${table} (record_key, record_json, created_at) VALUES (?, ?, ?)
-            ON CONFLICT(record_key) DO UPDATE SET
-              record_json = excluded.record_json,
-              created_at = excluded.created_at
-          `).run(record.projectionKey, canonicalJsonStringify(record), record.updatedAt);
-          return record;
-        });
-      },
-      get: (projectionKey: string) => this.#readRecord(table, projectionKey, ProjectionStorageRecordSchema),
-      clear: () => this.#projectionWrite(table, () => {
-        const result = this.#database.prepare(`DELETE FROM ${table}`).run();
-        return sqliteChanges(result.changes);
-      }),
-    });
-    return Object.freeze({
-      spans: repository("spans"),
-      gates: repository("gates"),
-      notes: repository("notes"),
-    });
-  }
 }

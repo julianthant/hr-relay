@@ -71,7 +71,7 @@ export function createSettingsApplicationExecutor(
       if (Buffer.byteLength(canonicalJsonStringify(settings), "utf8") > 1_048_576) {
         return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "document-too-large", message: "ordinary settings document-too-large" });
       }
-      return { state: "applied", revision: current.revision + 1, settings,
+      return { state: "applied", revision: current.revision + 1, settings, restartRequired: true,
         settingsFingerprint: derivePersistedSettingsFingerprint(settings) };
     },
     reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {

@@ -1,3 +1,4 @@
+import type { ProviderAccountingStorage } from "../base/provider-accounting.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type {
@@ -69,6 +70,7 @@ export interface ProviderAdmissionClientDependencies {
   readonly runSignal: AbortSignal;
   readonly adapters: ProviderAdapterRegistry;
   readonly repository: ProviderAdmissionRepository;
+  readonly accounting?: ProviderAccountingStorage;
   readonly clock: Clock;
   readonly idFactory: ProviderAdmissionIdFactory;
   readonly deadlineScheduler: MonotonicDeadlineScheduler;
@@ -366,6 +368,7 @@ export function createAdvisoryProviderClient(dependencies: Readonly<{
   runSignal: AbortSignal;
   adapters: ProviderAdapterRegistry;
   repository: ProviderAdmissionRepository;
+  accounting?: ProviderAccountingStorage;
   clock: Clock;
   idFactory: ProviderAdmissionIdFactory;
   deadlineScheduler: MonotonicDeadlineScheduler;
@@ -382,6 +385,7 @@ export function createAdvisoryProviderClient(dependencies: Readonly<{
     runSignal: dependencies.runSignal,
     adapters: dependencies.adapters,
     repository: dependencies.repository,
+    ...(dependencies.accounting===undefined?{}:{accounting:dependencies.accounting}),
     clock: dependencies.clock,
     idFactory: dependencies.idFactory,
     deadlineScheduler: dependencies.deadlineScheduler,

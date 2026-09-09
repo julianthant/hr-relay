@@ -7,7 +7,6 @@ export {
   type AuthorityRepositories,
   type AuthorityTerminalizationHooks,
   type AuthorityWriteCommitHooks,
-  type ProjectionRepositories,
 } from "./authority-database.js";
 export {
   AUTHORITY_RECORD_SCHEMA_REGISTRY,

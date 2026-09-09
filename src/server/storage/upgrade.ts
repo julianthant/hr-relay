@@ -1,3 +1,4 @@
+import { verifyGeneratedSelection, readGeneratedSourcesAtPath, generatedSourceDigest, preserveGeneratedSources, readPreservedGeneratedSources } from "../../infra/sqlite/generated-conversion.js";
 import { timelineSourcesForUpgrade, preserveTimelineSources, readPreservedTimelineSources } from "../../infra/events/timeline-import.js";
 /** D336 stopped conversion: SQLite settles first; credentials settle independently. */
 import { existsSync, readdirSync, mkdirSync } from "node:fs";
@@ -39,6 +40,7 @@ export interface StorageUpgradeInput {
   readonly environmentFile: string;
   readonly plan: boolean;
   readonly timelineSourceDirectory?: string;
+  readonly generatedSourceDirectory?: string;
   readonly hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void; afterCredentialRename?(): void }>;
 }
 
@@ -82,6 +84,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   requireMigrationSourcePath(path);
   const inspection = existed ? inspectAuthorityBackupReadOnly(path) : undefined;
   const from = inspection?.schemaVersion ?? 0;
+  if (from === 0 && input.generatedSourceDirectory !== undefined) throw new Error("generated-source-copy-requires-retained-backup-authority");
   if (from === 0 && input.timelineSourceDirectory !== undefined) throw new Error("timeline-source-copy-requires-retained-backup-authority");
   let pending: z.infer<typeof AuthorityUpgradeRecordSchema> | undefined;
   let historicalPath: string | undefined;
@@ -90,6 +93,13 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION) {
     pending = readLatestSettingsUpgrade(path);
+    if (pending !== undefined && "format" in pending && pending.generatedImport !== undefined) {
+      const backup = await verifyBackupManifestAtPath(pending.backupManifest, AuthorityDatabase.sourceDatabaseIdentity(path));
+      const manifest=readPreservedGeneratedSources(pending.generatedImport.copyDirectory, pending.generatedImport.manifestDigest, backup);
+      if(input.generatedSourceDirectory!==undefined){
+        verifyGeneratedSelection(input.generatedSourceDirectory,manifest,backup);
+      }
+    }
     if (pending === undefined || pending.phase === "settled") {
       const credentials = createCredentialStore({ stateRoot: input.stateRoot }).read();
       return StorageUpgradeReportSchema.parse({ state: "already-upgraded", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
@@ -111,6 +121,9 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
       || canonicalJsonStringify(pending.importedKeys) !== canonicalJsonStringify(sources.importedKeys))) throw new Error("source-changed: committed SQLite conversion requires its original import sources");
   const backupEvidence = inspection !== undefined && from !== CURRENT_AUTHORITY_SCHEMA_VERSION
     ? await requiredBackup(input.stateRoot, inspection.authorityGeneration, inspection.authorityContentFingerprint) : undefined;
+  const generatedSources = backupEvidence === undefined || from >= 46 ? undefined : readGeneratedSourcesAtPath(path,input.stateRoot,backupEvidence,input.generatedSourceDirectory);
+  const generatedCopyDirectory = generatedSources === undefined || backupEvidence === undefined ? undefined
+    : join(dirname(backupEvidence.manifestPath), "generated-sources", generatedSourceDigest(generatedSources));
   const timelineSources = backupEvidence === undefined ? undefined : timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
   const timelineCopyDirectory = timelineSources === undefined || backupEvidence === undefined ? undefined
     : join(dirname(backupEvidence.manifestPath), "timeline-sources", timelineSources.digest);
@@ -133,7 +146,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
     throw new Error("credential-source-conflict: existing independent credentials must not be overwritten by legacy import");
   }
   if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-    const planned = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, timelineSources, timelineCopyDirectory, verifyOnly: true }, clock);
+    const planned = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, timelineSources, timelineCopyDirectory, generatedSources, generatedCopyDirectory, verifyOnly: true }, clock);
     if (from < 32) store.verifyUpgradePreflight(planned.upgradeId, sources.protectedPatch);
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
@@ -146,8 +159,9 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   try {
     requireStopped(input, clock);
     if (timelineSources !== undefined && backupEvidence !== undefined) preserveTimelineSources(timelineSources, backupEvidence);
+    if (generatedSources !== undefined && backupEvidence !== undefined) preserveGeneratedSources(generatedSources, backupEvidence);
     if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-      pending = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, timelineSources, timelineCopyDirectory,
+      pending = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, timelineSources, timelineCopyDirectory, generatedSources, generatedCopyDirectory,
         bindCredentials: (upgradeId) => { if (Object.keys(sources.protectedPatch).length > 0) store.bindUpgrade(upgradeId, sources.protectedPatch); } }, clock);
     }
     if (pending === undefined || !("format" in pending)) throw new Error("upgrade-evidence-missing");

@@ -1,3 +1,5 @@
+import { createRunResourcesFactory } from "./run-resources.js";
+import { bindFailureCapture } from "../../core/failure-resolution.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
@@ -54,14 +56,11 @@ import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
 } from "../../core/deadline-scheduler.js";
-import type { ProviderAdapterRegistry } from "../../core/provider-admission.js";
-import type { RunProviderWiring } from "../../core/run-executor.js";
 import {
   poolWorkerId,
   runWorkerLoop,
   type WorkerLoopReport,
 } from "../../core/worker-loop.js";
-import { composeDuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
@@ -71,7 +70,6 @@ import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   LOCAL_OPERATOR_ACTOR_ID,
   PositiveIntSchema,
-  ProviderAdmissionIdSchema,
   WorkflowIdSchema,
 } from "../../domain/ids.js";
 import type { PositiveInt } from "../../domain/ids.js";
@@ -79,8 +77,6 @@ import type { WorkerId, WorkflowId } from "../../domain/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../domain/run/worker.js";
 import {
   assertNoMigratedEnvironmentKeys,
-  optionalSecretFamily,
-  providerModelChain,
 } from "../../domain/secrets.js";
 import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
@@ -90,15 +86,10 @@ import {
   createRunBrowserScreenshotCapture,
   createRunDiagnosticCapture,
 } from "../../services/trust/run-diagnostic-capture.js";
-import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../settings-runtime.js";
 import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
-import {
-  createCensusGeocodeAdapter,
-  createNominatimGeocodeAdapter,
-} from "../../infra/providers/geocode-adapters.js";
-import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-extract.js";
-import { createProviderPool } from "../../infra/providers/provider-pool.js";
+
+
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import {
@@ -505,25 +496,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
-  const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
-    config: resolved.config,
-    protectedSecrets,
-    isolation: input.isolation,
-    clock,
-    scheduler,
-    newSessionId: () => ids.uuid(),
-  });
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
-  // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
-  // lease, keyed on the credential identity resolved ONCE here — an
-  // unresolvable identity refuses the whole worker at boot.
-  const duoCeremony = input.duoCeremony ?? composeDuoCeremonyGateFactory({
-    config: resolved.config,
-    leases: database.authority.duoCeremonyLeases,
-    clock,
-    scheduler,
-  });
-
   // D162 (ref data-intake-and-edit-data §4.11): ctx.artifacts' writer, shared with the OCR adapter's
   // page reads. The artifact root is the isolation-pinned literal.
   const artifacts = createContentAddressedArtifactWriter({
@@ -538,41 +511,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     clock,
     ids,
   });
-  const diagnostics = createRunDiagnosticCapture({ service: diagnosticService });
+  const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
-  // D165: the production pool. Model tiers are the OUTER order (legacy
-  // provider-limits' priority tiers) and keys rotate WITHIN a tier, so an
-  // exhaustion answer advances to the next key before falling down a model
-  // tier. No key still composes an EMPTY ocr.extract slot: admission answers
-  // a declaring run `adapter-unavailable` loudly instead of this root
-  // guessing. The keyless public geocoders always compose.
-  const geminiKeys = optionalSecretFamily("geminiApiKeys", env);
-  const ocrModels = providerModelChain("geminiApiKeys", resolved.config);
-  const ocrChildren = ocrModels.flatMap((modelId) =>
-    geminiKeys.map((apiKey, keyIndex) => ({
-      label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
-      adapter: createGeminiOcrExtractAdapter({ apiKey, modelId, artifacts, clock }),
-    })));
-  const adapters: ProviderAdapterRegistry = Object.freeze({
-    ...(ocrChildren.length === 0 ? {} : { "ocr.extract": createProviderPool("ocr.extract", ocrChildren) }),
-    "geocode.census": createCensusGeocodeAdapter({ clock }),
-    "geocode.nominatim": createNominatimGeocodeAdapter({ clock }),
-  });
-  if (ocrChildren.length === 0) {
-    const missing = geminiKeys.length === 0
-      ? "no GEMINI_API_KEY in the environment"
-      : "no providers.gemini.models in Settings";
-    log.warn(`${missing}: the ocr.extract pool is not composed, and a run declaring that capability is denied adapter-unavailable by admission`);
-  }
-  const providers: RunProviderWiring = Object.freeze({
-    adapters,
-    repository: database.authority.providerAdmissions,
-    configSnapshots: database.authority.configSnapshots,
-    idFactory: Object.freeze({
-      next: () => ProviderAdmissionIdSchema.parse(ids.uuid()),
-    }),
-  });
+  const resources = createRunResourcesFactory({authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+    ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
+    ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
+  const baselineResources = resources.baseline(resolved.config);
 
   const stopController = new AbortController();
   const forwardStop = (reason: string) => (): void => {
@@ -737,7 +682,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stores: taskStoreRegistry,
         authority: database,
         lifecycle,
-        sessionFactory,
+        sessionFactory: baselineResources.sessionFactory,
         emitter,
         clock,
         ids,
@@ -745,7 +690,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         taskDeadlineMs: resolved.config.timeouts.taskMs,
         sessionAcquireMs: resolved.config.timeouts.sessionAcquireMs,
         defaultBrowserMode: resolved.config.browser.headless ? "headless" : "headed",
-        duoCeremony,
+        duoCeremony: baselineResources.duoCeremony,
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,
@@ -767,9 +712,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
           if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);
           return outcome;
         }),
-        providers,
+        providers: baselineResources.providers,
+        resourcesForRun: resources.forRun,
+        idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock).config.daemon.idleRepollMs,
         artifacts,
-        writeSequencerFor: (sessions) => createWriteSequencer({
+        writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
           stores: taskStoreRegistry,
           authority: database,
         lifecycle,
@@ -778,7 +725,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
           clock,
           ids,
           scheduler,
-          taskDeadlineMs: resolved.config.timeouts.taskMs,
+          taskDeadlineMs,
           operator: LOCAL_OPERATOR_ACTOR_ID,
           log,
         }),

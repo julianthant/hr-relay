@@ -1,3 +1,8 @@
+import { assertFoundationRetirement } from "../sqlite/foundation-retirement.js";
+import { readGeneratedSources, generatedSourceDigest, readPreservedGeneratedSources, installGeneratedSources, convertGeneratedArtifacts, type GeneratedSourceManifest } from "../sqlite/generated-conversion.js";
+import { convertAppSettings, writeAppSettings, readAppSettings } from "../sqlite/settings-storage.js";
+import { convertProviderStorage } from "../sqlite/provider-storage.js";
+import { convertImportedArtifacts } from "../sqlite/imported-artifacts.js";
 import { convertRunCompletions } from "../sqlite/completion-conversion.js";
 import { deriveBulkChildCommand } from "../../domain/command-groups.js";
 import { timelineSourcesForUpgrade, readPreservedTimelineSources, type TimelineSourceSnapshot } from "../events/timeline-import.js";
@@ -27,7 +32,7 @@ const VersionSchema = z.strictObject({ user_version: z.number().int().nonnegativ
 const GenerationSchema = z.strictObject({ authority_generation: z.number().int().nonnegative() });
 type UpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 type ConversionInput = Readonly<{
-  stateRoot: string; environmentFile: string; timelineSourceDirectory?: string;
+  stateRoot: string; environmentFile: string; timelineSourceDirectory?: string; generatedSourceDirectory?: string;
   hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void }>;
 }>;
 const ORPHAN_GATE_WHERE = "EXISTS (SELECT 1 FROM deleted_runs WHERE deleted_runs.record_key=substr(checkpoint_payloads.record_key,1,36) AND substr(checkpoint_payloads.record_key,37,1)=':')";
@@ -133,9 +138,7 @@ function writeOrdinaryConversion(database: DatabaseSync, sources: UpgradeSources
   database.prepare("INSERT INTO command_audits(record_key,command_id,record_json,created_at) VALUES (?,?,?,?)").run(audit.auditId,request.commandId,canonicalJsonStringify(audit),now);
   const record = SettingsCurrentRecordSchema.parse({ revision, settings: sources.settings, settingsFingerprint,
     commandId: request.commandId, commandFingerprint: deriveSettingsCommandFingerprint(request), auditId: audit.auditId, committedAt: now });
-  const args = [record.revision,record.settingsFingerprint,record.commandId,record.commandFingerprint,record.auditId,canonicalJsonStringify(record),now];
-  if (sources.ordinary.revision === 1) database.prepare("INSERT INTO settings_current(record_key,revision,settings_fingerprint,command_id,command_fingerprint,audit_id,record_json,created_at) VALUES ('current',?,?,?,?,?,?,?)").run(...args);
-  else database.prepare("UPDATE settings_current SET revision=?,settings_fingerprint=?,command_id=?,command_fingerprint=?,audit_id=?,record_json=?,created_at=? WHERE record_key='current'").run(...args);
+  writeAppSettings(database, { format: 1, saved: record, active: readAppSettings(database)?.active ?? null });
   return revision;
 }
 
@@ -210,6 +213,8 @@ export function convertSettingsDatabase(args: Readonly<{
   verifyOnly?: boolean;
   timelineSources?: TimelineSourceSnapshot;
   timelineCopyDirectory?: string;
+  generatedSources?: GeneratedSourceManifest;
+  generatedCopyDirectory?: string;
   bindCredentials?: (upgradeId: string) => void;
   input: ConversionInput; path: string; existed: boolean; from: number;
   inspection: BackupCopyInspection | undefined;
@@ -223,7 +228,7 @@ export function convertSettingsDatabase(args: Readonly<{
       const now = clock.now().toISOString();
       const timelineIdentity = existed ? args.timelineSources?.digest : "fresh";
       if (timelineIdentity === undefined) throw new Error("timeline-import-source-evidence-required");
-      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
+      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, generated: args.generatedSources === undefined ? "fresh" : generatedSourceDigest(args.generatedSources), settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
       if (!existed && args.verifyOnly !== true) { const fd = openSync(path, "wx", 0o600); closeSync(fd); }
       const createdIdentity = !existed && args.verifyOnly !== true ? lstatSync(path) : undefined;
       let database: DatabaseSync | undefined;
@@ -237,6 +242,14 @@ export function convertSettingsDatabase(args: Readonly<{
         if (canonicalJsonStringify(again) !== canonicalJsonStringify(sources)) throw new Error("source-changed: re-plan upgrade");
         const currentTombstones = tombstoneBackfill(existed ? database : undefined, input.stateRoot);
         if (canonicalJsonStringify(currentTombstones) !== canonicalJsonStringify(tombstones)) throw new Error("source-changed: tombstone span evidence");
+        if (args.generatedSources !== undefined && backupEvidence !== undefined) {
+          const again = readGeneratedSources(database, input.stateRoot, backupEvidence, input.generatedSourceDirectory);
+          if (generatedSourceDigest(again) !== generatedSourceDigest(args.generatedSources)) throw new Error("generated-import-source-changed");
+          if (args.verifyOnly !== true) {
+            if (args.generatedCopyDirectory === undefined) throw new Error("generated-source-copy-required");
+            readPreservedGeneratedSources(args.generatedCopyDirectory, generatedSourceDigest(again), backupEvidence);
+          }
+        }
         for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > from)) {
           if (migration.version === 41) convertRunCompletions(database);
           const links = migration.version === 37 ? commandGroupLinks(database, args.ownsCredentialCommandId) : undefined;
@@ -248,6 +261,11 @@ export function convertSettingsDatabase(args: Readonly<{
               if (args.timelineSources === undefined) throw new Error("operation-history-sources-required");
               convertOperationHistory(database, args.timelineSources, now);
             }
+            if (migration.version === 42 && statement === "DROP TABLE intake_sessions") convertImportedArtifacts(database);
+            if (migration.version === 43 && statement === "DROP TABLE provider_admissions") convertProviderStorage(database, now);
+            if (migration.version === 44 && statement === "DROP TABLE runtime_config") convertAppSettings(database);
+            if (migration.version === 46 && statement === "DROP TABLE artifact_outbox") convertGeneratedArtifacts(database, args.generatedSources);
+            if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(database, backupEvidence);
             database.exec(statement);
           }
           if (links !== undefined) applyCommandGroupLinks(database, links);
@@ -285,7 +303,8 @@ export function convertSettingsDatabase(args: Readonly<{
         freezeConvertedArchiveTransactions(database, now);
         const revision = from >= 32 ? sources.ordinary.revision : writeOrdinaryConversion(database, sources, now, upgradeId);
         pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-          by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport, backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
+          by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport,
+          ...(args.generatedSources === undefined ? {} : { generatedImport: { manifestDigest: generatedSourceDigest(args.generatedSources), copyDirectory: args.generatedCopyDirectory, backupSha256: backupEvidence?.manifest.sha256 } }), backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
           ordinaryFingerprint: derivePersistedSettingsFingerprint(sources.settings), sourceFiles: report.sourceFiles, historicalExposure: args.historicalExposure, orphanGateRecordsRemoved: orphanGateRecords, tombstoneBackfill: tombstones.counts,
           credentialCommandId: randomUUID(), credentialWriteId: randomUUID(), importedKeys: report.importedKeys, envKeysToRemove: report.envKeysToRemove });
         appendUpgrade(database, pending);
@@ -294,6 +313,13 @@ export function convertSettingsDatabase(args: Readonly<{
         if (args.verifyOnly !== true) {
           args.bindCredentials?.(upgradeId);
           input.hooks?.beforeCommit?.();
+          if (args.generatedSources !== undefined && backupEvidence !== undefined && args.generatedCopyDirectory !== undefined) {
+            readPreservedGeneratedSources(args.generatedCopyDirectory, generatedSourceDigest(args.generatedSources), backupEvidence);
+            const source = new DatabaseSync(backupEvidence.backupPath, { readOnly: true });
+            try { if (generatedSourceDigest(readGeneratedSources(source, input.stateRoot, backupEvidence, input.generatedSourceDirectory)) !== generatedSourceDigest(args.generatedSources)) throw new Error("generated-import-source-changed"); }
+            finally { source.close(); }
+            installGeneratedSources(args.generatedSources, input.stateRoot);
+          }
           if (existed && backupEvidence !== undefined) {
             const finalSources = timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
             if (finalSources.digest !== args.timelineSources?.digest) throw new Error("timeline-import-source-changed");

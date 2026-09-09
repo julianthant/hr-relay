@@ -85,7 +85,6 @@ const AUTHORITY_WRITERS = [
   "src/core/evidence-receipt.ts",
   "src/core/run-failure.ts",
   "src/services/trust/diagnostic-capture.ts",
-  "src/services/trust/knowledge-service.ts",
   "src/services/notifications/",
   "src/infra/ledger/",
   "src/server/dashboard/commands/",

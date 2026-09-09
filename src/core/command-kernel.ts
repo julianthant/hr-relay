@@ -1,3 +1,7 @@
+import type { CommandApplication } from "./command-application.js";
+export type { CommandApplication } from "./command-application.js";
+import { executeFailureResolution, failureResolutionCapability } from "./failure-resolution.js";
+import { selectRunRuntime, selectNewRunIdentity } from "./run-settings.js";
 import { localDatePart } from "../domain/clock.js";
 import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
 import { retainedRawSubmission } from "../services/start/protected-input.js";
@@ -33,7 +37,6 @@ import { retainedRawSubmission } from "../services/start/protected-input.js";
  */
 import { lifecycleCommandId, type RunMutationOutcome, type RunRecordService } from "./run-record-service.js";
 import type { RunExistence, RunRecordRefusal } from "../domain/authority.js";
-import { RuntimeConfigClaimTokenSchema } from "../domain/config/runtime-generation.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -117,6 +120,7 @@ import {
 /* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   "worker-browser": [
@@ -259,6 +263,7 @@ export const OrdinarySettingsApplicationOutcomeSchema = z.union([
     revision: z.number().int().positive(),
     settingsFingerprint: FingerprintSchema,
     settings: EditableSettingsOverrideSchema,
+    restartRequired: z.boolean().optional(),
   }),
   ...SettingsApplicationRefusalSchemas,
 ]);
@@ -454,6 +459,7 @@ export interface CommandKernelDependencies {
   readonly configIdentity: RunConfigIdentity;
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
+  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
   /**
    * D179: the final projected row/detail/failure for a run a version bump is
    * about to archive. The kernel cannot build these — the projection is a
@@ -500,22 +506,6 @@ class CommandRefusal extends Error {
   }
 }
 
-interface CommandApplication {
-  readonly result: CommandResult;
-  readonly versionChanges: readonly VersionChange[];
-  readonly affectedDependencyIds: readonly string[];
-  /** Compensation for the settings file if the surrounding authority transaction fails. */
-  readonly rollback?: () => void;
-  /** Releases settings-file authority only after the surrounding transaction commits. */
-  readonly commit?: () => void;
-  readonly settingsCurrent?: Readonly<{
-    revision: number;
-    settingsFingerprint: string;
-    commandFingerprint: string;
-    settings: z.infer<typeof EditableSettingsOverrideSchema>;
-  }>;
-  readonly finalizeAfterCommit?: () => void;
-}
 
 function workerPoolTarget(workflowId: string): TargetReference {
   return { family: "worker-pool", workflowId };
@@ -567,7 +557,7 @@ function applied(
   rollback?: () => void,
   commit?: () => void,
   settingsResult?: Readonly<
-    | { kind: "ordinary"; revision: number; settingsFingerprint: string }
+    | { kind: "ordinary"; revision: number; settingsFingerprint: string; restartRequired: boolean }
     | { kind: "protected"; readback: ProtectedSettingsReadback }
   >,
 ): CommandApplication {
@@ -577,7 +567,7 @@ function applied(
       commandId: request.commandId,
       affectedTargets,
       ...(settingsResult?.kind === "ordinary" ? {
-        restartRequired: true,
+        restartRequired: settingsResult.restartRequired,
         settingsRevision: settingsResult.revision,
         settingsFingerprint: settingsResult.settingsFingerprint,
       } : settingsResult?.kind === "protected" ? {
@@ -642,12 +632,6 @@ function requireRun(
 }
 
 
-function runtimeToken(repositories: AuthorityRepositories) {
-  const active = repositories.runtimeConfig.get();
-  if (active === undefined) throw new Error("operator lifecycle command has no active runtime config");
-  return RuntimeConfigClaimTokenSchema.parse({ generation: active.generation, settingsRevision: active.settingsRevision,
-    settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint });
-}
 
 function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): never {
   switch (refusal.reason) {
@@ -878,7 +862,7 @@ function executeRetry(
   const record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
     commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
     runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
-    runtimeConfig: runtimeToken(repositories), appVersion: dependencies.appVersion,
+    runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
   }, descriptor, { title: planning.title(value), subtitle: planning.subtitle(value), actorId: request.requestedBy }));
   return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
     { target: runTarget(record.envelope.runId), before: 0, after: record.version },
@@ -1640,7 +1624,7 @@ function executeIntake(
       // The stamped config identity must be a snapshot a reader can fetch back.
       // A run naming a snapshot authority does not hold could never be replayed
       // against the config it actually ran under.
-      const { configFingerprint, configSnapshotId } = dependencies.configIdentity;
+      const { configFingerprint, configSnapshotId } = selectNewRunIdentity(repositories, dependencies.configIdentity);
       const snapshot = repositories.configSnapshots.get(configSnapshotId);
       if (snapshot === undefined) {
         throw new Error(
@@ -2930,8 +2914,7 @@ function executeArchivedRunRelaunch(
         dryRun: false,
         priority: "interactive",
         shape: "single",
-        configFingerprint: dependencies.configIdentity.configFingerprint,
-        configSnapshotId: dependencies.configIdentity.configSnapshotId,
+        ...selectNewRunIdentity(repositories, dependencies.configIdentity),
         plannedBy: request.requestedBy,
       },
     );
@@ -3062,7 +3045,7 @@ function executeSettings(
       [],
       undefined,
       undefined,
-      { kind: "ordinary", revision: outcome.revision, settingsFingerprint: outcome.settingsFingerprint },
+      { kind: "ordinary", revision: outcome.revision, settingsFingerprint: outcome.settingsFingerprint, restartRequired: outcome.restartRequired ?? true },
     );
     return Object.freeze({
       ...application,
@@ -3149,6 +3132,7 @@ function dispatchActive(
   now: string,
 ): CommandApplication {
   switch (request.family) {
+    case "failure-resolution": return (dependencies.failureResolution?.execute ?? executeFailureResolution)(repositories, request, now);
     case "workflow-batch": {
       const batch = repositories.runSessions.get(request.target.batchId);
       if (batch === undefined) reject(request, "target-not-found", "Workflow batch no longer exists.");
@@ -3278,7 +3262,7 @@ function replay(
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
     ...(settingsVerification?.kind === "ordinary" ? {
-      restartRequired: true,
+      restartRequired: audit.result.restartRequired,
       settingsRevision: settingsVerification.value.revision,
       settingsFingerprint: settingsVerification.value.settingsFingerprint,
     } : settingsVerification?.kind === "protected" ? {
@@ -3474,7 +3458,11 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   };
   return Object.freeze({
     execute(input: unknown, parentCommandId?: string): CommandResult {
-      return executeSync(CommandRequestSchema.parse(input), parentCommandId);
+      const request = CommandRequestSchema.parse(input);
+      if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
+        return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
+      }
+      return executeSync(request, parentCommandId);
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
       const request = CommandRequestSchema.parse(input);

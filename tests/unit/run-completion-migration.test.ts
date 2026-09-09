@@ -1,3 +1,8 @@
+import { convertImportedArtifacts } from "../../src/infra/sqlite/imported-artifacts.js";
+import { convertProviderStorage } from "../../src/infra/sqlite/provider-storage.js";
+import { convertAppSettings } from "../../src/infra/sqlite/settings-storage.js";
+import { convertGeneratedArtifacts } from "../../src/infra/sqlite/generated-conversion.js";
+import { assertFoundationRetirement } from "../../src/infra/sqlite/foundation-retirement.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +19,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js"
 import { OfflineAuthorityRestoreService } from "../../src/infra/sqlite/offline-restore.js";
 import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../src/infra/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { convertRunCompletions } from "../../src/infra/sqlite/completion-conversion.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
 import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
@@ -65,8 +70,15 @@ function conversion(path: string) {
   try {
     raw.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
     convertRunCompletions(raw);
-    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 40)) for (const statement of migration.statements) raw.exec(statement);
-    raw.exec("UPDATE database_state SET schema_version=41; PRAGMA user_version=41; COMMIT");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 40)) for (const statement of migration.statements) {
+      if (migration.version === 42 && statement === "DROP TABLE intake_sessions") convertImportedArtifacts(raw);
+      if (migration.version === 43 && statement === "DROP TABLE provider_admissions") convertProviderStorage(raw,clock.now().toISOString());
+      if (migration.version === 44 && statement === "DROP TABLE runtime_config") convertAppSettings(raw);
+      if (migration.version === 46 && statement === "DROP TABLE artifact_outbox") convertGeneratedArtifacts(raw,undefined);
+      if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(raw,undefined);
+      raw.exec(statement);
+    }
+    raw.exec(`UPDATE database_state SET schema_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; COMMIT`);
   } catch (error) { raw.exec("ROLLBACK"); throw error; }
   finally { raw.close(); }
 }

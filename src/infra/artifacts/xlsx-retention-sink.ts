@@ -1,3 +1,6 @@
+import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
+import type { ArtifactRef } from "../../domain/artifacts.js";
+import { OPERATOR_XLSX_MEDIA_TYPE } from "../../domain/dashboard/xlsx-export.js";
 /**
  * The `xlsx-retention` sink (ref data-intake-and-edit-data §4.1, ref dashboard-surfaces §3.2): one workbook, one
  * stable-keyed idempotent upsert, one atomic replace.
@@ -77,7 +80,7 @@ export interface ArtifactSinkProjectionRequest {
 export interface ArtifactSink {
   readonly sinkId: string;
   /** Applies the row and returns the workbook's new content hash. */
-  project(request: ArtifactSinkProjectionRequest): Promise<Readonly<{ contentSha256: Fingerprint }>>;
+  project(request: ArtifactSinkProjectionRequest): Promise<Readonly<{ contentSha256: Fingerprint; artifact: ArtifactRef }>>;
 }
 
 function contentSha256(bytes: Uint8Array): Fingerprint {
@@ -104,7 +107,7 @@ async function readRows(bytes: Buffer): Promise<string[][]> {
   return first.data.map((row) => row.map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
 }
 
-export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string }>): ArtifactSink {
+export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string; artifacts: ContentAddressedArtifactWriter }>): ArtifactSink {
   const { workbookPath } = options;
   return Object.freeze({
     sinkId: "xlsx-retention",
@@ -158,6 +161,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         }
       }
 
+      if (stored.present) await options.artifacts.put(stored.bytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE });
       const existingRows: string[][] = stored.present ? (await readRows(stored.bytes)).slice(1) : [];
       const upserted = new Map(existingRows.map((cells) => [cells[0] ?? "", cells]));
       const current = upserted.get(intended[0] ?? "");
@@ -169,10 +173,11 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         // A duplicate key with identical content is a VERIFIED no-op: the
         // hash-checked bytes on disk already say what this row says, so
         // nothing is rewritten and the recorded hash stays authoritative.
-        return Object.freeze({ contentSha256: contentSha256(stored.bytes) });
+        return Object.freeze({ contentSha256: contentSha256(stored.bytes), artifact: await options.artifacts.put(stored.bytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }) });
       }
 
       const nextBytes = await composeWorkbook([...upsert(upserted, intended).values()]);
+      const artifact = await options.artifacts.put(nextBytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE });
       await mkdir(dirname(workbookPath), { recursive: true });
       const tempPath = `${workbookPath}.tmp-${String(row.outboxId)}`;
       await writeFile(tempPath, nextBytes);
@@ -189,7 +194,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
       } finally {
         await directoryHandle.close();
       }
-      return Object.freeze({ contentSha256: contentSha256(nextBytes) });
+      return Object.freeze({ contentSha256: contentSha256(nextBytes), artifact });
     },
   });
 }

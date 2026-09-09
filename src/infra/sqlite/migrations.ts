@@ -1,11 +1,15 @@
+import { GENERATED_ARTIFACT_DDL, GENERATED_ARTIFACT_CONSTRAINTS } from "./generated-conversion.js";
+import { APP_SETTINGS_DDL } from "./settings-storage.js";
+import { PROVIDER_REQUEST_DDL, PROVIDER_USAGE_DDL, PROVIDER_STORAGE_CONSTRAINTS } from "./provider-storage.js";
+import { IMPORTED_ARTIFACT_DDL, IMPORTED_ARTIFACT_TRIGGERS } from "./imported-artifacts.js";
 import { TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "./timeline-repository.js";
 import { deepFreeze } from "../../domain/immutability.js";
 import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const UPGRADE_FLOOR_SCHEMA_VERSION = 40;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 41;
+export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 47;
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -45,7 +49,7 @@ export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_finalization_outboxes",
 ] as const;
 type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
-type MigrationTableName = "failures" | "run_terminal_authorizations" | "run_terminal_outbox" | "ledger_partitions" | "ledger_projections" | "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
+type MigrationTableName = "spans" | "gates" | "notes" | "ocr_approvals" | "knowledge_records" | "fix_records" | "artifact_outbox" | "artifact_sink_heads" | "operator_xlsx_exports" | "settings_current" | "runtime_config" | "provider_admissions" | "provider_budget_counters" | "intake_sessions" | "intake_manifests" | "ocr_extractions" | "failures" | "run_terminal_authorizations" | "run_terminal_outbox" | "ledger_partitions" | "ledger_projections" | "authority_meta" | "authority_upgrades" | "diagnostic_bundles" | "diagnostic_attachments" | "evidence_receipts" | "config_snapshots" | "dry_run_scenario_results" | "write_intents" | "write_attempts" | "durable_outbox" | "leases" | "duo_ceremony_leases" | "start_plans" | "tasks" | "run_sessions" | TableName | RetiredPhoneCaptureTable | "protected_settings_current" | "runs_view" | "dependencies" | "delegation_manifests" | "bulk_command_acceptances";
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -75,6 +79,11 @@ const jsonRecordTable = (name: string): string => `
 `;
 
 export const SQLITE_TABLE_DDL = deepFreeze({
+  generated_artifacts: GENERATED_ARTIFACT_DDL,
+  app_settings: APP_SETTINGS_DDL,
+  provider_requests: PROVIDER_REQUEST_DDL,
+  provider_usage: PROVIDER_USAGE_DDL,
+  imported_artifacts: IMPORTED_ARTIFACT_DDL,
   timeline_events: TIMELINE_EVENT_TABLE_DDL,
   timeline_operation_sources: jsonRecordTable("timeline_operation_sources"),
   authority_meta: `
@@ -2033,13 +2042,43 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN SELECT RAISE(ABORT, 'run completion is immutable and requires the exact current claim'); END`,
     ],
   },
+  {
+    version: 42,
+    statements: [
+      IMPORTED_ARTIFACT_DDL,
+      ...IMPORTED_ARTIFACT_TRIGGERS,
+      "DROP TABLE intake_sessions",
+      "DROP TABLE intake_manifests",
+      "ALTER TABLE ocr_extractions RENAME TO extracted_artifacts",
+    ],
+  },
+  { version: 43, statements: [
+    PROVIDER_REQUEST_DDL, PROVIDER_USAGE_DDL, ...PROVIDER_STORAGE_CONSTRAINTS,
+    "CREATE INDEX provider_requests_run_idx ON provider_requests(run_id)",
+    "CREATE INDEX provider_requests_capability_state_idx ON provider_requests(capability,state)",
+    "DROP TABLE provider_admissions", "DROP TABLE provider_budget_counters",
+  ] },
+  { version: 44, statements: [APP_SETTINGS_DDL, "DROP TABLE runtime_config", "DROP TABLE settings_current"] },
+  { version: 45, statements: [
+    `ALTER TABLE run_failures ADD COLUMN resolution_json TEXT NOT NULL DEFAULT '{"status":"unresolved","version":1}' CHECK(json_valid(resolution_json))`,
+    "ALTER TABLE run_failures ADD COLUMN resolution_version INTEGER NOT NULL DEFAULT 1 CHECK(resolution_version > 0)",
+    `CREATE TRIGGER run_failures_evidence_immutable BEFORE UPDATE ON run_failures
+      WHEN NEW.record_key IS NOT OLD.record_key OR NEW.run_id IS NOT OLD.run_id OR NEW.fingerprint IS NOT OLD.fingerprint
+        OR NEW.record_json IS NOT OLD.record_json OR NEW.created_at IS NOT OLD.created_at
+      BEGIN SELECT RAISE(ABORT, 'run failure evidence is immutable'); END`,
+    `CREATE TRIGGER run_failures_resolution_advances BEFORE UPDATE ON run_failures
+      WHEN NEW.resolution_version <> OLD.resolution_version + 1 OR NEW.resolution_version IS NOT json_extract(NEW.resolution_json,'$.version')
+      BEGIN SELECT RAISE(ABORT, 'failure resolution requires next version'); END`,
+  ] },
+  { version: 46, statements: [GENERATED_ARTIFACT_DDL, ...GENERATED_ARTIFACT_CONSTRAINTS, "DROP TABLE artifact_outbox", "DROP TABLE artifact_sink_heads", "DROP TABLE operator_xlsx_exports"] },
+  { version: 47, statements: ["DROP TABLE spans", "DROP TABLE gates", "DROP TABLE notes", "DROP TABLE ocr_approvals", "DROP TABLE knowledge_records", "DROP TABLE fix_records"] },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
   const renamed = (name: string): string => {
     const renames: Readonly<Record<string, string>> = {
-      ...DATABASE_TABLE_RENAMES, failures: "run_failures",
+      ...DATABASE_TABLE_RENAMES, ocr_extractions: "extracted_artifacts", failures: "run_failures",
       write_intents: "run_operations", write_attempts: "run_operation_attempts", durable_outbox: "operation_outbox",
       dependencies: "delegation_dependencies", delegation_manifests: "run_delegations",
       tasks: "workflow_runs", run_sessions: "workflow_run_batches",
@@ -2049,7 +2088,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
   };
   const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox"];
+  const retiredNames: readonly string[] = [...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox", "intake_sessions", "intake_manifests", "provider_admissions", "provider_budget_counters", "settings_current", "runtime_config", "artifact_outbox", "artifact_sink_heads", "operator_xlsx_exports", "spans", "gates", "notes", "ocr_approvals", "knowledge_records", "fix_records"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {
@@ -2057,7 +2096,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
     }
   }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
-  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
   for (const name of retiredNames) {
     if (!TABLE_ORDER.some((migrationName) => migrationName === name || renamed(migrationName) === name)) {
       violations.push(`retired table ${name} is absent from migration history`);

@@ -907,6 +907,8 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
  */
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+  { surface: "wire/run-detail-section", path: "payload.value.resolution.capture.resolution.note", origin: "operator-authored" },
+  { surface: "wire/archived-run-detail", path: "failure.value.resolution.capture.resolution.note", origin: "operator-authored" },
   { surface: "wire/run-detail", path: "gate.label", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "timeline.events[].durationMs.reason", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "gate.reason", origin: "repository-authored" },
