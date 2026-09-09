@@ -243,9 +243,12 @@ automations or dispatch. Full gates and complete independent review remain in 2.
 live database application, HR submission, sibling launch or cleanup of other lanes.
 
 
-```text
-/supervise 2.6.6.4 (S), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.4 S in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 2bb25b6efbe62ca88d64a429f01dc567a76ecfbc. Create codex/settings-activation at /Users/julianhein/Projects/hr-worktree-settings-activation from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
-```
+S now uses the [approved S01–S06 brief](decisions.md#approved-s-execution-brief--2026-09-09).
+The obsolete C0 prompt is retired. Its complete plan commit and exact implementation base are
+resolved by the planning persistence verification below before a READY prompt is supplied; the
+runtime prerequisite alone is not the S plan. Full gates/review stay 2.6.9, with local merge and
+owned cleanup after focused PASS. Follow the updated parallel protocol: default no peer messages,
+only necessary action by an exact affected owner for a concrete unresolved conflict or duty transfer.
 
 
 ## Approved D binding — 2.6.6.2

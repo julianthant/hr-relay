@@ -663,62 +663,246 @@ the final session. Complete field/source mapping, prerequisite allocation and pr
 
 ## C0 execution allocation — 2.6.6.4 S
 
-Prerequisite: **one frozen F release, identical to P/D/G base**. One Astra/high supervisor, zero implementation workers.
-Use the exact `S` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
-This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
-Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
-Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+The [approved S01–S06 brief](#approved-s-execution-brief--2026-09-09) below supersedes this historical allocation. It retains all product proof, repairs the prerequisite binding, and includes the operator-approved focused merge/cleanup and test amendments.
 
-Ordered outcomes: Verify extracted creation/claim/resource/settings ports; implement atomic save/current snapshot selection and per-run effective resource configuration; prove mixed settings, stale review and replay; release to L.
+## Approved S execution brief — 2026-09-09
 
-### Exclusive changing paths
+The operator approved S01–S06 by asking to edit this plan and its prompt after the complete
+proposal, then required the updated parallel protocol. The earlier request explicitly authorizes
+local master merge and owned cleanup here and defers full gates and independent review to 2.6.9.
+This section supersedes the C0 S allocation's obsolete prerequisite, no-master/retained-candidate
+and separate `04-settings-evidence.md` instructions. Product requirements remain at
+[group 2 settings](#approved-group-2-settings-current-settings-and-retained-snapshots) and
+[the C0 settings contract](../../../../reference/clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09).
+Implementation remains unstarted; a scoped S release is not final Phase 2.6 acceptance.
 
-- `src/infra/sqlite/settings-activation.ts` (new target)
-- `src/core/run-settings.ts` (new target)
-- `src/core/run-claim-admission.ts` (new target)
-- `src/server/worker/run-resources.ts` (new target)
-- `src/server/settings-runtime.ts`
-- `src/server/dashboard/commands/settings-service.ts`
-- `src/server/dashboard/commands/start-plan-service.ts`
-- `src/server/dashboard/queries/settings.ts`
-- `src/server/dashboard/queries/settings-editor.ts`
-- `src/dashboard/surfaces/settings.tsx`
-- `src/dashboard/surfaces/settings-model.ts`
+### Prerequisite, allocation and isolation
 
-### Proof and test ownership
+The common runtime prerequisite is **`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`**, containing F's
+complete resolver-port repair. Its tested candidate is `f917ffe7b2308b4746e2aba16719a68cbafdb56c`.
+The [F repair record](foundation.md#f-resolver-port-repair--2026-09-09) and
+[complete cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+bind focused proof and removal of F's branch/worktree. Planning inspected master
+`d3a4d121b2611bdd277663fabb953ea29f6dfa13`, a documentation-only descendant; no S runtime proof
+is inferred from F's 1,195 unit cases, 199 guards and 67 filtered UI cases.
 
-All settings proof above remains. Effective execution/resource values, not fingerprints alone, must change for new runs. Same-run resume keeps old values; new retry/child uses current, without changing write keys or automatic child capabilities. Concurrent save/create and accepted-command replay, invalid save/audit rollback, stale start confirmation, restart and stale owner must be discriminating tests. F binds the creation hooks in all existing callers before release; S edits no global unions or provider implementation.
+| Assignment | Binding |
+| --- | --- |
+| Supervisor and workers | One operator-opened GPT-6 Astra/high supervisor; zero implementation workers and zero reviewers in S. The coupled settings transaction, execution and proof fit one assignment. |
+| Branch and checkout | Create `codex/settings-activation` at `/Users/julianhein/Projects/hr-worktree-settings-activation`; never implement in the primary master checkout. |
+| Implementation base | The verified committed S plan containing this entire section and repaired F. The planner resolves its exact SHA in the launch prompt after persistence; do not start from F alone or uncommitted prose. |
+| Capacity | Recheck refs, physical paths and `git worktree list --porcelain`. At inspection the unrelated `codex/separation-accounting-final` occupied one auxiliary slot. The four-auxiliary limit includes it; no removal, borrowing or capacity assumption is authorized. |
+| Integration | The S supervisor merges only S into local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, after S05 focused PASS and verified exclusive access to that actual mutation. |
+| Order and independence | P/D/G/S consume the same repaired runtime inputs without unmerged sibling APIs. Either S/peer merge order is permitted; do not impose a whole-task queue. Preserve any actual active owner's boundary. |
+| Downstream and final acceptance | L consumes the recorded S candidate/integration with the other actual releases. Final 2.6.9 owns combined pair/order proof, remaining repairs, full gates and fresh complete read-only `sup_review`. No new handoff handshake is required for these already assigned duties. |
 
-- `tests/unit/settings-activation/save-create.test.ts` (new required test)
-- `tests/unit/settings-activation/mixed-execution.test.ts` (new required test)
-- `tests/unit/settings-activation/retry-child.test.ts` (new required test)
-- `tests/unit/settings-activation/stale-plan.test.ts` (new required test)
-- `tests/unit/server/settings-runtime-reader.test.ts`
-- `tests/unit/server/settings-facts.test.ts`
-- `tests/unit/dashboard/settings-editor-surface.test.ts`
-- `tests/unit/dashboard/settings-editor-client.test.ts`
+### Exact write ownership
 
-Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
-followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
-and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
-with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
-before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
-Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
-and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+The eleven production files remain unchanged from the admitted allocation:
 
-The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
-owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
-prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
-or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
-prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+```text
+src/infra/sqlite/settings-activation.ts
+src/core/run-settings.ts
+src/core/run-claim-admission.ts
+src/server/worker/run-resources.ts
+src/server/settings-runtime.ts
+src/server/dashboard/commands/settings-service.ts
+src/server/dashboard/commands/start-plan-service.ts
+src/server/dashboard/queries/settings.ts
+src/server/dashboard/queries/settings-editor.ts
+src/dashboard/surfaces/settings.tsx
+src/dashboard/surfaces/settings-model.ts
+```
 
-Release committed candidate/base/tree and focused evidence to the next named consumer. No master
-integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
-Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+S owns the eight unit files below, new local fixture/support files under
+`tests/unit/settings-activation/`, and settings-specific cases in
+`tests/unit/worker-composition.test.ts` and `tests/unit/server/compose-real-port.test.ts`.
+These two bounded amendments replace explicit old restart expectations with the new contract;
+preserve corruption, protected-settings, historical and stale-owner negative controls. No P/D/G
+test ownership intersects these additions. Other suites may be run/read but not rewritten.
 
-Authored release evidence: `04-settings-evidence.md` in this folder (new, exclusively owned by S).
-The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
-only the consuming prerequisite/finalizer updates shared status.
+S also owns new `tests/parity/settings-activation.spec.ts`,
+`tests/parity/helpers/fixture-settings-activation.ts` and
+`tests/parity/references/settings-activation-*`. Use isolated fixtures and reference names;
+do not modify shared fixture-day/bff helpers or unrelated references. Do not edit D's resolution
+cases in command-kernel/four-way-independence or P's authority-database invariant.
+
+This section is the sole authored plan, progress, evidence and delivery-assessment owner. Serialize
+only necessary S pointer/status updates in the combined README, prerequisites, PROMPTS, parent
+2.6 README, roadmap source/generated site, D191 and decision pointer index. Shared generators own
+their outputs; source registries, migrations, guard inventory, global unions, composition roots
+and peer production files remain excluded. Any new required shared code change returns for an
+ownership amendment before dependent work proceeds.
+
+### Feasibility and acceptance proof
+
+| Requirement and inspected mechanism | Required implementation/proof at the earliest stable boundary |
+| --- | --- |
+| Atomic save and full resolution | F now supplies `(settings) => ResolvedConfig` from dashboard and stopped-upgrade composition. S retains that result and uses existing snapshot/current/activation repositories inside the kernel transaction. Prove one complete commit, unchanged generation/journal/audit/snapshot selection on failure, revision conflict, malformed resolution and injected audit failure. |
+| Host defaults and historical integrity | The returned configuration includes provenance and fingerprint; never infer a hidden host default from a previously overridden snapshot. Clear both display overrides and prove established host defaults return without materializing defaults in saved settings. Preserve old snapshots, valid historical restart-required audits and command binding; corrupt/missing authority fails distinctly. |
+| New creation and accepted replay | F routes direct creation, intake/fan-out, retry/restart and existing parent-linked creation through S's selector inside their transactions. Prove current selection, one snapshot per atomic group, later child selection, and exact accepted-command replay after another save without new runs/snapshots/resolution. Do not add an automatic child producer or archive-relaunch functionality. |
+| Reviewed start acceptance | F calls S's current-settings predicate before plan consumption. Prove changed settings yield `replan-required`, no plan consumption/run/session publication, and a freshly confirmed replacement uses current settings. Accepted replay precedes this check and retains original results. |
+| Mixed execution and ownership | Worker composition now reads the current token in the directive/claim transaction and resolves resources from each run's retained snapshot. S separates current authorization from old/new snapshot eligibility. Prove queued/running/paused/resumed old runs remain executable, new runs use new actual timeout/browser/display/session/provider configuration, and stale owners/claims still cannot execute. No blanket removal of fencing. |
+| Save/create ordering and restart | Use independent SQLite connections and valid positive controls: create before save keeps old settings; create after save gets new; an in-flight competing writer cannot observe a partial state. Reopen authority and prove selection and historical references survive. No operator DB or live upgrade is involved. |
+| Process and safety boundaries | Current idle cadence applies at the next idle boundary without retiming active work. Retained run resources govern execution. Preserve runtime-isolation, host-probe and provider-environment process scope, shared quota counters, protected next-use rules, original inputs/instance/dryRun/delegation checks, operation keys, checkpoint eligibility and UNKNOWN refusal. A new snapshot never relabels reused observations as new effects. |
+| Settings readback and UI | Real ordinary save returns no restart requirement and readback identifies current saved configuration; existing runs remain explicitly bound to their originals. Verify valid save, invalid/conflicting save, pending/error states, refreshed reads, reset-to-default, keyboard/focus and desktop layout. Current production HTTP and worker regressions require updating two formerly restart-based test cases/areas rather than leaving knowingly failing tests for 2.6.9. |
+
+The resolver and shared creation/acceptance/composition blockers discovered during planning are
+closed by F. Source inspection proves owners and reachable boundaries, not S behavior. No actual
+deployment, operator-state migration or live-target acceptance is assigned; synthetic isolated
+runtime/SQLite/browser fixtures are the proof target. Preserve the original historical recovery
+and final phase-wide acceptance obligations for 2.6.9.
+
+### Ordered execution
+
+| Step | Outcome and completion evidence |
+| --- | --- |
+| S01 — Bind scope | Verify approved plan/F ancestry, complete F receipt, exact branch/path ownership and capacity. Create the isolated lane, read nearest server/dashboard rules, and record base/HEAD. |
+| S02 — Atomic activation | Implement complete save-and-activate plus authenticated readback within the existing transaction; pass save/create, rollback, reset-to-default, historical and replay cases. |
+| S03 — Execution and replay | Implement mixed-snapshot claim eligibility and retained effective resources. Prove new retry/child versus same-run resume, concurrent order, stale-owner refusal and restart. Preserve all safety identities and shared accounting. |
+| S04 — Review and Settings UI | Complete stale-plan/fresh-confirmation and exact replay proof. Use `/ui` locally, Components/Content with existing design, and update Settings copy/status and focused desktop proof. |
+| S05 — Focused release | Run the complete focused commands below, fix owned failures, commit logical categories with exact paths and freeze evidence against candidate SHA/tree. S remains unfinished until integration/cleanup. |
+| S06 — Merge and cleanup | Verify master target ownership/cleanliness and plan/candidate identity; integrate only S, run invalidated integration checks or prove unchanged-input reuse, record the scoped release, preserve evidence and remove owned resources with verified absence. |
+
+Send Done / Now / Remaining at start/resume and after each verified step, before the next tool
+call. Keep every unfinished S step, integration and cleanup visible; state that complete review
+and full phase acceptance remain at 2.6.9. Do not dispatch siblings or a reviewer from S.
+
+### Reproducible focused gates and evidence cadence
+
+The installed Vitest config inherits project settings; bind one effective file worker at root and
+project level. Recreate an external resource-only adapter in
+`/tmp/hr-settings-activation-proof/vitest-one.config.mts` with this content:
+
+```ts
+import baseline from "/Users/julianhein/Projects/hr-worktree-settings-activation/vitest.config.ts";
+export default { ...baseline, test: { ...baseline.test, maxWorkers: 1,
+  projects: baseline.test!.projects!.map((project) => {
+    if (typeof project !== "object") throw new Error("unexpected project configuration");
+    return { ...project, test: { ...project.test, maxWorkers: 1 } };
+  }),
+} };
+```
+
+Verify by inspection/object comparison that only root/project `maxWorkers` differs; retain the
+adapter and resolved/observed worker evidence. Preserve project include/exclude lists, isolation,
+deadlines, assertion membership and coverage floors. The four-effective-worker batch ceiling
+includes other active invocations; use actual process/resource evidence, not a reservation survey.
+
+From the S worktree, use
+`VITEST_MAX_WORKERS=1 npm run test -- --config /tmp/hr-settings-activation-proof/vitest-one.config.mts --project unit --maxWorkers=1`
+followed by all these explicit selectors for the committed focused release:
+
+```text
+tests/unit/settings-activation/save-create.test.ts
+tests/unit/settings-activation/mixed-execution.test.ts
+tests/unit/settings-activation/retry-child.test.ts
+tests/unit/settings-activation/stale-plan.test.ts
+tests/unit/server/settings-runtime-reader.test.ts
+tests/unit/server/settings-facts.test.ts
+tests/unit/dashboard/settings-editor-surface.test.ts
+tests/unit/dashboard/settings-editor-client.test.ts
+tests/unit/worker-composition.test.ts
+tests/unit/server/compose-real-port.test.ts
+tests/unit/sqlite-settings-authority.test.ts
+tests/unit/run-record-service/service.test.ts
+tests/unit/command-kernel-restart.test.ts
+tests/unit/start-plan.test.ts
+tests/unit/server/start-plan-omissions.test.ts
+tests/unit/intake-command-arms.test.ts
+tests/unit/worker-loop.test.ts
+tests/unit/database-foundation/four-way-independence.test.ts
+```
+
+Use the same invocation with `--project architecture` for:
+
+```text
+tests/unit/architecture/sqlite-settings-authority.test.ts
+tests/unit/architecture/settings-catalog.test.ts
+tests/unit/architecture/strict-boundary-schemas.test.ts
+tests/unit/architecture/dashboard-wire-boundary.test.ts
+tests/unit/architecture/worker-loop-writes-only-through-the-service.test.ts
+tests/unit/architecture/roadmap-doc-binding.test.ts
+```
+
+Run `npm run lint` whenever tests run. Run affected generators before freshness checks:
+`npm run build:manifest` / `npm run build:manifest:check`, `npm run stores:catalog` /
+`npm run stores:catalog:check`, and `npm run roadmap` / `npm run roadmap:check`.
+Check local Markdown links, instruction twins/32,768-byte chains and `git diff --check` for records.
+
+Desktop commands:
+
+```sh
+npm run test:parity -- tests/parity/settings-activation.spec.ts --workers=1
+npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'settings|start' --workers=1
+```
+
+The dedicated test covers actual served save/refusal/readback behavior, both themes, minimum
+1024×720 desktop, zoom/wrapping, keyboard/focus, pending/error/conflict and reset-to-default.
+Deliberately create only its new references with `/ui` visual inspection and
+`npm run test:parity:update -- tests/parity/settings-activation.spec.ts --workers=1`, then run the
+assert command. Existing references remain unchanged. The filtered runner's necessary candidate
+bundle build is allowed; broad production-build acceptance remains deferred. Manual browser work
+uses the required playwright-cli playbook; do not switch to prohibited browser MCPs.
+
+Iteration runs affected subsets; logical candidate commits require the complete applicable focused
+evidence. Record commands/exits, selectors, tested SHA/tree, inputs and logs at this owner. Evidence
+recording alone uses documentation checks and explicit unchanged-input comparisons, not fabricated
+runtime reruns. Integration changes rerun every invalidated check and neighboring safety cases;
+same execution/test/configuration/dependency inputs permit documented D191 reuse. No failing check
+is waived or assertion weakened. Full typecheck/coverage, whole architecture/parity, broad
+build/performance, original phase-wide recovery/scenario proofs and independent review remain
+**2.6.9**, not a prerequisite to an S commit or merge.
+
+### Updated parallel coordination and completion
+
+Read `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and **Parallel coordination** in
+`~/.agents/skill-library/focused-sessions/REFERENCE.md` at execution. Default to independent work
+and **no peer messages**. Following the protocol does not request check-ins, reservation rounds,
+readiness announcements or a group-wide slot. Existing grants for actual shared mutations remain
+binding until verified release; do not infer acquisition from silence, elapsed time or clean Git.
+
+Use committed plans, Git and existing evidence first. Message only the exact affected known owner
+when an unresolved blocker, conflicting write/resource claim, changed required input or necessary
+duty transfer requires that owner's action and cannot be resolved from primary evidence. No
+broadcasts, acknowledgment loops, copied gate reports or proactive release relays. For an actual
+conflict use a supported acquisition check if available, otherwise one request to the owner and
+one verified release only when needed to unblock that named waiter. This plan creates no lock,
+queue, scheduler or new task. Keep worktree-local work running while only the conflict waits.
+
+Shared planning documents/indexes and master merge/regeneration are real shared mutations.
+Recheck target HEAD and ownership immediately before them, preserve every sibling change, stage
+exact paths and release after that operation. Worktree-local reports, temporary fixtures and
+ephemeral ports remain isolated. Do not request group availability for a clean checkout. On a new
+scope or actual overlapping code claim, stop that dependent operation for amendment rather than
+taking another owner's file. P's limited DB invariant and D's test/timeline additions remain theirs.
+
+After S05, the S supervisor still owns S06; recording a candidate does not transfer integration or
+cleanup. L and 2.6.9 already own their recorded downstream duties and need no new acceptance
+handshake or status message. Use native delivery/committed evidence; explicitly obtain acceptance
+only when transferring a duty S still owns. End the active turn once assigned work/processes are
+complete. Do not monitor siblings, invent automation or launch successors. Resume only for an
+owned repair/missing evidence/assigned verification or the operator's continuation; preserve unique
+interrupted state with `/handoff` if it is not already recorded here.
+
+For S06, apply `/worktree-sweep` to the exact S lane. From a safe integration checkout after
+switching command work away from the owned checkout, verify S is integrated, preserve ignored
+proof outside it, stop only owned processes, remove with ordinary `git worktree remove`, and delete
+with `git branch -d`. Verify registration, physical path and ref absence; never remove the primary
+checkout, an active supervisor checkout, unrelated lane or dependency target. Record final master,
+candidate/integration/tree identities, gate/reuse evidence and actual cleanup results in this
+section and a preserved machine-readable receipt. No current task archival, push, live DB upgrade,
+HR submission or unrelated cleanup is authorized. Report residue instead of claiming closure.
+
+### Planning persistence and launch state
+
+Approval covers S01–S06, the two settings-specific test amendments, isolated desktop proof, local
+merge/cleanup and updated coordination protocol. Planning persists this full section and synchronized
+S pointers, runs documentation gates/lint/freshness, commits exact paths, verifies committed content
+and prerequisite ancestry, then provides a resolved prompt and stops. No product implementation
+or child launch occurs in this planning session. The dated verification record below binds actual
+plan/base identities after commit; the runtime prerequisite alone is never the S plan SHA.
+
 
 ## C0 execution allocation — 2.6.7.1 A
 

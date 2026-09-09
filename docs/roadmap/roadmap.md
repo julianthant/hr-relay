@@ -1164,6 +1164,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.4; assignment S; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | S plan approved | S01–S06 on repaired F 2bb25b6ef; eleven production paths, bounded settings test amendments and isolated desktop proof. Focused checks, local master merge and owned cleanup here; full gates/review remain 2.6.9. Updated parallel protocol, no implementation launched
 
 
 #### 7 · Prepare independent archive and summary tasks {#p2db-lifecycle-foundation}
@@ -3756,6 +3757,15 @@ retains G’s isolated production/test scope after repaired F and assigns its su
 merge and owned cleanup after focused PASS. Full gates and complete independent review remain in
 2.6.9 under D191. This supersedes generic retention/final-master timing for G only; implementation
 is unstarted and no sibling launch, push or live database application is authorized.
+
+**S-specific operator exception, 2026-09-09:** approved
+[S01–S06](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-s-execution-brief--2026-09-09)
+retains S's eleven production paths on complete repaired F and admits the two bounded settings
+test amendments and isolated desktop proof. The same supervisor owns focused checks, local master
+merge and verified owned cleanup. This supersedes generic S retention/no-peer-merge timing;
+full gates and complete independent review remain 2.6.9 under D191. Default to independent work
+and no peer messages, serializing only actual shared mutations and evidenced conflicts. No
+implementation, sibling launch, live upgrade or push is authorized by planning.
 
 ### Parallel group shape for future plans (2026-09-09)
 

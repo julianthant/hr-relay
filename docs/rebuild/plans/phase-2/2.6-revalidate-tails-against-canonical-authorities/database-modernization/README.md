@@ -61,6 +61,16 @@ original six-file scope. The same supervisor performs focused checks, local mast
 cleanup. This overrides generic retained-candidate/no-master timing for G only; full gates and
 complete independent review remain in 2.6.9. Implementation is not started by this record.
 
+**S-specific approval, 2026-09-09:** the operator approved
+[S01–S06](decisions.md#approved-s-execution-brief--2026-09-09) on repaired F
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, retaining eleven production paths and adding only
+the two settings-specific worker/composed-HTTP test amendments and isolated desktop proof. The S
+supervisor runs focused tests, lint and affected freshness, merges locally and cleans up its owned
+worktree/ref. Full gates and complete independent review remain in 2.6.9. Updated parallel
+coordination defaults to no peer messages and serializes only actual shared mutations/conflicts;
+no reservation round, speculative queue or successor dispatch is implied. This supersedes S's
+generic no-master/retained-candidate and separate evidence-file wording. Implementation is unstarted.
+
 ## Roadmap identity
 
 The operator requested visible prerequisite and parallel-child cards matching Phase 3.1. The

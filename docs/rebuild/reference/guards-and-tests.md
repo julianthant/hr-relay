@@ -1333,6 +1333,16 @@ verify input equality before reuse. Full typecheck/coverage, broad architecture/
 performance, combined archive/recovery proof and complete independent review remain in 2.6.9.
 G completion is a scoped development release only; no push, live application or sibling launch.
 
+**2026-09-09 S integration exception.** The operator approved 2.6.6.4 S
+[S01–S06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-s-execution-brief--2026-09-09).
+After complete repaired F, run the assigned focused units/guards, lint, affected freshness and
+isolated/filtered desktop proof; merge locally and remove only S's owned checkout/ref. This
+supersedes S's generic no-master/retained-candidate timing. Rerun invalidated integration checks
+or prove exact unchanged-input reuse. Full typecheck/coverage, whole architecture/parity, broad
+build/performance, original phase-wide recovery/scenario proof and complete independent review
+remain 2.6.9. No failing assertion, floor, safety boundary or sibling ownership is waived. S
+completion means a merged scoped development release, not full phase acceptance.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->
