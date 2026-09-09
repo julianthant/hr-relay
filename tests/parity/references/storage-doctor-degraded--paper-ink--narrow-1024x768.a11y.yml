@@ -57,7 +57,7 @@
     - button "Run the read-only storage doctor": Run storage doctor
     - text: Read-only doctor · checked 9:01 AM
     - img "Done"
-    - text: Authority healthy — schema v27 · generation 41 · 12 pages pending commands 0 unresolved write intents 0 leases 0 terminal outbox 0 provider reservations 0 artifact outbox 0
+    - text: Authority healthy — schema v27 · generation 41 · 12 pages pending commands 0 unresolved write intents 0 leases 0 provider reservations 0 artifact outbox 0
     - region "Span authority degraded":
       - img "Review"
       - heading "Span authority degraded" [level=3]

@@ -385,7 +385,7 @@ const RaceEventSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("error"), message: z.string() }),
   z.strictObject({ type: z.literal("result"), outcome: z.discriminatedUnion("state", [
     z.strictObject({ state: z.enum(["applied", "applied-already"]), run: RunRecordSchema }),
-    z.strictObject({ state: z.literal("refused"), refusal: z.strictObject({ reason: z.literal("none-eligible") }) }),
+    z.strictObject({ state: z.literal("refused"), refusal: z.strictObject({ reason: z.enum(["none-eligible", "lost"]) }) }),
   ]) }),
 ]);
 
@@ -896,7 +896,7 @@ describe("canonical run-record service", () => {
     assert.equal(interrupted.database.getMeta().authorityGeneration, before);
     assert.equal(interrupted.database.authority.failures.get(UUID_6), undefined);
     assert.equal(interrupted.database.authority.runResults.get(interruptedRun.envelope.runId), undefined);
-    assert.equal(interrupted.database.authority.terminalAuthorizations.get(interruptedRun.envelope.runId), undefined);
+    assert.equal(interrupted.database.authority.runs.get(interruptedRun.envelope.runId)?.completion, undefined);
     assert.deepEqual(interrupted.service.read(interruptedRun.envelope.runId), {
       state: "present",
       disposition: "live",
@@ -912,7 +912,7 @@ describe("canonical run-record service", () => {
     assert.equal(applied.run.version, running.version + 1);
     assert.equal(normal.database.authority.failures.listByRun(running.envelope.runId).length, 1);
     assert.equal(normal.database.authority.runResults.get(running.envelope.runId), undefined);
-    assert.ok(normal.database.authority.terminalAuthorizations.get(running.envelope.runId));
+    assert.ok(normal.database.authority.runs.get(running.envelope.runId)?.completion);
     const replayGeneration = normal.database.getMeta().authorityGeneration;
     const replay = normal.service.terminalize(request, personLookupDescriptor);
     assert.equal(replay.state, "applied-already");
@@ -2137,4 +2137,78 @@ describe("worker lifecycle service capability", () => {
     assert.deepEqual(result.run, requested);
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
+});
+
+
+for (const finishingGeneration of [2, 3]) {
+  it(`C P1/P4 rejects A generation1 after reassignment; generation${finishingGeneration} finishes and Retry preserves completion`, () => {
+    const f = fixture(); let next = 20;
+    const id = () => `99000000-0000-4000-8000-${String(next++).padStart(12, "0")}`;
+    let running = runningRun(f.service, f.request, f.runtimeConfig);
+    const stale = failureTerminalRequest(running, id());
+    for (let generation = 2; generation <= finishingGeneration; generation++) {
+      assert.equal(f.service.requeue({ commandId: id(), runId: running.envelope.runId,
+        expectedVersion: running.version, cause: "recovery", staleBefore: LATER }).state, "applied");
+      const workerId = generation === 2 ? "worker-b" : WORKER_ID;
+      const claimed = requireLifecycleApplied(f.service.claimNext({ commandId: id(), workflow: WORKFLOW_ID, workerId, runtimeConfig: f.runtimeConfig }));
+      assert.equal(claimed.claimGeneration, generation);
+      const claim = { workerId, claimGeneration: generation };
+      requireLifecycleApplied(f.service.workerTransition({ commandId: id(), runId: claimed.envelope.runId,
+        claim, lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW } }));
+      running = requireLifecycleApplied(f.service.workerTransition({ commandId: id(), runId: claimed.envelope.runId,
+        claim, lifecycle: { state: "running", workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "crm-dates" } }));
+      const before = f.database.getMeta();
+      assert.deepEqual(f.service.terminalize(stale, personLookupDescriptor), { state: "refused", refusal: { reason: "lost" } });
+      assert.deepEqual(f.database.getMeta(), before);
+      assert.equal(f.database.authority.runs.get(running.envelope.runId)?.completion, undefined);
+    }
+    const current = failureTerminalRequest(running, id());
+    current.terminal.authorization.claim = { workerId: finishingGeneration === 2 ? "worker-b" : WORKER_ID, claimGeneration: finishingGeneration };
+    const terminal = requireLifecycleApplied(f.service.terminalize(current, personLookupDescriptor));
+    assert.equal(terminal.completion?.claim.claimGeneration, finishingGeneration);
+    const retry = requireLifecycleApplied(f.service.retry({ commandId: id(), runId: terminal.envelope.runId,
+      expectedVersion: terminal.version, runtimeConfig: f.runtimeConfig }, personLookupDescriptor));
+    assert.notEqual(retry.envelope.runId, terminal.envelope.runId);
+    assert.equal(retry.envelope.retryOf, terminal.envelope.runId);
+    assert.equal(retry.completion, undefined);
+    assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId), terminal);
+    assert.equal(f.service.terminalize(current, personLookupDescriptor).state, "applied-already");
+    const claims = f.database.authority.timelineEvents.page({}).filter((record) => record.payload.kind === "span" && record.payload.event.t === "run.claimed");
+    assert.equal(claims.length, finishingGeneration);
+    claims.forEach((record, index) => {
+      assert.ok(record.payload.kind === "span" && record.payload.event.t === "run.claimed");
+      assert.equal(record.payload.event.claimGeneration, index + 1);
+    });
+  });
+}
+
+it("C P1 competing connections cannot accept conflicting failure settlements", async () => {
+  const f = fixture(); const running = runningRun(f.service, f.request, f.runtimeConfig);
+  const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
+  const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
+  secondRequest.terminal.failure.failureId = UUID_5;
+  secondRequest.terminal.authorization.failureId = UUID_5;
+  const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
+  const connections = [firstRequest, secondRequest].map((request, index) => raceConnection({
+    path: join(f.root, "authority.sqlite"), now: NOW, release: releases[index], runId: running.envelope.runId,
+    operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
+  }));
+  const [first, second] = connections; assert.ok(first && second && releases[0] && releases[1]);
+  try {
+    assert.deepEqual(await first.next(), { type: "ready" }); assert.deepEqual(await second.next(), { type: "ready" });
+    first.worker.postMessage("run"); assert.deepEqual(await first.next(), { type: "reserved" });
+    second.worker.postMessage("run"); const busy = await second.next(); assert.equal(busy.type, "error");
+    if (busy.type !== "error") throw new Error("competing settlement did not encounter held transaction");
+    assert.match(busy.message, /locked|busy/);
+    assert.deepEqual(f.database.authority.runs.get(running.envelope.runId), running);
+    Atomics.store(new Int32Array(releases[0]), 0, 1); Atomics.notify(new Int32Array(releases[0]), 0);
+    const accepted = await first.next(); assert.equal(accepted.type, "result");
+    if (accepted.type !== "result") throw new Error("winning settlement missing");
+    assert.equal(accepted.outcome.state, "applied");
+    Atomics.store(new Int32Array(releases[1]), 0, 1); second.worker.postMessage("run");
+    assert.deepEqual(await second.next(), { type: "result", outcome: { state: "refused", refusal: { reason: "lost" } } });
+    assert.equal(f.database.authority.failures.listByRun(running.envelope.runId).length, 1);
+    assert.equal(f.database.authority.failures.get(UUID_5), undefined);
+    assert.equal(f.database.authority.lifecycleJournal.getCommand(secondRequest.commandId), undefined);
+  } finally { await Promise.all(connections.map(({ worker }) => worker.terminate())); }
 });

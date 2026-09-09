@@ -1,3 +1,5 @@
+import { RunRecordService } from "../../src/core/run-record-service.js";
+import { completionFromAuthorization } from "../../src/domain/run/completion.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,9 +17,6 @@ import {
   deriveRunResultDigest,
   deriveTerminalDependencyDigest,
 } from "../../src/domain/run/result.js";
-import {
-  RunTerminalOutboxRecordSchema,
-} from "../../src/domain/run/terminal-outbox.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import type {
   AuthorityTerminalizationHooks,
@@ -73,12 +72,12 @@ function corruptRunConsequence(
     // These fixtures model offline corruption after write-time guards have run.
     // Removing only the monotonic trigger lets each strict record mismatch stay
     // independent instead of forcing an unrelated version increment.
-    raw.exec("DROP TRIGGER tasks_monotonic_counters_update");
+    raw.exec("DROP TRIGGER tasks_monotonic_counters_update; DROP TRIGGER workflow_runs_completion_update; DROP TRIGGER workflow_runs_completion_immutable");
     const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
       .get(RUN_ID) as { record_json: string } | undefined;
     if (row === undefined) throw new Error(`run ${RUN_ID} is absent from corruption fixture`);
     const current = RunRecordSchema.parse(JSON.parse(row.record_json));
-    const corrupted = RunRecordSchema.parse(mutate(current));
+    const corrupted = mutate(current) as RunRecord;
     const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
     const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
     raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
@@ -183,7 +182,7 @@ function failureAuthorization(run: ReturnType<typeof startRunning>) {
   };
 }
 
-function resultAndOutbox(database: AuthorityDatabase, run: ReturnType<typeof startRunning>) {
+function resultRequest(database: AuthorityDatabase, run: ReturnType<typeof startRunning>) {
   const activeCheckpoint = RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow,
     itemId: run.envelope.itemId,
@@ -209,18 +208,6 @@ function resultAndOutbox(database: AuthorityDatabase, run: ReturnType<typeof sta
     CLOCK,
   );
   const result = built.record;
-  const outbox = RunTerminalOutboxRecordSchema.parse({
-    outboxId: UUID_7,
-    payload: {
-      kind: "run-terminal-result",
-      runId: result.runId,
-      workflowId: result.workflowId,
-      attempt: result.attempt,
-      resultDigest: result.resultDigest,
-    },
-    projection: { state: "pending" },
-    createdAt: result.createdAt,
-  });
   const authorization = {
     kind: "done" as const,
     runId: result.runId,
@@ -232,9 +219,8 @@ function resultAndOutbox(database: AuthorityDatabase, run: ReturnType<typeof sta
     claim: CLAIM,
     authorizedAt: LATER,
     resultDigest: result.resultDigest,
-    outboxId: outbox.outboxId,
   };
-  return { result, outbox, authorization, factoryAuthorization: built.authorization };
+  return { result, authorization, factoryAuthorization: built.authorization };
 }
 
 afterEach(() => {
@@ -262,7 +248,7 @@ describe("atomic failure terminal authority", () => {
     });
     assert.deepEqual(database.authority.failures.get(UUID_6), record);
     assert.deepEqual(database.authority.failures.listByRun(RUN_ID), [record]);
-    assert.deepEqual(database.authority.terminalAuthorizations.get(RUN_ID), request.authorization);
+    assert.deepEqual(database.authority.runs.get(RUN_ID)?.completion, completionFromAuthorization(request.authorization));
     assert.equal(database.terminalizeFailure(personLookupDescriptor, request).state, "replayed");
     assert.throws(
       () => database.terminalizeFailure(personLookupDescriptor, {
@@ -376,13 +362,13 @@ describe("atomic failure terminal authority", () => {
       corruptRunConsequence(mutate);
       assert.throws(
         () => database.terminalizeFailure(personLookupDescriptor, request),
-        /does not match its exact failed terminal authorization consequence/,
+        /completion|terminal consequence/,
         name,
       );
     }
   });
 
-  for (const injectedStep of ["authorization", "failure", "run"] as const) {
+  for (const injectedStep of ["failure", "run"] as const) {
     it(`rolls back every failure terminal write when ${injectedStep} persistence fails`, () => {
       const database = openDatabase({
         afterFailureStorageStep: (step) => {
@@ -397,7 +383,7 @@ describe("atomic failure terminal authority", () => {
         authorization: failureAuthorization(running),
       }), /injected/);
       assert.equal(database.authority.failures.get(UUID_6), undefined);
-      assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+      assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
       assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
       assert.equal(database.getMeta().authorityGeneration, generation);
     });
@@ -424,18 +410,6 @@ describe("atomic success terminal authority", () => {
       dependencyDigest: deriveTerminalDependencyDigest([]),
       createdAt: LATER,
     };
-    const outbox = {
-      outboxId: UUID_7,
-      payload: {
-        kind: "run-terminal-result" as const,
-        runId: fabricated.runId,
-        workflowId: fabricated.workflowId,
-        attempt: fabricated.attempt,
-        resultDigest: fabricated.resultDigest,
-      },
-      projection: { state: "pending" as const },
-      createdAt: LATER,
-    };
     const authorization = {
       kind: "done" as const,
       runId: fabricated.runId,
@@ -447,28 +421,25 @@ describe("atomic success terminal authority", () => {
       claim: CLAIM,
       authorizedAt: LATER,
       resultDigest: fabricated.resultDigest,
-      outboxId: outbox.outboxId,
-    };
+      };
     assert.throws(
-      () => database.terminalizeSuccess({ result: fabricated, outbox, authorization }, {}),
+      () => database.terminalizeSuccess({ result: fabricated, authorization }, {}),
       /lacks factory-authenticated/,
     );
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
-    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
   });
 
-  it("inserts result and pending outbox, transitions done, and replays byte-exactly", () => {
+  it("inserts result and same-row completion without outbox, transitions done, and replays byte-exactly", () => {
     const database = openDatabase();
     const running = startRunning(database);
-    const { result, outbox, authorization, factoryAuthorization } = resultAndOutbox(database, running);
-    const request = { result, outbox, authorization };
+    const { result, authorization, factoryAuthorization } = resultRequest(database, running);
+    const request = { result, authorization };
     const applied = database.terminalizeSuccess(request, factoryAuthorization);
     assert.equal(applied.state, "applied");
     assert.deepEqual(applied.run.lifecycle, { state: "terminal", outcome: "done", endedAt: LATER });
     assert.deepEqual(database.authority.runResults.get(RUN_ID), result);
-    assert.deepEqual(database.authority.runTerminalOutbox.get(UUID_7), outbox);
-    assert.deepEqual(database.authority.runTerminalOutbox.findByRun(RUN_ID), outbox);
-    assert.deepEqual(database.authority.terminalAuthorizations.get(RUN_ID), authorization);
+    assert.deepEqual(database.authority.runs.get(RUN_ID)?.completion, completionFromAuthorization(authorization));
     assert.equal(database.terminalizeSuccess(request).state, "replayed");
     assert.throws(
       () => database.terminalizeSuccess({
@@ -499,15 +470,10 @@ describe("atomic success terminal authority", () => {
       result: changedResultValue,
       resultDigest: deriveRunResultDigest(changedResultValue),
     };
-    const changedOutbox = {
-      ...outbox,
-      payload: { ...outbox.payload, resultDigest: changedResult.resultDigest },
-    };
     assert.throws(
       () => database.terminalizeSuccess({
         ...request,
         result: changedResult,
-        outbox: changedOutbox,
         authorization: { ...authorization, resultDigest: changedResult.resultDigest },
       }),
       /original pre-terminal claim/,
@@ -515,17 +481,17 @@ describe("atomic success terminal authority", () => {
     assert.throws(
       () => database.terminalizeSuccess({
         ...request,
-        outbox: { ...outbox, outboxId: UUID_6 },
+        outbox: { outboxId: UUID_6 },
         authorization: { ...authorization, outboxId: UUID_6 },
       }),
-      /original pre-terminal claim/,
+      /Invalid input/,
     );
   });
 
   it("rejects an authenticated result whose exact checkpoint was never stored", () => {
     const database = openDatabase();
     const running = startRunning(database);
-    const { result, outbox, authorization, factoryAuthorization } = resultAndOutbox(database, running);
+    const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     // A second connection corrupts the exact checkpoint while this authority
     // remains open: terminal settlement must independently reject the absence.
     const path = join(roots.at(-1) ?? "", "authority.sqlite");
@@ -533,7 +499,7 @@ describe("atomic success terminal authority", () => {
     raw.prepare("DELETE FROM run_checkpoints").run();
     raw.close();
     assert.throws(
-      () => database.terminalizeSuccess({ result, outbox, authorization }, factoryAuthorization),
+      () => database.terminalizeSuccess({ result, authorization }, factoryAuthorization),
       /has no exact stored checkpoint/,
     );
     // Reopening also refuses the now-dangling durable checkpoint event.
@@ -546,7 +512,7 @@ describe("atomic success terminal authority", () => {
   it("rejects not-run evidence contradicted by a stored checkpoint for the terminal attempt", () => {
     const database = openDatabase();
     const running = startRunning(database);
-    const { result, outbox, authorization, factoryAuthorization } = resultAndOutbox(database, running);
+    const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     const crmDates = ReadOnboardingDatesOutputSchema.parse({
       emplId: "10873698",
       invitedOn: { state: "present", value: "2026-06-01" },
@@ -571,7 +537,7 @@ describe("atomic success terminal authority", () => {
       writtenAt: NOW,
     });
     assert.throws(
-      () => database.terminalizeSuccess({ result, outbox, authorization }, factoryAuthorization),
+      () => database.terminalizeSuccess({ result, authorization }, factoryAuthorization),
       /marked condition-false but has a stored checkpoint/,
     );
   });
@@ -579,27 +545,24 @@ describe("atomic success terminal authority", () => {
   it("rejects run/outbox identity, stale claim/version, generic done, and non-running success", () => {
     const database = openDatabase();
     const running = startRunning(database);
-    const { result, outbox, authorization, factoryAuthorization } = resultAndOutbox(database, running);
+    const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     assert.throws(() => database.terminalizeSuccess({
-      result,
-      outbox: { ...outbox, payload: { ...outbox.payload, resultDigest: HASH_C } },
+      result: { ...result, runId: UUID_6 },
       authorization,
-    }), /does not bind the exact result/);
+    }), /must bind the exact result identity/);
     assert.throws(() => database.terminalizeSuccess({
       result,
-      outbox,
       authorization: { ...authorization, expectedVersion: running.version - 1 },
     }, factoryAuthorization), /not/);
     assert.throws(() => database.terminalizeSuccess({
       result,
-      outbox,
       authorization: {
         ...authorization,
         claim: { workerId: "worker-2", claimGeneration: 1 },
       },
     }, factoryAuthorization), /no longer claimed/);
     assert.throws(
-      () => database.terminalizeSuccess({ result, outbox, authorization }),
+      () => database.terminalizeSuccess({ result, authorization }),
       /lacks factory-authenticated/,
     );
     const fabricatedResult = {
@@ -610,8 +573,7 @@ describe("atomic success terminal authority", () => {
     assert.throws(
       () => database.terminalizeSuccess({
         result: fabricatedResult,
-        outbox,
-        authorization,
+          authorization,
       }, {}),
       /lacks factory-authenticated/,
     );
@@ -632,11 +594,10 @@ describe("atomic success terminal authority", () => {
     assert.equal(cancelled.state, "applied");
     assert.throws(() => database.terminalizeSuccess({
       result,
-      outbox,
       authorization,
     }), /already terminal without a result/);
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
-    assert.equal(database.authority.runTerminalOutbox.findByRun(RUN_ID), undefined);
+    assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
   });
 
   it("refuses replay for every schema-valid mismatch from success authorization to consequence", () => {
@@ -659,23 +620,22 @@ describe("atomic success terminal authority", () => {
     for (const [name, mutate] of cases) {
       const database = openDatabase();
       const running = startRunning(database);
-      const terminal = resultAndOutbox(database, running);
+      const terminal = resultRequest(database, running);
       const request = {
         result: terminal.result,
-        outbox: terminal.outbox,
         authorization: terminal.authorization,
       };
       database.terminalizeSuccess(request, terminal.factoryAuthorization);
       corruptRunConsequence(mutate);
       assert.throws(
         () => database.terminalizeSuccess(request),
-        /does not match its exact done terminal authorization consequence/,
+        /completion|terminal consequence/,
         name,
       );
     }
   });
 
-  for (const injectedStep of ["authorization", "result", "outbox", "run"] as const) {
+  for (const injectedStep of ["result", "run"] as const) {
     it(`rolls back every success terminal write when ${injectedStep} persistence fails`, () => {
       const database = openDatabase({
         afterSuccessStorageStep: (step) => {
@@ -683,18 +643,63 @@ describe("atomic success terminal authority", () => {
         },
       });
       const running = startRunning(database);
-      const { result, outbox, authorization, factoryAuthorization } = resultAndOutbox(database, running);
+      const { result, authorization, factoryAuthorization } = resultRequest(database, running);
       const generation = database.getMeta().authorityGeneration;
       assert.throws(() => database.terminalizeSuccess({
         result,
-        outbox,
-        authorization,
+          authorization,
       }, factoryAuthorization), /injected/);
       assert.equal(database.authority.runResults.get(RUN_ID), undefined);
-      assert.equal(database.authority.runTerminalOutbox.findByRun(RUN_ID), undefined);
-      assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+      assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
+      assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
       assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
       assert.equal(database.getMeta().authorityGeneration, generation);
     });
+  }
+});
+
+
+describe("C P2 public settlement write boundaries", () => {
+  for (const kind of ["success", "failure"] as const) {
+    for (const table of [kind === "success" ? "run_results" : "run_failures", "workflow_runs", "timeline_events", "commands", "command_audits"]) {
+      it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, () => {
+        const database = openDatabase(); const running = startRunning(database);
+        const built = kind === "success" ? resultRequest(database, running) : undefined;
+        const request = { kind, commandId: "99000000-0000-4000-8000-000000000011",
+          terminal: built === undefined ? { failure: failure(running), authorization: failureAuthorization(running) }
+            : { result: built.result, authorization: built.authorization } };
+        const service = new RunRecordService({ database, clock: CLOCK, ids: { uuid: () => UUID_7 } });
+        const raw = new DatabaseSync(join(roots.at(-1) ?? "", "authority.sqlite"));
+        try {
+          const before = database.getMeta(); const events = database.authority.timelineEvents.page({});
+          raw.exec(`CREATE TRIGGER injected_completion AFTER ${table === "workflow_runs" ? "UPDATE" : "INSERT"} ON ${table} BEGIN SELECT RAISE(ABORT, 'C-write-fault'); END`);
+          assert.throws(() => service.terminalize(request, personLookupDescriptor, built?.factoryAuthorization), /C-write-fault/);
+          assert.deepEqual(database.authority.runs.get(RUN_ID), running);
+          assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
+          assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+          assert.equal(database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+          assert.equal(database.authority.lifecycleJournal.findAuditByCommand(request.commandId), undefined);
+          assert.deepEqual(database.authority.timelineEvents.page({}), events);
+          assert.deepEqual(database.getMeta(), before);
+          raw.exec("DROP TRIGGER injected_completion");
+          assert.equal(service.terminalize(request, personLookupDescriptor, built?.factoryAuthorization).state, "applied");
+          const settled = database.authority.runs.get(RUN_ID); assert.ok(settled?.completion);
+          // Discard the acknowledgement and replay through an independently opened connection.
+          const reopened = AuthorityDatabase.open({ path: join(roots.at(-1) ?? "", "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "c-replay" }, CLOCK);
+          try {
+            const replay = new RunRecordService({ database: reopened, clock: CLOCK, ids: { uuid: () => UUID_7 } });
+            const generation = reopened.getMeta().authorityGeneration;
+            assert.equal(replay.terminalize(request, personLookupDescriptor).state, "applied-already");
+            assert.deepEqual(reopened.authority.runs.get(RUN_ID), settled);
+            assert.equal(reopened.getMeta().authorityGeneration, generation);
+            const ended = reopened.authority.timelineEvents.page({}).filter((record) => record.payload.kind === "span" && record.payload.event.t === "span.ended");
+            assert.equal(ended.length, 1);
+            const event = ended[0]?.payload;
+            assert.ok(event?.kind === "span" && event.event.t === "span.ended" && event.event.kind === "run");
+            assert.equal(event.event.workerId, WORKER_ID); assert.equal(event.event.claimGeneration, 1);
+          } finally { reopened.close(); }
+        } finally { raw.close(); }
+      });
+    }
   }
 });

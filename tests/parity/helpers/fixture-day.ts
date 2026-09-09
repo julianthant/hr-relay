@@ -1527,7 +1527,6 @@ export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
       pendingCommands: 0,
       unresolvedWriteIntents: 0,
       leases: 0,
-      runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 0,
     },

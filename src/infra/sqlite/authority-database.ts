@@ -1,3 +1,5 @@
+import { completionFromAuthorization } from "../../domain/run/completion.js";
+import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../domain/run/completion-history.js";
 import { lifecycleCommandId } from "../../domain/identifiers.js";
 import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../domain/ledger-projection.js";
 import { sha256Hex } from "../../domain/sha256.js";
@@ -147,10 +149,6 @@ import {
   isStartPlanExpired,
   type StartPlanRecord,
 } from "../../domain/run/start-plan.js";
-import {
-  RunTerminalOutboxRecordSchema,
-  type RunTerminalOutboxRecord,
-} from "../../domain/run/terminal-outbox.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
@@ -218,6 +216,7 @@ import {
   FailureTerminalizationRequestSchema,
   SuccessTerminalizationReportSchema,
   SuccessTerminalizationRequestSchema,
+  SuccessTerminalizationReplayInputSchema,
   type FailureTerminalizationReport,
   type FailureTerminalizationStorageStep,
   type SuccessTerminalizationReport,
@@ -803,14 +802,6 @@ type RunResultRepository = Readonly<{
   get(runId: string): RunResultRecord | undefined;
 }>;
 
-type RunTerminalOutboxRepository = Readonly<{
-  get(outboxId: string): RunTerminalOutboxRecord | undefined;
-  findByRun(runId: string): RunTerminalOutboxRecord | undefined;
-}>;
-
-type TerminalAuthorizationRepository = Readonly<{
-  get(runId: string): TerminalAuthorizationRecord | undefined;
-}>;
 
 type StartPlanRepository = Readonly<{
   create(input: unknown): ImmutableInsertResult<StartPlanRecord>;
@@ -965,10 +956,8 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 export type AuthorityRepositories = Readonly<{
   timelineEvents: TimelineRepository;
   runs: RunRepository;
-  terminalAuthorizations: TerminalAuthorizationRepository;
   failures: FailureRepository;
   runResults: RunResultRepository;
-  runTerminalOutbox: RunTerminalOutboxRepository;
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
@@ -1409,6 +1398,38 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 
 const INVARIANT_QUERIES = Object.freeze([
   {
+    name: "run-completion-revisions",
+    sql: `SELECT count(*) AS count FROM workflow_runs AS run
+      WHERE json_type(run.record_json, '$.completion') IS 'object'
+        AND run.version - json_extract(run.record_json, '$.completion.expectedVersion') - 1 <> (
+          SELECT count(DISTINCT json_extract(audit.record_json, '$.result.appliedVersion')) FROM command_audits AS audit
+          WHERE json_extract(audit.record_json, '$.kind') = 'run-lifecycle'
+            AND json_extract(audit.record_json, '$.result.kind') = 'run'
+            AND json_extract(audit.record_json, '$.result.runId') = run.record_key
+            AND json_extract(audit.record_json, '$.request.operation') IN ('transition','archive')
+            AND json_extract(audit.record_json, '$.request.fence.kind') = 'version'
+            AND json_extract(audit.record_json, '$.request.fence.expectedVersion') = json_extract(audit.record_json, '$.result.appliedVersion') - 1
+            AND json_extract(audit.record_json, '$.result.appliedVersion') > json_extract(run.record_json, '$.completion.expectedVersion') + 1
+            AND json_extract(audit.record_json, '$.result.appliedVersion') <= run.version)` ,
+  },
+  {
+    name: "run-completion-consequences",
+    sql: `SELECT count(*) AS count FROM workflow_runs AS run
+      LEFT JOIN run_results AS result ON result.record_key = run.record_key
+      LEFT JOIN run_failures AS failure ON failure.run_id = run.record_key
+      WHERE COALESCE(json_extract(run.record_json, '$.lifecycle.outcome') IN ('done','failed'), 0)
+        IS NOT (json_type(run.record_json, '$.completion') IS 'object')
+        OR (json_extract(run.record_json, '$.completion.kind') = 'done' AND (
+          result.record_key IS NULL OR failure.record_key IS NOT NULL
+          OR json_extract(run.record_json, '$.completion.resultDigest') IS NOT result.result_digest))
+        OR (json_extract(run.record_json, '$.completion.kind') = 'failed' AND (
+          failure.record_key IS NULL OR result.record_key IS NOT NULL
+          OR json_extract(run.record_json, '$.completion.failureId') IS NOT failure.record_key
+          OR json_extract(run.record_json, '$.lifecycle.errorSummary') IS NOT json_extract(failure.record_json, '$.summary')
+          OR json_extract(run.record_json, '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.record_json, '$.diagnosticSafetyVersion')))` ,
+  },
+
+  {
     name: "workflow-batch-columns-match-record",
     sql: "SELECT count(*) AS count FROM workflow_run_batches WHERE record_key IS NOT json_extract(record_json, '$.sessionId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR started_at IS NOT json_extract(record_json, '$.startedAt') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR group_in_queue IS NOT json_extract(record_json, '$.groupInQueue') OR version IS NOT json_extract(record_json, '$.version')",
   },
@@ -1430,11 +1451,7 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "failure-columns-match-record",
-    sql: "SELECT count(*) AS count FROM failures WHERE run_id <> json_extract(record_json, '$.runId')",
-  },
-  {
-    name: "terminal-authorization-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_terminal_authorizations WHERE record_key IS NOT json_extract(record_json, '$.runId') OR kind IS NOT json_extract(record_json, '$.kind') OR expected_version IS NOT json_extract(record_json, '$.expectedVersion') OR worker_id IS NOT json_extract(record_json, '$.claim.workerId') OR claim_generation IS NOT json_extract(record_json, '$.claim.claimGeneration') OR created_at IS NOT json_extract(record_json, '$.authorizedAt')",
+    sql: "SELECT count(*) AS count FROM run_failures WHERE run_id <> json_extract(record_json, '$.runId')",
   },
   {
     name: "failed-runs-bind-failure",
@@ -1442,7 +1459,7 @@ const INVARIANT_QUERIES = Object.freeze([
       SELECT count(*) AS count FROM workflow_runs AS run
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
         AND NOT EXISTS (
-          SELECT 1 FROM failures AS failure
+          SELECT 1 FROM run_failures AS failure
           WHERE failure.record_key = json_extract(run.record_json, '$.lifecycle.failureId')
             AND failure.run_id = run.record_key
         )
@@ -1451,7 +1468,7 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "failures-bind-failed-run",
     sql: `
-      SELECT count(*) AS count FROM failures AS failure
+      SELECT count(*) AS count FROM run_failures AS failure
       JOIN workflow_runs AS run ON run.record_key = failure.run_id
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
         OR json_extract(run.record_json, '$.lifecycle.failureId') IS NOT failure.record_key
@@ -1460,7 +1477,7 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "failure-identity-matches-run",
     sql: `
-      SELECT count(*) AS count FROM failures AS failure
+      SELECT count(*) AS count FROM run_failures AS failure
       JOIN workflow_runs AS run ON run.record_key = failure.run_id
       WHERE json_extract(failure.record_json, '$.workflowId') <> json_extract(run.record_json, '$.envelope.workflow')
         OR json_extract(failure.record_json, '$.traceId') <> json_extract(run.record_json, '$.envelope.traceId')
@@ -1468,37 +1485,8 @@ const INVARIANT_QUERIES = Object.freeze([
     `,
   },
   {
-    name: "failed-runs-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
-        AND NOT EXISTS (
-          SELECT 1 FROM run_terminal_authorizations AS authorization
-          WHERE authorization.record_key = run.record_key
-            AND authorization.kind = 'failed'
-            AND json_extract(authorization.record_json, '$.failureId')
-              = json_extract(run.record_json, '$.lifecycle.failureId')
-        )
-    `,
-  },
-  {
-    name: "failures-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM failures AS failure
-      LEFT JOIN run_terminal_authorizations AS authorization
-        ON authorization.record_key = failure.run_id
-      WHERE authorization.record_key IS NULL
-        OR authorization.kind IS NOT 'failed'
-        OR json_extract(authorization.record_json, '$.failureId') IS NOT failure.record_key
-    `,
-  },
-  {
     name: "run-result-columns-match-record",
     sql: "SELECT count(*) AS count FROM run_results WHERE workflow <> json_extract(record_json, '$.workflowId') OR attempt <> json_extract(record_json, '$.attempt') OR result_digest <> json_extract(record_json, '$.resultDigest') OR record_key <> json_extract(record_json, '$.runId')",
-  },
-  {
-    name: "run-terminal-outbox-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_terminal_outbox WHERE run_id <> json_extract(record_json, '$.payload.runId') OR state <> json_extract(record_json, '$.projection.state')",
   },
   {
     name: "run-result-identity-matches-run",
@@ -1514,114 +1502,11 @@ const INVARIANT_QUERIES = Object.freeze([
     `,
   },
   {
-    name: "run-terminal-outbox-binds-result",
-    sql: `
-      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
-      LEFT JOIN run_results AS result ON result.record_key = outbox.run_id
-      WHERE result.record_key IS NULL
-        OR json_extract(outbox.record_json, '$.payload.workflowId') IS NOT json_extract(result.record_json, '$.workflowId')
-        OR json_extract(outbox.record_json, '$.payload.attempt') IS NOT json_extract(result.record_json, '$.attempt')
-        OR json_extract(outbox.record_json, '$.payload.resultDigest') IS NOT result.result_digest
-    `,
-  },
-  {
-    name: "done-runs-bind-result-and-outbox",
-    sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
-        AND NOT EXISTS (
-          SELECT 1 FROM run_results AS result
-          JOIN run_terminal_outbox AS outbox ON outbox.run_id = result.record_key
-          WHERE result.record_key = run.record_key
-            AND json_extract(outbox.record_json, '$.payload.resultDigest') = result.result_digest
-        )
-    `,
-  },
-  {
     name: "results-bind-done-run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN workflow_runs AS run ON run.record_key = result.record_key
       WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
-    `,
-  },
-  {
-    name: "done-runs-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
-        AND NOT EXISTS (
-          SELECT 1 FROM run_terminal_authorizations AS authorization
-          WHERE authorization.record_key = run.record_key
-            AND authorization.kind = 'done'
-        )
-    `,
-  },
-  {
-    name: "results-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM run_results AS result
-      LEFT JOIN run_terminal_authorizations AS authorization
-        ON authorization.record_key = result.record_key
-      WHERE authorization.record_key IS NULL
-        OR authorization.kind IS NOT 'done'
-        OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
-    `,
-  },
-  {
-    name: "terminal-outbox-binds-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
-      LEFT JOIN run_terminal_authorizations AS authorization
-        ON authorization.record_key = outbox.run_id
-      WHERE authorization.record_key IS NULL
-        OR authorization.kind IS NOT 'done'
-        OR json_extract(authorization.record_json, '$.outboxId') IS NOT outbox.record_key
-    `,
-  },
-  {
-    name: "terminal-authorization-binds-exact-terminal-authority",
-    sql: `
-      SELECT count(*) AS count FROM run_terminal_authorizations AS authorization
-      LEFT JOIN workflow_runs AS run ON run.record_key = authorization.record_key
-      LEFT JOIN failures AS failure
-        ON failure.run_id = authorization.record_key
-          AND failure.record_key = json_extract(authorization.record_json, '$.failureId')
-      LEFT JOIN run_results AS result ON result.record_key = authorization.record_key
-      LEFT JOIN run_terminal_outbox AS outbox
-        ON outbox.run_id = authorization.record_key
-          AND outbox.record_key = json_extract(authorization.record_json, '$.outboxId')
-      WHERE run.record_key IS NULL
-        OR authorization.created_at IS NOT json_extract(authorization.record_json, '$.authorizedAt')
-        OR json_extract(authorization.record_json, '$.workflowId')
-          IS NOT json_extract(run.record_json, '$.envelope.workflow')
-        OR json_extract(authorization.record_json, '$.attempt')
-          IS NOT json_extract(run.record_json, '$.envelope.attempt')
-        OR json_extract(authorization.record_json, '$.descriptorVersion')
-          IS NOT json_extract(run.record_json, '$.envelope.descriptorVersion')
-        OR json_extract(authorization.record_json, '$.contractFingerprint')
-          IS NOT json_extract(run.record_json, '$.envelope.contractFingerprint')
-        OR run.version IS NOT authorization.expected_version + 1
-        OR run.claim_generation IS NOT authorization.claim_generation
-        OR json_extract(run.record_json, '$.lifecycle.state') IS NOT 'terminal'
-        OR json_extract(run.record_json, '$.lifecycle.endedAt')
-          IS NOT json_extract(authorization.record_json, '$.authorizedAt')
-        OR json_extract(run.record_json, '$.updatedAt')
-          IS NOT json_extract(authorization.record_json, '$.authorizedAt')
-        OR (authorization.kind = 'failed' AND (
-          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
-          OR json_extract(run.record_json, '$.lifecycle.failureId')
-            IS NOT json_extract(authorization.record_json, '$.failureId')
-          OR failure.record_key IS NULL
-          OR json_extract(run.record_json, '$.lifecycle.errorSummary')
-            IS NOT json_extract(failure.record_json, '$.summary')
-        ))
-        OR (authorization.kind = 'done' AND (
-          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
-          OR result.record_key IS NULL
-          OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
-          OR outbox.record_key IS NULL
-        ))
     `,
   },
   {
@@ -1690,7 +1575,7 @@ const INVARIANT_QUERIES = Object.freeze([
 
   {
     name: "failure-fingerprint-column-matches-record",
-    sql: "SELECT count(*) AS count FROM failures WHERE fingerprint IS NOT json_extract(record_json, '$.fingerprint')",
+    sql: "SELECT count(*) AS count FROM run_failures WHERE fingerprint IS NOT json_extract(record_json, '$.fingerprint')",
   },
   {
     name: "notification-columns-match-record",
@@ -1843,6 +1728,145 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
     ? [] : ["command-group child linkage mismatch"]);
 }
 
+const HISTORICAL_COMPLETION_INVARIANT_QUERIES = [
+  {
+    name: "terminal-authorization-columns-match-record",
+    sql: "SELECT count(*) AS count FROM run_terminal_authorizations WHERE record_key IS NOT json_extract(record_json, '$.runId') OR kind IS NOT json_extract(record_json, '$.kind') OR expected_version IS NOT json_extract(record_json, '$.expectedVersion') OR worker_id IS NOT json_extract(record_json, '$.claim.workerId') OR claim_generation IS NOT json_extract(record_json, '$.claim.claimGeneration') OR created_at IS NOT json_extract(record_json, '$.authorizedAt')",
+  },
+  {
+    name: "failed-runs-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM workflow_runs AS run
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
+        AND NOT EXISTS (
+          SELECT 1 FROM run_terminal_authorizations AS authorization
+          WHERE authorization.record_key = run.record_key
+            AND authorization.kind = 'failed'
+            AND json_extract(authorization.record_json, '$.failureId')
+              = json_extract(run.record_json, '$.lifecycle.failureId')
+        )
+    `,
+  },
+  {
+    name: "failures-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM run_failures AS failure
+      LEFT JOIN run_terminal_authorizations AS authorization
+        ON authorization.record_key = failure.run_id
+      WHERE authorization.record_key IS NULL
+        OR authorization.kind IS NOT 'failed'
+        OR json_extract(authorization.record_json, '$.failureId') IS NOT failure.record_key
+    `,
+  },
+  {
+    name: "run-terminal-outbox-columns-match-record",
+    sql: "SELECT count(*) AS count FROM run_terminal_outbox WHERE run_id <> json_extract(record_json, '$.payload.runId') OR state <> json_extract(record_json, '$.projection.state')",
+  },
+  {
+    name: "run-terminal-outbox-binds-result",
+    sql: `
+      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
+      LEFT JOIN run_results AS result ON result.record_key = outbox.run_id
+      WHERE result.record_key IS NULL
+        OR json_extract(outbox.record_json, '$.payload.workflowId') IS NOT json_extract(result.record_json, '$.workflowId')
+        OR json_extract(outbox.record_json, '$.payload.attempt') IS NOT json_extract(result.record_json, '$.attempt')
+        OR json_extract(outbox.record_json, '$.payload.resultDigest') IS NOT result.result_digest
+    `,
+  },
+  {
+    name: "done-runs-bind-result-and-outbox",
+    sql: `
+      SELECT count(*) AS count FROM workflow_runs AS run
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
+        AND NOT EXISTS (
+          SELECT 1 FROM run_results AS result
+          JOIN run_terminal_outbox AS outbox ON outbox.run_id = result.record_key
+          WHERE result.record_key = run.record_key
+            AND json_extract(outbox.record_json, '$.payload.resultDigest') = result.result_digest
+        )
+    `,
+  },
+  {
+    name: "done-runs-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM workflow_runs AS run
+      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
+        AND NOT EXISTS (
+          SELECT 1 FROM run_terminal_authorizations AS authorization
+          WHERE authorization.record_key = run.record_key
+            AND authorization.kind = 'done'
+        )
+    `,
+  },
+  {
+    name: "results-bind-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM run_results AS result
+      LEFT JOIN run_terminal_authorizations AS authorization
+        ON authorization.record_key = result.record_key
+      WHERE authorization.record_key IS NULL
+        OR authorization.kind IS NOT 'done'
+        OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
+    `,
+  },
+  {
+    name: "terminal-outbox-binds-terminal-authorization",
+    sql: `
+      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
+      LEFT JOIN run_terminal_authorizations AS authorization
+        ON authorization.record_key = outbox.run_id
+      WHERE authorization.record_key IS NULL
+        OR authorization.kind IS NOT 'done'
+        OR json_extract(authorization.record_json, '$.outboxId') IS NOT outbox.record_key
+    `,
+  },
+  {
+    name: "terminal-authorization-binds-exact-terminal-authority",
+    sql: `
+      SELECT count(*) AS count FROM run_terminal_authorizations AS authorization
+      LEFT JOIN workflow_runs AS run ON run.record_key = authorization.record_key
+      LEFT JOIN run_failures AS failure
+        ON failure.run_id = authorization.record_key
+          AND failure.record_key = json_extract(authorization.record_json, '$.failureId')
+      LEFT JOIN run_results AS result ON result.record_key = authorization.record_key
+      LEFT JOIN run_terminal_outbox AS outbox
+        ON outbox.run_id = authorization.record_key
+          AND outbox.record_key = json_extract(authorization.record_json, '$.outboxId')
+      WHERE run.record_key IS NULL
+        OR authorization.created_at IS NOT json_extract(authorization.record_json, '$.authorizedAt')
+        OR json_extract(authorization.record_json, '$.workflowId')
+          IS NOT json_extract(run.record_json, '$.envelope.workflow')
+        OR json_extract(authorization.record_json, '$.attempt')
+          IS NOT json_extract(run.record_json, '$.envelope.attempt')
+        OR json_extract(authorization.record_json, '$.descriptorVersion')
+          IS NOT json_extract(run.record_json, '$.envelope.descriptorVersion')
+        OR json_extract(authorization.record_json, '$.contractFingerprint')
+          IS NOT json_extract(run.record_json, '$.envelope.contractFingerprint')
+        OR run.version < authorization.expected_version + 1
+        OR run.claim_generation IS NOT authorization.claim_generation
+        OR json_extract(run.record_json, '$.lifecycle.state') IS NOT 'terminal'
+        OR json_extract(run.record_json, '$.lifecycle.endedAt')
+          IS NOT json_extract(authorization.record_json, '$.authorizedAt')
+        OR (run.version = authorization.expected_version + 1 AND json_extract(run.record_json, '$.updatedAt')
+          IS NOT json_extract(authorization.record_json, '$.authorizedAt'))
+        OR (authorization.kind = 'failed' AND (
+          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
+          OR json_extract(run.record_json, '$.lifecycle.failureId')
+            IS NOT json_extract(authorization.record_json, '$.failureId')
+          OR failure.record_key IS NULL
+          OR json_extract(run.record_json, '$.lifecycle.errorSummary')
+            IS NOT json_extract(failure.record_json, '$.summary')
+        ))
+        OR (authorization.kind = 'done' AND (
+          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
+          OR result.record_key IS NULL
+          OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
+          OR outbox.record_key IS NULL
+        ))
+    `,
+  },
+] as const;
+
 const RETIRED_HISTORY_INVARIANT_QUERIES = [
   {
     // Ref write-safety §6: sequences are dense from zero inside a partition, so
@@ -1906,7 +1930,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
     try {
       for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= version)) for (const statement of migration.statements) reference.exec(statement);
       const taskColumns = new Set(reference.prepare(`PRAGMA table_info(${version < 33 ? "tasks" : "workflow_runs"})`).all().map((row) => row.name));
-      queries = [...INVARIANT_QUERIES, ...RETIRED_HISTORY_INVARIANT_QUERIES].flatMap((entry) => {
+      queries = [...INVARIANT_QUERIES.filter((entry) => !entry.name.startsWith("run-completion-")), ...RETIRED_HISTORY_INVARIANT_QUERIES, ...HISTORICAL_COMPLETION_INVARIANT_QUERIES].flatMap((entry) => {
         let sql: string = version < 33
           ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
           : entry.sql;
@@ -1924,6 +1948,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
           sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
           if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
         }
+        if (version < 41) sql = sql.replaceAll("run_failures", "failures");
         if (version < 39) {
           for (const [old, current] of Object.entries(DATABASE_TABLE_RENAMES)) sql = sql.replaceAll(current, old);
         }
@@ -2199,7 +2224,6 @@ function pendingCounts(database: DatabaseSync) {
     pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count("SELECT count(*) AS count FROM workflow_workers"),
-    runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
   };
@@ -3321,12 +3345,8 @@ export class AuthorityDatabase implements Disposable {
       if (current === undefined) throw new Error(`run ${request.failure.runId} does not exist`);
       this.#assertFailureMatchesRun(request.failure, current, descriptor);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
-      const existingAuthorization = this.#readRecord(
-        "run_terminal_authorizations",
-        request.failure.runId,
-        TerminalAuthorizationRecordSchema,
-      );
-      const existing = this.#readRecord("failures", request.failure.failureId, FailureRecordSchema);
+      const existingAuthorization = this.#completionAuthorization(current);
+      const existing = this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema);
       if (existingAuthorization !== undefined || existing !== undefined) {
         if (existingAuthorization === undefined || existing === undefined) {
           throw new Error(`run ${request.failure.runId} has a partial failure terminal settlement`);
@@ -3365,6 +3385,7 @@ export class AuthorityDatabase implements Disposable {
 
       const terminal = RunRecordSchema.parse({
         ...current,
+        completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
           outcome: "failed",
@@ -3381,8 +3402,6 @@ export class AuthorityDatabase implements Disposable {
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
       if (violation !== undefined) throw new Error(`run ${request.failure.runId}: ${violation}`);
       this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
-      this.#insertTerminalAuthorization(request.authorization);
-      this.#terminalizationHooks?.afterFailureStorageStep?.("authorization");
       this.#insertFailure(request.failure);
       this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
       this.#writeRunRow(terminal, "update");
@@ -3397,22 +3416,21 @@ export class AuthorityDatabase implements Disposable {
   }
 
   terminalizeSuccess(input: unknown, factoryAuthorization?: object): SuccessTerminalizationReport {
-    const request = SuccessTerminalizationRequestSchema.parse(input);
+    const replayInput = SuccessTerminalizationReplayInputSchema.parse(input);
+    const historical = "outbox" in replayInput ? replayInput : undefined;
+    const { outboxId: _outboxId, ...authorization } = historical === undefined
+      ? { ...replayInput.authorization, outboxId: undefined } : historical.authorization;
+    const request = SuccessTerminalizationRequestSchema.parse({ result: replayInput.result, authorization });
     return this.withAuthorityTransaction(() => {
       const current = this.#readRunRow(request.result.runId);
       if (current === undefined) throw new Error(`run ${request.result.runId} does not exist`);
-      this.#assertResultMatchesRun(request.result, request.outbox, current);
+      this.#assertResultMatchesRun(request.result, current);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
-      const existingAuthorization = this.#readRecord(
-        "run_terminal_authorizations",
-        request.result.runId,
-        TerminalAuthorizationRecordSchema,
-      );
+      const existingAuthorization = this.#completionAuthorization(current);
       const existingResult = this.#readRecord("run_results", request.result.runId, RunResultRecordSchema);
-      const existingOutbox = this.#findRunTerminalOutboxByRun(request.result.runId);
-      if (existingAuthorization !== undefined || existingResult !== undefined || existingOutbox !== undefined) {
-        if (existingAuthorization === undefined || existingResult === undefined || existingOutbox === undefined) {
-          throw new Error(`run ${request.result.runId} has a partial terminal authorization/result/outbox settlement`);
+      if (existingAuthorization !== undefined || existingResult !== undefined) {
+        if (existingAuthorization === undefined || existingResult === undefined) {
+          throw new Error(`run ${request.result.runId} has a partial completion/result settlement`);
         }
         if (canonicalJsonStringify(existingAuthorization)
           !== canonicalJsonStringify(request.authorization)) {
@@ -3423,15 +3441,24 @@ export class AuthorityDatabase implements Disposable {
         if (canonicalJsonStringify(existingResult) !== canonicalJsonStringify(request.result)) {
           throw new Error(`run result ${request.result.runId} already exists with different content`);
         }
-        if (canonicalJsonStringify(existingOutbox) !== canonicalJsonStringify(request.outbox)) {
-          throw new Error(`run terminal outbox for ${request.result.runId} already exists with different content`);
+        if (historical !== undefined) {
+          const evidence = current.completion?.historical;
+          if (evidence === undefined || evidence.outboxJson === undefined
+            || canonicalJsonStringify(historical.authorization) !== canonicalJsonStringify(HistoricalTerminalAuthorizationSchema.parse(JSON.parse(evidence.authorizationJson)))) {
+            throw new Error("historical terminal replay authorization differs");
+          }
+          const receipt = HistoricalTerminalOutboxRecordSchema.parse(JSON.parse(evidence.outboxJson));
+          if (canonicalJsonStringify(historical.outbox) !== canonicalJsonStringify({ ...receipt, projection: { state: "pending" } })) {
+            throw new Error("historical terminal outbox replay differs");
+          }
+        } else if (current.completion?.historical !== undefined) {
+          throw new Error("historical terminal replay requires its original request identity");
         }
         this.#assertTerminalAuthorizationConsequence(existingAuthorization, current);
         return SuccessTerminalizationReportSchema.parse({
           state: "replayed",
           authorization: existingAuthorization,
           result: existingResult,
-          outbox: existingOutbox,
           run: current,
         });
       }
@@ -3441,6 +3468,7 @@ export class AuthorityDatabase implements Disposable {
       if (current.lifecycle.state !== "running") {
         throw new Error(`run ${request.result.runId} is ${current.lifecycle.state}; only running may finish done`);
       }
+      if (historical !== undefined) throw new Error("historical terminal input is replay-only");
       assertWorkflowRunResultAuthorization(factoryAuthorization, request.result, current);
       this.#assertStoredTerminalDependencies(request.result, current);
       this.#assertTerminalClaim(
@@ -3450,6 +3478,7 @@ export class AuthorityDatabase implements Disposable {
       );
       const terminal = RunRecordSchema.parse({
         ...current,
+        completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
           outcome: "done",
@@ -3462,19 +3491,14 @@ export class AuthorityDatabase implements Disposable {
       if (violation !== undefined) throw new Error(`run ${request.result.runId}: ${violation}`);
       this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
 
-      this.#insertTerminalAuthorization(request.authorization);
-      this.#terminalizationHooks?.afterSuccessStorageStep?.("authorization");
       this.#insertRunResult(request.result);
       this.#terminalizationHooks?.afterSuccessStorageStep?.("result");
-      this.#insertRunTerminalOutbox(request.outbox);
-      this.#terminalizationHooks?.afterSuccessStorageStep?.("outbox");
       this.#writeRunRow(terminal, "update");
       this.#terminalizationHooks?.afterSuccessStorageStep?.("run");
       return SuccessTerminalizationReportSchema.parse({
         state: "applied",
         authorization: request.authorization,
         result: request.result,
-        outbox: request.outbox,
         run: terminal,
       });
     });
@@ -3643,16 +3667,23 @@ export class AuthorityDatabase implements Disposable {
     authorization: TerminalAuthorizationRecord,
     run: RunRecord,
   ): void {
-    const exactCommonConsequence = Number(run.version) === Number(authorization.expectedVersion) + 1
+    const exactCommonConsequence = Number(run.version) >= Number(authorization.expectedVersion) + 1
       && Number(run.claimGeneration) === Number(authorization.claim.claimGeneration)
       && run.lifecycle.state === "terminal"
       && run.lifecycle.outcome === authorization.kind
       && run.lifecycle.endedAt === authorization.authorizedAt
-      && run.updatedAt === authorization.authorizedAt;
+      && (run.version > authorization.expectedVersion + 1 || run.updatedAt === authorization.authorizedAt);
     const exactArmConsequence = authorization.kind === "done"
       || (run.lifecycle.state === "terminal"
         && run.lifecycle.outcome === "failed"
         && run.lifecycle.failureId === authorization.failureId);
+    if (run.version > authorization.expectedVersion + 1) {
+      const query = INVARIANT_QUERIES.find(({ name }) => name === "run-completion-revisions");
+      if (query === undefined) throw new Error("missing completion revision invariant");
+      if (CountRowSchema.parse(this.#database.prepare(query.sql).get()).count !== 0) {
+        throw new Error("run completion has an unaccounted later revision");
+      }
+    }
     if (!exactCommonConsequence || !exactArmConsequence) {
       throw new Error(
         `run ${authorization.runId} does not match its exact ${authorization.kind} terminal authorization consequence`,
@@ -3662,7 +3693,6 @@ export class AuthorityDatabase implements Disposable {
 
   #assertResultMatchesRun(
     result: RunResultRecord,
-    outbox: RunTerminalOutboxRecord,
     current: RunRecord,
   ): void {
     const envelope = current.envelope;
@@ -3674,13 +3704,6 @@ export class AuthorityDatabase implements Disposable {
       || result.configFingerprint !== envelope.configFingerprint
       || result.configSnapshotId !== envelope.configSnapshotId) {
       throw new Error(`run result ${result.runId} identity or fingerprint does not match current run ${envelope.runId}`);
-    }
-    if (outbox.payload.runId !== result.runId
-      || outbox.payload.workflowId !== result.workflowId
-      || outbox.payload.attempt !== result.attempt
-      || outbox.payload.resultDigest !== result.resultDigest
-      || outbox.projection.state !== "pending") {
-      throw new Error(`run terminal outbox ${outbox.outboxId} does not bind the exact result for ${result.runId}`);
     }
   }
 
@@ -3751,31 +3774,19 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  #insertTerminalAuthorization(record: TerminalAuthorizationRecord): void {
-    const json = canonicalJsonStringify(record);
-    this.#authorityWrite("run_terminal_authorizations", () => {
-      const result = this.#database.prepare(`
-        INSERT INTO run_terminal_authorizations
-          (record_key, kind, expected_version, worker_id, claim_generation, record_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        record.runId,
-        record.kind,
-        record.expectedVersion,
-        record.claim.workerId,
-        record.claim.claimGeneration,
-        json,
-        record.authorizedAt,
-      );
-      return { result: undefined, changes: sqliteChanges(result.changes) };
-    });
+  #completionAuthorization(run: RunRecord): TerminalAuthorizationRecord | undefined {
+    if (run.completion === undefined) return undefined;
+    const { schemaVersion: _version, historical: _history, ...settlement } = run.completion;
+    return TerminalAuthorizationRecordSchema.parse({ ...settlement, runId: run.envelope.runId,
+      workflowId: run.envelope.workflow, attempt: run.envelope.attempt,
+      descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint });
   }
 
   #insertFailure(record: FailureRecord): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("failures", () => {
+    this.#authorityWrite("run_failures", () => {
       const result = this.#database.prepare(`
-        INSERT INTO failures (record_key, run_id, fingerprint, record_json, created_at)
+        INSERT INTO run_failures (record_key, run_id, fingerprint, record_json, created_at)
         VALUES (?, ?, ?, ?, ?)
       `).run(record.failureId, record.runId, record.fingerprint, json, record.occurredAt);
       return { result: undefined, changes: sqliteChanges(result.changes) };
@@ -3795,26 +3806,6 @@ export class AuthorityDatabase implements Disposable {
       );
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
-  }
-
-  #insertRunTerminalOutbox(record: RunTerminalOutboxRecord): void {
-    const json = canonicalJsonStringify(record);
-    this.#authorityWrite("run_terminal_outbox", () => {
-      const result = this.#database.prepare(`
-        INSERT INTO run_terminal_outbox
-          (record_key, run_id, state, record_json, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(record.outboxId, record.payload.runId, record.projection.state, json, record.createdAt);
-      return { result: undefined, changes: sqliteChanges(result.changes) };
-    });
-  }
-
-  #findRunTerminalOutboxByRun(runId: string): RunTerminalOutboxRecord | undefined {
-    const row = this.#database.prepare(`
-      SELECT record_json FROM run_terminal_outbox WHERE run_id = ?
-    `).get(RunIdSchema.parse(runId));
-    if (row === undefined) return undefined;
-    return parseJsonRecord(RunTerminalOutboxRecordSchema, JsonRowSchema.parse(row).record_json);
   }
 
   #assertOpen(): void {
@@ -4455,25 +4446,18 @@ export class AuthorityDatabase implements Disposable {
         assertOwner: (record, appending) => assertTimelineOwner(this.#database, record, appending),
       }),
       runs: this.#buildRunRepository(),
-      terminalAuthorizations: Object.freeze({
-        get: (runId: string) => this.#readRecord(
-          "run_terminal_authorizations",
-          RunIdSchema.parse(runId),
-          TerminalAuthorizationRecordSchema,
-        ),
-      }),
       failures: Object.freeze({
-        get: (failureId: string) => this.#readRecord("failures", failureId, FailureRecordSchema),
+        get: (failureId: string) => this.#readRecord("run_failures", failureId, FailureRecordSchema),
         listByRun: (runId: string) => this.#listFailures(
-          "SELECT record_json FROM failures WHERE run_id = ? ORDER BY created_at, record_key",
+          "SELECT record_json FROM run_failures WHERE run_id = ? ORDER BY created_at, record_key",
           RunIdSchema.parse(runId),
         ),
         listByFingerprint: (fingerprint: string) => this.#listFailures(
-          "SELECT record_json FROM failures WHERE fingerprint = ? ORDER BY created_at, record_key",
+          "SELECT record_json FROM run_failures WHERE fingerprint = ? ORDER BY created_at, record_key",
           FailureFingerprintSchema.parse(fingerprint),
         ),
         countByFingerprint: (fingerprint: string) => CountRowSchema.parse(this.#database.prepare(`
-          SELECT count(*) AS count FROM failures WHERE fingerprint = ?
+          SELECT count(*) AS count FROM run_failures WHERE fingerprint = ?
         `).get(FailureFingerprintSchema.parse(fingerprint))).count,
       }),
       diagnosticBundles: this.#buildDiagnosticBundleRepository(),
@@ -4894,14 +4878,6 @@ export class AuthorityDatabase implements Disposable {
           RunIdSchema.parse(runId),
           RunResultRecordSchema,
         ),
-      }),
-      runTerminalOutbox: Object.freeze({
-        get: (outboxId: string) => this.#readRecord(
-          "run_terminal_outbox",
-          outboxId,
-          RunTerminalOutboxRecordSchema,
-        ),
-        findByRun: (runId: string) => this.#findRunTerminalOutboxByRun(runId),
       }),
       providerAdmissions: this.#buildProviderAdmissionRepository(),
       startPlans: this.#buildStartPlanRepository(),
@@ -6677,11 +6653,9 @@ export class AuthorityDatabase implements Disposable {
           remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
           remove("activity_person_pseudonyms", "DELETE FROM activity_person_pseudonyms WHERE run_id = ?", runId);
           remove("provider_admissions", "DELETE FROM provider_admissions WHERE run_id = ?", runId);
-          remove("failures", "DELETE FROM failures WHERE run_id = ?", runId);
+          remove("run_failures", "DELETE FROM run_failures WHERE run_id = ?", runId);
           // Terminal authority.
-          remove("run_terminal_outbox", "DELETE FROM run_terminal_outbox WHERE run_id = ?", runId);
           remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
-          remove("run_terminal_authorizations", "DELETE FROM run_terminal_authorizations WHERE record_key = ?", runId);
           remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
           for (const key of evidence.checkpointKeys) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
           // Inbox items that would otherwise link to a run nobody can open.

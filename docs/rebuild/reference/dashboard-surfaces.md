@@ -1472,23 +1472,29 @@ block was a top-level section above §0 until 2026-08-20 and is cited from code 
 `reference/decisions.md` as *ref dashboard-surfaces §Phase-1f authority*; it now lives here, inside
 the command protocol it ratified. Four of its points are this section's, and all four are as-built:
 
-- **`failures` is a non-rebuildable authority family.** Every failed task or run writes
+- **`run_failures` is a non-rebuildable authority family** (named `failures` through schema 40). Every failed task or run writes
   `ref operator-trust`'s strict `FailureRecord` and stores its `failureId` with the failure
   transition; a display-safe span summary is not a substitute. The composite mutation receives the
   exact factory-built descriptor separately from the strict request, resolves a node's allowed task
   ids from that authenticated runtime node, and rejects caller-invented node/task pairings.
 - **`run_results` is a non-rebuildable authority family.** One successful run writes
   `ref workflow-model`'s `RunResultRecord` keyed by `runId`; its schema/result/dependency digests and
-  the terminal run transition and outbox commit together. A second identical write is idempotent; a
+  the terminal run transition and immutable completion commit together. A second identical write is idempotent; a
   different result for the same run is corruption. Child joins read this authority rather than
   reconstructing output from spans or checkpoints. Initial success additionally requires the
   descriptor factory's seal and exact re-reads of the stored checkpoints.
-- **Both terminal composites first persist a strict `run_terminal_authorizations` row** keyed by
-  `runId`, binding the original expected version, worker/claim generation, descriptor identity,
-  timestamp and the exact failure or result/outbox identity. Replay must reproduce that row exactly
-  and prove the terminal row is its exact consequence: `run.version = expectedVersion + 1`, the
-  claim generation and authorization timestamp are retained, and the terminal state/outcome/failure
-  identity match the authorization arm. A terminal state cannot make a stale claim look valid.
+- **Both terminal composites persist immutable `completion` on `workflow_runs`** (C, schema 41).
+  It binds the original expected version, worker/claim generation, timestamp and failure or result
+  identity; the enclosing envelope supplies run/descriptor identity. Settlement, result or failure,
+  lifecycle event and command/audit commit atomically. Initial settlement advances exactly one
+  version; authorized later archive/rename revisions retain the original completion. Replay checks
+  the original request and durable consequence; terminal state never authorizes a stale claim.
+  Stopped conversion validates the old authorization/result/failure/receipt before retiring
+  `run_terminal_authorizations` and `run_terminal_outbox`. Explicit schema-40 provenance preserves
+  original authorization/receipt JSON and journal fingerprints for historical replay. No new
+  terminal outbox or delivery obligation is created. Frozen archive bytes remain unchanged.
+  C's focused development proof is recorded in [run-completion.md](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#c-execution-evidence--2026-09-09);
+  complete independent review and phase acceptance remain in 2.6.9.
 - **Beat ⑦ is one outer authority transaction** over the current claim generation and intent
   generation: mark intent and attempt committed, persist the schema-valid transaction-output
   checkpoint, insert the ledger and same-trace terminal-span outboxes, attach any real
@@ -4017,8 +4023,7 @@ one door that settles a run.
 **What leaves.** In foreign-key order: the write ledger (`ledger_projections` → `operation_outbox` →
 `run_operation_attempts` → `run_operations`), `diagnostic_attachments`, `diagnostic_bundles`,
 `evidence_receipts`, `dry_run_scenario_results`, `activity_person_pseudonyms`,
-`provider_admissions`, `failures`, `run_terminal_outbox`, `run_results`,
-`run_terminal_authorizations`, `run_checkpoints`, the inbox `notifications` whose links name the
+`provider_admissions`, `run_failures`, `run_results`, `run_checkpoints`, the inbox `notifications` whose links name the
 run, `delegation_dependencies` in either direction and the `run_delegations` the run authored,
 `archive_relaunches` and `archived_runs`, and last the `tasks` row itself. The tombstone's
 `removed` tally records rows per table.
@@ -4472,7 +4477,7 @@ lifecycle fact the service has already decided without ever deciding one itself.
 |---|---|---|---|---|---|
 | span/note JSONL lines and the `run.queued` root | `runId` on every event line; the root additionally carries the full identity tuple `liveSpanRootMismatches` reconciles against the row | immutable shared per-workflow-per-day files, never rewritten (D301) | the timeline, node progress, what a worker observed | existence, lifecycle state, disposition | stays; the doctor classifies its root `deleted` (D308), an accounted state beside `archived` |
 | `run_checkpoints` | `run_id` column plus the resume key (`workflow`, `itemId`, `nodeId`, `attempt`) | insert-only per resume key | which nodes completed and what a resume would reuse | that a run is `running` or `terminal` | leaves with the run |
-| `run_results` and `run_terminal_authorizations` (`record_key` = `runId`), `failures` (`run_id`; own key `failureId`), `run_terminal_outbox` (`run_id`) | as noted | written in the SAME transaction as the `terminal` transition (§D330.4) | the outcome the terminal row already names, and the `failureId` it names | that the run is terminal; the lifecycle row decides that | leave with the run |
+| `run_results` (`record_key` = `runId`), `run_failures` (`run_id`; own key `failureId`), immutable `workflow_runs.completion` | as noted | written in the SAME transaction as the `terminal` transition (§D330.4) | the outcome the terminal row already names, and the `failureId` it names | that the run is terminal; the lifecycle row decides that | leave with the run |
 | `run_operations` → `run_operation_attempts` → `operation_outbox` | ONLY `run_operations` carries `runId`, and only inside `record_json`; attempts and outbox link solely by `write_intent_id` (lesson 2026-08-25) | insert-only rows plus the sequencer's fenced status advance | that a write was fenced, attempted, parked or committed | the `parked-write` state; per-run counts derive through THIS run's intent ids, never a global table count | leave with the run; the permanent idempotency keys are released and the confirm copy says so |
 | `evidence_receipts` | `run_id`, UNIQUE | one immutable composition per run | the ordered obligation/verdict tuples | the outcome | leaves with the run |
 | `gate_results` (a logical repository over `checkpoint_payloads`, record key `${runId}:${gateId}`) | the `runId` half of that composite key, and `$.runId` in the record | insert-only simple record | which gate decision resolved a park | `parked-gate`; the row decides it (§D330.3) | **leaves with the run.** D308's "what stays" keeps `checkpoint_payloads` as shared authority, but as-built the table holds ONLY gate records keyed `${runId}:${gateId}` — every row is owned by exactly one run, so the cascade removes that run's keys and the table has nothing that survives its run. 1.6 adds `checkpoint_payloads_never_deleted` relaxed behind the tombstone and extends `DeletedRunTableSchema` with the table so the tally can count it. §D330.11 test 22 pins it. (Ruled 2026-09-04 under D308's own rationale; D308's list did not know gate records were the table's only content.) |
@@ -7072,10 +7077,10 @@ dropped, and this table is how a citation to the old flat list resolves.
 
 ## Run completion storage
 
-**2026-09-08 — approved, pending implementation.**
-[Side task `side/run-completion`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md) amends D110/D114 and
-D330 storage: move `run_terminal_authorizations` evidence into a strict immutable completion record
-on `workflow_runs`, rename `failures` to `run_failures`, and retire the unused `run_terminal_outbox`.
+**2026-09-09 — C scoped implementation; final acceptance remains 2.6.9.**
+[Task 2.6.5 C](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md) amends D110/D114 and
+D330 storage: schema 41 moves `run_terminal_authorizations` evidence into a strict immutable completion record
+on `workflow_runs`, renames `failures` to `run_failures`, and retires the unused `run_terminal_outbox`.
 It follows accepted timeline T2 integration, before the shared database foundation, under the
 [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). Running predecessor plans remain unchanged.
 
@@ -7090,8 +7095,9 @@ Historical conversion preserves exact settlement identities, immutable archive c
 supported old replay, with inert legacy receipts only where required. No invented completion evidence,
 replacement queue or dual authority. Failure references and D308 deletion remain consistent. Remove
 the current terminal-outbox pending count from Storage Doctor CLI/BFF/dashboard with reviewed parity;
-historical backup formats retain explicit versioned inspection. This is approved design, not an
-implementation claim or authorization to convert the operator database.
+historical backup formats retain explicit versioned inspection. C implements this contract with
+focused proof recorded at its owner; full gates and independent review remain in 2.6.9. No operator
+database conversion is authorized.
 
 ## Failure resolution
 

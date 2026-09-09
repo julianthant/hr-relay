@@ -839,22 +839,9 @@ function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typ
     { state: "resolved", nodeId: "active-status", checkpoint },
     { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
   ], CLOCK);
-  const outbox = {
-    outboxId: UUID_7,
-    payload: {
-      kind: "run-terminal-result" as const,
-      runId: built.record.runId,
-      workflowId: built.record.workflowId,
-      attempt: built.record.attempt,
-      resultDigest: built.record.resultDigest,
-    },
-    projection: { state: "pending" as const },
-    createdAt: LATER,
-  };
   return {
     request: {
       result: built.record,
-      outbox,
       authorization: {
         kind: "done" as const,
         runId: built.record.runId,
@@ -866,7 +853,6 @@ function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typ
         claim: { workerId: WORKER_ID, claimGeneration: 1 },
         authorizedAt: LATER,
         resultDigest: built.record.resultDigest,
-        outboxId: UUID_7,
       },
     },
     factoryAuthorization: built.authorization,
@@ -1665,8 +1651,8 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(upgraded.authority.startPlans.get(START_PLAN.startPlanId), START_PLAN);
     assert.equal(upgraded.authority.failures.listByRun(RUN_ID).length, 0);
     assert.equal(upgraded.authority.runResults.get(RUN_ID), undefined);
-    assert.equal(upgraded.authority.runTerminalOutbox.findByRun(RUN_ID), undefined);
-    assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(upgraded.authority.runs.get(RUN_ID)?.completion, undefined);
+    assert.equal(upgraded.authority.runs.get(RUN_ID)?.completion, undefined);
   });
 
   it("keeps the released chain from v7, reopens, and validates read-only", () => {
@@ -1708,7 +1694,7 @@ describe("native SQLite authority schema", () => {
     const upgraded = openDatabase(path);
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
-    assert.equal(upgraded.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(upgraded.authority.runs.get(RUN_ID)?.completion, undefined);
     assert.equal(upgraded.authority.providerAdmissions.get(UUID_8), undefined);
     upgraded.close();
 
@@ -1718,7 +1704,7 @@ describe("native SQLite authority schema", () => {
         SELECT count(*) AS count FROM sqlite_master
         WHERE type = 'index' AND name = 'run_terminal_authorizations_kind_idx'
       `).get()?.count,
-      1,
+      0,
     );
     assert.equal(
       migrated.prepare(`
@@ -1943,20 +1929,11 @@ describe("authority generation accounting", () => {
   const cases: readonly MutationCase[] = [
     { table: "workflow_runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {
-      table: "failures",
+      table: "run_failures",
       prepare: (db) => { prepareRunning(db); },
       mutate: (db) => {
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("failure generation fixture lost its run");
-        db.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
-      },
-    },
-    {
-      table: "run_terminal_authorizations",
-      prepare: (db) => { prepareRunning(db); },
-      mutate: (db) => {
-        const run = db.authority.runs.get(RUN_ID);
-        if (run === undefined) throw new Error("authorization generation fixture lost its run");
         db.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
       },
     },
@@ -1969,19 +1946,6 @@ describe("authority generation accounting", () => {
       mutate: (db) => {
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("result generation fixture lost its run");
-        const terminal = terminalSuccessRequest(db, run);
-        db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
-      },
-    },
-    {
-      table: "run_terminal_outbox",
-      prepare: (db) => {
-        const run = prepareRunning(db);
-        terminalSuccessRequest(db, run);
-      },
-      mutate: (db) => {
-        const run = db.authority.runs.get(RUN_ID);
-        if (run === undefined) throw new Error("outbox generation fixture lost its run");
         const terminal = terminalSuccessRequest(db, run);
         db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
       },

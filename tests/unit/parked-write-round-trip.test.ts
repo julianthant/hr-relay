@@ -290,7 +290,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     // Nothing terminal was invented: no failure record, no result, no outbox.
     assert.deepEqual(harness.database.authority.failures.listByRun(WRITE_FIXTURE_RUN_ID), []);
     assert.equal(harness.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID), undefined);
-    assert.equal(harness.database.authority.terminalAuthorizations.get(WRITE_FIXTURE_RUN_ID), undefined);
+    assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.completion, undefined);
   });
 
   it("confirmed-absent makes the run resumable at the transaction node, intent retryable", async () => {

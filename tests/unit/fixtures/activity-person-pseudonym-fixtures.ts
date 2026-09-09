@@ -31,12 +31,6 @@ import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 export const ACTIVITY_PERSON_PSEUDONYM_KEY_HEX =
   "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
-export const TERMINAL_SEPARATIONS_RUN = RunRecordSchema.parse({
-  ...compositionQueuedRun(),
-  lifecycle: { state: "terminal", outcome: "done", endedAt: COMPOSITION_NOW },
-  version: 2,
-  updatedAt: COMPOSITION_NOW,
-});
 
 export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.parse({
   documentNumber: COMPOSITION_DOCUMENT,
@@ -95,6 +89,16 @@ export const CURRENT_SEPARATIONS_RESULT_SCHEMA_HASH = deriveSchemaHash(
   "output",
 );
 
+export const TERMINAL_SEPARATIONS_RUN = RunRecordSchema.parse({
+  ...compositionQueuedRun(),
+  lifecycle: { state: "terminal", outcome: "done", endedAt: COMPOSITION_NOW },
+  version: 2, claimGeneration: 1,
+  completion: { schemaVersion: 1, kind: "done", expectedVersion: 1,
+    claim: { workerId: "fixture-worker", claimGeneration: 1 }, authorizedAt: COMPOSITION_NOW,
+    resultDigest: deriveRunResultDigest({ schemaHash: CURRENT_SEPARATIONS_RESULT_SCHEMA_HASH, value: CURRENT_SEPARATIONS_RESULT }) },
+  updatedAt: COMPOSITION_NOW,
+});
+
 export function activityPersonPseudonymResultRecord(
   run: RunRecord = TERMINAL_SEPARATIONS_RUN,
   value: unknown = CURRENT_SEPARATIONS_RESULT,
@@ -126,18 +130,24 @@ export function seedSeparationsRunAuthority(
   result: RunResultRecord | undefined,
 ): void {
   const baseline = compositionQueuedRun();
+  const { completion: _completion, ...unsettled } = run;
   const queued = RunRecordSchema.parse({
-    ...run,
+    ...unsettled,
     lifecycle: baseline.lifecycle,
+    claimGeneration: 0,
     version: baseline.version,
     updatedAt: run.envelope.enqueuedAt,
   });
   database.authority.runs.enqueue(queued);
   const raw = new DatabaseSync(path);
   try {
+    const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='workflow_runs_completion_immutable'").get()?.sql;
+    if (typeof trigger !== "string") throw new Error("fixture completion trigger missing");
+    raw.exec("DROP TRIGGER workflow_runs_completion_immutable");
     raw.prepare(`
-      UPDATE workflow_runs SET state = ?, version = ?, record_json = ? WHERE record_key = ?
-    `).run("terminal", run.version, canonicalJsonStringify(run), run.envelope.runId);
+      UPDATE workflow_runs SET state = ?, version = ?, claim_generation = ?, record_json = ? WHERE record_key = ?
+    `).run("terminal", run.version, run.claimGeneration, canonicalJsonStringify(run), run.envelope.runId);
+    raw.exec(trigger);
     if (result !== undefined) {
       raw.prepare(`
         INSERT INTO run_results

@@ -13,6 +13,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/infra/compat/upgrade-sources.ts",
   "src/infra/sqlite/authority-database.ts",
   "src/infra/sqlite/backup-service.ts",
+  "src/infra/sqlite/completion-conversion.ts",
   "src/infra/sqlite/timeline-conversion.ts",
   "src/infra/sqlite/timeline-repository.ts",
 ];

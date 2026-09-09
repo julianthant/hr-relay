@@ -464,12 +464,12 @@ describe("D182 C8 — a bounded multi-worker soak over one authority database", 
     assert.equal(inspection.quickCheck, "ok");
     assert.equal(inspection.foreignKeyViolations, 0);
     // A read-only workflow fences nothing and journals nothing to the ledger,
-    // and every `done` run mints EXACTLY one terminal outbox row — one row per
-    // run is the fact a duplicate terminalization would break.
+    // and every `done` run retains exactly one immutable same-row completion.
     assert.equal(inspection.counts.unresolvedWriteIntents, 0);
     assert.equal("durableOutbox" in inspection.counts, false);
     assert.equal(inspection.counts.pendingCommands, 0);
-    assert.equal(inspection.counts.runTerminalOutbox, SOAK_RUNS);
+    assert.equal("runTerminalOutbox" in inspection.counts, false);
+    assert.equal(database.authority.runs.listByWorkflow(TEARDOWN_WORKFLOW).filter((run) => run.completion?.kind === "done").length, SOAK_RUNS);
 
     // The real database query proves read-only execution created no transactions.
     assert.deepEqual(createTransactionHistory(database.authority).query({ from: "0001-01-01", to: "9999-12-31" }).rows, []);

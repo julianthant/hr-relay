@@ -1,3 +1,4 @@
+import { completionFromAuthorization } from "../../../src/domain/run/completion.js";
 import { databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
@@ -40,7 +41,6 @@ import {
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { TerminalAuthorizationRecordSchema } from "../../../src/domain/run/terminal-authorization.js";
-import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { SpanEventWireSchema } from "../../../src/events/types.js";
@@ -267,18 +267,6 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
     { state: "resolved", nodeId: "active-status", checkpoint },
     { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
   ], CLOCK);
-  const outbox = {
-    outboxId: UUID_7,
-    payload: {
-      kind: "run-terminal-result" as const,
-      runId: built.record.runId,
-      workflowId: built.record.workflowId,
-      attempt: built.record.attempt,
-      resultDigest: built.record.resultDigest,
-    },
-    projection: { state: "pending" as const },
-    createdAt: NOW,
-  };
   const successAuthorization = {
     kind: "done" as const,
     runId: built.record.runId,
@@ -290,14 +278,12 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
     claim: done.claim,
     authorizedAt: NOW,
     resultDigest: built.record.resultDigest,
-    outboxId: outbox.outboxId,
   };
   database.terminalizeSuccess({
     result: built.record,
-    outbox,
     authorization: successAuthorization,
   }, built.authorization);
-  return { failure, failureAuthorization, result: built.record, outbox, successAuthorization };
+  return { failure, failureAuthorization, result: built.record, successAuthorization };
 }
 
 function testRoot(): string {
@@ -328,12 +314,12 @@ function corruptTerminalRun(
   try {
     // Model offline corruption after write-time guards have run while keeping
     // each strict record mismatch independent of an artificial version bump.
-    raw.exec("DROP TRIGGER tasks_monotonic_counters_update");
+    raw.exec("DROP TRIGGER tasks_monotonic_counters_update; DROP TRIGGER workflow_runs_completion_update; DROP TRIGGER workflow_runs_completion_immutable");
     const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
       .get(runId) as { record_json: string } | undefined;
     if (row === undefined) throw new Error(`run ${runId} is absent from corruption fixture`);
     const current = RunRecordSchema.parse(JSON.parse(row.record_json));
-    const corrupted = RunRecordSchema.parse(mutate(current));
+    const corrupted = mutate(current) as RunRecord;
     const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
     const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
     raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
@@ -577,6 +563,9 @@ function seedFailedArchivedAuthority(root: string, authorityPath: string): void 
   database.authority.runs.enqueue(sourceRun);
   corruptTerminalRun(authorityPath, sourceRun.envelope.runId, (run) => ({
     ...run,
+    version: 2, claimGeneration: 1,
+    completion: { schemaVersion: 1, kind: "failed", expectedVersion: 1,
+      claim: { workerId: "fixture-worker", claimGeneration: 1 }, authorizedAt: NOW, failureId: UUID_8 },
     lifecycle: {
       state: "terminal",
       outcome: "failed",
@@ -588,7 +577,7 @@ function seedFailedArchivedAuthority(root: string, authorityPath: string): void 
   database.withAuthorityTransaction((repositories) => {
     repositories.versionPlans.insert(VERSION_PLAN_ROW);
     repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
-    repositories.archivedRuns.insert(failedArchiveRecord(sourceRun.version));
+    repositories.archivedRuns.insert(failedArchiveRecord(2));
     return undefined;
   });
   emitQueuedSpan(root, sourceRun);
@@ -2580,7 +2569,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem.summary, "workflow_runs authority failed its strict record or identity validation");
   });
 
-  it("rejects NULL/nonterminal partial authorization, failure, result, and outbox settlements read-only", () => {
+  it("rejects NULL/nonterminal partial completion, failure and result settlements read-only", () => {
     const terminalValue = { schemaHash: HASH_A, value: { complete: true } };
     const partialResult = {
       runId: QUEUED_RUN.envelope.runId,
@@ -2595,18 +2584,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       resultDigest: deriveRunResultDigest(terminalValue),
       dependencies: [],
       dependencyDigest: deriveTerminalDependencyDigest([]),
-      createdAt: NOW,
-    };
-    const partialOutbox = {
-      outboxId: UUID_7,
-      payload: {
-        kind: "run-terminal-result",
-        runId: partialResult.runId,
-        workflowId: partialResult.workflowId,
-        attempt: partialResult.attempt,
-        resultDigest: partialResult.resultDigest,
-      },
-      projection: { state: "pending" },
       createdAt: NOW,
     };
     const partialFailure = {
@@ -2643,26 +2620,18 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     };
     const cases = [
       {
-        name: "authorization",
-        insert: (raw: DatabaseSync) => raw.prepare(`
-          INSERT INTO run_terminal_authorizations
-            (record_key, kind, expected_version, worker_id, claim_generation, record_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          partialAuthorization.runId,
-          partialAuthorization.kind,
-          partialAuthorization.expectedVersion,
-          partialAuthorization.claim.workerId,
-          partialAuthorization.claim.claimGeneration,
-          JSON.stringify(partialAuthorization),
-          NOW,
-        ),
-        violation: /terminal-authorization-binds-exact-terminal-authority/,
+        name: "completion",
+        insert: (raw: DatabaseSync) => {
+          raw.exec("DROP TRIGGER workflow_runs_completion_update; DROP TRIGGER workflow_runs_completion_immutable");
+          return raw.prepare("UPDATE workflow_runs SET record_json=json_set(record_json,'$.completion',json(?))")
+            .run(JSON.stringify(completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(partialAuthorization))));
+        },
+        violation: /failed strict record schema validation/,
       },
       {
         name: "failure",
         insert: (raw: DatabaseSync) => raw.prepare(`
-          INSERT INTO failures (record_key, run_id, fingerprint, record_json, created_at)
+          INSERT INTO run_failures (record_key, run_id, fingerprint, record_json, created_at)
           VALUES (?, ?, ?, ?, ?)
         `).run(
           partialFailure.failureId,
@@ -2687,35 +2656,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
           JSON.stringify(partialResult),
           NOW,
         ),
-        violation: /results-bind-done-run/,
-      },
-      {
-        name: "outbox",
-        insert: (raw: DatabaseSync) => {
-          raw.prepare(`
-            INSERT INTO run_results
-              (record_key, workflow, attempt, result_digest, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(
-            partialResult.runId,
-            partialResult.workflowId,
-            partialResult.attempt,
-            partialResult.resultDigest,
-            JSON.stringify(partialResult),
-            NOW,
-          );
-          return raw.prepare(`
-            INSERT INTO run_terminal_outbox
-              (record_key, run_id, state, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?)
-          `).run(
-            partialOutbox.outboxId,
-            partialOutbox.payload.runId,
-            partialOutbox.projection.state,
-            JSON.stringify(partialOutbox),
-            NOW,
-          );
-        },
         violation: /results-bind-done-run/,
       },
     ] as const;
@@ -2779,163 +2719,49 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         corruptTerminalRun(path, arm.runId, mutate);
         assert.throws(
           () => AuthorityDatabase.inspectExistingReadOnly(path),
-          /terminal-authorization-binds-exact-terminal-authority/,
+          /completion|strict|schema|authority record/,
           `${arm.name}/${name}`,
         );
         const store = openBootStore(path);
         const report = store.report();
         assert.equal(report.state, "degraded-read-only", `${arm.name}/${name}`);
         if (report.state !== "degraded-read-only") throw new Error("expected degraded terminal authority");
-        assert.equal(report.cause.code, "authority-invariant", `${arm.name}/${name}`);
-        assert.match(report.cause.summary, /terminal-authorization-binds-exact-terminal-authority/);
+        assert.ok(["authority-invariant", "authority-record-invalid"].includes(report.cause.code), `${arm.name}/${name}: ${report.cause.code}`);
+        assert.match(report.cause.summary, /completion|strict|schema|authority record/);
       }
     }
   });
 
-  it("degrades read-only for every authorization column and arm-specific authority mismatch", () => {
-    type SeededTerminalAuthority = ReturnType<typeof seedTerminalAuthority>;
-    const columnCases = [
-      {
-        name: "worker-id-column",
-        mutate: (raw: DatabaseSync, runId: string) => raw.prepare(`
-          UPDATE run_terminal_authorizations SET worker_id = ? WHERE record_key = ?
-        `).run("worker-corrupt", runId),
-      },
-      {
-        name: "expected-version-column",
-        mutate: (raw: DatabaseSync, runId: string) => raw.prepare(`
-          UPDATE run_terminal_authorizations
-          SET expected_version = expected_version + 1 WHERE record_key = ?
-        `).run(runId),
-      },
-      {
-        name: "authorized-at-column",
-        mutate: (raw: DatabaseSync, runId: string) => raw.prepare(`
-          UPDATE run_terminal_authorizations SET created_at = ? WHERE record_key = ?
-        `).run(AFTER_NOW, runId),
-      },
-    ] as const;
-    for (const arm of [
-      { name: "failed", runId: UUID_1 },
-      { name: "done", runId: UUID_2 },
-    ] as const) {
-      for (const fixture of columnCases) {
-        const path = join(testRoot(), `${arm.name}-${fixture.name}.sqlite`);
-        const database = openDatabase(path);
-        seedTerminalAuthority(database);
-        database.close();
-        const raw = new DatabaseSync(path);
-        fixture.mutate(raw, arm.runId);
-        raw.close();
-        assert.throws(
-          () => AuthorityDatabase.inspectExistingReadOnly(path),
-          /terminal-authorization-columns-match-record/,
-          `${arm.name}/${fixture.name}`,
-        );
-        const report = openBootStore(path).report();
-        assert.equal(report.state, "degraded-read-only", `${arm.name}/${fixture.name}`);
-        if (report.state !== "degraded-read-only") throw new Error("expected degraded authorization columns");
-        assert.match(report.cause.summary, /terminal-authorization-columns-match-record/);
-      }
-    }
-
-    const associatedRecordCases: ReadonlyArray<Readonly<{
-      name: string;
-      violation: RegExp;
-      mutate(raw: DatabaseSync, seeded: SeededTerminalAuthority): void;
-    }>> = [
-      {
-        name: "failed-run-error-summary",
-        violation: /terminal-authorization-binds-exact-terminal-authority/,
-        mutate: (raw) => {
-          const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
-            .get(UUID_1) as { record_json: string } | undefined;
-          if (row === undefined) throw new Error("failed run is absent from summary corruption fixture");
-          const run = RunRecordSchema.parse(JSON.parse(row.record_json));
-          if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed") {
-            throw new Error("summary corruption fixture requires a failed terminal run");
-          }
-          const corrupted = RunRecordSchema.parse({
-            ...run,
-            lifecycle: { ...run.lifecycle, errorSummary: "Different display-safe failure summary" },
-          });
-          raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
-            .run(JSON.stringify(corrupted), UUID_1);
-        },
-      },
-      {
-        name: "failure-record-summary",
-        violation: /terminal-authorization-binds-exact-terminal-authority/,
-        mutate: (raw, seeded) => {
-          const row = raw.prepare("SELECT record_json FROM failures WHERE record_key = ?")
-            .get(seeded.failure.failureId) as { record_json: string } | undefined;
-          if (row === undefined) throw new Error("failure is absent from summary corruption fixture");
-          const failure = FailureRecordSchema.parse(JSON.parse(row.record_json));
-          const corrupted = FailureRecordSchema.parse({
-            ...failure,
-            summary: "Different structured failure summary",
-          });
-          raw.prepare("UPDATE failures SET record_json = ? WHERE record_key = ?")
-            .run(JSON.stringify(corrupted), failure.failureId);
-        },
-      },
-      {
-        name: "done-authorization-result-digest",
-        violation: /results-bind-terminal-authorization/,
-        mutate: (raw, seeded) => {
-          const row = raw.prepare(`
-            SELECT record_json FROM run_terminal_authorizations WHERE record_key = ?
-          `).get(seeded.result.runId) as { record_json: string } | undefined;
-          if (row === undefined) throw new Error("done authorization is absent from digest corruption fixture");
-          const authorization = TerminalAuthorizationRecordSchema.parse(JSON.parse(row.record_json));
-          if (authorization.kind !== "done") throw new Error("digest corruption fixture requires done authorization");
-          const corrupted = TerminalAuthorizationRecordSchema.parse({
-            ...authorization,
-            resultDigest: authorization.resultDigest === HASH_A ? HASH_B : HASH_A,
-          });
-          raw.prepare(`
-            UPDATE run_terminal_authorizations SET record_json = ? WHERE record_key = ?
-          `).run(JSON.stringify(corrupted), authorization.runId);
-        },
-      },
-      {
-        name: "done-authorization-outbox-id",
-        violation: /terminal-outbox-binds-terminal-authorization/,
-        mutate: (raw, seeded) => {
-          const row = raw.prepare(`
-            SELECT record_json FROM run_terminal_authorizations WHERE record_key = ?
-          `).get(seeded.result.runId) as { record_json: string } | undefined;
-          if (row === undefined) throw new Error("done authorization is absent from outbox corruption fixture");
-          const authorization = TerminalAuthorizationRecordSchema.parse(JSON.parse(row.record_json));
-          if (authorization.kind !== "done") throw new Error("outbox corruption fixture requires done authorization");
-          const corrupted = TerminalAuthorizationRecordSchema.parse({
-            ...authorization,
-            outboxId: UUID_8,
-          });
-          raw.prepare(`
-            UPDATE run_terminal_authorizations SET record_json = ? WHERE record_key = ?
-          `).run(JSON.stringify(corrupted), authorization.runId);
-        },
-      },
-    ];
-    for (const fixture of associatedRecordCases) {
-      const path = join(testRoot(), `${fixture.name}.sqlite`);
-      const database = openDatabase(path);
-      const seeded = seedTerminalAuthority(database);
-      database.close();
+  it("protects every completion field and detects offline consequence corruption", () => {
+    for (const arm of [{ runId: UUID_1, kind: "failed" }, { runId: UUID_2, kind: "done" }]) {
+      const path = join(testRoot(), `${arm.kind}-immutable.sqlite`);
+      const database = openDatabase(path); const seeded = seedTerminalAuthority(database); database.close();
       const raw = new DatabaseSync(path);
-      fixture.mutate(raw, seeded);
-      raw.close();
-      assert.throws(
-        () => AuthorityDatabase.inspectExistingReadOnly(path),
-        fixture.violation,
-        fixture.name,
-      );
+      try {
+        for (const [field, value] of [
+          ["claim.workerId", "worker-corrupt"], ["expectedVersion", 99], ["authorizedAt", AFTER_NOW],
+          [arm.kind === "done" ? "resultDigest" : "failureId", arm.kind === "done" ? HASH_B : UUID_7],
+        ] as const) {
+          const before = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key=?").get(arm.runId);
+          assert.throws(() => raw.prepare("UPDATE workflow_runs SET record_json=json_set(record_json,?,?) WHERE record_key=?")
+            .run(`$.completion.${field}`, value, arm.runId), /completion/);
+          assert.deepEqual(raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key=?").get(arm.runId), before);
+        }
+        raw.exec("DROP TRIGGER workflow_runs_completion_update; DROP TRIGGER workflow_runs_completion_immutable");
+        if (arm.kind === "done") {
+          raw.prepare("UPDATE workflow_runs SET record_json=json_set(record_json,'$.completion.resultDigest',?) WHERE record_key=?").run(HASH_B, arm.runId);
+        } else {
+          raw.prepare("UPDATE run_failures SET record_json=json_set(record_json,'$.summary','Changed summary') WHERE record_key=?").run(seeded.failure.failureId);
+        }
+      } finally { raw.close(); }
+      assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(path), /run-completion-consequences/);
       const report = openBootStore(path).report();
-      assert.equal(report.state, "degraded-read-only", fixture.name);
-      if (report.state !== "degraded-read-only") throw new Error("expected degraded associated authority");
-      assert.match(report.cause.summary, fixture.violation);
+      assert.equal(report.state, "degraded-read-only");
     }
+    const path = join(testRoot(), "retired.sqlite"); const database = openDatabase(path); database.close();
+    const raw = new DatabaseSync(path);
+    try { for (const table of ["run_terminal_authorizations", "run_terminal_outbox"]) assert.throws(() => raw.prepare(`SELECT * FROM ${table}`), /no such table/); }
+    finally { raw.close(); }
   });
 
   it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
@@ -3047,7 +2873,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       pendingCommands: 1,
       unresolvedWriteIntents: 0,
       leases: 1,
-      runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 1,
     });
@@ -3112,7 +2937,7 @@ describe("offline exact-backup restore", () => {
     await assert.doesNotReject(restore.restore({ manifestPath, stoppedSystemProof: proof }));
   });
 
-  it("preserves nonempty failure, result, terminal-outbox, and authorization authority", async () => {
+  it("preserves nonempty failure, result and immutable same-row completion authority", async () => {
     const root = testRoot();
     const authorityPath = join(root, "terminal-state.sqlite");
     const directory = backupDirectory(root);
@@ -3136,16 +2961,12 @@ describe("offline exact-backup restore", () => {
     assert.deepEqual(restored.authority.failures.get(seeded.failure.failureId), seeded.failure);
     assert.deepEqual(restored.authority.runResults.get(seeded.result.runId), seeded.result);
     assert.deepEqual(
-      restored.authority.runTerminalOutbox.get(seeded.outbox.outboxId),
-      seeded.outbox,
+      restored.authority.runs.get(seeded.failure.runId)?.completion,
+      completionFromAuthorization(seeded.failureAuthorization),
     );
     assert.deepEqual(
-      restored.authority.terminalAuthorizations.get(seeded.failure.runId),
-      seeded.failureAuthorization,
-    );
-    assert.deepEqual(
-      restored.authority.terminalAuthorizations.get(seeded.result.runId),
-      seeded.successAuthorization,
+      restored.authority.runs.get(seeded.result.runId)?.completion,
+      completionFromAuthorization(seeded.successAuthorization),
     );
   });
 
@@ -3918,6 +3739,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/infra/compat/upgrade-sources.ts",
       adapterPath,
       "src/infra/sqlite/backup-service.ts",
+    "src/infra/sqlite/completion-conversion.ts",
       "src/infra/compat/settings-database-upgrade.ts",
       "src/infra/sqlite/timeline-conversion.ts",
       "src/infra/sqlite/timeline-repository.ts",

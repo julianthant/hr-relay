@@ -152,7 +152,7 @@ function formatReport(report: StorageDoctorReport): string {
     lines.push(
       `pending: commands ${String(values.pendingCommands)} · write intents ${String(values.unresolvedWriteIntents)} `
       + `· leases ${String(values.leases)} `
-      + `· terminal outbox ${String(values.runTerminalOutbox)} · provider reservations ${String(values.providerReservations)} `
+      + `· provider reservations ${String(values.providerReservations)} `
       + `· artifact outbox ${String(values.artifactOutbox)}`,
     );
   } else {

@@ -21,6 +21,9 @@
  * than invented here — it lands with the first workflow that carries one.
  */
 import { z } from "zod";
+import { RunCompletionSchema, completionFromAuthorization } from "./completion.js";
+import { HistoricalTerminalAuthorizationSchema } from "./completion-history.js";
+import { TerminalAuthorizationRecordSchema } from "./terminal-authorization.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../canonical-json.js";
 import { RunDisplayNameSchema } from "../commands.js";
@@ -213,7 +216,8 @@ export const RunInputStorageSchema = z.strictObject({
 });
 export type RunInputStorage = z.infer<typeof RunInputStorageSchema>;
 
-export const RunRecordSchema = z.strictObject({
+/** Explicit schema <=40 reader for stopped conversion; never runtime admission. */
+export const HistoricalRunRecordV40Schema = z.strictObject({
   envelope: RunEnvelopeSchema,
   input: RunInputStorageSchema,
   lifecycle: RunLifecycleSchema,
@@ -337,6 +341,40 @@ export const RunRecordSchema = z.strictObject({
       path: ["lifecycle", "heartbeatAt"],
       message: "a claim heartbeat cannot predate the run's enqueue",
     });
+  }
+});
+export const RunRecordSchema = HistoricalRunRecordV40Schema.safeExtend({
+  completion: RunCompletionSchema.optional(),
+}).superRefine((run, context) => {
+  const completion = run.completion;
+  const settled = run.lifecycle.state === "terminal" && ["done", "failed"].includes(run.lifecycle.outcome);
+  if (settled !== (completion !== undefined)) {
+    context.addIssue({ code: "custom", path: ["completion"], message: "done/failed requires completion; other states cannot carry it" });
+    return;
+  }
+  if (completion === undefined) return;
+  if (run.version < completion.expectedVersion + 1 || run.claimGeneration !== completion.claim.claimGeneration
+    || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== completion.kind
+    || run.lifecycle.endedAt !== completion.authorizedAt
+    || (run.version === completion.expectedVersion + 1 && run.updatedAt !== completion.authorizedAt)
+    || (completion.kind === "failed" && run.lifecycle.failureId !== completion.failureId)) {
+    context.addIssue({ code: "custom", path: ["completion"], message: "completion does not bind the exact terminal consequence" });
+  }
+  if (completion.historical !== undefined) {
+    let old: z.infer<typeof HistoricalTerminalAuthorizationSchema>;
+    try { old = HistoricalTerminalAuthorizationSchema.parse(JSON.parse(completion.historical.authorizationJson)); }
+    catch {
+      context.addIssue({ code: "custom", path: ["completion", "historical"], message: "invalid historical completion authorization" });
+      return;
+    }
+    const { outboxId: _outbox, ...request } = old.kind === "done" ? old : { ...old, outboxId: undefined };
+    const { historical: _history, ...current } = completion;
+    if (old.runId !== run.envelope.runId || old.workflowId !== run.envelope.workflow
+      || old.attempt !== run.envelope.attempt || old.descriptorVersion !== run.envelope.descriptorVersion
+      || old.contractFingerprint !== run.envelope.contractFingerprint
+      || canonicalJsonStringify(completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(request))) !== canonicalJsonStringify(current)) {
+      context.addIssue({ code: "custom", path: ["completion", "historical"], message: "historical completion identity changed" });
+    }
   }
 });
 export type RunRecord = z.infer<typeof RunRecordSchema>;

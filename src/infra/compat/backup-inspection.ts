@@ -1,3 +1,5 @@
+import { HistoricalRunRecordV40Schema } from "../../domain/run/record.js";
+import { HistoricalTerminalAuthorizationSchema, HistoricalTerminalOutboxRecordSchema } from "../../domain/run/completion-history.js";
 import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../domain/ledger-projection.js";
 import { BulkRunCommandAcceptanceRecordSchema, AuthorityCommandRecordSchema } from "../../domain/commands.js";
@@ -22,7 +24,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -39,6 +41,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "workflow_runs",
   "run_terminal_authorizations",
   "failures",
+  "run_failures",
   "run_results",
   "run_terminal_outbox",
   "diagnostic_bundles",
@@ -177,7 +180,7 @@ export type BackupCopyInspection = Readonly<{
     unresolvedWriteIntents: number;
     leases: number;
     durableOutbox?: number;
-    runTerminalOutbox: number;
+    runTerminalOutbox?: number;
     providerReservations: number;
     artifactOutbox: number;
   }>;
@@ -365,7 +368,7 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
     unresolvedWriteIntents: count(database, `SELECT count(*) AS count FROM ${operations} WHERE status NOT IN ('committed', 'observed-present')`),
     leases: count(database, schemaVersion < 35 ? "SELECT count(*) AS count FROM leases" : "SELECT count(*) AS count FROM workflow_workers"),
     ...(schemaVersion >= 40 ? {} : { durableOutbox: count(database, `SELECT count(*) AS count FROM ${outbox} WHERE json_extract(record_json, '$.projection.state') = 'pending'`) }),
-    runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
+    ...(schemaVersion <= 40 ? { runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'") } : {}),
     providerReservations: countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count(database, "SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
   });
@@ -381,7 +384,11 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
     evidence_receipts: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_receipts,
     config_snapshots: AUTHORITY_RECORD_SCHEMA_REGISTRY.settings_snapshots,
     dry_run_scenario_results: AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results,
-    tasks: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_runs,
+    tasks: HistoricalRunRecordV40Schema,
+    ...(schemaVersion <= 40 ? { workflow_runs: HistoricalRunRecordV40Schema,
+      failures: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_failures,
+      run_terminal_authorizations: HistoricalTerminalAuthorizationSchema,
+      run_terminal_outbox: HistoricalTerminalOutboxRecordSchema } : {}),
     leases: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_workers,
     duo_ceremony_leases: AUTHORITY_RECORD_SCHEMA_REGISTRY.worker_auth,
     start_plans: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_run_requests,

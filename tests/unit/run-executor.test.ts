@@ -136,8 +136,8 @@ describe("person-lookup full walk", () => {
     );
     const crmDates = result.dependencies.find((dependency) => dependency.nodeId === "crm-dates");
     assert.ok(crmDates?.state === "not-run" && crmDates.reason === "condition-false");
-    assert.ok(database.authority.terminalAuthorizations.get(RUN_ID));
-    assert.ok(database.authority.runTerminalOutbox.findByRun(RUN_ID));
+    assert.ok(database.authority.runs.get(RUN_ID)?.completion);
+    assert.ok(database.authority.runs.get(RUN_ID)?.completion);
 
     // Checkpoints: three executed nodes have rows; the skipped node has none.
     const itemId = run.envelope.itemId;
@@ -286,7 +286,7 @@ describe("failure, retry, and resume", () => {
     assert.equal(failure.taskId, "crm/read-onboarding-record");
     assert.equal(failure.code, "CRM_UNAVAILABLE");
     // The authorization retained the pre-terminal CAS and claim.
-    const authorization = database.authority.terminalAuthorizations.get(RUN_ID);
+    const authorization = database.authority.runs.get(RUN_ID)?.completion;
     assert.ok(authorization && authorization.kind === "failed");
     assert.equal(run.version, authorization.expectedVersion + 1);
     assert.equal(run.claimGeneration, authorization.claim.claimGeneration);
@@ -809,7 +809,7 @@ describe("worker terminal service boundary", () => {
       else await assert.rejects(executeClaimedRun(deps, { ...claimed, signal: SIGNAL }), /outer terminal rollback/);
       assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
       assert.equal(database.authority.runResults.get(RUN_ID), undefined);
-      assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+      assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
       assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
       assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
     });
@@ -849,7 +849,7 @@ describe("original claim at failure terminalization", () => {
     assert.equal(result.state, "abandoned");
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "claimed");
     assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
-    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
     assert.equal(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run").length, 0);
   });
 });
@@ -889,7 +889,7 @@ describe("cancellation racing failure authorization", () => {
     assert.ok(settled?.lifecycle.state === "terminal");
     assert.equal(settled.lifecycle.outcome, "cancelled");
     assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
-    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
     assert.deepEqual(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run")
       .map((event) => event.outcome), ["cancelled"]);
   });
@@ -923,7 +923,7 @@ describe("cancellation racing terminal admission", () => {
     assert.ok(settled?.lifecycle.state === "terminal");
     assert.equal(settled.lifecycle.outcome, "cancelled");
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
-    assert.equal(database.authority.terminalAuthorizations.get(RUN_ID), undefined);
+    assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
     assert.deepEqual(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run")
       .map((event) => event.outcome), ["cancelled"]);
   });

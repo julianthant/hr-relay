@@ -6,7 +6,7 @@ import {
   FailureTerminalAuthorizationRecordSchema,
   SuccessTerminalAuthorizationRecordSchema,
 } from "../../domain/run/terminal-authorization.js";
-import { RunTerminalOutboxRecordSchema } from "../../domain/run/terminal-outbox.js";
+import { HistoricalTerminalOutboxRecordSchema, HistoricalSuccessAuthorizationSchema } from "../../domain/run/completion-history.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
 
 export const FailureTerminalizationRequestSchema = z.strictObject({
@@ -27,30 +27,27 @@ export const FailureTerminalizationRequestSchema = z.strictObject({
 
 export const SuccessTerminalizationRequestSchema = z.strictObject({
   result: RunResultRecordSchema,
-  outbox: RunTerminalOutboxRecordSchema,
   authorization: SuccessTerminalAuthorizationRecordSchema,
 }).superRefine((request, context) => {
-  if (request.outbox.projection.state !== "pending") {
-    context.addIssue({
-      code: "custom",
-      path: ["outbox", "projection", "state"],
-      message: "a successful terminalization must create its outbox pending",
-    });
-  }
   if (request.result.runId !== request.authorization.runId
     || request.result.workflowId !== request.authorization.workflowId
     || request.result.attempt !== request.authorization.attempt
     || request.result.descriptorVersion !== request.authorization.descriptorVersion
     || request.result.contractFingerprint !== request.authorization.contractFingerprint
-    || request.result.resultDigest !== request.authorization.resultDigest
-    || request.outbox.outboxId !== request.authorization.outboxId) {
-    context.addIssue({
-      code: "custom",
-      path: ["authorization"],
-      message: "success authorization must bind the exact result and outbox identity",
-    });
+    || request.result.resultDigest !== request.authorization.resultDigest) {
+    context.addIssue({ code: "custom", path: ["authorization"], message: "success authorization must bind the exact result identity" });
   }
 });
+
+/** Preserves the complete old request for journal hashing; admitted only for replay. */
+export const HistoricalSuccessTerminalizationRequestSchema = z.strictObject({
+  result: RunResultRecordSchema,
+  authorization: HistoricalSuccessAuthorizationSchema,
+  outbox: HistoricalTerminalOutboxRecordSchema,
+});
+export const SuccessTerminalizationReplayInputSchema = z.union([
+  SuccessTerminalizationRequestSchema, HistoricalSuccessTerminalizationRequestSchema,
+]);
 
 export const FailureTerminalizationReportSchema = z.strictObject({
   state: z.enum(["applied", "replayed"]),
@@ -63,12 +60,11 @@ export const SuccessTerminalizationReportSchema = z.strictObject({
   state: z.enum(["applied", "replayed"]),
   authorization: SuccessTerminalAuthorizationRecordSchema,
   result: RunResultRecordSchema,
-  outbox: RunTerminalOutboxRecordSchema,
   run: RunRecordSchema,
 });
 
-export const FailureTerminalizationStorageStepSchema = z.enum(["authorization", "failure", "run"]);
-export const SuccessTerminalizationStorageStepSchema = z.enum(["authorization", "result", "outbox", "run"]);
+export const FailureTerminalizationStorageStepSchema = z.enum(["failure", "run"]);
+export const SuccessTerminalizationStorageStepSchema = z.enum(["result", "run"]);
 
 export type FailureTerminalizationReport = z.infer<typeof FailureTerminalizationReportSchema>;
 export type SuccessTerminalizationReport = z.infer<typeof SuccessTerminalizationReportSchema>;

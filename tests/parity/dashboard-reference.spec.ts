@@ -13,6 +13,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 import { startSeededServer, SEEDED_APP_VERSION, SEEDED_DAY, type SeededServer } from "./helpers/seeded-bff.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
@@ -786,7 +787,10 @@ const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS.filter(
 test.describe("loaded storage doctor", () => {
   for (const viewport of STORAGE_DOCTOR_VIEWPORTS) {
     for (const theme of PARITY_THEMES) {
-      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+      const a11yName = `storage-doctor-${theme.name}-${viewport.name}.a11y.yml`;
+      test(`${theme.name} @ ${viewport.name}`, {
+        annotation: [{ type: "required-a11y-evidence", description: a11yName }],
+      }, async ({ page }) => {
         const errors = failOnPageErrors(page);
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await installTheme(page, theme satisfies ParityTheme);
@@ -796,6 +800,7 @@ test.describe("loaded storage doctor", () => {
 
         await page.getByRole("button", { name: "Run the read-only storage doctor" }).click();
         const heading = page.getByRole("heading", { name: "Span authority degraded" });
+        await expect(page.getByText(/terminal outbox/u)).toHaveCount(0);
         await expect(heading).toBeVisible();
         await expect(page.getByRole("list", { name: "Span authority problems" }).getByRole("listitem"))
           .toHaveCount(4);
@@ -805,6 +810,14 @@ test.describe("loaded storage doctor", () => {
 
         await assertShellGeometry(page, `storage-doctor-degraded @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the loaded storage doctor").toEqual([]);
+
+        const snapshot = await page.locator("body").ariaSnapshot();
+        expect(snapshot).toContain("Span authority degraded");
+        test.info().annotations.push({
+          type: `a11y-attachment-sha256:${a11yName}`,
+          description: createHash("sha256").update(snapshot).digest("hex"),
+        });
+        await test.info().attach(a11yName, { body: snapshot, contentType: "text/yaml" });
 
         await captureParityPair(page, REFERENCES, {
           stateId: "storage-doctor-degraded",
