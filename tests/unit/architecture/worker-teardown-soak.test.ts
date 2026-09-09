@@ -41,7 +41,7 @@ import {
   WorkflowIdSchema,
 } from "../../../src/domain/ids.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
-import { createLedgerProjector } from "../../../src/infra/ledger/index.js";
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
@@ -467,23 +467,12 @@ describe("D182 C8 — a bounded multi-worker soak over one authority database", 
     // and every `done` run mints EXACTLY one terminal outbox row — one row per
     // run is the fact a duplicate terminalization would break.
     assert.equal(inspection.counts.unresolvedWriteIntents, 0);
-    assert.equal(inspection.counts.durableOutbox, 0);
+    assert.equal("durableOutbox" in inspection.counts, false);
     assert.equal(inspection.counts.pendingCommands, 0);
     assert.equal(inspection.counts.runTerminalOutbox, SOAK_RUNS);
 
-    // Ledger integrity. A read-only workflow mints no ledger entries, so the
-    // load-bearing claim is that the projector AGREES there is nothing to do —
-    // asserted, not assumed. (The two-projector lease race over a partition
-    // that DOES have work is `tests/unit/architecture/ledger-projector.test.ts`.)
-    const projector = createLedgerProjector(database, authority.clock, {
-      stateRoot: authority.stateRoot,
-      projectorId: "soak-ledger-projector",
-      leaseMs: 30_000,
-    });
-    assert.deepEqual([...projector.partitionsWithWork()], []);
-    const projected = projector.projectAll();
-    assert.deepEqual([...projected], []);
-    for (const report of projected) assert.equal(report.state, "projected");
+    // The real database query proves read-only execution created no transactions.
+    assert.deepEqual(createTransactionHistory(database.authority).query({ from: "0001-01-01", to: "9999-12-31" }).rows, []);
 
     // Recorded in ref execution-and-sessions §7.1's as-built paragraph; printed so a regression in
     // the soak's cost is visible in the run rather than only in the wall clock.

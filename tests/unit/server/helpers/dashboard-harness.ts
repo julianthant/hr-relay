@@ -1,3 +1,4 @@
+import { AuthorityDatabase } from "../../../../src/infra/sqlite/authority-database.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/events/timeline.js";
 import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/infra/sqlite/timeline-repository.js";
@@ -37,7 +38,7 @@ import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
 import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/events/types.js";
 import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
 type TimelineEmitter = ReturnType<typeof createTimelineEmitter>;
-import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
 import {
   createRunQueueProjection,
   RunQueueProjection,
@@ -204,6 +205,7 @@ export function authorityFake(): AuthorityFake {
 }
 
 export interface DashboardWorld {
+  readonly database: AuthorityDatabase;
   readonly timeline: TimelineRepository;
   readonly stateRoot: string;
   readonly clock: TestClock;
@@ -231,6 +233,7 @@ export function makeWorld(input?: Readonly<{
   const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-dashboard-"));
   const clock = manualClock(AT);
   const authority = authorityFake();
+  const database = AuthorityDatabase.open({ path: join(stateRoot, "authority.db"), busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
   const eventDatabase = new DatabaseSync(join(stateRoot, "timeline.sqlite"));
   eventDatabase.exec("PRAGMA foreign_keys=ON; CREATE TABLE workflow_runs(record_key TEXT PRIMARY KEY) STRICT; CREATE TABLE deleted_runs(record_key TEXT PRIMARY KEY) STRICT");
   eventDatabase.exec(TIMELINE_EVENT_TABLE_DDL);
@@ -262,10 +265,8 @@ export function makeWorld(input?: Readonly<{
     appVersion: APP_VERSION,
     descriptorSetHash: DESCRIPTOR_SET_HASH,
     // D236: the report's one second authority, read through the SAME
-    // production read-through over this world's own state root. A stub here
-    // would make the seam untested by construction (separations 6c's lesson),
-    // and an empty `ledger/` directory is exactly the honest empty block.
-    ledger: createLedgerReadThrough(stateRoot),
+    // real database history over separately seeded operation owners.
+    ledger: createTransactionHistory(database.authority),
     authority,
     descriptors: input?.descriptors ?? { resolve: () => undefined },
     ...(input?.collectRebuilds === true
@@ -289,6 +290,7 @@ export function makeWorld(input?: Readonly<{
     },
   });
   return {
+    database,
     timeline,
     stateRoot,
     clock,
@@ -299,7 +301,7 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => { eventDatabase.close(); rmSync(stateRoot, { recursive: true, force: true }); },
+    dispose: () => { database.close(); eventDatabase.close(); rmSync(stateRoot, { recursive: true, force: true }); },
   };
 }
 

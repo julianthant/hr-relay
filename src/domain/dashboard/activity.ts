@@ -292,14 +292,10 @@ export type ActivityLedgerSystemTotal = z.infer<typeof ActivityLedgerSystemTotal
  * **The D81 CARVE-OUT (D236).** Every other total on this wire descends from
  * the ONE run/queue projection. This block does not, and it is here anyway.
  *
- * The write ledger is a DIFFERENT authority: ref dashboard-surfaces §10.2 rule 1 has said since
- * Phase 0 that *"the write ledger is never archived — archiving is a display
- * lifecycle; the ledger is an audit one"*, and `src/infra/ledger/` is
- * append-only, never pruned, and partitioned by each entry's own `confirmedAt`.
- * So its entries can OUTLIVE the runs that filed them: a range whose runs have
- * all been archived can still hold ledger lines, and folding those lines out of
- * the run projection would report "nothing was filed" about real HR
- * transactions that were.
+ * Confirmed operations come from retained SQLite events and exact immutable
+ * attempt/checkpoint evidence. Archiving does not add or remove transactions;
+ * explicit owner deletion excludes them. Their range can therefore contain
+ * transactions whose runs are outside the generic Activity projection.
  *
  * The carve-out is therefore narrow and it is structural: this block is
  * reported BESIDE the projection's totals and is never reconciled against them.

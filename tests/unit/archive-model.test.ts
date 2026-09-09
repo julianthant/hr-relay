@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { atomicWriteCheckpoint } from "./helpers/timeline-write-fixture.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
@@ -22,7 +23,7 @@ import { sha256Hex } from "../../src/domain/sha256.js";
  * `npm run build:manifest` produces. Nothing here rewrites a stored run.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -49,8 +50,8 @@ import {
   VersionBumpPlanSchema,
 } from "../../src/domain/archive/model.js";
 import { RunEvidenceReceiptSchema } from "../../src/domain/trust/evidence.js";
-import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
-import { createLedgerProjector } from "../../src/infra/ledger/index.js";
+import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
+
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
@@ -488,14 +489,14 @@ function emptyRegistryDeps(world: World): Parameters<typeof buildArchivedRunDeta
     authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
     reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
     descriptors: { list: () => [] },
-    ledger: createLedgerReadThrough(world.stateRoot),
+    ledger: createTransactionHistory(world.database.authority),
   } as unknown as Parameters<typeof buildArchivedRunDetail>[0];
 }
 
 /** Every byte under a ledger root, so "untouched" can be asserted literally. */
 function ledgerBytes(stateRoot: string): readonly [string, string][] {
   const ledgerRoot = join(stateRoot, "ledger");
-  return readdirSync(ledgerRoot)
+  return (existsSync(ledgerRoot) ? readdirSync(ledgerRoot) : [])
     .sort()
     .map((name) => [name, readFileSync(join(ledgerRoot, name), "utf8")] as const);
 }
@@ -998,13 +999,7 @@ describe("the D80 archive model", () => {
       "fenced",
     );
     world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
-    const projected = createLedgerProjector(
-      world.database,
-      manualClock(new Date(NOW)),
-      { stateRoot: world.stateRoot, projectorId: "archive-model-test", leaseMs: 30_000 },
-    ).projectAll();
-    assert.equal(projected.length, 1);
-    assert.equal(projected[0]?.state, "projected");
+    assert.equal(createTransactionHistory(world.database.authority).query({ from: "2000-01-01", to: "2100-01-01" }).rows.length, 1);
 
     const before = ledgerBytes(world.stateRoot);
     world.registry = V2;
@@ -1015,7 +1010,7 @@ describe("the D80 archive model", () => {
     const stored = world.database.authority.archivedRuns.get(archived);
     assert.deepEqual(
       stored?.evidence.ledgerPartitions.map((pointer) => ({ ...pointer })),
-      [{ system: "ucpath", date: NOW.slice(0, 10), sequence: 0 }],
+      [], // Native confirmations use exact event references in the frozen section.
     );
     assert.deepEqual(ledgerBytes(world.stateRoot), before);
 
@@ -1033,6 +1028,27 @@ describe("the D80 archive model", () => {
       value: `Termination for ${directIdentifierDigestReference("10873698")} effective 06/11/2026 (Pending)`,
     });
     assert.deepEqual({ ...line.confirmation }, { state: "present", value: "T002209631" });
+  });
+
+  it("replays frozen enrichment exactly and refuses divergent or corrupted transaction bytes", () => {
+    const world = createWorld(); const archived = startRun(world, "10873698", true);
+    world.registry = V2; assert.equal(apply(world, plan(world)).state, "applied");
+    const original = world.database.authority.archivedRuns.get(archived); assert.ok(original);
+    const section = world.database.authority.archivedRuns.transactions(archived);
+    const before = world.database.getMeta();
+    assert.deepEqual(world.database.authority.archivedRuns.enrichTransactions(section), section);
+    assert.deepEqual(world.database.getMeta(), before);
+    assert.throws(() => world.database.authority.archivedRuns.enrichTransactions({ ...section, capturedAt: "2030-01-01T00:00:00.000Z" }), /divergent-enrichment/u);
+    assert.deepEqual(world.database.authority.archivedRuns.get(archived), original);
+    assert.equal(buildArchivedRunDetail(emptyRegistryDeps(world), archived).archiveFingerprint, archivedRunReferenceFingerprint(original));
+    const raw = new DatabaseSync(join(world.stateRoot, "..", "authority.sqlite"));
+    try {
+      assert.throws(() => raw.exec("UPDATE archived_runs SET transactions_digest='" + "a".repeat(64) + "'"), /immutable/u);
+      raw.exec("DROP TRIGGER archived_runs_immutable_update");
+      raw.exec("UPDATE archived_runs SET transactions_digest='" + "a".repeat(64) + "'");
+    } finally { raw.close(); }
+    assert.throws(() => buildArchivedRunDetail(emptyRegistryDeps(world), archived), /archive-transactions-integrity/u);
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(world.stateRoot, "..", "authority.sqlite")), /archive-transactions-integrity/u);
   });
 
   it("carries the frozen row's resolved instances onto the INDEX entry", () => {
@@ -1053,7 +1069,7 @@ describe("the D80 archive model", () => {
       descriptors: { list: () => [] },
       // The read-through over the SAME state root the world writes to, so a
       // pointer this test archived resolves the way production would.
-      ledger: createLedgerReadThrough(world.stateRoot),
+      ledger: createTransactionHistory(world.database.authority),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
 
     const entry = buildArchiveIndex(deps).entries[0];
@@ -1086,7 +1102,7 @@ describe("the D80 archive model", () => {
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
       reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
       descriptors: { list: () => [] },
-      ledger: createLedgerReadThrough(world.stateRoot),
+      ledger: createTransactionHistory(world.database.authority),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
 
     const entry = buildArchiveIndex(deps).entries[0];
@@ -1116,7 +1132,7 @@ describe("the D80 archive model", () => {
       authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
       reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
       descriptors: { list: () => [] },
-      ledger: createLedgerReadThrough(world.stateRoot),
+      ledger: createTransactionHistory(world.database.authority),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
 
     const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);
@@ -1144,7 +1160,7 @@ describe("the D80 archive model", () => {
       descriptors: { list: () => [] },
       // The read-through over the SAME state root the world writes to, so a
       // pointer this test archived resolves the way production would.
-      ledger: createLedgerReadThrough(world.stateRoot),
+      ledger: createTransactionHistory(world.database.authority),
     } as unknown as Parameters<typeof buildArchiveIndex>[0];
 
     const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);

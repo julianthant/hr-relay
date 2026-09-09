@@ -39,6 +39,7 @@ export const DeletedRunOriginSchema = z.enum(["queue", "archive"]);
 /** Every table the cascade may touch, so a count can never name a table it did not read. */
 export const DeletedRunTableSchema = z.enum([
   "timeline_events",
+  "timeline_operation_sources",
   "ledger_projections",
   "operation_outbox",
   "run_operation_attempts",

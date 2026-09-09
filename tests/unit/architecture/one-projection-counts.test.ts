@@ -1,3 +1,5 @@
+import { ledgerCommitFixture, fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
+import { seedAtomicWriteOwner, atomicWriteCheckpoint } from "../helpers/timeline-write-fixture.js";
 /**
  * D81 — ONE projection owns every count (ref dashboard-surfaces §10.1; ref guards-and-tests §3.13).
  *
@@ -36,13 +38,10 @@
  *    "reported beside the totals" is a claim about what does not happen.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import ts from "typescript";
 import { afterEach, describe, it } from "vitest";
-import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
-import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
-import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   claimEventOf,
   failureRecordOf,
@@ -71,10 +70,10 @@ const THE_PROJECTION = "src/server/dashboard/projectors/run-queue-projection.ts"
  */
 const LEDGER_BLOCK_BUILDERS = [
   "src/domain/dashboard/activity.ts",
-  "src/infra/ledger/ledger-read-through.ts",
+  "src/infra/sqlite/transaction-history.ts",
 ];
 const LEDGER_BLOCK_CONSUMERS = [
-  "src/infra/ledger/ledger-read-through.ts",
+  "src/infra/sqlite/transaction-history.ts",
   THE_PROJECTION,
 ];
 
@@ -250,8 +249,8 @@ describe("one-projection-counts (D81)", () => {
     assert.deepEqual(payload.monthCounts, [{ day: DAY, count: 6 }]);
 
     /*
-     * D236 — the carve-out, as the thing that must NOT happen. Two real ledger
-     * lines are filed into this world's own append-only ledger, which is a
+     * D236 — the carve-out, as the thing that must NOT happen. Two real confirmations
+     * are filed into this world's database history, which is a
      * different authority from every row above; the Activity report must report
      * them and every count must be byte-identical to the payload just proved.
      * A block that moved a count would be the second summation path D81 deletes
@@ -264,22 +263,12 @@ describe("one-projection-counts (D81)", () => {
       uuidOf(9007),
       failureRecordOf({ seed: 7, code: "SESSION_LOST", transient: true }),
     );
-    mkdirSync(ledgerDirectory(world.stateRoot), { recursive: true });
-    for (const [seq, instance] of [[0, "prod"], [1, "test"]] as const) {
-      appendFileSync(
-        ledgerFilePath(world.stateRoot, "ucpath", instantOffsetOf(0).slice(0, 10)),
-        `${JSON.stringify({
-          outboxId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-          seq,
-          payload: {
-            ...LEDGER_PAYLOAD,
-            idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", IDEMPOTENCY_KEY),
-            instance,
-            confirmedAt: instantOffsetOf(0),
-          },
-        })}\n`,
-        "utf8",
-      );
+    for (const [index, instance] of [[0, "prod"], [1, "test"]] as const) {
+      const fixture = ledgerCommitFixture(index, { instance, confirmedAt: instantOffsetOf(0),
+        runId: fixtureUuid(`one-projection-run-${String(index)}`), itemId: fixtureUuid(`one-projection-item-${String(index)}`) });
+      seedAtomicWriteOwner(world.database, fixture.commit);
+      assert.equal(world.database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
+      world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     }
     const report = world.projection.buildActivityReportWire(DAY, DAY);
     assert.deepEqual(report.ledger, {

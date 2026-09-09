@@ -6,7 +6,7 @@ import {
   RunIdSchema,
   WriteIntentIdSchema,
 } from "../../domain/ids.js";
-import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
+import { LedgerEntryPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../domain/ledger.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
 import {
@@ -78,116 +78,56 @@ export const PermanentWriteResolutionSchema = z.discriminatedUnion("state", [
 });
 
 export const AtomicWriteCommitStorageStepSchema = z.enum([
-  "intent-state",
-  "attempt-state",
-  "ledger-outbox",
-  "terminal-span-outbox",
-  "transaction-checkpoint",
-  "timeline-event",
+  "intent-state", "attempt-state", "transaction-checkpoint", "timeline-event",
 ]);
-
 export const AtomicWriteCommitInputSchema = z.strictObject({
-  writeIntentId: WriteIntentIdSchema,
-  generation: PositiveIntSchema,
-  completionProof: SchemaBoundCanonicalValueSchema,
-  confirmedAt: z.iso.datetime({ offset: true }),
+  writeIntentId: WriteIntentIdSchema, generation: PositiveIntSchema,
+  completionProof: SchemaBoundCanonicalValueSchema, confirmedAt: z.iso.datetime({ offset: true }),
   outcome: TransactionOutcomeSchema,
-  ledgerOutbox: AtomicOutboxRecordSchema,
-  terminalSpanOutbox: AtomicOutboxRecordSchema,
+  transaction: LedgerEntryPayloadSchema,
+  committedSpan: WriteCommittedSpanOutboxPayloadSchema,
 }).superRefine((input, context) => {
-  if (input.outcome.disposition !== "committed") {
-    context.addIssue({ code: "custom", path: ["outcome", "disposition"], message: "atomic write commit requires a committed transaction outcome" });
-  } else {
-    if (canonicalJsonStringify(input.completionProof) !== canonicalJsonStringify(input.outcome.proof)) {
-      context.addIssue({ code: "custom", path: ["outcome", "proof"], message: "outcome proof must equal the accepted completion proof" });
-    }
-    if (input.confirmedAt !== input.outcome.confirmedAt) {
-      context.addIssue({ code: "custom", path: ["outcome", "confirmedAt"], message: "outcome confirmation time must equal the atomic commit time" });
+  if (input.outcome.disposition !== "committed"
+    || canonicalJsonStringify(input.completionProof) !== canonicalJsonStringify(input.transaction.proof)
+    || canonicalJsonStringify(input.completionProof) !== canonicalJsonStringify(input.outcome.proof)
+    || input.confirmedAt !== input.outcome.confirmedAt
+    || input.confirmedAt !== input.transaction.confirmedAt
+    || input.confirmedAt !== input.committedSpan.occurredAt
+    || input.transaction.proofSource !== input.outcome.proofSource
+    || canonicalJsonStringify(input.committedSpan.outcome) !== canonicalJsonStringify(input.outcome)) {
+    context.addIssue({ code: "custom", message: "atomic confirmation proof and outcome must agree" });
+  }
+  for (const facts of [input.transaction, input.committedSpan]) {
+    if (facts.writeIntentId !== input.writeIntentId || facts.intentGeneration !== input.generation) {
+      context.addIssue({ code: "custom", message: "atomic confirmation operation identity must agree" });
     }
   }
-  if (input.ledgerOutbox.payload.kind !== "ledger-entry") {
-    context.addIssue({ code: "custom", path: ["ledgerOutbox", "payload", "kind"], message: "ledgerOutbox must carry the ledger-entry arm" });
-  } else {
-    if (canonicalJsonStringify(input.ledgerOutbox.payload.entry.proof) !== canonicalJsonStringify(input.completionProof)) {
-      context.addIssue({ code: "custom", path: ["ledgerOutbox", "payload", "entry", "proof"], message: "ledger proof must equal the accepted completion proof" });
-    }
-    if (input.outcome.disposition === "committed"
-      && (input.ledgerOutbox.payload.entry.proofSource !== input.outcome.proofSource
-        || input.ledgerOutbox.payload.entry.confirmedAt !== input.confirmedAt)) {
-      context.addIssue({ code: "custom", path: ["ledgerOutbox", "payload", "entry"], message: "ledger proof source and confirmation time must match the committed outcome" });
-    }
-  }
-  if (input.terminalSpanOutbox.payload.kind !== "write-committed-span") {
-    context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "payload", "kind"], message: "terminalSpanOutbox must carry the write-committed-span arm" });
-  } else if (canonicalJsonStringify(input.terminalSpanOutbox.payload.outcome) !== canonicalJsonStringify(input.outcome)) {
-    context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "payload", "outcome"], message: "terminal span outcome must equal the generic committed outcome shell" });
-  }
-  if (input.ledgerOutbox.payload.kind === "ledger-entry"
-    && input.terminalSpanOutbox.payload.kind === "write-committed-span"
-    && input.ledgerOutbox.payload.entry.traceId !== input.terminalSpanOutbox.payload.traceId) {
-    context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "payload", "traceId"], message: "ledger and terminal span outboxes must carry the same trace identity" });
-  }
-  if (input.ledgerOutbox.outboxId === input.terminalSpanOutbox.outboxId) {
-    context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "outboxId"], message: "ledger and terminal span outboxes require distinct ids" });
-  }
-  for (const [name, outbox] of [
-    ["ledgerOutbox", input.ledgerOutbox],
-    ["terminalSpanOutbox", input.terminalSpanOutbox],
-  ] as const) {
-    if (outbox.aggregate.writeIntentId !== input.writeIntentId) {
-      context.addIssue({ code: "custom", path: [name, "aggregate", "writeIntentId"], message: "outbox aggregate must match the committed intent" });
-    }
-    if (outbox.aggregate.generation !== input.generation) {
-      context.addIssue({ code: "custom", path: [name, "aggregate", "generation"], message: "outbox generation must match the committed intent" });
-    }
+  for (const field of ["runId", "traceId", "workflowId", "itemId", "attempt", "system", "idempotencyKey",
+    "idempotencyKeyDigest", "bindingProofDigest"] as const) {
+    if (input.transaction[field] !== input.committedSpan[field]) context.addIssue({ code: "custom", message: `atomic confirmation ${field} mismatch` });
   }
 });
-
 export const AtomicWriteCommitReportSchema = z.strictObject({
-  state: z.literal("committed"),
-  intent: WriteIntentRecordSchema,
-  attempt: WriteAttemptRecordSchema,
-  ledgerOutbox: AtomicOutboxRecordSchema,
-  terminalSpanOutbox: AtomicOutboxRecordSchema,
+  state: z.literal("committed"), intent: WriteIntentRecordSchema, attempt: WriteAttemptRecordSchema,
+  transaction: LedgerEntryPayloadSchema, committedSpan: WriteCommittedSpanOutboxPayloadSchema,
 }).superRefine((report, context) => {
-  if (report.intent.status !== "committed") {
-    context.addIssue({ code: "custom", path: ["intent", "status"], message: "atomic commit report intent must be committed" });
-    return;
+  if (report.intent.status !== "committed" || report.attempt.outcome.state !== "committed") {
+    context.addIssue({ code: "custom", message: "atomic report requires committed intent and attempt" }); return;
   }
-  if (report.attempt.outcome.state !== "committed") {
-    context.addIssue({ code: "custom", path: ["attempt", "outcome"], message: "atomic commit report attempt must be committed" });
-    return;
-  }
-  if (report.ledgerOutbox.payload.kind !== "ledger-entry") {
-    context.addIssue({ code: "custom", path: ["ledgerOutbox", "payload", "kind"], message: "atomic commit report requires a ledger-entry outbox" });
-  }
-  if (report.terminalSpanOutbox.payload.kind !== "write-committed-span") {
-    context.addIssue({ code: "custom", path: ["terminalSpanOutbox", "payload", "kind"], message: "atomic commit report requires a terminal-span outbox" });
-    return;
-  }
-  if (report.ledgerOutbox.payload.kind !== "ledger-entry") return;
-  const commitInput = AtomicWriteCommitInputSchema.safeParse({
-    writeIntentId: report.intent.writeIntentId,
-    generation: report.intent.generation,
-    completionProof: report.intent.completionProof,
-    confirmedAt: report.intent.confirmedAt,
-    outcome: report.terminalSpanOutbox.payload.outcome,
-    ledgerOutbox: report.ledgerOutbox,
-    terminalSpanOutbox: report.terminalSpanOutbox,
-  });
-  if (!commitInput.success) {
-    context.addIssue({ code: "custom", message: "atomic commit report outboxes must form one valid commit input" });
-  }
-  if (report.attempt.writeIntentId !== report.intent.writeIntentId
+  if (!AtomicWriteCommitInputSchema.safeParse({ writeIntentId: report.intent.writeIntentId,
+    generation: report.intent.generation, completionProof: report.intent.completionProof,
+    confirmedAt: report.intent.confirmedAt, outcome: report.committedSpan.outcome,
+    transaction: report.transaction, committedSpan: report.committedSpan }).success
+    || report.attempt.writeIntentId !== report.intent.writeIntentId
     || report.attempt.writeAttemptId !== report.intent.currentAttemptId
     || report.attempt.generation !== report.intent.generation
-    || canonicalJsonStringify(report.attempt.outcome.completionProof) !== canonicalJsonStringify(report.intent.completionProof)
-    || report.attempt.outcome.confirmedAt !== report.intent.confirmedAt) {
-    context.addIssue({ code: "custom", path: ["attempt"], message: "atomic commit report attempt must exactly match the committed intent" });
+    || report.attempt.runId !== report.transaction.runId
+    || report.attempt.runAttempt !== report.transaction.attempt
+    || report.attempt.outcome.confirmedAt !== report.intent.confirmedAt
+    || canonicalJsonStringify(report.attempt.outcome.completionProof) !== canonicalJsonStringify(report.transaction.proof)) {
+    context.addIssue({ code: "custom", message: "atomic report exact evidence mismatch" });
   }
 });
-
-/* ── Phase-1f intent state transitions (ref write-safety §4/§4.1; D111/D118) ────────── */
 
 /** Ref write-safety §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
 export const WriteIntentParkCodeSchema = z.enum([
@@ -290,9 +230,7 @@ export const SequencedWriteCommitInputSchema = z.strictObject({
   checkpoint: RunCheckpointRecordSchema,
   commit: AtomicWriteCommitInputSchema,
 }).superRefine((input, context) => {
-  const ledger = input.commit.ledgerOutbox.payload;
-  if (ledger.kind !== "ledger-entry") return; // already refused by the inner schema
-  const { entry } = ledger;
+  const entry = input.commit.transaction;
   if (input.run.runId !== entry.runId) {
     context.addIssue({ code: "custom", path: ["run", "runId"], message: "beat-⑦ run must be the exact run the ledger entry names" });
   }

@@ -169,8 +169,8 @@ export interface RunQueueProjectionDeps {
    * It is a PORT, not a count this class computes, and that is the whole shape
    * of the carve-out. Every other number `buildActivityReportWire` serves is
    * folded from `#rows` in the loop below; this block arrives already folded
-   * from `src/infra/ledger/`, an append-only audit corpus whose entries outlive
-   * the runs that filed them (ref dashboard-surfaces §10.1/§10.2 rule 1). Nothing here
+   * from the confirmed SQLite transaction history. Archived runs retain their
+   * transactions; explicit owner deletion excludes them. Nothing here
    * reconciles the two — a cross-check would assert they cover the same rows,
    * and they do not.
    */

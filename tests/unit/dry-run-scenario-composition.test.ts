@@ -405,7 +405,7 @@ describe("dry-run scenario production composition boundary", () => {
       assert.deepEqual(started.writeSafetyBefore, {
         writeIntents: 0,
         writeAttempts: 0,
-        durableOutbox: 0,
+        confirmedOperations: 0,
       });
     } finally {
       database.close();
@@ -490,7 +490,7 @@ describe("dry-run scenario production composition boundary", () => {
     assert.equal(secondRun.envelope.attempt, 1);
     assert.deepEqual(secondRun.input.parsed.protectedBindings, firstRun.input.parsed.protectedBindings);
     assert.deepEqual(Reflect.get(secondRun.input.parsed.value as object, "reRead"), reread);
-    assert.deepEqual(first.writeSafetyBefore, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
+    assert.deepEqual(first.writeSafetyBefore, { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     assert.deepEqual(second.writeSafetyBefore, first.writeSafetyBefore);
     const before = startEffects(fixture.path);
     await assert.rejects(start(resolve({ ...reread, reason: "Synthetic revised explanation" })), /active run|refused|already has/);
@@ -782,7 +782,7 @@ describe("dry-run scenario production composition boundary", () => {
     assert.deepEqual(evidence.gateResults, [
       { gate: "identity-approval", decision: "approved", resolvedBy: "local-operator" },
     ]);
-    assert.deepEqual(evidence.writeSafetyAfter, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
+    assert.deepEqual(evidence.writeSafetyAfter, { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     assert.deepEqual({ result: evidence.receipt.result, confidence: evidence.receipt.confidence }, {
       result: "partial",
       confidence: "unknown",
@@ -855,8 +855,8 @@ describe("dry-run scenario production composition boundary", () => {
       assert.deepEqual({
         intents: raw.prepare("SELECT count(*) AS n FROM run_operations").get()?.n,
         attempts: raw.prepare("SELECT count(*) AS n FROM run_operation_attempts").get()?.n,
-        outbox: raw.prepare("SELECT count(*) AS n FROM operation_outbox").get()?.n,
-      }, { intents: 0, attempts: 0, outbox: 0 });
+        confirmations: raw.prepare("SELECT count(*) AS n FROM timeline_events WHERE retention_class = 'confirmed-operation'").get()?.n,
+      }, { intents: 0, attempts: 0, confirmations: 0 });
     } finally {
       raw.close();
     }

@@ -129,7 +129,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER,
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
-import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 
 interface Harness {
@@ -293,7 +293,7 @@ function harness(options: {
     clock,
     appVersion: "0.1.0",
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
-    ledger: createLedgerReadThrough(stateRoot),
+    ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),

@@ -57,7 +57,7 @@ import { SeparationWritePlanSchema } from "../../../../src/domain/separations/wr
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
 import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workflow/ingress.js";
 import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
-import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../../../../src/infra/sqlite/index.js";
 import { createDashboardCommandService } from "../../../../src/server/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../../src/server/dashboard/commands/start-plan-service.js";
@@ -108,7 +108,7 @@ export interface SeparationsDashboardWorld {
   readonly startPlans: ReturnType<typeof createStartPlanService>;
   readonly runDetail: RunDetailQueryDeps;
   readonly inbox: ReturnType<typeof createNotificationInbox>;
-  readonly ledger: ReturnType<typeof createLedgerReadThrough>;
+  readonly ledger: ReturnType<typeof createTransactionHistory>;
   readonly descriptor: AnyWorkflowDescriptor;
 }
 
@@ -161,7 +161,7 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
       (workflowId === String(descriptor.id) ? descriptor : undefined),
   };
 
-  const ledger = createLedgerReadThrough(stateRoot);
+  const ledger = createTransactionHistory(database.authority);
   const projection = createRunQueueProjection({
     timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),

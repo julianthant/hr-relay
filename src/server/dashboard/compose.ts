@@ -112,7 +112,7 @@ import {
 } from "../../infra/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
-import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../infra/sqlite/transaction-history.js";
 import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
@@ -665,7 +665,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * instance would be a second parse discipline over the record of what was
    * filed into a real HR system.
    */
-  const ledger = createLedgerReadThrough(stateRoot);
+  const ledger = createTransactionHistory(database.authority);
 
   const projection = createOperatorProjection({ stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: lifecycle });
 

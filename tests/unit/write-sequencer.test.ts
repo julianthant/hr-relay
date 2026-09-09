@@ -1,3 +1,4 @@
+import { reconstructConfirmedOperation } from "../../src/events/confirmed-operation.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
@@ -433,16 +434,14 @@ describe("the seven-beat happy path", () => {
     const attempt = h.database.authority.writeAttempts.get(intent.currentAttemptId);
     assert.ok(attempt && attempt.outcome.state === "committed");
 
-    // The two atomic outboxes exist and are the last two minted ids.
-    const minted = h.ids.minted();
-    const ledgerOutbox = h.database.authority.durableOutbox.get(minted[minted.length - 2]);
-    const spanOutbox = h.database.authority.durableOutbox.get(minted[minted.length - 1]);
-    assert.ok(ledgerOutbox && ledgerOutbox.payload.kind === "ledger-entry");
-    assert.equal(ledgerOutbox.payload.entry.idempotencyKey, WRITE_FIXTURE_KEY);
-    assert.equal(ledgerOutbox.payload.entry.proofSource, "normal-output");
-    assert.equal(ledgerOutbox.payload.entry.operator, "local-operator");
-    assert.equal(ledgerOutbox.payload.entry.instance, "prod");
-    assert.ok(spanOutbox && spanOutbox.payload.kind === "write-committed-span");
+    const confirmation = h.database.authority.timelineEvents.page({}).find((row) => row.payload.kind === "operation-confirmed");
+    assert.ok(confirmation);
+    const { ledger, span } = reconstructConfirmedOperation(h.database.authority, confirmation);
+    assert.equal(ledger.idempotencyKey, WRITE_FIXTURE_KEY);
+    assert.equal(ledger.proofSource, "normal-output");
+    assert.equal(ledger.operator, "local-operator");
+    assert.equal(ledger.instance, "prod");
+    assert.equal(span.kind, "write-committed-span");
 
     // The transaction checkpoint retains the durable TransactionOutcome.
     const checkpoint = h.database.authority.runCheckpoints.latest(
@@ -757,7 +756,8 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await h.execute(contextFor(first.run, first.claim));
-    const mintedAfterCommit = h.ids.minted().length;
+    const confirmationsAfterCommit = h.database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed");
+    assert.equal(confirmationsAfterCommit.length, 1);
     h.world.events.length = 0;
 
     const second = claimRunning(
@@ -775,11 +775,7 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
     assert.deepEqual(h.world.events, [], "durable reuse runs no probe, prepare, or click");
     const intent = intentByKey(h.database);
     assert.ok(intent && intent.status === "committed" && intent.generation === 1);
-    // No new outboxes: discovering existing work writes no ledger row.
-    const minted = h.ids.minted();
-    for (const id of minted.slice(mintedAfterCommit)) {
-      assert.equal(h.database.authority.durableOutbox.get(id), undefined);
-    }
+    assert.deepEqual(h.database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed"), confirmationsAfterCommit);
   });
 });
 
@@ -1170,9 +1166,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
         undefined,
       );
       assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.version, versionBefore);
-      const minted = h.ids.minted();
-      assert.equal(h.database.authority.durableOutbox.get(minted[minted.length - 1]), undefined);
-      assert.equal(h.database.authority.durableOutbox.get(minted[minted.length - 2]), undefined);
+      assert.equal(h.database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
     });
   }
 
@@ -1308,10 +1302,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     ], "dry-run reports probe and stage only; it fabricates no fence, click, or read-back");
     assert.equal(intentByKey(h.database), undefined, "zero intents");
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")), "zero clicks");
-    const minted = h.ids.minted();
-    for (const id of minted) {
-      assert.equal(h.database.authority.durableOutbox.get(id), undefined, "zero outboxes");
-    }
+    assert.equal(h.database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
     assert.equal(
       h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID),
       undefined,
@@ -1469,14 +1460,14 @@ describe("service-backed shared settlement", () => {
     const checkpoint = h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
       WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
     assert.ok(checkpoint);
-    const outboxes = h.ids.minted().map((id) => h.database.authority.durableOutbox.get(id));
-    const ledgerOutbox = outboxes.find((entry) => entry?.payload.kind === "ledger-entry");
-    const terminalSpanOutbox = outboxes.find((entry) => entry?.payload.kind === "write-committed-span");
-    assert.ok(ledgerOutbox && terminalSpanOutbox);
+    const confirmation = h.database.authority.timelineEvents.page({}).find((row) => row.payload.kind === "operation-confirmed");
+    assert.ok(confirmation);
+    const { ledger: transaction, span: committedSpan } = reconstructConfirmedOperation(h.database.authority, confirmation);
+
     const input = { run: { runId: run.envelope.runId, expectedVersion: run.version, claim }, checkpoint,
       commit: { writeIntentId: intent.writeIntentId, generation: intent.generation,
         completionProof: intent.completionProof, confirmedAt: intent.confirmedAt,
-        outcome: checkpoint.output.value, ledgerOutbox, terminalSpanOutbox } };
+        outcome: checkpoint.output.value, transaction, committedSpan } };
     const transition = { kind: "advance-running" as const, claim: RunClaimTokenSchema.parse(claim), claimedAt: WRITE_FIXTURE_NOW,
       port: testRunLifecycle(h.database, h.clock) };
     const generation = h.database.getMeta().authorityGeneration;

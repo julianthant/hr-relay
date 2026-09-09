@@ -1,4 +1,4 @@
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import {
 } from "../../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import {
-  ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
   IDEMPOTENCY_KEY,
   IDEMPOTENCY_KEY_DIGEST,
   NOW,
@@ -20,10 +20,11 @@ import {
   UUID_3,
   UUID_4,
   UUID_7,
-  UUID_8,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../../fixtures/phase1c-contract-fixtures.js";
+
+const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const CLOCK = manualClock(new Date(NOW));
 const roots: string[] = [];
@@ -126,10 +127,9 @@ describe("permanent system-scoped write keys", () => {
     const generation = database.getMeta().authorityGeneration;
     const inspection = AuthorityDatabase.inspectExistingReadOnly(path);
     assert.equal(inspection.counts.unresolvedWriteIntents, 0);
-    assert.equal(inspection.counts.durableOutbox, 0);
+    assert.equal("durableOutbox" in inspection.counts, false);
     assert.equal(database.authority.writeAttempts.get(UUID_4), undefined);
-    assert.equal(database.authority.durableOutbox.get(UUID_7), undefined);
-    assert.equal(database.authority.durableOutbox.get(UUID_8), undefined);
+    assert.deepEqual(database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed"), []);
 
     const replay = database.authority.writeIntents.fenceAttempt({
       intent: {

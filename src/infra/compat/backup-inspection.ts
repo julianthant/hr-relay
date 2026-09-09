@@ -1,3 +1,5 @@
+import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
+import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../domain/ledger-projection.js";
 import { BulkRunCommandAcceptanceRecordSchema, AuthorityCommandRecordSchema } from "../../domain/commands.js";
 import { PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema } from "../../domain/commands-history.js";
 import { HistoricalRunSessionRecordSchema } from "../../domain/run/session.js";
@@ -20,7 +22,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -103,6 +105,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "authority_upgrades",
   "database_upgrades",
   "timeline_events",
+  "timeline_operation_sources",
 ] as const);
 
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());
@@ -173,7 +176,7 @@ export type BackupCopyInspection = Readonly<{
     pendingCommands: number;
     unresolvedWriteIntents: number;
     leases: number;
-    durableOutbox: number;
+    durableOutbox?: number;
     runTerminalOutbox: number;
     providerReservations: number;
     artifactOutbox: number;
@@ -309,7 +312,8 @@ function authorityTableOrder(tableNames: ReadonlySet<string>): readonly string[]
 }
 
 function authorityContentFingerprint(database: DatabaseSync, tableNames: ReadonlySet<string>): string {
-  const groupedCommands = readIntPragma(database, "user_version") >= 37;
+  const schemaVersion = readIntPragma(database, "user_version");
+  const groupedCommands = schemaVersion >= 37;
   const hash = createHash("sha256");
   hash.update("[");
   for (const [tableIndex, name] of authorityTableOrder(tableNames).entries()) {
@@ -328,9 +332,9 @@ function authorityContentFingerprint(database: DatabaseSync, tableNames: Readonl
     } else {
       hash.update("[");
       let rowIndex = 0;
-      const schema = name === "commands" && groupedCommands ? FingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : FingerprintRowSchema;
+      const schema = name === "commands" && groupedCommands ? FingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" && schemaVersion >= 40 ? FingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : FingerprintRowSchema;
       for (const rawRow of database.prepare(`
-        SELECT record_key, record_json${name === "commands" && groupedCommands ? ", parent_command_id" : ""} FROM ${quoteIdentifier(name)} ORDER BY record_key
+        SELECT record_key, record_json${name === "commands" && groupedCommands ? ", parent_command_id" : name === "archived_runs" && schemaVersion >= 40 ? ", transactions_json, transactions_digest" : ""} FROM ${quoteIdentifier(name)} ORDER BY record_key
       `).iterate()) {
         const row = schema.parse(rawRow);
         if (rowIndex > 0) hash.update(",");
@@ -360,7 +364,7 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
     pendingCommands: count(database, `SELECT count(*) AS count FROM commands AS command WHERE ${schemaVersion >= 37 ? "command.family <> 'bulk-parent' AND " : ""}NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)`),
     unresolvedWriteIntents: count(database, `SELECT count(*) AS count FROM ${operations} WHERE status NOT IN ('committed', 'observed-present')`),
     leases: count(database, schemaVersion < 35 ? "SELECT count(*) AS count FROM leases" : "SELECT count(*) AS count FROM workflow_workers"),
-    durableOutbox: count(database, `SELECT count(*) AS count FROM ${outbox} WHERE json_extract(record_json, '$.projection.state') = 'pending'`),
+    ...(schemaVersion >= 40 ? {} : { durableOutbox: count(database, `SELECT count(*) AS count FROM ${outbox} WHERE json_extract(record_json, '$.projection.state') = 'pending'`) }),
     runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count(database, "SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
@@ -383,7 +387,10 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
     start_plans: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_run_requests,
     write_intents: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_operations,
     write_attempts: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_operation_attempts,
-    durable_outbox: AUTHORITY_RECORD_SCHEMA_REGISTRY.operation_outbox,
+    durable_outbox: AtomicOutboxRecordSchema,
+    operation_outbox: AtomicOutboxRecordSchema,
+    ledger_partitions: LedgerPartitionRecordSchema,
+    ledger_projections: LedgerProjectionRecordSchema,
     dependencies: AUTHORITY_RECORD_SCHEMA_REGISTRY.delegation_dependencies,
     delegation_manifests: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_delegations,
     bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,

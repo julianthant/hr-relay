@@ -1,4 +1,4 @@
-import { TimelineEventRecordSchema } from "../../events/timeline.js";
+import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../events/timeline.js";
 import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { z } from "zod";
 import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
@@ -35,16 +35,13 @@ import {
   VersionPlanIdSchema,
 } from "../../domain/ids.js";
 import { ArtifactProjectionKeyValueSchema } from "../../domain/workflow/artifact-projection.js";
-import {
-  LedgerPartitionRecordSchema,
-  LedgerProjectionRecordSchema,
-} from "../../domain/ledger-projection.js";
+
+
 import { NotificationRecordSchema } from "../../domain/notifications.js";
 import {
   ProviderAdmissionRecordSchema,
   ProviderBudgetCounterSchema,
 } from "../../domain/provider-admission.js";
-import { AtomicOutboxRecordSchema } from "../../domain/outbox.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
 import { RunResultRecordSchema } from "../../domain/run/result.js";
 import { TerminalAuthorizationRecordSchema } from "../../domain/run/terminal-authorization.js";
@@ -254,8 +251,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   activity_person_pseudonym_generations: ActivityPersonPseudonymGenerationBindingSchema,
   knowledge_records: KnowledgeRecordSchema,
   fix_records: FixRecordSchema,
-  ledger_partitions: LedgerPartitionRecordSchema,
-  ledger_projections: LedgerProjectionRecordSchema,
+  timeline_operation_sources: HistoricalOperationSourceSchema,
   provider_budget_counters: ProviderBudgetCounterSchema,
   provider_admissions: ProviderAdmissionRecordSchema,
   workflow_workers: WorkerLeaseRecordSchema,
@@ -275,7 +271,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   ocr_approvals: OpaqueAuthorityRecordSchema,
   run_operations: WriteIntentRecordSchema,
   run_operation_attempts: WriteAttemptRecordSchema,
-  operation_outbox: AtomicOutboxRecordSchema,
   artifact_outbox: ArtifactOutboxStorageRecordSchema,
   /** Typed at D164, when the first sink projector landed. */
   artifact_sink_heads: ArtifactSinkHeadRecordSchema,

@@ -50,7 +50,6 @@ const REPORT_BASE = {
       pendingCommands: 0,
       unresolvedWriteIntents: 0,
       leases: 0,
-      durableOutbox: 0,
       runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 0,

@@ -1,3 +1,7 @@
+import { join } from "node:path";
+import { AuthorityDatabase } from "./infra/sqlite/authority-database.js";
+import { createTransactionHistory } from "./infra/sqlite/transaction-history.js";
+import { exportTransactions, parseTransactionExportArgs, TRANSACTION_EXPORT_HELP } from "./server/storage/transaction-export.js";
 import { fileURLToPath } from "node:url";
 import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
 import {
@@ -33,6 +37,15 @@ import { composeWorkerRuntime } from "./server/worker/compose.js";
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 export async function runCli(): Promise<void> {
+  if (process.argv[2] === "storage" && process.argv[3] === "transactions") {
+    const command = parseTransactionExportArgs(process.argv.slice(4));
+    if (command.kind === "help") { process.stdout.write(TRANSACTION_EXPORT_HELP); return; }
+    const database = AuthorityDatabase.open({ path: join(REPOSITORY_ROOT, rebuildRuntimeIsolation.stateRoot, "state.db"),
+      busyTimeoutMs: 5000, migrationOwner: "transaction-export", openMode: "storage-doctor-read-only-no-migrate" });
+    try { process.stdout.write(`${JSON.stringify(exportTransactions(createTransactionHistory(database.authority), command.request))}\n`); }
+    finally { database.close(); }
+    return;
+  }
   registerDashboardComposer((runtimeIsolation, options) =>
     composeDashboardRuntime({ isolation: runtimeIsolation, frontend: options.frontend }));
   registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>

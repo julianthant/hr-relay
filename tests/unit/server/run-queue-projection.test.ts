@@ -44,7 +44,7 @@ import {
   workerLeaseOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
-import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
@@ -480,7 +480,7 @@ describe("THE run/queue projection (D81)", () => {
       clock: w.clock,
       appVersion: APP_VERSION,
       descriptorSetHash: DESCRIPTOR_SET_HASH,
-      ledger: createLedgerReadThrough(w.stateRoot),
+      ledger: createTransactionHistory(w.database.authority),
       authority: w.authority,
       descriptors: { resolve: () => undefined },
     });
@@ -513,7 +513,7 @@ describe("THE run/queue projection (D81)", () => {
       clock: w.clock,
       appVersion: APP_VERSION,
       descriptorSetHash: DESCRIPTOR_SET_HASH,
-      ledger: createLedgerReadThrough(w.stateRoot),
+      ledger: createTransactionHistory(w.database.authority),
       authority: w.authority,
       descriptors: { resolve: () => undefined },
     });

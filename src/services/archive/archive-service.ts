@@ -336,13 +336,9 @@ export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): Arch
        * write. Until that append lands the read-through answers
        * `sequence-missing`, which is the true statement in that window.
        */
-      ledgerPartitions: intents
-        .flatMap((intent) => repositories.ledgerProjection
-          .listLedgerOutboxByWriteIntent(intent.writeIntentId)
-          .map((outbox) => repositories.ledgerProjection.getProjection(outbox.outboxId)))
-        .filter((projection) => projection !== undefined)
-        .map((projection) => ({ system: projection.system, date: projection.date, sequence: projection.seq }))
-        .sort((a, b) => a.system.localeCompare(b.system) || a.date.localeCompare(b.date) || a.sequence - b.sequence),
+      ledgerPartitions: repositories.historicalOperationSources.list()
+        .filter((source) => intents.some((intent) => intent.writeIntentId === source.operationId))
+        .flatMap((source) => source.projection === null ? [] : [{ system: source.projection.system, date: source.projection.date, sequence: source.projection.seq }]),
     },
     sections: ArchivedRunSectionsSchema.parse({
       ...input.snapshot.sections,

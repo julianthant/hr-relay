@@ -65,7 +65,7 @@ import {
 import { buildFailureTriagePrompt } from "../../../src/domain/trust/advisory.js";
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
-import { ledgerLineForOutbox } from "../../../src/infra/ledger/ledger-projector.js";
+import { LedgerEntrySchema } from "../../../src/domain/ledger.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import {
   VerifiedArtifactSourceMissingError,
@@ -784,7 +784,8 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       projection: { state: "pending" },
       createdAt: NOW,
     });
-    const line = ledgerLineForOutbox(outbox, 1);
+    assert.equal(outbox.payload.kind, "ledger-entry");
+    const line = canonicalJsonStringify(LedgerEntrySchema.parse({ outboxId: outbox.outboxId, seq: 1, payload: LEDGER_OUTBOX_PAYLOAD.entry }));
     assert.deepEqual(
       canariesIn(line, UNIVERSAL_CANARY_NAMES),
       [],
@@ -792,7 +793,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     );
 
     // The ledger file is never pruned (ref write-safety §6), so a value that reached it
-    // is permanent. `ledgerLineText` re-parses through the strict schema, which
+    // is permanent. `LedgerEntrySchema` re-parses through the strict schema, which
     // is what makes an extra key on the row unable to ride along.
     const smuggled = {
       ...outbox,
@@ -802,7 +803,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       },
     };
     assert.throws(
-      () => ledgerLineForOutbox(smuggled as never, 2),
+      () => LedgerEntrySchema.parse({ outboxId: smuggled.outboxId, seq: 2, payload: smuggled.payload.entry }),
       "an undeclared ledger field must be refused, not serialized",
     );
   });

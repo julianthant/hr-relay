@@ -153,7 +153,7 @@ describe("archive invariants", () => {
      * violation, including in the two modules that write archived records.
      */
     const readOnly = new Map<string, readonly string[]>([
-      ["src/server/dashboard/queries/archive.ts", ["../../../infra/ledger/ledger-read-through.js"]],
+      ["src/domain/archive/model.ts", ["./ledger-resolution.js"]],
     ]);
     const files = [
       "src/domain/archive/model.ts",
@@ -191,7 +191,7 @@ describe("archive invariants", () => {
      * the record of what was really filed against a live HR system, which is
      * the one thing ref write-safety §6 forbids projecting past.
      */
-    const reader = readFileSync(join(REPO_ROOT, "src/infra/ledger/ledger-read-through.ts"), "utf8")
+    const reader = readFileSync(join(REPO_ROOT, "src/infra/sqlite/transaction-history.ts"), "utf8")
       .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
       .replaceAll(/^\s*\/\/.*$/gmu, "");
     for (const primitive of ["writeFileSync", "appendFileSync", "writeSync", "unlinkSync", "rmSync", "renameSync", "openSync"]) {

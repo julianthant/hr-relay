@@ -135,7 +135,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     const started = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase,
       canonicalInput: CANONICAL_INPUT, protectedBindings: replacementBindings });
     assert.notEqual(started.runId, previous.runId);
-    assert.deepEqual(started.writeSafetyBefore, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
+    assert.deepEqual(started.writeSafetyBefore, { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
 
     const database = AuthorityDatabase.open(
       { path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "live-read-test" },
