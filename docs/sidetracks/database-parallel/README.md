@@ -21,6 +21,16 @@ the complete revised allocation and verified prompts.
 
 ## Approval, owners and status
 
+**Shared-read-model amendment — 2026-09-08.** The operator approved one derived `run_summaries`
+table for Queue/Activity. The [existing summary owner](../database-remaining/README.md#approved-group-5-dryrun-results-and-shared-run-summaries)
+owns its schema, derivation, query and rebuild behavior; do not add another Activity/queue table in B
+or a peer. Before revised launch, allocate one shared prerequisite for source mutation/summary hooks,
+grouping, completion/receipt/failure annotations, archive cleanup and recovery. Completion and
+diagnostics retain their source-field ownership and must coordinate meaningful updates with that
+seam; provider and artifact owners supply only summary inputs actually required by the field map.
+Resolve overlaps before declaring peers independently implementable. This amendment adds no new
+supervisor task or migration owner and preserves in-flight gate schedules/evidence.
+
 On 2026-09-08 the operator asked to revise the remaining database plans for independent parallel
 implementation, testing and integration, explicitly including the plans themselves. This is the
 approved execution amendment. It changes allocation and dependencies, not the approved product

@@ -8,6 +8,10 @@ with the remaining-database archive owner. Bind one owner for shared archive con
 cleanup and backup surfaces and regenerate the exact prompts. The old release base cannot be assumed
 to contain these new interfaces. Existing accepted evidence remains evidence for its original scope.
 
+Also reconcile the approved [shared run-summary owner](../database-remaining/README.md#approved-group-5-dryrun-results-and-shared-run-summaries)
+before release: one prerequisite owns summary schema/update hooks, source revision/freshness and
+archive/deletion cleanup, so no peer invents a separate Activity count or overlapping migration.
+
 Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
 This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
 accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits

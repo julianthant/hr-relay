@@ -9,6 +9,10 @@ ownership, commit all amended owners, then replace these prompts with the verifi
 and exact revised scope. Do not launch the new archive work in parallel with overlapping old shared
 storage assignments. Do not restart or message already running tasks automatically.
 
+The subsequently approved shared `run_summaries` read model also requires revised prerequisite and
+mutation-hook ownership; include the [existing summary owner](../database-remaining/README.md#approved-group-5-dryrun-results-and-shared-run-summaries)
+when regenerating these prompts. The old pinned prompts contain neither this scope nor its proof.
+
 Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
 This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
 accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits

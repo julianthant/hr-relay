@@ -12,6 +12,11 @@ P4 must additionally prove the saved completion report remains readable after it
 old workflow implementation are removed. Original byte/digest checks still apply to source evidence
 before conversion; converted reports have their own verified integrity.
 
+The approved [run-summary owner](../database-remaining/README.md#approved-group-5-dryrun-results-and-shared-run-summaries)
+also consumes completion/result/receipt/failure facts. Bind settlement and relevant summary updates
+through the shared prerequisite so Queue/Activity agree after commit. This unit owns completion,
+not a second summary schema or calculation; reconcile overlap before revised dispatch.
+
 Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
 This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
 accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits

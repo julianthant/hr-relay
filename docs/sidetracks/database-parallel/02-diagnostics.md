@@ -12,6 +12,11 @@ implements report conversion/viewing; this plan supplies diagnostic values and f
 P3/P5 must prove snapshot-time resolution, read-only archived presentation, refusal of stale actions,
 and readability after live failure deletion, without weakening live annotation/UNKNOWN protections.
 
+Coordinate failure/annotation fields used by the approved [shared run summaries](../database-remaining/README.md#approved-group-5-dryrun-results-and-shared-run-summaries)
+through one prerequisite update seam. D retains ownership of live annotation semantics; the summary
+owner supplies derivation/query behavior. Prove relevant changes cannot leave served summary fields
+stale, and do not add a second diagnostic summary table or broaden the source run's mutation rules.
+
 Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
 This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
 accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits

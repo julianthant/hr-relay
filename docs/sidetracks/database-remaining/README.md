@@ -46,7 +46,7 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
 | Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Keep `deleted_runs` for explicit live/archive deletion, separate from transfer. |
 | Messages and notes | `notifications`, `notes` | Approved: keep `notifications`; remove unused SQL `notes` projection only. Preserve diagnostic log files/readers and handle notification links after archive transfer. |
-| Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Approved: rename scenario results to `dryrun_results`. Need/design of the two Activity identity tables remains open. |
+| Testing and Activity read model | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Approved: `dryrun_results`; shared derived `run_summaries` for Queue/Activity, using validated existing person identities for server-side counts in place of the two pseudonym tables. |
 | Database maintenance | `authority_meta`, `authority_upgrades` | Open |
 | Run/operation relationships | Historical `run_operation_attempts` links to `workflow_runs` across retry, re-fencing, archive and deletion | Open; use the [existing deferred finding](../operation-names/README.md#inspected-feasibility-and-separate-relationship-finding) |
 
@@ -511,12 +511,12 @@ rewriting in-flight evidence. Apply this batch's focused-test/lint/freshness cad
 heavy gates/independent review. Complete allocation, migration policy and launch prompts remain
 pending; no implementation or database writes are performed by this approval record.
 
-## Group 5: dryrun results and Activity identity discussion
+## Approved group 5: dryrun results and shared run summaries
 
 On 2026-09-08 the operator directed “change it to dryrun results” and questioned the necessity of
 the two Activity identity tables. Rename `dry_run_scenario_results` to **`dryrun_results`**. This
-supersedes the unapproved `workflow_test_results` suggestion; no Activity-table rename or removal
-has been approved.
+supersedes the unapproved `workflow_test_results` suggestion. The subsequent Activity decision below
+selects a shared summary read model rather than merely renaming its two identity tables.
 
 Preserve the scenario-result behavior: assertion verdicts, scenario/manifest identity, subject label,
 duration and execution identity when a run started. A subject-unavailable result can exist without a
@@ -539,4 +539,86 @@ mathematically necessary to count distinct people. A server-side count over exis
 identities, returning only aggregates to Activity, is an alternative for operator discussion.
 It requires explicit source/coverage rules and contract review before adoption, including missing or
 ambiguous identities, retries/group members, and archive metadata if archives enter the selected
-count. Do not invent identities or implement a replacement from this observation alone.
+count. The approved summary design below builds on this observation; execution still requires the
+specified source/coverage and privacy contract work.
+
+### Approved shared read model
+
+The operator asked for a prepared table so the dashboard would not gather data from many sources
+on each request, then approved `run_summaries` with “yes lets do that. is it just that one table?
+what else?” This is one additional stored read model serving both Queue and Activity, not separate
+queue/activity calculation authorities. `archive_records` already owns prepared archived reports;
+`notifications` remains the ready inbox state. Do not add generic summary tables for every screen.
+
+- One `run_summaries` row represents one live run and references its source `workflow_runs` row.
+  Store the display/filter facts required by Queue and Activity: workflow/date/status, start/end
+  timestamps and completed duration, warning/completion/failure classification, grouping and
+  parent/member relationships, plus validated person identity/availability for internal counting.
+  Determine the complete field inventory from both consumers before fixing the schema. It must
+  not duplicate the entire run, result, receipt, checkpoint or diagnostic payload.
+- Preserve current eligible-run, timezone/date, grouping, member-containment, completion/warning,
+  failure and unknown-duration semantics. Identity data stays inside the server boundary; Activity
+  returns aggregates only. Never infer identities from names or arbitrary fields that resemble IDs.
+  Preserve explicit unavailable counts for missing/ambiguous identities. This adopts existing
+  canonical-identity counting and retires `activity_person_pseudonyms` and its generation-binding
+  table after replacement proof and the owning privacy-contract amendment. Do not invent a new
+  secret/key-generation mechanism to replace them.
+- Backend updates the summary when relevant source facts change. Use one reusable derivation for
+  initial fill, incremental updates and rebuilds. Same-database authoritative changes and summaries
+  should commit together; file/event-derived inputs require a durable consumed position and explicit
+  freshness handling. Preserve worker/command safety checks against source authority: no action is
+  authorized by a cached summary. Replay must not double-count, and a failed update cannot silently
+  serve stale totals as current. Parent rollups must refresh when contributing members change.
+- Persist timestamps so elapsed displays can advance without rewriting every run each second.
+  Derive immutable completed duration only from known timestamps. Trigger updates on relevant
+  changes rather than every unrelated authority write or heartbeat.
+- Queue uses indexed filtering, ordering and bounded pagination on summaries. Activity uses indexed
+  range filters and aggregate queries over the same rows, without reconstructing every run from
+  its receipt/failure/checkpoint stores. Distinct people and duration statistics must be calculated
+  over the selected set; do not add daily distinct counts or average daily medians. No daily totals
+  table is admitted by this approval.
+- Rebuild from live sources, validate and publish a consistent summary generation; never expose a
+  half-built table. Updates during rebuilding must be captured or excluded by a proven snapshot/
+  catch-up protocol. Missing/corrupt/stale summaries need an explicit recovery/status path, not
+  plausible defaults or an unannounced expensive alternate query path.
+- Archive transfer captures a complete report while sources exist, then removes the live summary
+  with live cleanup. Archive filtering reads `archive_records`. Preserve current Activity scope
+  unless separately changed; cross-archive/all-time person counting is not implicitly authorized.
+  Explicit deletion also removes the summary while preserving its deletion receipt.
+
+### Read-path inspection and selective improvements
+
+Source inspection (not a latency benchmark) found that the Activity client already makes one report
+request. The work is server-side: `RunQueueProjection.buildActivityReportWire` enumerates canonical
+live runs before filtering dates, constructs surfaces, and reads receipts/failures/person evidence.
+`RunRecordService.list` loads workflow rows, checks archive membership per run, then slices pages;
+`listCanonicalRuns` repeatedly calls that listing to obtain all pages. The archive index enumerates
+both live/archived sets and loads individual archive records. The existing in-memory queue fold
+therefore does not eliminate source lookups during serving.
+
+Use the new shared summaries and independent archive index to replace these repeated list-time
+reads. Push filters/pagination into indexed SQL and batch remaining relation lookups; a small indexed
+join is acceptable and may be cheaper than maintaining another table. Detail pages keep their
+bounded section-specific queries and load expensive sections when requested. Inbox/worker/settings
+surfaces can use their existing prepared/current tables. Independently sourced operation/timeline
+metrics retain their meaning and owner; do not silently relabel them as run counts to fit this table.
+
+### Ownership, proof and admission
+
+This section owns summary schema, derivation, consumer queries, rebuild and the two pseudonym-table
+retirements. Amend the earlier foundation and completion/diagnostic boundary owners to provide one
+coherent update seam; they must not create competing summary tables or calculations. Shared schema,
+run mutations, grouping/annotation hooks, upgrade/recovery, archive cleanup and source adapters must
+be assigned before independent peers launch. Reconcile timeline read paths at their actual accepted
+base, preserving in-flight work. Ratify the shared Queue/Activity and privacy contracts at their
+current owners when admitting the brief.
+
+Focused proof must compare Queue and Activity results from the same selected data, including
+grouped/ungrouped batches, members, retries, repeat people across days, missing identities, warnings,
+failures and duration absence. Cover every meaningful mutation, exact replay, rollback, restart,
+concurrent updates/rebuild, stale-generation refusal, archive/delete and populated migration.
+Verify internal person IDs cannot leak through Activity responses/exports/logs. Benchmark isolated
+representative fixtures before/after with query counts, rows scanned, latency and update overhead;
+no unmeasured speedup is claimed. Preserve existing bounded-scan tests, floors and assertion meaning.
+Use focused tests/lint/freshness during implementation and full gates/fresh independent review in
+the final session. Complete field/source mapping, prerequisite allocation and prompts remain pending.
