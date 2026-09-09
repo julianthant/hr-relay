@@ -17,7 +17,7 @@ undecided design. Use clear vocabulary consistent with the decisions already mad
 | Group | Current tables / relationship | Decision |
 | --- | --- | --- |
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
-| Settings and version changes | `settings_current`, `runtime_config`, `version_plans`, `version_bump_applications` | Settings behavior directed: activate saved configuration for new runs without restart; existing runs retain theirs. Names and version-change design remain open. |
+| Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved settings direction: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Version-change names/design remain open. |
 | Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Open |
 | Messages and notes | `notifications`, `notes` | Open |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
@@ -131,12 +131,36 @@ Status: two table removals approved for planning; implementation, migration poli
 allocation and launch prompts remain pending. The settings direction below is also recorded; other
 discussion groups remain open.
 
-## Group 2: immediate configuration activation for new runs
+## Approved group 2 settings: current settings and retained snapshots
 
 On 2026-09-08 the operator corrected the proposed restart-based settings behavior: “it should
 active the new configuration for new runs. old runs keep thier own config. but new ones will take
 the new config without restart.” Record this as the required product behavior for the new batch,
-not as behavior already implemented. No table names in this group have been approved.
+not as behavior already implemented. The operator then accepted the proposed two-table direction
+with the naming correction “just change it to settings snapshots.” Use `settings_snapshots` in
+place of the proposed retained name `config_snapshots`. Version-change tables remain undecided.
+
+### Approved storage design
+
+| Existing tables | Planned table | Responsibility |
+| --- | --- | --- |
+| `settings_current` and `runtime_config` | `app_settings` | One current row containing saved ordinary preferences, revision and command/audit identity, plus a reference to the complete snapshot selected for new runs. |
+| `config_snapshots` | `settings_snapshots` | Immutable complete resolved configurations and their provenance. Runs retain a reference to the snapshot used for their execution; multiple runs may share one snapshot. |
+
+Preserve the distinction between an explicit preference and an unset preference that uses an
+application default. `app_settings` must not duplicate the entire resolved snapshot. The snapshot
+records the actual resolved values for execution; it does not become a mutable settings row.
+
+Saving validates and resolves settings, inserts the snapshot, updates the current settings and
+snapshot reference, and records the command/audit in one transaction. A newly created run binds the
+current snapshot atomically. Existing run references and snapshot contents remain unchanged.
+Encapsulate save-and-activate and run creation so callers cannot partially perform this protocol.
+
+Retire the separate physical `runtime_config` row after moving necessary current-selection and
+consistency responsibilities into this design. Preserve worker authorization and ownership fencing
+independently of run snapshot selection. Plan supported upgrades, initial/default settings bootstrap,
+restore, snapshot references and historical fingerprint compatibility before execution. Do not
+rewrite immutable historical configuration values merely to adopt the new name.
 
 ### Required behavior
 
