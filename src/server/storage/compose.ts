@@ -1,3 +1,4 @@
+import { restoreLifecyclePair } from "../../core/run-lifecycle-storage.js";
 import { RunRecordService } from "../../core/run-record-service.js";
 /**
  * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
@@ -308,7 +309,7 @@ function rebuildStagedProjections(
           getRunBatch: (id) => staged.authority.runSessions.get(id),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
-          listActivityPersonPseudonyms: (runIds) => staged.authority.activityPersonPseudonyms.listByRuns(runIds),
+          canonicalPerson: (runId) => staged.canonicalPerson(runId),
           latestCheckpoint: (workflowId, itemId, nodeId) =>
             staged.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
         },
@@ -378,7 +379,12 @@ async function restoreCommand(
       rebuildStagedProjections(stateRoot, appVersion, clock),
       clock,
     );
-    const report = await service.restore({
+    const resolvedManifest = resolve(manifestArgument);
+    const paired = resolvedManifest.endsWith(".lifecycle.json");
+    if (!paired && existsSync(join(stateRoot,"archive.sqlite"))) throw new Error("paired-lifecycle-backup-required");
+    const report = paired ? await restoreLifecyclePair({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
+      processLockRoot,stoppedProofMaxAgeMs:RESTORE_STOPPED_PROOF_MAX_AGE_MS},
+      {manifestPath:resolvedManifest,stoppedSystemProof},rebuildStagedProjections(stateRoot,appVersion,clock),clock) : await service.restore({
       manifestPath: resolve(manifestArgument),
       stoppedSystemProof,
     });
@@ -523,7 +529,7 @@ async function backupCommand(
         : [
             `backup: verified — ${manifest.backupFileName}`,
             `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-            `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
+            `  manifest ${"pairedManifestPath" in report ? String(report.pairedManifestPath) : `${manifest.backupFileName}.manifest.json`} (restore with: storage restore --from <that manifest>)`,
           ].join("\n"),
       exitCode: 0,
     };

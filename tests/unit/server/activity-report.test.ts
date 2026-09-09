@@ -1,3 +1,7 @@
+import { deriveCanonicalPerson } from "../../../src/core/run-summary.js";
+import { activityPersonPseudonymResultRecord, CURRENT_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
+import type { RunResultRecord } from "../../../src/domain/run/result.js";
+import { RunRecordSchema, RunLifecycleSchema } from "../../../src/domain/run/record.js";
 /**
  * The Activity report (D180, ref frontend-backend-integration §5/§6.7) — the range rendering of THE ONE
  * run/queue projection.
@@ -28,19 +32,45 @@ import {
   failureRecordOf,
   instantOffsetOf,
   makeWorld,
-  queuedEventOf,
+  queuedEventOf as queuedEventBase,
   receiptWithWarningsOf,
   runEndedEventOf,
-  runRecordOf,
+  runRecordOf as runRecordBase,
   uuidOf,
   type DashboardWorld,
 } from "./helpers/dashboard-harness.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
+/** C completion contract: projection fixtures still carry a valid terminal settlement. */
+function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
+  const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
+  if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
+  const base = runRecordBase({...input,lifecycle:{state:"queued"}});
+  const version = Math.max(2,base.version), claimGeneration = Math.max(1,base.claimGeneration);
+  return RunRecordSchema.parse({...base,lifecycle,version,claimGeneration,updatedAt:lifecycle.endedAt,completion:{
+    schemaVersion:1,kind:lifecycle.outcome,expectedVersion:version-1,
+    claim:{workerId:"activity-fixture-worker",claimGeneration},authorizedAt:lifecycle.endedAt,
+    ...(lifecycle.outcome === "done" ? {resultDigest:"a".repeat(64)} : {failureId:lifecycle.failureId}),
+  }});
+}
+function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase>[0]) {
+  const event = queuedEventBase(w,{...input,lifecycle:{state:"queued"}});
+  if (input.lifecycle !== undefined) w.authority.put(runRecordOf({...input,enqueuedAt:input.enqueuedAt ?? w.clock.now().toISOString()}));
+  return event;
+}
+
 const worlds: DashboardWorld[] = [];
+const canonicalResults = new WeakMap<DashboardWorld,Map<string,RunResultRecord>>();
 
 function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
   const created = makeWorld(...args);
+  const results = new Map<string,RunResultRecord>();
+  Object.assign(created.authority,{canonicalPerson:(runId:string)=> {
+    const run=created.authority.records.get(runId);
+    if(run===undefined)throw new Error("activity-fixture-run-missing");
+    return deriveCanonicalPerson(run,results.get(runId)??null);
+  }});
+  canonicalResults.set(created,results);
   worlds.push(created);
   return created;
 }
@@ -96,20 +126,14 @@ function receiptWithPersonFactOf(
   });
 }
 
-function pseudonymEvidenceOf(input: Readonly<{
-  seed: number;
-  pseudonym: string;
-  keyGeneration?: string;
-  workflowId?: string;
-  runId?: string;
-}>) {
-  return {
-    runId: input.runId ?? uuidOf(input.seed),
-    workflowId: input.workflowId ?? "separations",
-    keyGeneration: input.keyGeneration ?? "activity-person-g1",
-    pseudonym: input.pseudonym,
-    derivation: "hmac-sha-256/activity-person/v1",
-  } as const;
+function personResult(w: DashboardWorld, seed: number, identity: string) {
+  const prior=w.authority.records.get(uuidOf(seed));
+  if(prior===undefined)throw new Error("activity-fixture-run-missing");
+  const run=runRecordOf({seed,workflow:"separations",lifecycle:{state:"terminal",outcome:"done",endedAt:instantOffsetOf(0,1000)}});
+  const result=activityPersonPseudonymResultRecord(run,{...CURRENT_SEPARATIONS_RESULT,
+    approved:{...CURRENT_SEPARATIONS_RESULT.approved,emplId:identity}});
+  w.authority.put({...run,envelope:{...run.envelope,shape:prior.envelope.shape,...(prior.envelope.parent===undefined?{}:{parent:prior.envelope.parent})}});
+  canonicalResults.get(w)?.set(run.envelope.runId,result);
 }
 
 /**
@@ -214,7 +238,7 @@ function seedActivityWorld(w: DashboardWorld): void {
 }
 
 describe("the Activity report (D180)", () => {
-  it("refuses the old receipt-digest path when keyed pseudonym evidence is missing", () => {
+  it("refuses the old receipt-digest path when validated canonical identity is missing", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 40, workflow: "separations" });
@@ -237,28 +261,26 @@ describe("the Activity report (D180)", () => {
       state: "absent",
       evidenceRows: 0,
       unavailableRows: 1,
-      reason: "1 of 1 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+      reason: "1 of 1 current Separations run/member rows lack validated canonical identity; distinct people is unavailable",
     });
     assert.equal(JSON.stringify(report).includes(digest), false, "the aggregate wire published a person digest");
   });
 
-  it("deduplicates keyed pseudonyms within one complete generation and includes operation members", () => {
+  it("deduplicates canonical identities and includes operation members", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 41, workflow: "separations" });
     queuedEventOf(w, { seed: 42, workflow: "separations", shape: "operation", title: "People batch" });
     queuedEventOf(w, { seed: 43, workflow: "separations", shape: "operation-member", parentSeed: 42 });
     queuedEventOf(w, { seed: 44, workflow: "separations", shape: "operation-member", parentSeed: 42 });
-    for (const [seed, pseudonym] of [[41, "a"], [43, "a"], [44, "b"]] as const) {
-      w.authority.putActivityPersonPseudonym(pseudonymEvidenceOf({ seed, pseudonym: pseudonym.repeat(64) }));
-    }
+    for (const [seed, identity] of [[41, "10800001"], [43, "10800001"], [44, "10800002"]] as const) personResult(w,seed,identity);
 
     const report = w.projection.buildActivityReportWire(D0, D0);
 
     assert.deepEqual(report.people, { state: "present", distinct: 2, evidenceRows: 3 });
   });
 
-  it("keeps missing keyed evidence distinct from a zero-Separations range", () => {
+  it("keeps missing canonical identity distinct from a zero-Separations range", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 45, workflow: "separations" });
@@ -277,7 +299,7 @@ describe("the Activity report (D180)", () => {
           state: "absent",
           evidenceRows: 0,
           unavailableRows: 1,
-          reason: "1 of 1 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+          reason: "1 of 1 current Separations run/member rows lack validated canonical identity; distinct people is unavailable",
         },
         { state: "present", distinct: 0, evidenceRows: 0 },
       ],
@@ -285,61 +307,23 @@ describe("the Activity report (D180)", () => {
     assert.equal(JSON.stringify(unavailable).includes("3698"), false, "the absent wire published a suffix");
   });
 
-  it("refuses duplicate, multi-generation, mixed and foreign pseudonym evidence without combining it", () => {
-    const cases = [
-      {
-        name: "duplicate row for one generation",
-        evidence: [
-          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64) }),
-          pseudonymEvidenceOf({ seed: 46, pseudonym: "b".repeat(64) }),
-        ],
-        expected: { evidenceRows: 0, unavailableRows: 1, reason: /more than one pseudonym evidence row/u },
-      },
-      {
-        name: "multiple generations for one run",
-        evidence: [
-          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64), keyGeneration: "activity-person-g1" }),
-          pseudonymEvidenceOf({ seed: 46, pseudonym: "b".repeat(64), keyGeneration: "activity-person-g2" }),
-        ],
-        expected: { evidenceRows: 0, unavailableRows: 1, reason: /more than one pseudonym key generation/u },
-      },
-      {
-        name: "mixed generations across complete rows",
-        evidence: [
-          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64), keyGeneration: "activity-person-g1" }),
-          pseudonymEvidenceOf({ seed: 47, pseudonym: "b".repeat(64), keyGeneration: "activity-person-g2" }),
-        ],
-        second: true,
-        expected: { evidenceRows: 2, unavailableRows: 0, reason: /mixed pseudonym key generations/u },
-      },
-      {
-        name: "foreign workflow evidence",
-        evidence: [pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64), workflowId: "person-lookup" })],
-        expected: { evidenceRows: 0, unavailableRows: 1, reason: /outside the served current Separations/u },
-      },
-      {
-        name: "foreign run evidence",
-        evidence: [
-          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64) }),
-          pseudonymEvidenceOf({ seed: 99, pseudonym: "b".repeat(64) }),
-        ],
-        expected: { evidenceRows: 1, unavailableRows: 0, reason: /outside the served current Separations/u },
-      },
-    ] as const;
-    for (const fixture of cases) {
-      const w = world({ descriptors: REGISTRY });
-      atDayOffset(w, 0);
-      queuedEventOf(w, { seed: 46, workflow: "separations" });
-      if ("second" in fixture && fixture.second === true) queuedEventOf(w, { seed: 47, workflow: "separations" });
-      for (const evidence of fixture.evidence) w.authority.putActivityPersonPseudonym(evidence);
-
-      const people = w.projection.buildActivityReportWire(D0, D0).people;
-      assert.equal(people.state, "absent", fixture.name);
-      if (people.state !== "absent") throw new Error(`${fixture.name} unexpectedly measured people`);
-      assert.equal(people.evidenceRows, fixture.expected.evidenceRows, fixture.name);
-      assert.equal(people.unavailableRows, fixture.expected.unavailableRows, fixture.name);
-      assert.match(people.reason, fixture.expected.reason, fixture.name);
-      assert.equal(JSON.stringify(people).includes("a".repeat(64)), false, fixture.name);
+  it("refuses foreign result bindings, malformed canonical values and old schema hashes without leaking identity", () => {
+    for(const defect of ["foreign","malformed","schema"] as const) {
+      const w=world({descriptors:REGISTRY});atDayOffset(w,0);
+      queuedEventOf(w,{seed:46,workflow:"separations"});personResult(w,46,"10800001");
+      const result=canonicalResults.get(w)?.get(uuidOf(46));if(result===undefined)throw new Error("fixture result missing");
+      canonicalResults.get(w)?.set(uuidOf(46),{...result,
+        ...(defect==="foreign"?{runId:uuidOf(99)}:{}),
+        ...(defect==="schema"?{resultSchemaHash:"a".repeat(64)}:{}),
+        ...(defect==="malformed"?{result:{...result.result,value:{approved:{emplId:"10800001"}}}}:{}),
+      });
+      if(defect==="foreign")assert.throws(()=>w.projection.buildActivityReportWire(D0,D0),/identity-mismatch/u);
+      else {
+        const report=w.projection.buildActivityReportWire(D0,D0);
+        assert.equal(report.people.state,"absent");
+        assert.equal(JSON.stringify(report).includes("10800001"),false);
+        assert.equal(JSON.stringify(report).includes("a".repeat(64)),false);
+      }
     }
   });
 

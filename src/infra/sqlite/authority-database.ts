@@ -1,3 +1,12 @@
+import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
+import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
+import { NoteWireSchema } from "../../events/types.js";
+import { deriveCanonicalPerson } from "../../core/run-summary.js";
+import { VersionChangeSchema, type VersionChange } from "../../domain/archive/change-record.js";
+import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../core/run-lifecycle-storage.js";
+import { ArchiveDatabase } from "./archive-database.js";
+import { ArchiveTransferIdentitySchema, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
+import { createRunSummaries } from "./run-summaries.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
@@ -29,7 +38,7 @@ import { archivedRunContentDigest } from "../../domain/archive/model.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
@@ -132,7 +141,6 @@ import {
   deriveCheckpointProvenanceDigest,
   type RunResultRecord,
 } from "../../domain/run/result.js";
-import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import {
   TerminalAuthorizationRecordSchema,
   type TerminalAuthorizationRecord,
@@ -246,17 +254,10 @@ import {
   type DryRunScenarioResult,
 } from "../../domain/trust/dry-run-scenario-result.js";
 import {
-  ActivityPersonPseudonymEvidenceSchema,
-  ActivityPersonPseudonymGenerationBindingSchema,
-  ActivityPersonPseudonymRunSetSchema,
-  assertAuthenticActivityPersonPseudonymDomain,
-  activityPersonPseudonymEvidenceKey,
   type ActivityPersonPseudonymDomain,
   type ActivityPersonPseudonymEvidence,
 } from "../../domain/trust/activity-person-pseudonym.js";
 import {
-  ActivityPersonPseudonymBackfillOutcomeSchema,
-  CurrentSeparationsPseudonymSourceResultSchema,
   type ActivityPersonPseudonymBackfillOutcome,
 } from "../../domain/trust/activity-person-pseudonym-backfill.js";
 import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
@@ -1142,10 +1143,7 @@ function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string)
   return schema.parse(JSON.parse(text));
 }
 
-function activityPseudonymObjectProperty(value: unknown, key: string): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  return Reflect.get(value, key);
-}
+
 
 
 function sqliteChanges(value: number | bigint): number {
@@ -1284,6 +1282,14 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 }
 
 const INVARIANT_QUERIES = Object.freeze([
+  {name:"archive-transfer-columns-match-record",sql:`SELECT count(*) AS count FROM archive_transfers
+    WHERE record_key IS NOT json_extract(record_json,'$.run.envelope.runId') OR workflow IS NOT json_extract(record_json,'$.run.envelope.workflow')
+      OR item_id IS NOT json_extract(record_json,'$.run.envelope.itemId') OR attempt IS NOT json_extract(record_json,'$.run.envelope.attempt')
+      OR run_number IS NOT json_extract(record_json,'$.run.runNumber')`},
+  {name:"summary-columns-match-record",sql:`SELECT count(*) AS count FROM run_summaries WHERE record_key IS NOT json_extract(record_json,'$.runId')
+    OR workflow IS NOT json_extract(record_json,'$.workflow') OR local_day IS NOT json_extract(record_json,'$.localDay')
+    OR state IS NOT json_extract(record_json,'$.lifecycle.state') OR parent_run_id IS NOT json_extract(record_json,'$.parentRunId')`},
+  {name:"version-change-key-match",sql:"SELECT count(*) AS count FROM version_changes WHERE record_key IS NOT json_extract(record_json,'$.changeId')"},
   {
     name: "run-completion-revisions",
     sql: `SELECT count(*) AS count FROM workflow_runs AS run
@@ -1501,22 +1507,6 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM dryrun_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
   },
 
-  {
-    name: "activity-person-pseudonym-columns-match-record",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
-  },
-  {
-    name: "activity-person-pseudonym-generation-columns-match-record",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonym_generations WHERE record_key IS NOT key_generation OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR key_commitment IS NOT json_extract(record_json, '$.keyCommitment') OR derivation IS NOT json_extract(record_json, '$.derivation')",
-  },
-  {
-    name: "activity-person-pseudonym-generation-binds-evidence",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN activity_person_pseudonym_generations AS generation ON generation.key_generation = evidence.key_generation WHERE generation.key_generation IS NULL",
-  },
-  {
-    name: "activity-person-pseudonym-binds-run",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN workflow_runs AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
-  },
   {
     name: "started-dry-run-scenario-result-binds-run",
     sql: `
@@ -1740,6 +1730,23 @@ const HISTORICAL_COMPLETION_INVARIANT_QUERIES = [
 
 const RETIRED_HISTORY_INVARIANT_QUERIES = [
   {
+    name: "activity-person-pseudonym-columns-match-record",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
+  },
+  {
+    name: "activity-person-pseudonym-generation-columns-match-record",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonym_generations WHERE record_key IS NOT key_generation OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR key_commitment IS NOT json_extract(record_json, '$.keyCommitment') OR derivation IS NOT json_extract(record_json, '$.derivation')",
+  },
+  {
+    name: "activity-person-pseudonym-generation-binds-evidence",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN activity_person_pseudonym_generations AS generation ON generation.key_generation = evidence.key_generation WHERE generation.key_generation IS NULL",
+  },
+  {
+    name: "activity-person-pseudonym-binds-run",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN workflow_runs AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
+  },
+
+  {
     // Ref write-safety §6: sequences are dense from zero inside a partition, so
     // `nextSeq` is the count. A gap here means a lost or rewritten entry.
     name: "ledger-partition-sequence-is-dense",
@@ -1878,19 +1885,12 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
 }
 
 /** Exact retained ownership, including retries whose shared evidence outlives its source run. */
-function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord) {
+function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord, archive: () => ArchiveDatabase) {
   const { runId, workflow, itemId } = deleting.envelope;
   const eligibleOwner = (ownerId: string): boolean => {
-    const retained = readTimelineRun(database, ownerId);
-    if (retained !== undefined) {
-      if (retained.envelope.workflow !== workflow || retained.envelope.itemId !== itemId) throw new Error("run-delete-evidence-owner-mismatch");
-      return ownerId === runId;
-    }
-    const raw = database.prepare("SELECT record_json FROM deleted_runs WHERE record_key = ?").get(ownerId);
-    if (raw === undefined) throw new Error("run-delete-evidence-owner-missing");
-    const tombstone = parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(raw).record_json);
-    if (tombstone.workflow !== workflow || tombstone.itemId !== itemId) throw new Error("run-delete-evidence-tombstone-mismatch");
-    return true;
+    const owner = resolveRunEvidenceOwner(database, archive, ownerId);
+    if (owner.workflow !== workflow || owner.itemId !== itemId) throw new Error("run-delete-evidence-owner-mismatch");
+    return owner.state === "deleted" || (ownerId === runId && (owner.state === "live" || owner.state === "archived"));
   };
   // Checkpoints and permanent operation keys are read by workflow/item, before
   // a queued retry materializes an explicit evidence reference. Tombstones do
@@ -1905,7 +1905,9 @@ function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord) {
       throw new Error("run-delete-peer-identity-mismatch");
     }
   }
-  const retainedItemPeer = retainedPeers.length > 0;
+  const archivedPeers = database.prepare("SELECT record_key FROM archive_transfers WHERE workflow=? AND item_id=? AND record_key <> ? AND record_key NOT IN (SELECT record_key FROM deleted_runs)").all(workflow,itemId,runId);
+  for (const raw of archivedPeers) resolveRunEvidenceOwner(database, archive, z.strictObject({record_key:z.string()}).parse(raw).record_key);
+  const retainedItemPeer = retainedPeers.length > 0 || archivedPeers.length > 0;
   const referenced = (ownerId: string): boolean => {
     return retainedItemPeer || database.prepare(`SELECT 1 FROM timeline_events WHERE run_id <> ?
       AND json_extract(record_json, '$.payload.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
@@ -2542,6 +2544,7 @@ function inspectSpanRunAuthorityReadOnly(
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let archive: ArchiveDatabase | undefined;
   let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
@@ -2566,7 +2569,14 @@ function inspectSpanRunAuthorityReadOnly(
     const meta = readMetaRow(database);
     const authorityFingerprint = authorityContentFingerprint(database);
     const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM workflow_runs").get()).count;
-    const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
+    const transfers=new Map(database.prepare("SELECT record_key,record_json FROM archive_transfers ORDER BY record_key").all().map(raw=>{
+      const row=AuthorityRecordFingerprintRowSchema.parse(raw),identity=ArchiveTransferIdentitySchema.parse(JSON.parse(row.record_json));
+      if(identity.run.envelope.runId!==row.record_key)throw new Error("archive-transfer-identity-mismatch");
+      return [row.record_key,identity] as const;
+    }));
+    if(transfers.size>0)archive=new ArchiveDatabase(join(dirname(parsedPath),"archive.sqlite"),{readOnly:true});
+    for(const runId of transfers.keys())resolveRunEvidenceOwner(database,()=>{if(archive===undefined)throw new Error("archive-authority-missing");return archive;},runId);
+    const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count+transfers.size;
     const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
     const taskById = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?");
     // D308: the delete cascade removes the `workflow_runs` row (and any `archived_runs`
@@ -2626,6 +2636,12 @@ function inspectSpanRunAuthorityReadOnly(
       }
       const archivedRow = archivedRunById.get(root.runId);
       const taskRow = taskById.get(root.runId);
+      const transfer=transfers.get(root.runId);
+      if(transfer!==undefined) {
+        if(taskRow!==undefined || archivedRow!==undefined || liveSpanRootMismatches(root,transfer.run).length!==0)throw new Error("archive-span-owner-mismatch");
+        const report=archive?.verified(root.runId,transfer.reportDigest);if(report===undefined)throw new Error("archive-report-missing");
+        return SpanAuthorityRunResolutionSchema.parse({state:"archived",runId:root.runId,archivedAt:report.content.capturedAt});
+      }
       if (archivedRow !== undefined) {
         if (taskRow === undefined) {
           return SpanAuthorityRunResolutionSchema.parse({
@@ -2789,6 +2805,7 @@ function inspectSpanRunAuthorityReadOnly(
     });
   } finally {
     if (transactionOpen) database.exec("ROLLBACK");
+    archive?.close();
     database.close();
   }
 }
@@ -2812,6 +2829,14 @@ export class AuthorityDatabase implements Disposable {
   #authorityCommitCallbacks: (() => void)[] = [];
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
 
+  #archiveDatabase: ArchiveDatabase | undefined;
+  lifecycleArchive(requireExisting = false): ArchiveDatabase {
+    if (this.#path === ":memory:") throw new Error("archive-requires-durable-root");
+    if (requireExisting && !existsSync(join(dirname(this.#path), "archive.sqlite"))) throw new Error("archive-authority-missing");
+    this.#archiveDatabase ??= new ArchiveDatabase(join(dirname(this.#path), "archive.sqlite"));
+    return this.#archiveDatabase;
+  }
+
   readonly authority: AuthorityRepositories;
 
   private constructor(
@@ -2823,6 +2848,7 @@ export class AuthorityDatabase implements Disposable {
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     const existed = options.path !== ":memory:" && existsSync(options.path);
+    if (options.openMode === "read-write" && options.path.endsWith("/state.db") && existsSync(join(dirname(options.path), ".lifecycle-restore.json"))) throw new Error("lifecycle-restore-incomplete");
     const readOnlyNoMigrate = options.openMode !== "read-write";
     if (readOnlyNoMigrate && !existed) {
       throw new Error(`${options.openMode} requires an existing authority database`);
@@ -2992,6 +3018,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   close(): void {
+    this.#archiveDatabase?.close();
+    this.#archiveDatabase = undefined;
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
     this.#database.close();
@@ -3028,6 +3056,206 @@ export class AuthorityDatabase implements Disposable {
       },
       tables: names.map((name) => ({ name, classification: tableClassification(name) })),
     });
+  }
+
+  #removeLifecycleSources(run: RunRecord, now: string, transfer: boolean, evidence: ReturnType<typeof runDeletionEvidence>) {
+    const runId = run.envelope.runId;
+    const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
+    const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: string[]): void => {
+      const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
+      if (rows > 0) removed.push({table, rows});
+    };
+          remove("timeline_events", "DELETE FROM timeline_events WHERE run_id = ?", runId);
+          // Keep an entire operation group while another retained retry owns or
+          // references its evidence. The last owner collects the held group.
+          for (const operationId of (transfer ? [] : evidence.operationIds)) {
+            remove("timeline_operation_sources", "DELETE FROM timeline_operation_sources WHERE json_extract(record_json, '$.operationId') = ?", operationId);
+            remove("run_operation_attempts", "DELETE FROM run_operation_attempts WHERE write_intent_id = ?", operationId);
+            remove("run_operations", "DELETE FROM run_operations WHERE record_key = ?", operationId);
+          }
+          // Evidence and diagnostics.
+          remove("diagnostic_files", `
+            DELETE FROM diagnostic_files WHERE bundle_id IN (
+              SELECT record_key FROM diagnostic_snapshots WHERE run_id = ?
+            )`, runId);
+          remove("diagnostic_snapshots", "DELETE FROM diagnostic_snapshots WHERE run_id = ?", runId);
+          remove("run_receipts", "DELETE FROM run_receipts WHERE run_id = ?", runId);
+          remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
+          finalizeProviderRun(this.#database, this.authority.providerAdmissions, runId, now);
+          remove("provider_requests", "DELETE FROM provider_requests WHERE run_id = ?", runId);
+          remove("run_failures", "DELETE FROM run_failures WHERE run_id = ?", runId);
+          // Terminal authority.
+          remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
+          remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
+          for (const key of (transfer ? [] : evidence.checkpointKeys)) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
+          // Inbox items that would otherwise link to a run nobody can open.
+          if (!transfer) remove("notifications", `
+            DELETE FROM notifications WHERE EXISTS (
+              SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
+            )`, runId);
+          // Delegation edges in either direction, then the manifests this run authored.
+          remove("delegation_dependencies", `
+            DELETE FROM delegation_dependencies
+            WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
+          remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
+          // Relaunch lineage belongs to the new run; deleting its source preserves it.
+          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
+          remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
+
+    remove("workflow_runs", "DELETE FROM workflow_runs WHERE record_key = ?", runId);
+    if (!transfer) remove("archive_transfers", "DELETE FROM archive_transfers WHERE record_key = ?", runId);
+    return removed;
+  }
+
+  listTransferredRuns() {
+    return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT record_key FROM archive_transfers WHERE record_key NOT IN (SELECT record_key FROM deleted_runs) ORDER BY created_at,record_key").all()
+      .map(row => {const id=z.object({record_key:z.string()}).parse(row).record_key;const transfer=this.transferredRun(id);if(transfer===undefined)throw new Error("archive-transfer-missing");return transfer.run;}));
+  }
+
+  transferredRun(runId: string) {
+    const identity = this.#readRecord("archive_transfers", RunIdSchema.parse(runId), ArchiveTransferIdentitySchema);
+    if (identity === undefined) return undefined;
+    const owner = resolveRunEvidenceOwner(this.#database, () => this.lifecycleArchive(true), runId);
+    if (owner.state !== "archived") throw new Error("archive-transfer-owner-invalid");
+    return identity;
+  }
+
+  transferLifecycleSources(input: { runId: string; digest: string; expectedVersion: number }) {
+    return this.#authorityWrite("archive_transfers", () => {
+      const report = this.lifecycleArchive(true).verified(input.runId, input.digest);
+      const existing = this.transferredRun(input.runId);
+      if (existing !== undefined) {
+        if (existing.reportDigest !== input.digest || existing.run.version !== input.expectedVersion) throw new Error("archive-transfer-replay-conflict");
+        return {result: existing, changes: 0};
+      }
+      const snapshot = this.captureLifecycleSource(input.runId);
+      const run = snapshot.run;
+      if (run.lifecycle.state !== "terminal" || run.version !== input.expectedVersion) throw new Error("archive-transfer-source-fence");
+      if (this.authority.runs.listChildren(input.runId).length !== 0) throw new Error("archive-transfer-children-retained");
+      if (report.content.sourceDigest !== lifecycleSourceDigest(snapshot)
+        || report.content.sources.find(source => source.kind === "authority-snapshot")?.json !== canonicalJsonStringify(snapshot)
+        || report.content.workflow !== run.envelope.workflow || report.content.itemId !== run.envelope.itemId
+        || report.content.attempt !== run.envelope.attempt || report.content.runNumber !== (run.runNumber ?? null)) throw new Error("archive-transfer-source-mismatch");
+      for (const row of snapshot.records.find(group=>group.table === "diagnostic_files")?.rows ?? []) {
+        const {attachment}=DiagnosticAttachmentStorageRecordSchema.parse(JSON.parse(row.json));
+        if(!report.content.files.some(file=>file.digest===attachment.digest && file.byteLength===attachment.byteLength
+          && file.mediaType===attachment.mediaType && file.artifactIds?.includes(attachment.artifactId) === true)) throw new Error("archive-transfer-file-omitted");
+      }
+      runDeletionEvidence(this.#database, run, () => this.lifecycleArchive(true));
+      const identity = ArchiveTransferIdentitySchema.parse({run, transferId: report.content.transferId,
+        reportDigest: report.digest, sourceDigest: report.content.sourceDigest});
+      this.#database.prepare(`INSERT INTO archive_transfers
+        (record_key,workflow,item_id,attempt,run_number,record_json,created_at) VALUES (?,?,?,?,?,?,?)`)
+        .run(input.runId,run.envelope.workflow,run.envelope.itemId,run.envelope.attempt,run.runNumber ?? null,canonicalJsonStringify(identity),this.#now());
+      // Verified durable archive identity authorizes cleanup; transfer creates no tombstone.
+      this.#removeLifecycleSources(run,this.#now(),true,{operationIds:[],checkpointKeys:[]});
+      return {result:identity,changes:1};
+    });
+  }
+
+  publishTransferredReport(runId: string, digest: string) {
+    const identity = this.transferredRun(runId);
+    if (identity === undefined || identity.reportDigest !== digest) throw new Error("archive-transfer-progress-missing");
+    this.lifecycleArchive(true).publish(runId,digest);
+  }
+
+  settleArchivedDeletion(runId: string) {
+    const receipt = this.authority.deletedRuns.get(runId);
+    if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
+    const archive = this.lifecycleArchive(true);
+    const report = archive.read(runId);
+    if (report !== undefined) archive.beginDelete(receipt,report.digest);
+    archive.settleDelete(runId);
+  }
+
+  readVersionChange(changeId: string) {
+    return this.#readRecord("version_changes", changeId, VersionChangeSchema);
+  }
+
+  writeVersionChange(input: VersionChange) {
+    const change = VersionChangeSchema.parse(input);
+    return this.#authorityWrite("version_changes", () => {
+      const previous = this.readVersionChange(change.changeId);
+      if (previous !== undefined) {
+        const immutable = ({state,completedRunIds,...identity}: VersionChange) => { void state; void completedRunIds; return identity; };
+        const rank = {reviewed:0,applying:1,applied:2};
+        if (canonicalJsonStringify(immutable(previous)) !== canonicalJsonStringify(immutable(change))
+          || rank[change.state] < rank[previous.state] || rank[change.state] > rank[previous.state]+1
+          || previous.completedRunIds.some(id=>!change.completedRunIds.includes(id))) throw new Error("version-change-fence-conflict");
+        if (canonicalJsonStringify(previous) === canonicalJsonStringify(change)) return {result:previous,changes:0};
+      } else {
+        if (change.state !== "reviewed") throw new Error("version-change-review-required");
+        for(const member of change.members) {
+          const snapshot=this.captureLifecycleSource(member.runId);
+          if(!change.targets.some(target=>target.workflow === snapshot.run.envelope.workflow) || snapshot.run.version!==member.version || lifecycleSourceDigest(snapshot)!==member.sourceDigest) throw new Error("version-change-source-stale");
+        }
+      }
+      for (const runId of change.completedRunIds) {
+        const member=change.members.find(candidate=>candidate.runId===runId);
+        const transfer=this.transferredRun(runId);
+        if (member === undefined || transfer === undefined || member.sourceDigest !== transfer.sourceDigest
+          || member.version !== transfer.run.version) throw new Error("version-change-progress-unverified");
+      }
+      this.#database.prepare(`INSERT INTO version_changes VALUES (?,?,?) ON CONFLICT(record_key)
+        DO UPDATE SET record_json=excluded.record_json`).run(change.changeId,canonicalJsonStringify(change),this.#now());
+      return {result:change,changes:1};
+    });
+  }
+
+  captureLifecycleSource(runIdInput: string) {
+    const runId = RunIdSchema.parse(runIdInput);
+    return this.withAuthorityReadSnapshot(() => {
+      const run = this.authority.runs.get(runId);
+      if (run === undefined) throw new Error("archive-source-run-missing");
+      const records: {table: string; rows: {key:string;json:string}[]}[] = [];
+      const collect = (table: string, sql: string, ...parameters: string[]) => {
+        const rows = this.#database.prepare(sql).all(...parameters).map((raw) => {
+          const row = z.strictObject({record_key:z.string(),record_json:z.string()}).parse(raw);
+          return {key:row.record_key,json:row.record_json};
+        });
+        rows.sort((a,b) => a.key.localeCompare(b.key));
+        records.push({table,rows});
+      };
+      collect("workflow_runs","SELECT record_key,record_json FROM workflow_runs WHERE record_key=?",runId);
+      collect("run_results","SELECT record_key,record_json FROM run_results WHERE record_key=?",runId);
+      collect("run_receipts","SELECT record_key,record_json FROM run_receipts WHERE run_id=?",runId);
+      collect("run_failures","SELECT record_key,json_object('evidence',json(record_json),'resolution',json(resolution_json)) AS record_json FROM run_failures WHERE run_id=?",runId);
+      collect("timeline_events","SELECT record_key,record_json FROM timeline_events WHERE run_id=?",runId);
+      collect("diagnostic_snapshots","SELECT record_key,record_json FROM diagnostic_snapshots WHERE run_id=?",runId);
+      collect("diagnostic_files","SELECT record_key,record_json FROM diagnostic_files WHERE bundle_id IN (SELECT record_key FROM diagnostic_snapshots WHERE run_id=?)",runId);
+      collect("run_checkpoints","SELECT record_key,record_json FROM run_checkpoints WHERE workflow=? AND item_id=?",run.envelope.workflow,run.envelope.itemId);
+      collect("run_operations","SELECT record_key,record_json FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?",run.envelope.workflow,run.envelope.itemId);
+      collect("run_operation_attempts","SELECT record_key,record_json FROM run_operation_attempts WHERE write_intent_id IN (SELECT record_key FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?)",run.envelope.workflow,run.envelope.itemId);
+      collect("settings_snapshots","SELECT record_key,record_json FROM settings_snapshots WHERE record_key=?",run.envelope.configSnapshotId);
+      collect("archive_relaunches","SELECT record_key,record_json FROM archive_relaunches WHERE record_key=? OR archived_run_id=?",runId,runId);
+      collect("archived_runs","SELECT record_key,record_json FROM archived_runs WHERE record_key=?",runId);
+      collect("delegation_dependencies","SELECT record_key,record_json FROM delegation_dependencies WHERE json_extract(record_json,'$.parentRunId')=? OR json_extract(record_json,'$.childRunId')=?",runId,runId);
+      collect("run_delegations","SELECT record_key,record_json FROM run_delegations WHERE json_extract(record_json,'$.parentRunId')=?",runId);
+      collect("dryrun_results","SELECT record_key,record_json FROM dryrun_results WHERE run_id=?",runId);
+      collect("checkpoint_payloads","SELECT record_key,record_json FROM checkpoint_payloads WHERE json_extract(record_json,'$.runId')=?",runId);
+      collect("commands","SELECT record_key,record_json FROM commands WHERE EXISTS (SELECT 1 FROM json_tree(commands.record_json) WHERE key IN ('runId','sourceRunId','archivedRunId') AND value=?)",runId);
+      collect("command_audits","SELECT record_key,record_json FROM command_audits WHERE EXISTS (SELECT 1 FROM json_tree(command_audits.record_json) WHERE key IN ('runId','sourceRunId','archivedRunId') AND value=?)",runId);
+      const notes=readScopedEventStreamLines(dirname(this.#path),"notes",runNotePartitionScope({runId,workflow:run.envelope.workflow,instants:runRecordNoteScopeInstants(run)}));
+      records.push({table:"notes_files",rows:notes.flatMap(line=>{
+        const note=NoteWireSchema.parse(JSON.parse(line.text));
+        if(note.workflow!==line.file.workflow)throw new Error("archive-note-partition-mismatch");
+        if(!("runId" in note) || note.runId!==runId)return [];
+        if(note.workflow!==run.envelope.workflow || note.attempt>run.envelope.attempt)throw new Error("archive-note-owner-mismatch");
+        return [{key:`${line.file.date}:${String(line.lineNumber)}`,json:line.text}];
+      })});
+      return LifecycleSourceSnapshotSchema.parse({run,records});
+    });
+  }
+
+  refreshRunSummaries() {
+    this.#authorityWrite("summary_publication", () => ({
+      result: createRunSummaries(this.#database).refresh(this.getMeta().authorityGeneration + 1, this.#now()), changes: 1,
+    }));
+    return createRunSummaries(this.#database).publication();
+  }
+
+  readRunSummaries() {
+    return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).read(this.getMeta().authorityGeneration));
   }
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
@@ -3086,153 +3314,15 @@ export class AuthorityDatabase implements Disposable {
    * only run ids. Every source and replay check is repeated under the same
    * authority transaction as the batch insert.
    */
-  createActivityPersonPseudonymBackfillWriteCapability(
-    pseudonyms: ActivityPersonPseudonymDomain,
-  ): ActivityPersonPseudonymBackfillWriteCapability {
-    assertAuthenticActivityPersonPseudonymDomain(pseudonyms);
-    const currentResultSchemaHash = deriveSchemaHash(
-      CurrentSeparationsPseudonymSourceResultSchema,
-      "output",
-    );
-    return Object.freeze({
-      keyGeneration: pseudonyms.keyGeneration,
-      reviewAndInsert: (runIdsInput: unknown) => {
-        const runIds = ActivityPersonPseudonymRunSetSchema.parse(runIdsInput);
-        return this.#authorityWrite("activity_person_pseudonyms", () => {
-          const generationBinding = pseudonyms.generationBinding;
-          const existingGenerationBinding = this.#readRecord(
-            "activity_person_pseudonym_generations",
-            generationBinding.keyGeneration,
-            ActivityPersonPseudonymGenerationBindingSchema,
-          );
-          if (existingGenerationBinding !== undefined
-            && canonicalJsonStringify(existingGenerationBinding)
-              !== canonicalJsonStringify(generationBinding)) {
-            throw new Error(
-              `activity person pseudonym generation ${generationBinding.keyGeneration} `
-              + "is already bound to different key material",
-            );
-          }
-          const reviewed = runIds.map((runId): Readonly<{
-            outcome: ActivityPersonPseudonymBackfillOutcome;
-            evidence?: ActivityPersonPseudonymEvidence;
-            existing?: ActivityPersonPseudonymEvidence;
-          }> => {
-            const unavailable = (
-              reason: Extract<ActivityPersonPseudonymBackfillOutcome, { state: "unavailable" }>["reason"],
-            ) => ({
-              outcome: ActivityPersonPseudonymBackfillOutcomeSchema.parse({
-                runId,
-                state: "unavailable",
-                reason,
-              }),
-            });
-            const run = this.authority.runs.get(runId);
-            if (run === undefined) return unavailable("run-not-found");
-            if (run.envelope.runId !== runId) return unavailable("run-identity-mismatch");
-            if (this.authority.archivedRuns.isArchived(runId)) return unavailable("run-archived");
-            if (run.envelope.workflow !== "separations") {
-              return unavailable("workflow-not-separations");
-            }
-            if (run.lifecycle.state !== "terminal") return unavailable("run-not-terminal");
-            if (run.lifecycle.outcome !== "done") return unavailable("terminal-outcome-not-done");
-            const result = this.authority.runResults.get(runId);
-            if (result === undefined) return unavailable("run-result-missing");
-            if (result.runId !== runId
-              || result.workflowId !== run.envelope.workflow
-              || result.attempt !== run.envelope.attempt
-              || result.descriptorVersion !== run.envelope.descriptorVersion
-              || result.contractFingerprint !== run.envelope.contractFingerprint
-              || result.configFingerprint !== run.envelope.configFingerprint
-              || result.configSnapshotId !== run.envelope.configSnapshotId) {
-              return unavailable("run-result-identity-mismatch");
-            }
-            if (result.resultSchemaHash !== currentResultSchemaHash
-              || result.result.schemaHash !== currentResultSchemaHash) {
-              return unavailable("result-schema-not-current");
-            }
-            const approved = activityPseudonymObjectProperty(result.result.value, "approved");
-            if (approved === undefined || approved === null) {
-              return unavailable("canonical-subject-missing");
-            }
-            if (Array.isArray(approved)) return unavailable("canonical-subject-ambiguous");
-            const subject = activityPseudonymObjectProperty(approved, "emplId");
-            if (subject === undefined || subject === null) {
-              return unavailable("canonical-subject-missing");
-            }
-            if (Array.isArray(subject)) return unavailable("canonical-subject-ambiguous");
-            const parsed = CurrentSeparationsPseudonymSourceResultSchema.safeParse(result.result.value);
-            if (!parsed.success) return unavailable("canonical-subject-malformed");
-            const evidence = pseudonyms.deriveEvidence({
-              runId,
-              workflowId: run.envelope.workflow,
-              canonicalSubject: parsed.data.approved.emplId,
-            });
-            const existing = this.#readRecord(
-              "activity_person_pseudonyms",
-              activityPersonPseudonymEvidenceKey(runId, pseudonyms.keyGeneration),
-              ActivityPersonPseudonymEvidenceSchema,
-            );
-            if (existing !== undefined
-              && canonicalJsonStringify(existing) !== canonicalJsonStringify(evidence)) {
-              throw new Error(
-                `activity person pseudonym evidence for run ${runId} generation `
-                + `${pseudonyms.keyGeneration} already exists with different content`,
-              );
-            }
-            return {
-              outcome: ActivityPersonPseudonymBackfillOutcomeSchema.parse({
-                runId,
-                state: existing === undefined ? "inserted" : "existing",
-                keyGeneration: pseudonyms.keyGeneration,
-              }),
-              evidence,
-              existing,
-            };
-          });
+  createActivityPersonPseudonymBackfillWriteCapability(_pseudonyms: ActivityPersonPseudonymDomain): ActivityPersonPseudonymBackfillWriteCapability {
+    throw new Error("activity-person-pseudonyms-retired");
+  }
 
-          let changes = 0;
-          if (existingGenerationBinding === undefined
-            && reviewed.some(({ evidence }) => evidence !== undefined)) {
-            const insertedBinding = this.#database.prepare(`
-              INSERT INTO activity_person_pseudonym_generations
-                (record_key, key_generation, key_commitment, derivation, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `).run(
-              generationBinding.keyGeneration,
-              generationBinding.keyGeneration,
-              generationBinding.keyCommitment,
-              generationBinding.derivation,
-              canonicalJsonStringify(generationBinding),
-              this.#now(),
-            );
-            changes += sqliteChanges(insertedBinding.changes);
-          }
-          for (const candidate of reviewed) {
-            if (candidate.evidence === undefined || candidate.existing !== undefined) continue;
-            const evidence = candidate.evidence;
-            const inserted = this.#database.prepare(`
-              INSERT INTO activity_person_pseudonyms
-                (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              activityPersonPseudonymEvidenceKey(evidence.runId, evidence.keyGeneration),
-              evidence.runId,
-              evidence.workflowId,
-              evidence.keyGeneration,
-              evidence.pseudonym,
-              evidence.derivation,
-              canonicalJsonStringify(evidence),
-              this.#now(),
-            );
-            changes += sqliteChanges(inserted.changes);
-          }
-          return {
-            result: Object.freeze(reviewed.map(({ outcome }) => Object.freeze(outcome))),
-            changes,
-          };
-        });
-      },
+  canonicalPerson(runId: string) {
+    return this.withAuthorityReadSnapshot(() => {
+      const run=this.authority.runs.get(runId);
+      if(run===undefined || this.authority.archivedRuns.isArchived(runId)) return {state:"unavailable" as const,reason:"canonical-live-run-unavailable"};
+      return deriveCanonicalPerson(run,this.authority.runResults.get(runId) ?? null);
     });
   }
 
@@ -3973,6 +4063,9 @@ export class AuthorityDatabase implements Disposable {
         `).run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
+      if (this.#authorityDirty && createRunSummaries(this.#database).publication().state === "published") {
+        createRunSummaries(this.#database).refresh(this.getMeta().authorityGeneration, this.#now());
+      }
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4505,35 +4598,9 @@ export class AuthorityDatabase implements Disposable {
       }),
       operatorXlsxExports: generated.exports,
       activityPersonPseudonyms: Object.freeze({
-        get: (runId: string, keyGeneration: string) => this.#readRecord(
-          "activity_person_pseudonyms",
-          activityPersonPseudonymEvidenceKey(runId, keyGeneration),
-          ActivityPersonPseudonymEvidenceSchema,
-        ),
-        listByRun: (runId: string) => {
-          const selectedRunId = RunIdSchema.parse(runId);
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM activity_person_pseudonyms
-            WHERE run_id = ? ORDER BY key_generation
-          `).all(selectedRunId);
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            ActivityPersonPseudonymEvidenceSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
-        },
-        listByRuns: (runIds: unknown) => {
-          const selectedRunIds = ActivityPersonPseudonymRunSetSchema.parse(runIds);
-          if (selectedRunIds.length === 0) return Object.freeze([]);
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM activity_person_pseudonyms
-            WHERE run_id IN (SELECT value FROM json_each(?))
-            ORDER BY run_id, key_generation
-          `).all(canonicalJsonStringify(selectedRunIds));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            ActivityPersonPseudonymEvidenceSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
-        },
+        get: (_runId: string, _keyGeneration: string): never => { throw new Error("activity-person-pseudonyms-retired"); },
+        listByRun: (_runId: string): never => { throw new Error("activity-person-pseudonyms-retired"); },
+        listByRuns: (_runIds: unknown): never => { throw new Error("activity-person-pseudonyms-retired"); },
       }),
       historicalOperationSources: { list: () => this.#database.prepare("SELECT record_json FROM timeline_operation_sources ORDER BY record_key").all().map((row) => readHistoricalOperationSource(this.#database, JsonRowSchema.parse(row).record_json)) },
       runResults: Object.freeze({
@@ -5371,8 +5438,9 @@ export class AuthorityDatabase implements Disposable {
         SELECT attempt FROM workflow_runs WHERE workflow = ? AND item_id = ?
         UNION ALL
         SELECT attempt FROM deleted_runs WHERE workflow = ? AND item_id = ?
+        UNION ALL SELECT attempt FROM archive_transfers WHERE workflow = ? AND item_id = ?
       )
-    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId), workflow, itemId));
+    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId), workflow, itemId, workflow, itemId));
     const highest = row.attempt;
     if (highest === null) return 1;
     return highest + 1;
@@ -5399,8 +5467,9 @@ export class AuthorityDatabase implements Disposable {
         SELECT run_number FROM workflow_runs WHERE workflow = ?
         UNION ALL
         SELECT run_number FROM deleted_runs WHERE workflow = ?
+        UNION ALL SELECT run_number FROM archive_transfers WHERE workflow = ?
       )
-    `).get(WorkflowIdSchema.parse(workflow), workflow));
+    `).get(WorkflowIdSchema.parse(workflow), workflow, workflow));
     const highest = row.run_number;
     if (highest === null) return 1;
     return highest + 1;
@@ -5911,7 +5980,7 @@ export class AuthorityDatabase implements Disposable {
       delete: (input: unknown) => {
         const { runId, origin, commandId, now } = RunDeleteInputSchema.parse(input);
         return this.#authorityWrite("workflow_runs", () => {
-          const run = this.#readRunRow(runId);
+          const run = this.#readRunRow(runId) ?? this.transferredRun(runId)?.run;
           if (run === undefined) throw new Error(`run ${runId} does not exist; nothing to delete`);
           if (run.lifecycle.state !== "terminal") {
             throw new Error(`run ${runId} is ${run.lifecycle.state}, not terminal; only a terminal run can be deleted`);
@@ -5926,13 +5995,13 @@ export class AuthorityDatabase implements Disposable {
             );
           }
           const archived = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
-          if (origin === "archive" && archived === undefined) {
+          if (origin === "archive" && archived === undefined && this.transferredRun(runId) === undefined) {
             throw new Error(`run ${runId} is not archived; the archive door cannot delete it`);
           }
           if (origin === "queue" && archived !== undefined) {
             throw new Error(`run ${runId} is archived; delete it from the Archive, not the queue`);
           }
-          const evidence = runDeletionEvidence(this.#database, run);
+          const evidence = runDeletionEvidence(this.#database, run, () => this.lifecycleArchive(true));
           const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
           const tombstone = (rows: readonly { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[]) =>
             DeletedRunRecordSchema.parse({
@@ -5968,55 +6037,7 @@ export class AuthorityDatabase implements Disposable {
           );
           if (sqliteChanges(inserted.changes) !== 1) throw new Error(`deleted_runs tombstone for ${runId} was not written`);
           this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "tombstone" });
-          const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: readonly string[]): void => {
-            const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
-            if (rows > 0) {
-              const prior = removed.find((entry) => entry.table === table);
-              if (prior === undefined) removed.push({ table, rows });
-              else prior.rows += rows;
-            }
-          };
-          remove("timeline_events", "DELETE FROM timeline_events WHERE run_id = ?", runId);
-          // Keep an entire operation group while another retained retry owns or
-          // references its evidence. The last owner collects the held group.
-          for (const operationId of evidence.operationIds) {
-            remove("timeline_operation_sources", "DELETE FROM timeline_operation_sources WHERE json_extract(record_json, '$.operationId') = ?", operationId);
-            remove("run_operation_attempts", "DELETE FROM run_operation_attempts WHERE write_intent_id = ?", operationId);
-            remove("run_operations", "DELETE FROM run_operations WHERE record_key = ?", operationId);
-          }
-          // Evidence and diagnostics.
-          remove("diagnostic_files", `
-            DELETE FROM diagnostic_files WHERE bundle_id IN (
-              SELECT record_key FROM diagnostic_snapshots WHERE run_id = ?
-            )`, runId);
-          remove("diagnostic_snapshots", "DELETE FROM diagnostic_snapshots WHERE run_id = ?", runId);
-          remove("run_receipts", "DELETE FROM run_receipts WHERE run_id = ?", runId);
-          remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
-          remove("activity_person_pseudonyms", "DELETE FROM activity_person_pseudonyms WHERE run_id = ?", runId);
-          finalizeProviderRun(this.#database, this.authority.providerAdmissions, runId, now);
-          remove("provider_requests", "DELETE FROM provider_requests WHERE run_id = ?", runId);
-          remove("run_failures", "DELETE FROM run_failures WHERE run_id = ?", runId);
-          // Terminal authority.
-          remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
-          remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
-          for (const key of evidence.checkpointKeys) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
-          // Inbox items that would otherwise link to a run nobody can open.
-          remove("notifications", `
-            DELETE FROM notifications WHERE EXISTS (
-              SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
-            )`, runId);
-          // Delegation edges in either direction, then the manifests this run authored.
-          remove("delegation_dependencies", `
-            DELETE FROM delegation_dependencies
-            WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
-          remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
-          // Relaunch lineage belongs to the new run; deleting its source preserves it.
-          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
-          remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
-          // Last, the run itself.
-          const task = sqliteChanges(this.#database.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(runId).changes);
-          if (task !== 1) throw new Error(`deleting run ${runId} removed ${String(task)} workflow_runs rows, not exactly one`);
-          removed.push({ table: "workflow_runs", rows: task });
+          removed.push(...this.#removeLifecycleSources(run, now, false, evidence));
           this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "cascade-complete" });
           const record = tombstone(removed);
           // The one-way settle: the trigger admits exactly this transition.

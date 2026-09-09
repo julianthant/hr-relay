@@ -1,3 +1,6 @@
+import { VersionChangeSchema } from "../../domain/archive/change-record.js";
+import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
+import { RunSummarySchema, SummaryPublicationSchema } from "../../domain/run/summary.js";
 import { AppSettingsSchema } from "../../domain/config/app-settings.js";
 import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../domain/provider-accounting.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../domain/generated-artifact.js";
@@ -55,10 +58,6 @@ import {
 import { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { DryRunScenarioResultSchema } from "../../domain/trust/dry-run-scenario-result.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
-import {
-  ActivityPersonPseudonymEvidenceSchema,
-  ActivityPersonPseudonymGenerationBindingSchema,
-} from "../../domain/trust/activity-person-pseudonym.js";
 
 export const SqliteStorageRecordIdSchema = z.string().uuid().brand<"SqliteStorageRecordId">();
 
@@ -179,6 +178,9 @@ export const ProjectionStorageRecordSchema = z.strictObject({
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
+  archive_transfers: ArchiveTransferIdentitySchema,
+  version_changes: VersionChangeSchema,
+  run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,
   // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row
   // that predates the typing fails validation at boot rather than being
@@ -191,8 +193,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   run_receipts: RunEvidenceReceiptSchema,
   dryrun_results: DryRunScenarioResultSchema,
   generated_artifacts: GeneratedArtifactSchema,
-  activity_person_pseudonyms: ActivityPersonPseudonymEvidenceSchema,
-  activity_person_pseudonym_generations: ActivityPersonPseudonymGenerationBindingSchema,
   timeline_operation_sources: HistoricalOperationSourceSchema,
   provider_usage: ProviderUsageStorageSchema,
   provider_requests: ProviderRequestStorageSchema,

@@ -237,7 +237,6 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
     `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
-    "  activity-person-pseudonyms backfill [--run <run-id> ...] [--json]  derive D288 evidence from reviewed current Separations results",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer (D322)",
@@ -417,16 +416,7 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     return;
   }
   if (command === "activity-person-pseudonyms") {
-    const compose = input.activityPersonPseudonyms ?? registeredActivityPersonPseudonymComposer;
-    if (compose === undefined) {
-      throw new Error(
-        "the activity-person-pseudonyms command needs its composition seam; start it through src/cli.ts",
-      );
-    }
-    const outcome = compose(input.isolation, args.slice(1));
-    write(outcome.output);
-    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
-    return;
+    throw new Error("activity-person-pseudonyms-retired");
   }
   if (command === "worker") {
     const compose = input.worker ?? registeredWorkerComposer;

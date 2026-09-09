@@ -5,7 +5,6 @@ import { exportTransactions, parseTransactionExportArgs, TRANSACTION_EXPORT_HELP
 import { fileURLToPath } from "node:url";
 import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
 import {
-  registerActivityPersonPseudonymComposer,
   registerDashboardComposer,
   registerDryRunScenarioComposer,
   registerExplainComposer,
@@ -16,7 +15,6 @@ import {
   startRebuildRuntime,
 } from "./core/runtime-composition.js";
 import { composeDashboardRuntime } from "./server/dashboard/compose.js";
-import { composeActivityPersonPseudonymBackfillCommand } from "./server/activity-person-pseudonym-backfill/compose.js";
 import { composeDryRunScenarioCommand } from "./server/dry-run-scenario/compose.js";
 import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./server/dry-run-scenario/manifests.js";
 import { parseDryRunScenarioManifest } from "./domain/trust/dry-run-scenario.js";
@@ -48,8 +46,6 @@ export async function runCli(): Promise<void> {
   }
   registerDashboardComposer((runtimeIsolation, options) =>
     composeDashboardRuntime({ isolation: runtimeIsolation, frontend: options.frontend }));
-  registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>
-    composeActivityPersonPseudonymBackfillCommand({ isolation: runtimeIsolation, args }));
   registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
     isolation: runtimeIsolation,
     args,
