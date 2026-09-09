@@ -18,7 +18,7 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 with the repaired F prerequisite, the exact shared integrity-check exception, local master merge
 and owned cleanup after focused PASS. That brief supersedes conflicting older allocation,
 WAITING ON, no-master and retention instructions below. Full gates and independent review remain
-2.6.9; implementation is unstarted.
+2.6.9; current implementation status is recorded in the P execution record below.
 
 ## Archive-report amendment — 2026-09-08
 
@@ -248,7 +248,7 @@ is authorized here. An operator-root upgrade/cleanup is a separately assigned ac
 integration, verified stopped ownership, source-bound backup, supported upgrade plan/apply/doctor
 and sanitized before/after identity/count evidence. This planning work changes no runtime data.
 
-**Prerequisite resolved:** repaired F `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`; the approved P01–P06 brief below owns current launch conditions.
+**Prerequisite resolved:** repaired F `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`; the approved P01–P06 brief below owns current launch conditions.
 All earlier planning checks remain historical Git evidence, not gates for the new implementation.
 
 ## C0 execution allocation — 2.6.6.1 P
@@ -310,7 +310,7 @@ This approval implements no product code and does not mark P or Phase 2.6 comple
 | --- | --- |
 | Supervisor | One operator-started GPT-6 Astra/high supervisor; zero implementation workers. One cohesive accounting/retention assignment. No child dispatch. |
 | Inspected checkout | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; schema47/floor46. F repair changed no P-owned source files or provider integrity query. |
-| Source prerequisite | Exact common repaired F release `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, superseding initial `7ec279750817934b7da69ce433e0e5a44fed6a58`. Require F's complete repair closure receipt and ancestry. |
+| Source prerequisite | Exact common F resolver repair release `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, superseding `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` and initial `7ec279750817934b7da69ce433e0e5a44fed6a58`. Require the complete resolver repair closure receipt linked below and ancestry. |
 | Mode / branch / path | Create `codex/provider-usage` in a new worktree `/Users/julianhein/Projects/hr-worktree-provider-usage` from that exact prerequisite. These names are proposals until execution rechecks absence/ownership. |
 | Plan availability | The planning handoff supplies the full committed plan SHA on master. Read this section and its linked controls with `git show PLAN_SHA:path`; restore only this owner from that committed plan into P's worktree before recording implementation evidence. Do not replace other shared documents with the older F versions. |
 | Capacity | One unrelated auxiliary worktree, `hr-separation-accounting-final`, existed at approval. Preserve it; recheck the four-auxiliary-worktree ceiling and ownership before creating P. |
@@ -338,6 +338,52 @@ source/generated site. Never overwrite sibling edits or change their allocations
 necessary manifest/catalog outputs only through their existing generators; no source catalog or
 guard-inventory changes are admitted by this task. Preserve released migrations and guard semantics.
 
+### Parallel coordination and remaining duties
+
+The operator requested this plan/prompt amendment after updating the parallel protocol on
+2026-09-09. Read and follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination)
+before any coordination. This section binds that protocol to P; it adds no coordinator, routine
+check-in, reservation round, peer launch or acceptance handshake.
+
+- **Independent assignment:** one P supervisor owns P01–P06, its isolated branch/worktree,
+  focused gates, local master integration, integration verification and owned cleanup. The operator
+  opens D/G/S separately. Their existence does not require messages or a group-wide resource slot.
+  L already owns consuming the recorded P/D/G/S releases; 2.6.9 already owns complete review,
+  full gates and final acceptance. Those existing duties need no new acceptance handshake.
+- **Message necessity:** inspect committed owners, Git and primary evidence first. Default to no
+  peer messages. Contact an exact verified recipient only when that owner must take a necessary
+  action on an unresolved blocker, changed required input, actual write/resource conflict or duty
+  transfer. Send the fact, resource/commit and requested action once. No broadcasts, availability
+  surveys, acknowledgments, readiness reports, progress relays or duplicate native result delivery.
+  Do not reuse planning-task IDs as future implementation recipients or infer ownership from titles.
+- **Isolation and actual conflicts:** shared planning documents, generated output and Git indexes
+  are shared writes. Keep independent edits and checks in P's isolated checkout; serialize only
+  the actual shared-target operation under the existing isolation policy. The earlier planning-only
+  D/P/G commit exchanges create no implementation queue or sibling dependency. For an evidenced
+  conflict, use a verified supported acquisition mechanism; otherwise request once from the known
+  owner and require a valid grant. Silence, elapsed time and clean Git alone grant no ownership.
+  Release after the conflicting operation, including failure; notify only a named waiter who needs
+  that release, with verified process exit or mutation completion. Do not invent locks or queues.
+- **Durable state:** maintain one compact execution record here with P's actual task ID,
+  branch/worktree, base/candidate/tree, owned scope, gate evidence and tested inputs, dirty state,
+  pending verification and remaining-duty owner. Only when a real conflict exists, add its exact
+  resource, owner, needed action, acquisition evidence and release condition. No pre-emptive peer
+  roster or speculative waiter list is required.
+- **Transfer and resume:** P retains its required gates, final verification, integration and cleanup
+  until complete or explicitly transferred to an authorized recipient who accepts those remaining
+  duties. Sending a message is not acceptance. A preassigned L/2.6.9 duty is not a new transfer.
+  If an owned dependency is unresolved, continue independent work and use supported completion waits
+  with cursors/backoff only while its result is needed. Use an existing authorized return/resume
+  mechanism; otherwise state the operator resume point. Do not add monitoring or dispatch.
+- **Finish:** after P's owned work/processes are complete, record the scoped development release
+  and end the turn. Do not monitor siblings, broadcast completion or seek acceptance from L merely
+  because P finished. If duties were explicitly transferred and none remain locally, end with the
+  contribution status and remaining owner; keep overall completion open where appropriate.
+  Done / Now / Remaining updates go to the operator, not to peers.
+
+Product scope, P's narrow shared integrity amendment, exact F prerequisite, focused checks,
+local merge/cleanup and final 2.6.9 full-gate/review timing are unchanged.
+
 ### Feasibility and required proof
 
 Inspection is distinct from execution proof. F's retained receipt reports 961 unit, 199 affected
@@ -361,7 +407,8 @@ P must extend missing lifecycle/boundary cases rather than claim all historical 
 1. **P01 — Bind execution.** Verify committed plan, repaired F ancestry and complete receipt;
    recheck branch/path/capacity and identify other active owners. Create the isolated checkout;
    verify source inputs against F, load this approved owner from the plan SHA, and bind evidence
-   directory and effective test worker. Report Done / Now / Remaining before subsequent work.
+   directory and effective test worker. Read the linked Parallel coordination protocol and initialize
+   the local execution record; no peer check-in is required. Report Done / Now / Remaining before subsequent work.
 2. **P02 — Correct integrity checks.** Reproduce mixed-kind corruption reporting through the real
    current invariant; implement only the named shared query/historical mapping exception. Add
    current/historical positive and corrupt negative controls in the P-owned test. Preserve genuine
@@ -382,7 +429,8 @@ P must extend missing lifecycle/boundary cases rather than claim all historical 
    reuse. Update P status to a merged development release, preserve proof outside its worktree,
    stop only owned processes and remove only the owned auxiliary worktree and merged branch.
    Verify registration/path/ref absence and clean master, record actual cleanup and L's release,
-   and stop. No automatic successor. Keep review/full gates explicitly deferred to 2.6.9.
+   and end the turn without monitoring siblings or broadcasting completion. No automatic successor.
+   Keep review/full gates explicitly deferred to 2.6.9.
 
 ### Focused gate schedule and resource recipe
 
@@ -457,13 +505,129 @@ plan SHA only after staged-content, prerequisite and reachability verification. 
 checkout was created and no product completion is claimed.
 
 
-### Launch hold — subsequent F resolver repair
+### Resolved launch prerequisite — F resolver repair
 
-During approval persistence, F reopened its owned lane for resolver-port candidate
-`283bbe88440fafb0b44224b8fc085003b7b91dba`. F confirmed this will supersede the released
-`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` with a new common integrated prerequisite after
-focused PASS and complete cleanup. P scope, approved integrity exception and gate/merge rules
-are unchanged. **WAITING ON:** that actual integrated F release and complete closure receipt.
-The planner must rebind the exact source SHA, verify changed inputs and committed plan availability,
-and rerun affected documentation checks before issuing a READY prompt. Do not launch from the
-older binding while this explicit prerequisite repair is outstanding; no future SHA is guessed.
+The launch hold recorded during persistence is resolved. The common integrated F source is
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, with final release record
+`e06a1c82e9983deb281c5400671f6ce330214000` and tested candidate
+`f917ffe7b2308b4746e2aba16719a68cbafdb56c`. The
+[resolver repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+is complete; F's registered worktree, physical path and branch are absent. P's approved plan commit
+`c6b481773c799f9ef801a5fbacd083fe2a4b01d9` is preserved in master ancestry.
+
+The follow-up changes settings resolver application/composition and related fixtures only. P's two
+production modules, reservation-integrity query, historical mapping, frozen provider schemas/API
+and migrations are unchanged from the previously inspected F prerequisite. The mixed-kind defect
+and the approved P-only shared-file exception therefore remain as planned. No scope, ownership,
+gate, review, merge or cleanup decision is reopened. Preserve the new shared settings fixtures.
+
+F's source-bound focused evidence reports 1195 unit cases, 199 affected guards and 67 filtered UI
+checks plus lint/freshness PASS. All non-document inputs of its final record match its tested
+candidate; the planning rebind verifies that equality and reuses F's lint under D191. It reruns
+roadmap generation/freshness, all 24 binding tests, links, instruction-pair/chain and whitespace
+checks for the new documentation. These are planning checks, not P implementation acceptance.
+
+**Launch binding:** create `codex/provider-usage` at
+`/Users/julianhein/Projects/hr-worktree-provider-usage` from exactly
+`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. Before editing, read this complete owner from the
+final verified plan commit supplied by the planner, then restore only this owner from that commit
+into P's worktree. Recheck prerequisite ancestry, the complete receipt, available branch/path and
+four-worktree capacity; preserve the unrelated separation worktree. The planner returns READY
+only after this factual rebind is committed and read back. No implementation or child launch
+occurs in planning; full gates and independent review remain 2.6.9.
+
+## P execution record — 2026-09-09
+
+P01 complete. One supervisor, zero workers. Approved plan
+`9d8b7b8168d77e29ffe75fea23b337326b97b1a0`; checkout
+`/Users/julianhein/Projects/hr-worktree-provider-usage`, branch `codex/provider-usage`,
+base `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. The complete F closure receipt and
+ancestry were verified, including absence of F's path/registration/ref. P occupies the fourth
+auxiliary slot; unrelated separation, D and G worktrees are preserved. Only this owner was
+restored from the approved plan. Production inputs match F before implementation.
+
+Evidence root: `/Users/julianhein/Projects/hr-provider-usage-evidence-20260909`.
+The one-file-worker adapter imports the real configuration; `config-comparison.log` proves
+only root/project maxWorkers differ. Dependency installation is reused through an owned
+node_modules symlink; no secrets or operator database were accessed. No resource collision
+or required peer action was found; no peer messages were sent.
+
+P01–P04 are implemented and focused boundary proof is passing. P05 complete selected gates
+and P06 local integration/owned cleanup remain open.
+Full gates and independent review belong to 2.6.9. L consumes the recorded release; no launch
+or monitoring duty is assigned to P.
+
+### Implementation and proof allocation
+
+`createGenericProviderAccounting(storage)` in `src/infra/sqlite/provider-accounting.ts` supplies
+reserve, finish (settled/interrupted/lease-expired) and usage reads on F's frozen transaction port.
+The real request-write boundary checks execution and retained configuration before aggregate writes.
+The admission fingerprint binds the complete parsed admission input, including all supplied budgets,
+windows, attribution and original request fingerprint, so even denied replay cannot change a budget.
+Window identities retain their original bounds and policy. A new window uses a new identity; changing
+an existing policy under the same identity refuses. Scope/meter duplicates and inconsistent meter
+bounds refuse. No production provider, credential issuer, adapter, registry or pool behavior changes.
+`src/core/provider-admission.ts` required no change: existing callers remain capability-scoped.
+
+Cumulative quantities count finalized usage once per distinct scope/meter, regardless of overlapping
+windows. Active reservations remain separate in windows. A mixed measured/estimated total is labeled
+estimated; any unknown component makes the cumulative total a conservative unknown upper bound.
+Request records retain the supplied meter evidence. Unknown settlement retains at least the original
+upper bound, overage stays negative, missing limits remain typed unknown, and absent reservation
+bounds produce a typed denial. This does not assert provider-verified or account-lifetime totals.
+`inspectGenericProviderAccounting` separately checks generic allocation/window and active-amount
+consistency; legacy reservation checks deliberately cover legacy rows only.
+
+| Proof | Execution evidence |
+| --- | --- |
+| P1 | Two synthetic vendors and credential generations, keyless and unattributed requests; provider/model, credential, application and shared scopes; input/output token and cost evidence; unknown limits. No actual provider producer is added. |
+| P2 | Two real forked processes open independent SQLite connections and attempt the final allowance before the first commits: exactly one reserved and one denied. Request and aggregate INSERT/UPDATE faults roll back both halves and authority generation; a second-scope failure also rolls back the first scope. Exact reserve/finalize replay is a no-op; divergent attribution, budget, usage and fencing refuse. |
+| P3 | Overlapping minute/day limits, midnight rollover and late settlement preserve original allocations; cumulative usage is charged once. Explicit overage, missing bounds/limits, uncertain interruption, lease expiry and late refusal are covered with valid controls. |
+| P4 | Real archive insert/capture changes no provider consumption; archive-origin and ordinary queue deletion both use the accounting boundary. Deletion fault restores request/usage/tombstone/generation; successful deletion retains consumed and uncertain totals, tracking and no active reservation. Late callbacks cannot recreate requests. Future archive transfer wiring remains L/A-owned. |
+| P5 | Populated schema42 has reserved, denied, settled, interrupted and expired records, an active lease, a blocked budget, midnight boundaries and historical coverage gaps. Actual backup inspection and stopped upgrade prove precommit rollback, postcommit exact resume, repeated no-write upgrade, preserved IDs/evidence/replay, pre-tracking settlement and exact source-bound backup restore. Schema42 and wrapped43 valid/corrupt reservation controls exercise the real historical invariant and backup validator. Assigned unchanged F mixed-history and storage suites additionally cover supported generations and fresh roots. |
+| P6 | The complete selected release run includes existing admission, pool, advisory exhaustion and four-way composed baseline suites. These pin budget refusal, retry, single invocation and UNKNOWN behavior without key wiring. No UI, browser, public wire or live target change is introduced. |
+
+P02's defect was reproduced in `p02-reproduction.log`, then all four current/historical controls
+passed in `p02-corrected.log`; repository lint passed in `p02-lint.log`. Fourteen vertical cases
+passed in `p04-archive-history.log`, with scoped lint PASS in `p04-scoped-lint.log`; the final
+release adds paired malformed-input and second-scope rollback controls. Initial complete runs passed 215 unit cases and 183 affected architecture cases, plus lint.
+An additional check of the four owned TypeScript files exposed four diagnostics, now repaired
+and passing in `owned-types-corrected.log`; it is not a full typecheck. Exact corrected final gate
+inputs, commands and exits are recorded in the external `release-*.json` receipts and matching logs.
+The initial `candidate-*.json` receipts and all failed logs remain retained.
+Generated manifest/catalog/roadmap checks are recorded by the same receipt runner.
+
+### Delivery assessment
+
+The approved narrow integrity exception was sufficient; no product scope amendment, new global API,
+DDL, composition edit, delegation or ownership transfer was needed. Local implementation/proof
+repairs addressed an unsupported refined-Zod pick, an initial fixture exceeding its configured zero
+cost budget, historical metadata columns, an invalid historical reason enum, redundant lint
+assertions, closing an open SQLite handle before restoring its main file, and four scoped TypeScript
+diagnostics (branded versions, archive-content parsing and IPC narrowing). The IPC helper then
+needed validation moved outside `finally` and an explicit method binding to satisfy strict lint. Failed logs are
+retained beside passing replacements. These are implementation/proof setup defects, not evidence of
+a planning omission. Reading the exact runtime schemas and closing every SQLite handle before
+fixture restore, plus checking owned-file types/lint before the complete release set, would have
+prevented the avoidable retries. There has been no independent review;
+2.6.9 retains that duty and all full gates. No timing savings or broader acceptance is claimed.
+
+### P05 committed focused release
+
+Implementation candidate: `594490f8e0dc78c1f7c0efd5319057fde30119c9`; tree `9c10ae3c6c6e721a9829779d7822b513b6c40412`.
+Source prerequisite remains exact F `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`.
+The five implementation/test paths are committed; this record adds no runtime input.
+
+| Gate | Result and retained receipt |
+| --- | --- |
+| Assigned unit selectors | 11 files / 215 cases PASS (`release-unit.json`). After the IPC-only test-helper correction, the 16-case provider file passed again (`accepted-provider-unit.json`); 199 unchanged cases are reused. |
+| Assigned architecture selectors | 7 files / 183 cases PASS (`release-architecture.json`). No changed production/guard input after that run; only the isolated race-process helper and evidence prose changed. |
+| Repository lint | PASS, zero warnings (`accepted-lint.json`). |
+| Owned TypeScript diagnostics | Four owned files, zero diagnostics (`accepted-owned-types.json`); full typecheck is deferred. |
+| Freshness | Manifest, catalog and roadmap generation/check PASS (`final-*-generate.json` / `final-*-check.json`). No generated runtime delta. |
+| Documentation | Local links, nine instruction pairs, 17,333-byte maximum chain and whitespace PASS (`final-doc-check.log`). |
+
+`release-reuse.json` records the exact comparison; accepted receipts retain every tested file hash,
+command, cwd, source HEAD and exit. `observed-workers.json` confirms one effective file worker.
+P01–P05 are complete. P06 local merge, integration verification and owned cleanup remain open.
+This is a scoped development release, without independent review or full gates; those remain 2.6.9.
