@@ -1,3 +1,4 @@
+import * as geminiOcr from "../../../src/infra/providers/gemini-ocr-extract.js";
 import { runWorkerLoop } from "../../../src/core/worker-loop.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
@@ -47,17 +48,22 @@ it("current authorization claims old and new queued snapshots and still refuses 
 it("actual browser launch and execution resources use each run's retained display, timeouts and mode", async () => {
   const f = fixture(true);
   assert.equal(f.save({ "timeouts.taskMs": { set: 60_000 }, "timeouts.sessionAcquireMs": { set: 120_000 },
-    "providers.gemini.models": { set: ["synthetic-model-a"] } }).state, "applied");
+    "providers.gemini.models": { set: ["synthetic-model-a", "synthetic-model-a-fallback"] } }).state, "applied");
   const old = f.create();
   assert.equal(f.save({ "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 },
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 },
-    "providers.gemini.models": { set: ["synthetic-model-b"] } }).state, "applied");
+    "providers.gemini.models": { set: ["synthetic-model-b", "synthetic-model-b-fallback"] } }).state, "applied");
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ workspaceRoot: f.root, artifactRoot: ".tracker/artifacts" }); await artifacts.ready;
+  const composeOcr = vi.spyOn(geminiOcr, "createGeminiOcrExtractAdapter");
   const factory = createRunResourcesFactory({ authority: f.database.authority, artifacts, clock: f.clock,
     ids: { uuid: randomUUID }, isolation: rebuildRuntimeIsolation, protectedSecrets: createCredentialStore({ stateRoot: f.root }),
-    scheduler: { schedule: () => ({ cancel: () => {} }) }, environment: {} });
+    scheduler: { schedule: () => ({ cancel: () => {} }) }, environment: { GEMINI_API_KEY: "synthetic-key" } });
   const first = factory.forRun(old); const second = factory.forRun(next);
+  assert.deepEqual(composeOcr.mock.calls.map(([input]) => input.modelId),
+    ["synthetic-model-a", "synthetic-model-a-fallback", "synthetic-model-b", "synthetic-model-b-fallback"]);
+  assert.ok(first.providers?.adapters["ocr.extract"]); assert.ok(second.providers?.adapters["ocr.extract"]);
+  assert.notEqual(first.providers?.adapters["ocr.extract"], second.providers?.adapters["ocr.extract"]);
   assert.equal(first.taskDeadlineMs, 60_000); assert.equal(second.taskDeadlineMs, 90_000);
   assert.equal(first.sessionAcquireMs, 120_000); assert.equal(second.sessionAcquireMs, 180_000);
   assert.equal(first.defaultBrowserMode, "headless"); assert.equal(second.defaultBrowserMode, "headed");
