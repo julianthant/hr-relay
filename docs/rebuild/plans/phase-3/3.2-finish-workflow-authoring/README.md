@@ -32,10 +32,15 @@ reverify, not current completion authority. The current source wins over every c
 | 3.2.4.2 | Compiled Separations acceptance | 5-2 |
 | 3.2.5 | Current Separations read-only acceptance | 6 |
 | 3.2.6 | Candidate audit and freeze | 7 |
+| 3.2.7 | Finalize runtime and guide proofs | new finalizer |
+| 3.2.8 | Finalize workflow acceptance | new finalizer |
 
-Complete and merge 3.2.3 before launching 3.2.3.1/3.2.3.2. Both proofs feed 3.2.4;
-complete that prerequisite before launching 3.2.4.1/3.2.4.2. Each pair is independent and
-supports either merge order. Parent acceptance excludes its children's unfinished work. Exact
+Execution order is 3.2.3 → 3.2.3.1/3.2.3.2 → finalizer 3.2.7 → 3.2.4 →
+3.2.4.1/3.2.4.2 → finalizer 3.2.8 → 3.2.5 → audit-only 3.2.6. Each pair runs focused
+tests, scoped lint and selected quick checks, then hands reviewed candidates to its finalizer.
+The finalizer runs full gates and deferred proofs, fixes failures and obtains independent review
+before accepting the combined result. Each pair is independent and supports either intake order.
+Parent acceptance excludes its children's unfinished work. Exact
 shared ownership, independent gates and private runtime/live-session resources must be settled
 before launch under [D344](../../../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08).
 The operator chooses launches and integration. Agents work independently by default and coordinate
@@ -255,3 +260,32 @@ from an earlier fingerprint, or old task checkbox is never sufficient by itself.
 Phase 3.3 may assume only the recorded frozen candidate and its evidence. It may not modify source,
 reinterpret a failed rehearsal, substitute a target, or carry authority across candidate drift. A
 defect returns to Phase 3.2; a new candidate supersedes the old one and restarts affected acceptance.
+
+## Task 7 · Finalize runtime and guide proofs
+<!-- roadmap: workflow-proof-finalizer -->
+
+**Current assignment: 3.2.7.** Sequential finalizer for 3.2.3.1 and 3.2.3.2; accepted output
+is required before 3.2.4. Readiness for intake requires exact reviewed candidate SHAs and passing
+focused checks, not completed worker roadmap nodes.
+
+- [ ] combine both reviewed candidates in the assigned integration worktree and reconcile guide/runtime behavior
+- [ ] run typecheck, lint, full coverage and every applicable generated, parity and deferred proof gate under D191
+- [ ] fix group failures with regression tests; obtain fresh independent review of fixes and the combined candidate, then pass final gates
+- [ ] integrate accepted output, record evidence and close worker/finalizer records and owned resources
+
+## Task 8 · Finalize workflow acceptance
+<!-- roadmap: workflow-acceptance-finalizer -->
+
+**Current assignment: 3.2.8.** Sequential finalizer for 3.2.4.1 and 3.2.4.2; accepted output
+is required before current-source preview 3.2.5 and audit-only freeze 3.2.6.
+
+- [ ] combine the reviewed Person Lookup and Separations candidates and reconcile generated manifest/catalog output
+- [ ] run typecheck, lint, full coverage and every applicable generated, parity and deferred acceptance gate under D191
+- [ ] obtain required current transaction-free/live-read evidence under the existing 0/0/0 contract; no controlled write
+- [ ] fix group failures, add regression tests, obtain fresh independent review of fixes and the combined result, then pass final gates
+- [ ] integrate accepted output, record exact evidence and close worker/finalizer records and owned resources
+
+Both finalizers require exact branch/worktree/base/target, worker quick checks, deferred proofs,
+resource ownership and integration permission in the focused plan before their workers launch.
+They own repair of their approved group; cross-scope changes return to planning. They do not freeze
+the candidate or absorb 3.2.6's independent audit. The frozen-candidate and 3.3 boundaries remain intact.

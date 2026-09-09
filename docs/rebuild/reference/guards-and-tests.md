@@ -1143,7 +1143,7 @@ slipped in behind a coverage fix.
 <!-- roadmap: phase-3 -->
 
 <!-- roadmap-status: phase-3 -->
-- [x] the implementation per-commit gate is `typecheck && lint && test:coverage` (D191; documentation-only exception below) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
+- [x] the default implementation gate is `typecheck && lint && test:coverage` (D191; documentation-only and parallel-worker exceptions below) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
 - [ ] the gate gains nothing new from R10: T1 structural and T2 are inside `test:coverage`, and every dry-run tier is deliberately outside it (§10.9)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
 <!-- /roadmap-status -->
@@ -1231,6 +1231,32 @@ generation precedes its freshness check and shared mutable outputs remain serial
 free of compiler/linter contention, use the demonstrated worker count within the four-worker ceiling,
 and serialize only evidenced resource conflicts. Preserve membership, assertions, coverage floors,
 isolation, deadlines and every required acceptance proof.
+
+**2026-09-09 parallel-finalizer amendment (operator-approved).** Phase 3 parallel groups and
+future parallel implementation plans use prerequisite → independent workers → finalizer, as owned
+by [roadmap D344](../../roadmap/roadmap.md#parallel-finalizer-cadence). This explicitly replaces
+per-worker full-suite gates for those groups, including candidate commits and review corrections.
+Other standalone implementation and prerequisite candidates retain the default D191 gates; existing
+in-flight assignments outside Phase 3 retain their recorded cadence unless explicitly revised.
+
+| Stage | Required verification and exit |
+| --- | --- |
+| Prerequisite | Complete shared interfaces, registration, fixtures and ownership; run typecheck, lint and full coverage for implementation changes; obtain independent review and accept the integrated base before workers launch. |
+| Parallel worker | Add/update meaningful regression tests and run the exact affected tests, scoped lint and other explicitly selected quick checks. Use `npm run test -- <exact test paths>`; the brief names real paths and lint/static-check commands. Do not run full coverage, the entire test/architecture suite or broad parity on every worker candidate. Repair failed focused checks before review/handoff. |
+| Finalizer | Combine all exact reviewed worker candidates in its owned integration worktree; reconcile generated output; run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`, plus every applicable parity, generated, build, performance and acceptance gate. Diagnose and fix failures within the approved group, add regression tests, re-review changed code, and rerun affected checks and the full gate family on the final code tree before completion. |
+
+The worker brief records the focused command set, expected quick-check budget, candidate SHA,
+results, independent review and the named finalizer with every deferred broad/expensive proof.
+A review may accept the candidate for finalizer intake under that scoped schedule; it does not claim
+full acceptance or green unrun gates. Documentation-only workers retain the scoped documentation
+checks above. A failing focused test or lint check is never deferred as if it passed. No missing
+required proof disappears: expensive acceptance work is assigned explicitly to the finalizer, with
+current live-state evidence obtained at its required boundary. Do not duplicate full suites merely
+because a candidate was committed, merged into the finalizer's temporary tree, or independently
+reviewed. Full-suite failure corrections may iterate with focused checks; the final corrected
+implementation must pass the complete required gate family. Preserve coverage floors, assertions,
+membership, isolation, worker ceilings and deadlines. Coverage still runs without compiler/linter
+contention. A red finalizer leaves the group and its downstream release blocked.
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
@@ -2022,7 +2048,7 @@ system, and they are cheap enough that the only sane policy is to run them.
 **When they run:**
 
 - **implementation commits/candidates and materially changed integration** — typecheck, lint and
-  full coverage (D191; §3.14 owns scheduling and the documentation-only exception). That is every no-dry-run test except parity, which is a Playwright lane outside the vitest projects.
+  full coverage by default (D191; §3.14 assigns focused worker checks and full group gates to the finalizer, and owns the documentation-only exception). That is every no-dry-run test except parity, which is a Playwright lane outside the vitest projects.
 - **a change to ONE workflow** — that workflow's structural scenario, plus everything the gate
   already runs. The guards are global by construction, so "only this workflow's tests" is never the
   whole answer; it is the *additional* thing the author must think about.
@@ -2648,7 +2674,7 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 
 | script | runs | trigger |
 |---|---|---|
-| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | implementation commits/candidates and materially changed integration; documentation-only exception and scheduling in §3.14 D191 |
+| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
 | `npm run test:parity` | 281 browser cases, including 222 reference triples and the dual-adapter comparison | every dashboard change; before a slice closes |
 | `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |

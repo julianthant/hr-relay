@@ -1546,6 +1546,7 @@ builds:
 needs:
 - dash-shell
 - dash-boundary-foundation
+- dash-surfaces-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.4; former 3.1.10-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1567,6 +1568,7 @@ needs:
 - dash-settings
 - dash-storage
 - dash-boundary-foundation
+- dash-surfaces-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.1; former 3.1.10-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1589,6 +1591,7 @@ needs:
 - dash-storage
 - dash-sessions
 - dash-boundary-foundation
+- dash-surfaces-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.5; former 3.1.11-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1634,6 +1637,7 @@ builds:
 needs:
 - dash-archive
 - dash-boundary-foundation
+- dash-surfaces-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.5; former 3.1.12-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1655,6 +1659,7 @@ builds:
 needs:
 - dash-run-modal
 - dash-boundary-foundation
+- dash-operations-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.3; former 3.1.12-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1679,6 +1684,7 @@ needs:
 - dash-boundary-foundation
 - dash-run-modal
 - dash-queue
+- dash-operations-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
@@ -1700,6 +1706,7 @@ needs:
 - dash-run-modal
 - dash-boundary-foundation
 - dash-detail-foundation
+- dash-operations-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.1; former 3.1.12-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1807,6 +1814,8 @@ needs:
 - dash-storage
 - dash-sessions
 - dash-boundary-foundation
+- dash-surfaces-finalizer
+- dash-operations-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.10.1; former 3.1.12-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1843,6 +1852,9 @@ needs:
 - dash-activity
 - dash-explorer
 - dash-intake-edit
+- dash-surfaces-finalizer
+- dash-operations-finalizer
+- dash-detail-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.10.2; former 3.1.15; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1925,6 +1937,9 @@ needs:
 - dash-performance
 - dash-production-runtime
 - dash-proof-infrastructure
+- dash-surfaces-finalizer
+- dash-operations-finalizer
+- dash-detail-finalizer
 
 log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.10.5; former 3.1.18; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
@@ -1992,6 +2007,65 @@ log:
 - 2026-09-06 | D339 approved deferral | removed from 3.1 realtime/acceptance dependencies; the unchecked future feature does not block release
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.22; standalone prerequisite or individual task; acceptance and historical execution anchor retained
 
+
+#### 23 · Finalize dashboard surfaces {#dash-surfaces-finalizer}
+status: planned
+size: M
+date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+doc: 3.1/parallel-finalizers §Task 23 · Finalize dashboard surfaces · ref:guards-and-tests §3.14
+
+> Combine reviewed workers 3.1.9.1–3.1.9.7; run full gates and deferred acceptance checks, fix failures, obtain independent review of the corrected result and complete accepted integration and cleanup.
+
+builds:
+- [ ] BOTH resolve combined defects and generated-output drift within the approved group
+- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
+- [ ] DOCS reviewed SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+
+needs:
+- dash-shell
+- dash-settings
+- dash-storage
+- dash-explorer
+- dash-notifications
+- dash-intake-edit
+- dash-archive
+
+#### 24 · Finalize run operations {#dash-operations-finalizer}
+status: planned
+size: M
+date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+doc: 3.1/parallel-finalizers §Task 24 · Finalize run operations · ref:guards-and-tests §3.14
+
+> Combine reviewed workers 3.1.11.1–3.1.11.2; run full gates and deferred acceptance checks, fix failures, obtain independent review of the corrected result and complete accepted integration and cleanup.
+
+builds:
+- [ ] BOTH resolve combined defects and generated-output drift within the approved group
+- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
+- [ ] DOCS reviewed SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+
+needs:
+- dash-setup
+- dash-run-modal
+
+#### 25 · Finalize run detail {#dash-detail-finalizer}
+status: planned
+size: M
+date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+doc: 3.1/parallel-finalizers §Task 25 · Finalize run detail · ref:guards-and-tests §3.14
+
+> Combine reviewed workers 3.1.14.1–3.1.14.5; run full gates and deferred acceptance checks, fix failures, obtain independent review of the corrected result and complete accepted integration and cleanup.
+
+builds:
+- [ ] BOTH resolve combined defects and generated-output drift within the approved group
+- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
+- [ ] DOCS reviewed SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+
+needs:
+- dash-run-detail
+- dash-context-data
+- dash-logs
+- dash-receipts-failures
+- dash-gates
 
 ### 3.2 · Workflow authoring and candidate freeze {#workflow-authoring-model}
 status: planned
@@ -2100,6 +2174,7 @@ builds:
 needs:
 - workflow-runtime-inheritance
 - workflow-guide-proof
+- workflow-proof-finalizer
 
 log:
 - 2026-09-08 | D344 decimal naming amendment | real prerequisite for 3.2.4.1 and 3.2.4.2; no workflow acceptance or candidate freeze claimed here
@@ -2122,6 +2197,7 @@ needs:
 - workflow-acceptance-foundation
 - workflow-runtime-inheritance
 - workflow-guide-proof
+- workflow-proof-finalizer
 
 ##### 2 · Accept the final compiled Separations workflow without writes {#separations-compiled-acceptance}
 status: active
@@ -2140,6 +2216,7 @@ needs:
 - workflow-acceptance-foundation
 - workflow-runtime-inheritance
 - workflow-guide-proof
+- workflow-proof-finalizer
 
 #### 5 · Record current-source Separations read-only acceptance {#separations-readonly-acceptance}
 status: planned
@@ -2157,6 +2234,7 @@ builds:
 
 needs:
 - separations-compiled-acceptance
+- workflow-acceptance-finalizer
 
 #### 6 · Audit and freeze the acceptance candidate {#workflow-candidate-freeze}
 status: planned
@@ -2175,6 +2253,41 @@ builds:
 needs:
 - person-lookup-acceptance
 - separations-readonly-acceptance
+- workflow-acceptance-finalizer
+
+#### 7 · Finalize runtime and guide proofs {#workflow-proof-finalizer}
+status: planned
+size: M
+date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+doc: 3.2 §Task 7 · Finalize runtime and guide proofs · ref:guards-and-tests §3.14
+
+> Combine exact reviewed candidates, run full gates and deferred proofs, fix failures and obtain independent review of the corrected result before accepted integration. Preserve the separate audit-only candidate freeze and all transaction boundaries.
+
+builds:
+- [ ] BOTH repair combination defects and reconcile generated products within the approved group
+- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
+- [ ] DOCS exact reviewed candidates, accepted integration, gate evidence and owned cleanup
+
+needs:
+- workflow-runtime-inheritance
+- workflow-guide-proof
+
+#### 8 · Finalize workflow acceptance {#workflow-acceptance-finalizer}
+status: planned
+size: M
+date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+doc: 3.2 §Task 8 · Finalize workflow acceptance · ref:guards-and-tests §3.14
+
+> Combine exact reviewed candidates, run full gates and deferred proofs, fix failures and obtain independent review of the corrected result before accepted integration. Preserve the separate audit-only candidate freeze and all transaction boundaries.
+
+builds:
+- [ ] BOTH repair combination defects and reconcile generated products within the approved group
+- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
+- [ ] DOCS exact reviewed candidates, accepted integration, gate evidence and owned cleanup
+
+needs:
+- person-lookup-acceptance
+- separations-compiled-acceptance
 
 ### 3.3 · Controlled acceptance {#workflow-live-acceptance}
 status: planned
@@ -2599,7 +2712,7 @@ date: D338 · 2026-09-06
 size: M
 doc: 3.5 §Task 5 · Prove attributed cooperation and close Phase 3 · ref:guards-and-tests §10 · ref:write-safety §14
 
-> Prove direct API operation with an agent-resolved dry-run gate and full caller capability parity. No second actor must confirm; no new live HR transaction is added to this phase proof.
+> Finalize the reviewed monitoring/client candidates: combine them, run full gates and deferred proofs, fix failures and obtain independent review of the corrected result. Prove direct API operation with an agent-resolved dry-run gate and full caller capability parity. No second actor must confirm; no new live HR transaction is added to this phase proof.
 
 builds:
 - [ ] PROOF an agent drives Separations dry-run start/monitor/gate resolution/resume/terminal preview through the API, with actual caller attribution
@@ -3319,6 +3432,8 @@ This changes scheduling and plan organization, not product requirements or accep
 Phase 3 uses decimal task identities: `3.P.N` names an actual standalone task or prerequisite;
 `3.P.N.1`, `3.P.N.2`, etc. name independent parallel tasks unlocked by that completed prerequisite.
 A parent closes on its own reviewed, integrated acceptance; it does not wait for its children.
+The 2026-09-09 amendment below adds an explicit finalizer after each parallel group and owns its
+worker gate schedule and downstream release boundary.
 Children explicitly require their parent, and no child depends directly or transitively on a sibling.
 All other required inputs must already be ancestors of the parent. Sequential consumers receive
 separate task numbers. Numbering expresses dependency structure, not automatic launch or a promise
@@ -3353,11 +3468,13 @@ or dependency overlap pauses only affected work while the relevant peers clarify
 settles any plan change; it does not authorize taking peer files.
 
 For newly approved assignments, the implementation session obtains fresh independent review, fixes
-findings, and returns an exact reviewed candidate as **ready for operator integration**. That is a
+findings, and returns an exact reviewed candidate as **ready for finalizer intake** under the
+2026-09-09 cadence (otherwise **ready for operator integration**). That is a
 valid task-session stop, not roadmap completion. The operator chooses a merge or explicitly assigns
 one integration session. That session serially verifies target/candidate identity, integrates under
-repository policy, reconciles shared roadmap/phase records and combined generated output, runs all
-required integration gates, obtains renewed review for behavioral conflicts, and verifies cleanup
+repository policy, reconciles shared roadmap/phase records and combined generated output, runs
+stage-appropriate integration gates under D191 (full group gates in the finalizer), obtains renewed
+review for behavioral conflicts, and verifies cleanup
 before marking completion. Candidate-required generated artifacts and guard changes must already
 have an exclusive owner and independently passing gates; deferring them cannot hide a red candidate.
 No self-review, dropped proof, weakened coverage, push or live-write authorization is implied.
@@ -3383,6 +3500,56 @@ newly displayed 3.1 structure. Historical log entries and existing in-flight exc
 Repository guidance takes precedence over older personal-skill one/two-session sizing and automatic
 finalization wording for these explicitly operator-coordinated assignments. Planning is still required:
 this roadmap amendment does not declare leaf briefs launch-ready or dispatch any implementation.
+
+<a id="parallel-finalizer-cadence"></a>
+
+#### 2026-09-09 amendment — prerequisite, parallel workers, finalizer
+
+For Phase 3 and future parallel work, every group has three explicit stages. This amendment
+supersedes D344's earlier per-candidate gate/completion wording and any rule that lets a downstream
+consumer use a worker candidate before the group's finalizer accepts it. Existing in-flight work
+outside Phase 3 retains its approved scope, gates and integration permissions.
+
+1. **Prerequisite.** Finish and accept the common base, shared interfaces/fixtures/registration,
+   disjoint ownership, either-order integration and resource isolation. Before releasing workers,
+   bind every worker and one separate sequential finalizer in the owning plan: exact task IDs,
+   branches/worktrees/base, quick commands, deferred proofs, integration target and merge condition.
+2. **Parallel workers.** Implement independently from that accepted base. Add regression coverage
+   and run focused tests, scoped lint and selected quick verification under
+   [D191](../rebuild/reference/guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12).
+   Obtain independent candidate review and hand over exact SHAs, results and deferred broad gates.
+   Stop at **ready for finalizer intake**; no full-suite run per worker and no roadmap completion yet.
+3. **Finalizer.** After all assigned workers are ready, accept their reviewed commits into its own
+   integration worktree. Resolve combination defects, reconcile shared/generated outputs, run the
+   full test/coverage, typecheck and lint gates plus all applicable acceptance checks, and fix
+   failures within the approved group. Obtain independent review of fixes and the combined result;
+   rerun required gates on the final corrected tree. Publish/integrate only a green reviewed result
+   under the operator's assigned integration permission, then record completion and clean up owned
+   worktrees/branches. A failure leaves the group open; scope changes return to the operator.
+
+The finalizer is a real sequential assignment with explicit edges from every worker, never a
+parallel sibling or an unnamed later cleanup. Workers remain mutually independent; their focused
+review/readiness satisfies finalizer intake, while downstream implementation waits for finalizer
+acceptance. Combining pending candidates inside the finalizer's isolated tree is allowed before
+full group gates; publishing that tree as an accepted prerequisite is not. Record pending intake
+in the owning task evidence without marking worker roadmap nodes complete. Prerequisites and
+standalone tasks retain normal D191 gates. No automatic dispatch, push, live write or cutover is
+implied. Existing audit-only/frozen-candidate tasks remain independent: finalizers repair first;
+those audits still return later defects to remediation and restart against the corrected candidate.
+
+Phase 3 uses the explicit finalizers in its current maps: 3.1.23–3.1.25, 3.2.7–3.2.8 and 3.5.3.
+Numbers preserve existing task identities; `needs:` edges define their actual execution order.
+Finalizer intake is the explicit exception to requiring completed dependency nodes: all listed
+workers must have independently reviewed, green focused candidates recorded in their owning tasks.
+This does not release any downstream consumer before full finalizer acceptance.
+Retain reviewed candidate branches and durable evidence until finalization. To respect the existing
+worktree ceiling, a stopped worker may release its own clean worktree after verifying that all work
+is committed and its review/evidence is durable; do not delete its candidate branch or mark it
+complete. Groups may finish workers in capacity-sized batches, and must leave room for the
+finalizer. Never remove an active session’s worktree or increase capacity implicitly.
+Optional 3.4 groups must bind this same three-stage model when planned and never block 3.5.
+This policy and roadmap scope are approved; exact implementation bindings still belong to the
+focused phase plan before launch. No task is launched or declared implemented by this amendment.
 
 ### D1 ownership map — the quick index (concept → owning doc)
 

@@ -22,12 +22,16 @@ the agent capability and attribution changes below are not yet implemented.
 | 3.5.2 | Existing API and shared client prerequisite | 2 |
 | 3.5.2.1 | Monitoring and actor inbox | 3 |
 | 3.5.2.2 | Actor-aware clients | 4 |
-| 3.5.3 | Integrated cooperation proof and closure | 5 |
+| 3.5.3 | Finalizer: full gates, fixes, integrated cooperation proof and closure | 5 |
 
 The parent completes its own accepted, merged scope before either child starts. Its focused plan
 must settle shared interface/fixture changes, exact disjoint paths, gate resources and either-order
 integration. Both children consume the completed observed-log producer. Agents work independently
 by default and coordinate only when necessary under [D344](../../../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08).
+Workers run focused tests, scoped lint and selected quick checks, then return reviewed candidates.
+Task 3.5.3 is their explicit sequential finalizer: it combines both, runs full gates and deferred
+proofs, fixes group failures, obtains independent review of the corrected result and completes accepted
+integration and cleanup. Its exact binding and deferred checks are recorded before workers launch.
 The operator chooses launches and merges. Historical headings below remain citation aliases.
 
 ## Track summary
@@ -139,7 +143,12 @@ an action the shared API would reject or impose an extra agent-only confirmation
 ## Task 5 · Prove attributed cooperation and close Phase 3
 <!-- roadmap: claude-proof -->
 
-**Current assignment: 3.5.3.** The heading is a historical citation alias.
+**Current assignment: 3.5.3.** Sequential finalizer for 3.5.2.1 and 3.5.2.2; the heading is a
+historical citation alias. Intake requires both reviewed candidates and green focused checks.
+Combine them in the assigned integration worktree, run typecheck, lint, full coverage and applicable
+generated, parity, build and deferred acceptance checks, and fix failures within the group. Add
+regression tests, obtain fresh independent review of changed code and the combined result, then rerun full gates
+on the corrected tree before accepted integration, proof and closure. Preserve all transaction limits.
 
 <!-- roadmap-status: claude-proof -->
 - [ ] drive a Separations dry run through direct API calls: start, monitor, resolve a required identity gate, resume and reach its terminal preview
