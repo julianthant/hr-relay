@@ -141,7 +141,7 @@ source facts become stable inputs to F. Do not implement run_summaries or archiv
 **Approved execution owner:** [F01–F07](foundation.md#approved-execution-brief--2026-09-09), approved
 2026-09-09. C master integration `e43a8d8515486c73c276fa319bbe06d196b309e3` is verified; focused
 release and closure evidence are [at C's owner](run-completion.md#c-schema-39-upgrade-repair--2026-09-09).
-F is locally integrated at `7ec279750817934b7da69ce433e0e5a44fed6a58`; [focused release and closure](foundation.md#f07-integrated-prerequisite-and-closure) supply the single P/D/G/S prerequisite. Its committed plan binds a descendant base, one supervisor, focused checks,
+F is locally integrated at `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`; [focused release and closure](foundation.md#f-prerequisite-repair--2026-09-09) supply the single P/D/G/S prerequisite. Its committed plan binds a descendant base, one supervisor, focused checks,
 local master merge and owned cleanup. This overrides generic no-master/retention rules for F;
 full gates and complete independent review stay in 2.6.9. C reopened during persistence for a
 schema39 → 41 conversion repair; the F brief requires its verified focused release and integration

@@ -12,14 +12,14 @@ R/C0/T/C development releases are incorporated in master. C integration
 [scoped release/cleanup](run-completion.md#c-schema-39-upgrade-repair--2026-09-09)
 are verified prerequisites for F. C's removed branch/path must not be recreated as a prerequisite.
 
-F (2.6.6) is locally integrated at `7ec279750817934b7da69ce433e0e5a44fed6a58` with focused PASS.
-Its [release/closure record](foundation.md#f07-integrated-prerequisite-and-closure) and complete
+F (2.6.6) is locally integrated at `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` with focused PASS.
+Its [release/closure record](foundation.md#f-prerequisite-repair--2026-09-09) and complete
 external cleanup receipt supply one common prerequisite for P/D/G/S. All four remain unlaunched;
 later tasks still wait for their actual named candidates. Full gates/review remain 2.6.9.
 
 For C and F, their approved briefs override generic prompt/retention rules: one supervisor, zero
 workers, focused PASS, local master merge and owned worktree/ref cleanup. Full gates and independent
-review stay in 2.6.9. Other tasks retain their approved integration boundaries.
+review stay in 2.6.9. G / 2.6.6.3 also includes focused tests, lint, local merge and owned cleanup by operator direction. Its task-specific proposal/approval remains separate; full gates/review stay in 2.6.9. Other tasks retain their approved integration boundaries.
 
 ## Visible task IDs
 
@@ -45,10 +45,10 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | T | codex/history-views | hr-worktree-database-contracts | Accepted T1 + R + C0 |
 | C | codex/run-completion | hr-worktree-database-contracts | T |
 | F | codex/database-foundation | hr-worktree-database-foundation | Repaired C release + approved F plan |
-| P | codex/provider-usage | hr-worktree-provider-usage | `7ec279750817934b7da69ce433e0e5a44fed6a58` |
-| D | codex/diagnostics | hr-worktree-diagnostics | `7ec279750817934b7da69ce433e0e5a44fed6a58` |
-| G | codex/artifact-outputs | hr-worktree-artifact-outputs | `7ec279750817934b7da69ce433e0e5a44fed6a58` |
-| S | codex/settings-activation | hr-worktree-settings-activation | `7ec279750817934b7da69ce433e0e5a44fed6a58` |
+| P | codex/provider-usage | hr-worktree-provider-usage | `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` |
+| D | codex/diagnostics | hr-worktree-diagnostics | `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` |
+| G | codex/artifact-outputs | hr-worktree-artifact-outputs | `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` |
+| S | codex/settings-activation | hr-worktree-settings-activation | `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
 | A | codex/archive-transfer | hr-worktree-database-peer | L |
 | Q | codex/run-summaries | hr-worktree-database-other | L |
@@ -192,24 +192,26 @@ C is locally integrated at `e43a8d8515486c73c276fa319bbe06d196b309e3`. Its [focu
 ## Resolved F child prerequisite — 2026-09-09
 
 These are operator-started prompts, not dispatches. Every child uses F integration
-`7ec279750817934b7da69ce433e0e5a44fed6a58`, the C0 allocation approved in
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`, the C0 allocation approved in
 `b5ba39efbca023b673be3c4aac509ca42b2a751c`, and F's frozen 27-path production/test manifest.
-Require F's external closure receipt to be complete. Recheck ancestry, path/ref availability and
+Require F's [repair closure receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json) to be complete. Recheck ancestry, path/ref availability and
 capacity; consume the current F release record from master. Do not recreate F's removed branch.
 Each child has one Astra/high supervisor and zero workers. Full gates/review stay with 2.6.9.
+The repaired F callers remove the proposed G/S shared-file scope expansion: preserve the existing
+exclusive allocations. G and S planning consume the repair record; no child is approved anew or launched here.
 
 ```text
-/supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.1 P in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 7ec279750817934b7da69ce433e0e5a44fed6a58. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
+/supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.1 P in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
 ```
 
 ```text
-/supervise 2.6.6.2 (D), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.2 D in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 7ec279750817934b7da69ce433e0e5a44fed6a58. Create codex/diagnostics at /Users/julianhein/Projects/hr-worktree-diagnostics from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
+/supervise 2.6.6.2 (D), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.2 D in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/diagnostics at /Users/julianhein/Projects/hr-worktree-diagnostics from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
 ```
 
 ```text
-/supervise 2.6.6.3 (G), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.3 G in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 7ec279750817934b7da69ce433e0e5a44fed6a58. Create codex/artifact-outputs at /Users/julianhein/Projects/hr-worktree-artifact-outputs from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
+/supervise 2.6.6.3 (G), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. After approval of G’s task-specific execution brief, execute the C0 execution allocation — 2.6.6.3 G in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/artifact-outputs at /Users/julianhein/Projects/hr-worktree-artifact-outputs from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit and merge locally into master after focused PASS, repair integration failures, preserve evidence, and remove only the owned worktree/branch. Record the integrated G candidate for L. No push, live database upgrade, HR submission, cleanup of other lanes or automatic task launch. Send Done / Now / Remaining at start and every verified step.
 ```
 
 ```text
-/supervise 2.6.6.4 (S), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.4 S in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 7ec279750817934b7da69ce433e0e5a44fed6a58. Create codex/settings-activation at /Users/julianhein/Projects/hr-worktree-settings-activation from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
+/supervise 2.6.6.4 (S), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.4 S in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/settings-activation at /Users/julianhein/Projects/hr-worktree-settings-activation from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.
 ```

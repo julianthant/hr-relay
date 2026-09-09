@@ -27,8 +27,8 @@ independent review remain in 2.6.9.
 [F01–F07 execution brief](foundation.md#approved-execution-brief--2026-09-09), including local master
 merge and owned cleanup after focused PASS. This supersedes generic retention/no-master wording
 for F as well as C; full gates and independent review remain in 2.6.9. F consumed verified C
-integration and its approved plan. Its [focused release and closure](foundation.md#f07-integrated-prerequisite-and-closure)
-record common prerequisite `7ec279750817934b7da69ce433e0e5a44fed6a58` for all four children.
+integration and its approved plan. Its [focused release and closure](foundation.md#f-prerequisite-repair--2026-09-09)
+record common prerequisite `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` for all four children.
 Their distinct registry paths remain absent and unlaunched; later operator sessions recheck capacity.
 Full acceptance and review remain in 2.6.9.
 

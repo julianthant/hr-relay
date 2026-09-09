@@ -4,7 +4,7 @@
 The operator approved it on 2026-09-09, including local master merge and owned cleanup after
 focused PASS. It supersedes this file's historical A/B names, prerequisite/master barriers,
 per-task full gates/review and old release wording. Product scope and proof allocations below
-remain binding. F is 2.6.6; C is already integrated. The [repair release below](#f-prerequisite-repair--2026-09-09) supersedes the initial F prerequisite once integrated.
+remain binding. F is 2.6.6; C is already integrated. The [repair release below](#f-prerequisite-repair--2026-09-09) supersedes the initial F prerequisite.
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
@@ -881,3 +881,31 @@ active dashboard HTTP reads and worker claim-token refresh.
 Full typecheck, coverage, whole architecture/parity/build/performance and independent review were
 not run; they remain in 2.6.9. No push, operator database upgrade, HR submission or child launch
 occurred. Integration and the new common prerequisite are recorded below after verified local merge.
+
+
+### Repaired integration and common child prerequisite
+
+**The single repaired F prerequisite for P, D, G and S is
+`51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`.** It supersedes the initial F prerequisite for every
+future child launch. The local master merge includes focused candidate
+`a1e963445bc05d57f1eb9abbff95a9238300ab3a` and evidence record
+`de578bfbebbe0df5ad2e84e41ff4da12778d1275`. Its tree
+`808b387b40f694b7f38264f6d9a6a9799e185080` exactly equals the evidence candidate tree. Master was
+clean and unchanged at the repair base immediately before merge; there were no conflicts or
+integration repairs. The only difference from the focused runtime candidate is this owner record,
+so source/test/configuration/dependency gate reuse is verified under D191.
+
+The [launch registry](PROMPTS.md#resolved-f-child-prerequisite--2026-09-09), prerequisite record,
+phase summary and roadmap all point to this same repaired integration. P/D/G/S remain unlaunched;
+all four owned paths and refs were verified absent. Their original product proof remains required.
+G's future brief includes focused tests, lint, local merge and owned cleanup as the operator directed;
+this records that boundary without launching G or approving its task-specific proposal here.
+
+The [repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json)
+is initialized as pending and becomes complete only after final documentation checks, source-input
+reuse verification, preserved ignored outputs, stopped owned processes, ordinary worktree removal,
+local branch deletion and registration/path/ref absence checks. It binds the final master commit
+and tree, integration identity, commands and evidence manifest. Preserve the original complete F
+receipt separately. The unrelated `codex/separation-accounting-final` worktree and the calling
+Codex task remain untouched. No child launch, push, operator database upgrade or HR submission is
+part of this closure. Full phase gates and independent review remain 2.6.9.
