@@ -1258,6 +1258,23 @@ implementation must pass the complete required gate family. Preserve coverage fl
 membership, isolation, worker ceilings and deadlines. Coverage still runs without compiler/linter
 contention. A red finalizer leaves the group and its downstream release blocked.
 
+**2026-09-09 scoped combined-database exception (operator-approved).** Only newly planned
+Phase 2.6.2 assignments in the [combined workflow](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)
+use focused tests, lint and affected generation/freshness checks for iteration and committed
+development releases. Record actual commands, exits, tested SHA/tree and proof rows; these releases
+may unlock their explicit dependents before independent review. They are not accepted master
+integrations or completed roadmap tasks. Existing in-flight timeline T1 and other admitted tasks
+keep their original cadence.
+
+One fresh final 2.6.3 session combines all candidates, fixes remaining defects itself, runs typecheck,
+lint, full coverage, architecture, parity/build, generated and the original recovery/scenario/concurrency/
+redaction/production-route proofs, then obtains fresh independent review of the complete candidate.
+Findings and integration defects are fixed in that session with required reruns/review; no repair
+handbacks to finished peers. No master integration or final completion before PASS and required gates.
+This moves timing only: every proof, assertion, membership rule, coverage floor, isolation and deadline
+remains binding. Coverage runs without this batch's compiler/linter contention; observed resource
+conflicts are assigned explicitly. General D191 reuse/rerun and documentation-only rules still apply.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->

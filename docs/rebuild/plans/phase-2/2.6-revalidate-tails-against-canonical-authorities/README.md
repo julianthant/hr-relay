@@ -2,6 +2,17 @@
 
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
+**2026-09-09 approved scope and identity amendment.** After the completed Task 1 peers, new
+[Task 2 · Database modernization](database-modernization/README.md) combines database-parallel,
+database-remaining and pending timeline T2. It contains multiple shared prerequisites and independent
+peer groups; C0 contract/execution admission is still open. Active T1 keeps its own plan and gates.
+The former Task 2 proof is now **Task 3** (p2f-proof), and former Task 3 closure is **Task 4**
+(p2f-close). Their stable IDs and required proof remain. Below, dated old Task 2/3 and downstream-only
+statements describe the earlier allocation; this amendment admits only the named database redesign.
+Final Task 3 owns combined heavy gates, all remaining repairs and fresh independent review, then
+Task 4 handover. A focused-tested development release unlocks only its explicit consumers and does
+not mark a roadmap task done. Completed Task 1 files and evidence are unchanged.
+
 ## 2.6 · Revalidate tails against canonical authorities
 
 **D341 input foundation (approved 2026-09-07).** Consume the completed pre-1.6.7 detour’s shared
@@ -116,7 +127,20 @@ See the [owning task and execution brief](task-1-2-revalidate-data-intake-and-pr
 
 See the [owning task and execution brief](task-1-3-revalidate-operator-read-models.md).
 
-### Task 2 · Run the non-mutating migration and recovery proof
+### Task 2 · Database modernization
+<!-- roadmap: p2-db-modernization -->
+
+The [combined workflow](database-modernization/README.md) is the single owner for approved product
+directions, scope, prerequisites, independent peers and conditional prompts. No implementation is
+ready until its listed admission and actual prerequisite releases are verified. Do not launch the
+old database sidetrack prompts or pending standalone timeline T2 in parallel with this owner.
+
+### Task 3 · Run the non-mutating migration and recovery proof
+
+Consume the 2.6.2 development releases under the [final validation plan](database-modernization/final-validation.md).
+This fresh session owns integration repairs, all required heavy gates and independent review before
+operator-assigned master integration. The original recovery and adapter-retirement requirements follow;
+none is replaced by the database redesign or a new controlled write.
 
 **Task 1.6.6 deletion handoff.** Delete the migration-only
 `src/infra/compat/{upgrade-sources,pre-floor-settings,settings-source-recovery,settings-database-upgrade}.ts`
@@ -154,7 +178,7 @@ These historical readers never reintroduce runtime settings-file authority.
 > the deleted operator root/backup is not an input. D135 is cited; no second controlled write. No
 > redesign.
 
-### Task 3 · Close tail revalidation and hand fixtures to 3.1
+### Task 4 · Close tail revalidation and hand fixtures to 3.1
 <!-- roadmap: p2f-close -->
 
 - [ ] Pass targeted/full/generated/production-route gates and an adversarial deletion-test review.

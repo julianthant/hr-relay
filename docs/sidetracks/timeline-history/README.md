@@ -1,5 +1,11 @@
 # SQLite timeline and transaction history
 
+> **Pending T2 ownership amendment — 2026-09-09.** The operator moved remaining T2 into
+> [Phase 2.6.2's combined workflow](../../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/timeline.md).
+> The T2 allocation/launch instructions below are historical and must not launch duplicate work.
+> Active T1, its candidate, requirements, gate schedule, review and evidence remain unchanged.
+> Reconcile this pointer when integrating T1's plan evidence; do not replace that evidence.
+
 ## Assignment and approval
 
 **Owner: `side/timeline-history`. Approved planning; implementation WAITING ON accepted

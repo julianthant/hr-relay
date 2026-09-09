@@ -1,5 +1,11 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-09 combined database planning amendment:** Phase 2.6 admits the named database redesign,
+preserves active T1, renumbers only pending proof/closure, and defers heavy gates/review to the single
+final repair session. Owners: [roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191 scoped gate cadence](guards-and-tests.md#314-testing-standard-d85--what-replaces-the-e2e-ritual). Product contracts
+remain subject to the combined plan's C0 ratification; this pointer does not claim implementation.
+
 **D325/D326 session-workflow amendment (2026-09-04):** the operator opens planning and supervisor
 sessions; supervision includes a fresh read-only reviewer subagent, fixes and finalization. Task
 completion requires accepted review plus
