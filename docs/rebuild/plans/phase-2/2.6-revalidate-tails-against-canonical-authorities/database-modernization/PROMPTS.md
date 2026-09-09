@@ -102,11 +102,24 @@ of all retained candidate refs and the actual remaining physical lanes after acc
 
 ## Resolved next assignment — 2.6.4 T
 
-This prompt is saved, not dispatched. C0 is complete as a documentation development release;
-T remains unstarted. Later tasks remain WAITING ON their named releases. C0 was subsequently authorized for local master integration and cleanup. The receiving supervisor
-verifies its accepted commits in master history and creates the registry checkout if absent; if
-it exists, verify clean exclusive ownership before reuse.
+The operator approved the expanded [T01–T06 execution brief](timeline.md#approved-execution-brief--2026-09-09)
+on 2026-09-09. It supersedes the former C0-only launch prompt here. T remains unstarted;
+this planning update neither dispatches it nor changes later dependency releases.
 
-```text
-/supervise 2.6.4 (T), using /Users/julianhein/Projects/hr-worktree-database-contracts/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/timeline.md and its C0 execution allocation. Approved plan commit: 0010c51c4189f14a8aa61dac55984c2df791045e. Verified C0 release/base: c7b8b1e037bf27dd70d4df62bbfcac407e475631, containing R 60b356dd119140dc972a077751ad16af934acb2e and accepted T1 46930920696ab214b036d5f2681b8ffb4e5620ea. Use GPT-6 Astra/high and the Phase 2.6 focused-development/final-2.6.9 gate schedule. Verify the exact base, committed plan and C04 evidence; verify dc26c74fde0bb5ec9436e1409884451cd5dd698d is incorporated in local master. If /Users/julianhein/Projects/hr-worktree-database-contracts is absent, create it with branch codex/history-views from c7b8b1e037bf27dd70d4df62bbfcac407e475631 under the four-auxiliary-worktree limit. If present, verify clean exclusive checkout release before creating that branch from the same base. C0 history remains reachable through master; its deleted task branch is not a launch prerequisite. Never reset a colliding branch or borrow an active checkout. Implement the entire T scope: retained database transaction history, existing Activity CSV/XLSX and explicit safe CLI export, compatible frozen archive transaction capture, and source-complete ledger/outbox retirement. Preserve every T P1–P9 proof, original source/protected identities, historical fingerprints, shared retry evidence and UNKNOWN refusal. Do not rerun T1 or implement archive.sqlite, run summaries or run-completion retirement. Follow exact path/test ownership in timeline.md and the C0 prerequisite/registry records; run meaningful focused tests, lint and affected freshness. Commit and release the focused-tested development candidate to C, recording exact base/head/tree, commands/exits, source/schema interfaces and unverified heavy proof. Release clean exclusive checkout ownership only after the record is committed and owned processes stop. No intermediate review/finalizer, master merge, push, operator DB upgrade, live submit or automatic next-task dispatch. Full gates, remaining repairs, independent complete review, operator-assigned integration and final cleanup remain 2.6.9. Send Done / Now / Remaining at start and every verified step.
-```
+The fresh supervisor consumes the exact approved planning commit containing that brief, verified
+by the planning session after commit. Create `codex/history-views` at
+`/Users/julianhein/Projects/hr-worktree-database-contracts` from C0 release
+`c7b8b1e037bf27dd70d4df62bbfcac407e475631`, then cherry-pick that planning commit and verify
+identical brief content before implementation. C0 final record
+`dc26c74fde0bb5ec9436e1409884451cd5dd698d` is incorporated in master through
+`8cf605a426553b6eeb169fffb0ec3ccc5b2f94d0`; its removed task branch is not required.
+Recheck absence or clean explicit ownership release of the lane, branch availability, prerequisite
+ancestry and the four-auxiliary-worktree limit. Preserve unrelated worktrees.
+
+Use `/supervise 2.6.4 (T)` with Astra/high, one supervisor and zero implementation workers.
+The linked owner contains the complete approved allocation, ordered steps, P1–P9, failure controls,
+exact focused commands, exclusions and release conditions. Full gates, remaining repairs, fresh
+independent complete review, operator-assigned master integration and final cleanup remain 2.6.9.
+Return the committed development candidate to C only; no master merge, push, live application or
+automatic next-task dispatch. The planning session returns the copy-ready prompt with the full
+verified plan SHA after documentation gates and commit verification.

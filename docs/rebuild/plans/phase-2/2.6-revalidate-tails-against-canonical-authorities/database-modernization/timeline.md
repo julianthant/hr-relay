@@ -84,7 +84,11 @@ The combined workflow replaces T2's former per-candidate heavy/review cadence: f
 lint and affected freshness now; every full coverage, architecture, parity, build and recovery proof
 remains due in 2.6.9 with fresh independent review. No operator DB upgrade or live submit is included.
 
-**READY after C0 release:** use the saved resolved 2.6.4 T prompt in [PROMPTS.md](PROMPTS.md#resolved-next-assignment--264-t). Base `c7b8b1e037bf27dd70d4df62bbfcac407e475631` contains verified R/T1 and C0 admission. T implementation has not started; select a new migration only after inspecting that base.
+**Execution plan approved 2026-09-09; implementation unstarted.** The operator approved the
+[T01–T06 execution brief](#approved-execution-brief--2026-09-09) below. It supplements C0's allocation
+and supersedes the earlier saved launch instructions. Launch readiness requires the committed
+approved brief and its documentation gates, plus verified C0/R/T1 ancestry. No implementation
+completion or runtime-gate result is claimed by planning.
 
 ## C0 execution allocation — 2.6.4 T
 
@@ -177,3 +181,129 @@ sequential owner. Historical-only matches retain versioned compatibility rather 
 - `src/domain/ids.ts`
 - `src/domain/ledger-projection.ts`
 - `src/domain/trust/dry-run-scenario.ts`
+
+## Approved execution brief — 2026-09-09
+
+The operator approved this proposal in `/phase-plan 2.6.4`. Preserve all Required outcomes,
+P1–P9 and C0 production/test allocations above. The additions here bind execution order,
+source-preservation helpers, focused proof and the exact checkout. They do not redesign the
+ratified [transaction-history contract](../../../../reference/write-safety.md#c0-transaction-history-and-shared-ownership--2026-09-09).
+
+### Assignment, prerequisites and checkout
+
+One GPT-6 Astra/high supervisor implements T; zero implementation workers. This is one sequential
+assignment because conversion, write settlement, archive compatibility and their composition share
+authority files. No separate reviewer runs here: the Phase 2.6-only D191 trial assigns complete
+fresh read-only sup_review on Astra/high, full gates and remaining repairs to final 2.6.9.
+
+| Binding | Approved value and verification |
+| --- | --- |
+| Planning checkout | `/Users/julianhein/Projects/hr-automation-rebuild`, `master`; documentation persistence only. Inspected clean at `8cf605a426553b6eeb169fffb0ec3ccc5b2f94d0`. |
+| Implementation base | `c7b8b1e037bf27dd70d4df62bbfcac407e475631`, the C0 recorded release. Verify C0 admission `0010c51c4189f14a8aa61dac55984c2df791045e`, R `60b356dd119140dc972a077751ad16af934acb2e` and T1 `46930920696ab214b036d5f2681b8ffb4e5620ea` are ancestors. Consume their recorded proof; do not claim to have rerun it. |
+| Integration availability | C0 final record `dc26c74fde0bb5ec9436e1409884451cd5dd698d` is incorporated in master at `8cf605a426553b6eeb169fffb0ec3ccc5b2f94d0`. C0's removed branch/worktree is not a prerequisite. |
+| Implementation branch/path | Create `codex/history-views` at `/Users/julianhein/Projects/hr-worktree-database-contracts` from the exact C0 base, then cherry-pick the approved planning commit containing this brief. Both ref and path were absent at inspection; names are proposals until the supervisor rechecks. Verify the applied brief is identical before edits. |
+| Capacity/ownership | Recheck all worktrees and the four-auxiliary limit. At approval persistence, one unrelated worktree occupies a slot. Preserve it. If the assigned lane exists, require clean explicit ownership release before reuse; never reset a colliding branch or borrow an active checkout. |
+| Development release | Commit T's working candidate and proof in this owner for 2.6.5 C. Record base/head/tree, supplied schema/source interfaces, exact commands/exits and unverified heavy proof. Stop owned processes and release clean exclusive checkout ownership; retain candidate history. |
+| Integration/cleanup | No master merge, push or automatic successor launch. Final 2.6.9 owns remaining repairs, full gates, independent review and final cleanup; master integration requires operator assignment after PASS and required gates. |
+
+### Ordered work and acceptance
+
+| Step | Outcome, necessary proof and forbidden effects |
+| --- | --- |
+| T01 — Verify inputs | Verify base/plan/ownership and schema39/floor37; inspect before selecting a new migration. Inventory retained events, operations, attempts, ledger assignments/files and outboxes against immutable evidence. Conflicting required facts or unexplained orphan history block retirement. No reconstruction from current settings. |
+| T02 — Convert history safely | Preserve original actor, instance/configuration, timestamps, proof, subject binding and operation/attempt/checkpoint identities. Build explicit stopped, backed-up conversion with populated multi-file/multi-day fixtures, source-change refusal, rollback, interrupted settlement, exact resume and no-write repeat. Preserve released migration fingerprints; equal timestamps alone never deduplicate. |
+| T03 — Replace transaction readers | Supply one database history query to existing Activity CSV/XLSX and explicit CLI transaction export. Count once per confirmed operation/generation; exclude dry runs, observed-present results, replay, archive duplication and deleted owners. Preserve existing generic Activity totals and protected shapes. Export pins source content, accepts explicit range/system/output and refuses overwrite. |
+| T04 — Freeze archive transactions | Capture validated transaction presentation in the existing archive row. Give historical enrichment its own integrity binding while preserving original JSON/digest, issued references and command replay. Prove explicit unknown/absent values, protected projections and unchanged presentation after workflow/source removal. Keep canonical archive membership admission before resources. |
+| T05 — Retire ledger machinery | Only after completeness proof, remove current ledger_partitions, ledger_projections, operation_outbox, file writer and read-through consumers. Preserve atomic checkpoint/confirmation settlement, original-owner and retry-shared evidence, final-owner deletion, honest tallies and UNKNOWN refusal. Retained historical readers cannot become fallback current authority. |
+| T06 — Release to C | Commit the focused-tested development candidate and exact handoff described above. Mark only T's scoped development release complete; leave phase acceptance, full gates, independent review, master integration and final cleanup visibly pending 2.6.9. |
+
+### Consequential feasibility and failure combinations
+
+| Inspected mechanism | Required change and proof at the earliest stable boundary |
+| --- | --- |
+| `authority-database.ts:commitWriteAttempt` constructs confirmed history from the ledger outbox payload and commits both outboxes. | T owns the replacement typed facts and atomic composite. Inject failures across checkpoint/operation/attempt/event settlement and verify full rollback; restart after possible external success must not authorize another click. Include a valid successful commit control. P1/P6/P9. |
+| `archive-service.ts` freezes `(system,date,sequence)` pointers; `queries/archive.ts` resolves files during reads. | T owns source-complete frozen transactions and same-row historical enrichment. Authenticate enrichment separately; original archive and command identity stay valid. Verify exact replay, divergent enrichment refusal, protected input, and rendering after source/workflow removal. P7/P8. |
+| `authority-database.ts:runDeletionEvidence` retains the entire reusable operation group while another run can consume it and validates every owner. | Preserve that policy through the new history query. Cover original-owner deletion with surviving retry, intermediate retry deletion, final-owner deletion, and corrupt/missing ownership refusal before mutation. Deleted owners must not reappear in Activity/export. P4/P6. |
+| T1's delivery assessment records a lost restore warning after real startup recovery advanced run state. | Use real sequenced commit, backup/restore, then worker recovery; immutable missing confirmation still reports possible external write despite mutable lifecycle progress. Include an already-accounted control. P3/P9. |
+| Upgrade composition already uses verified timeline source manifests/copies. | Extend the existing conversion boundary to ledger facts, without changing released source grammars. Missing ledger file plus retained outbox preserves evidence; disagreement refuses. Precommit changed bytes refuse without conversion; postcommit interruption resumes only the exact bound source. P3/P6/P8. |
+
+These cases supplement rather than replace P1–P9. They close the known consumer and recovery
+risks before retirement. Actual-target preflight is inapplicable here: conversion/recovery tests
+use isolated synthetic populated roots only. No operator database application, credentials, browser
+session or live submit is assigned. A later actual-target application requires its own authorization
+and current supported preflight; historical target observations are not current verification.
+
+### Additional exclusive ownership
+
+Keep all C0 paths above. T also owns these source-preservation helpers and directly affected
+regression fixtures/guards, limited to T01–T06 and the proof rows above:
+
+- `src/infra/events/timeline-import.ts`
+- `src/infra/sqlite/timeline-conversion.ts`
+- `tests/unit/events/timeline-history.test.ts`
+- `tests/unit/write-sequencer.test.ts`
+- `tests/unit/archive-model.test.ts`
+- `tests/unit/ledger-activity-fold.test.ts`
+- `tests/unit/ledger-projector.test.ts`
+- `tests/unit/fixtures/ledger-projection-fixtures.ts`
+- `tests/unit/fixtures/write-sequencer-fixtures.ts`
+- `tests/unit/architecture/atomic-write-outbox.test.ts`
+- `tests/unit/architecture/ledger-projector.test.ts`
+- `tests/unit/architecture/archive-invariants.test.ts`
+- `tests/unit/architecture/migration-history-immutability.test.ts`
+- `docs/rebuild/guard-inventory.json`
+
+New history/export fixtures stay local to their assigned tests. Guard retirement must replace the
+old guarantee with meaningful absence/refusal and atomic-history assertions, including violating
+fixtures and deciding inventory evidence. Generated outputs are regenerated only from owned
+changed inputs. Evidence stays in this owner; planning may update the existing PROMPTS routing
+to prevent the superseded launch text from bypassing this approved brief.
+
+### Gate schedule and release record
+
+At implementation iterations run the affected explicit selectors; before each development candidate
+commit run the complete focused unit and architecture sets below, lint and affected freshness.
+Keep logs under `/tmp/history-views-*` and record exits and tested commit/tree. Verify effective
+worker configuration, including project inheritance; the environment variable alone is not proof.
+Preserve membership, assertions, isolation, coverage floors and timeouts. No compiler/coverage lane
+is introduced here. Serialize only evidenced shared-resource conflicts; do not stop other tasks.
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/write-sequencer-restart-no-repeat.test.ts tests/unit/write-sequencer.test.ts tests/unit/archive-ledger-read-through.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-model.test.ts tests/unit/ledger-activity-fold.test.ts tests/unit/ledger-projector.test.ts tests/unit/events/timeline-history.test.ts tests/unit/server/activity-report.test.ts tests/unit/server/activity-export.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/transaction-history.test.ts tests/unit/transaction-export.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/atomic-write-outbox.test.ts tests/unit/architecture/ledger-projector.test.ts tests/unit/architecture/archive-invariants.test.ts tests/unit/architecture/migration-history-immutability.test.ts
+npm run lint
+git diff --check
+```
+
+The two new required unit paths must exist and collect meaningful cases before release. If retiring
+the projector requires renaming its tests, record exact replacement selectors and prove the old
+guarantees plus negative controls remain covered; never silently skip a missing selector. Recheck
+neighboring failure combinations after a repair. Use `/ui` for affected desktop consumers and
+focused rendering/accessibility proof; broad parity/build remain with final 2.6.9. Preserve existing
+Activity/archive shapes unless the approved frozen transaction contract requires their change.
+
+For affected inputs, run `npm run build:manifest` then `npm run build:manifest:check`,
+`npm run stores:catalog` then `npm run stores:catalog:check`, and `npm run roadmap` then
+`npm run roadmap:check`. Planning/evidence-only commits use D191 document binding, lint (fresh
+or verified unchanged-input reuse), links/anchors, existing instruction-pair equality/chain checks,
+affected generation/freshness and whitespace checks. Reuse only unchanged tested inputs with exact
+evidence identity; changed inputs, failures or unresolved uncertainty require their affected checks.
+
+Full coverage, broad architecture, complete parity/build and recovery/scenario/concurrency/redaction
+acceptance remain due at 2.6.9 with fresh independent complete review. No unrun gate is PASS. Release
+must identify which P1–P9 rows have focused new evidence, which unchanged T1 evidence is reused and
+which full acceptance remains pending. This is development readiness for C, not final acceptance.
+
+### Exclusions and stop conditions
+
+Do not repeat T1, activate the unwired ledger projector, implement archive.sqlite or run_summaries,
+retire terminal-completion/artifact outboxes, change generic Activity scope, redesign the dashboard,
+rewrite released migrations, reconstruct historical identity from current settings, upgrade the
+operator database, perform a live submit, push, dispatch successors or merge into master.
+
+Routine implementation choices and in-scope fixes belong to this supervisor. Stop dependent work
+for changed prerequisites, an occupied/unreleased checkout, conflicting required source facts,
+unexplained orphan history, or a necessary material contract/ownership change outside this brief.
+Resolve the exact conflict rather than transferring it to C or claiming retirement succeeded.
+Send Done / Now / Remaining at start/resume and after every verified step, keeping all unfinished
+acceptance, final review, integration and cleanup visible.
