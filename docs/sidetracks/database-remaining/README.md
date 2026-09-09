@@ -44,7 +44,7 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | --- | --- | --- |
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
 | Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
-| Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Deletion details remain to settle. |
+| Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Keep `deleted_runs` for explicit live/archive deletion, separate from transfer. |
 | Messages and notes | `notifications`, `notes` | Open |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
 | Database maintenance | `authority_meta`, `authority_upgrades` | Open |
@@ -413,6 +413,30 @@ report and its files before removing the old archive row or retained live record
 are not sufficient migration proof. Keep narrowly scoped old-format readers at the conversion/
 restore boundary where required; the normal archive viewer must not import them.
 
+### Approved deletion semantics
+
+On 2026-09-08 the operator accepted the deletion recommendation with “okay. is that all?” Keep
+the existing `deleted_runs` name and use the same deletion-receipt mechanism for explicit deletion
+of live runs and archive reports. Do not create a second archive-deletion ledger.
+
+- Archiving saves a report and removes its owned live records after verified transfer. It remains
+  viewable and has an archived disposition, not an explicit-deletion receipt.
+- Deleting a live run removes its owned data without producing a saved archive report. Preserve
+  terminal/tree eligibility, command identity/replay, stale-run rejection and numbering protection.
+- Deleting an archive removes its report and exclusively owned files. The receipt identifies the
+  archive origin. A receipt is minimal deletion evidence, not a retained copy of the run/report.
+- Keep deletion command/audit ownership in the existing command system. Define recoverable
+  coordination between the shared receipt mechanism, archive database and file cleanup before
+  implementation. A crash or failed cleanup must not become a false completed deletion; repeating
+  the command must safely finish or return the established result. Preserve shared-file references.
+- Backup/restore and transfer/delete races must respect the deletion result without reviving removed
+  runs or treating an archived run as deleted. Resolve durable progress, lookup and receipt format
+  within this existing archive/deletion owner and its shared prerequisite, not a competing plan.
+
+Extend focused proof with explicit live deletion, explicit archive deletion, absence of deletion
+receipts for archive transfer, stale-command and run-number protection, repeated/concurrent deletion,
+interrupted cross-database/file cleanup, shared attachments and backup/restore after deletion.
+
 ### Proof and ownership before launch
 
 Use this existing section as the sole owner of report storage, transfer, conversion and viewer work;
@@ -433,6 +457,6 @@ archive execution. Prove the renderer has no old run/workflow-schema import depe
 batch's final-session heavy gates and independent review cadence; earlier in-flight gate schedules
 and completed evidence remain intact.
 
-Status: separate archive/report design and relaunch removal approved for planning. Implementation,
+Status: separate archive/report design, relaunch removal and deletion semantics approved for planning. Implementation,
 historical lineage storage disposition, exact report/transfer contract, complete allocation and
 launch prompts remain pending.
