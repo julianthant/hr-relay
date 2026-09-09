@@ -54,6 +54,13 @@ in `authority-database.ts`; all other frozen shared inputs and sibling ownership
 This supersedes conflicting generic retention/no-master/shared-file prohibitions for P only.
 L consumes the immutable recorded P candidate/integration; no P implementation or launch is claimed.
 
+**G-specific approval, 2026-09-09:** the operator approved
+[G01–G06](artifacts.md#approved-execution-brief--2026-09-09) after the F repair. G uses the approved
+plan’s documentation descendant of repaired F, with unchanged common runtime inputs, and its
+original six-file scope. The same supervisor performs focused checks, local master merge and owned
+cleanup. This overrides generic retained-candidate/no-master timing for G only; full gates and
+complete independent review remain in 2.6.9. Implementation is not started by this record.
+
 ## Roadmap identity
 
 The operator requested visible prerequisite and parallel-child cards matching Phase 3.1. The

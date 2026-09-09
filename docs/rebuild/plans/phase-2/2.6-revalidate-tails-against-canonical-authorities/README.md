@@ -195,9 +195,7 @@ this card does not assign duplicate implementation or bypass C0 admission.
 #### Task 6.3 · Publish and update generated artifacts
 <!-- roadmap: p2db-generated-artifacts -->
 
-Assignment **G**, display **2.6.6.3**. Single scope/proof owner: [owning plan](database-modernization/artifacts.md).
-Follow the [combined release and final-validation rules](database-modernization/README.md);
-this card does not assign duplicate implementation or bypass C0 admission.
+Assignment **G**, display **2.6.6.3**. The approved [G01–G06 brief](database-modernization/artifacts.md#approved-execution-brief--2026-09-09) owns implementation, focused checks, local master merge and owned cleanup after repaired F. Full gates and independent review remain in 2.6.9. Planning is approved; implementation remains unstarted.
 
 #### Task 6.4 · Activate settings for new runs without restart
 <!-- roadmap: p2db-settings-activation -->

@@ -178,6 +178,14 @@ with a working export baseline before G adds publication behavior; no live dual-
 All peers use the same F SHA. P↔D↔G↔S must require no sibling API, migration, fixture or generated
 source. S cannot launch until its extraction makes that four-way proof true.
 
+
+**G-specific approval, 2026-09-09:** the operator approved
+[G01–G06](artifacts.md#approved-execution-brief--2026-09-09) after the F repair. G uses the approved
+plan’s documentation descendant of repaired F, with unchanged common runtime inputs, and its
+original six-file scope. The same supervisor performs focused checks, local master merge and owned
+cleanup. This overrides generic retained-candidate/no-master timing for G only; full gates and
+complete independent review remain in 2.6.9. Implementation is not started by this record.
+
 ## L · Lifecycle foundation; unlock A and Q
 
 Consume the exact P/D/G/S committed development candidates on F, with all C/T/R ancestry.

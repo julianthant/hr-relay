@@ -337,6 +337,10 @@ All earlier planning checks remain historical Git evidence, not gates for the ne
 
 ## C0 execution allocation — 2.6.6.3 G
 
+The approved G01–G06 brief below supersedes this allocation’s historical baseline, unresolved
+readiness, gate invocation and no-master-integration wording. Its six production and five test
+paths remain binding; the previously new production targets now exist on repaired F.
+
 Prerequisite: **one frozen F release, identical to P/D/S base**. One Astra/high supervisor, zero implementation workers.
 Use the exact `G` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
 This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
@@ -383,3 +387,177 @@ integration, independent review, heavy-gate waiver, sibling dispatch or live dat
 Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
 
 Authored evidence stays in this task's existing `artifacts.md` owner; shared indices remain read-only.
+
+
+## Approved execution brief — 2026-09-09
+
+The operator approved the complete G01–G06 proposal on 2026-09-09 after the shared F repair.
+The same supervisor implements, passes focused checks, merges locally into master and removes
+only G’s owned checkout/ref. This approval overrides generic retained-candidate/no-master wording
+for G in this owner and the combined plan. Full gates and complete independent review remain in
+2.6.9; there is no intermediate finalizer or reviewer. This is planning approval, not implementation
+or final phase acceptance. Preserve all T2 product requirements and proof rows above.
+
+### Binding, allocation and readiness
+
+| Field | Binding |
+| --- | --- |
+| Assignment | 2.6.6.3 G; one GPT-6 Astra/high supervisor, zero implementation workers and zero reviewers here |
+| Common runtime prerequisite | F’s next verified integrated resolver-port repair release, recorded in the launch prerequisite update below. The initially verified `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` is superseded for launch once that repair releases. No unmerged candidate is a base. |
+| Inspected planning base | Clean master `0eeedcadad5ed4f686799be4dd190133372d5e2b`; source/tests/configuration/dependencies match F’s tested candidate `a1e963445bc05d57f1eb9abbff95a9238300ab3a` |
+| Execution base | The exact committed plan/base returned by the planner, containing this approved G brief and F’s completed resolver-port repair integration. Verify both ancestries and unchanged runtime inputs relative to that latest tested F release. A pre-repair plan commit is not launchable. Do not start from an arbitrary later master. |
+| Branch / checkout | Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs` from that exact execution base. Both were absent during planning; names are not reservations. |
+| Scope | The six production and five test paths in the C0 allocation above; fixtures local to the new owned test directory only. Authored implementation evidence stays in this file. |
+| Integration | G supervisor merges locally into master after focused PASS and checks for concurrent ownership; no push. Preserve candidate/merge/tree identities for L and 2.6.9 before deleting G’s ref. |
+| Capacity | One unrelated auxiliary worktree exists at `/Users/julianhein/Projects/hr-separation-accounting-final`; preserve it. Recheck the four-auxiliary-worktree cap and current ownership before creation and integration. |
+| Review | Fresh complete read-only `sup_review` on Astra/high belongs to 2.6.9, covering G’s publication, replay, exports and cross-domain retention with the combined candidate. G claims only a scoped development release. |
+
+The [F repair and closure](foundation.md#f-prerequisite-repair--2026-09-09) and its
+[complete cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json)
+were inspected. They bind 961 unit tests, 199 guard tests, lint/freshness and 67 filtered UI cases
+to the repaired candidate. These are prerequisite evidence, not G test results. Schema47/floor46
+and released migrations remain unchanged. G needs no sibling code, provider, live system, or actual
+operator database: its publication/recovery acceptance uses isolated synthetic DB/file fixtures.
+READY additionally requires committed approval, passing documentation checks and verified plan
+availability. Planning creates no implementation checkout or task.
+
+### Feasibility and required proof
+
+| Boundary / observed mechanism | G change and required negative proof |
+| --- | --- |
+| Shared executor now delegates source matching to `pendingGeneratedUpdateIds`; `generatedUpdateId` commits to the complete checkpoint and derived row. | Preserve these repaired interfaces and complete checkpoint identity across run/item/attempt/claim/output. Replaying an old completed checkpoint cannot consume newer same-key work; historical random IDs need one exact witness, and ambiguous or unbound commitments refuse without acknowledgement. No shared executor edit is needed. |
+| `generated_artifacts` already carries bounded ordered updates, versions, state and nullable prepared identity; `generatedArtifacts` and exports are exposed through inferred repository types. | Add publication state transitions through G’s repository module and projector options without changing shared types/schema/root wiring. Admit bounded metadata before checkpoint commit; retain immutable update/receipt/version prefixes and generation checks. Exercise independent SQLite connections and rollback. |
+| Sink already puts old/new bytes, fsyncs a temp file, replaces the destination and fsyncs its directory; projector records head and acknowledgement together afterward. | Persist prepared update/version identity before replacement, verify old/staged/new bytes, hold the exclusive writer fence and settle the exact ordered update. Crash windows must retain intent and the last verified version. No filename/time-only success or blind overwrite; conservative conflict is acceptable. |
+| Explicit XLSX service currently publishes bytes before inserting completed evidence, while register/fail methods already exist. | Validate/capture the selected data before registration changes authority generation; register before byte publication and settle the same file row only after verification. Preserve exact selection, attribution, protected workbook contents, immutable evidence and headers. Identified replay reuses its row; changed request/evidence refuses, and independent exports remain independent even with identical bytes. No new public request field or export format. |
+| F owns imported/extracted conversion, historical export conversion, retained version references and existing deletion protection. | G proves old-version reads and existing shared retention on F alone, including missing/corrupt byte refusal. New archive.sqlite custody/transfer consumes G in L/A/H and receives combined proof in 2.6.9; G must not depend on those future implementations. |
+
+Carry these interacting cases into P4–P6/P8: two independent enqueues plus one active writer;
+new enqueue during publication; completed-old/new-pending same record key; historical ambiguous
+checkpoint plus matching payload; stale generation plus prepared intent; interrupted replacement
+plus same/different retry; external destination change with an intact last-good immutable version;
+export registration followed by byte, readback or DB settlement failure. Each refusal test also
+needs a valid control reaching the intended boundary. No false ready/download, lost pending work,
+mutated old reference, cross-checkpoint acknowledgement or unsafe repeated replacement is allowed.
+
+### Ordered steps
+
+1. **G01 — Verify prerequisite.** Verify the exact plan/runtime ancestry, F receipt, ownership,
+   runtime input equality, schema47/floor46 and resource capacity before creating the owned lane.
+   Read nearest module instructions and relevant artifact/export lessons. Preserve repaired replay.
+2. **G02 — Ordered publication.** Complete durable prepared intent, byte verification, old/intended
+   immutable retention, exclusive writer/generation fencing and atomic exact head/ack settlement.
+   New updates admitted during a write remain pending. Preserve limits and rollback semantics.
+3. **G03 — Failure windows.** Add fault injection and restart proof around staging, fsync,
+   replacement and acknowledgement. Prove missing/headless/external-edit/stale-generation refusals,
+   truthful states, retained intent and old-version readability; do not add automatic recovery.
+4. **G04 — Explicit XLSX lifecycle.** Capture the admitted selection, register its export identity
+   before writing bytes, verify publication and settle that same generated row. Prove exact replay,
+   divergent refusal, separate same-byte exports, immutable receipt/headers and failure truthfulness.
+5. **G05 — Focused release.** Complete the assigned P4–P6 and existing-retention P8 proof on F
+   alone, run the candidate gates below, fix in-scope failures and commit logical categories using
+   exact paths. Record plan/base/head/tree, paths, commands/exits, proof rows and deferred work here.
+6. **G06 — Merge and cleanup.** Recheck clean target, ancestry, current task ownership and changes
+   since base; serialize only shared integration/recording operations. Merge locally after focused
+   PASS, repair in-scope integration defects and rerun invalidated checks. Record candidate and merge
+   identities, inherited final-proof obligations and focused evidence; preserve owned logs/ignored
+   artifacts outside the checkout, stop owned processes and remove only G’s worktree and branch.
+   Verify registration/path/ref absence and clean target. Preserve all unrelated work. Stop here.
+
+At start/resume and after every verified step, send Done / Now / Remaining before the next tool
+call. Include integration, cleanup and deferred final review explicitly. L still waits for all
+four actual child releases; G neither launches L nor claims its siblings complete.
+
+### Reproducible focused gates and evidence
+
+Use a private evidence directory outside the implementation checkout and a resource-only
+`vitest-one.config.mts` adapter. Recreate it against this checkout rather than F’s deleted path:
+
+```ts
+import baseline from "/Users/julianhein/Projects/hr-worktree-artifact-outputs/vitest.config.ts";
+export default { ...baseline, test: { ...baseline.test, maxWorkers: 1,
+  projects: baseline.test!.projects!.map((project) => {
+    if (typeof project !== "object") throw new Error("unexpected project configuration");
+    return { ...project, test: { ...project.test, maxWorkers: 1 } };
+  }),
+} };
+```
+
+Use `G_CONFIG` for that adapter’s absolute path. Compare its resolved configuration with the real
+configuration: only root and per-project maxWorkers may differ. Record effective one-file-worker
+counts, identical project include/exclude membership, forks, isolation, assertions, floors and
+30-second test/hook timeouts. Do not modify repository configuration or reuse a deleted adapter.
+Run from `/Users/julianhein/Projects/hr-worktree-artifact-outputs`:
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --config "$G_CONFIG" --project unit --maxWorkers=1 tests/unit/artifact-projection.test.ts tests/unit/infra/server-verified-artifact-reader.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/server/operator-xlsx-export-service.test.ts tests/unit/generated-artifacts/publication.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config "$G_CONFIG" --project architecture --maxWorkers=1 tests/unit/architecture/artifact-effect-boundary.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/redaction-surface-scan.test.ts
+npm run lint
+```
+
+The two F unit files and architecture guards are read-only boundary checks, not G write ownership.
+The new publication suite must exist and collect meaningful cases. During iteration select affected
+owned tests; before candidate release run the full focused set above against the committed code.
+Run lint whenever tests run. Failed focused checks block release; routine fixes stay with G.
+
+For affected generated inputs, run `npm run build:manifest`, `npm run stores:catalog`, or
+`npm run roadmap` before the corresponding `:check` command. Serialize writes to shared generated
+outputs; regeneration does not authorize shared source edits. Planning/completion documents require
+roadmap generation/freshness, focused `tests/unit/architecture/roadmap-doc-binding.test.ts`, local
+link checks, existing AGENTS/CLAUDE equality, project instruction chains below 32,768 UTF-8 bytes,
+and `git diff --check`. Status/launch pointers and generated roadmap recording are serialized by
+G at integration; implementation peers otherwise keep their authored evidence in their own owner.
+
+At candidate, integration and recording boundaries, record command/exits and tested SHA/tree.
+After integration changes rerun every invalidated focused check. D191 permits reuse only with an
+explicit diff proving relevant source/tests/configuration/dependencies and other inputs unchanged;
+a documentation-only SHA is not automatically sufficient. Preserve all failures and repairs in
+external evidence; never call an unrun gate passed.
+
+Full typecheck, coverage, whole architecture, broad parity/build/performance, combined archive
+transfer and original cross-domain recovery/scenario/production-route proofs, and fresh complete
+independent review remain in **2.6.9**. There is no frontend layout/interaction change or new live
+producer here: verify download behavior in the focused service tests. A necessary visual behavior
+change or shared-fixture/schema/executor/root-composition edit requires amendment, not silent
+scope expansion or an invented fallback. Imported/extracted and historical conversion proof remains
+F evidence plus final combined verification; no product proof is dropped.
+
+### Stop conditions and exclusions
+
+No push, live database upgrade/application, HR submission, provider/key wiring, I-9 activation,
+new workbook layout/output format, artifact-management UI, automatic export/recovery/GC, sibling
+launch, or cleanup of another lane. Preserve UNKNOWN-submit refusal and issued historical evidence.
+Changed prerequisite inputs, unavailable owned capacity, an unresolved ownership conflict, a failed
+focused check or a required shared change blocks dependent release. Continue independent owned
+work and surface the exact remaining blocker; never weaken a requirement to obtain PASS.
+
+### Planning persistence evidence
+
+The planner validates this approved section and its shared gate/merge pointers with documentation
+checks only, commits exact paths, reads the committed section back and verifies repaired F ancestry,
+plan availability and proposed ref/path absence before issuing READY. Runtime gates are not rerun
+or newly claimed by planning; the unchanged runtime input comparison preserves F’s prerequisite
+provenance. G remains unimplemented until the operator starts its fresh supervisor session.
+
+
+Planning check record (2026-09-09): the one-worker adapter was compared structurally with the
+repository config and changed only root/project worker limits. The focused roadmap binding suite
+passed 24 tests; `npm run lint` exited 0 with zero warnings against the unchanged runtime/test/
+script/config inputs at `0eeedcadad5ed4f686799be4dd190133372d5e2b`. Shared-master P/D/G planning
+writes required serialized commits (D, then P, then G); each task retains its own authored hunks.
+G reruns affected document/generator checks on its final candidate and reuses lint only after
+confirming those execution inputs are unchanged. Planning does not claim any G product test,
+full-phase gate or independent review. Command logs are at `/tmp/g-plan-20260909/`.
+
+
+### Launch prerequisite update — resolver-port repair
+
+During approved-plan persistence F reopened for the settings resolver callback’s complete
+`ResolvedConfig` result and its dashboard/storage-upgrade callers. Candidate
+`283bbe88440fafb0b44224b8fc085003b7b91dba` is evidence of pending work, not a launch base.
+F confirmed G’s six-file ownership, product requirements and focused/merge/cleanup schedule are
+unchanged. The new integrated F release supersedes `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`
+for all four children. G readiness remains **WAITING ON F’s verified resolver-port integration
+and complete owned cleanup** until the committed current prerequisite record supplies that SHA
+and receipt. The planner then verifies the final committed G plan plus current F ancestry/runtime
+inputs and returns the exact resolved plan/base. No new G product approval or scope expansion is
+implied; this carries the existing prerequisite-repair decision through its verified release.

@@ -1324,6 +1324,15 @@ units/guards, lint and freshness; rerun invalidated integration checks or verify
 Full typecheck/coverage, broad architecture/parity/build/performance and complete independent review
 remain 2.6.9. No proof, floor, failure semantics or sibling ownership is waived.
 
+**2026-09-09 G integration exception.** The operator approved 2.6.6.3 G
+[G01–G06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#approved-execution-brief--2026-09-09).
+After repaired F, one supervisor runs the assigned focused tests, lint and affected freshness,
+merges locally into master and cleans up only G’s owned checkout/ref. This overrides generic
+retained-candidate/no-master timing for G; rerun invalidated checks after integration changes and
+verify input equality before reuse. Full typecheck/coverage, broad architecture/parity/build/
+performance, combined archive/recovery proof and complete independent review remain in 2.6.9.
+G completion is a scoped development release only; no push, live application or sibling launch.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->

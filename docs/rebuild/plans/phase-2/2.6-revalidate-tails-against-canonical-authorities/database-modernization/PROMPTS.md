@@ -19,7 +19,7 @@ later tasks still wait for their actual named candidates. Full gates/review rema
 
 For C and F, their approved briefs override generic prompt/retention rules: one supervisor, zero
 workers, focused PASS, local master merge and owned worktree/ref cleanup. Full gates and independent
-review stay in 2.6.9. G / 2.6.6.3 also includes focused tests, lint, local merge and owned cleanup by operator direction. Its task-specific proposal/approval remains separate; full gates/review stay in 2.6.9. Other tasks retain their approved integration boundaries.
+review stay in 2.6.9. G’s approved G01–G06 brief below also assigns focused PASS, local merge and owned cleanup. Other tasks retain their approved integration boundaries.
 
 **P-specific approval, 2026-09-09:** the [approved P01–P06 brief](provider-usage.md#approved-execution-brief--2026-09-09) consumes repaired F
 `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`. It assigns P local master merge and owned
@@ -206,7 +206,7 @@ Require F's [repair closure receipt](/Users/julianhein/Projects/hr-database-foun
 capacity; consume the current F release record from master. Do not recreate F's removed branch.
 Each child has one Astra/high supervisor and zero workers. Full gates/review stay with 2.6.9.
 The repaired F callers remove the proposed G/S shared-file scope expansion: preserve the existing
-exclusive allocations. G and S planning consume the repair record; no child is approved anew or launched here.
+exclusive allocations. G’s approved task-specific handoff below consumes the repair; S retains its existing planning boundary. No child is launched here.
 
 ```text
 /supervise 2.6.6.1 (P), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the operator-approved P01–P06 brief in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09 at the full plan commit supplied by the verified planning handoff. Verify repaired F prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48 and complete repair closure receipt. Create codex/provider-usage at /Users/julianhein/Projects/hr-worktree-provider-usage from that exact prerequisite; load the approved owner from its pinned plan commit. One supervisor, zero workers. Implement generic accounting and the exact approved provider-active-reservations-match/historical-adaptation exception in authority-database.ts; preserve other frozen shared inputs and sibling ownership. Complete P1–P6 with real concurrency, mixed-kind/current/historical corruption controls, replay, uncertainty, retention and legacy runtime proof. Run the brief’s focused tests, lint and affected freshness; full gates and independent review remain 2.6.9. Commit, merge locally into clean master after focused PASS, rerun invalidated integration checks, preserve evidence, remove only the owned worktree/merged branch and record L’s immutable release. No push, live database upgrade, real provider/key wiring, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step; stop after P.
@@ -216,9 +216,20 @@ D uses its [approved D01–D05 brief](diagnostics.md#approved-execution-brief--2
 not the older C0 no-merge prompt. The planner supplies its exact verified plan/base SHA after
 persistence checks; the common runtime prerequisite remains repaired F above.
 
-```text
-/supervise 2.6.6.3 (G), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. After approval of G’s task-specific execution brief, execute the C0 execution allocation — 2.6.6.3 G in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/artifact-outputs at /Users/julianhein/Projects/hr-worktree-artifact-outputs from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit and merge locally into master after focused PASS, repair integration failures, preserve evidence, and remove only the owned worktree/branch. Record the integrated G candidate for L. No push, live database upgrade, HR submission, cleanup of other lanes or automatic task launch. Send Done / Now / Remaining at start and every verified step.
-```
+### G task-specific approved handoff
+
+G’s operator-approved [G01–G06 brief](artifacts.md#approved-execution-brief--2026-09-09) supersedes
+its earlier C0-only launch prompt. The planner returns the immutable approved-plan SHA and uses
+that same commit as G’s execution base after verifying unchanged repaired-F runtime inputs.
+Do not substitute the old C0 plan SHA or arbitrary later master. G is WAITING ON the new F
+resolver-port integration and complete cleanup, superseding `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48`
+for launch. The final plan/base must contain both approved G and that verified new F release.
+Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs` from
+the returned plan commit. One Astra/high supervisor, zero workers/reviewers here. Execute G01–G06,
+pass focused tests/lint/freshness, merge locally into master, preserve evidence and remove only
+G’s owned worktree/ref. Full gates and complete independent review remain in 2.6.9. No push,
+live database application, HR submission, sibling launch or cleanup of other lanes.
+
 
 ```text
 /supervise 2.6.6.4 (S), GPT-6 Astra/high. Repository /Users/julianhein/Projects/hr-automation-rebuild. Execute the C0 execution allocation — 2.6.6.4 S in docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md from approved plan b5ba39efbca023b673be3c4aac509ca42b2a751c. Verify the complete F closure and common prerequisite 51e4c087a0d455619ca93a3bbddc5c8fb5a24a48. Create codex/settings-activation at /Users/julianhein/Projects/hr-worktree-settings-activation from that exact prerequisite. One supervisor, zero workers. Preserve the F-frozen shared contracts and exact exclusive source/test ownership; implement all assigned proof and repair focused failures. Run focused tests, lint and affected freshness; full gates and independent review belong to 2.6.9. Commit the development candidate for L; no master merge, cleanup of other lanes, push, live database upgrade, HR submission or automatic task launch. Send Done / Now / Remaining at start and every verified step.

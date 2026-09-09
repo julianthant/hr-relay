@@ -1146,6 +1146,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.5.3; assignment G; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | G plan approved | G01–G06 consumes repaired F 51e4c087a; six production paths, focused checks, local master merge and owned cleanup. Full gates and independent review remain 2.6.9; implementation unstarted
 
 ##### 4 · Activate settings for new runs without restart {#p2db-settings-activation}
 status: planned
@@ -3747,6 +3748,13 @@ repaired common F prerequisite. This supersedes generic P retention/final-master
 absolute shared-file prohibition for those exact hunks. Full gates and complete independent review
 remain 2.6.9 under D191; P completion means a merged scoped development release, not phase acceptance.
 No implementation, child launch, live application or push is authorized by planning.
+
+**G-specific operator exception, 2026-09-09:** approved
+[G01–G06](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#approved-execution-brief--2026-09-09)
+retains G’s isolated production/test scope after repaired F and assigns its supervisor local master
+merge and owned cleanup after focused PASS. Full gates and complete independent review remain in
+2.6.9 under D191. This supersedes generic retention/final-master timing for G only; implementation
+is unstarted and no sibling launch, push or live database application is authorized.
 
 ### Parallel group shape for future plans (2026-09-09)
 
