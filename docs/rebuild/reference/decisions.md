@@ -2362,3 +2362,12 @@ Task 2.6.3 preapproval ratifies the target [settings lifecycle and backup set](c
 [artifact/approval continuity](data-intake-and-edit-data.md#c0-artifact-and-approval-continuity--2026-09-09).
 These are pending implementation contracts; [C0](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md#c0--contract-and-execution-admission)
 owns admission and exact downstream allocation. No live upgrade or downstream launch is claimed.
+
+### 2026-09-09 — 2.6.5 C merge and cleanup timing
+
+The operator approved C01–C05 with local master merge and owned cleanup after focused checks in C.
+The [roadmap workflow amendment](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09)
+and [D191](guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12)
+own this C-specific execution exception; the complete [C brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09)
+owns its bindings and proof. Full gates and complete independent review remain in 2.6.9. Product
+requirements and other assignments are unchanged; no implementation or live application is claimed.

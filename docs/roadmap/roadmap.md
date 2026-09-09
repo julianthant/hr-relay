@@ -1038,20 +1038,21 @@ log:
 - 2026-09-09 | database roadmap expansion | 2.6.2; assignment C0; visible dependency card only; no implementation or launch readiness claimed
 
 #### 4 · Finish database transaction history and retire ledgers {#p2db-timeline-history}
-status: planned
+status: done
 doc: 2.6 §Task 4 · Finish database transaction history and retire ledgers
 
 > Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.9.
 
 builds:
-- [ ] BOTH complete pending timeline T2: database history, Activity transaction exports and archive transaction capture
-- [ ] PROOF preserve confirmed-operation facts, conversion/recovery, deletion and UNKNOWN safety before ledger/outbox retirement
+- [x] BOTH complete pending timeline T2: database history, Activity transaction exports and archive transaction capture
+- [x] PROOF preserve confirmed-operation facts, conversion/recovery, deletion and UNKNOWN safety before ledger/outbox retirement
 
 needs:
 - p2-db-modernization
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.3; assignment T; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | T merged development release | candidate 58376a7d7, integration 5e446a90f including repairs; scoped completion and owned cleanup recorded in timeline owner. Complete independent review and inherited performance failures remain 2.6.9; no phase acceptance claimed
 
 #### 5 · Store completion directly on workflow runs {#p2db-run-completion}
 status: planned
@@ -1068,6 +1069,7 @@ needs:
 
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.4; assignment C; visible dependency card only; no implementation or launch readiness claimed
+- 2026-09-09 | 2.6.5 C plan approved | complete C01–C05 brief; T prerequisite integrated at 5e446a90f; one supervisor, focused checks, local master merge and owned cleanup. Full gates and complete independent review remain 2.6.9; implementation unstarted
 
 #### 6 · Prepare independent database domain tasks {#p2db-domain-foundation}
 status: planned
@@ -3701,6 +3703,12 @@ and obtains fresh complete read-only sup_review on Astra/high before operator-as
 integration and completion. No repair handbacks, automatic task dispatch, idle coordinator, lowered
 gates, or push. D191's matching scoped cadence amendment governs proof timing and evidence. Existing
 in-flight tasks retain their original gates and reviews. No implementation is authorized by planning.
+
+**C-specific operator exception, 2026-09-09:** the approved 2.6.5 C brief assigns local master
+merge and owned cleanup after focused PASS to the same supervisor. This supersedes the generic
+retention/final-master-integration timing for C, while full gates and complete independent review
+remain in 2.6.9. See [C01–C05](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09)
+and the matching D191 exception. C remains unimplemented; its planning commit is not phase acceptance.
 
 ### Parallel group shape for future plans (2026-09-09)
 

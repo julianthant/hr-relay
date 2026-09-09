@@ -1,5 +1,10 @@
 # Run completion storage
 
+**Current assignment:** the operator approved the [C01–C05 execution brief](#approved-execution-brief--2026-09-09)
+on 2026-09-09. It supersedes this file's older waiting, retained-checkout, no-master-merge and
+per-task review instructions. T is integrated; C remains unimplemented. C merges and cleans up
+after focused checks; full gates and complete independent review remain in 2.6.9.
+
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
 the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
 lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
@@ -309,8 +314,202 @@ prerequisite with violating fixtures and guard-inventory evidence. No peer may e
 or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
 prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
 
+## Approved execution brief — 2026-09-09
+
+The operator approved this complete proposal after requesting: “make sure to merge and cleanup at
+the end” and “the full gates run at the end of 2.6. not here.” This is assignment **2.6.5 C** only.
+It retains all product contracts and P1–P6 above. The following execution controls supersede older
+conflicting controls in this file, the combined workflow, prerequisite registry and generic prompts.
+Planning saves and validates the brief, commits it, verifies committed content and prerequisites,
+then returns a fresh-session supervisor prompt; it implements no product code.
+
+### Binding and allocation
+
+| Field | Approved binding |
+| --- | --- |
+| Owner | One GPT-6 Astra/high supervisor; zero implementation workers and no task-local independent reviewer. The same supervisor owns tactical fixes, integration and cleanup. |
+| Mode | Create a dedicated branch/worktree at execution. The primary repository remains the integration checkout. |
+| Branch | `codex/run-completion` |
+| Worktree | `/Users/julianhein/Projects/hr-worktree-database-contracts` |
+| Verified prerequisite | T integration `5e446a90f018456d11ad38442c0fe3ba13e31dd1`, including candidate `58376a7d7f9a6af65dd443cecb934ce0a812593d` and integration repairs. R, C0 and accepted T1 are in its ancestry. |
+| Implementation base | The exact committed approved-plan SHA returned by the planner, on master and descended from the T integration. Verify that committed owner before the first edit. No prerequisite-only SHA substitutes for the approved plan. |
+| Integration | The C supervisor locally merges its committed candidate into `master` at `/Users/julianhein/Projects/hr-automation-rebuild` after all assigned focused checks pass, then verifies the combined tree and performs owned cleanup. No additional merge permission is needed. |
+| Release | Record the actual C candidate, integration SHA/tree and focused evidence for F (2.6.6). Do not launch F or mark Phase 2.6 accepted. |
+
+Planning observed a clean primary checkout at the T integration, no auxiliary worktrees, and no C
+branch or physical lane. Names are proposals, not reservations. At execution recheck refs, path,
+ownership, prerequisite ancestry and the four-auxiliary-worktree capacity limit. Create the missing
+lane with its own branch from the verified plan commit; do not require removed predecessor branches.
+Never reset a colliding ref, switch another session's checkout or hide unrelated changes. If master
+advances, inspect its diff for relevant drift and recheck integration; do not blindly overwrite it.
+
+This is one cohesive sequential assignment: the schema, settlement factories, lifecycle journal,
+recovery and served storage contract must change together. Splitting them would create dependent
+partial interfaces. F and the independent domain tasks remain outside C's ownership.
+
+### Feasibility and required negative controls
+
+Inspection is bound to `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; no implementation checks were
+run by planning. The current migration maximum is 40. Append migration versions and preserve all
+released statements/fingerprints and supported floors. No actual operator database application is
+assigned: use reproducible synthetic fresh/historical roots, not the dated real-target counts above.
+
+| Requirement and current evidence | C-owned change and proof |
+| --- | --- |
+| `authority-database.ts` terminal composites write authorization/result-or-failure/outbox/run; `run-record-service.ts` wraps settlement plus lifecycle event and journal in the outer transaction. | Move completion onto the run and remove the outbox while keeping the whole settlement atomic. P1/P2 inject failure at each actual write, including timeline and journal; reopen after lost acknowledgement and compare exact durable facts. |
+| `run-record-service.ts:inspectJournal` hashes the complete terminal request; success currently includes authorization and outbox identities. T's conversion exposed and repaired an analogous historical fingerprint break. | Pin a real synthetic pre-conversion success/failure request, command/audit and accepted replay before schema changes. After conversion, exact old replay must succeed without rewriting journal fingerprints; changed outbox/worker/generation/version/time/result/failure must refuse with zero extra writes. New requests create no outbox identity or delivery obligation. P2/P3 own this adapter and proof. |
+| `assertTerminalAuthorizationConsequence` checks immediate settlement version/time; lifecycle replay separately permits later run versions. | Preserve original settlement evidence while allowing already-authorized rename/archive/retry behavior. P1/P4 cover lost generation 1, reassignment 2, same worker returning at generation 3, later mutations and competing connections. Never infer authorization from a terminal state or latest timeline timestamp. |
+| `migrations.ts`, storage record schemas, authority integrity SQL and D308 deletion enumerate the old tables; diagnostic snapshots and run receipts reference failures. | Convert and reconcile exact historical authority before retirement, preserve failure IDs/FKs/fingerprints and tombstones, replace guards with equivalent negative fixtures. P3/P5/P6 cover partial, missing and contradictory data, stopped upgrade/restore, interrupted conversion and repeated no-write upgrade. |
+| Archives freeze projected row/detail/failure/receipt content and content digests in `domain/archive/model.ts`; archive capture and issued references authenticate that content. | Keep existing stored archive bytes/digests and reference identity valid. Do not inject completion into frozen content or weaken current live-run parsing to accept missing completion. Historical format adapters, if needed, remain explicitly versioned. P4/P5 preserve archive commands, same-row membership and shared evidence. Independent report conversion/rendering belongs to A/H/2.6.9. |
+| Storage Doctor exposes `runTerminalOutbox` through recovery/domain schemas, CLI composition and the Settings count list; loaded-doctor parity covers both themes and desktop viewports. | Remove only the obsolete metric across current producers/consumers and fixtures, retain historical backup inspection, and verify the changed rendered states. P6 owns deliberate focused reference updates; full parity/build remain in 2.6.9. |
+
+At the public settlement entry, exact historical replay after rename/archive must preserve its
+accepted identity; a reused command with a changed legacy outbox must refuse before mutation even
+when the run is already terminal. A new settlement with a stale claim must write nothing. A valid
+current claim must reach settlement, so negative tests cannot pass through broken setup. A fault
+after the database composite but before lifecycle timeline/journal completion must roll back all
+changes. These interacting rows supplement, not replace, P1–P6 and UNKNOWN resubmit refusal.
+
+### Ordered steps
+
+1. **C01 — Admission.** Verify binding, approved plan, T ancestry, current instructions and released
+   migration history. Pin synthetic old-format success/failure, journal replay and frozen-archive
+   fixtures before conversion. Record the exact completion representation and old/new replay map.
+2. **C02 — Storage.** Implement immutable completion on `workflow_runs`, rename `failures` to
+   `run_failures`, append conversion/recovery support and retire terminal authorization/outbox
+   tables. Preserve IDs, logical versions, generations, timestamps, fingerprints, receipt evidence
+   and foreign keys; inconsistent conversion fails atomically. Run P3 and relevant P4/P5 controls.
+3. **C03 — Runtime.** Adapt terminal factories, composites, lifecycle-journal replay, integrity and
+   deletion together. Completion/result-or-failure/timeline/journal settle atomically. Exercise P1/P2
+   stale-owner, competing-writer, rollback, exact replay and divergence controls at actual entry points.
+4. **C04 — Consumers.** Preserve retries, cancellation/interruption, child results, diagnostics,
+   protected projections and frozen archives. Remove the obsolete Storage Doctor metric across
+   CLI/API/UI. Update affected tests, fixtures and safety guards with negative controls; complete
+   focused P4–P6 and current-source Storage Doctor visual verification.
+5. **C05 — Release and integration.** Fix all focused failures, commit by logical category using
+   exact paths, and record candidate SHA/tree and proof results. Locally merge into master, resolve
+   in-scope conflicts and rerun checks invalidated by integration changes. Preserve evidence, verify
+   incorporation and remove only C's owned worktree and local branch. Save F's actual prerequisite
+   and deferred phase requirements. Stop after C; no automatic successor or observer task.
+
+### Source, test and documentation ownership
+
+Retain the complete **C0 execution allocation — 2.6.5 C** source list above. C also owns direct
+compatibility changes in `src/domain/archive/model.ts` and `src/core/run-result.ts` only where needed
+by the approved completion/identity conversion; this does not authorize a new archive schema or
+result meaning. Lifecycle replay is explicitly owned in `src/core/run-record-service.ts`.
+
+Retain all eleven existing unit test paths above. Add explicit ownership of
+`tests/unit/run-record-service/service.test.ts`, its `race-worker.ts` helper,
+`tests/unit/sqlite-authority-database.test.ts`, and new completion-specific fixtures/tests beside
+these files. C owns affected terminal-contract call-site fixtures and architecture guards,
+including `tests/unit/architecture/migration-history-immutability.test.ts`,
+`tests/unit/architecture/storage-recovery.test.ts`,
+`tests/unit/architecture/strict-boundary-schemas.test.ts`,
+`tests/unit/architecture/guard-manifest.test.ts` and deciding entries in
+`docs/rebuild/guard-inventory.json`. No guard is removed merely for naming a retired table.
+
+The bounded visual write set is the existing Settings source/model, the loaded Storage Doctor
+cases in `tests/parity/dashboard-reference.spec.ts`, affected fixture fields in
+`tests/parity/helpers/fixture-day.ts`, and only their affected reference artifacts. Use `/ui` locally:
+lead Components, support Verification, no delegated specialists. Read the dashboard rules, design,
+parity contract and browser playbook before the visual edit. Preserve themes, desktop membership,
+zoom/accessibility, unrelated counts and error states. No layout redesign or completion panel.
+
+C owns necessary completion-contract status corrections, this task's evidence, its roadmap/registry
+release bindings and affected generated manifest/catalog/roadmap outputs. Product contracts remain
+at their existing owners; do not duplicate them here or change another domain's approved behavior.
+New pure completion schema/compatibility files within these owned seams are routine implementation
+choices. An unrelated shared-API redesign returns for amendment; a necessary direct caller or
+fixture adaptation for the admitted retirement stays with this supervisor and is recorded.
+
+### Gate schedule and evidence
+
+Run focused tests during implementation at the earliest stable C02/C03/C04 boundary, and rerun the
+complete affected focused set on the committed release candidate. Preserve suite membership,
+assertions, timeouts, coverage floors and failure semantics. Record exact commands, tested SHA/tree,
+effective worker count, exits and log paths. Use one effective Vitest file worker; verify resolved
+runner configuration or observed child processes rather than assuming an environment flag works.
+Own synthetic database roots and logs under `/tmp/run-completion-*`; never use operator state as a fixture.
+
+```sh
+npm run test -- --project unit --maxWorkers=1 tests/unit/terminal-authorization.test.ts tests/unit/run-terminal-authority.test.ts tests/unit/run-result.test.ts tests/unit/run-executor.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/archive-model.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/dashboard/settings-storage-doctor.test.ts tests/unit/run-record-service/service.test.ts tests/unit/sqlite-authority-database.test.ts
+npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/architecture/guard-manifest.test.ts
+npm run lint
+npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep "loaded storage doctor"
+```
+
+Add exact selectors for new meaningful completion/recovery tests and any additional directly
+affected guards. If an owned test moves with a retired module, record its replacement and preserve
+its behavior/negative controls; an empty selector is not proof. Intentionally changed visual
+references use the same filtered selector with `npm run test:parity:update`, visual inspection,
+then the assertion command above. Verify current-source provenance; do not refreeze unrelated
+states or loosen tolerances. Any build required by the focused browser harness is only its setup,
+not a claim that the full phase build/parity gate ran.
+
+For affected generated inputs, run `npm run build:manifest`, `npm run stores:catalog` or
+`npm run roadmap`, followed by the matching `:check` command; skip unaffected generators with
+recorded input evidence. Generation precedes freshness. Serialize mutable parity/reference and
+generated outputs; avoid unnecessary overlapping test processes. Lint/focused tests must pass
+before release. Repeat affected checks after integration changes; reuse unchanged results only
+with tested input/tree comparison under D191. Documentation-only recording commits use scoped
+binding/link/instruction-pair/whitespace and affected freshness checks, with explicit unchanged-input reuse.
+
+Do not run full typecheck/coverage, the whole architecture suite, broad parity/build or performance
+gates here. Final 2.6.9 owns all those gates, full migration/recovery/scenario/concurrency/redaction/
+production-route acceptance and a fresh complete read-only `sup_review` on Astra/high. C introduces
+no reviewer dispatch or intermediate finalizer. All P1–P6 remain required; distinguish focused proof
+completed here from broad acceptance left for 2.6.9. Keep T's two context-blocked reviews and existing
+performance failures (day statements 5,574 > 5,569; archive freeze 3,234 > 13) visible there; neither
+is a PASS or a new C gate. Review and remaining phase repairs belong to the final supervisor.
+
+### Merge, cleanup and stop conditions
+
+After focused PASS, freeze the committed candidate and inspect target HEAD, clean status and
+ownership. Use a local merge preserving candidate history, preferably `--no-ff`. The operator has
+already authorized C integration and cleanup before final phase review. In-scope integration repairs
+remain here and require affected focused checks; a material contract/scope change stops for amendment.
+Never weaken UNKNOWN refusal, factory/dependency authentication, historical identity or immutable
+evidence to make migration/replay pass. No replacement completion table, delivery queue, dual-write
+authority, provider wiring, run summaries, archive transfer or new retention behavior is assigned.
+
+Preserve ignored proof artifacts before removal, with content hashes and a durable location outside
+the owned checkout. Verify the candidate is incorporated, final status is clean, owned processes
+are stopped, and refs/worktree registrations identify only C's resources. Change to the safe primary
+checkout before removing the auxiliary worktree; never remove the primary repository or another
+task's work. Delete only C's integrated branch and verify registered and physical absence. Record
+candidate/integration identities, evidence location, cleanup results and F's actual master-based
+prerequisite; F must recreate the absent lane rather than require retained C refs. No push, operator
+database upgrade, live HR submission, cutover or next-task dispatch. Completion means a merged scoped
+development release; Phase 2.6 remains open until 2.6.9 acceptance.
+
+At start/resume and after every verified step, report Done / Now / Remaining before the next tool
+call, including integration, cleanup and the explicitly deferred final review/gates. Use the existing
+owner for current state and the final delivery assessment; unique interrupted state uses `/handoff`.
+
 Release committed candidate/base/tree and focused evidence to the next named consumer. No master
 integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
 Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
 
 Authored evidence stays in this task's existing `run-completion.md` owner; shared indices remain read-only.
+
+### Planning verification and handoff
+
+The operator's approval was received in this planning session on 2026-09-09. Persistence changes
+only this assignment's execution documentation, its contract/registry pointers, the stale T
+prerequisite status and generated roadmap; no source, test, configuration or dependency inputs change.
+The planner verifies the final committed owner and returns its exact SHA as C's implementation base.
+
+| Planning check | Evidence |
+| --- | --- |
+| Prerequisites | T integration `5e446a90f018456d11ad38442c0fe3ba13e31dd1`, T candidate `58376a7d7f9a6af65dd443cecb934ce0a812593d`, C0 `c7b8b1e037bf27dd70d4df62bbfcac407e475631`, R `60b356dd119140dc972a077751ad16af934acb2e` and T1 `46930920696ab214b036d5f2681b8ffb4e5620ea` are verified ancestors of the planning base. |
+| Document binding | `npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/roadmap-doc-binding.test.ts`: PASS, 24 tests; `/tmp/run-completion-plan-binding.log`. Repeat after the final evidence edit and on the committed plan. |
+| Lint | `npm run lint`: PASS, exit 0, zero warnings; `/tmp/run-completion-plan-lint.log`. The subsequent evidence edit and generated roadmap do not change any lint input. |
+| Generation/freshness | `npm run roadmap` and `npm run roadmap:check`: PASS. Repeat after the evidence edit and check the committed output. |
+| Links/instructions | 163 scoped local links/anchors resolve; nine existing instruction pairs match byte-for-byte; maximum project instruction chain 17,333 UTF-8 bytes. Verification recipe: `/tmp/run-completion-plan-doccheck.py`. |
+| Whitespace | `git diff --check`: PASS; repeat on the final candidate. |
+| Not claimed | No product implementation, runtime migration proof, full phase gate, independent review, operator database application or HR submission ran in planning. |
+
+C is READY only after the exact committed plan content, reachability, final documentation checks
+and clean branch/path availability are verified by the outgoing handoff. No implementation checkout
+or agent is created by this planning stage. C remains planned; F waits for C's actual merged release.

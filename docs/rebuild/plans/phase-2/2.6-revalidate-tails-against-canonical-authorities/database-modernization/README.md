@@ -14,13 +14,15 @@ This is a **Phase 2.6-only trial**; other phases retain their existing gate requ
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
-**Status: R and C0 development releases complete; T is ready for its operator-started implementation.**
-R is released at `60b356dd119140dc972a077751ad16af934acb2e`; C0 at
-`c7b8b1e037bf27dd70d4df62bbfcac407e475631`. Later
-product implementation and final 2.6.9 acceptance remain pending. T1 is a separately completed input.
-Timeline T1 is now integrated at `46930920696ab214b036d5f2681b8ffb4e5620ea`; its existing owner
-records R1c PASS, integration gates and cleanup. Its implementation/evidence remain unchanged.
-T2 is included here as pending work; do not run the old standalone T2 prompt as well.
+**Status: R, C0 and T development releases are integrated; C (2.6.5) is approved for planning handoff.**
+T integration is `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; its candidate, repairs, retained
+proof and incomplete independent-review status are recorded in [timeline.md](timeline.md#operator-directed-merge-and-cleanup--2026-09-09).
+R, C0 and accepted T1 are ancestors; removed predecessor branches are not launch prerequisites.
+C remains unimplemented. Its [approved execution brief](run-completion.md#approved-execution-brief--2026-09-09)
+supersedes generic retention/integration wording for C: one supervisor implements, passes focused
+checks, merges locally into master and cleans up its owned checkout/ref. Full gates and complete
+independent review remain in 2.6.9. Readiness requires the planner's verified committed-plan handoff.
+No other task's scope or launch is authorized by this amendment.
 
 The [product decisions](decisions.md) retain every approved settings/version/archive/read-model
 choice. The domain files retain the detailed earlier product contracts and proof rows. This README,

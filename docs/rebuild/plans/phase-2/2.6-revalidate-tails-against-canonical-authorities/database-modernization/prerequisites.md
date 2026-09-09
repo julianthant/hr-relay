@@ -125,6 +125,11 @@ Release T's actual candidate SHA/tree and migration/source interface to C.
 
 ## C · Run completion
 
+**Current binding:** T is integrated at `5e446a90f018456d11ad38442c0fe3ba13e31dd1`.
+The operator approved [C01–C05](run-completion.md#approved-execution-brief--2026-09-09), including
+local master merge and owned cleanup after focused PASS. That C-specific instruction supersedes
+this file's generic retention/no-master-merge wording. Full gates and independent review stay in 2.6.9.
+
 Follow [run-completion.md](run-completion.md), all P1–P6. Consume T's committed development
 release. Deliver direct completion/run_failures, no terminal authorization/outbox dependency,
 correct fences/retries/UNKNOWN behavior, preserved history and failure/receipt consumers. Its

@@ -7,14 +7,17 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 
 ## Readiness
 
-R is released at `60b356dd119140dc972a077751ad16af934acb2e`. C0 consumed it and accepted T1;
-C0's scoped-validated handoff is `c7b8b1e037bf27dd70d4df62bbfcac407e475631`
-(admitted plan `0010c51c4189f14a8aa61dac55984c2df791045e`). **T is READY** for an operator-started task. C/F/P/D/G/S/L/A/Q/V/U/H and final 2.6.9 remain **WAITING ON** their actual
-named prerequisite releases. No placeholder SHA or old side-task prompt is executable.
+R, C0 and T development releases are incorporated in master through T integration
+`5e446a90f018456d11ad38442c0fe3ba13e31dd1`. T's source owner and merge message supersede its
+historical unstarted registry entry. C (2.6.5) has operator approval for the complete
+[C01–C05 brief](run-completion.md#approved-execution-brief--2026-09-09); the planner returns its
+exact committed-plan SHA after documentation gates and verifies READY. C is not implemented.
+F/P/D/G/S/L/A/Q/V/U/H and 2.6.9 remain WAITING ON their actual named prerequisite releases.
 
-C0 planning/execution was explicitly preapproved and run in the same scheduled task. Its single
-owner is [prerequisites.md](prerequisites.md#c0-execution-brief--preapproved-2026-09-09). Do not
-repeat C0 or interpret its completion as authorization to implement every downstream task.
+For C only, the approved brief overrides generic prompt/retention rules: implement with one
+supervisor and zero workers, pass focused checks, merge locally into master and remove C's owned
+worktree/ref. No task-local review or full gates; both remain in 2.6.9. R/C0/T refs and checkouts
+were removed after integration and must not be required or recreated as retained prerequisites.
 
 ## Visible task IDs
 
@@ -103,8 +106,8 @@ of all retained candidate refs and the actual remaining physical lanes after acc
 ## Resolved next assignment — 2.6.4 T
 
 The operator approved the expanded [T01–T06 execution brief](timeline.md#approved-execution-brief--2026-09-09)
-on 2026-09-09. It supersedes the former C0-only launch prompt here. T remains unstarted;
-this planning update neither dispatches it nor changes later dependency releases.
+on 2026-09-09. The following records the historical T launch, now superseded by its integrated
+release at `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; do not execute it again.
 
 The fresh supervisor consumes the exact approved planning commit containing that brief, verified
 by the planning session after commit. Create `codex/history-views` at
@@ -123,3 +126,23 @@ independent complete review, operator-assigned master integration and final clea
 Return the committed development candidate to C only; no master merge, push, live application or
 automatic next-task dispatch. The planning session returns the copy-ready prompt with the full
 verified plan SHA after documentation gates and commit verification.
+
+## Resolved next assignment — 2.6.5 C
+
+The operator approved the complete [C01–C05 execution brief](run-completion.md#approved-execution-brief--2026-09-09)
+on 2026-09-09. The planner returns the full verified plan SHA after committing and checking the
+owning section. That SHA is the implementation base on master, descended from T integration
+`5e446a90f018456d11ad38442c0fe3ba13e31dd1`; it includes the approved plan and all prerequisites.
+
+Use `/supervise 2.6.5 (C)`, GPT-6 Astra/high, with one supervisor and zero workers. Create
+`codex/run-completion` at `/Users/julianhein/Projects/hr-worktree-database-contracts` from that exact
+plan commit after checking branch/path absence, ownership, capacity and prerequisite ancestry.
+Both branch and path were absent during planning; no checkout is reserved or created by planning.
+
+Execute C01–C05 and all P1–P6 under the linked brief. Focused tests, lint, affected guards/freshness
+and filtered Storage Doctor verification are due here. Full gates and fresh complete independent
+review stay in 2.6.9. The same C supervisor commits, merges locally into master after focused PASS,
+verifies integration, preserves proof artifacts and removes its owned worktree/branch. Record F's
+actual merged prerequisite without dispatching it. Preserve historical replay/frozen evidence and
+UNKNOWN refusal. No push, operator database application, HR submission or automatic successor.
+Keep Done / Now / Remaining visible, including integration, cleanup and deferred phase acceptance.

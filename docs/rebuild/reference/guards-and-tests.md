@@ -1285,6 +1285,16 @@ rename checks; no full coverage, whole architecture suite or broad parity per ta
 independent review belong to 2.6.9, with required reruns after repairs. Handover within finalization verifies
 and reuses unchanged final evidence. Other phases and existing in-flight assignments are unchanged.
 
+**2026-09-09 C integration exception.** The operator explicitly approved 2.6.5 C local master
+integration and owned cleanup after the focused checks in its
+[approved C01–C05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09).
+This overrides the earlier no-master-integration-until-final-PASS rule for C only. Run meaningful
+focused unit/architecture checks, lint, affected freshness and filtered Storage Doctor verification;
+repeat invalidated checks after integration changes and verify unchanged inputs before reuse.
+Full typecheck/coverage, broad architecture/parity/build/performance and fresh complete independent
+review remain in 2.6.9. C completion is a merged development release, not final phase acceptance.
+No live application, push or automatic successor is authorized. Other assignments retain their rules.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->
