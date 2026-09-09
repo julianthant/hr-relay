@@ -1342,3 +1342,10 @@ cannot reset provider usage or invent credential/model attribution. L's cleanup 
 cumulative usage and rejects late settlement for deleted owners.
 
 This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+
+### F implementation baseline — 2026-09-09
+
+F supplies retained-snapshot session/resource factories and separate S-owned selection/claim hooks, preserving current ownership fences, accepted replay and UNKNOWN refusal. This is the working extraction baseline; S owns its remaining activation/retry/child policy.
+
+Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

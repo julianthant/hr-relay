@@ -7204,3 +7204,10 @@ classification; a storage-only table name is not proof of safely disposable data
 preservation and absence/refusal guards precede removal.
 
 This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+
+### F implementation baseline — 2026-09-09
+
+F removes only approved unused SQL spans/gates/notes/OCR approval scaffolding, refusing unknown population, and retires knowledge/fix live authority with source-bound preservation. Logs, timeline events, historical span readers, approvals and live-read results remain. Archive transfer and summaries are later work.
+
+Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

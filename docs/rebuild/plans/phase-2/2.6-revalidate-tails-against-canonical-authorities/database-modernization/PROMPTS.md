@@ -14,7 +14,7 @@ are verified prerequisites for F. C's removed branch/path must not be recreated 
 
 F (2.6.6) has operator approval for the complete
 [F01–F07 brief](foundation.md#approved-execution-brief--2026-09-09). Its planner verifies the exact
-committed plan SHA, documentation gates and ancestry before issuing READY. F is unimplemented.
+committed plan SHA, documentation gates and ancestry before issuing READY. F01–F05 are implemented; committed F06 proof and F07 integration/cleanup are pending.
 P/D/G/S and all later tasks remain WAITING ON their actual named prerequisite releases.
 
 For C and F, their approved briefs override generic prompt/retention rules: one supervisor, zero
