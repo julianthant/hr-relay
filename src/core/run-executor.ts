@@ -1,3 +1,5 @@
+import type { ProviderAccountingStorage } from "../base/provider-accounting.js";
+import { commitGeneratedCheckpoint, projectGeneratedUpdates } from "./generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../events/timeline.js";
 import { localDatePart } from "../domain/clock.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
@@ -249,6 +251,7 @@ export interface RunArtifactProjector {
 export interface RunProviderWiring {
   readonly adapters: ProviderAdapterRegistry;
   readonly repository: ProviderAdmissionRepository;
+  readonly accounting?: ProviderAccountingStorage;
   /** `AuthorityRepositories["configSnapshots"]` satisfies this. */
   readonly configSnapshots: Readonly<{ get(snapshotId: string): unknown }>;
   readonly idFactory: ProviderAdmissionIdFactory;
@@ -1172,6 +1175,7 @@ export async function executeClaimedRun(
             runSignal: controller.signal,
             adapters: provider.wiring.adapters,
             repository: provider.wiring.repository,
+            ...(provider.wiring.accounting===undefined?{}:{accounting:provider.wiring.accounting}),
             clock,
             idFactory: provider.wiring.idFactory,
             deadlineScheduler: deps.scheduler,
@@ -1275,7 +1279,7 @@ export async function executeClaimedRun(
             + "outbox rows, and this composition wires no artifact sink projector",
           ));
         }
-        await projector.projectOutbox(pending.map((row) => row.outboxId));
+        await projectGeneratedUpdates(projector, pending.map((row) => row.outboxId));
       } catch (error) {
         return await failNode(node, node.uses.id, error);
       }
@@ -1387,14 +1391,11 @@ export async function executeClaimedRun(
             }));
             // Ref dashboard-surfaces §2.1 (D45): the checkpoint and its stable-keyed outbox
             // rows are ONE durable fact — neither may exist without the other.
-            withTransaction((repositories) => {
-              repositories.runCheckpoints.insert(record);
-              for (const row of outboxRows) repositories.artifactOutbox.insert(row);
-            });
+            commitGeneratedCheckpoint({withTransaction, checkpoint:record, updates:outboxRows});
             // Blocking: the node may not report done until every row is
             // acknowledged. A throw here fails the node; the durable rows
             // survive, and a relaunch resumes projection from the replay arm.
-            await projector.projectOutbox(outboxRows.map((row) => String(row.outboxId)));
+            await projectGeneratedUpdates(projector, outboxRows.map((row) => String(row.outboxId)));
           }
           checkpointRecords.set(String(node.id), record);
           outputs[String(node.id)] = JsonValueSchema.parse(record.output.value);

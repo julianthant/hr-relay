@@ -1,3 +1,4 @@
+import type { createFailureResolutionQuery } from "./failure-resolution.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
 import type { GateResultRecord } from "../../../domain/gates.js";
@@ -18,6 +19,7 @@ import type { DiagnosticBundleQueryDeps } from "./diagnostic-bundle.js";
  * than by handing in a stub that returns nothing.
  */
 export interface RunDetailTrustDeps {
+  readonly failureResolution?: ReturnType<typeof createFailureResolutionQuery>;
   /** Derive-and-persist the run's receipt; see `ensureRunEvidenceReceipt`. */
   ensureReceipt(runId: string): RunEvidenceReceipt;
   getFailure(failureId: string): FailureRecord | undefined;

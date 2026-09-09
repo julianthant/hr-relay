@@ -108,7 +108,7 @@ function pageWith(input: Readonly<{
 function evidenceCount(path: string): number {
   const raw = new DatabaseSync(path);
   try {
-    const row = raw.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
+    const row = raw.prepare("SELECT count(*) AS count FROM generated_artifacts WHERE export_id IS NOT NULL").get();
     return Number(row?.count);
   } finally {
     raw.close();
@@ -261,20 +261,20 @@ describe("operator XLSX export service", () => {
       const raw = new DatabaseSync(join(root, "authority.db"));
       try {
         assert.throws(
-          () => raw.prepare("UPDATE operator_xlsx_exports SET filename = ? WHERE record_key = ?")
+          () => raw.prepare("UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',?),version=version+1 WHERE export_id = ?")
             .run("substituted.xlsx", EXPORT_ID),
-          /operator XLSX export evidence is immutable/,
+          /generated artifact evidence is immutable/,
         );
         assert.throws(
-          () => raw.prepare("DELETE FROM operator_xlsx_exports WHERE record_key = ?").run(EXPORT_ID),
-          /operator XLSX export evidence is never deleted/,
+          () => raw.prepare("DELETE FROM generated_artifacts WHERE export_id = ?").run(EXPORT_ID),
+          /generated artifact evidence is retained/,
         );
         assert.throws(
           () => raw.exec(
-            `INSERT OR REPLACE INTO operator_xlsx_exports
-             SELECT * FROM operator_xlsx_exports WHERE record_key = '${EXPORT_ID}'`,
+            `INSERT OR REPLACE INTO generated_artifacts
+             SELECT * FROM generated_artifacts WHERE export_id = '${EXPORT_ID}'`,
           ),
-          /operator XLSX export evidence insert conflicts with immutable evidence/,
+          /generated artifact insert conflicts with immutable evidence/,
         );
       } finally {
         raw.close();
@@ -334,7 +334,7 @@ describe("operator XLSX export service", () => {
       );
       const raw = new DatabaseSync(join(root, "authority.db"));
       try {
-        const row = raw.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
+        const row = raw.prepare("SELECT count(*) AS count FROM generated_artifacts WHERE export_id IS NOT NULL").get();
         assert.equal(row?.count, 0);
       } finally {
         raw.close();

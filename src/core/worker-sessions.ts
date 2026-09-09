@@ -388,13 +388,13 @@ export class WorkerSessionManager {
   readonly #workerId: WorkerId;
   readonly #workflowId: WorkflowId;
   readonly #stores: TaskStoreRegistry;
-  readonly #factory: WorkerBrowserSessionFactory;
+  #factory: WorkerBrowserSessionFactory;
   readonly #clock: Clock;
   readonly #scheduler: MonotonicDeadlineScheduler;
-  readonly #acquireDeadlineMs: number;
-  readonly #duoCeremony: DuoCeremonyGateFactory;
+  #acquireDeadlineMs: number;
+  #duoCeremony: DuoCeremonyGateFactory;
   readonly #onEvent: (event: WorkerSessionEvent) => void;
-  readonly #defaultBrowserMode: BrowserPresentationMode;
+  #defaultBrowserMode: BrowserPresentationMode;
   readonly #browserScreenshotCapture: RunBrowserScreenshotCapture | undefined;
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
@@ -421,6 +421,14 @@ export class WorkerSessionManager {
     this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
     this.#duoCeremony = options.duoCeremony;
     this.#onEvent = options.onEvent ?? (() => undefined);
+  }
+
+  configureRunResources(resources: Readonly<{sessionFactory:WorkerBrowserSessionFactory;sessionAcquireMs:number;duoCeremony:DuoCeremonyGateFactory;defaultBrowserMode:BrowserPresentationMode}>): void {
+    if (this.#runConfigFingerprint !== undefined || this.#starting.size > 0) throw new Error("run-resources-cannot-change-during-execution");
+    this.#factory = resources.sessionFactory;
+    this.#acquireDeadlineMs = z.number().int().positive().parse(resources.sessionAcquireMs);
+    this.#duoCeremony = resources.duoCeremony;
+    this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(resources.defaultBrowserMode);
   }
 
   activeSystems(): readonly BrowserSystemId[] {

@@ -2662,3 +2662,10 @@ missing ownership. Preserve old backup grammars and settings/credential coupling
 upgrade is authorized by C0.
 
 This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+
+### F implementation baseline — 2026-09-09
+
+Schema47 F consolidates saved/active authority into app_settings plus retained settings_snapshots and routes save/create/claim/resource calls through S-owned modules. The working baseline still requires restart; S owns the approved no-restart change.
+
+Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

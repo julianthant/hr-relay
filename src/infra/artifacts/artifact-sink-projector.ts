@@ -89,13 +89,18 @@ export function createArtifactSinkProjector(options: ArtifactSinkProjectorOption
           );
         }
         await withSinkLock(row.sinkId, async () => {
+          const current = options.authority.artifactOutbox.get(outboxId);
+          if (current === undefined) throw new Error("generated-artifact-update-disappeared");
+          if (current.state === "projected") return;
+          const first = options.authority.artifactOutbox.listPending().find((pending) => pending.sinkId === row.sinkId);
+          if (first?.outboxId !== row.outboxId) throw new Error("generated-artifact-out-of-order");
           const head = options.authority.artifactSinkHeads.get(row.sinkId);
-          const { contentSha256 } = await sink.project({ row, head });
+          const { contentSha256, artifact } = await sink.project({ row, head });
           const projectedAt = options.clock.now().toISOString();
           options.withAuthorityTransaction(() => {
             options.authority.artifactSinkHeads.record({
               sinkId: row.sinkId,
-              contentSha256,
+              contentSha256, artifact, expectedGeneration: head?.generation ?? 0,
               lastOutboxId: row.outboxId,
               projectedAt,
             });

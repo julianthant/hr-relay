@@ -1,3 +1,4 @@
+import { composeFailureResolution } from "./compose/failure-resolution.js";
 import { localDatePart } from "../../domain/clock.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../domain/archive/retention.js";
 import { createOperatorProjection, createOperatorRunDetail, createOperatorArchive } from "./compose/operator.js";
@@ -132,7 +133,7 @@ import { runQueuedSpanEvent } from "./commands/run-queued-span.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createCrossDateSearchService } from "./queries/search.js";
-import { createOperatorXlsxExportService } from "./exports/operator-xlsx-export-service.js";
+import { composeGeneratedExports } from "./compose/generated-exports.js";
 import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
@@ -792,6 +793,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   };
 
   const kernel = createCommandKernel({
+    failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
@@ -889,6 +891,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
           runSignal: new AbortController().signal,
           adapters: { "ai.advisory": createProviderPool("ai.advisory", advisoryChildren) },
           repository: database.authority.providerAdmissions,
+          accounting: database.authority.providerAccounting,
           clock,
           idFactory: { next: () => ProviderAdmissionIdSchema.parse(ids.uuid()) },
           deadlineScheduler: advisoryScheduler,
@@ -911,7 +914,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       })),
     },
   });
-  const xlsxExports = createOperatorXlsxExportService({
+  const xlsxExports = composeGeneratedExports({
     clock,
     ids,
     sourceIdentity: database.getSourceDatabaseIdentity(),

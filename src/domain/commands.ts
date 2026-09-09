@@ -1,3 +1,4 @@
+import { FailureResolutionTargetSchema, FailureResolutionActionSchema } from "./trust/failure-resolution.js";
 import { z } from "zod";
 
 import { canonicalJsonStringify } from "./canonical-json.js";
@@ -49,6 +50,7 @@ export class CommandIdentityConflictError extends Error {
 }
 
 export const CommandFamilySchema = z.enum([
+  "failure-resolution",
   "workflow-batch",
   "start",
   "intake",
@@ -62,6 +64,7 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
+  "annotate-failure",
   "set-batch-grouping",
   "start-run",
   "inspect-intake",
@@ -372,7 +375,12 @@ export const WorkflowBatchCommandRequestSchema = z.strictObject({
   payload: z.strictObject({ groupInQueue: z.boolean() }),
 });
 
+export const FailureResolutionCommandSchema = z.strictObject({ ...CommandEnvelopeFields,
+  family: z.literal("failure-resolution"), type: z.literal("annotate-failure"),
+  target: FailureResolutionTargetSchema, payload: FailureResolutionActionSchema });
+export type FailureResolutionCommand = z.infer<typeof FailureResolutionCommandSchema>;
 export const CommandRequestSchema = z.union([
+  FailureResolutionCommandSchema,
   WorkflowBatchCommandRequestSchema,
   StartCommandRequestSchema,
   IntakeCommandRequestSchema,
@@ -388,6 +396,7 @@ export const CommandRequestSchema = z.union([
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
+  z.strictObject({family:z.literal("failure-resolution"), runId:RunIdSchema, failureId:FailureResolutionTargetSchema.shape.failureId}),
   z.strictObject({ family: z.literal("workflow-batch"), batchId: RunSessionIdSchema }),
   z.strictObject({
     family: z.literal("start"),
@@ -452,11 +461,10 @@ const CommandLandingResultSchema = z.strictObject({
 }).superRefine((result, context) => {
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
   const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");
-  const hasOrdinaryResult = result.restartRequired === true
+  const hasOrdinaryResult = result.restartRequired !== undefined
     || result.settingsRevision !== undefined
     || result.settingsFingerprint !== undefined;
-  const hasProtectedResult = result.restartRequired === false
-    || result.revision !== undefined
+  const hasProtectedResult = result.revision !== undefined
     || result.entries !== undefined;
   if (settingsTargets.length === 0 && protectedTargets.length === 0) {
     if (hasOrdinaryResult || hasProtectedResult) {
@@ -470,14 +478,14 @@ const CommandLandingResultSchema = z.strictObject({
   if (settingsTargets.length === 1) {
     const target = settingsTargets[0];
     if (result.affectedTargets.length !== 1 || target === undefined
-      || result.restartRequired !== true
+      || result.restartRequired === undefined
       || result.settingsRevision !== target.revision
       || result.settingsFingerprint === undefined
       || result.revision !== undefined
       || result.entries !== undefined) {
       context.addIssue({
         code: "custom",
-        message: "an ordinary settings result requires restartRequired=true and its exact revision/fingerprint only",
+        message: "an ordinary settings result requires an explicit restart decision and its exact revision/fingerprint only",
       });
     }
     return;
@@ -518,13 +526,10 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
   if (result.state !== "applied" && result.state !== "already-applied") return;
   const affectsSettings = result.affectedTargets.some((target) => target.family === "settings");
   const affectsProtected = result.affectedTargets.some((target) => target.family === "protected-settings");
-  if (affectsSettings !== (result.restartRequired === true)
-    || affectsProtected !== (result.restartRequired === false)) {
-    context.addIssue({
-      code: "custom",
-      path: ["restartRequired"],
-      message: "restartRequired must match the ordinary/protected settings target exactly",
-    });
+  if ((affectsSettings && result.restartRequired === undefined)
+    || (affectsProtected && result.restartRequired !== false)
+    || (!affectsSettings && !affectsProtected && result.restartRequired !== undefined)) {
+    context.addIssue({ code: "custom", path: ["restartRequired"], message: "restart decision requires its exact settings target" });
   }
 });
 
@@ -752,6 +757,7 @@ export const CommandFamilySpecSchema = z.strictObject({
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
+  "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
@@ -783,6 +789,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
 });
 
 export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
+  { family: "failure-resolution", actions: ["annotate-failure"] },
   { family: "workflow-batch", actions: ["set-batch-grouping"] },
   { family: "start", actions: ["start-run"] },
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },

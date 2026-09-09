@@ -1,3 +1,5 @@
+import { insertImportedArtifact } from "../../src/infra/sqlite/imported-artifacts.js";
+import { importedArtifact } from "../../src/domain/intake/imported-artifact.js";
 /**
  * 2i-E1: the durable intake session — created in `mapping` by the upload
  * route, mutated under a version CAS, and findable by its source bytes so a
@@ -34,19 +36,7 @@ function database(legacySession?: IntakeSession): AuthorityDatabase {
   if (legacySession !== undefined) {
     const legacy = new DatabaseSync(path);
     try {
-      legacy.prepare(`
-        INSERT INTO intake_sessions
-          (record_key, workflow, source_sha256, state, record_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        legacySession.intakeSessionId,
-        legacySession.workflow,
-        legacySession.artifact.sha256,
-        legacySession.state,
-        JSON.stringify(legacySession),
-        legacySession.createdAt,
-        legacySession.updatedAt,
-      );
+      insertImportedArtifact(legacy, importedArtifact(JSON.stringify(legacySession), null));
     } finally {
       legacy.close();
     }

@@ -1074,7 +1074,7 @@ log:
 - 2026-09-09 | C upgrade regression repaired | candidate 47a64d33a, integration e43a8d851; schema39 success/failure upgrade regressions added; 526 units, 134 architecture tests, lint, freshness and four Storage Doctor cases PASS. Repaired prerequisite and closure at C owner; full acceptance/review remain 2.6.9
 
 #### 6 · Prepare independent database domain tasks {#p2db-domain-foundation}
-status: planned
+status: active
 doc: 2.6 §Task 6 · Prepare independent database domain tasks
 
 > Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.9.
@@ -1092,6 +1092,8 @@ log:
 - 2026-09-09 | C source prerequisite recorded | master 0dd02a890; F remains unlaunched and needs its own committed execution brief
 - 2026-09-09 | C prerequisite superseded by repair | use integrated e43a8d851 together with F approved plan; earlier C release alone is insufficient; no F dispatch
 - 2026-09-09 | 2.6.6 F plan approved | F01–F07 at foundation owner; verified C ancestry and schema41/floor40. One supervisor, focused checks, local master merge and owned cleanup; full gates and independent review remain 2.6.9. F and its four children remain unimplemented
+- 2026-09-09 | F01–F05 implemented | schema47/floor46, composed P/D/G/S baseline and pairwise proof; committed F06 and F07 integration/cleanup pending. Full acceptance/review remain 2.6.9
+- 2026-09-09 | F06 focused PASS | candidate e32979d0a; 949 unit, 199 affected architecture and 49 filtered UI cases; lint/freshness PASS. Local integration and cleanup pending; final acceptance/review remain 2.6.9
 
 ##### 1 · Track provider requests and usage {#p2db-provider-usage}
 status: planned

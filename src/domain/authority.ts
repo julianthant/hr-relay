@@ -22,13 +22,11 @@ export const AuthorityTableNameSchema = z.enum([
   "diagnostic_files",
   "run_receipts",
   "dryrun_results",
-  "operator_xlsx_exports",
+  "generated_artifacts",
   "activity_person_pseudonyms",
   "activity_person_pseudonym_generations",
-  "knowledge_records",
-  "fix_records",
-  "provider_budget_counters",
-  "provider_admissions",
+  "provider_usage",
+  "provider_requests",
   "workflow_workers",
   "delegation_dependencies",
   "run_delegations",
@@ -36,20 +34,15 @@ export const AuthorityTableNameSchema = z.enum([
   "command_audits",
   "notifications",
   "settings_snapshots",
-  "settings_current",
-  "runtime_config",
+  "app_settings",
   "version_plans",
   "checkpoint_payloads",
   "run_checkpoints",
   "workflow_run_requests",
-  "ocr_approvals",
   "run_operations",
   "run_operation_attempts",
-  "artifact_outbox",
-  "artifact_sink_heads",
-  "intake_sessions",
-  "intake_manifests",
-  "ocr_extractions",
+  "imported_artifacts",
+  "extracted_artifacts",
   "version_bump_applications",
   "archived_runs",
   "archive_relaunches",
@@ -62,11 +55,7 @@ export const AuthorityTableNameSchema = z.enum([
   "timeline_operation_sources",
 ]);
 
-export const ProjectionTableNameSchema = z.enum([
-  "spans",
-  "gates",
-  "notes",
-]);
+export const ProjectionTableNameSchema = z.enum([]);
 
 export const TableNameSchema = z.union([AuthorityTableNameSchema, ProjectionTableNameSchema]);
 export const TableClassSchema = z.enum(["authority", "projection"]);
@@ -157,7 +146,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41)]),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -201,7 +190,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   tombstoneBackfill: TombstoneBackfillCountsSchema,
   upgradeId: FingerprintSchema,
   phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41)]),
+  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47)]),
   backupManifest: z.string().min(1),
   ordinaryRevision: PositiveIntSchema,
   ordinaryFingerprint: FingerprintSchema,
@@ -211,6 +200,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   credentialWriteId: z.uuid(),
   importedKeys: z.array(z.string().min(1)),
   envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
+  generatedImport: z.strictObject({manifestDigest: FingerprintSchema, copyDirectory: z.string().min(1), backupSha256: FingerprintSchema}).optional(),
   timelineImport: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("fresh"), imported: z.literal(0), excludedDeleted: z.literal(0) }),
     z.strictObject({ state: z.literal("imported"), manifestDigest: FingerprintSchema,

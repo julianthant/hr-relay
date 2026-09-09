@@ -666,9 +666,12 @@ function failureDetailWire(
 ): z.infer<typeof FailureDetailWireSchema> {
   const projected = projectFailureForOperator(failure, protectedInput);
   const seen = trust.countFailuresByFingerprint(projected.fingerprint);
+  const resolution = trust.failureResolution?.read(runId, failure.failureId);
+  if (trust.failureResolution !== undefined && resolution === undefined) throw new Error("failure-resolution-annotation-missing");
   return FailureDetailWireSchema.parse({
     runId,
     failureId: projected.failureId,
+    ...(resolution === undefined ? {} : {resolution:{capability:trust.failureResolution?.capability(),capture:resolution}}),
     traceId: projected.traceId,
     attempt: projected.attempt,
     workflowId: projected.workflowId,

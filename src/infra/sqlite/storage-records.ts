@@ -1,7 +1,10 @@
+import { AppSettingsSchema } from "../../domain/config/app-settings.js";
+import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../domain/provider-accounting.js";
+import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../domain/generated-artifact.js";
+import { ImportedArtifactSchema } from "../../domain/intake/imported-artifact.js";
 import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../events/timeline.js";
 import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../domain/commands-history.js";
 import { z } from "zod";
-import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../domain/run/session.js";
 import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
@@ -10,8 +13,6 @@ import {
   AuthorityUpgradeRecordSchema,
   type AuthorityTableName,
 } from "../../domain/authority.js";
-import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
-import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import {
   AuthorityCommandAuditRecordSchema,
@@ -19,29 +20,20 @@ import {
   BulkParentCommandRecordSchema,
 } from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
-import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
-import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
-  ArtifactIdSchema,
   DiagnosticBundleIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
-  NodeIdSchema,
-  OutboxIdSchema,
   PositiveIntSchema,
-  RunIdSchema,
   VersionPlanIdSchema,
 } from "../../domain/ids.js";
-import { ArtifactProjectionKeyValueSchema } from "../../domain/workflow/artifact-projection.js";
 
 
 import { NotificationRecordSchema } from "../../domain/notifications.js";
-import {
-  ProviderAdmissionRecordSchema,
-  ProviderBudgetCounterSchema,
-} from "../../domain/provider-admission.js";
+
+
 import { RunRecordSchema } from "../../domain/run/record.js";
 import { RunResultRecordSchema } from "../../domain/run/result.js";
 import { StartPlanRecordSchema } from "../../domain/run/start-plan.js";
@@ -63,7 +55,6 @@ import {
 import { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { DryRunScenarioResultSchema } from "../../domain/trust/dry-run-scenario-result.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
-import { FixRecordSchema, KnowledgeRecordSchema } from "../../domain/trust/knowledge.js";
 import {
   ActivityPersonPseudonymEvidenceSchema,
   ActivityPersonPseudonymGenerationBindingSchema,
@@ -165,50 +156,7 @@ export type VersionPlanConsumeOutcome = z.infer<typeof VersionPlanConsumeOutcome
  * this is the first real shape, not a migration of one. `projectedAt` exists
  * exactly when `state` is `"projected"` (enforced by the repository's ack).
  */
-export const ArtifactOutboxStorageRecordSchema = z.strictObject({
-  outboxId: OutboxIdSchema,
-  artifactId: ArtifactIdSchema,
-  projectionId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  stableKeyFingerprint: FingerprintSchema,
-  /** Ordered declared-key pairs, never an open map (ref data-intake-and-edit-data §2's own rule). */
-  keyValues: ArtifactProjectionKeyValueSchema.array().min(1),
-  sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  sourceRunId: RunIdSchema,
-  sourceNodeId: NodeIdSchema,
-  state: z.enum(["pending", "projected"]),
-  payload: SchemaBoundCanonicalValueSchema,
-  createdAt: IsoInstantSchema,
-  projectedAt: IsoInstantSchema.optional(),
-});
-
-/**
- * Ref data-intake-and-edit-data §4.1's sink head: the last content hash this projector recorded for
- * a sink's workbook. One row per sink, updated with `generation + 1` under a
- * CAS — the same one-row-updated discipline notifications follow (v10's
- * lesson). A workbook whose bytes do not hash to `contentSha256` was changed
- * by someone else, and the projector parks rather than overwriting them.
- */
-export const ArtifactSinkHeadRecordSchema = z.strictObject({
-  sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  contentSha256: FingerprintSchema,
-  generation: PositiveIntSchema,
-  lastOutboxId: OutboxIdSchema,
-  projectedAt: IsoInstantSchema,
-});
-
-/** The repository ack: CAS `pending → projected`, stamping the instant. */
-export const ArtifactOutboxAckRequestSchema = z.strictObject({
-  outboxId: OutboxIdSchema,
-  projectedAt: IsoInstantSchema,
-});
-
-/** The repository head upsert; `generation` is assigned by the repository. */
-export const ArtifactSinkHeadRecordRequestSchema = z.strictObject({
-  sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  contentSha256: FingerprintSchema,
-  lastOutboxId: OutboxIdSchema,
-  projectedAt: IsoInstantSchema,
-});
+export { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema, ArtifactOutboxAckRequestSchema, ArtifactSinkHeadRecordRequestSchema } from "../../domain/generated-artifact.js";
 
 /**
  * A diagnostic attachment is stored beside its bundle so a content-addressed
@@ -242,14 +190,12 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   diagnostic_files: DiagnosticAttachmentStorageRecordSchema,
   run_receipts: RunEvidenceReceiptSchema,
   dryrun_results: DryRunScenarioResultSchema,
-  operator_xlsx_exports: OperatorXlsxExportEvidenceSchema,
+  generated_artifacts: GeneratedArtifactSchema,
   activity_person_pseudonyms: ActivityPersonPseudonymEvidenceSchema,
   activity_person_pseudonym_generations: ActivityPersonPseudonymGenerationBindingSchema,
-  knowledge_records: KnowledgeRecordSchema,
-  fix_records: FixRecordSchema,
   timeline_operation_sources: HistoricalOperationSourceSchema,
-  provider_budget_counters: ProviderBudgetCounterSchema,
-  provider_admissions: ProviderAdmissionRecordSchema,
+  provider_usage: ProviderUsageStorageSchema,
+  provider_requests: ProviderRequestStorageSchema,
   workflow_workers: WorkerLeaseRecordSchema,
   delegation_dependencies: DependencyRecordSchema,
   run_delegations: DelegationManifestSchema,
@@ -258,24 +204,20 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
   notifications: NotificationRecordSchema,
   settings_snapshots: ConfigSnapshotRecordSchema,
-  settings_current: SettingsCurrentRecordSchema,
-  runtime_config: ActiveRuntimeConfigRecordSchema,
+  app_settings: AppSettingsSchema,
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
   run_checkpoints: RunCheckpointRecordSchema,
   workflow_run_requests: StartPlanRecordSchema,
-  ocr_approvals: OpaqueAuthorityRecordSchema,
   run_operations: WriteIntentRecordSchema,
   run_operation_attempts: WriteAttemptRecordSchema,
-  artifact_outbox: ArtifactOutboxStorageRecordSchema,
   /** Typed at D164, when the first sink projector landed. */
-  artifact_sink_heads: ArtifactSinkHeadRecordSchema,
   /** Ref data-intake-and-edit-data §2.2's in-progress session (2i-E1). */
-  intake_sessions: IntakeSessionSchema,
+  imported_artifacts: ImportedArtifactSchema,
   /** Ref data-intake-and-edit-data §5's immutable plan manifest (D159). */
-  intake_manifests: IntakePlanManifestSchema,
+
   /** Ref data-intake-and-edit-data §4.3's admitted page extraction (D159). */
-  ocr_extractions: AdmittedExtractionSchema,
+  extracted_artifacts: AdmittedExtractionSchema,
   /** D179 / ref dashboard-surfaces §10.2 — the archive model's three durable facts. */
   version_bump_applications: VersionBumpApplicationStorageRecordSchema,
   archived_runs: ArchivedRunStorageRecordSchema,

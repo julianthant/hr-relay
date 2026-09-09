@@ -2862,3 +2862,10 @@ non-Activity authorized projections and retained protected-input authentication.
 mechanism replaces the retired Activity tables.
 
 This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+
+### F implementation baseline — 2026-09-09
+
+F adds separately versioned failure annotations and capture/query/command ports, with unavailable action capability. Immutable failure/diagnostic/receipt JSON remains unchanged. Knowledge/fix live authority is retired only with verified historical preservation; D owns live resolution actions.
+
+Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

@@ -1,3 +1,4 @@
+import { composeFailureResolution } from "../dashboard/compose/failure-resolution.js";
 import type { RunRecordService } from "../../core/run-record-service.js";
 /**
  * The ONE authority-backed receipt path (D141).
@@ -35,11 +36,13 @@ export interface ReceiptService {
   ensureReceipt(runId: string): RunEvidenceReceipt;
   getFailure(failureId: string): FailureRecord | undefined;
   countFailuresByFingerprint(fingerprint: string): number;
+  failureResolution: ReturnType<typeof composeFailureResolution>["query"];
 }
 
 export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   const byId = new Map(deps.descriptors.map((descriptor) => [String(descriptor.id), descriptor]));
   const { authority } = deps.database;
+  const failures = composeFailureResolution(authority).query;
 
   const store: EvidenceReceiptStore = Object.freeze({
     getRun: (runId: string) => {
@@ -57,7 +60,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       return result;
     },
     getFailure: (failureId: string) => {
-      const failure = authority.failures.get(failureId);
+      const failure = failures.getFailure(failureId);
       if (failure === undefined) {
         throw new Error(`failure ${failureId} is named by a terminal run but authority does not hold it`);
       }
@@ -104,8 +107,9 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   });
   return Object.freeze({
     ensure,
+    failureResolution: failures,
     ensureReceipt: (runId: string) => ensure(runId).receipt,
-    getFailure: (failureId: string) => authority.failures.get(failureId),
+    getFailure: (failureId: string) => failures.getFailure(failureId),
     countFailuresByFingerprint: (fingerprint: string) => authority.failures.countByFingerprint(fingerprint),
   });
 }

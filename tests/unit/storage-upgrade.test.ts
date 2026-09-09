@@ -1,3 +1,4 @@
+import { readAppSettings } from "../../src/infra/sqlite/settings-storage.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
@@ -51,6 +52,17 @@ function fixture(version?: number) {
   }
   const input = { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false };
   return { repoRoot, root, path, input, backup: () => backupStoppedAuthority(root, clock), run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+}
+/** Reconstruct the released singleton columns solely for old-layout fixture assertions. */
+function retainedSettingsRows(database:DatabaseSync,table:string) {
+  if(table!=="settings_current"&&table!=="runtime_config")return database.prepare(`SELECT * FROM ${table}`).all();
+  const app=readAppSettings(database);
+  if(table==="settings_current"){
+    const r=app?.saved;if(r==null)return [];
+    return [{record_key:"current",revision:r.revision,settings_fingerprint:r.settingsFingerprint,command_id:r.commandId,command_fingerprint:r.commandFingerprint,audit_id:r.auditId,record_json:canonicalJsonStringify(r),created_at:r.committedAt}];
+  }
+  const r=app?.active;if(r==null)return [];
+  return [{record_key:"active",generation:r.generation,settings_revision:r.settingsRevision,settings_fingerprint:r.settingsFingerprint,config_snapshot_id:r.configSnapshotId,config_fingerprint:r.configFingerprint,record_json:canonicalJsonStringify(r),created_at:r.activatedAt}];
 }
 function read(f: ReturnType<typeof fixture>) {
   const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "upgrade-fixture-readback" }, clock);
@@ -173,7 +185,7 @@ describe("D336 stopped SQLite upgrade", () => {
     const before = new Map<string, unknown[]>();
     try {
       for (const table of tables) {
-        const rows = source.prepare(`SELECT * FROM ${table}`).all(); before.set(table, rows);
+        const rows = retainedSettingsRows(source,table); before.set(table, rows);
         for (const row of rows) {
           const columns = Object.keys(row).filter((column) => column !== "parent_command_id");
           target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...columns.map((column) => row[column]));
@@ -193,7 +205,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).credentials, "verified");
     assert.equal(read(f).settings.settings.concurrency?.defaultWorkers, 3);
     const after = new DatabaseSync(f.path, { readOnly: true });
-    try { for (const table of tables) assert.deepEqual(after.prepare(`SELECT * FROM ${table}`).all(), before.get(table), table); }
+    try { for (const table of tables) assert.deepEqual(retainedSettingsRows(after,table), before.get(table), table); }
     finally { after.close(); }
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     assert.equal((await f.run()).state, "already-upgraded");

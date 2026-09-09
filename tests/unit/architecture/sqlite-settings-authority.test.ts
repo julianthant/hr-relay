@@ -316,13 +316,13 @@ describe("sqlite-settings-authority", () => {
   });
 
   it("pins v32 values in settings_current and removes the protected singleton", () => {
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 47);
     assert.equal(SQLITE_MIGRATIONS.at(-1)?.version, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const v32 = SQLITE_MIGRATIONS.find(({ version }) => version === 32);
     assert.ok(v32 !== undefined);
     assert.ok(v32.statements.some((statement) => statement.includes("json_type(record_json, '$.settings')")));
     assert.ok(v32.statements.some((statement) => statement === "DROP TABLE protected_settings_current"));
-    assert.ok(AuthorityTableNameSchema.options.includes("settings_current"));
+    assert.ok(AuthorityTableNameSchema.options.includes("app_settings"));
     assert.equal(AuthorityTableNameSchema.options.includes("protected_settings_current" as never), false);
 
     const settings = { concurrency: { defaultWorkers: 3 } };
@@ -348,7 +348,7 @@ describe("sqlite-settings-authority", () => {
         "SELECT name FROM sqlite_master WHERE type='table' AND name='protected_settings_current'",
       ).get(), undefined);
       assert.ok(database.prepare(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='settings_current'",
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='app_settings'",
       ).get() !== undefined);
     } finally {
       database.close();

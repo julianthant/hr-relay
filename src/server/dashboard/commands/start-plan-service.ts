@@ -1,3 +1,4 @@
+import { selectNewRunIdentity } from "../../../core/run-settings.js";
 import type { ProtectedInputBinding } from "../../../domain/protected-input.js";
 import type { ProtectedSecretSource } from "../../../domain/secrets.js";
 /**
@@ -103,12 +104,14 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(stepOmissions === undefined ? {} : { stepOmissions }),
           priority: ingress.priority,
           shape: "single",
-          configFingerprint: deps.configFingerprint,
-          configSnapshotId: deps.configSnapshotId,
+          configFingerprint:deps.configFingerprint,
+          configSnapshotId:deps.configSnapshotId,
           plannedBy: deps.plannedBy,
         },
       );
       const stored = deps.authority.withAuthorityTransaction((repositories) => {
+        const selected=selectNewRunIdentity(repositories,record);
+        record=StartPlanRecordSchema.parse({...record,...selected});
         repositories.runtimeConfig.requireSettingsCurrent();
         if (ingress.rerunSource !== undefined) {
           const rerun = buildRerunPlan(repositories, descriptor, ingress.rerunSource, record.planned, ingress.warningAcknowledgment, record.stepOmissions);

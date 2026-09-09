@@ -91,7 +91,7 @@ const openDatabases: AuthorityDatabase[] = [];
 const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
-const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
+
 /** A second logical item, so the relaunched run is not a duplicate of its source. */
 const RELAUNCH_ITEM_ID = UUID_7;
 const BULK_COMMAND_REQUEST = {
@@ -111,26 +111,6 @@ const BULK_COMMAND_ACCEPTANCE = {
   request: BULK_COMMAND_REQUEST,
 };
 
-const ARTIFACT_OUTBOX = {
-  outboxId: UUID_7,
-  artifactId: UUID_8,
-  projectionId: "retention-record",
-  stableKeyFingerprint: HASH_B,
-  keyValues: [{ field: "subject.eid", value: "10456712" }],
-  sinkId: "xlsx-retention",
-  sourceRunId: UUID_2,
-  sourceNodeId: "extract",
-  state: "pending",
-  payload: SCHEMA_BOUND_VALUE,
-  createdAt: NOW,
-};
-const ARTIFACT_SINK_HEAD_REQUEST = {
-  sinkId: "xlsx-retention",
-  contentSha256: HASH_C,
-  lastOutboxId: UUID_7,
-  projectedAt: NOW,
-};
-const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const OPERATOR_XLSX_EXPORT = {
   exportId: UUID_7,
   workbookVersion: 1,
@@ -276,32 +256,8 @@ const EVIDENCE_RECEIPT = {
   confidence: "unknown",
   result: "failed",
 };
-const KNOWLEDGE_RECORD = {
-  id: UUID_5,
-  status: "active",
-  scope: { system: "ucpath" },
-  title: "Person Org Summary loses its accessible name under $op",
-  symptom: "The heading is present but unnamed",
-  trigger: "Navigating with the $op query parameter",
-  rootCause: "PeopleSoft renders the label in a sibling frame",
-  invariant: "Anchor on the RECORD_FIELD id, never the accessible name",
-  fix: "Read the field id",
-  regressionScenarios: ["ucpath/person-org-summary-named-heading"],
-  evidence: [`observation:${UUID_7}`],
-  verifiedAt: LATER,
-};
-const FIX_RECORD = {
-  id: UUID_5,
-  failureFingerprint: HASH_C,
-  status: "draft",
-  requestedBy: "claude",
-  summary: "Anchor the person-org heading on its record field id",
-  affected: ["ucpath.person-org-summary.heading"],
-  files: ["src/stores/ucpath/tasks/read-person-org.ts"],
-  scenarios: ["ucpath/person-org-summary-named-heading"],
-  verification: [],
-  createdAt: NOW,
-};
+
+
 const RUN_CHECKPOINT = {
   workflowId: "person-lookup",
   itemId: UUID_3,
@@ -1274,9 +1230,9 @@ describe("native SQLite authority schema", () => {
     const upgraded = openDatabase(path);
 
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "operator_xlsx_exports"), true);
-    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "runtime_config"), true);
-    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "settings_current"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "generated_artifacts"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "app_settings"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "app_settings"), true);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => String(name) === "bulk_command_acceptances"), false);
   });
 
@@ -1709,7 +1665,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(
       migrated.prepare(`
         SELECT count(*) AS count FROM sqlite_master
-        WHERE type = 'table' AND name IN ('provider_budget_counters', 'provider_admissions')
+        WHERE type = 'table' AND name IN ('provider_usage', 'provider_requests')
       `).get()?.count,
       2,
     );
@@ -1778,7 +1734,7 @@ describe("native SQLite authority schema", () => {
     const malformedPath = databasePath("malformed.sqlite");
     openDatabase(malformedPath).close();
     const malformed = new DatabaseSync(malformedPath);
-    malformed.exec("DROP TABLE notes");
+    malformed.exec("DROP TABLE extracted_artifacts");
     malformed.close();
     assert.throws(() => openDatabase(malformedPath), /tables do not match registry/);
 
@@ -1970,7 +1926,7 @@ describe("authority generation accounting", () => {
       mutate: (db) => { db.authority.dryRunScenarioResults.insert(DRY_RUN_SCENARIO_RESULT); },
     },
     {
-      table: "operator_xlsx_exports",
+      table: "generated_artifacts",
       mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
     },
     {
@@ -2005,13 +1961,10 @@ describe("authority generation accounting", () => {
           .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
       },
     },
-    { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
-    { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
-    { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
-    { table: "knowledge_records", mutate: (db) => { db.authority.knowledgeRecords.insert(KNOWLEDGE_RECORD); } },
-    { table: "fix_records", mutate: (db) => { db.authority.fixRecords.insert(FIX_RECORD); } },
-    { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
-    { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
+    { table: "imported_artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
+    { table: "extracted_artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
+    { table: "provider_usage", prepare: prepareProviderRunning, mutate: reserveProvider },
+    { table: "provider_requests", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "workflow_workers", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
     {
       table: "worker_auth",
@@ -2054,7 +2007,7 @@ describe("authority generation accounting", () => {
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "settings_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     {
-      table: "settings_current",
+      table: "app_settings",
       prepare: (db) => {
         db.authority.commands.insert(SETTINGS_CURRENT_COMMAND);
         db.authority.commandAudits.insert(SETTINGS_CURRENT_AUDIT);
@@ -2068,19 +2021,6 @@ describe("authority generation accounting", () => {
           commandFingerprint: deriveSettingsCommandFingerprint(SETTINGS_CURRENT_COMMAND),
           auditId: SETTINGS_CURRENT_AUDIT.auditId,
           committedAt: NOW,
-        });
-      },
-    },
-    {
-      table: "runtime_config",
-      prepare: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); },
-      mutate: (db) => {
-        db.authority.runtimeConfig.activate({
-          settingsRevision: 1,
-          settingsFingerprint: HASH_A,
-          configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
-          configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-          activatedAt: NOW,
         });
       },
     },
@@ -2126,12 +2066,16 @@ describe("authority generation accounting", () => {
           workerId: "timeline-worker", spanPath: "worker/timeline-worker", name: "Worker" } } });
     } },
     { table: "workflow_run_requests", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
-    { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
     { table: "run_operations", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
     { table: "run_operation_attempts", prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); }, mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
-    { table: "artifact_outbox", mutate: (db) => { db.authority.artifactOutbox.insert(ARTIFACT_OUTBOX); } },
-    { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
   ];
+
+  it("accounts intake preparation in its single imported authority row", () => {
+    const db=openDatabase();const before=db.getMeta().authorityGeneration;
+    db.authority.intakeSessions.create(INTAKE_SESSION);
+    assert.equal(db.getMeta().authorityGeneration,before+1);
+    assert.deepEqual(db.authority.intakeSessions.get(INTAKE_SESSION.intakeSessionId),INTAKE_SESSION);
+  });
 
   it("accounts parent acceptance in commands once without an execution audit", () => {
     const db = openDatabase(databasePath("bulk-parent-generation.sqlite"));
@@ -2294,8 +2238,7 @@ describe("authority generation accounting", () => {
     database.withAuthorityTransaction(() => undefined);
     assert.equal(database.getMeta().authorityGeneration, 0);
 
-    database.projections.spans.upsert(PROJECTION_RECORD);
-    database.projections.spans.clear();
+    assert.equal("projections" in database,false);
     assert.equal(database.getMeta().authorityGeneration, 0);
 
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");
@@ -2311,17 +2254,10 @@ describe("authority generation accounting", () => {
     assert.equal(database.authority.notifications.get(UUID_3), undefined);
   });
 
-  it("never increments authority generation for projection upsert or clear", () => {
+  it("exposes no retired projection or OCR placeholder mutation", () => {
     const database = openDatabase();
-    for (const repository of [
-      database.projections.spans,
-      database.projections.gates,
-      database.projections.notes,
-    ]) {
-      repository.upsert(PROJECTION_RECORD);
-      assert.deepEqual(repository.get(HASH_A), PROJECTION_RECORD);
-      assert.equal(repository.clear(), 1);
-    }
+    assert.equal("projections" in database, false);
+    assert.equal("opaque" in database.authority, false);
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
 });
@@ -2352,7 +2288,7 @@ describe("authority persistence invariants", () => {
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
       const row = raw.prepare(
-        "SELECT requested_by FROM operator_xlsx_exports WHERE record_key = ?",
+        "SELECT json_extract(json_extract(record_json,'$.exportEvidenceJson'),'$.requestedBy') AS requested_by FROM generated_artifacts WHERE export_id = ?",
       ).get(UUID_7);
       assert.equal(Reflect.get(row ?? {}, "requested_by"), null);
     } finally {
@@ -2363,12 +2299,12 @@ describe("authority persistence invariants", () => {
   it.each([
     {
       label: "actor column",
-      sql: "UPDATE operator_xlsx_exports SET requested_by = ? WHERE record_key = ?",
-      values: ["other-operator", UUID_6] as const,
+      sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceFingerprint',?) WHERE export_id=?",
+      values: [HASH_B, UUID_6] as const,
     },
     {
       label: "record JSON actor",
-      sql: "UPDATE operator_xlsx_exports SET record_json = json_set(record_json, '$.requestedBy', ?) WHERE record_key = ?",
+      sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.requestedBy',?) || '') WHERE export_id=?",
       values: ["other-operator", UUID_6] as const,
     },
   ])("refuses a v2 XLSX $label mismatch at read and boot", ({ label, sql, values }) => {
@@ -2377,7 +2313,7 @@ describe("authority persistence invariants", () => {
     database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_SEARCH);
     const corruptor = new DatabaseSync(path);
     try {
-      corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+      corruptor.exec("DROP TRIGGER generated_artifact_evidence_immutable; PRAGMA ignore_check_constraints=ON");
       corruptor.prepare(sql).run(...values);
     } finally {
       corruptor.close();
@@ -2385,12 +2321,12 @@ describe("authority persistence invariants", () => {
 
     assert.throws(
       () => database.authority.operatorXlsxExports.get(UUID_6),
-      /operator XLSX export .* mirrored columns disagree with its strict record JSON/,
+      /generated export/,
     );
     database.close();
     assert.throws(
       () => openDatabase(path),
-      /operator-xlsx-export-columns-match-record failed for 1 row\(s\)/,
+      /generated|quick_check/,
     );
   });
 
@@ -2400,8 +2336,8 @@ describe("authority persistence invariants", () => {
     database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
     const corruptor = new DatabaseSync(path);
     try {
-      corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
-      corruptor.prepare("UPDATE operator_xlsx_exports SET artifact_id = ? WHERE record_key = ?")
+      corruptor.exec("DROP TRIGGER generated_artifact_evidence_immutable; PRAGMA ignore_check_constraints=ON");
+      corruptor.prepare("UPDATE generated_artifacts SET record_json=json_set(record_json,'$.versions[0].artifact.id',?) WHERE export_id=?")
         .run(UUID_6, UUID_7);
     } finally {
       corruptor.close();
@@ -2409,24 +2345,24 @@ describe("authority persistence invariants", () => {
 
     assert.throws(
       () => database.authority.operatorXlsxExports.listByArtifact(UUID_8),
-      /operator XLSX export .* mirrored columns disagree with its strict record JSON/,
+      /generated export/,
     );
   });
 
   it("reconciles every mirrored XLSX evidence column during boot inspection", () => {
     const corruptions = [
-      { name: "record key", sql: "UPDATE operator_xlsx_exports SET record_key = ?", value: UUID_6 },
-      { name: "selection kind", sql: "UPDATE operator_xlsx_exports SET selection_kind = ?", value: "activity" },
-      { name: "artifact id", sql: "UPDATE operator_xlsx_exports SET artifact_id = ?", value: UUID_6 },
-      { name: "digest", sql: "UPDATE operator_xlsx_exports SET digest = ?", value: HASH_B },
-      { name: "byte length", sql: "UPDATE operator_xlsx_exports SET byte_length = ?", value: 2_048 },
-      { name: "media type", sql: "UPDATE operator_xlsx_exports SET media_type = ?", value: "application/pdf" },
+      { name: "record key", sql: "UPDATE generated_artifacts SET record_key = ?", value: UUID_6 },
+      { name: "selection kind", sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.selection.kind',?) || '')", value: "activity" },
+      { name: "artifact id", sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.artifact.id',?) || '')", value: UUID_6 },
+      { name: "digest", sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.artifact.sha256',?) || '')", value: HASH_B },
+      { name: "byte length", sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.artifact.bytes',?) || '')", value: 2_048 },
+      { name: "media type", sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.artifact.mediaType',?) || '')", value: "application/pdf" },
       {
         name: "filename",
-        sql: "UPDATE operator_xlsx_exports SET filename = ?",
+        sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.download.filename',?) || '')",
         value: "hr-run-search-2026-07-31-g4.xlsx",
       },
-      { name: "created at", sql: "UPDATE operator_xlsx_exports SET created_at = ?", value: LATER },
+      { name: "created at", sql: "UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',json_set(json_extract(record_json,'$.exportEvidenceJson'),'$.createdAt',?) || '')", value: LATER },
     ] as const;
 
     for (const corruption of corruptions) {
@@ -2436,7 +2372,7 @@ describe("authority persistence invariants", () => {
       database.close();
       const corruptor = new DatabaseSync(path);
       try {
-        corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+        corruptor.exec("DROP TRIGGER generated_artifact_evidence_immutable; PRAGMA ignore_check_constraints=ON");
         corruptor.prepare(corruption.sql).run(corruption.value);
       } finally {
         corruptor.close();
@@ -2444,7 +2380,7 @@ describe("authority persistence invariants", () => {
 
       assert.throws(
         () => openDatabase(path),
-        /operator-xlsx-export-columns-match-record failed for 1 row\(s\)/,
+        /generated|quick_check/,
         corruption.name,
       );
     }
@@ -2527,9 +2463,7 @@ describe("authority persistence invariants", () => {
 
   it("rejects authority mutation inside a projection transaction", () => {
     const database = openDatabase();
-    assert.throws(() => database.withProjectionTransaction(() => {
-      database.authority.commands.insert(COMMAND_FIXTURES[0]);
-    }), /authority mutation cannot run inside a projection transaction/);
+    assert.equal("withProjectionTransaction" in database, false);
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
 });

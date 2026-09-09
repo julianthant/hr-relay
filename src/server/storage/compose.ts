@@ -108,7 +108,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]",
-  "       storage upgrade [--plan] [--timeline-from <verified-copy-directory>] [--json]",
+  "       storage upgrade [--plan] [--timeline-from <verified-copy-directory>] [--generated-from <source-directory>] [--json]",
   "       storage restore --from <manifest.json> [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
@@ -539,9 +539,13 @@ export async function composeStorageCommand(
   const [subcommand, ...rest] = args;
   if (subcommand === "upgrade") {
     let timelineSourceDirectory: string | undefined;
+    let generatedSourceDirectory: string | undefined;
     for (let index = 0; index < rest.length; index += 1) {
       const argument = rest[index];
       if (argument === "--plan" || argument === "--json") continue;
+      if (argument === "--generated-from" && generatedSourceDirectory === undefined && rest[index + 1] !== undefined && !rest[index + 1]?.startsWith("--")) {
+        generatedSourceDirectory = rest[++index]; continue;
+      }
       if (argument === "--timeline-from" && timelineSourceDirectory === undefined
         && rest[index + 1] !== undefined && !rest[index + 1]?.startsWith("--")) {
         timelineSourceDirectory = rest[++index];
@@ -553,7 +557,8 @@ export async function composeStorageCommand(
     try {
       const report = await upgradeStorage({ stateRoot: join(repoRoot, isolation.stateRoot),
         processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan"),
-        ...(timelineSourceDirectory === undefined ? {} : { timelineSourceDirectory }) }, clock);
+        ...(timelineSourceDirectory === undefined ? {} : { timelineSourceDirectory }),
+        ...(generatedSourceDirectory === undefined ? {} : { generatedSourceDirectory }) }, clock);
       return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
         `storage upgrade: ${report.state} (v${String(report.fromSchemaVersion)} → v${String(report.toSchemaVersion)})`,
         `imported keys: ${report.importedKeys.join(", ")}`,

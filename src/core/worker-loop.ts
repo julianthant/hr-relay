@@ -1,3 +1,4 @@
+import type { RunRecord } from "../domain/run/record.js";
 /**
  * The Phase-1 worker run loop (ref execution-and-sessions §3): one workflow-scoped worker, one
  * active item, claim → execute → terminal/park, then the next eligible row.
@@ -81,7 +82,17 @@ type WorkerClaimRequest = Readonly<{
   configFingerprint?: string;
 }>;
 
+export interface WorkerRunResources {
+ readonly sessionFactory: WorkerBrowserSessionFactory;
+ readonly duoCeremony: DuoCeremonyGateFactory;
+ readonly taskDeadlineMs: number;
+ readonly sessionAcquireMs: number;
+ readonly defaultBrowserMode: BrowserPresentationMode;
+ readonly providers?: RunProviderWiring;
+}
 export interface WorkerLoopDependencies {
+ readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
+ readonly idleCadence?: ()=>number;
   readonly workflowId: WorkflowId;
   readonly workerId: WorkerId;
   readonly descriptor: AnyWorkflowDescriptor;
@@ -125,7 +136,7 @@ export interface WorkerLoopDependencies {
    * this seam; `writeSequencer` stays for tests that pre-build one. Passing
    * both is a wiring error and fails loud.
    */
-  readonly writeSequencerFor?: (sessions: WorkerSessionManager) => WriteSequencer;
+  readonly writeSequencerFor?: (sessions: WorkerSessionManager, taskDeadlineMs:number) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
   /** Ref operator-trust §2.2's automatic bundle capture; absent means no bundle is minted. */
   readonly diagnostics?: RunDiagnosticCapture;
@@ -285,7 +296,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       `worker ${workerId} received both writeSequencer and writeSequencerFor; exactly one seam may own the sequencer`,
     );
   }
-  const writeSequencer = deps.writeSequencer ?? deps.writeSequencerFor?.(sessions);
+
 
   emit({ t: "span.started", kind: "worker", workerId, spanPath: workerPath, name: workflowId });
 
@@ -304,7 +315,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       if (directive === "pause") {
         // Paused: claim nothing, keep the worker alive, re-poll on the bounded
         // idle cadence (ref execution-and-sessions §3 — a worker never sleeps unboundedly).
-        await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+        await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
       const claimRequest = {
@@ -321,7 +332,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           stopped = "idle";
           break;
         }
-        await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+        await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible"
@@ -331,7 +342,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           break;
         }
         const untilMs = Math.max(0, Date.parse(claimed.refusal.notBefore) - clock.nowMs());
-        await boundedWait(deps.scheduler, clock, Math.min(untilMs, deps.idleRepollMs), deps.stopSignal);
+        await boundedWait(deps.scheduler, clock, Math.min(untilMs, deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
 
@@ -360,6 +371,11 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         },
       });
       try {
+        const resources = deps.resourcesForRun?.(run);
+        if (resources !== undefined) sessions.configureRunResources(resources);
+        const taskDeadlineMs = resources?.taskDeadlineMs ?? deps.taskDeadlineMs;
+        const providers = resources === undefined ? deps.providers : resources.providers;
+        const writeSequencer = deps.writeSequencer ?? deps.writeSequencerFor?.(sessions,taskDeadlineMs);
         // D116: the claimed run's immutable config fingerprint becomes part of
         // the session reuse identity for every driver lease this run takes —
         // bound for exactly the execution window, released on every exit.
@@ -376,7 +392,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             clock,
             ids: deps.ids,
             scheduler: deps.scheduler,
-            taskDeadlineMs: deps.taskDeadlineMs,
+            taskDeadlineMs,
             log: deps.log,
             ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
             ...(deps.canonicalInputMigrations === undefined
@@ -385,7 +401,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
             ...(deps.diagnostics === undefined ? {} : { diagnostics: deps.diagnostics }),
-            ...(deps.providers === undefined ? {} : { providers: deps.providers }),
+            ...(providers === undefined ? {} : { providers }),
             ...(deps.artifacts === undefined ? {} : { artifacts: deps.artifacts }),
             ...(deps.artifactProjector === undefined ? {} : { artifactProjector: deps.artifactProjector }),
           }, { run, claim, signal: runController.signal }),

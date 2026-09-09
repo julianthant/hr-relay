@@ -504,3 +504,262 @@ The outgoing handoff identifies the exact approved-plan commit and implementatio
 when necessary. READY requires both the committed plan/document checks and C's repaired focused
 release integrated in that base. Until the latter is verified, status is WAITING ON C's repair.
 The supervisor rechecks volatile ownership and refs before creation; absent planned refs are normal.
+
+## F execution record — 2026-09-09
+
+**State: F01–F06 focused PASS.** F07 integration and cleanup remain pending.
+One Astra/high supervisor, zero workers and zero reviewers. This is the approved focused
+foundation release; full acceptance and independent review remain assigned to 2.6.9.
+
+### Admission and preserved inputs
+
+Approved plan `b5ba39efbca023b673be3c4aac509ca42b2a751c`; exact implementation base
+`4037b6b38395b77d3bcb71d2ccc99954da7d733f`; repaired C prerequisite
+`e43a8d8515486c73c276fa319bbe06d196b309e3`. Both prerequisite commits are ancestors of the base.
+The clean exclusive branch `codex/database-foundation` was created at that base in
+`/Users/julianhein/Projects/hr-worktree-database-foundation`; master was clean at admission.
+The original migration literals through schema41, floor40 and populated C fixtures were copied
+and hashed before edits. External proof root:
+`/Users/julianhein/Projects/hr-database-foundation-evidence-20260909` (`baseline.json`, `baseline/`).
+
+### Supplied storage and transaction contracts
+
+Current schema is **47**, supported floor **46**. Append-only migrations 42–47 retain every
+released literal through 41. Historical backups 1–18 and 27–46 remain admitted by their existing
+strict grammars; stopped upgrades use verified native backups and synthetic tests only here.
+
+| Migration | Supplied authority / preservation |
+| --- | --- |
+| 42 | `imported_artifacts` owns preparation and submitted JSON with verified old session/manifest aliases, immutable submission and manifest-only history. Equal source hashes remain distinct imports. `extracted_artifacts` owns former OCR extraction rows. |
+| 43 | `provider_requests` / `provider_usage` preserve legacy request/counter JSON, reservations and honest historical gaps. Strict generic storage carries attribution, leases, usage states and CAS without activating generic policy. Cumulative usage never disappears with run deletion. |
+| 44 | `app_settings` consolidates saved and active identities, journal/audit linkage and snapshot references. `settings_snapshots` remains immutable. Current saves still require restart. |
+| 45 | Failure annotations have independent strict JSON/version and CAS. Original failure JSON, diagnostic bundles, receipts and archive digests remain immutable; historical annotations are explicitly unresolved. |
+| 46 | `generated_artifacts` consolidates ordered pending updates, head/version references and XLSX evidence. Exact old nested export JSON plus its digest is retained; issued evidence/version prefixes cannot change. No parallel live output authority remains. |
+| 47 | Retires unused SQL spans/gates/notes/OCR approval placeholders only when empty; nonempty unknown population refuses. Knowledge/fix history requires complete source-bound native backup comparison before retirement. Historical schema adapters remain supported. |
+
+Generated conversion accepts explicit `cli storage upgrade --generated-from <source>` input;
+this session did not run it against operator data. Source mapping/files are checked for exact
+identity, hashes, size and symlinks, copied immutably beneath the verified backup and rechecked
+before commit. Missing historical export bytes become explicit unavailable evidence, never a
+fabricated reference. Exact repeat compares the preserved selection, so conversion cannot adopt
+its own newly installed copy as old evidence. Precommit rollback, postcommit resume, changed-source
+refusal and restoration from the same source-bound backup are covered in `mixed-history.test.ts`.
+
+All repositories participate in the owning SQLite transaction through typed `mutate` /
+`withAuthorityTransaction` ports. Nested writes retain one generation/integrity boundary.
+`commitGeneratedCheckpoint` commits checkpoint and all output updates together. Independent
+connections prove enqueue/ack order and stale CAS refusal; immutable file evidence remains retained.
+No public raw-SQL callback, alternate database, dual write or retired runtime knowledge door is supplied.
+
+### Frozen four-child API and caller manifest
+
+Shared strict schemas in `src/domain/`, `src/base/provider-accounting.ts`, migrations, authority
+registration, command unions, composition roots and F fixtures are frozen prerequisite inputs.
+Children may consume these inputs; changing them requires a prerequisite amendment. The following
+existing production entry points are connected, not unused promises:
+
+| Child | Released exports / methods | Actual callers and baseline |
+| --- | --- | --- |
+| P | `SqliteProviderAccounting`, `finalizeProviderRun`; legacy admission methods and `accounting()`; `ProviderAccountingStorage.transaction/getRequest/getUsage/listUsage/writeRequest/writeUsage` | Authority composition creates one component; admitted clients, executor and worker resources route through it. Legacy reserve/invoke/settle/replay remains working. Generic policy is P's remaining work. |
+| D | `createFailureResolutionRepository.read/update`; `failureResolutionCapability`, `executeFailureResolution`, `bindFailureCapture`; query/command factories and `composeFailureResolution` | Command kernel dispatch and dashboard compose use D's port; receipt/trust reads and run capture use D's boundary. Action capability is unavailable and refuses before journal/audit writes. D owns future action/UI behavior. |
+| G | `createGeneratedArtifactRepository` (`generatedArtifacts`, existing outbox/head/export ports); `commitGeneratedCheckpoint`, `projectGeneratedUpdates`; `composeGeneratedExports` | Executor commits outputs; real XLSX sink/projector publishes through ordered repository ports; dashboard export factory serves the existing verified export path. G owns remaining publication/fault policy. |
+| S | `createSettingsActivationRepositories`; `selectRunRuntime`, `selectRunSettings`, `selectNewRunIdentity`, `runSettingsAvailable`; `runRuntimeMatches`; `createRunResourcesFactory.baseline/forRun` | Settings service, direct/intake/start/relaunch creation, claim checks and worker composition use S's ports. Actual retained snapshots select session factories, browser mode, deadlines and providers. Idle settings are read at the next idle boundary. S owns no-restart activation and new retry/child selection. |
+
+Ordinary settings command results already admit strict `restartRequired: false` while the real
+baseline explicitly returns true. Protected settings retain their separate contract. Start-plan
+selection stays inside its existing single transaction; replay does not recompute accepted plans.
+Failure resolution data belongs to failures/read projections, not immutable diagnostic bundle JSON.
+
+Exact exclusive mutable paths and tests follow. Existing shared fixtures remain F-owned; new child
+fixtures live beside child tests. Future test filenames are allocations, not claimed passing tests.
+
+**P production paths (2).**
+
+- `src/infra/sqlite/provider-accounting.ts`
+- `src/core/provider-admission.ts`
+
+**P test allocation.**
+
+- `tests/unit/provider-admission.test.ts`
+- `tests/unit/provider-pool.test.ts`
+- `tests/unit/advisory-provider-exhaustion.test.ts`
+- `tests/unit/provider-accounting/accounting.test.ts`
+
+**D production paths (8).**
+
+- `src/core/failure-resolution.ts`
+- `src/infra/sqlite/failure-resolution.ts`
+- `src/server/dashboard/queries/failure-resolution.ts`
+- `src/server/dashboard/commands/failure-resolution.ts`
+- `src/server/dashboard/compose/failure-resolution.ts`
+- `src/server/dashboard/queries/run-trust.ts`
+- `src/dashboard/surfaces/trust.tsx`
+- `src/dashboard/surfaces/trust-model.ts`
+
+**D test allocation.**
+
+- `tests/unit/failure-resolution/commands.test.ts`
+- `tests/unit/failure-resolution/capture.test.ts`
+- `tests/unit/dashboard/failure-record-render.test.ts`
+- `tests/unit/dashboard/failure-record-model.test.ts`
+
+**G production paths (6).**
+
+- `src/core/generated-artifact-projection.ts`
+- `src/infra/sqlite/generated-artifacts.ts`
+- `src/infra/artifacts/artifact-sink-projector.ts`
+- `src/infra/artifacts/xlsx-retention-sink.ts`
+- `src/server/dashboard/exports/operator-xlsx-export-service.ts`
+- `src/server/dashboard/compose/generated-exports.ts`
+
+**G test allocation.**
+
+- `tests/unit/artifact-projection.test.ts`
+- `tests/unit/infra/server-verified-artifact-reader.test.ts`
+- `tests/unit/operator-xlsx-export.test.ts`
+- `tests/unit/server/operator-xlsx-export-service.test.ts`
+- `tests/unit/generated-artifacts/publication.test.ts`
+
+**S production paths (11).**
+
+- `src/infra/sqlite/settings-activation.ts`
+- `src/core/run-settings.ts`
+- `src/core/run-claim-admission.ts`
+- `src/server/worker/run-resources.ts`
+- `src/server/settings-runtime.ts`
+- `src/server/dashboard/commands/settings-service.ts`
+- `src/server/dashboard/commands/start-plan-service.ts`
+- `src/server/dashboard/queries/settings.ts`
+- `src/server/dashboard/queries/settings-editor.ts`
+- `src/dashboard/surfaces/settings.tsx`
+- `src/dashboard/surfaces/settings-model.ts`
+
+**S test allocation.**
+
+- `tests/unit/settings-activation/save-create.test.ts`
+- `tests/unit/settings-activation/mixed-execution.test.ts`
+- `tests/unit/settings-activation/retry-child.test.ts`
+- `tests/unit/settings-activation/stale-plan.test.ts`
+- `tests/unit/server/settings-runtime-reader.test.ts`
+- `tests/unit/server/settings-facts.test.ts`
+- `tests/unit/dashboard/settings-editor-surface.test.ts`
+- `tests/unit/dashboard/settings-editor-client.test.ts`
+
+D also owns its new dedicated desktop resolution parity case and references; shared existing
+parity fixtures and reference images remain frozen. The 27 production paths have zero pairwise
+intersection. Child test sets also have zero intersection. Source checks reject imports of another
+child's mutable implementation; stable shared contracts and composition remain F-owned.
+
+| Pair | First then second | Second then first | Isolated baseline |
+| --- | --- | --- | --- |
+| P / D | PASS | PASS | Real provider admission + diagnostic capture/readback |
+| P / G | PASS | PASS | Real provider admission + actual XLSX projection |
+| P / S | PASS | PASS | Real provider admission + retained settings/resources |
+| D / G | PASS | PASS | Real capture/readback + actual XLSX projection |
+| D / S | PASS | PASS | Real capture/readback + retained settings/resources |
+| G / S | PASS | PASS | Actual XLSX projection + retained settings/resources |
+
+Each order gets a fresh synthetic database and artifact/lock root. No browser, provider account,
+credential or HR transaction is used. The resource case additionally switches two actual retained
+snapshots and verifies the first run keeps its factory/values. These are baseline independence
+proofs, not results for future implementations. L and 2.6.9 retain combination and final peer-order proof.
+
+### Focused proof and delivery assessment
+
+The complete committed F06 rerun and F07 receipt are recorded below when verified. Interim logs
+remain in the external proof root, including failures and their repairs; they are not release PASS.
+The F proof files are `baseline-contracts.test.ts`, `mixed-history.test.ts`,
+`transaction-contracts.test.ts` and `four-way-independence.test.ts` beneath
+`tests/unit/database-foundation/`; adjacent `fixtures.ts` / `import-fixtures.ts` are F-owned.
+
+Material repair rounds were implementation defects within the approved brief: restored overbroad
+historical-source removal; preserved nested export strings/digests; corrected current-versus-historical
+fixture membership; removed cyclic storage/type imports; fixed repeat conversion adopting its own
+artifact copy; and kept resolution outside immutable diagnostic JSON. Retained logs distinguish
+these failed runs from the final rerun. Exact total repair count/time is unavailable across context
+compactions; no estimated savings or quality score is claimed. No worker reassignment or operator
+scope expansion occurred. Earlier reads of boundary constraints and explicit source-versus-installed
+artifact negative controls would have prevented some rework.
+
+Necessary fixture closure includes `tests/unit/server/start-plan-omissions.test.ts` inserting its
+real immutable snapshot while retaining transaction/ID assertions, and
+`tests/parity/intake-accessibility.spec.ts` attaching the existing required body-backed accessibility
+evidence and digest. The latter's first run passed its four cases but correctly failed wrapper evidence
+admission; the repaired wrapper passes without reference, DOM or assertion changes. Guard changes
+preserve historical knowledge/fix proofs and pins, replacing only retired live-door assertions with
+absence checks. Guard inventory records the extraction/retirement evidence; no coverage floor,
+assertion, isolation or timeout was weakened.
+
+The resource-only external `vitest-one.config.mts` spreads the repository configuration and sets
+both root and every project `maxWorkers: 1`. `effective-workers.json` records forks/isolation and
+unchanged membership. All committed unit/architecture selectors use this adapter; parity retains
+its repository worker configuration. Mandatory committed reruns remain distinct from repair runs.
+Full typecheck, coverage, whole architecture, broad parity/build/performance and independent review
+were not run. They remain 2.6.9 duties, including inherited T incomplete reviews and measured
+performance failures (5,574 > 5,569 day statements; 3,234 > 13 archive freeze statements).
+
+
+The first committed expanded focused run found seven export-service failures (941 passed): its
+raw SQL assertions still addressed the retired export table. Updating those assertions exposed a
+real replacement bypass, repaired with explicit BEFORE INSERT conflict guards for generated,
+imported and provider identities/accounting even when recursive triggers are disabled. Historical
+migration pins through41 remain unchanged; only unreleased F migration pins were refreshed.
+The direct annotation rollback/CAS proof also required a valid terminal fixture. F fixtures now
+use real claim/terminal transitions, with D on a separate run/worker in each paired scenario;
+no invalid running-run failure row substitutes for the production lifecycle. The 30-case targeted
+repair run passed; full committed focused rerun follows. These are implementation/fixture defects
+within approved F scope, not changed product requirements. The export-service test is a necessary
+closure of G's existing allocated baseline; it preserves every old assertion's purpose.
+
+
+### F06 committed release proof
+
+Tested candidate `e32979d0ac54c440a8805743d5c5a357e50e01f8`, tree `e4ea9deebaa4e3067684528ec3a81be56164e80d`.
+The full assigned and affected set was rerun on this committed candidate after repairs. All commands
+below exited zero. `f06-pass.json` binds each command, selector, duration, log digest and tested
+commit/tree; `candidate.json` records all exact changed paths against the implementation base.
+`candidate-tree-objects.txt` and `input-identity.json` retain source/test/config/dependency/runtime
+inputs. The ten original copied baseline files were rehashed and matched before release.
+
+| Check | Verified result | External evidence |
+| --- | --- | --- |
+| Focused unit scope | 42 files / 949 tests PASS; includes all assigned selectors plus directly affected consumers, annotation rollback/CAS and actual terminal baseline | `committed-unit.log` / `.json` |
+| Affected architecture | 11 files / 199 tests PASS, including roadmap binding | `committed-guards.log` / `.json` |
+| Lint | PASS, zero warnings | `committed-lint.log` / `.json` |
+| Manifest, store catalog, roadmap | All three generators and all three freshness checks PASS; no generated drift | `committed-build-manifest*`, `committed-stores-catalog*`, `committed-roadmap*` |
+| Filtered dashboard | 42 cases PASS | `committed-ui-dashboard.log`, `committed-ui-dashboard-output/` |
+| Intake accessibility | 4 cases and wrapper admission PASS | `committed-ui-intake.log`, `committed-ui-intake-output/` |
+| Diagnostic dialog/gallery | 3 cases PASS, including served download/focus behavior | `committed-ui-diagnostic.log`, `committed-ui-diagnostic-output/` |
+| Links/instructions/whitespace | 146 local links, 9 identical instruction pairs, longest chain 17,333 bytes; committed diff check PASS | `committed-doccheck.log` |
+
+Exact executed focused commands (the external resource-only adapter enforces one Vitest file worker):
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/advisory-zero-authority.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-retention.test.ts tests/unit/artifact-projection.test.ts tests/unit/command-kernel-restart.test.ts tests/unit/command-kernel.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/database-foundation/baseline-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/diagnostic-capture.test.ts tests/unit/diagnostic-safety-projection.test.ts tests/unit/evidence-receipt-repository.test.ts tests/unit/infra/server-verified-artifact-reader.test.ts tests/unit/intake-command-arms.test.ts tests/unit/intake-session.test.ts tests/unit/intake-validation.test.ts tests/unit/ocr-command.test.ts tests/unit/ocr-extraction-admission.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/provider-admission.test.ts tests/unit/receipt-derivation-binding.test.ts tests/unit/run-completion-migration.test.ts tests/unit/run-record-service/service.test.ts tests/unit/server/diagnostic-bundle-readback.test.ts tests/unit/server/intake-surface.test.ts tests/unit/server/operator-xlsx-export-service.test.ts tests/unit/server/settings-facts.test.ts tests/unit/server/settings-runtime-reader.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/sqlite-authority-database.test.ts tests/unit/sqlite-settings-authority.test.ts tests/unit/start-plan.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-diagnostic-redaction.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-upgrade.test.ts tests/unit/worker-composition.test.ts tests/unit/worker-loop.test.ts tests/unit/worker-sessions.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/ai-advisory-no-authority.test.ts tests/unit/architecture/artifact-effect-boundary.test.ts tests/unit/architecture/guard-manifest.test.ts tests/unit/architecture/knowledge-fix-integrity.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/sqlite-settings-authority.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts
+npm run lint
+npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'intake-|settings|loaded storage doctor|diagnostic-'
+npm run test:parity -- tests/parity/intake-accessibility.spec.ts
+npm run test:parity -- tests/parity/diagnostic-bundle-dialog.spec.ts --grep 'opens the strict bundle dialog|captures the exact-identity screenshot gallery'
+npm run build:manifest && npm run build:manifest:check
+npm run stores:catalog && npm run stores:catalog:check
+npm run roadmap && npm run roadmap:check
+python3 /tmp/database-foundation-plan-doccheck.py 4037b6b38395b77d3bcb71d2ccc99954da7d733f..HEAD
+git diff --check 4037b6b38395b77d3bcb71d2ccc99954da7d733f..HEAD
+```
+
+F02–F04 conversion/retirement, F05 actual boundaries and F06 baseline independence are focused PASS.
+The mixed-history proof preserves source-bound backup bytes and semantic restored authority,
+including pre/postcommit faults and no-write repeat; it does not equate native SQLite backup file
+headers with the original source file. Historical missing generated bytes remain explicitly
+unavailable. Generic provider policy, D actions, G remaining publication and S no-restart behavior
+are unimplemented child duties. The six pair/twelve order cases do not claim future branch acceptance.
+
+F07 must verify target cleanliness and ancestry, incorporate this exact candidate, compare all
+execution inputs before D191 reuse, preserve ignored outputs, and remove only F's branch/worktree.
+No final-phase gate/review, provider activation, live database upgrade, push or HR submission occurred.
+
+F06 evidence-only recording reran roadmap generation/freshness, 24 roadmap-binding tests,
+local links/instruction pairs/chain and whitespace checks. Runtime, tests, configuration and
+dependency objects are unchanged from `e32979d0ac54c440a8805743d5c5a357e50e01f8`;
+its focused tests, lint, manifest/catalog and filtered UI checks are reused by that D191 input identity.

@@ -1,3 +1,4 @@
+import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45, D164): the stable-keyed local artifact
@@ -146,7 +147,7 @@ function projectorFor(database: AuthorityDatabase, root: string, clock: Readonly
   return createArtifactSinkProjector({
     authority: database.authority,
     withAuthorityTransaction: (work) => database.withAuthorityTransaction(work),
-    sinks: { "xlsx-retention": createXlsxRetentionSink({ workbookPath: join(root, "retention.xlsx") }) },
+    sinks: { "xlsx-retention": createXlsxRetentionSink({ workbookPath: join(root, "retention.xlsx"), artifacts: createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"}) }) },
     lockDir: join(root, "locks"),
     clock: clock as never,
   });
