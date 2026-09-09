@@ -1,5 +1,10 @@
 # Diagnostic evidence and failure resolution
 
+**Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
+the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
+lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
+integration when assigned, handover and cleanup. Other phases retain their existing rules.
+
 **Rename ownership amendment (2026-09-09).** [2.6.2 R](renames.md) now owns the seven
 approved naming-only changes, including diagnostic/receipt/snapshot/dryrun names. Consume R's
 committed names and evidence; do not repeat its migrations. Earlier rename allocations below are
@@ -207,7 +212,7 @@ bytes and protected download admission retain their existing rules.
 3. **S3 Proof:** complete P3–P5 and annotation-specific P6; link B's P1/P2/storage P6 evidence and
    test the composed current/archive boundary without requiring sibling behavior.
 4. **S4 Development release:** focused proof, lint and affected freshness; record the committed
-   candidate for final 2.6.8.3 validation, repair and independent review.
+   candidate for final 2.6.9 validation, repair and independent review.
 
 | Proof | Required result / negative control |
 | --- | --- |
@@ -222,7 +227,7 @@ bytes and protected download admission retain their existing rules.
 
 D proves P1–P4 and the live portion of P5/P6 on F alone, consuming F's exact migration proof where
 unchanged. The approved saved-report portion of P5 and post-transfer deletion portions of P6 belong
-to L/A/H and final 2.6.8.3, using D's stable capture/read-only resolution interface. They remain
+to L/A/H and final 2.6.9, using D's stable capture/read-only resolution interface. They remain
 required; D does not need an unmerged archive implementation to pass its independent focused gates.
 
 ## Execution ownership
@@ -231,7 +236,7 @@ Use [the combined workflow](README.md), [prerequisite releases](prerequisites.md
 [launch registry](PROMPTS.md). One Astra/high supervisor owns this assignment; default zero
 implementation workers. Shared migrations, composition and fixture work belongs to its prerequisite.
 Return a committed development candidate after focused checks, lint and affected freshness; final
-2.6.8.3 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
+2.6.9 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
 No per-peer review, master merge, provider-owned integration or automatic task dispatch remains.
 
 ## Focused checks and final proof
@@ -247,7 +252,7 @@ Add real populated migration, concurrent connection and fault-injection tests fo
 replace retired guards with meaningful negative controls and deciding inventory evidence. Preserve
 all assertions, test membership, coverage floors, isolation and timeouts. Run lint whenever tests
 run. A focused pass is not complete product acceptance. The full required typecheck/coverage/
-architecture/parity/build/recovery and generated gates are owned by [2.6.8.3](final-validation.md).
+architecture/parity/build/recovery and generated gates are owned by [2.6.9](final-validation.md).
 Use /ui for frontend work and deliberate parity changes; preserve the scoped product exclusions.
 
 No live external submission, real provider/key wiring, operator database upgrade or source cleanup

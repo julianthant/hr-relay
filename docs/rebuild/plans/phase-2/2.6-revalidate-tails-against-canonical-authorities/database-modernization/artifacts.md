@@ -1,5 +1,10 @@
 # Imported, extracted and generated artifacts
 
+**Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
+the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
+lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
+integration when assigned, handover and cleanup. Other phases retain their existing rules.
+
 > **Combined-plan amendment — 2026-09-09.** This file retains the approved product scope,
 > acceptance proofs and historical inspection below. [The combined workflow](README.md) and
 > [prerequisite releases](prerequisites.md) now exclusively own assignment IDs, dependencies,
@@ -294,7 +299,7 @@ verified database backup/source manifest, following the timeline predecessor's s
 F owns complete imported/extracted artifacts and shared migration/recovery proof; G owns generated
 publication/update/export proof on F alone. Existing archive/retention behavior is tested on that
 base. New archive.sqlite transfer, shared-file custody and post-transfer access consume G in L/A/H
-and receive combined proof in 2.6.8.3; G must not require A's unmerged implementation.
+and receive combined proof in 2.6.9; G must not require A's unmerged implementation.
 
 ## Execution ownership
 
@@ -302,7 +307,7 @@ Use [the combined workflow](README.md), [prerequisite releases](prerequisites.md
 [launch registry](PROMPTS.md). One Astra/high supervisor owns this assignment; default zero
 implementation workers. Shared migrations, composition and fixture work belongs to its prerequisite.
 Return a committed development candidate after focused checks, lint and affected freshness; final
-2.6.8.3 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
+2.6.9 owns heavy gates, independent review, all remaining repairs and operator-assigned integration.
 No per-peer review, master merge, provider-owned integration or automatic task dispatch remains.
 
 ## Focused checks and final proof
@@ -319,7 +324,7 @@ Add real populated migration, concurrent connection and fault-injection tests fo
 replace retired guards with meaningful negative controls and deciding inventory evidence. Preserve
 all assertions, test membership, coverage floors, isolation and timeouts. Run lint whenever tests
 run. A focused pass is not complete product acceptance. The full required typecheck/coverage/
-architecture/parity/build/recovery and generated gates are owned by [2.6.8.3](final-validation.md).
+architecture/parity/build/recovery and generated gates are owned by [2.6.9](final-validation.md).
 Use /ui for frontend work and deliberate parity changes; preserve the scoped product exclusions.
 
 No live external submission, real provider/key wiring, operator database upgrade or source cleanup

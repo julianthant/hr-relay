@@ -1,5 +1,10 @@
 # Remaining database tables — planning discussion
 
+**Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
+the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
+lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
+integration when assigned, handover and cleanup. Other phases retain their existing rules.
+
 > **Combined-plan amendment — 2026-09-09.** This file retains the approved product scope,
 > acceptance proofs and historical inspection below. [The combined workflow](README.md) and
 > [prerequisite releases](prerequisites.md) now exclusively own assignment IDs, dependencies,
@@ -84,7 +89,7 @@ authorization and exact content checks; retire the separate export table without
 F owns removal of the unused SQL spans projection, including registration, generic repository
 and obsolete projection-only tests. Preserve timeline_events, logs and retained span-file inputs
 needed by supported conversions/recovery. No blanket deletion of span directories or timeline data.
-Focused absence/current-history tests belong to F; full recovery proof stays at 2.6.8.3.
+Focused absence/current-history tests belong to F; full recovery proof stays at 2.6.9.
 These changes are structural and do not expand the seven-name R assignment.
 
 ## Agreed execution cadence for this future batch

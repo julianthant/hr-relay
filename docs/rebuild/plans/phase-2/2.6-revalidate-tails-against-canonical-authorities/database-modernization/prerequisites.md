@@ -1,5 +1,10 @@
 # Prerequisite release plans
 
+**Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
+the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
+lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
+integration when assigned, handover and cleanup. Other phases retain their existing rules.
+
 Use the [workflow](README.md) for scope, identities, integration ownership and gate timing.
 All prerequisites have one Astra/high supervisor, zero implementation workers by default, their
 own branch/worktree at execution, and no master integration. This file describes outputs and
@@ -8,7 +13,7 @@ acceptance; the exact path manifest and verified bases must be recorded before i
 ## R · Approved naming-only changes
 
 Execute [2.6.2 R](renames.md) first. Release its renamed, focused-tested candidate to C0;
-no full gates or independent review until phase finalization at 2.6.8.3.
+no full gates or independent review until phase finalization at 2.6.9.
 
 ## C0 · Contract and execution admission
 
@@ -87,10 +92,13 @@ source. S cannot launch until its extraction makes that four-way proof true.
 
 ## L · Lifecycle foundation; unlock A and Q
 
-Consume the exact **2.6.6.5 Finalization** development release, which includes P/D/G/S on F
-and all C/T ancestry. Do not individually assemble unfinalized peers or bypass their group's last
-child. Shared schema, capture adapters and provider aggregate preservation must be present in that
-verified release; L does not change the finalized domain ownership without an explicit amendment.
+Consume the exact P/D/G/S committed development candidates on F, with all C/T/R ancestry.
+Assemble them in L's own branch/worktree, reconcile shared output and fix immediate integration
+issues here. Run focused combination checks for provider/diagnostic/artifact/settings interactions,
+migration identity, settings continuity, evidence references and source interfaces before building
+A/Q prerequisites. There is no intermediate finalization task, review or full gate run. Preserve
+exact candidate identities and do not hand repairs back to completed peers. C0 binds concrete
+selectors/resources; each input must have passed its focused checks.
 
 Before A/Q launch, complete their common migrations, actual run/archive/summary interfaces,
 transaction hooks for state changes and annotations, version-application progress model, deletion
@@ -110,7 +118,10 @@ with both merge orders preserving counts, saved reports, deletes, settings bindi
 
 ## V · Served interface release; unlock U and H
 
-Consume **2.6.7.3 Finalization**, preserving the combined A/Q focused proof. Integrate real served queries and report interfaces,
+Consume the exact A/Q committed candidates on L and assemble them in V’s owned worktree.
+Fix immediate integration defects here and use focused checks to prove archive capture/cleanup,
+summary updates/rebuild, version application and deletion agree. No intermediate finalizer, full
+gates or review. Integrate real served queries and report interfaces,
 root route/command registration, shared dashboard wire types, download authorization and UI shell
 wiring. Finish shared archive relaunch removal without removing current-run retry/start. Separate
 Queue/Activity U paths from generic Archive H paths, including fixtures, snapshot/reference files,
@@ -132,4 +143,4 @@ endpoint, shared unmerged component or another peer's screenshot reference. Reco
 
 Return that compact record in the owner file and chat. Do not create observer tasks, automatically
 launch children, reserve idle worktrees or mark final product acceptance done. The next operator-started prerequisite
-assembles only its explicit input candidates. Final master integration belongs to 2.6.8.3.
+assembles only its explicit input candidates. Final master integration belongs to 2.6.9.

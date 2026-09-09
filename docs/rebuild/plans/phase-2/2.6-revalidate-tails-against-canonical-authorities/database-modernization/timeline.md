@@ -1,5 +1,10 @@
 # T · Remaining timeline T2
 
+**Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
+the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
+lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
+integration when assigned, handover and cleanup. Other phases retain their existing rules.
+
 ## Assignment and boundary
 
 The operator explicitly included remaining timeline T2 on 2026-09-09. This is its current pending
@@ -77,6 +82,6 @@ inventory with deciding evidence. Tests always accompany lint. Record exact comm
 
 The combined workflow replaces T2's former per-candidate heavy/review cadence: focused proof,
 lint and affected freshness now; every full coverage, architecture, parity, build and recovery proof
-remains due in 2.6.8.3 with fresh independent review. No operator DB upgrade or live submit is included.
+remains due in 2.6.9 with fresh independent review. No operator DB upgrade or live submit is included.
 
 **WAITING ON:** accepted T1 and C0 execution admission; T1 integration is recorded, but no future task base or schema number is guessed.

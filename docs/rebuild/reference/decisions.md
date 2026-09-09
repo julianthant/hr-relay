@@ -6,15 +6,14 @@ Owners: [storage/surface contract](dashboard-surfaces.md#phase-26-approved-namin
 [export evidence](operator-trust.md#phase-26-naming-and-xlsx-evidence-amendment--2026-09-09),
 [snapshot naming](clock-config-secrets.md#phase-26-snapshot-naming-amendment--2026-09-09).
 
-**2026-09-09 rename-first / Phase 2.6-only gate trial:** insert 2.6.2 R for seven approved
-naming-only changes; C0 moves to 2.6.3, later tasks shift by one. Finalization children are
-2.6.6.5/2.6.7.3/2.6.8.3; closure is 2.6.9. All implementation tasks use focused tests/lint/freshness;
-full gates and independent review remain at 2.6.8.3. Other phases and in-flight work are unchanged.
-Owners: [roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09),
-[D191 timing](guards-and-tests.md#314-testing-standard-d85--what-replaces-the-e2e-ritual),
-[approved rename scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
-The [parallel group shape](../../roadmap/roadmap.md#parallel-group-shape-for-future-plans-2026-09-09)
-remains unchanged; this trial does not generalize its gate exception.
+**2026-09-09 Phase 2.6-only finalization correction:** keep naming-first 2.6.2 and C0 2.6.3;
+remove intermediate/nested finalizers. L consumes P/D/G/S directly; V consumes A/Q directly.
+One last standalone **2.6.9 Finalization** owns full gates, repairs, independent review, integration,
+handover and cleanup. Other tasks use focused tests/lint/freshness. Retire p2f-close and route its
+consumers to p2f-proof; other phases/in-flight schedules are unchanged. Owners:
+[roadmap exception](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09),
+[D191](guards-and-tests.md#314-testing-standard-d85--what-replaces-the-e2e-ritual),
+[task map](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md).
 
 **2026-09-09 combined database planning amendment:** Phase 2.6 admits the named database redesign,
 preserves active T1, renumbers only pending proof/closure, and defers heavy gates/review to the single

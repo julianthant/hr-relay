@@ -1,5 +1,10 @@
 # 2.6.2 R · Apply approved database renames
 
+**Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of
+the phase. No intermediate or nested finalizers. Earlier implementation tasks use focused tests,
+lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
+integration when assigned, handover and cleanup. Other phases retain their existing rules.
+
 ## Approval and boundary
 
 On 2026-09-09 the operator approved keeping both maintenance tables and their behavior, renaming
@@ -46,7 +51,7 @@ command renames and timeline T1 are not repeated.
 4. Run focused tests, lint, affected generated-file checks and `git diff --check`; fix failures
    here. Search for each old name and classify remaining uses as required historical references.
    No full coverage, whole architecture suite or broad parity in R. Full typecheck and all required
-   broad acceptance gates plus fresh independent review belong to **2.6.8.3**.
+   broad acceptance gates plus fresh independent review belong to **2.6.9**.
 5. Commit the naming candidate and exact evidence here. Release it to **2.6.3 C0**, which plans
    downstream work against the actual renamed tree. Mark only scoped development completion;
    full product acceptance and master integration remain pending finalization.
@@ -70,7 +75,7 @@ Preserve assertions and scope; finalization still owes the complete existing pro
 
 The development handoff records plan/base/head/tree, exact paths, commands/exits, tested scope,
 historical-name exceptions and all deferred full gates/review. C0 and later prerequisites consume
-this candidate sequentially; **2.6.8.3 is the sole master-integration and remaining-repair owner**.
+this candidate sequentially; **2.6.9 is the sole master-integration and remaining-repair owner**.
 No master merge or push here. Failed focused tests/lint are fixed before handoff; no idle observers.
 
 **Status: approved scope; execution brief/base admission pending `/phase-plan 2.6.2`.**

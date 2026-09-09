@@ -1267,13 +1267,14 @@ integrations or full product acceptance. Completed prerequisite/peer cards mean 
 release only; full acceptance-finalizer/phase completion still requires full gates and review. Existing in-flight timeline T1 and other admitted tasks
 keep their original cadence.
 
-Intermediate finalization children 2.6.6.5 and 2.6.7.3 combine their groups with focused
-checks/lint/freshness and repair, then release the next prerequisite. They defer heavy proof/review.
-One fresh final 2.6.8.3 session combines all candidates, fixes remaining defects itself, runs typecheck,
-lint, full coverage, architecture, parity/build, generated and the original recovery/scenario/concurrency/
-redaction/production-route proofs, then obtains fresh independent review of the complete candidate.
-Findings and integration defects are fixed in that session with required reruns/review; no repair
-handbacks to finished peers. No master integration or final completion before PASS and required gates.
+The operator removed intermediate/nested finalization tasks. L (2.6.7) consumes P/D/G/S
+and V (2.6.8) consumes A/Q directly. Each prerequisite combines inputs, fixes immediate integration
+issues and uses focused checks/lint/freshness as part of its existing work. One final **2.6.9**
+session combines all candidates, fixes remaining defects itself, runs typecheck, lint, full coverage,
+architecture, parity/build, generated and original recovery/scenario/concurrency/redaction/production-
+route proofs, then obtains fresh independent review of the complete candidate. Finalization includes
+handover and cleanup; no task follows it. Findings are fixed there with required reruns/review;
+no repair handbacks and no master integration before PASS and required gates.
 This moves timing only: every proof, assertion, membership rule, coverage floor, isolation and deadline
 remains binding. Coverage runs without this batch's compiler/linter contention; observed resource
 conflicts are assigned explicitly. General D191 reuse/rerun and documentation-only rules still apply.
@@ -1281,7 +1282,7 @@ conflicts are assigned explicitly. General D191 reuse/rerun and documentation-on
 **Rename-first trial clarification (2026-09-09).** This cadence applies only to Phase 2.6.
 New 2.6.2 R uses focused tests, lint and affected freshness, including targeted fresh/historical
 rename checks; no full coverage, whole architecture suite or broad parity per task. Full gates and
-independent review belong to 2.6.8.3, with required reruns after repairs. Handover 2.6.9 verifies
+independent review belong to 2.6.9, with required reruns after repairs. Handover within finalization verifies
 and reuses unchanged final evidence. Other phases and existing in-flight assignments are unchanged.
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
