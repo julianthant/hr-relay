@@ -1,5 +1,19 @@
 # Provider requests and usage: storage foundation
 
+## Archive-report amendment — 2026-09-08
+
+This plan retains sole ownership of provider request/usage accounting. Archive transfer removes
+run-owned request rows only after outstanding reservations are settled or otherwise accounted for
+conservatively; it never refunds consumed usage or erases aggregate/key accounting. Any provider
+information included in the saved run report is captured before cleanup. Add focused proof of
+archive cleanup versus ordinary deletion, late callbacks, uncertainty and unchanged consumption.
+The archive owner calls the existing accounting boundary; do not implement archive storage here.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 ## Assignment and approval
 
 **Product owner: `side/provider-usage`. Parallel peer P in the [parallel execution plan](README.md).**

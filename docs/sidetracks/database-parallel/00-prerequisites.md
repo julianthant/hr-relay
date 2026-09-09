@@ -1,5 +1,18 @@
 # Database prerequisites — launch this task first
 
+## Archive-report amendment — 2026-09-08
+
+The archive-report design changes shared storage/retention interfaces in the product owners.
+Before releasing or newly launching this prerequisite, reconcile the amendment in the batch README
+with the remaining-database archive owner. Bind one owner for shared archive conversion, migration,
+cleanup and backup surfaces and regenerate the exact prompts. The old release base cannot be assumed
+to contain these new interfaces. Existing accepted evidence remains evidence for its original scope.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 ## Assignment and approval
 
 **Task: `side/database-prerequisites`. One Astra/high supervisor executes both prerequisite units

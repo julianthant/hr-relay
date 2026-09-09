@@ -1,5 +1,20 @@
 # Imported, extracted and generated artifacts
 
+## Archive-report amendment — 2026-09-08
+
+This plan retains ownership of import/generated artifact identities, publication and retention.
+Archive report references must resolve to exact verified versions, never a mutable latest output.
+Before run-owned data is removed, required archive files acquire durable archive ownership or are
+copied into verified archive storage. Live cleanup cannot prune those bytes; archive deletion cannot
+remove versions still shared by live runs/imports or other archives. Extend P8 with both directions
+of ownership transfer, missing/corrupt files, pending publication and backup/restore of archive files.
+The archive owner orchestrates the transfer; do not add another archive database or export format here.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 ## Assignment and approval
 
 **Product owner: `side/artifacts`. Revised execution follows the [parallel execution plan](README.md).**

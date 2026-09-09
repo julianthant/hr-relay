@@ -1,5 +1,19 @@
 # Launch one prerequisite, then three parallel tasks
 
+## Archive-report amendment — 2026-09-08
+
+The pasted prompts below pin the earlier plan revision and do not include the approved independent
+archive-report design. They remain historical launch specifications, not ready prompts for the
+revised combined scope. Before a new launch, resolve the shared archive prerequisite and peer
+ownership, commit all amended owners, then replace these prompts with the verified plan/base SHAs
+and exact revised scope. Do not launch the new archive work in parallel with overlapping old shared
+storage assignments. Do not restart or message already running tasks automatically.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 All plans are in this folder. Approved plan commit: `4045ef4f77d1622ef5a3bdc584a60acd58eb63a7`.
 
 1. Launch **00 — prerequisites** once. It completes A then B, with their separate reviews, gates,

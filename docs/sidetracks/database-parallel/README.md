@@ -1,5 +1,24 @@
 # Database changes: shared prerequisites and parallel execution
 
+## Archive-report amendment — 2026-09-08
+
+The operator approved an independent archive database and directed changes to existing owning
+plans rather than overlapping assignments. The linked run-completion, provider, diagnostic and
+artifact plans now carry their specific archive boundaries. In particular, the previous D assignment
+for editable current resolution on archived retained runs is superseded by read-only saved resolution.
+The remaining-database archive section owns report storage, conversion, transfer and the viewer;
+this batch retains ownership of its existing completion/accounting/diagnostic/artifact mechanisms.
+Before new launches, reconcile the common migration, cleanup/retention interfaces, command/query
+surfaces and backup proof into one prerequisite owner and revalidate peer disjointness. Do not make
+B and a remaining-batch peer independently implement the same archive migration or cleanup hook.
+The old dependency graph and frozen-file release proof below describe the pre-amendment assignment;
+they cannot establish readiness for the combined revised scope until this allocation is resolved.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 ## Approval, owners and status
 
 On 2026-09-08 the operator asked to revise the remaining database plans for independent parallel

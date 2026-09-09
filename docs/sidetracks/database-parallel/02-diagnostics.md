@@ -1,5 +1,22 @@
 # Diagnostic evidence and failure resolution
 
+## Archive-report amendment — 2026-09-08
+
+This plan retains ownership of diagnostic capture and live failure-resolution commands. The
+approved archive is now a saved report whose source run/failure rows leave live storage. Its
+resolution status, actor/time, note and diagnostic content are captured at archive time. Archived
+reports have no Mark resolved/Reopen controls and no read-through to live failure annotations.
+Reject stale actions targeting a moved failure without recreating it. This supersedes all earlier
+requirements below for editable/current resolution on archived retained runs. The archive owner
+implements report conversion/viewing; this plan supplies diagnostic values and file ownership.
+P3/P5 must prove snapshot-time resolution, read-only archived presentation, refusal of stale actions,
+and readability after live failure deletion, without weakening live annotation/UNKNOWN protections.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 ## Assignment and approval
 
 **Product owner: `side/diagnostics`. Parallel peer D in the [parallel execution plan](README.md).**
@@ -77,7 +94,7 @@ future implementation base. No implementation checkout or agents are created dur
 | `services/trust/knowledge-service.ts` has authored record admission and generated guide methods but no production caller; §4 of operator-trust explicitly records this gap. | Retire the service, tables and obsolete generated-guide obligations. Preserve useful existing repository instructions/lessons; do not delete or overwrite hand-authored documentation. |
 | Diagnostic retention stores pin reasons `knowledge`, `fix` or `write-recovery` in each snapshot, not as live joins to those tables. | Removing lesson/fix tables must not silently unpin or purge evidence. Preserve historical pins through a versioned representation; do not require nonexistent knowledge rows to read them. |
 | `run_failures` is currently immutable occurrence evidence; run completion/receipts/archives can depend on its exact content. There is no failure-resolution field/action in the inspected path. | Add separately versioned annotation fields on the same failure row. Preserve the original failure record and hashes; provide a separate annotation read model and transactional command. |
-| Archive snapshots freeze projected failure/receipt data. | Show any current resolution separately from frozen historical content; never rewrite archive JSON/digests or describe resolution as known at archive time when it happened later. |
+| Archive reports capture projected failure/receipt data and resolution. | Save the resolution known at transfer time; render it read-only without a live failure join. Verified conversion may change representation, not invent information. |
 
 Sanitized read-only target at `2026-09-08T21:13:53.153249+00:00`:
 `/Users/julianhein/Projects/hr-automation-rebuild/.tracker/state.db` held ten diagnostic bundles,
@@ -124,11 +141,11 @@ other occurrences that share the failure fingerprint, even if the same repair mi
 Add status, actor/time, optional note and the two actions within the existing failure-detail surface;
 use existing design-system components, command feedback and accessibility patterns. Failed commands
 show their real refusal and do not leave an optimistic resolved label. No separate management page.
-For archived retained runs, bind access to canonical archive/run/failure identity and show **current
-resolution** outside the immutable snapshot. The action changes only the retained failure annotation,
-not archived content or its digest. Deleted/absent failures cannot be recreated by an action or a
-cached archive. Captures without a failure have no resolution control. Ordinary resolution timeline
-events follow ordinary retention; current resolution fields remain until authorized failure deletion.
+Archived reports show the resolution annotation captured during archive transfer. They are read-only
+and do not query a retained live failure. Mark resolved/Reopen applies only to eligible live failures;
+moved/deleted/absent failures cannot be recreated by an action or cached archive. Captures without a
+failure have no resolution control. Ordinary resolution events follow ordinary retention; current
+live fields remain until authorized deletion or verified archive transfer removes their owning row.
 
 ## Migration and retirement
 
@@ -179,7 +196,7 @@ bytes and protected download admission retain their existing rules.
 | P2 Retirement | No current knowledge/fix readers/writers/projection authority remain. Populated legacy records survive in the verified pre-upgrade backup; absent/mismatched backup refuses destructive retirement. Legacy pins remain protected, recovery pins still work, and no evidence is silently unpinned/deleted or imported into agent prompts. |
 | P3 Annotation integrity | Mark resolved/reopen changes only the separate annotation and action history. Failure bytes/fingerprint, run completion/status/version, receipts and archive digests remain exact. Historical unresolved default is explicit; matching fingerprints and successful retries cause no automatic resolution. |
 | P4 Commands and concurrency | Real independent DB connections race with version checks; stale or divergent commands refuse. Inject audit/event/storage failure and prove atomic rollback. Exact replay after commit/ack loss/restart is a no-op; wrong run/failure, forged actor, rejected Host/Origin, malformed input and tombstoned target have no mutation. |
-| P5 Served behavior | Live and archived failure views show truthful current resolution, accessible actions, optional-note feedback and real refusals. Archive frozen content remains unchanged. Reopening corrects mistaken marking; refreshed processes observe persisted state. Capture-only runs have no control. Marking resolved cannot enable a prohibited retry or resolve UNKNOWN external state. |
+| P5 Served behavior | Live failure views show current resolution, accessible actions, optional-note feedback and real refusals. Archived reports show captured resolution read-only after live source removal; stale archive actions refuse. Reopening corrects mistaken marking; refreshed processes observe persisted state. Capture-only runs have no control. Marking resolved cannot enable a prohibited retry or resolve UNKNOWN external state. |
 | P6 Upgrade/deletion | Fresh DB, supported historical upgrade/backup/restore, interrupted conversion before/after commit, exact resume and repeated no-write conversion pass. D308 removes exact annotations with owner failures and does not resurrect them from cached UI/archive; shared artifacts, diagnostic pin/prune rules and protected download checks remain valid. |
 
 One Astra/high supervisor implements this complete command/UI peer locally, zero implementation

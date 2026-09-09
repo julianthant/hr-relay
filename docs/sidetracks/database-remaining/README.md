@@ -5,8 +5,9 @@
 On 2026-09-08 the operator asked to continue the existing table-by-table design discussion in the
 current task and collect all resulting changes in one folder, like `database-parallel`. No separate
 planning task or implementation worktree is needed. This folder is the single owner for the new batch.
-The [earlier database batch](../database-parallel/README.md) remains unchanged by the decisions
-recorded so far; follow the ownership rule below when a later decision revises its scope.
+The [earlier database batch](../database-parallel/README.md) retains its existing gate cadence and
+in-flight evidence. Its affected product owners now carry the approved archive-report boundary
+amendment; follow the ownership rule below rather than duplicating their implementation scopes.
 
 This is a planning worklist, not an approved execution plan. Explain concrete workflows, propose
 names/designs, obtain the operator's decisions and record the approved changes here. Do not infer
@@ -43,7 +44,7 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | --- | --- | --- |
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
 | Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
-| Relaunch and deletion | `archive_relaunches`, `deleted_runs` | Approved: remove archive relaunch; preserve version-independent archive viewing. Historical relaunch storage disposition and deletion naming remain open. |
+| Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Deletion details remain to settle. |
 | Messages and notes | `notifications`, `notes` | Open |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
 | Database maintenance | `authority_meta`, `authority_upgrades` | Open |
@@ -252,14 +253,17 @@ unapproved two-table naming suggestion and the proposed name `app_version`.
 ### Approved design and workflow
 
 One row represents one proposed version change, not the single current application version. It
-supports whole-application or selected-workflow scope and moves `planned` → `applied` once. Multiple
+supports whole-application or selected-workflow scope and moves `planned` → `applying` → `applied`
+once, with recoverable progress during cross-database transfer. Multiple
 proposals can target the same version, so the target version is not the row's unique identity.
 
 Store shared scope, target version and change explanation once. Preserve the reviewed identities,
 candidate membership, actor/time and review fingerprint separately from the eventual applied
 identities, actual archive membership and application actor/time. The proposal stays fixed; applying
-adds the outcome without rewriting what was reviewed. Applied rows are immutable. `archived_runs`
-continues to hold the self-contained run details and links to the completed change.
+adds the outcome without rewriting what was reviewed. Completed rows are immutable. Saved reports
+live in `archive.sqlite` → `archive_records`, with a stable version-change identifier and sufficient
+saved change metadata to display without a live-database join. The archive section below owns
+transfer, report storage and visibility; this section owns version-change review and lifecycle.
 
 1. Preview creates a `planned` row with the exact proposed change and archive candidates/blockers.
 2. Apply authenticates the reviewed row/revision/fingerprint and rechecks the current build,
@@ -269,9 +273,14 @@ continues to hold the self-contained run details and links to the completed chan
    review before application. Blockers clearing does not itself authorize additional archive members.
    Define the reviewed replacement/supersession protocol in the execution brief without overwriting
    earlier reviewed evidence or allowing stale confirmation to apply the replacement.
-4. If valid, create the archive records, add the actual outcome and mark the change `applied` in one
-   transaction with the command/audit. Failure rolls back the whole application. Exact command replay
-   returns its durable outcome without duplicate archival; competing apply commands cannot both win.
+4. If valid, bind the approved membership and begin the recoverable archive transfer defined below.
+   The public lifecycle now needs an in-progress `applying` stage: `planned` → `applying` → `applied`.
+   Use the existing change row for durable progress rather than creating a second command or outbox
+   authority. Local transactions remain atomic; do not claim that two SQLite databases and attachment
+   files roll back together. Failure leaves explicit recoverable progress; exact replay resumes the
+   same transfer or returns its completed result without duplicate archives. Competing applies cannot
+   both win. Mark `applied` only after all selected reports are verified/published and live cleanup is
+   confirmed. Define exact journal/audit results for pending, resumed and completed requests.
 5. Archive/history reads use the same completed change row. Minor changes still archive nothing;
    major changes preserve all existing unresolved-submit and terminal-state restrictions. These
    commands do not install code or make the database the authority for the running build identity.
@@ -288,19 +297,21 @@ by one lifecycle row while retaining their proofs; no migration or runtime test 
 
 Before admitting the execution brief:
 
-- Define strict planned/applied shapes, atomic one-time transition, proposal immutability, applied
-  immutability and archive references that cannot point to a merely planned change. Keep command and
+- Define strict planned/applying/applied shapes, fenced one-time transitions, proposal immutability,
+  completed immutability and archive visibility that cannot present a merely planned transfer as
+  finished. Keep command and
   audit ownership in their existing tables; this consolidation does not duplicate command history.
 - Plan supported conversion for unapplied plans and applied plan/application pairs. Preserve original
-  identities, archive references, review/application evidence and historical immutable bytes/digests.
-  Reject inconsistent pairs rather than fabricate a missing outcome. Reconcile ID mapping, schema
-  generations, old backups/restore and integrity checks at the shared migration owner.
+  identities and review/application meaning. Bind former archive references to verified converted
+  reports; old source digests can remain migration provenance, not validators over newly formatted
+  report bytes. Reject inconsistent pairs rather than fabricate a missing outcome. Reconcile ID
+  mapping, old backups/restore and integrity checks at the shared migration owner.
 - Ratify the changed archive-review behavior and storage ownership at the owning dashboard/archive
   contracts with decision pointers. Update command/API/read-model consumers and affected UI together.
-- Focused proof must cover preview without application, successful atomic application, applied-row
+- Focused proof must cover preview without application, successful recoverable application, applied-row
   immutability, exact replay, concurrent apply, stale review/build/workflow rejection, added/removed
-  candidate review requirements, blockers, minor no-archive behavior, transaction rollback and
-  preservation of populated historical archives through upgrade/restore. Use targeted UI proof for
+  candidate review requirements, blockers, minor no-archive behavior, local transaction rollback,
+  cross-database interruptions and verified report conversion through upgrade/restore. Use targeted UI proof for
   the updated-preview path. Final heavy gates and independent review follow this folder's cadence.
 - Resolve overlap with the approved archive-relaunch retirement below, remaining deletion discussion
   and the shared database prerequisite.
@@ -310,12 +321,18 @@ Status: product direction and name approved; complete execution allocation, migr
 review-replacement protocol, contract admission and launch prompts remain pending. No implementation
 or separate task is launched by this record.
 
-## Approved group 3: remove archive relaunch and preserve historical viewing
+## Approved group 3: independent archive reports and no relaunch
 
 On 2026-09-08 the operator directed: “remove the relaunch from archive feature” and confirmed that
 archive records remain viewable when workflow versions differ because their original data is
 preserved. This supersedes the unapproved suggestions to move relaunch lineage onto `workflow_runs`
 or add a prefilled archive-relaunch review form. Do neither as a new feature.
+
+The operator then clarified that archives exist to avoid ongoing legacy-run code, proposed a
+separate archive database, and approved the recommended design with “yes lets do that. how will we
+revise them”. This supersedes the earlier requirement to keep old archive payloads coupled to live
+run schemas and preserve their exact representation forever. Preserve the information needed for
+the saved report; convert representation deliberately and verify the result.
 
 ### Required behavior and scope
 
@@ -323,41 +340,99 @@ or add a prefilled archive-relaunch review form. Do neither as a new feature.
   `relaunch-archived-run`. Retire producer-only planning, fan-out and lifecycle wiring when no
   supported caller remains. A stale client/direct command cannot create a run through the retired
   action. Keep historical command/audit envelopes readable without re-enabling execution.
-- Archive viewing renders the stored run details, workflow identity and captured results even if
+- Archive viewing renders the saved report, workflow identity and captured results even if
   the current workflow changed or is no longer registered. Current descriptor availability cannot
   gate historical viewing. Preserve existing honest absence/retention behavior for old fields or
   separately stored evidence; do not invent unavailable data.
-- Preserve normal new-run creation and existing non-archive retry/restart behavior. Removing archive
-  relaunch does not authorize deleting archives, rewriting original run data or changing these other
-  actions. Archive delete remains a separate operation under its current safety rules.
+- Preserve normal new-run creation and existing non-archive retry/restart behavior. Archive transfer
+  removes verified terminal runs and exclusively owned live records only after their report is safe;
+  it is distinct from operator deletion. No archived run can be resumed/retried through a live door.
+  Deleting a saved archive remains an explicit separate operation, with revised ownership checks.
 - Inventory populated `archive_relaunches`, historical command/audit/batch-origin references and
   existing descendant runs. Decide historical storage disposition before admitting execution.
   Removing the feature does not automatically authorize deleting its historical lineage evidence;
   do not migrate that evidence into a second new table without an approved need.
 
-### Schema changes versus historical data
+### Storage and viewing boundary
 
-Changing table structure does not itself authorize changing every record's values. The planned
-`workflow_runs` and archive migrations must declare exactly which live fields, reference mappings
-or indexes they transform. A new column does not prove that an old run had a historical value for
-it. Preserve a meaningful absent/unknown state instead of backfilling invented facts.
+- Add one independently stored `archive.sqlite` database with one `archive_records` table for saved
+  reports. Use stable identifiers plus indexed workflow ID/name, workflow version, outcome,
+  completion/archive timestamps and approved searchable person/item metadata. Use columns for
+  cross-archive filtering, not separate tables per workflow/version. Final paths are bound through
+  runtime isolation in the execution prerequisite; do not invent a second live authority root.
+- Each row holds a standalone display document with generic labelled values, typed data tables,
+  text/log sections and attachment references. Freeze all information in the agreed displayed-run
+  inventory, including relevant settings, steps/results, failure/diagnostic state and activity at
+  archive time. Do not serialize live `RunRecord`, current dashboard wire schemas or arbitrary
+  workflow objects and then require their old parsers in the viewer. Define additional structured
+  filters in the report contract where needed; a screenshot/opaque text blob alone is insufficient.
+- A generic report renderer and query interface must read archives without workflow descriptors,
+  live run/failure/settings records or current-version domain parsers. The archive format is its own
+  small contract; future live schema edits must not force historical run adapters. Supported older
+  report formats may be converted during archive-format upgrades instead of preserving every old
+  runtime schema indefinitely. Retire old runtime compatibility paths only after proving no live or
+  supported restore consumer needs them.
+- Required attachment bytes must have durable archive-owned storage or verified independent
+  retention before live cleanup. Persist the approved display content with existing redaction and
+  secret boundaries. Record genuinely absent evidence honestly. Retention cannot silently remove
+  files promised by a completed archive; deletion reclaims only exclusively owned bytes.
+- After conversion/transfer, remove `archived_runs` from the main database and retire its live
+  serializers/joins. Remove the archived run and exclusively owned checkpoints/results/failures/
+  other records from live storage. Shared settings, imports, files, provider aggregates and records
+  still needed by another run require reference-aware handling, not a blanket cascade.
 
-`archived_runs` stores its own frozen payload. Changing the current workflow/run schema must not
-rebuild that payload from today's descriptor or overwrite captured content and digests. Readers
-must continue accepting supported historical archive schema generations and render only what is
-present. The version-change consolidation must preserve this rule while updating its references.
-Schema compatibility and historical workflow-version differences are distinct concerns.
+### Recoverable transfer and consistency
+
+One archive/version-change implementation owner must define and prove the following protocol:
+
+1. Validate reviewed membership and terminal eligibility, then fence the selected source records so
+   concurrent mutation/deletion cannot change the report or remove an uncaptured source. Record the
+   transfer identity and progress on the existing `version_changes` row. Unresolved submissions and
+   non-terminal dependent trees remain blockers; do not settle them merely to archive.
+2. Build reports while their source data is readable. Write reports and required files durably with
+   stable run/transfer identities, then verify completeness and integrity. Repeated writes must
+   verify the same content or refuse a divergent transfer, never create duplicate reports.
+3. Only after verification, remove exclusively owned live records in recoverable local transactions.
+   Preserve a distinct archived disposition: moving to archive is not operator deletion. Define
+   lookup, stale-command rejection, run-ID uniqueness and run/attempt numbering after live rows are
+   gone. Do not reuse the existing delete cascade as though it had correct archive semantics.
+4. Publish archive visibility and finish the change only when transfer and cleanup are confirmed.
+   Precisely bind staging/publication to durable progress; interrupted partial batches must remain
+   distinguishable and resumable, with no loss, duplicate final visibility or false completion.
+   Do not erase a durable archive to conceal a cleanup failure.
+5. Back up and restore both databases plus retained archive files as a defined recoverable set.
+   Ordinary backup remains explicit-only. Specify how supported old backup formats are converted;
+   recovery must not revive already moved/deleted runs or produce broken cross-store references.
+
+### Existing archive conversion
+
+Convert populated current `archived_runs` records once into the report format, using their stored
+content rather than today's workflow to invent missing details. Preserve report-visible values and
+necessary references; validate new report integrity separately from old source digests. Verify each
+report and its files before removing the old archive row or retained live records. Empty archives
+are not sufficient migration proof. Keep narrowly scoped old-format readers at the conversion/
+restore boundary where required; the normal archive viewer must not import them.
 
 ### Proof and ownership before launch
 
-Use the same plan owner for retirement, archive query/UI changes and migration implications.
-Check shared ownership with `version_changes`, settings and earlier database prerequisites before
-allocating peers. Ratify archive contract changes at their existing owner when admitting the brief.
-Focused tests must prove action/command retirement, no writes from stale relaunch requests, readable
-historical command/lineage data, unchanged archive payloads/digests through supported upgrades, and
-archive viewing after workflow version changes or descriptor removal. Cover older schema generations
-with missing fields, plus preserved ordinary creation/retry and archive-delete behavior. Apply the
-agreed final-session heavy gates and independent review cadence.
+Use this existing section as the sole owner of report storage, transfer, conversion and viewer work;
+keep version-change lifecycle in its section above. The earlier batch's run-completion, diagnostic,
+artifact and provider owners are amended in place for their data/retention boundaries. Do not assign
+them duplicate archive-table or transfer implementations. Allocate the common migration, authority,
+backup, run lookup and command surfaces to one prerequisite before parallel peers launch. Ratify
+archive/storage contracts at their existing owners when admitting the complete brief. Reissue exact
+prompts only after all changed owners and dependency boundaries are verified.
 
-Status: removal and historical-viewing behavior approved for planning. Implementation, historical
-lineage storage disposition, complete allocation and launch prompts remain pending.
+Focused proof must cover archive-relaunch retirement; report completeness and cross-workflow filters;
+viewing after removal of live rows and old workflow code; changed live schemas with unchanged report
+rendering; populated conversion including absent fields and files; interruption at each transfer/file/
+cleanup/publication boundary; exact replay and concurrent apply/delete; mixed completed/in-progress
+batches; archived versus deleted lookup; numbering/ID protection; provider accounting; shared-file
+retention; and full-set backup/restore. Test normal new-run/retry behavior separately from retired
+archive execution. Prove the renderer has no old run/workflow-schema import dependency. Apply this
+batch's final-session heavy gates and independent review cadence; earlier in-flight gate schedules
+and completed evidence remain intact.
+
+Status: separate archive/report design and relaunch removal approved for planning. Implementation,
+historical lineage storage disposition, exact report/transfer contract, complete allocation and
+launch prompts remain pending.

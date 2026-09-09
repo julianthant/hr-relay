@@ -1,5 +1,22 @@
 # Run completion storage
 
+## Archive-report amendment — 2026-09-08
+
+The operator approved moving completed archived runs out of live storage into independent saved
+reports. This plan continues to own live completion/failure semantics. It supplies the complete
+settled completion/results/failure/receipt values to the archive conversion boundary and proves
+removal cannot strand shared evidence. It does not implement a second archive database or transfer.
+Historical snapshot readers below are required only at supported conversion/restore boundaries;
+after report conversion, the archive viewer must not depend on this plan's live run schema.
+P4 must additionally prove the saved completion report remains readable after its live rows and
+old workflow implementation are removed. Original byte/digest checks still apply to source evidence
+before conversion; converted reports have their own verified integrity.
+
+Archive design owner: [independent archive reports](../database-remaining/README.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+This is a planning amendment. Preserve existing in-flight gate schedules, candidate evidence and
+accepted work; it does not launch implementation or reschedule reviews. New launch readiness awaits
+the complete revised allocation and verified prompts.
+
 ## Assignment and approval
 
 **Owner: `side/run-completion`. Prerequisite A in the [parallel execution plan](README.md). Implementation
@@ -130,11 +147,14 @@ New completions have no outbox identity. Old same-request replay remains exact; 
 outbox identity cannot be normalized into an accepted replay. Explicitly define supported historical
 input adapters and keep their scope separate from new runtime contracts.
 
-Keep frozen archive content, original digests, evidence receipts, issued references and command
-replay identities valid. Historical archives may embed the old run representation; preserve their
-bytes and admit them through versioned snapshot readers instead of rewriting them against today's
-run schema. Existing live/archived views still use canonical membership. D308 deletes completion
-with the run and owned failures/results/events under the existing tombstone and shared-evidence rules.
+Keep source content, original digests, evidence receipts, issued references and command replay
+identities valid through this completion conversion. Historical archive inputs may embed the old
+run representation: admit them at the supported conversion/restore boundary, then let the archive
+owner produce an independent report with separately verified integrity. Do not require historical
+run-schema readers in the final archive viewer. Before the archive transfer lands, existing views
+retain their current membership; afterward, archive lookup resolves the independent report and live
+completion is removed only after verified capture. D308 deletion remains distinct from transfer and
+preserves its tombstone/shared-evidence rules.
 Failure rename preserves diagnostic/receipt FKs, searchable fingerprints, indexes and integrity checks.
 
 Retire the two physical tables, inserts/read repositories, current serializers, pending metrics and
