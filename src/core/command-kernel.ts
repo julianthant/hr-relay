@@ -1,7 +1,7 @@
 import type { CommandApplication } from "./command-application.js";
 export type { CommandApplication } from "./command-application.js";
 import { executeFailureResolution, failureResolutionCapability } from "./failure-resolution.js";
-import { selectRunRuntime, selectNewRunIdentity } from "./run-settings.js";
+import { selectRunRuntime, selectNewRunIdentity, reviewedRunSettingsCurrent } from "./run-settings.js";
 import { localDatePart } from "../domain/clock.js";
 import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
 import { retainedRawSubmission } from "../services/start/protected-input.js";
@@ -698,6 +698,9 @@ function executeStartRun(
     );
   }
 
+  if (!reviewedRunSettingsCurrent(repositories, plan)) {
+    reject(request, "replan-required", "Settings changed after this plan was reviewed; review a fresh plan before starting");
+  }
   if (plan.planned.some((entry) => entry.runId !== undefined || entry.traceId !== undefined)) {
     reject(request, "replan-required", "legacy plan reserved lifecycle identities; replan before submitting");
   }

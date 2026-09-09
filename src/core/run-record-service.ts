@@ -1,4 +1,4 @@
-import { runSettingsAvailable } from "./run-settings.js";
+import { runSettingsAvailable, selectNewRunIdentity } from "./run-settings.js";
 import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../domain/clock.js";
 import { z } from "zod";
@@ -217,8 +217,7 @@ export class RunRecordService {
       const journal = this.inspectJournal(repositories, "create", request, { kind: "none" });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
-      if (!this.runtimeMatches(request.runtimeConfig)
-        || request.configFingerprint !== request.runtimeConfig.configFingerprint) return refused({ reason: "runtime-stale" });
+      if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (!runSettingsAvailable(repositories, request)) return refused({ reason: "runtime-stale" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
@@ -247,7 +246,7 @@ export class RunRecordService {
       void commandId; void matchKey; void runtimeConfig;
       const run = RunRecordSchema.parse({
         envelope: {
-          ...envelope, runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
+          ...selectNewRunIdentity(repositories, envelope), runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
           attempt: repositories.runs.nextItemAttempt({ workflow: request.workflow, itemId }),
           enqueuedAt: now,
         },
@@ -774,8 +773,7 @@ export class RunRecordService {
         || canonicalJsonStringify(create.input.raw) !== canonicalJsonStringify(archived.input.raw)) {
         return refused({ reason: "schema-mismatch", digest: archiveFingerprint });
       }
-      if (!this.runtimeMatches(create.runtimeConfig)
-        || create.configFingerprint !== create.runtimeConfig.configFingerprint) {
+      if (!this.runtimeMatches(create.runtimeConfig)) {
         return refused({ reason: "runtime-stale" });
       }
       if (!runSettingsAvailable(repositories, create)) {
@@ -796,7 +794,7 @@ export class RunRecordService {
       void matchKey; void runtimeConfig;
       const run = RunRecordSchema.parse({
         envelope: {
-          ...envelope,
+          ...selectNewRunIdentity(repositories, envelope),
           runId,
           itemId,
           traceId: deriveTraceId(code, runId, this.dependencies.clock),
@@ -854,8 +852,7 @@ export class RunRecordService {
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
         return refused({ reason: "schema-mismatch", digest: run.envelope.contractFingerprint });
       }
-      if (!this.runtimeMatches(request.runtimeConfig)
-        || run.envelope.configFingerprint !== request.runtimeConfig.configFingerprint) return refused({ reason: "runtime-stale" });
+      if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
@@ -869,7 +866,7 @@ export class RunRecordService {
       delete envelope.recovery;
       delete envelope.sourceBound;
       const next = RunRecordSchema.parse({
-        envelope: { ...envelope, runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
+        envelope: { ...selectNewRunIdentity(repositories, envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
           retryOf: run.envelope.runId, enqueuedAt: now,
           ...(restart ? { recovery: "restart-from-start" } : {}),
         },

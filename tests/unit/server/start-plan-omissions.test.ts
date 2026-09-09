@@ -55,6 +55,8 @@ function harnessFor(descriptor: AnyWorkflowDescriptor) {
   );
   databases.push(database);
   database.authority.configSnapshots.insert({...CONFIG_SNAPSHOT,configSnapshotId:UUID_4,fingerprint:HASH_A});
+  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+    configSnapshotId: UUID_4, configFingerprint: HASH_A, activatedAt: NOW });
   const ids = sequentialIdFactory("b");
   let transactions = 0;
   const service = createStartPlanService({
@@ -203,4 +205,19 @@ describe("start plan step omissions (D307)", () => {
       [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
     );
   });
+});
+
+
+it("F plan service selects the active snapshot inside its write boundary after boot", () => {
+ const h = harnessFor(omissionAssertingDescriptor);
+ const nextId = "83000000-0000-4000-8000-000000000097";
+ const fingerprint = "b".repeat(64);
+ h.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId: nextId, fingerprint });
+ h.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+  configSnapshotId: nextId, configFingerprint: fingerprint, activatedAt: NOW });
+ const wire = h.service.plan(request(h.descriptor, {}));
+ assert.equal(wire.configSnapshotId, nextId);
+ assert.equal(wire.fingerprints.configFingerprint, fingerprint);
+ assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.configSnapshotId, nextId);
+ assert.equal(h.database.authority.configSnapshots.get(UUID_4)?.fingerprint, HASH_A);
 });

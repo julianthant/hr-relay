@@ -1,5 +1,5 @@
 import type { ProviderAccountingStorage } from "../base/provider-accounting.js";
-import { commitGeneratedCheckpoint, projectGeneratedUpdates } from "./generated-artifact-projection.js";
+import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "./generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../events/timeline.js";
 import { localDatePart } from "../domain/clock.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
@@ -1246,16 +1246,7 @@ export async function executeClaimedRun(
     const projectionsFor = (nodeId: string) =>
       (descriptor.artifactProjections ?? []).filter((spec) => String(spec.source.nodeId) === nodeId);
 
-    /**
-     * A replayed checkpoint may still owe its blocking projection: the
-     * checkpoint and its outbox rows committed atomically, but a crash (or a
-     * parked projection failure) can leave rows `pending` — possibly from an
-     * EARLIER run of the same item. The stable keys re-derive from the
-     * replayed checkpoint (a pure function of its exact output), so the rows
-     * are found by the identity that actually matters — projection id plus
-     * stable key — never by which run happened to insert them. The node
-     * cannot pass as replayed until every one of its rows is acknowledged.
-     */
+    // Only the exact source checkpoint may acknowledge its retained output updates.
     const resumePendingProjections = async (
       node: TaskRuntimeNode,
       record: RunCheckpointRecord,
@@ -1263,14 +1254,9 @@ export async function executeClaimedRun(
       const specs = projectionsFor(String(node.id));
       if (specs.length === 0) return undefined;
       try {
-        const derived = deriveArtifactProjectionRows({
-          specs,
-          nodeId: String(node.id),
-          outputValue: record.output.value,
-        });
-        const expected = new Set(derived.map((row) => `${row.projectionId}\0${row.stableKeyFingerprint}`));
-        const pending = deps.authority.authority.artifactOutbox.listPending()
-          .filter((row) => expected.has(`${row.projectionId}\0${row.stableKeyFingerprint}`));
+        const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
+        if (withTransaction === undefined) throw new Error("generated-artifact-replay-requires-transaction");
+        const pending = withTransaction(repositories => pendingGeneratedUpdateIds(repositories, record, specs));
         if (pending.length === 0) return undefined;
         const projector = deps.artifactProjector;
         if (projector === undefined) {
@@ -1279,7 +1265,7 @@ export async function executeClaimedRun(
             + "outbox rows, and this composition wires no artifact sink projector",
           ));
         }
-        await projectGeneratedUpdates(projector, pending.map((row) => row.outboxId));
+        await projectGeneratedUpdates(projector, pending);
       } catch (error) {
         return await failNode(node, node.uses.id, error);
       }
@@ -1377,7 +1363,7 @@ export async function executeClaimedRun(
               outputValue: record.output.value,
             });
             const outboxRows = derived.map((row) => ({
-              outboxId: deps.ids.uuid(),
+              outboxId: generatedUpdateId(record, row),
               artifactId: deps.ids.uuid(),
               projectionId: row.projectionId,
               stableKeyFingerprint: row.stableKeyFingerprint,

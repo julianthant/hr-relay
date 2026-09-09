@@ -1,3 +1,5 @@
+import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
+import { generatedUpdateId, pendingGeneratedUpdateIds } from "../../src/core/generated-artifact-projection.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
@@ -5,8 +7,7 @@ import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
  * projector, in three layers.
  *
  * 1. Derivation is PURE — the same checkpoint output always derives the same
- *    stable key, which is the whole recovery story: a resumed run re-derives
- *    and finds its own pending rows by identity, never by run id.
+ *    stable key. Replay separately binds each update to its exact checkpoint.
  * 2. The projector + xlsx sink over a REAL authority database and real files:
  *    fresh create, verified no-op, in-place update, operator-edit conflict
  *    (both files preserved, row stays pending), head/file mismatch arms, and
@@ -46,7 +47,7 @@ import {
   ArtifactSinkConflictError,
   createXlsxRetentionSink,
 } from "../../src/infra/artifacts/xlsx-retention-sink.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
@@ -452,6 +453,15 @@ describe("executor projection wiring", () => {
     assert.ok(head !== undefined && head.generation === 1);
     assert.equal((await workbookRows(root)).length, 2);
 
+    // A later producer owes the same workbook key. Replaying this checkpoint
+    // must not acknowledge that other producer's update.
+    const original = database.authority.generatedArtifacts.list()[0]?.updates[0]?.record;
+    assert.ok(original !== undefined);
+    const newerId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const { projectedAt: _projectedAt, ...pending } = original;
+    database.authority.artifactOutbox.insert({ ...pending, outboxId: newerId,
+      sourceRunId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", state: "pending" });
+
     // A second run of the same item replays the checkpoint; nothing is owed,
     // so the workbook and head stay EXACTLY as they were.
     database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 2));
@@ -459,6 +469,7 @@ describe("executor projection wiring", () => {
     const replayed = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
     assert.equal(replayed.state, "done");
     assert.equal(database.authority.artifactSinkHeads.get("xlsx-retention")?.generation, 1);
+    assert.equal(database.authority.artifactOutbox.get(newerId)?.state, "pending");
   });
 
   it("fails the node loudly when no projector is composed", async () => {
@@ -508,4 +519,70 @@ describe("executor projection wiring", () => {
     assert.equal(database.authority.artifactSinkHeads.get("xlsx-retention")?.generation, 1);
     assert.equal((await workbookRows(root)).length, 2);
   });
+});
+
+
+describe("F exact checkpoint publication recovery", () => {
+  for (const historical of [false, true]) {
+    it(`isolates same-run claim generations (${historical ? "historical ambiguity refusal" : "bound updates"})`, async () => {
+      const descriptor = projectionDescriptor();
+      const root = tempRoot("hrauto-checkpoint-update-");
+      const h = executorHarness(descriptor, root);
+      const { database } = h.authority;
+      writeFileSync(join(root, "retention.xlsx"), "foreign workbook");
+      database.authority.runs.enqueue(queuedRunFor(descriptor));
+      assert.equal((await executeClaimedRun(h.deps, { ...claim(database, descriptor), signal: SIGNAL })).state, "failed");
+      const source = database.authority.artifactOutbox.listPending()[0];
+      assert.ok(source !== undefined);
+      const checkpoint = database.authority.runCheckpoints.latest(descriptor.id, QUEUED_RUN.envelope.itemId, "extract");
+      assert.ok(checkpoint !== undefined);
+      const row = deriveArtifactProjectionRows({ specs: PROJECTION_SPECS, nodeId: "extract", outputValue: checkpoint.output.value })[0];
+      assert.ok(row !== undefined);
+      const legacyId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+      if (historical) {
+        database.authority.artifactOutbox.insert({ ...source, outboxId: legacyId });
+        assert.deepEqual(pendingGeneratedUpdateIds(database.authority, checkpoint, PROJECTION_SPECS), [source.outboxId, legacyId]);
+      }
+      const newer = RunCheckpointRecordSchema.parse({ ...checkpoint, claimGeneration: 2 });
+      database.authority.runCheckpoints.insert(newer);
+      const newerId = generatedUpdateId(newer, row);
+      database.authority.artifactOutbox.insert({ ...source, outboxId: newerId });
+      const before = database.authority.artifactOutbox.listPending();
+      if (historical) {
+        assert.throws(() => pendingGeneratedUpdateIds(database.authority, checkpoint, PROJECTION_SPECS), /checkpoint-ambiguous/u);
+      } else {
+        assert.deepEqual(pendingGeneratedUpdateIds(database.authority, checkpoint, PROJECTION_SPECS), [source.outboxId]);
+        assert.deepEqual(pendingGeneratedUpdateIds(database.authority, newer, PROJECTION_SPECS), [newerId]);
+      }
+      assert.deepEqual(database.authority.artifactOutbox.listPending(), before);
+      if (!historical) {
+        const orphan = RunCheckpointRecordSchema.parse({ ...checkpoint, claimGeneration: 3 });
+        database.authority.artifactOutbox.insert({ ...source, outboxId: generatedUpdateId(orphan, row) });
+        assert.throws(() => pendingGeneratedUpdateIds(database.authority, checkpoint, PROJECTION_SPECS), /checkpoint-unresolved/u);
+      }
+    });
+  }
+});
+
+
+it("F executor replay holds writer exclusion while selecting checkpoint witnesses and pending updates", async () => {
+ const descriptor = projectionDescriptor();
+ const h = executorHarness(descriptor, tempRoot("hrauto-replay-selection-"));
+ const { database, clock, path } = h.authority;
+ const contender = AuthorityDatabase.open({ path, busyTimeoutMs: 1, migrationOwner: "contender" }, clock);
+ disposers.push(() => contender.close());
+ database.authority.runs.enqueue(queuedRunFor(descriptor));
+ assert.equal((await executeClaimedRun(h.deps, { ...claim(database, descriptor), signal: SIGNAL })).state, "done");
+ let observed = 0;
+ const transaction = database.withAuthorityTransaction.bind(database);
+ database.withAuthorityTransaction = work => transaction(repositories => work({ ...repositories,
+  artifactOutbox: { ...repositories.artifactOutbox, listPending: () => {
+   observed += 1;
+   assert.throws(() => contender.withAuthorityTransaction(() => {}), /database is locked/u);
+   return repositories.artifactOutbox.listPending();
+  } },
+ }));
+ database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 2));
+ assert.equal((await executeClaimedRun(h.deps, { ...claim(database, descriptor), signal: SIGNAL })).state, "done");
+ assert.equal(observed, 1);
 });

@@ -1,3 +1,5 @@
+import { selectActiveRunSettings } from "../core/run-settings.js";
+import { ConfigSchema } from "../domain/config/schema.js";
 import { sha256Hex } from "../domain/sha256.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
@@ -78,22 +80,23 @@ export function createSettingsRuntimeReader(input: Readonly<{
   database: CommandAuthority;
   hostFacts: HostConfigFacts;
   clock: Clock;
-  active: SettingsRuntimeIdentity;
+  active: SettingsRuntimeIdentity | ((repositories: AuthorityRepositories) => SettingsRuntimeIdentity);
 }>): Readonly<{ read(): SettingsRuntimeSnapshot }> {
   return Object.freeze({
     read: () => input.database.withAuthorityTransaction((repositories) => {
+      const active = typeof input.active === "function" ? input.active(repositories) : input.active;
       repositories.runtimeConfig.requireActive({
-        settingsRevision: input.active.settingsRevision,
-        settingsFingerprint: input.active.settingsFingerprint,
-        configFingerprint: input.active.configFingerprint,
+        settingsRevision: active.settingsRevision,
+        settingsFingerprint: active.settingsFingerprint,
+        configFingerprint: active.configFingerprint,
       });
       const record = readSettings(repositories);
       const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock);
       const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
       const runtimeStatus = SettingsRuntimeStatusSchema.parse(
-        canonicalJsonStringify(persisted) === canonicalJsonStringify(input.active)
-          ? { state: "current", identity: input.active }
-          : { state: "restart-required", active: input.active, persisted },
+        canonicalJsonStringify(persisted) === canonicalJsonStringify(active)
+          ? { state: "current", identity: active }
+          : { state: "restart-required", active, persisted },
       );
       return Object.freeze({ record, runtimeStatus });
     }),
@@ -111,4 +114,15 @@ export function withCurrentSettings<Result>(
     throw new Error("settings changed after worker boot; restart activation is required");
   }
   return work();
+}
+
+/** Dashboard reads follow the committed active identity; saved-only changes remain explicit. */
+export function activeSettingsRuntimeIdentity(repositories: AuthorityRepositories): SettingsRuntimeIdentity {
+ const active = repositories.runtimeConfig.get();
+ if (active === undefined) throw new Error("settings-runtime-active-missing");
+ return { settingsSchemaHash: SETTINGS_SCHEMA_HASH, settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
+  configFingerprint: active.configFingerprint };
+}
+export function activeSettingsConfig(repositories: AuthorityRepositories) {
+ return ConfigSchema.parse(selectActiveRunSettings(repositories).config);
 }
