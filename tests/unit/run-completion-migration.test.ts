@@ -31,18 +31,29 @@ const FixtureSchema = z.object({
   archive: ArchivedRunRecordSchema,
   rows: z.record(z.string().regex(/^[a-z_]+$/u), z.array(z.record(z.string().regex(/^[a-z_]+$/u), z.union([z.string(), z.number(), z.null()])))),
 });
-function fixture(kind: "success" | "failure") {
+function fixture(kind: "success" | "failure", schemaVersion: 39 | 40 = 40) {
   const saved = FixtureSchema.parse(JSON.parse(readFileSync(new URL(`./run-completion-fixtures/schema40-${kind}.json`, import.meta.url), "utf8")));
   const root = mkdtempSync(join(tmpdir(), "run-completion-migration-")); roots.push(root);
   const stateRoot = join(root, ".tracker"); mkdirSync(stateRoot);
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), file), join(root, file));
   const path = join(stateRoot, "state.db"); const raw = new DatabaseSync(path); raw.exec("PRAGMA foreign_keys=OFF");
-  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 40)) for (const statement of migration.statements) raw.exec(statement);
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= schemaVersion)) for (const statement of migration.statements) raw.exec(statement);
   for (const [table, rows] of Object.entries(saved.rows)) for (const row of rows) {
-    const names = Object.keys(row);
-    raw.prepare(`INSERT INTO ${table} (${names.join(",")}) VALUES (${names.map(() => "?").join(",")})`).run(...Object.values(row));
+    // Reconstruct schema 39 from captured settlement authority, omitting only the
+    // archive enrichment columns introduced by migration 40. Frozen JSON stays exact.
+    const sourceRow = { ...row };
+    if (schemaVersion === 39 && table === "archived_runs") {
+      const transactions = z.object({ lines: z.tuple([]), eventIds: z.tuple([]), sourceDigests: z.tuple([]) })
+        .parse(JSON.parse(String(sourceRow.transactions_json)));
+      assert.deepEqual(transactions.lines, []);
+      delete sourceRow.transactions_json;
+      delete sourceRow.transactions_digest;
+    }
+    if (table === "database_state") sourceRow.schema_version = schemaVersion;
+    const names = Object.keys(sourceRow);
+    raw.prepare(`INSERT INTO ${table} (${names.join(",")}) VALUES (${names.map(() => "?").join(",")})`).run(...Object.values(sourceRow));
   }
-  raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=40`); raw.close();
+  raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(schemaVersion)}`); raw.close();
   const input = { stateRoot, processLockRoot: join(stateRoot, "locks"), environmentFile: join(stateRoot, ".env"), plan: false };
   return { saved, path, root, stateRoot, input };
 }
@@ -61,12 +72,12 @@ function conversion(path: string) {
 }
 
 describe("C P2/P3/P4 historical completion conversion", () => {
-  for (const kind of ["success", "failure"] as const) {
-    it(`${kind}: stopped backup, conversion, lost acknowledgement replay, archive identity, restore and no-write repeat`, async () => {
-      const f = fixture(kind);
+  for (const [kind, schemaVersion] of [["success", 39], ["failure", 39], ["success", 40], ["failure", 40]] as const) {
+    it(`${kind} ${String(schemaVersion)} → 41: stopped backup, conversion, lost acknowledgement replay, archive identity, restore and no-write repeat`, async () => {
+      const f = fixture(kind, schemaVersion);
       assert.throws(() => open(f.path), /upgrade-required/u);
       const historical = inspectAuthorityBackupReadOnly(f.path);
-      assert.equal(historical.schemaVersion, 40);
+      assert.equal(historical.schemaVersion, schemaVersion);
       const backup = await backupStoppedAuthority(f.stateRoot, clock);
       const manifest = backup.manifests[0]; assert.ok(manifest);
       const backupPath = join(f.stateRoot, "backups", "authority", manifest.backupFileName);
@@ -134,10 +145,10 @@ describe("C P2/P3/P4 historical completion conversion", () => {
         processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000,
       }, async () => { throw new Error("historical completion restore cannot rebuild current projections"); }, clock);
       const restored = await restore.restore({ manifestPath: `${backupPath}.manifest.json`, stoppedSystemProof });
-      assert.equal(restored.schemaVersion, 40);
+      assert.equal(restored.schemaVersion, schemaVersion);
       assert.equal(restored.projectionRebuilt, false);
       assert.deepEqual(readFileSync(f.path), readFileSync(backupPath));
-      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 40);
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, schemaVersion);
       assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
       const reopened = open(f.path);
       try {
