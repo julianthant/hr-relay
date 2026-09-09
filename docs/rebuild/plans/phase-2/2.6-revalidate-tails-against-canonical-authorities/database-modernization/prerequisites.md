@@ -137,6 +137,8 @@ source facts become stable inputs to F. Do not implement run_summaries or archiv
 
 ## F · Domain foundation; unlock P, D, G and S
 
+**Verified source prerequisite:** C master integration `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`; focused release and closure evidence are [at C’s owner](run-completion.md#c-scoped-release-and-local-integration--2026-09-09). F remains unlaunched; its own committed plan must bind a descendant base.
+
 Consume C. Retain all [foundation proof allocation](foundation.md#b-proof-allocation) and
 [artifact import/extraction](artifacts.md#t1--imported-and-extracted-artifacts) requirements.
 Complete shared provider/diagnostic/artifact migrations, real baseline repositories and wiring,

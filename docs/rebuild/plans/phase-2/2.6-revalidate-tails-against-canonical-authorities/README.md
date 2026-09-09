@@ -159,7 +159,8 @@ this card does not assign duplicate implementation or bypass C0 admission.
 Assignment **C**, display **2.6.5**. Single scope/proof owner: [approved C01–C05 brief](database-modernization/run-completion.md#approved-execution-brief--2026-09-09).
 T is integrated at `5e446a90f018456d11ad38442c0fe3ba13e31dd1`. C's operator-approved exception
 requires focused checks, local master merge and owned cleanup here; full gates and complete
-independent review remain in 2.6.9. C is planned, not implemented.
+independent review remain in 2.6.9. C’s focused development release is integrated at
+`0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`; [release, cleanup and F prerequisite evidence](database-modernization/run-completion.md#c-scoped-release-and-local-integration--2026-09-09) is at the single owner. F remains unlaunched.
 
 ### Task 6 · Prepare independent database domain tasks
 <!-- roadmap: p2db-domain-foundation -->

@@ -127,7 +127,7 @@ Return the committed development candidate to C only; no master merge, push, liv
 automatic next-task dispatch. The planning session returns the copy-ready prompt with the full
 verified plan SHA after documentation gates and commit verification.
 
-## Resolved next assignment — 2.6.5 C
+## Executed assignment — 2.6.5 C
 
 The operator approved the complete [C01–C05 execution brief](run-completion.md#approved-execution-brief--2026-09-09)
 on 2026-09-09. The planner returns the full verified plan SHA after committing and checking the
@@ -146,3 +146,7 @@ verifies integration, preserves proof artifacts and removes its owned worktree/b
 actual merged prerequisite without dispatching it. Preserve historical replay/frozen evidence and
 UNKNOWN refusal. No push, operator database application, HR submission or automatic successor.
 Keep Done / Now / Remaining visible, including integration, cleanup and deferred phase acceptance.
+
+## Next prerequisite record — 2.6.6 F
+
+C is locally integrated at `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645`. Its [focused release](run-completion.md#c-scoped-release-and-local-integration--2026-09-09) supplies F's actual master source prerequisite. The [closure receipt](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/closure.json) verifies C's owned branch/path removal. F is not dispatched, planned anew or implemented by C. The operator opens F's next session and its committed brief must pin a descendant of this integration. No removed C/T branch is required. Full phase gates and complete independent review remain 2.6.9.
