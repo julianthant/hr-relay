@@ -569,3 +569,43 @@ uses clean, explicitly released checkout reuse with a new immutable task branch 
 concurrent peer lanes. This is an evidenced resource conflict, not a product dependency or a broader
 capacity grant. C0 may release its checkout to T after C04; all candidate branches remain retained.
 No active or uncommitted peer checkout may be repurposed. Recheck unrelated occupancy at every start.
+
+### C04 — verified development candidate and release evidence
+
+| Evidence | Result |
+| --- | --- |
+| Approved original plan | `db56bbc182f339d132cebf24a4666c30a8afbeb1`; identical brief cherry-picked as `75984148bb83693a24141a1b839347cfdc33385d` |
+| C0 admission candidate | `0010c51c4189f14a8aa61dac55984c2df791045e` |
+| Candidate tree | `c0ac8489f628b3c1e2c3b89f2c082bcf63259786` |
+| R prerequisite | `60b356dd119140dc972a077751ad16af934acb2e`, verified ancestor |
+| Committed-candidate document binding | `VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/roadmap-doc-binding.test.ts`: exit 0, 24 tests; `/tmp/database-contracts-committed-binding.log` |
+| Lint | `npm run lint`: exit 0, zero warnings; `/tmp/database-contracts-candidate-lint.log`. Inputs are unchanged at the candidate and recording commits; all changes from the C0 base are documentation. |
+| Generation/freshness | `npm run roadmap` and `npm run roadmap:check`: exit 0; committed candidate freshness rechecked |
+| Links/instructions | 270 scoped local links/anchors resolve; all nine existing instruction pairs byte-identical; longest project chain 17,333 UTF-8 bytes |
+| Allocation | Eight peer pairs have no production/test path intersection; current peer write paths are absent from the 202-source manifest closure; future extraction/baseline proof remains mandatory |
+| Whitespace and tree | `git diff --check`: exit 0; candidate checkout clean before recording |
+| Actual target / live work | Not applicable to this documentation-only task; no operator state migration, browser, provider call or HR write |
+| Deferred acceptance | All runtime behavior, typecheck/coverage/full architecture/parity/build/recovery, independent complete review, operator-assigned master integration and final cleanup remain owned by 2.6.9; no unrun gate is claimed |
+
+The source/contract allocations and all inherited proof rows are committed. T may consume the C0
+recorded release after the final registry binding is saved and verified; its input must contain the
+candidate above, R and accepted T1. No future C/F/peer base is inferred. The C0 task releases exclusive
+use of `/Users/julianhein/Projects/hr-worktree-database-contracts` after its final committed record:
+no owned test process remains, status must be clean, and `codex/database-contracts` must retain the
+complete candidate/evidence history before T creates `codex/history-views`. This is a clean checkout
+ownership transfer, not deletion of C0's branch or permission to dispatch T. The dependency symlink
+uses the primary repository's installed node_modules; no dependency input changed.
+
+#### Delivery assessment
+
+C0 remains one documentation/admission assignment; no implementation workers or product repair
+rounds were needed. Discovery found three planning omissions in the earlier future allocation:
+stale pre-rename numeric labels, D/S sharing global command files, and accumulating retained
+worktrees beyond the four-auxiliary limit. C0 corrected the labels, assigned shared extraction to
+F, separated peer evidence writers, and bound one sequential plus two peer lanes while retaining R.
+Reading the capacity rule before drafting future unique paths would have avoided the later registry
+revision. Original product proof and final-review cadence remain unchanged. Settings lifecycle
+choices were selected under current task preapproval after contextual consultation, not asserted as
+historical operator decisions. No speed, quality-score or runtime-correctness claim follows from
+these document gates. The final registry/roadmap record is documentation-only and reuses unchanged
+lint inputs while repeating affected binding/link/freshness checks.
