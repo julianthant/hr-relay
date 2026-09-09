@@ -175,11 +175,11 @@ record owner, acquisition and release checks in the affected brief before using 
 ## Completion and readiness
 
 [Prerequisites](prerequisites.md) define each release. [Prompts](PROMPTS.md) give exact planning and
-conditional execution wording. No base SHA for a future release is fabricated. All implementation
-assignments after R are **WAITING ON R → C0**, then their explicit inputs. R's complete
-[execution brief](renames.md#approved-execution-brief--2026-09-09) was approved on 2026-09-09;
-the planner verifies its committed content/checks and supplies the exact plan SHA before launch.
-R implementation is not started. T1 integration is complete.
+conditional execution wording. No base SHA for a future release is fabricated. R's scoped
+implementation is committed as `37ed00d19a8b410c3fb542bea8328c0eef962b4c`; its
+[committed development handoff](renames.md#r5--committed-development-handoff) releases the retained
+branch/worktree to C0. **C0 is ready for operator launch**; later implementation assignments still
+wait on C0 and their explicit inputs. T1 integration is complete. Full acceptance remains at 2.6.9.
 The architecture graph is recorded now; executable file allocations and resolved launch prompts
 are completed in C0 and checked at each release, not left for parallel peers to negotiate.
 

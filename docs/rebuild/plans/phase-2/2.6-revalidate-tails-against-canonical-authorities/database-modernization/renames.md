@@ -10,7 +10,7 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 On 2026-09-09 the operator approved keeping both maintenance tables and their behavior, renaming
 only for clarity, and inserting this task before the former C0 planning prerequisite. The operator
 then confirmed focused tests for every task and full gates at phase end, **as a Phase 2.6-only trial**.
-This document plans execution; no code or operator database has been changed.
+At approval, no code or operator database had been changed. Scoped implementation evidence is recorded below.
 
 One row below is one naming change. Keep stored row meaning, identifiers, relationships, immutable
 payloads, transaction behavior, backup/export capabilities and upgrade recovery unchanged.
@@ -196,8 +196,8 @@ and retained resources. C0 consumes the actual R release sequentially. Send Done
 at start/resume and after each verified R1–R5 completion, keeping final review/integration/cleanup
 explicitly deferred. The operator opens C0; R never dispatches it.
 
-**Status: execution brief approved; implementation not started.** Planning readiness is established
-only after committed content, scoped planning checks and prerequisite availability are verified.
+**Status: scoped development complete; released to 2.6.3 C0.** The candidate and its focused
+evidence are recorded below. Full Phase 2.6 acceptance remains open at 2.6.9.
 
 ## Planning persistence verification — 2026-09-09
 
@@ -222,3 +222,267 @@ typecheck/coverage, implementation tests, live proof and independent review were
 reused. They are not planning acceptance under D191's documentation-only rules. Commit identity,
 actual committed content and prerequisite reachability are verified after commit before emitting
 the launch prompt; a planning release does not complete R implementation.
+
+## R execution evidence — 2026-09-09
+
+### R1 — frozen inputs and ownership
+
+Plan and source base: `27e073c0c69e1ff54fb699c805175589e8f016b3`. All four prerequisite
+commits and discovery base passed `git merge-base --is-ancestor` against that exact base.
+Committed approval and the seven-name contract were verified. Branch `codex/database-renames`
+and `/Users/julianhein/Projects/hr-worktree-database-renames` were absent, then created from
+the exact base. Primary checkout was clean and the sole registered worktree before creation.
+The app task snapshot showed this as the sole active rebuild task; the adjacent planning tasks
+were idle. No competing schema writer or test worker was observed. Migration 39 was absent;
+current schema 38 and floor 37 were verified. R owns the shared schema seam until its release.
+No subagents, operator database access, master integration, push or task dispatch are assigned.
+
+The execution-base old-name search across `src`, `tests` and `scripts` produced this exact
+consumer/fixture manifest (historical references remain subject to classification):
+
+```text
+src/core/command-kernel.ts
+src/core/run-executor.ts
+src/domain/authority.ts
+src/domain/config/schema.ts
+src/domain/config/settings-v29-schema.ts
+src/domain/config/snapshot-generations.ts
+src/domain/run/deleted-run.ts
+src/domain/trust/evidence-identity.ts
+src/infra/compat/backup-inspection.ts
+src/infra/compat/settings-database-upgrade.ts
+src/infra/sqlite/authority-database.ts
+src/infra/sqlite/migrations.ts
+src/infra/sqlite/storage-records.ts
+src/services/trust/diagnostic-capture.ts
+tests/scenario/workflows/person-lookup/dry-run.scenario.ts
+tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.ts
+tests/scenario/workflows/separations/dry-run.scenario.ts
+tests/unit/architecture/storage-recovery.test.ts
+tests/unit/command-groups.test.ts
+tests/unit/config-snapshot-generations.test.ts
+tests/unit/dry-run-scenario-composition.test.ts
+tests/unit/dry-run-scenario-result.test.ts
+tests/unit/fixtures/dry-run-admission-fixtures.ts
+tests/unit/helpers/operation-names-fixture.ts
+tests/unit/operation-names.test.ts
+tests/unit/protected-settings-doctor.test.ts
+tests/unit/server/compose-real-port.test.ts
+tests/unit/sqlite-authority-database.test.ts
+tests/unit/storage-backup.test.ts
+tests/unit/storage-restore-drill.test.ts
+tests/unit/storage-upgrade-admission.test.ts
+tests/unit/storage-upgrade-d331.test.ts
+tests/unit/storage-upgrade-tombstones.test.ts
+tests/unit/storage-upgrade.test.ts
+```
+
+New proof: `tests/unit/database-renames.test.ts`. Migration history proof:
+`tests/unit/architecture/migration-history-immutability.test.ts`. Existing diagnostic and
+receipt proofs are included as specified by the approved gate commands.
+
+Current state: R1–R5 complete within the approved development scope. C0 must consume the
+committed R release below. Full acceptance, independent review, master integration and branch/worktree
+cleanup remain assigned to 2.6.9. No task has been dispatched.
+
+### R2–R3 — implementation and historical boundary
+
+Migration 39 appends exactly seven `ALTER TABLE ... RENAME TO ...` statements. The migration
+history guard passed with unchanged digests 1–38; floor 37 remains unchanged. Current SQL,
+registries, generation accounting and deletion tallies use the new physical names. Metadata,
+upgrade journal and snapshot exposure readers select names by schema version, never table
+existence. Historical fingerprint ordering, schema aliases and invariant SQL translation retain
+the released names. Old deletion tally JSON is not rewritten.
+
+The source scan also found a transitive admission consumer outside the old-name search:
+`src/infra/sqlite/recovery-contracts.ts` must admit v38 historical backup manifests. This
+naming-boundary repair is within the approved direct-transitive scope. The v38 read-only
+layout roster was added alongside the historical record aliases.
+
+The populated v38 fixture fingerprint was independently captured using the untouched reader
+at source base `27e073c0c69e1ff54fb699c805175589e8f016b3` and matched the candidate reader:
+`14a5057e1f70a3f5a821934a85fbb5511784d4c2cc115f8db39fdf7a0aa021b5`. The disposable capture
+script and synthetic roots were removed; the literal is retained in the rename test.
+
+Iteration failures were classified before repairs: current readback fixtures still queried old
+physical names; T1's pre-timeline fixture used `CURRENT - 1`, which incorrectly moved its
+source from v37 to v38; newly authored populated fixtures initially violated enqueue/tombstone
+admission. Repairs retain historical sources and all refusal assertions. Diagnostics' existing
+repository replay/pinning rules and the SQL-protected dry-run/journal tables are tested separately;
+R does not introduce SQL triggers or change retention behavior.
+
+### R4 — gate configuration
+
+The installed Vitest 4.1.10 resolves the plan's bare `--maxWorkers=1` to root 1 but project 4.
+The initial iteration therefore did not qualify as the final one-worker gate. The supported
+`VITEST_MAX_WORKERS=1` environment override (installed resolver
+`coverage.DM_a_rWm.js`, line 380) resolves both unit and architecture projects to one fork,
+`isolate=true`, and unchanged 30,000 ms deadlines. All final tests use that prefix plus the
+plan's CLI flag. No configuration adapter, test membership, timeout or coverage change was made.
+
+### R4 — final proof and gate results
+
+All commands ran from `/Users/julianhein/Projects/hr-worktree-database-renames`. Final test
+commands were prefixed with `VITEST_MAX_WORKERS=1`; resolved unit/architecture worker counts
+were one. One child was observed under primary-run Vitest PID 59457; the final rerun reused
+the unchanged runner/configuration and environment override. All selected
+tests were collected; skips below are the explicitly excluded cases from `-t` selectors.
+
+| Gate | Exit and observed result | Log |
+| --- | --- | --- |
+| Approved eight-file primary unit command | 0; 8 files, 239 tests passed | `/tmp/database-renames-focused-final.log` |
+| Approved named corruption/restore drill | 0; 1 passed, 28 unselected | `/tmp/database-renames-restore-final.log` |
+| Migration history immutability | 0; 4 tests passed | `/tmp/database-renames-history-final.log` |
+| Changed consumer files: dry-run composition, protected-settings doctor, upgrade admission, operation names | 0; 4 files, 90 tests passed | `/tmp/database-renames-consumer-final.log` |
+| Command-group populated rollback/resume | 0; 3 passed, 23 unselected | `/tmp/database-renames-command-final.log` |
+| Composed runtime downgrade/failed-open cleanup | 0; 3 passed, 35 unselected | `/tmp/database-renames-compose-final.log` |
+| Historical v7 native backup/restore | 0; 1 passed, 93 unselected | `/tmp/database-renames-recovery-final.log` |
+| SQLite settings authority v32 pin | 0; 1 passed, 2 unselected | `/tmp/database-renames-settings-final.log` |
+| `npm run lint` | 0; zero warnings | `/tmp/database-renames-lint-final.log` |
+| `npm run build:manifest` / `npm run build:manifest:check` | 0 / 0; source-closure fingerprints regenerated, final freshness passed | `/tmp/database-renames-manifest.log`, `/tmp/database-renames-manifest-final.log` |
+| `npm run stores:catalog:check` | 0; unchanged catalog fresh, regeneration unnecessary | `/tmp/database-renames-catalog.log` |
+| `git diff --check` / staged whitespace | 0 / 0 | Verified before implementation commit |
+
+The approved primary command is unchanged apart from the necessary environment override. Exact
+additional test commands, including the two other approved commands, were:
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/storage-restore-drill.test.ts -t 'names the corruption read-only, restores the named backup, and keeps every authority family'
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/migration-history-immutability.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/dry-run-scenario-composition.test.ts tests/unit/protected-settings-doctor.test.ts tests/unit/storage-upgrade-admission.test.ts tests/unit/operation-names.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/command-groups.test.ts -t 'rolls back populated schema'
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/server/compose-real-port.test.ts -t 'M9 refuses|releases its acquired server process record'
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/storage-recovery.test.ts -t 'backs up and restores an exact v7 authority'
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/sqlite-settings-authority.test.ts -t 'pins v32 values'
+```
+
+| Required proof | Observed evidence |
+| --- | --- |
+| Fresh schema and released history | Fresh baseline targets 39; exact registry/FK/open checks pass. Migration39 digest `f15605b5eb310cb3633e6bef344bc1286da29fa676f35f3a92333210ef7a324b`; 1–38 digests and floor37 unchanged. |
+| Populated v38 → v39 | All seven families populated. Retained non-metadata rows preserve every column/JSON byte; metadata version advances with generation 7 retained. Two inserts in one authority transaction advance generation once to 8. Reopen preserves file bytes and does not repeat migration. |
+| Historical/current fingerprints | Populated v38 matches the exact-base golden fingerprint above. Current backup and current authority fingerprints agree; the renamed fingerprint differs from historical, as required. Historical backup bytes remain unchanged after conversion/resume. |
+| Historical strictness | A valid populated v38 passes both historical backup inspection and no-migrate open. Malformed receipt JSON, schema-valid contradictory receipt columns, and divergent physical layout each refuse by the intended validator. |
+| Receipts/diagnostics/settings/dry-run | Insert/read/list/replay, retention pinning, strict schemas and generation proofs pass in the dedicated and existing suites. SQL immutability remains on existing protected tables; repository replay rejection remains on receipts/diagnostics. |
+| Deletion | New cascade tallies name diagnostic_files/diagnostic_snapshots/run_receipts; old settled four-name tallies retain exact bytes. FK rejection, protected delete triggers and immutable journal/dry-run rows remain enforced. |
+| Recovery and phase projection | Real stopped entrypoints roll back precommit, resume after SQLite commit once, retain the original baseline, add exactly committed/settled records, and preserve backup bytes. The v38 read-only phase regression first failed `no such table: database_upgrades`, then passed with version-aware selection. Existing credential/source-binding and T1 import/recovery proofs pass. |
+| Real restore boundary | Named CLI corruption/restore drill and released-v7 native recovery proof pass using synthetic roots. |
+
+The final release has 342 selected passing tests across 18 files. There were no added or retired
+architecture guards, so guard-inventory membership is unchanged. The schema-version search found
+two additional mechanical expectation sites (`command-groups.test.ts` and
+`architecture/sqlite-settings-authority.test.ts`); their directly affected selectors passed.
+No live HR action, operator root access, database upgrade, full coverage, typecheck or parity is claimed.
+
+### Historical-name exceptions
+
+Every remaining old-name reference under `src`, `tests` and `scripts` was inspected. No current
+consumer still addresses an old physical table. Intentional exceptions are:
+
+- `migrations.ts`: released DDL, table order, layout rosters, type names, index/trigger identities
+  and error strings; v39 rename statements and explicit version mappings. Statements 1–38 are immutable.
+- `backup-inspection.ts`: released fingerprint order and six historical record-schema aliases.
+- `authority-database.ts`: six historical record-schema aliases and the v1 metadata insertion.
+  Historical invariant SQL translates the complete seven-name map before historical preparation.
+- `settings-database-upgrade.ts`: v1 metadata insertion; other historical access is version-selected.
+- `deleted-run.ts`: four pre-v39 tally names; `settings-v29-schema.ts`: historical snapshot annotation.
+- Tests: released v1–38 fixture DDL/bookkeeping, rejected divergent/newer labels, retained golden
+  fingerprint order, pre-v39 snapshot/journal sources, isolated v36 operation migration, and the
+  new explicit old/current rename proof. No released fixture schema was relabeled as current.
+- Existing contract/history prose and immutable evidence retain their original context. The
+  ratified seven-name mapping above identifies current physical names; no historical evidence was rewritten.
+
+### R5 — committed development handoff
+
+| Identity | Value |
+| --- | --- |
+| Approved plan commit / exact source base | `27e073c0c69e1ff54fb699c805175589e8f016b3` |
+| Tested implementation candidate | `37ed00d19a8b410c3fb542bea8328c0eef962b4c` |
+| Tested implementation tree | `4ed36a7091bb577373d7e3a86eaed04eeab9ab1e` |
+| Branch | `codex/database-renames` |
+| Retained worktree | `/Users/julianhein/Projects/hr-worktree-database-renames` |
+| C0 input | This committed handoff, whose parent is the exact implementation candidate above. Resolve the handoff commit from this branch; never use the planning base as the development release. |
+| Independent review | Deferred to 2.6.9; no independent acceptance asserted. |
+| Integration and cleanup | No master merge or push. Operator assigns 2.6.9 integration after full gates and independent PASS; retain this branch/worktree until then. |
+
+The implementation commit contains exactly these 34 paths:
+
+```text
+src/core/command-kernel.ts
+src/core/run-executor.ts
+src/domain/authority.ts
+src/domain/config/schema.ts
+src/domain/config/snapshot-generations.ts
+src/domain/run/deleted-run.ts
+src/domain/trust/evidence-identity.ts
+src/domain/workflow/generated-build-manifest.ts
+src/infra/compat/backup-inspection.ts
+src/infra/compat/settings-database-upgrade.ts
+src/infra/sqlite/authority-database.ts
+src/infra/sqlite/migrations.ts
+src/infra/sqlite/recovery-contracts.ts
+src/infra/sqlite/storage-records.ts
+src/services/trust/diagnostic-capture.ts
+tests/scenario/workflows/person-lookup/dry-run.scenario.ts
+tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.ts
+tests/scenario/workflows/separations/dry-run.scenario.ts
+tests/unit/architecture/migration-history-immutability.test.ts
+tests/unit/architecture/sqlite-settings-authority.test.ts
+tests/unit/architecture/storage-recovery.test.ts
+tests/unit/command-groups.test.ts
+tests/unit/config-snapshot-generations.test.ts
+tests/unit/database-renames.test.ts
+tests/unit/dry-run-scenario-composition.test.ts
+tests/unit/dry-run-scenario-result.test.ts
+tests/unit/fixtures/dry-run-admission-fixtures.ts
+tests/unit/helpers/operation-names-fixture.ts
+tests/unit/protected-settings-doctor.test.ts
+tests/unit/server/compose-real-port.test.ts
+tests/unit/sqlite-authority-database.test.ts
+tests/unit/storage-backup.test.ts
+tests/unit/storage-upgrade-admission.test.ts
+tests/unit/storage-upgrade.test.ts
+```
+
+This recording commit changes only this evidence owner, the adjacent `README.md` readiness
+pointer, `docs/roadmap/roadmap.md`, and its supported generated `docs/roadmap/index.html`. The implementation candidate's source, tests,
+configuration, dependencies and generated build manifest are unchanged; the code-gate evidence
+above is reused under D191. Documentation binding/freshness, links, instruction pairs and whitespace
+are checked before the handoff commit. Its exact SHA is returned to the operator after commit.
+
+Retained resources are the assigned branch/worktree and its ignored dependency symlink to the
+primary checkout's existing `node_modules`; successful test-run scratch was removed by the wrapper.
+Seven named failed synthetic scratch roots were removed after verifying owner identity, private
+permissions and absent process groups; no other task scratch was touched.
+Gate logs remain at the exact `/tmp/database-renames-*` paths above. No owned test process remains.
+
+2.6.9 still owes full typecheck, lint, coverage, whole architecture, desktop parity/build, generated
+freshness and the original broad recovery/scenario/concurrency/redaction/production-route proofs;
+it also owns repairs, fresh complete independent review, operator-assigned master integration,
+handover and branch/worktree cleanup. C0 is ready for the operator to open sequentially; no dispatch
+or acceptance on C0's behalf occurred. Phase 2.6 remains open.
+
+### Delivery assessment
+
+No scope amendment, assignment resize or external prerequisite change was required. The plan
+correctly coupled migrations, historical validation and recovery. Read-only inventory needed a
+second schema-version search to find the backup-manifest admission ceiling and current-version
+expectations; these were direct transitive naming work already admitted by the plan.
+
+Implementation repair covered mixed historical/current fixtures and one missed historical upgrade-
+phase projection. The latter had a concrete red regression and a full prescribed focused rerun.
+The new fixture's enqueue/tombstone and protection assumptions were corrected against existing
+admission/DDL, without adding behavior or relaxing existing tests. The installed runner's project
+override required a supported environment setting, not a configuration adapter. An earlier resolved-
+worker check and explicit coverage of every read-only phase consumer would have avoided those
+iterations. Full review has not run; no comparative quality score or time-savings claim is made.
+
+### Recording validation
+
+`VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1
+tests/unit/architecture/roadmap-doc-binding.test.ts` passed (exit 0; 24 tests;
+`/tmp/database-renames-doc-binding.log`). `npm run roadmap` and `npm run roadmap:check`
+passed (exit 0; `/tmp/database-renames-roadmap.log`). All three links/anchors in this owner
+resolve. All nine existing instruction pairs remain byte-identical; the longest project
+chain is 17,333 UTF-8 bytes. `git diff --check` passed. Inspection confirmed no differences
+from the tested implementation in `src`, `tests`, configuration or dependency inputs;
+its focused gates and lint are reused without claiming unrun broad gates.

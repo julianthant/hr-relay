@@ -1001,14 +1001,14 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 (`read`/`list` are the only lifecycle reads), D331 §D331.6/§D331.11 P16 and D332 §D332.5/§D332.6 (no redesign) · left: adapters A2 and A3 are deleted here with their tests
 
 #### 2 · Apply approved database renames {#p2db-simple-renames}
-status: planned
+status: done
 doc: 2.6 §Task 2 · Apply approved database renames
 
 > Naming-only prerequisite before C0. Preserve behavior and released migration history. Phase 2.6 trial: focused tests/lint/freshness here; full gates and independent review at 2.6.9.
 
 builds:
-- [ ] BE apply seven approved table renames and update current consumers without lifecycle redesign
-- [ ] PROOF check focused naming/migration behavior and historical-name exceptions; release a committed candidate to C0
+- [x] BE apply seven approved table renames and update current consumers without lifecycle redesign
+- [x] PROOF check focused naming/migration behavior and historical-name exceptions; release a committed candidate to C0
 
 needs:
 - p2f-trust
@@ -1017,6 +1017,7 @@ needs:
 - fact(met): timeline T1 integrated at 46930920696ab214b036d5f2681b8ffb4e5620ea with recorded review and gates
 
 log:
+- 2026-09-09 | C37ed00d19 · scoped development release | seven table renames at schema39 with floor37/history retained; 342 focused tests, lint and affected freshness pass; candidate released to 2.6.3 C0 on retained codex/database-renames; full gates, independent review, master integration and cleanup remain 2.6.9
 - 2026-09-09 | operator rename-first amendment | new 2.6.2 R; current C0 and later tasks shift by one; planning only in this commit
 
 #### 3 · Settle database contracts and task ownership {#p2-db-modernization}
