@@ -14,7 +14,7 @@ This is a **Phase 2.6-only trial**; other phases retain their existing gate requ
 The operator requested focused tests and fixes during implementation, then heavy gates, independent
 review and remaining repairs in one fresh final session. Planning creates no tasks or worktrees.
 
-**Status: R, C0, T and C development releases are integrated; F (2.6.6) is executing its approved brief.**
+**Status: R, C0, T, C and F development releases are integrated; P/D/G/S remain unlaunched.**
 T integration is `5e446a90f018456d11ad38442c0fe3ba13e31dd1`; its candidate, repairs, retained
 proof and incomplete independent-review status are recorded in [timeline.md](timeline.md#operator-directed-merge-and-cleanup--2026-09-09).
 R, C0 and accepted T1 are ancestors; removed predecessor branches are not launch prerequisites.
@@ -26,11 +26,11 @@ independent review remain in 2.6.9.
 **F-specific approval, 2026-09-09:** the operator approved the complete
 [F01–F07 execution brief](foundation.md#approved-execution-brief--2026-09-09), including local master
 merge and owned cleanup after focused PASS. This supersedes generic retention/no-master wording
-for F as well as C; full gates and independent review remain in 2.6.9. F's source is verified C
-integration plus its committed approved plan. The planner verifies that commit before handoff;
-F and its four children remain unimplemented. The registry assigns distinct P/D/G/S checkout paths
-after F cleanup; their common base is F's future actual integrated release, not a guessed SHA.
-No child launch or product implementation is authorized by this planning record.
+for F as well as C; full gates and independent review remain in 2.6.9. F consumed verified C
+integration and its approved plan. Its [focused release and closure](foundation.md#f07-integrated-prerequisite-and-closure)
+record common prerequisite `7ec279750817934b7da69ce433e0e5a44fed6a58` for all four children.
+Their distinct registry paths remain absent and unlaunched; later operator sessions recheck capacity.
+Full acceptance and review remain in 2.6.9.
 
 The [product decisions](decisions.md) retain every approved settings/version/archive/read-model
 choice. The domain files retain the detailed earlier product contracts and proof rows. This README,

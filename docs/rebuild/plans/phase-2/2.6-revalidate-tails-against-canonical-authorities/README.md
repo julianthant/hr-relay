@@ -160,7 +160,7 @@ Assignment **C**, display **2.6.5**. Single scope/proof owner: [approved C01–C
 T is integrated at `5e446a90f018456d11ad38442c0fe3ba13e31dd1`. C's operator-approved exception
 requires focused checks, local master merge and owned cleanup here; full gates and complete
 independent review remain in 2.6.9. C’s focused development release is integrated at
-`e43a8d8515486c73c276fa319bbe06d196b309e3`; [release, cleanup and F prerequisite evidence](database-modernization/run-completion.md#c-schema-39-upgrade-repair--2026-09-09) is at the single owner. F is executing its approved brief.
+`e43a8d8515486c73c276fa319bbe06d196b309e3`; [release, cleanup and F prerequisite evidence](database-modernization/run-completion.md#c-schema-39-upgrade-repair--2026-09-09) is at the single owner. F is now integrated; see Task 6.
 
 ### Task 6 · Prepare independent database domain tasks
 <!-- roadmap: p2db-domain-foundation -->
@@ -168,7 +168,7 @@ independent review remain in 2.6.9. C’s focused development release is integra
 Assignment **F**, display **2.6.6**. Single execution owner: [approved F01–F07 brief](database-modernization/foundation.md#approved-execution-brief--2026-09-09).
 The operator approved one supervisor, focused tests/lint/freshness, local master merge and owned
 cleanup. C integration `e43a8d8515486c73c276fa319bbe06d196b309e3` is the verified prerequisite.
-Full gates and complete independent review remain in 2.6.9. F01–F06 have focused PASS; F07 local integration and cleanup are pending.
+Full gates and complete independent review remain in 2.6.9. F is locally integrated at `7ec279750817934b7da69ce433e0e5a44fed6a58`; the F owner records focused PASS and external cleanup evidence.
 See the [execution record](database-modernization/foundation.md#f-execution-record--2026-09-09).
 
 #### Task 6.1 · Track provider requests and usage

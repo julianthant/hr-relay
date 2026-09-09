@@ -507,7 +507,9 @@ The supervisor rechecks volatile ownership and refs before creation; absent plan
 
 ## F execution record — 2026-09-09
 
-**State: F01–F06 focused PASS.** F07 integration and cleanup remain pending.
+**State: integrated focused F release.** F01–F06 passed; F07 integration is verified.
+The external closure receipt below records final owned-resource removal; child readiness requires
+its `state: complete`, so this pre-cleanup evidence commit alone cannot claim cleanup.
 One Astra/high supervisor, zero workers and zero reviewers. This is the approved focused
 foundation release; full acceptance and independent review remain assigned to 2.6.9.
 
@@ -763,3 +765,55 @@ F06 evidence-only recording reran roadmap generation/freshness, 24 roadmap-bindi
 local links/instruction pairs/chain and whitespace checks. Runtime, tests, configuration and
 dependency objects are unchanged from `e32979d0ac54c440a8805743d5c5a357e50e01f8`;
 its focused tests, lint, manifest/catalog and filtered UI checks are reused by that D191 input identity.
+
+
+### F07 integrated prerequisite and closure
+
+**The single common F prerequisite for P, D, G and S is `7ec279750817934b7da69ce433e0e5a44fed6a58`.**
+This local master merge contains tested candidate `e32979d0ac54c440a8805743d5c5a357e50e01f8`
+and focused evidence commit `1feed4eb276df570c5bc19c087132b48fba8c10f`. Integration tree
+`3511094170b05dbcf1e4c3e1a977d61559c0f8b4` exactly equals the evidence candidate tree.
+Master was clean and unchanged at `4037b6b38395b77d3bcb71d2ccc99954da7d733f` immediately before
+merge; no conflict or integration defect occurred. After merge, manifest/catalog/roadmap freshness,
+146 local links, nine instruction pairs, the 17,333-byte instruction-chain bound and whitespace
+passed. All execution/test/config/dependency inputs match the focused candidate; the five differing
+paths are evidence/roadmap documents, so focused tests, lint and UI reuse is explicit under D191.
+
+| Consumer | Base | Remaining implementation | Launch state |
+| --- | --- | --- | --- |
+| P / 2.6.6.1 | Common F prerequisite above | Generic accounting, scope/concurrency/uncertainty policy | Unlaunched |
+| D / 2.6.6.2 | Common F prerequisite above | Resolution actions and live UI | Unlaunched |
+| G / 2.6.6.3 | Common F prerequisite above | Remaining ordered publication/file-fault behavior | Unlaunched |
+| S / 2.6.6.4 | Common F prerequisite above | No-restart activation and new retry/child selection | Unlaunched |
+
+The [resolved prompts](PROMPTS.md#resolved-f-child-prerequisite--2026-09-09) bind that same SHA,
+the original approved C0 allocations, distinct production/test paths and no sibling dependency.
+Their branches and physical paths were verified absent after F integration; recheck availability
+at any later operator-started launch. No child or reviewer was launched. L still consumes all four
+actual future candidates; 2.6.9 owns full gates, independent review and remaining final acceptance.
+
+Closure evidence is preserved outside the checkout at
+[the exact cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-evidence-20260909/closure.json).
+It is written as pending before resource removal and changed to `complete` only after master
+incorporation, focused-input identity, stopped owned processes, saved ignored evidence, ordinary
+worktree removal, `git branch -d`, registration/path/ref absence and clean final master are verified.
+The receipt binds the final documentation commit/tree, common prerequisite, cleanup commands and
+preserved evidence manifest. No removal is inferred from a merge or from a planned cleanup command.
+
+The audit classified only `codex/database-foundation` at its assigned absolute path for merge
+(four unique commits, tracked/untracked clean). Primary ignored credentials, state and dependencies
+were excluded from cleanup. F-owned `.tracker`, `dist`, parity outputs and the node_modules symlink
+are inventoried separately; preserve proof/build bytes and unlink only the owned symlink, never its
+target. Keep all intermediate failed logs and baseline hashes. The active task stays visible;
+no other task identity is associated or archived.
+
+Delivery result: the scoped prerequisite is integrated after 949 unit, 199 affected architecture
+and 49 filtered UI tests plus lint/freshness PASS. Added replacement guards and real terminal/CAS
+fixtures repaired defects found by focused verification; full acceptance has not been claimed.
+No push, operator database upgrade, provider activation or HR submission occurred.
+
+The final integration-record amendment reran roadmap generation/freshness, 24 binding tests,
+111 local links, instruction-pair/chain and whitespace checks: PASS. Its changes are evidence and
+roadmap documents only; final object comparison and the exact documentation commit are recorded
+in the external closure receipt. Full focused/lint/UI evidence remains bound to the unchanged
+execution inputs of `e32979d0ac54c440a8805743d5c5a357e50e01f8`.
