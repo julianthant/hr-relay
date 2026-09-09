@@ -1,3 +1,6 @@
+import { sha256Hex } from "../../domain/sha256.js";
+import { IsoInstantSchema } from "../../domain/ids.js";
+import { GenericProviderRequestSchema, GenericProviderUsageSchema } from "../../domain/provider-accounting.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
 import { ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../domain/provider-accounting.js";
 import { ProviderRequestStorageSchema } from "../../domain/provider-accounting.js";
@@ -330,7 +333,18 @@ export class SqliteProviderAccounting {
       getRequest:(id:string)=>readProviderRequest(this.ports.database,id),
       getUsage:(id:string)=>readProviderUsage(this.ports.database,id),
       listUsage:()=>this.ports.database.prepare("SELECT record_json FROM provider_usage ORDER BY record_key").all().map(row=>ProviderUsageStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))),
-      writeRequest:(record:ProviderRequestStorage,expectedVersion:number|null)=>this.ports.mutate("provider_requests",()=>{writeProviderRequest(this.ports.database,record,expectedVersion);return {result:undefined,changes:1};}),
+      writeRequest:(record:ProviderRequestStorage,expectedVersion:number|null)=>this.ports.mutate("provider_requests",()=>{
+        if(record.kind==="generic"){
+          const run=this.ports.readRun(record.execution.runId);
+          const snapshot=this.#readRecord("settings_snapshots",record.configSnapshotId,ConfigSnapshotRecordSchema);
+          if(run===undefined||snapshot===undefined)throw new Error("provider-execution-missing");
+          if(run.envelope.attempt!==record.execution.attempt||run.envelope.configSnapshotId!==record.configSnapshotId
+            ||run.envelope.configFingerprint!==record.configFingerprint||snapshot.fingerprint!==record.configFingerprint)throw new Error("provider-execution-config-mismatch");
+          if(expectedVersion===null&&isRunNodeExecutionIdentity(record.execution)
+            &&(run.lifecycle.state!=="running"||run.lifecycle.currentNodeId!==record.execution.nodeId))throw new Error("provider-execution-node-mismatch");
+        }
+        writeProviderRequest(this.ports.database,record,expectedVersion);return {result:undefined,changes:1};
+      }),
       writeUsage:(record:ProviderUsageStorage,expectedVersion:number|null)=>this.ports.mutate("provider_usage",()=>{writeProviderUsage(this.ports.database,record,expectedVersion);return {result:undefined,changes:1};}),
     };
     return Object.freeze(storage);
@@ -546,8 +560,201 @@ export class SqliteProviderAccounting {
 export function finalizeProviderRun(database: DatabaseSync, legacy: ProviderAdmissionRepository, runId: string, now: string): void {
   for (const raw of database.prepare("SELECT record_json FROM provider_requests WHERE run_id=? AND state='reserved'").all(runId)) {
     const stored = ProviderRequestStorageSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-    if (stored.kind !== "legacy-capability") throw new Error("provider-generic-deletion-accounting-unavailable");
+    if (stored.kind === "generic") {
+      // The caller already owns the authority transaction, including tombstone
+      // and generation. Do not start a nested SQLite transaction here.
+      const storage:ProviderAccountingStorage={
+        transaction:work=>work(storage),getRequest:id=>readProviderRequest(database,id),getUsage:id=>readProviderUsage(database,id),
+        listUsage:()=>database.prepare("SELECT record_json FROM provider_usage ORDER BY record_key").all().map(row=>ProviderUsageStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))),
+        writeRequest:(record,version)=>writeProviderRequest(database,record,version),writeUsage:(record,version)=>writeProviderUsage(database,record,version),
+      };
+      createGenericProviderAccounting(storage).finish({requestId:stored.requestId,expectedVersion:stored.version,now,
+        state:"interrupted",usage:[],reason:"Owning run deleted; reservation retained"});
+      continue;
+    }
     legacy.interrupt({ admissionId: stored.record.admissionId, expectedVersion: stored.record.version,
       code: "aborted", message: "Owning run deleted; reservation retained", now });
+  }
+}
+
+// Generic policy lives on F's frozen storage port. No provider registry or adapter
+// is consulted. Scope references and limits are explicit caller-supplied inputs.
+type GenericRequest = Extract<ProviderRequestStorage, { kind: "generic" }>;
+type GenericUsage = Extract<ProviderUsageStorage, { kind: "generic" }>;
+type Quantity = GenericUsage["cumulative"];
+type Window = GenericUsage["windows"][number];
+const BoundSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const GenericBudgetSchema = z.strictObject({
+  scope: GenericProviderUsageSchema.shape.scope,
+  meter: GenericProviderUsageSchema.shape.meter,
+  upperBound: BoundSchema.nullable(),
+  windows: z.array(GenericProviderUsageSchema.shape.windows.element.pick({id:true,startsAt:true,endsAt:true,limit:true})).min(1).max(128),
+});
+const GenericReserveSchema = z.strictObject(GenericProviderRequestSchema.shape).pick({
+  requestId:true,execution:true,capability:true,configSnapshotId:true,configFingerprint:true,requestFingerprint:true,attribution:true,
+}).extend({now:IsoInstantSchema,leaseExpiresAt:IsoInstantSchema,deadlineAt:IsoInstantSchema,budgets:z.array(GenericBudgetSchema).min(1).max(128)});
+const GenericFinishSchema = z.strictObject({
+  requestId:z.uuid(),expectedVersion:z.number().int().positive(),now:IsoInstantSchema,
+  state:z.enum(["settled","interrupted","lease-expired"]),
+  usage:GenericProviderRequestSchema.shape.usage,reason:z.string().min(1).max(512).nullable(),
+});
+function same(a:unknown,b:unknown):boolean { return canonicalJsonStringify(a)===canonicalJsonStringify(b); }
+function amount(q:Quantity):number|null {return q.kind==="unknown"?q.retainedUpperBound:q.value;}
+function addAmount(a:number,b:number):number {return BoundSchema.parse(a+b);}
+function addQuantity(a:Quantity,b:Quantity):Quantity {
+  const av=amount(a),bv=amount(b);
+  if(a.kind==="unknown"||b.kind==="unknown")return {kind:"unknown",retainedUpperBound:av===null||bv===null?null:addAmount(av,bv)};
+  return {kind:a.kind==="estimated"||b.kind==="estimated"?"estimated":"measured",value:addAmount(a.value,b.value)};
+}
+function usageIdentity(scopeId:string,meter:string):string {return `usage/${sha256Hex(canonicalJsonStringify([scopeId,meter]))}`;}
+function checkedUsage(input:unknown):GenericUsage {
+  const record=ProviderUsageStorageSchema.parse(input);
+  if(record.kind!=="generic")throw new Error("provider-generic-identity-conflict");
+  const u=GenericProviderUsageSchema.parse(record);
+  if(new Set(u.windows.map(w=>w.id)).size!==u.windows.length)throw new Error("provider-duplicate-window");
+  for(const w of u.windows){
+    if(w.endsAt!==null&&Date.parse(w.endsAt)<=Date.parse(w.startsAt))throw new Error("provider-window-invalid");
+    BoundSchema.parse(w.reserved);BoundSchema.parse(w.retainedUnknown);
+    if(w.settled.kind==="unknown")throw new Error("provider-window-unknown-in-settled");
+  }
+  return u;
+}
+/** Remaining is local accounting, including conservative unknown charges exactly once. */
+export function providerWindowRemaining(window:Window):{kind:"known";value:number}|{kind:"unknown";reason:string} {
+  if(window.limit.kind==="unknown")return {kind:"unknown",reason:"limit-not-supplied"};
+  const settled=amount(window.settled);
+  if(settled===null)return {kind:"unknown",reason:"usage-not-bounded"};
+  return {kind:"known",value:window.limit.value-addAmount(addAmount(settled,window.retainedUnknown),window.reserved)};
+}
+
+export function createGenericProviderAccounting(storage:ProviderAccountingStorage) {
+  const finish=(input:unknown):GenericRequest=>{
+    const req=GenericFinishSchema.parse(input);
+    return storage.transaction(s=>{
+      const current=s.getRequest(req.requestId);
+      if(current?.kind!=="generic")throw new Error("provider-request-missing");
+      if(new Set(req.usage.map(u=>u.meter)).size!==req.usage.length)throw new Error("provider-duplicate-meter");
+      if(current.state!=="reserved"){
+        if(current.version===req.expectedVersion+1&&current.state===req.state&&same(current.usage,req.usage)&&current.reason===req.reason&&current.updatedAt===req.now)return current;
+        throw new Error("provider-finalization-replay-conflict");
+      }
+      if(current.version!==req.expectedVersion)throw new Error("provider-request-version-conflict");
+      if(Date.parse(req.now)<Date.parse(current.updatedAt))throw new Error("provider-time-backwards");
+      if(current.leaseExpiresAt===null)throw new Error("provider-reservation-lease-missing");
+      if(req.state==="lease-expired"&&Date.parse(req.now)<Date.parse(current.leaseExpiresAt))throw new Error("provider-lease-not-expired");
+      if(req.state==="settled"&&Date.parse(req.now)>=Date.parse(current.leaseExpiresAt))throw new Error("provider-lease-expired");
+      const meters=new Set(current.allocations.map(a=>a.meter));
+      if(req.usage.some(u=>!meters.has(u.meter)))throw new Error("provider-unreserved-meter");
+      if(req.state!=="settled"&&req.usage.length!==0)throw new Error("provider-uncertain-outcome-has-usage");
+      const changes=new Map<string,GenericUsage>();
+      const charged=new Set<string>();
+      for(const a of current.allocations){
+        const key=usageIdentity(a.scopeId,a.meter);
+        let u=changes.get(key);
+        if(u===undefined){const found=s.getUsage(key);if(found===undefined)throw new Error("provider-allocation-usage-missing");u=checkedUsage(found);}
+        const index=u.windows.findIndex(w=>w.id===a.windowId);
+        const w=u.windows[index];
+        if(w===undefined||w.startsAt!==a.windowStartedAt||w.endsAt!==a.windowEndsAt||w.reserved<a.upperBound)throw new Error("provider-allocation-window-mismatch");
+        const supplied=req.usage.find(v=>v.meter===a.meter)?.quantity;
+        const q:Quantity=supplied?.kind==="unknown"||supplied===undefined
+          ?{kind:"unknown",retainedUpperBound:Math.max(a.upperBound,supplied?.retainedUpperBound??0)}:supplied;
+        const value=amount(q);if(value===null)throw new Error("provider-unbounded-settlement");BoundSchema.parse(value);
+        const windows=[...u.windows];windows[index]={...w,reserved:w.reserved-a.upperBound,
+          settled:q.kind==="unknown"?w.settled:addQuantity(w.settled,q),
+          retainedUnknown:q.kind==="unknown"?addAmount(w.retainedUnknown,value):w.retainedUnknown};
+        const cumulative=charged.has(key)||a.trackingOrigin==="pre-tracking"?u.cumulative:addQuantity(u.cumulative,q);
+        charged.add(key);changes.set(key,{...u,windows,cumulative});
+      }
+      const updated=GenericProviderRequestSchema.parse({...current,state:req.state,usage:req.usage,reason:req.reason,
+        leaseExpiresAt:null,deadlineAt:null,version:current.version+1,updatedAt:req.now});
+      s.writeRequest(updated,current.version);
+      for(const u of changes.values())s.writeUsage(GenericProviderUsageSchema.parse({...u,version:u.version+1,updatedAt:req.now}),u.version);
+      return updated;
+    });
+  };
+  return Object.freeze({
+    reserve(input:unknown):{state:"reserved"|"denied"|"existing";request:GenericRequest} {
+      const req=GenericReserveSchema.parse(input);
+      if(req.attribution.kind==="legacy-capability"||req.budgets.some(b=>b.scope.kind==="legacy-capability"))throw new Error("provider-generic-legacy-scope");
+      if(Date.parse(req.deadlineAt)<=Date.parse(req.now)||Date.parse(req.leaseExpiresAt)<Date.parse(req.deadlineAt))throw new Error("provider-deadline-invalid");
+      const scopeKeys=req.budgets.map(b=>usageIdentity(b.scope.id,b.meter));
+      if(new Set(scopeKeys).size!==scopeKeys.length)throw new Error("provider-duplicate-scope-meter");
+      const bounds=new Map<string,number|null>();
+      for(const b of req.budgets){
+        if(bounds.has(b.meter)&&bounds.get(b.meter)!==b.upperBound)throw new Error("provider-meter-bound-conflict");bounds.set(b.meter,b.upperBound);
+        if(new Set(b.windows.map(w=>w.id)).size!==b.windows.length)throw new Error("provider-duplicate-window");
+        for(const w of b.windows)if(Date.parse(w.startsAt)>Date.parse(req.now)||(w.endsAt!==null&&Date.parse(req.now)>=Date.parse(w.endsAt)))throw new Error("provider-window-not-current");
+      }
+      // Binding the full admission input also protects denied decisions (which
+      // correctly have no allocations) against changed-budget replay.
+      const fingerprint=sha256Hex(canonicalJsonStringify(req));
+      return storage.transaction(s=>{
+        const old=s.getRequest(req.requestId);
+        if(old!==undefined){
+          if(old.kind!=="generic"||old.requestFingerprint!==fingerprint)throw new Error("provider-reservation-replay-conflict");
+          return {state:"existing",request:old};
+        }
+        const allocations:GenericRequest["allocations"]=[];
+        const changes:{usage:GenericUsage;previous:number|null}[]=[];
+        let refusal:string|null=null;
+        for(const b of req.budgets){
+          const key=usageIdentity(b.scope.id,b.meter);const stored=s.getUsage(key);
+          const u:GenericUsage=stored===undefined?GenericProviderUsageSchema.parse({format:1,kind:"generic",usageId:key,scope:b.scope,meter:b.meter,
+            tracking:{startedAt:req.now,coverage:"complete-since-start",evidence:"caller-supplied"},cumulative:{kind:"measured",value:0},windows:[],version:1,createdAt:req.now,updatedAt:req.now}):checkedUsage(stored);
+          if(!same(u.scope,b.scope)||u.meter!==b.meter)throw new Error("provider-scope-identity-conflict");
+          if(Date.parse(req.now)<Date.parse(u.updatedAt))throw new Error("provider-time-backwards");
+          const windows=[...u.windows];
+          for(const policy of b.windows){
+            const index=windows.findIndex(w=>w.id===policy.id);const oldWindow=windows[index];
+            if(oldWindow!==undefined&&!same({id:oldWindow.id,startsAt:oldWindow.startsAt,endsAt:oldWindow.endsAt,limit:oldWindow.limit},policy))throw new Error("provider-window-policy-conflict");
+            const w:Window=oldWindow??{...policy,settled:{kind:"measured",value:0},reserved:0,retainedUnknown:0};
+            const remaining=providerWindowRemaining(w);
+            if(b.upperBound===null)refusal="upper-bound-required";
+            else {
+              if(w.limit.kind==="configured"&&(remaining.kind==="unknown"||remaining.value<b.upperBound))refusal="budget-exhausted";
+              allocations.push({scopeId:b.scope.id,meter:b.meter,windowId:w.id,windowStartedAt:w.startsAt,windowEndsAt:w.endsAt,upperBound:b.upperBound,trackingOrigin:"tracked"});
+              const next={...w,reserved:addAmount(w.reserved,b.upperBound)};
+              if(index===-1)windows.push(next);else windows[index]=next;
+            }
+          }
+          changes.push({usage:checkedUsage({...u,windows,version:stored===undefined?1:u.version+1,updatedAt:req.now}),previous:stored===undefined?null:u.version});
+        }
+        const request=GenericProviderRequestSchema.parse({format:1,kind:"generic",requestId:req.requestId,execution:req.execution,capability:req.capability,
+          configSnapshotId:req.configSnapshotId,configFingerprint:req.configFingerprint,requestFingerprint:fingerprint,attribution:req.attribution,
+          allocations:refusal===null?allocations:[],state:refusal===null?"reserved":"denied",usage:[],reason:refusal,
+          leaseExpiresAt:refusal===null?req.leaseExpiresAt:null,deadlineAt:refusal===null?req.deadlineAt:null,version:1,createdAt:req.now,updatedAt:req.now});
+        // The real storage boundary validates the owning execution/config before
+        // any aggregate is changed. The surrounding transaction rolls back both.
+        s.writeRequest(request,null);
+        if(refusal===null)for(const change of changes)s.writeUsage(change.usage,change.previous);
+        return {state:refusal===null?"reserved":"denied",request};
+      });
+    },
+    finish,
+    read(){return storage.listUsage().filter((u):u is GenericUsage=>u.kind==="generic").map(u=>{
+      const checked=checkedUsage(u);return {...checked,windows:checked.windows.map(w=>({...w,remaining:providerWindowRemaining(w)}))};
+    });},
+  });
+}
+
+/** Separate generic consistency proof; legacy counters never stand in for it. */
+export function inspectGenericProviderAccounting(database:DatabaseSync):void {
+  const usages=database.prepare("SELECT record_json FROM provider_usage WHERE json_extract(record_json,'$.kind')='generic'").all()
+    .map(row=>checkedUsage(ProviderUsageStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))));
+  const expected=new Map<string,number>();
+  for(const row of database.prepare("SELECT record_json FROM provider_requests WHERE json_extract(record_json,'$.kind')='generic'").all()){
+    const r=GenericProviderRequestSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json));
+    for(const a of r.allocations){
+      const u=usages.find(v=>v.scope.id===a.scopeId&&v.meter===a.meter);
+      const w=u?.windows.find(v=>v.id===a.windowId);
+      if(w===undefined||w.startsAt!==a.windowStartedAt||w.endsAt!==a.windowEndsAt)throw new Error("provider-generic-allocation-mismatch");
+      if(r.state==="reserved"){
+        const key=canonicalJsonStringify([a.scopeId,a.meter,a.windowId]);expected.set(key,addAmount(expected.get(key)??0,a.upperBound));
+      }
+    }
+  }
+  for(const u of usages)for(const w of u.windows){
+    const key=canonicalJsonStringify([u.scope.id,u.meter,w.id]);
+    if(w.reserved!==(expected.get(key)??0))throw new Error("provider-generic-reservation-mismatch");
   }
 }

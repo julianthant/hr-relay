@@ -18,7 +18,7 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 with the repaired F prerequisite, the exact shared integrity-check exception, local master merge
 and owned cleanup after focused PASS. That brief supersedes conflicting older allocation,
 WAITING ON, no-master and retention instructions below. Full gates and independent review remain
-2.6.9; implementation is unstarted.
+2.6.9; current implementation status is recorded in the P execution record below.
 
 ## Archive-report amendment — 2026-09-08
 
@@ -535,3 +535,99 @@ into P's worktree. Recheck prerequisite ancestry, the complete receipt, availabl
 four-worktree capacity; preserve the unrelated separation worktree. The planner returns READY
 only after this factual rebind is committed and read back. No implementation or child launch
 occurs in planning; full gates and independent review remain 2.6.9.
+
+## P execution record — 2026-09-09
+
+P01 complete. One supervisor, zero workers. Approved plan
+`9d8b7b8168d77e29ffe75fea23b337326b97b1a0`; checkout
+`/Users/julianhein/Projects/hr-worktree-provider-usage`, branch `codex/provider-usage`,
+base `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. The complete F closure receipt and
+ancestry were verified, including absence of F's path/registration/ref. P occupies the fourth
+auxiliary slot; unrelated separation, D and G worktrees are preserved. Only this owner was
+restored from the approved plan. Production inputs match F before implementation.
+
+Evidence root: `/Users/julianhein/Projects/hr-provider-usage-evidence-20260909`.
+The one-file-worker adapter imports the real configuration; `config-comparison.log` proves
+only root/project maxWorkers differ. Dependency installation is reused through an owned
+node_modules symlink; no secrets or operator database were accessed. No resource collision
+or required peer action was found; no peer messages were sent.
+
+P01–P04 are implemented and focused boundary proof is passing. P05 complete selected gates
+and P06 local integration/owned cleanup remain open.
+Full gates and independent review belong to 2.6.9. L consumes the recorded release; no launch
+or monitoring duty is assigned to P.
+
+### Implementation and proof allocation
+
+`createGenericProviderAccounting(storage)` in `src/infra/sqlite/provider-accounting.ts` supplies
+reserve, finish (settled/interrupted/lease-expired) and usage reads on F's frozen transaction port.
+The real request-write boundary checks execution and retained configuration before aggregate writes.
+The admission fingerprint binds the complete parsed admission input, including all supplied budgets,
+windows, attribution and original request fingerprint, so even denied replay cannot change a budget.
+Window identities retain their original bounds and policy. A new window uses a new identity; changing
+an existing policy under the same identity refuses. Scope/meter duplicates and inconsistent meter
+bounds refuse. No production provider, credential issuer, adapter, registry or pool behavior changes.
+`src/core/provider-admission.ts` required no change: existing callers remain capability-scoped.
+
+Cumulative quantities count finalized usage once per distinct scope/meter, regardless of overlapping
+windows. Active reservations remain separate in windows. A mixed measured/estimated total is labeled
+estimated; any unknown component makes the cumulative total a conservative unknown upper bound.
+Request records retain the supplied meter evidence. Unknown settlement retains at least the original
+upper bound, overage stays negative, missing limits remain typed unknown, and absent reservation
+bounds produce a typed denial. This does not assert provider-verified or account-lifetime totals.
+`inspectGenericProviderAccounting` separately checks generic allocation/window and active-amount
+consistency; legacy reservation checks deliberately cover legacy rows only.
+
+| Proof | Execution evidence |
+| --- | --- |
+| P1 | Two synthetic vendors and credential generations, keyless and unattributed requests; provider/model, credential, application and shared scopes; input/output token and cost evidence; unknown limits. No actual provider producer is added. |
+| P2 | Two real forked processes open independent SQLite connections and attempt the final allowance before the first commits: exactly one reserved and one denied. Request and aggregate INSERT/UPDATE faults roll back both halves and authority generation; a second-scope failure also rolls back the first scope. Exact reserve/finalize replay is a no-op; divergent attribution, budget, usage and fencing refuse. |
+| P3 | Overlapping minute/day limits, midnight rollover and late settlement preserve original allocations; cumulative usage is charged once. Explicit overage, missing bounds/limits, uncertain interruption, lease expiry and late refusal are covered with valid controls. |
+| P4 | Real archive insert/capture changes no provider consumption; archive-origin and ordinary queue deletion both use the accounting boundary. Deletion fault restores request/usage/tombstone/generation; successful deletion retains consumed and uncertain totals, tracking and no active reservation. Late callbacks cannot recreate requests. Future archive transfer wiring remains L/A-owned. |
+| P5 | Populated schema42 has reserved, denied, settled, interrupted and expired records, an active lease, a blocked budget, midnight boundaries and historical coverage gaps. Actual backup inspection and stopped upgrade prove precommit rollback, postcommit exact resume, repeated no-write upgrade, preserved IDs/evidence/replay, pre-tracking settlement and exact source-bound backup restore. Schema42 and wrapped43 valid/corrupt reservation controls exercise the real historical invariant and backup validator. Assigned unchanged F mixed-history and storage suites additionally cover supported generations and fresh roots. |
+| P6 | The complete selected release run includes existing admission, pool, advisory exhaustion and four-way composed baseline suites. These pin budget refusal, retry, single invocation and UNKNOWN behavior without key wiring. No UI, browser, public wire or live target change is introduced. |
+
+P02's defect was reproduced in `p02-reproduction.log`, then all four current/historical controls
+passed in `p02-corrected.log`; repository lint passed in `p02-lint.log`. Fourteen vertical cases
+passed in `p04-archive-history.log`, with scoped lint PASS in `p04-scoped-lint.log`; the final
+release adds paired malformed-input and second-scope rollback controls. Initial complete runs passed 215 unit cases and 183 affected architecture cases, plus lint.
+An additional check of the four owned TypeScript files exposed four diagnostics, now repaired
+and passing in `owned-types-corrected.log`; it is not a full typecheck. Exact corrected final gate
+inputs, commands and exits are recorded in the external `release-*.json` receipts and matching logs.
+The initial `candidate-*.json` receipts and all failed logs remain retained.
+Generated manifest/catalog/roadmap checks are recorded by the same receipt runner.
+
+### Delivery assessment
+
+The approved narrow integrity exception was sufficient; no product scope amendment, new global API,
+DDL, composition edit, delegation or ownership transfer was needed. Local implementation/proof
+repairs addressed an unsupported refined-Zod pick, an initial fixture exceeding its configured zero
+cost budget, historical metadata columns, an invalid historical reason enum, redundant lint
+assertions, closing an open SQLite handle before restoring its main file, and four scoped TypeScript
+diagnostics (branded versions, archive-content parsing and IPC narrowing). The IPC helper then
+needed validation moved outside `finally` and an explicit method binding to satisfy strict lint. Failed logs are
+retained beside passing replacements. These are implementation/proof setup defects, not evidence of
+a planning omission. Reading the exact runtime schemas and closing every SQLite handle before
+fixture restore, plus checking owned-file types/lint before the complete release set, would have
+prevented the avoidable retries. There has been no independent review;
+2.6.9 retains that duty and all full gates. No timing savings or broader acceptance is claimed.
+
+### P05 committed focused release
+
+Implementation candidate: `594490f8e0dc78c1f7c0efd5319057fde30119c9`; tree `9c10ae3c6c6e721a9829779d7822b513b6c40412`.
+Source prerequisite remains exact F `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`.
+The five implementation/test paths are committed; this record adds no runtime input.
+
+| Gate | Result and retained receipt |
+| --- | --- |
+| Assigned unit selectors | 11 files / 215 cases PASS (`release-unit.json`). After the IPC-only test-helper correction, the 16-case provider file passed again (`accepted-provider-unit.json`); 199 unchanged cases are reused. |
+| Assigned architecture selectors | 7 files / 183 cases PASS (`release-architecture.json`). No changed production/guard input after that run; only the isolated race-process helper and evidence prose changed. |
+| Repository lint | PASS, zero warnings (`accepted-lint.json`). |
+| Owned TypeScript diagnostics | Four owned files, zero diagnostics (`accepted-owned-types.json`); full typecheck is deferred. |
+| Freshness | Manifest, catalog and roadmap generation/check PASS (`final-*-generate.json` / `final-*-check.json`). No generated runtime delta. |
+| Documentation | Local links, nine instruction pairs, 17,333-byte maximum chain and whitespace PASS (`final-doc-check.log`). |
+
+`release-reuse.json` records the exact comparison; accepted receipts retain every tested file hash,
+command, cwd, source HEAD and exit. `observed-workers.json` confirms one effective file worker.
+P01–P05 are complete. P06 local merge, integration verification and owned cleanup remain open.
+This is a scoped development release, without independent review or full gates; those remain 2.6.9.

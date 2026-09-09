@@ -1402,7 +1402,7 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "provider-active-reservations-match",
-    sql: "SELECT count(*) AS count FROM provider_usage AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_requests AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')",
+    sql: "SELECT count(*) AS count FROM provider_usage AS counter WHERE json_extract(counter.record_json, '$.kind') = 'legacy-capability' AND counter.active_reservations <> (SELECT count(*) FROM provider_requests AS admission WHERE json_extract(admission.record_json, '$.kind') = 'legacy-capability' AND admission.capability = counter.capability AND admission.state = 'reserved')",
   },
   {
     name: "duo-ceremony-lease-columns-match-record",
@@ -1848,7 +1848,11 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
           sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
           if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
         }
-        if (version < 43) sql = sql.replace("json_extract(record_json, '$.kind') = 'legacy-capability' AND (", "(").replaceAll("provider_requests", "provider_admissions").replaceAll("provider_usage", "provider_budget_counters").replaceAll("'$.record.", "'$.");
+        if (version < 43 && entry.name === "provider-active-reservations-match") {
+          // Pre-43 rows are unwrapped. Keep this named invariant explicit so
+          // aliased kind predicates cannot silently exclude historical rows.
+          sql = "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')";
+        } else if (version < 43) sql = sql.replace("json_extract(record_json, '$.kind') = 'legacy-capability' AND (", "(").replaceAll("provider_requests", "provider_admissions").replaceAll("provider_usage", "provider_budget_counters").replaceAll("'$.record.", "'$.");
         if (version < 41) sql = sql.replaceAll("run_failures", "failures");
         if (version < 39) {
           for (const [old, current] of Object.entries(DATABASE_TABLE_RENAMES)) sql = sql.replaceAll(current, old);
