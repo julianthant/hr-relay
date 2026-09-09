@@ -45,7 +45,7 @@ owns adjacent shared code, so execution allocation must still reconcile those pr
 | Approvals | `gates`, `ocr_approvals` | Approved: remove unused projection and placeholder; preserve working approvals and future OCR durability requirements. See below. |
 | Settings and version changes | `settings_current`, `runtime_config`, `config_snapshots`, `version_plans`, `version_bump_applications` | Approved: `app_settings` plus `settings_snapshots`, activated on save for new runs; existing runs retain theirs. Combine version proposal/application into `version_changes` with renewed review for changed archive membership. |
 | Archive and deletion | `archived_runs`, `archive_relaunches`, `deleted_runs` | Approved: independent `archive.sqlite` with `archive_records`; verified transfer removes archived runs from live storage. Remove archive relaunch. Keep `deleted_runs` for explicit live/archive deletion, separate from transfer. |
-| Messages and notes | `notifications`, `notes` | Open |
+| Messages and notes | `notifications`, `notes` | Approved: keep `notifications`; remove unused SQL `notes` projection only. Preserve diagnostic log files/readers and handle notification links after archive transfer. |
 | Testing and activity privacy | `dry_run_scenario_results`, `activity_person_pseudonyms`, `activity_person_pseudonym_generations` | Open |
 | Database maintenance | `authority_meta`, `authority_upgrades` | Open |
 | Run/operation relationships | Historical `run_operation_attempts` links to `workflow_runs` across retry, re-fencing, archive and deletion | Open; use the [existing deferred finding](../operation-names/README.md#inspected-feasibility-and-separate-relationship-finding) |
@@ -460,3 +460,53 @@ and completed evidence remain intact.
 Status: separate archive/report design, relaunch removal and deletion semantics approved for planning. Implementation,
 historical lineage storage disposition, exact report/transfer contract, complete allocation and
 launch prompts remain pending.
+
+## Approved group 4: keep notifications and retire unused note projection
+
+On 2026-09-08 the operator approved this pair with “okay lets do that.” Keep `notifications` and
+its name. Remove only the unused SQL `notes` projection; preserve existing diagnostic note/log
+files, their reader/writer and their content. This does not add user-authored notes, lessons or new
+workflow logging producers.
+
+### Behavior and inspected evidence
+
+- `src/services/notifications/inbox.ts` publishes durable actor-scoped notification rows before
+  optional desktop delivery, folds matching repeat triggers into a count/latest occurrence, and
+  preserves independent read/unread and snooze state. Keep these behaviors, command/audit identity
+  and actor/version checks. Reading an alert does not approve a workflow gate.
+- `src/server/dashboard/compose/trust.ts` and dashboard composition connect gate observations to
+  the inbox. `src/core/command-kernel.ts` updates notification read/unread/snooze state; the operator
+  query reads the stored rows. The table has actual application consumers and remains useful.
+- `src/infra/sqlite/authority-database.ts` registers SQL `notes` as a generic projection repository.
+  Source search found no application caller of that repository; generic storage tests reference it.
+  This is not proof that every existing database has zero note projection rows.
+- `src/infra/events/note-jsonl-writer.ts` writes diagnostic messages and redacted structured fields
+  to JSONL, and `src/server/dashboard/queries/run-logs.ts` reads those streams. Explicit emission
+  calls found in this inspection were in tests/fixtures; do not claim all workflows currently emit
+  notes. Table retirement must not remove this separate file-based capability.
+
+### Scope, proof and existing ownership
+
+1. Recheck consumers against the accepted execution base, retire the physical SQL projection and
+   unused repository/catalog registration, and update relevant storage/upgrade/restore tests.
+   Determine the supported treatment of populated projection rows before migration; do not mistake
+   a projection for the authoritative note files or discard unexpectedly unique data silently.
+2. Preserve log reading, redaction, scope, pagination and file retention. The existing archive-report
+   owner captures available displayed notes/logs into the standalone report before live cleanup;
+   the archive viewer must not depend on the original note files. Do not assign a second archive
+   capture implementation to this group.
+3. Preserve notification state while defining valid navigation after archive transfer. Retained
+   links must resolve to the archive report, not a missing live run/failure route. Keep deletion
+   handling explicit and prevent late notification publication from recreating moved/deleted run
+   state. Implement common run/archive lookup changes at the existing archive prerequisite owner.
+4. Focused proof covers durable inbox publication, repeat folding, read/unread/snooze, actor/version
+   refusal, independent gate approval, absent SQL projection after fresh creation/upgrade, unchanged
+   note-file readback/redaction, archive report log capture and notification navigation/deletion.
+   Preserve supported backup/restore handling; classify actual historical inputs before retirement.
+
+No other inspected pending sidetrack assigns this note-table retirement. Shared projection schema
+changes belong with the already approved `gates` retirement in the common prerequisite, not in
+competing peer migrations. Reconcile any newly accepted timeline changes at admission without
+rewriting in-flight evidence. Apply this batch's focused-test/lint/freshness cadence and final-session
+heavy gates/independent review. Complete allocation, migration policy and launch prompts remain
+pending; no implementation or database writes are performed by this approval record.
