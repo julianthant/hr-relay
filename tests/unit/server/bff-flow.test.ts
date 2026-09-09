@@ -257,7 +257,7 @@ function harness(options: {
   );
 
   seedSyntheticRuntimeConfig(database);
-  assert.equal("runsView" in database.projections, false, "the retired mirror has no repository capability");
+  assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: root,
     artifactRoot: ".tracker/artifacts",
@@ -594,8 +594,13 @@ function currentSeparationsRun(input: Readonly<{
   runId?: string;
   enqueuedAt?: string;
 }>): RunRecord {
+  const endedAt = input.enqueuedAt ?? AT.toISOString();
+  const completion = TERMINAL_SEPARATIONS_RUN.completion;
+  assert.ok(completion);
   return RunRecordSchema.parse({
     ...TERMINAL_SEPARATIONS_RUN,
+    lifecycle: { state: "terminal", outcome: "done", endedAt },
+    completion: { ...completion, authorizedAt: endedAt },
     createdAt: input.enqueuedAt ?? AT.toISOString(),
     updatedAt: input.enqueuedAt ?? AT.toISOString(),
     envelope: {
@@ -3412,7 +3417,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(existsSync(artifactRoot) ? readdirSync(artifactRoot) : [], []);
     const inspection = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
     try {
-      const row = inspection.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
+      const row = inspection.prepare("SELECT count(*) AS count FROM generated_artifacts WHERE export_id IS NOT NULL").get();
       assert.equal(Reflect.get(row ?? {}, "count"), 0);
     } finally {
       inspection.close();

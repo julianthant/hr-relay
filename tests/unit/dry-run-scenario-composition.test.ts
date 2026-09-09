@@ -694,7 +694,7 @@ describe("dry-run scenario production composition boundary", () => {
       raw.close();
     }
     const before = startEffects(fixture.path);
-    await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 1 does not bind exact snapshot/);
+    await assert.rejects(fixture.runtime.start(fixture.request), /app-settings-snapshot-binding failed for 1 row\(s\)/);
     assert.deepEqual(startEffects(fixture.path), before);
     assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
   });
