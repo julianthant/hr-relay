@@ -1285,6 +1285,11 @@ rename checks; no full coverage, whole architecture suite or broad parity per ta
 independent review belong to 2.6.9, with required reruns after repairs. Handover within finalization verifies
 and reuses unchanged final evidence. Other phases and existing in-flight assignments are unchanged.
 
+**2026-09-09 L integration exception.** The operator approved 2.6.7
+[L01–L06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md#approved-l-execution-brief--2026-09-09): focused tests, lint and affected freshness, then local master
+merge and owned cleanup by the L supervisor. Repeat invalidated integration checks; full gates
+and complete independent review remain 2.6.9. This supersedes final-only master timing for L.
+
 **2026-09-09 C integration exception.** The operator explicitly approved 2.6.5 C local master
 integration and owned cleanup after the focused checks in its
 [approved C01–C05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09).

@@ -3720,6 +3720,11 @@ integration and completion. No repair handbacks, automatic task dispatch, idle c
 gates, or push. D191's matching scoped cadence amendment governs proof timing and evidence. Existing
 in-flight tasks retain their original gates and reviews. No implementation is authorized by planning.
 
+**L-specific operator exception, 2026-09-09:** the approved
+[L01–L06 brief](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md#approved-l-execution-brief--2026-09-09)
+assigns 2.6.7 local master integration and owned cleanup after focused PASS. Full gates and
+complete independent review remain 2.6.9; this is a scoped development release, not phase acceptance.
+
 **C-specific operator exception, 2026-09-09:** the approved 2.6.5 C brief assigns local master
 merge and owned cleanup after focused PASS to the same supervisor. This supersedes the generic
 retention/final-master-integration timing for C, while full gates and complete independent review

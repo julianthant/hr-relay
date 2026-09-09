@@ -427,6 +427,101 @@ sequential owner. Historical-only matches retain versioned compatibility rather 
 - `src/server/dashboard/compose/operator.ts`
 - `src/services/start/rerun.ts`
 
+## Approved L execution brief — 2026-09-09
+
+The operator approved this 2.6.7 L proposal with “do it” after requesting local merge and
+cleanup and keeping full gates at the end of 2.6. This is the sole execution brief, supplementing
+and retaining every L allocation, exact shared path, direct consumer and proof selector above.
+It authorizes planning persistence now; product implementation begins in a fresh supervisor session.
+L-specific local integration after focused PASS supersedes generic retained-candidate/no-master
+wording in this folder. Full gates and complete independent review remain at 2.6.9.
+
+### Isolation, prerequisites and ownership
+
+| Binding | Approved value |
+| --- | --- |
+| Supervisor | One GPT-6 Astra/high supervisor, zero implementation workers; coupled schema, lifecycle, recovery and integration stay with this supervisor |
+| Inspected base | `de636910cdec61045e965b6c9dd653df15cebefe`, clean master; use the verified approved-plan descendant delivered by the planner |
+| D input | `7443100f701e95f22363cbf39da085f88d14a4ac`, integrated ancestor; diagnostics.md release retains focused proof |
+| G input | `4328ce56a05e91c34700a2c5df7dc9fb8e25907f`, integrated ancestor; artifacts.md release retains focused proof |
+| S input | `c7336ec9ba6557a9980c2996a04c68ff027e7284`, integrated ancestor, including retained-provider adapter proof; decisions.md S06 retains evidence |
+| P input | `4818223c9da0231481da6051f73f2c33ee16abf0`, integrated ancestor; also retain later P final integration/accounting and closure through inspected base, rather than reverting to the original P merge |
+| Implementation checkout | Create `codex/lifecycle-foundation` at `/Users/julianhein/Projects/hr-worktree-database-contracts` from the planner's verified approved-plan descendant. Branch/path absent at inspection; recheck ownership, capacity and ancestry before creation |
+| Target and owner | This L supervisor merges its focused-PASS candidate into local master at `/Users/julianhein/Projects/hr-automation-rebuild`, reruns invalidated checks, records release and removes its owned worktree/ref |
+| Allowed changes | All exact L shared and direct-consumer paths above, baseline extraction of the exact A/Q production paths in decisions.md, listed tests/fixtures, affected guards/generated outputs and this owner plus launch/roadmap pointers |
+| Exclusions | No complete A transfer/conversion or Q query/rebuild feature, no U/H rendering, no unrelated product redesign, operator-state migration, HR submission, push, sibling dispatch or extra implementation worktrees |
+
+Use one supervisor because the shared transaction, ownership and recovery ports must settle together
+before A/Q can be independent. No intermediate reviewer is assigned: the phase's complete fresh
+read-only sup_review and all final acceptance belong to 2.6.9. A scoped release is not phase acceptance.
+
+### Ordered outcomes
+
+| Step | Required outcome and acceptance |
+| --- | --- |
+| L01 — Combined prerequisite | Verify exact source releases, approved plan, F/T/C/R ancestry and actual checkout. Run focused combination checks for provider/diagnostic/artifact/settings behavior, migration identity and retained source references. Fix immediate combination defects here; no handback to completed peers. |
+| L02 — Storage contracts | Add registered archive database/path, strict generic report and version-change contracts, indexed summary schema, source cursor and publication state. Preserve released migrations and historical protected-data/backup grammars. Baseline read/write report verification and summary refresh must be executable, not unused interfaces. |
+| L03 — Lifecycle boundaries | Route production creation, transition, receipt, failure annotation, rename/group and event-source changes through atomic summary hooks. Supply capture, live/archive/deleted lookup, verified evidence ownership, numbering, notification/download authorization and reference-aware file custody. Existing serving remains explicit until verified summary publication; never silently serve an incomplete or stale generation. |
+| L04 — Recovery | Implement paired live/archive database plus file recovery contracts and resumable deletion settlement. Prove populated historical inputs, either retry-owner deletion order, report/file interruption and restart. Archive transfer must not invent deletion receipts or erase unverified sources. No actual operator database upgrade is authorized. |
+| L05 — Independent baselines | Freeze A/Q types, methods, fixtures, migration fingerprints and generation inputs. Exercise report round-trip and summary refresh through real composition, each peer capability independently and both orders on separate fixtures. Verify summary cleanup does not depend on Q, and Q source/rebuild does not depend on A. Preserve aggregate privacy during pseudonym retirement. Full A/Q acceptance remains assigned to those children. |
+| L06 — Scoped release | Run the complete scoped gates, fix failures, commit logical categories with exact paths, freeze tested SHA/tree, merge locally and verify integration inputs. Rerun invalidated checks; preserve immutable evidence; remove only owned auxiliary worktree/ref after incorporation. Record the released L SHA and remaining 2.6.9 gates. Do not launch children. |
+
+### Consequential evidence and proof
+
+| Inspected mechanism / risk | Required change and proof at earliest stable boundary |
+| --- | --- |
+| authority-database.ts runDeletionEvidence recognizes only live owners and explicit tombstones, retaining whole shared groups. | L03 extends ownership to verified archive report/transfer receipts. Missing/ambiguous/corrupt owners refuse even when another retained peer exists; valid live/archive owners pass. Prove former/current retry owner deletion in either order, no dangling attempts and retention until the last consumer releases. |
+| RunRecordService.read resolves archive disposition through a live row; new archive/summary storage is absent on inspected base. | L02/L03 introduce canonical independent lookup and real ports before cleanup. Archived IDs remain reserved and ineligible for live commands after source removal; no fake tombstones, reusable run IDs or attempt-number regression. |
+| Archive report and file custody span independently settled stores. | L04 interrupts capture, verification, live cleanup and deletion at their durable boundaries. Preserve sources until verified report/file progress; retries resume without duplicate loss or a plausible success after failed verification. Restore both databases and retained files as one verified set. |
+| Queue/Activity currently reconstruct live facts and use pseudonym evidence. | L02/L05 bind the full approved source inventory and consistent generation/cursor. Empty published state differs from absent/interrupted state. Prove mutation rollback, replay, restart and stale refusal; preserve an explicit working read path until cutover. Retire pseudonym producers/tables only with replacement proof; historical protected authentication remains intact. |
+| Generic archive viewing must survive workflow/source retirement. | L02/L05 separate captured generic fields and source digests from report integrity. Include frozen inputs/projections, settings, results, receipt/failure/resolution, logs/files, T transaction facts and historical lineage. Capture adapters may parse sources; report viewing must not. |
+| A and Q are future independent consumers, not current candidates. | L05 verifies executable baseline capabilities in either order; record disjoint peer write sets and no sibling implementation imports. V rechecks actual candidate combinations later; do not claim a textual merge proves future behavior. |
+
+The [privacy owner](../../../../reference/operator-trust.md#c0-archived-evidence-and-privacy--2026-09-09)
+and [shared-evidence owner](../../../../reference/write-safety.md) retain authoritative constraints.
+No public Activity identity/digest leakage through responses, exports, logs or provenance is permitted.
+No all-time cross-archive Activity expansion or new identity/key mechanism is admitted.
+
+### Reproducible gates and evidence cadence
+
+At iteration run the affected subset; before the candidate commit/release run all fourteen explicit
+unit selectors in L's Required focused selectors above (including the three new lifecycle-foundation
+files) with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1` followed by their
+literal paths. Use the same prefix and `--project architecture` for:
+
+- `tests/unit/architecture/archive-invariants.test.ts`
+- `tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts`
+- `tests/unit/architecture/storage-recovery.test.ts`
+- `tests/unit/architecture/authority-upgrade-adapters-isolated.test.ts`
+- `tests/unit/architecture/runtime-dependency-coverage.test.ts`
+- `tests/unit/architecture/test-runtime-root-isolation.test.ts`
+- `tests/unit/architecture/roadmap-doc-binding.test.ts`
+
+Run `npm run lint`; affected `npm run build:manifest` then `npm run build:manifest:check`,
+`npm run stores:catalog` then `npm run stores:catalog:check`, and `npm run roadmap` then
+`npm run roadmap:check`; finish with local changed-link/anchor checks, existing instruction-pair
+and 32,768-byte chain checks, and `git diff --check`. Update guard inventory only for actual
+additions/retirements with deciding evidence. Do not weaken assertions, isolation or deadlines.
+
+Verify one effective file worker from resolved configuration or observed processes; at most four
+across the batch. Tests use private synthetic databases/files and independent connections for races.
+No provider calls, live browser or operator database preflight is required by this synthetic task.
+A newly discovered need for actual-target mutation is a scope amendment, not implicit authority.
+No full typecheck/coverage, whole architecture, broad parity/build or independent review here.
+These and original phase recovery/scenario/production-route proofs remain due at 2.6.9.
+
+Record command, exit, tested commit/tree and retained log location outside the removable worktree.
+At integration recheck target HEAD/ownership and exact candidate diff. Reuse only gates whose full
+inputs are unchanged under D191; repeat invalidated focused checks and affected documentation checks.
+Evidence-only commits repeat documentation checks and may reuse unchanged lint/runtime inputs.
+Planning persistence runs roadmap binding, lint, roadmap generation/freshness, changed links,
+instruction checks and whitespace; it claims no runtime proof.
+
+Stop only for changed prerequisite validity, real ownership collision, unimplemented required
+shared boundary, or a material scope/contract decision. Fix routine in-scope defects autonomously.
+Do not hand a known baseline incompatibility to A/Q. Send Done / Now / Remaining at start/resume
+and after each verified step, keeping integration, cleanup and deferred final review visible.
+
 ## C0 prerequisite allocation — 2.6.8 V
 
 Consume **exact A/Q candidates on one L base**. One Astra/high supervisor; zero implementation workers.

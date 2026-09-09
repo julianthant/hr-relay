@@ -5,6 +5,11 @@ the phase. No intermediate or nested finalizers. Earlier implementation tasks us
 lint and affected freshness; 2.6.9 owns full gates, independent review, remaining repairs, master
 integration when assigned, handover and cleanup. Other phases retain their existing rules.
 
+**L-specific operator approval, 2026-09-09:** [L01–L06](prerequisites.md#approved-l-execution-brief--2026-09-09)
+assigns 2.6.7 local master merge and owned worktree/ref cleanup after focused PASS to the L
+supervisor. Full gates and complete independent review remain at 2.6.9. This supersedes generic
+retention/no-master wording for L only; it does not launch implementation or its children.
+
 ## Readiness
 
 R/C0/T/C development releases are incorporated in master. C integration
