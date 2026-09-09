@@ -1,3 +1,4 @@
+import { databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
 import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -675,7 +676,7 @@ describe("verified native online backups", () => {
       for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 7)) {
         for (const statement of migration.statements) migrationHarness.exec(statement);
         migrationHarness.prepare(`
-          UPDATE authority_meta SET schema_version = ?, updated_at = ? WHERE singleton_id = 1
+          UPDATE ${databaseStateTable(migration.version)} SET schema_version = ?, updated_at = ? WHERE singleton_id = 1
         `).run(migration.version, NOW);
         migrationHarness.exec(`PRAGMA user_version = ${String(migration.version)}`);
       }

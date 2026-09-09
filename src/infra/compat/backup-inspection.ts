@@ -14,12 +14,13 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  databaseStateTable,
   SQLITE_MIGRATIONS,
 } from "../sqlite/migrations.js";
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -31,6 +32,7 @@ const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
  */
 const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "authority_meta",
+  "database_state",
   "tasks",
   "workflow_runs",
   "run_terminal_authorizations",
@@ -38,9 +40,13 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "run_results",
   "run_terminal_outbox",
   "diagnostic_bundles",
+  "diagnostic_snapshots",
   "diagnostic_attachments",
+  "diagnostic_files",
   "evidence_receipts",
+  "run_receipts",
   "dry_run_scenario_results",
+  "dryrun_results",
   "operator_xlsx_exports",
   "activity_person_pseudonyms",
   "activity_person_pseudonym_generations",
@@ -61,6 +67,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "bulk_command_acceptances",
   "notifications",
   "config_snapshots",
+  "settings_snapshots",
   "settings_current",
   "runtime_config",
   "version_plans",
@@ -94,6 +101,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "deleted_runs",
   "protected_settings_current",
   "authority_upgrades",
+  "database_upgrades",
   "timeline_events",
 ] as const);
 
@@ -276,7 +284,7 @@ function readMeta(database: DatabaseSync): MetaRow {
   const rows = z.array(MetaRowSchema).parse(database.prepare(`
     SELECT singleton_id, schema_version, authority_generation, updated_at,
            migration_owner, migration_started_at
-    FROM authority_meta
+    FROM ${databaseStateTable(readIntPragma(database, "user_version"))}
     ORDER BY singleton_id
   `).all());
   if (rows.length !== 1) {
@@ -307,7 +315,7 @@ function authorityContentFingerprint(database: DatabaseSync, tableNames: Readonl
   for (const [tableIndex, name] of authorityTableOrder(tableNames).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
-    if (name === "authority_meta") {
+    if (name === databaseStateTable(readIntPragma(database, "user_version"))) {
       const meta = readMeta(database);
       hash.update(canonicalJsonStringify({
         singleton_id: meta.singleton_id,
@@ -363,6 +371,12 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
 function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number, tables: ReadonlySet<string>): void {
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    authority_upgrades: AUTHORITY_RECORD_SCHEMA_REGISTRY.database_upgrades,
+    diagnostic_bundles: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_snapshots,
+    diagnostic_attachments: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_files,
+    evidence_receipts: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_receipts,
+    config_snapshots: AUTHORITY_RECORD_SCHEMA_REGISTRY.settings_snapshots,
+    dry_run_scenario_results: AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results,
     tasks: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_runs,
     leases: AUTHORITY_RECORD_SCHEMA_REGISTRY.workflow_workers,
     duo_ceremony_leases: AUTHORITY_RECORD_SCHEMA_REGISTRY.worker_auth,
@@ -378,7 +392,7 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
     ...(schemaVersion < 32 ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   };
   for (const table of tables) {
-    if (PROJECTION_TABLES.has(table) || table === "authority_meta") continue;
+    if (PROJECTION_TABLES.has(table) || table === databaseStateTable(schemaVersion)) continue;
     const schema = registry[table];
     if (schema === undefined) {
       // Retired capture authorities have no admitted producer. Refuse any retained

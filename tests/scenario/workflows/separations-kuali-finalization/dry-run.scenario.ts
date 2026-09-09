@@ -6,7 +6,7 @@
  * `.test.` so no vitest project collects it, because running it starts a
  * browser and reaches live UCPath and live Kuali. It is executed by
  * `npm run cli -- dry-run-scenario separations-kuali-finalization --subject <label>`,
- * once per case, and each run writes a `dry_run_scenario_results` row plus a
+ * once per case, and each run writes a `dryrun_results` row plus a
  * dated line in `docs/rebuild/migrations/separations.md` — the line a `PROOF` tick on
  * the tree cites. Its sibling `structural.scenario.test.ts` is the T1a half and
  * asserts nothing about the world; everything here is a world fact and can only

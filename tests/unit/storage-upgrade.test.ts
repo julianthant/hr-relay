@@ -90,7 +90,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal(JSON.stringify(plan).includes(config.operator.timekeeperName), false);
     assert.deepEqual((await f.run()).historicalExposure, ["operator.timekeeperName"]);
     const after = new DatabaseSync(f.path);
-    try { assert.equal(after.prepare("SELECT record_json FROM config_snapshots").get()?.record_json, bytes); } finally { after.close(); }
+    try { assert.equal(after.prepare("SELECT record_json FROM settings_snapshots").get()?.record_json, bytes); } finally { after.close(); }
   });
   it("M25 activates the converted ordinary revision at the next real dashboard boot", async () => {
     const f = fixture(29);
@@ -139,7 +139,7 @@ describe("D336 stopped SQLite upgrade", () => {
     const seed = fixture(); await seed.run();
     const source = new DatabaseSync(seed.path, { readOnly: true });
     let pending: Record<string, unknown>;
-    try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM authority_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
+    try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM database_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
     finally { source.close(); }
     delete pending.timelineImport; // This historical receipt predates timeline conversion.
     const f = fixture(version);
@@ -341,7 +341,7 @@ describe("D336 stopped SQLite upgrade", () => {
       assert.deepEqual(DeletedRunRecordSchema.parse(JSON.parse(String(after.prepare("SELECT record_json FROM deleted_runs").get()?.record_json))).removed, deleted.removed);
       assert.throws(() => after.prepare("UPDATE deleted_runs SET attempt=1").run(), /immutable/u);
       assert.throws(() => after.prepare("DELETE FROM checkpoint_payloads").run(), /never deleted/u);
-      const journal = after.prepare("SELECT record_json FROM authority_upgrades WHERE phase='committed'").get();
+      const journal = after.prepare("SELECT record_json FROM database_upgrades WHERE phase='committed'").get();
       assert.equal(z.object({ orphanGateRecordsRemoved: z.number() }).parse(JSON.parse(String(journal?.record_json))).orphanGateRecordsRemoved, 1);
     } finally { after.close(); }
   });
@@ -423,7 +423,7 @@ async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37) {
       workerId: WORKER_START_REQUEST.workerId, now }).state, "claimed");
   } finally { database.close(); }
   const f = fixture(version);
-  const pairs = [...RENAMED_TABLES, ...["worker_pools", "config_snapshots", "workflow_run_batches", "workflow_runs"].map((name) => [name, name] as const)];
+  const pairs = [...RENAMED_TABLES, ["config_snapshots", "settings_snapshots"] as const, ...["worker_pools", "workflow_run_batches", "workflow_runs"].map((name) => [name, name] as const)];
   const before = new Map<string, ReturnType<ReturnType<DatabaseSync["prepare"]>["all"]>>();
   const source = new DatabaseSync(seed.path, { readOnly: true });
   const target = new DatabaseSync(f.path);
@@ -434,7 +434,7 @@ async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37) {
       before.set(currentName, rows);
       for (const row of rows) {
         const columns = Object.keys(row);
-        const table = version < 35 ? oldName : currentName;
+        const table = currentName === "settings_snapshots" || version < 35 ? oldName : currentName;
         target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
       }
     }
@@ -465,7 +465,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
       assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
     const current = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(current.schemaVersion, 38);
+    assert.equal(current.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(current.counts.leases, 1);
     const currentBackup = await f.backup();
     assert.equal(currentBackup.manifests[0]?.authorityContentFingerprint, current.authorityContentFingerprint);
@@ -481,13 +481,13 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("rename-before-commit"); } } }, clock), /rename-before-commit/u);
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 38);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal((await f.run()).state, "converted");
     const after = new DatabaseSync(f.path, { readOnly: true });
     try {
       for (const [table, rows] of f.before) assert.deepEqual(after.prepare(`SELECT * FROM ${table} ORDER BY record_key`).all(), rows, table);
-      assert.equal(after.prepare("SELECT count(*) AS n FROM authority_upgrades WHERE phase='committed'").get()?.n, 1);
-      assert.equal(after.prepare("SELECT count(*) AS n FROM authority_upgrades WHERE phase='settled'").get()?.n, 1);
+      assert.equal(after.prepare("SELECT count(*) AS n FROM database_upgrades WHERE phase='committed'").get()?.n, 1);
+      assert.equal(after.prepare("SELECT count(*) AS n FROM database_upgrades WHERE phase='settled'").get()?.n, 1);
     } finally { after.close(); }
   });
 
@@ -540,7 +540,7 @@ function preRenameFingerprint(path: string): string {
 
 
 function timelineImportFixture() {
-  const f = fixture(CURRENT_AUTHORITY_SCHEMA_VERSION - 1);
+  const f = fixture(37);
   const seedPath = join(f.root, "timeline-owner.db");
   const seed = AuthorityDatabase.open({ path: seedPath, busyTimeoutMs: 500, migrationOwner: "timeline-owner-fixture" }, clock);
   seed.authority.runs.enqueue(QUEUED_RUN);
@@ -670,7 +670,7 @@ describe("T1 stopped timeline conversion", () => {
     } } }, clock), /timeline-import-source-changed/);
     const raw = new DatabaseSync(f.path);
     try {
-      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION - 1);
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 37);
       assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='timeline_events'").get()?.n, 0);
     } finally { raw.close(); }
     writeFileSync(f.sourcePath, f.bytes);

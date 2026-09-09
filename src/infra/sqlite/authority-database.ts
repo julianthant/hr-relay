@@ -308,6 +308,9 @@ import {
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  databaseStateTable,
+  databaseUpgradesTable,
+  DATABASE_TABLE_RENAMES,
   INTEGRATED_AUTHORITY_TABLES_BY_VERSION,
   POST_FLOOR_AUTHORITY_TABLES_BY_VERSION,
   SQLITE_MIGRATIONS,
@@ -1419,7 +1422,7 @@ function tableNames(database: DatabaseSync): TableName[] {
 function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
   return MetaRowSchema.parse(database.prepare(`
     SELECT schema_version, authority_generation, updated_at, migration_owner, migration_started_at
-    FROM authority_meta WHERE singleton_id = 1
+    FROM ${databaseStateTable(readIntPragma(database, "user_version"))} WHERE singleton_id = 1
   `).get());
 }
 
@@ -1717,13 +1720,13 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "diagnostic-bundle-columns-match-record",
-    sql: "SELECT count(*) AS count FROM diagnostic_bundles WHERE record_key IS NOT json_extract(record_json, '$.bundleId') OR run_id IS NOT json_extract(record_json, '$.runId') OR origin_kind IS NOT json_extract(record_json, '$.origin.kind') OR failure_id IS NOT json_extract(record_json, '$.origin.failureId') OR content_digest IS NOT json_extract(record_json, '$.contentDigest') OR retention_kind IS NOT json_extract(record_json, '$.retention.kind') OR purge_after IS NOT json_extract(record_json, '$.retention.purgeAfter')",
+    sql: "SELECT count(*) AS count FROM diagnostic_snapshots WHERE record_key IS NOT json_extract(record_json, '$.bundleId') OR run_id IS NOT json_extract(record_json, '$.runId') OR origin_kind IS NOT json_extract(record_json, '$.origin.kind') OR failure_id IS NOT json_extract(record_json, '$.origin.failureId') OR content_digest IS NOT json_extract(record_json, '$.contentDigest') OR retention_kind IS NOT json_extract(record_json, '$.retention.kind') OR purge_after IS NOT json_extract(record_json, '$.retention.purgeAfter')",
   },
   {
     name: "diagnostic-attachment-binds-its-bundle",
     sql: `
-      SELECT count(*) AS count FROM diagnostic_attachments AS attachment
-      LEFT JOIN diagnostic_bundles AS bundle ON bundle.record_key = attachment.bundle_id
+      SELECT count(*) AS count FROM diagnostic_files AS attachment
+      LEFT JOIN diagnostic_snapshots AS bundle ON bundle.record_key = attachment.bundle_id
       WHERE bundle.record_key IS NULL
         OR attachment.record_key IS NOT (attachment.bundle_id || ':' || attachment.artifact_id)
         OR attachment.bundle_id IS NOT json_extract(attachment.record_json, '$.bundleId')
@@ -1734,18 +1737,18 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "diagnostic-bundle-attachments-are-indexed",
     sql: `
-      SELECT count(*) AS count FROM diagnostic_bundles AS bundle
+      SELECT count(*) AS count FROM diagnostic_snapshots AS bundle
       WHERE json_array_length(bundle.record_json, '$.attachments')
-        <> (SELECT count(*) FROM diagnostic_attachments AS attachment WHERE attachment.bundle_id = bundle.record_key)
+        <> (SELECT count(*) FROM diagnostic_files AS attachment WHERE attachment.bundle_id = bundle.record_key)
     `,
   },
   {
     name: "evidence-receipt-columns-match-record",
-    sql: "SELECT count(*) AS count FROM evidence_receipts WHERE record_key IS NOT json_extract(record_json, '$.receiptId') OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR attempt IS NOT json_extract(record_json, '$.attempt') OR result IS NOT json_extract(record_json, '$.result') OR confidence IS NOT json_extract(record_json, '$.confidence') OR failure_id IS NOT json_extract(record_json, '$.failure.value')",
+    sql: "SELECT count(*) AS count FROM run_receipts WHERE record_key IS NOT json_extract(record_json, '$.receiptId') OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR attempt IS NOT json_extract(record_json, '$.attempt') OR result IS NOT json_extract(record_json, '$.result') OR confidence IS NOT json_extract(record_json, '$.confidence') OR failure_id IS NOT json_extract(record_json, '$.failure.value')",
   },
   {
     name: "dry-run-scenario-result-columns-match-record",
-    sql: "SELECT count(*) AS count FROM dry_run_scenario_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
+    sql: "SELECT count(*) AS count FROM dryrun_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
   },
   {
     name: "operator-xlsx-export-columns-match-record",
@@ -1770,7 +1773,7 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "started-dry-run-scenario-result-binds-run",
     sql: `
-      SELECT count(*) AS count FROM dry_run_scenario_results AS result
+      SELECT count(*) AS count FROM dryrun_results AS result
       LEFT JOIN workflow_runs AS run ON run.record_key = result.run_id
       WHERE result.execution_state = 'started' AND (
         run.record_key IS NULL
@@ -1916,6 +1919,9 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
         if (version < 37) {
           sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
           if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
+        }
+        if (version < 39) {
+          for (const [old, current] of Object.entries(DATABASE_TABLE_RENAMES)) sql = sql.replaceAll(current, old);
         }
         if (entry.name === "run-columns-match-record") {
           if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
@@ -2071,6 +2077,14 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
 function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
   let validated = 0;
   for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    ...(readIntPragma(database, "user_version") < 39 ? {
+      authority_upgrades: AUTHORITY_RECORD_SCHEMA_REGISTRY.database_upgrades,
+      diagnostic_bundles: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_snapshots,
+      diagnostic_attachments: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_files,
+      evidence_receipts: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_receipts,
+      config_snapshots: AUTHORITY_RECORD_SCHEMA_REGISTRY.settings_snapshots,
+      dry_run_scenario_results: AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results,
+    } : {}),
     ...(presentTables?.has("leases") === true ? { leases: WorkerLeaseRecordSchema } : {}),
     ...(presentTables?.has("duo_ceremony_leases") === true ? { duo_ceremony_leases: DuoCeremonyLeaseRecordSchema } : {}),
     ...(presentTables?.has("start_plans") === true ? { start_plans: StartPlanRecordSchema } : {}),
@@ -2115,11 +2129,11 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   for (const [tableIndex, name] of AuthorityTableNameSchema.options.entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
-    if (name === "authority_meta") {
+    if (name === "database_state") {
       const row = AuthorityMetaFingerprintRowSchema.parse(database.prepare(`
         SELECT singleton_id, schema_version, authority_generation, updated_at,
                migration_owner, migration_started_at
-        FROM authority_meta WHERE singleton_id = 1
+        FROM database_state WHERE singleton_id = 1
       `).get());
       hash.update(canonicalJsonStringify(row));
     } else {
@@ -2920,7 +2934,7 @@ export class AuthorityDatabase implements Disposable {
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
       if (this.getMeta().schemaVersion < 30) return { state: "absent" as const, reason: "pre-journal-schema" as const };
-      const rows = this.#database.prepare("SELECT phase, record_json FROM authority_upgrades ORDER BY rowid").all();
+      const rows = this.#database.prepare(`SELECT phase, record_json FROM ${databaseUpgradesTable(this.getMeta().schemaVersion)} ORDER BY rowid`).all();
       const phases = rows.map((raw) => {
         const row = z.strictObject({ phase: z.string(), record_json: z.string() }).parse(raw);
         const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(row.record_json));
@@ -3884,7 +3898,7 @@ export class AuthorityDatabase implements Disposable {
             recordedAt: this.#now(),
           });
           this.#database.prepare(`
-            INSERT INTO authority_upgrades (
+            INSERT INTO database_upgrades (
               record_key, upgrade_id, phase, record_json, created_at
             ) VALUES (?, ?, ?, ?, ?)
           `).run(
@@ -3904,7 +3918,7 @@ export class AuthorityDatabase implements Disposable {
           `).run(migration.version, this.#now(), migrationOwner, this.#now());
         } else {
           this.#database.prepare(`
-            UPDATE authority_meta
+            UPDATE ${databaseStateTable(migration.version)}
             SET schema_version = ?, migration_owner = ?, migration_started_at = ?, updated_at = ?
             WHERE singleton_id = 1
           `).run(migration.version, migrationOwner, this.#now(), this.#now());
@@ -3913,7 +3927,7 @@ export class AuthorityDatabase implements Disposable {
       }
       this.#database.exec(`PRAGMA application_id = ${String(AUTHORITY_APPLICATION_ID)}`);
       this.#database.prepare(`
-        UPDATE authority_meta
+        UPDATE database_state
         SET migration_owner = NULL, migration_started_at = NULL, updated_at = ?
         WHERE singleton_id = 1
       `).run(this.#now());
@@ -4030,7 +4044,7 @@ export class AuthorityDatabase implements Disposable {
       result = work();
       if (this.#authorityDirty) {
         const update = this.#database.prepare(`
-          UPDATE authority_meta
+          UPDATE database_state
           SET authority_generation = authority_generation + 1, updated_at = ?
           WHERE singleton_id = 1
         `).run(this.#now());
@@ -4077,7 +4091,7 @@ export class AuthorityDatabase implements Disposable {
     table: AuthorityTableName,
     operation: () => Outcome,
   ): Outcome["result"] {
-    if (table === "authority_meta") throw new Error("authority_meta is mutated only by the generation and migration protocols");
+    if (table === "database_state") throw new Error("database_state is mutated only by the generation and migration protocols");
     return this.#withTransaction("authority", () => {
       const outcome = operation();
       if (outcome.changes > 0) {
@@ -4122,7 +4136,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #insertSimpleRecord<Schema extends z.ZodType>(
-    table: Exclude<AuthorityTableName, "authority_meta">,
+    table: Exclude<AuthorityTableName, "database_state">,
     recordKey: string,
     input: unknown,
     schema: Schema,
@@ -4163,8 +4177,8 @@ export class AuthorityDatabase implements Disposable {
       insert: (input: unknown) => {
         const record = DiagnosticBundleSchema.parse(input);
         const json = canonicalJsonStringify(record);
-        return this.#authorityWrite("diagnostic_bundles", () => {
-          const existing = this.#readRecord("diagnostic_bundles", record.bundleId, DiagnosticBundleSchema);
+        return this.#authorityWrite("diagnostic_snapshots", () => {
+          const existing = this.#readRecord("diagnostic_snapshots", record.bundleId, DiagnosticBundleSchema);
           if (existing !== undefined) {
             if (canonicalJsonStringify(existing) !== json) {
               throw new Error(`diagnostic bundle ${record.bundleId} already exists with different content`);
@@ -4172,7 +4186,7 @@ export class AuthorityDatabase implements Disposable {
             return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
           }
           const result = this.#database.prepare(`
-            INSERT INTO diagnostic_bundles
+            INSERT INTO diagnostic_snapshots
               (record_key, run_id, origin_kind, failure_id, content_digest, retention_kind, purge_after, record_json, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
@@ -4194,7 +4208,7 @@ export class AuthorityDatabase implements Disposable {
               createdAt: record.createdAt,
             });
             const inserted = this.#database.prepare(`
-              INSERT INTO diagnostic_attachments
+              INSERT INTO diagnostic_files
                 (record_key, bundle_id, artifact_id, kind, digest, sensitivity, record_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
@@ -4212,10 +4226,10 @@ export class AuthorityDatabase implements Disposable {
           return { result: Object.freeze({ state: "inserted" as const, record }), changes };
         });
       },
-      get: (bundleId: string) => this.#readRecord("diagnostic_bundles", bundleId, DiagnosticBundleSchema),
+      get: (bundleId: string) => this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema),
       listByRun: (runId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM diagnostic_bundles WHERE run_id = ? ORDER BY created_at, record_key
+          SELECT record_json FROM diagnostic_snapshots WHERE run_id = ? ORDER BY created_at, record_key
         `).all(RunIdSchema.parse(runId));
         return Object.freeze(rows.map((row) => parseJsonRecord(
           DiagnosticBundleSchema,
@@ -4223,16 +4237,16 @@ export class AuthorityDatabase implements Disposable {
         )));
       },
       listAttachments: (bundleId: string) => readAttachments(
-        "SELECT record_json FROM diagnostic_attachments WHERE bundle_id = ? ORDER BY record_key",
+        "SELECT record_json FROM diagnostic_files WHERE bundle_id = ? ORDER BY record_key",
         DiagnosticBundleIdSchema.parse(bundleId),
       ),
       findByArtifact: (artifactId: string) => readAttachments(
-        "SELECT record_json FROM diagnostic_attachments WHERE artifact_id = ? ORDER BY record_key",
+        "SELECT record_json FROM diagnostic_files WHERE artifact_id = ? ORDER BY record_key",
         ArtifactIdSchema.parse(artifactId),
       ),
       listRetentionDue: (now: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM diagnostic_bundles
+          SELECT record_json FROM diagnostic_snapshots
           WHERE retention_kind = 'ordinary' AND purge_after <= ?
           ORDER BY purge_after, record_key
         `).all(IsoInstantSchema.parse(now));
@@ -4244,8 +4258,8 @@ export class AuthorityDatabase implements Disposable {
       purge: (bundleId: string, now: string) => {
         const key = DiagnosticBundleIdSchema.parse(bundleId);
         const instant = IsoInstantSchema.parse(now);
-        return this.#authorityWrite("diagnostic_bundles", () => {
-          const existing = this.#readRecord("diagnostic_bundles", key, DiagnosticBundleSchema);
+        return this.#authorityWrite("diagnostic_snapshots", () => {
+          const existing = this.#readRecord("diagnostic_snapshots", key, DiagnosticBundleSchema);
           if (existing === undefined) {
             return { result: DiagnosticPurgeDispositionSchema.parse("absent"), changes: 0 };
           }
@@ -4256,10 +4270,10 @@ export class AuthorityDatabase implements Disposable {
             throw new Error(`diagnostic bundle ${key} is retained until ${existing.retention.purgeAfter}; refusing to purge it at ${instant}`);
           }
           const attachments = this.#database.prepare(
-            "DELETE FROM diagnostic_attachments WHERE bundle_id = ?",
+            "DELETE FROM diagnostic_files WHERE bundle_id = ?",
           ).run(key);
           const bundle = this.#database.prepare(
-            "DELETE FROM diagnostic_bundles WHERE record_key = ?",
+            "DELETE FROM diagnostic_snapshots WHERE record_key = ?",
           ).run(key);
           const removed = sqliteChanges(bundle.changes);
           if (removed !== 1) throw new Error(`diagnostic bundle ${key} purge removed ${String(removed)} rows`);
@@ -4887,8 +4901,8 @@ export class AuthorityDatabase implements Disposable {
         insert: (input: unknown) => {
           const record = RunEvidenceReceiptSchema.parse(input);
           const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("evidence_receipts", () => {
-            const existing = this.#readRecord("evidence_receipts", record.receiptId, RunEvidenceReceiptSchema);
+          return this.#authorityWrite("run_receipts", () => {
+            const existing = this.#readRecord("run_receipts", record.receiptId, RunEvidenceReceiptSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {
                 throw new Error(`evidence receipt ${record.receiptId} already exists with different content`);
@@ -4896,7 +4910,7 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO evidence_receipts
+              INSERT INTO run_receipts
                 (record_key, run_id, workflow, attempt, result, confidence, failure_id, record_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
@@ -4908,14 +4922,14 @@ export class AuthorityDatabase implements Disposable {
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (receiptId: string) => this.#readRecord("evidence_receipts", receiptId, RunEvidenceReceiptSchema),
+        get: (receiptId: string) => this.#readRecord("run_receipts", receiptId, RunEvidenceReceiptSchema),
         listByRun: (runId: string) => this.#database.prepare(`
-          SELECT record_json FROM evidence_receipts WHERE run_id = ? ORDER BY record_key
+          SELECT record_json FROM run_receipts WHERE run_id = ? ORDER BY record_key
         `).all(RunIdSchema.parse(runId)).map((row) =>
           parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json)),
         findByRun: (runId: string) => {
           const row = this.#database.prepare(`
-            SELECT record_json FROM evidence_receipts WHERE run_id = ?
+            SELECT record_json FROM run_receipts WHERE run_id = ?
           `).get(RunIdSchema.parse(runId));
           if (row === undefined) return undefined;
           return parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json);
@@ -4925,9 +4939,9 @@ export class AuthorityDatabase implements Disposable {
         insert: (input: unknown) => {
           const record = DryRunScenarioResultSchema.parse(input);
           const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("dry_run_scenario_results", () => {
+          return this.#authorityWrite("dryrun_results", () => {
             const existing = this.#readRecord(
-              "dry_run_scenario_results",
+              "dryrun_results",
               record.resultId,
               DryRunScenarioResultSchema,
             );
@@ -4953,7 +4967,7 @@ export class AuthorityDatabase implements Disposable {
               }
             }
             const result = this.#database.prepare(`
-              INSERT INTO dry_run_scenario_results
+              INSERT INTO dryrun_results
                 (record_key, scenario_id, workflow, subject_label, manifest_digest, verdict,
                  execution_state, run_id, trace_id, wall_time_ms, record_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -4971,12 +4985,12 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (resultId: string) => this.#readRecord(
-          "dry_run_scenario_results",
+          "dryrun_results",
           resultId,
           DryRunScenarioResultSchema,
         ),
         list: () => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM dry_run_scenario_results ORDER BY created_at, record_key
+          SELECT record_json FROM dryrun_results ORDER BY created_at, record_key
         `).all().map((row) =>
           parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
       }),
@@ -5485,9 +5499,9 @@ export class AuthorityDatabase implements Disposable {
           // The WRITE schema, not the read schema: an older generation is read
           // forward, never minted (`src/domain/config/snapshot-generations.ts`).
           const record = ConfigSnapshotWriteSchema.parse(input);
-          return this.#insertSimpleRecord("config_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
+          return this.#insertSimpleRecord("settings_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
         },
-        get: (snapshotId: string) => this.#readRecord("config_snapshots", snapshotId, ConfigSnapshotRecordSchema),
+        get: (snapshotId: string) => this.#readRecord("settings_snapshots", snapshotId, ConfigSnapshotRecordSchema),
       }),
       settingsCurrent: Object.freeze({
         get: () => this.#readRecord("settings_current", "current", SettingsCurrentRecordSchema),
@@ -5581,7 +5595,7 @@ export class AuthorityDatabase implements Disposable {
           const request = ActiveRuntimeConfigActivationSchema.parse(input);
           return this.#authorityWrite("runtime_config", () => {
             const snapshot = this.#readRecord(
-              "config_snapshots",
+              "settings_snapshots",
               request.configSnapshotId,
               ConfigSnapshotRecordSchema,
             );
@@ -5657,7 +5671,7 @@ export class AuthorityDatabase implements Disposable {
             );
           }
           const snapshot = this.#readRecord(
-            "config_snapshots",
+            "settings_snapshots",
             current.configSnapshotId,
             ConfigSnapshotRecordSchema,
           );
@@ -5694,7 +5708,7 @@ export class AuthorityDatabase implements Disposable {
             );
           }
           const snapshot = this.#readRecord(
-            "config_snapshots",
+            "settings_snapshots",
             runtime.configSnapshotId,
             ConfigSnapshotRecordSchema,
           );
@@ -6510,7 +6524,7 @@ export class AuthorityDatabase implements Disposable {
           );
         }
         const snapshot = this.#readRecord(
-          "config_snapshots",
+          "settings_snapshots",
           current.envelope.configSnapshotId,
           ConfigSnapshotRecordSchema,
         );
@@ -6898,13 +6912,13 @@ export class AuthorityDatabase implements Disposable {
             remove("run_operations", "DELETE FROM run_operations WHERE record_key = ?", operationId);
           }
           // Evidence and diagnostics.
-          remove("diagnostic_attachments", `
-            DELETE FROM diagnostic_attachments WHERE bundle_id IN (
-              SELECT record_key FROM diagnostic_bundles WHERE run_id = ?
+          remove("diagnostic_files", `
+            DELETE FROM diagnostic_files WHERE bundle_id IN (
+              SELECT record_key FROM diagnostic_snapshots WHERE run_id = ?
             )`, runId);
-          remove("diagnostic_bundles", "DELETE FROM diagnostic_bundles WHERE run_id = ?", runId);
-          remove("evidence_receipts", "DELETE FROM evidence_receipts WHERE run_id = ?", runId);
-          remove("dry_run_scenario_results", "DELETE FROM dry_run_scenario_results WHERE run_id = ?", runId);
+          remove("diagnostic_snapshots", "DELETE FROM diagnostic_snapshots WHERE run_id = ?", runId);
+          remove("run_receipts", "DELETE FROM run_receipts WHERE run_id = ?", runId);
+          remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
           remove("activity_person_pseudonyms", "DELETE FROM activity_person_pseudonyms WHERE run_id = ?", runId);
           remove("provider_admissions", "DELETE FROM provider_admissions WHERE run_id = ?", runId);
           remove("failures", "DELETE FROM failures WHERE run_id = ?", runId);
@@ -7344,7 +7358,7 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`provider admission ${request.admissionId} run ${request.execution.runId} is not executing node ${request.execution.nodeId}`);
     }
     const snapshot = this.#readRecord(
-      "config_snapshots",
+      "settings_snapshots",
       request.configSnapshotId,
       ConfigSnapshotRecordSchema,
     );

@@ -424,7 +424,7 @@ export interface IntakeProjectionResolver {
  * from the same resolved config; `retry` copies it from the run it retries. An
  * intake fan-out has neither — the command IS the plan — so the composition
  * root supplies its own resolved identity, and the kernel proves it against the
- * stored `config_snapshots` row before stamping a single envelope with it. A
+ * stored `settings_snapshots` row before stamping a single envelope with it. A
  * caller-claimed config identity would be exactly the unverified value this
  * tree bans; an unproved one would leave a run claiming a snapshot nobody can
  * read back.

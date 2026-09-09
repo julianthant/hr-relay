@@ -31,7 +31,7 @@ function foldToUuid(namespace: string, seed: string): string {
   ].join("-");
 }
 
-/** One terminal run, one receipt id — the `evidence_receipts.run_id` UNIQUE key's twin. */
+/** One terminal run, one receipt id — the `run_receipts.run_id` UNIQUE key's twin. */
 export function deriveEvidenceReceiptId(runId: string, attempt: number): EvidenceReceiptId {
   return EvidenceReceiptIdSchema.parse(
     foldToUuid("hrauto:evidence-receipt:v1", `${runId}\0${String(attempt)}`),

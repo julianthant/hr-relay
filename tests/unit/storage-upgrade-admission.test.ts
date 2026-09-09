@@ -1,3 +1,4 @@
+import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import {
   existsSync,
@@ -162,7 +163,7 @@ function historicalFixture(version: number): HistoricalFixture {
       for (const statement of migration.statements) database.exec(statement);
     }
     database.prepare(`
-      INSERT INTO authority_meta
+      INSERT INTO ${databaseStateTable(Math.min(version, CURRENT_AUTHORITY_SCHEMA_VERSION))}
         (singleton_id, schema_version, authority_generation, updated_at,
          migration_owner, migration_started_at)
       VALUES (1, ?, 7, ?, NULL, NULL)
@@ -227,7 +228,7 @@ function readMeta(path: string): z.infer<typeof MetaRowSchema> {
   try {
     return MetaRowSchema.parse(database.prepare(`
       SELECT schema_version, authority_generation
-      FROM authority_meta WHERE singleton_id = 1
+      FROM ${databaseStateTable(z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version)} WHERE singleton_id = 1
     `).get());
   } finally {
     database.close();
@@ -238,7 +239,7 @@ function readUpgradeRecords(path: string) {
   const database = strictDatabase(path);
   try {
     return database.prepare(`
-      SELECT record_json FROM authority_upgrades ORDER BY rowid
+      SELECT record_json FROM database_upgrades ORDER BY rowid
     `).all().map((row) => AuthorityUpgradeRecordSchema.parse(
       JSON.parse(TextRowSchema.parse(row).record_json),
     ));
@@ -250,9 +251,9 @@ function readUpgradeRecords(path: string) {
 function assertOnlyExpectedRowsRemain(fixture: HistoricalFixture): void {
   const counts = tableCounts(fixture.path);
   for (const [table, count] of counts) {
-    const expected = table === "authority_meta" || table === "commands" || table === "command_audits"
+    const expected = table === "database_state" || table === "commands" || table === "command_audits"
       ? 1
-      : table === "authority_upgrades" ? 2 : 0;
+      : table === "database_upgrades" ? 2 : 0;
     assert.equal(count, expected, `${table} must retain exactly ${String(expected)} row(s)`);
   }
   assert.equal(readJournalJson(fixture.path, "commands", COMMAND_ID), fixture.commandJson);

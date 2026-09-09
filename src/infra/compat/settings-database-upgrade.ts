@@ -17,7 +17,7 @@ import { BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, Setting
 import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../domain/config/settings.js";
 import { inspectConvertedAuthority } from "../sqlite/authority-database.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, databaseStateTable, databaseUpgradesTable, settingsSnapshotsTable } from "../sqlite/migrations.js";
 import type { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { ordinaryLeaves, readUpgradeSources, type UpgradeSources } from "./upgrade-sources.js";
@@ -85,14 +85,14 @@ export function inspectHistoricalSettingsExposure(path: string | undefined): rea
   if (path === undefined) return [];
   const database = new DatabaseSync(path, { readOnly: true });
   try {
-    const exposed = database.prepare("SELECT 1 FROM config_snapshots WHERE json_type(record_json, '$.config.operator.timekeeperName') IS NOT NULL LIMIT 1").get();
+    const exposed = database.prepare(`SELECT 1 FROM ${settingsSnapshotsTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} WHERE json_type(record_json, '$.config.operator.timekeeperName') IS NOT NULL LIMIT 1`).get();
     return exposed === undefined ? [] : ["operator.timekeeperName"];
   } finally { database.close(); }
 }
 export function readLatestSettingsUpgrade(path: string): UpgradeRecord | undefined {
   const database = new DatabaseSync(path, { readOnly: true });
   try {
-    const rows = database.prepare("SELECT record_json FROM authority_upgrades ORDER BY rowid DESC").all()
+    const rows = database.prepare(`SELECT record_json FROM ${databaseUpgradesTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} ORDER BY rowid DESC`).all()
       .map((row) => AuthorityUpgradeRecordSchema.parse(JSON.parse(RowSchema.parse(row).record_json)));
     return rows.find((record) => "format" in record && record.format === 3);
   } finally { database.close(); }
@@ -104,7 +104,7 @@ export function readSettingsUpgradeSources(stateRoot: string, environmentFile: s
 }
 function appendUpgrade(database: DatabaseSync, input: unknown): void {
   const record = AuthorityUpgradeRecordSchema.parse(input);
-  database.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)")
+  database.prepare(`INSERT INTO ${databaseUpgradesTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)}(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)`)
     .run(record.recordKey, record.upgradeId, record.phase, canonicalJsonStringify(record), record.recordedAt);
 }
 
@@ -227,7 +227,7 @@ export function convertSettingsDatabase(args: Readonly<{
         database = args.verifyOnly === true ? cloneAuthorityReadOnly(existed ? path : undefined) : new DatabaseSync(path);
         database.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL; BEGIN EXCLUSIVE");
         if (existed && (VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version !== from
-          || GenerationSchema.parse(database.prepare("SELECT authority_generation FROM authority_meta").get()).authority_generation !== inspection?.authorityGeneration)) throw new Error("source-changed: re-plan upgrade");
+          || GenerationSchema.parse(database.prepare(`SELECT authority_generation FROM ${databaseStateTable(from)}`).get()).authority_generation !== inspection?.authorityGeneration)) throw new Error("source-changed: re-plan upgrade");
         if (existed && inspectOpenDatabase(database, from).authorityContentFingerprint !== inspection?.authorityContentFingerprint) throw new Error("source-changed: authority differs from verified backup");
         const again = readUpgradeSources(input.stateRoot, input.environmentFile, existed ? database : undefined, clock);
         if (canonicalJsonStringify(again) !== canonicalJsonStringify(sources)) throw new Error("source-changed: re-plan upgrade");
@@ -243,7 +243,7 @@ export function convertSettingsDatabase(args: Readonly<{
           }
           if (links !== undefined) applyCommandGroupLinks(database, links);
           if (migration.version === 1) database.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,1,0,?)").run(now);
-          database.prepare("UPDATE authority_meta SET schema_version=? WHERE singleton_id=1").run(migration.version);
+          database.prepare(`UPDATE ${databaseStateTable(migration.version)} SET schema_version=? WHERE singleton_id=1`).run(migration.version);
           database.exec(`PRAGMA user_version=${String(migration.version)}`);
         }
         database.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
@@ -279,7 +279,7 @@ export function convertSettingsDatabase(args: Readonly<{
           ordinaryFingerprint: derivePersistedSettingsFingerprint(sources.settings), sourceFiles: report.sourceFiles, historicalExposure: args.historicalExposure, orphanGateRecordsRemoved: orphanGateRecords, tombstoneBackfill: tombstones.counts,
           credentialCommandId: randomUUID(), credentialWriteId: randomUUID(), importedKeys: report.importedKeys, envKeysToRemove: report.envKeysToRemove });
         appendUpgrade(database, pending);
-        database.prepare("UPDATE authority_meta SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1").run(now);
+        database.prepare(`UPDATE ${databaseStateTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1`).run(now);
         inspectConvertedAuthority(database);
         if (args.verifyOnly !== true) {
           args.bindCredentials?.(upgradeId);
@@ -312,7 +312,7 @@ export function settleSettingsUpgrade(path: string, pending: UpgradeRecord, now:
   try {
     database.exec("BEGIN IMMEDIATE");
     appendUpgrade(database, { ...pending, recordKey: randomUUID(), phase: "settled", recordedAt: now });
-    database.prepare("UPDATE authority_meta SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1").run(now);
+    database.prepare(`UPDATE ${databaseStateTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1`).run(now);
     database.exec("COMMIT");
   } catch (error) { if (database.isTransaction) database.exec("ROLLBACK"); throw error; }
   finally { database.close(); }

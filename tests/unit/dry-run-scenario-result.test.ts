@@ -155,10 +155,10 @@ describe("durable dry-run scenario results", () => {
 describe("dry-run scenario result authority repository", () => {
   it("registers the table and its boot-time record schema", () => {
     assert.equal(
-      AUTHORITY_TABLE_REGISTRY.find(({ name }) => name === "dry_run_scenario_results")?.classification,
+      AUTHORITY_TABLE_REGISTRY.find(({ name }) => name === "dryrun_results")?.classification,
       "authority",
     );
-    assert.equal(AUTHORITY_RECORD_SCHEMA_REGISTRY.dry_run_scenario_results, DryRunScenarioResultSchema);
+    assert.equal(AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results, DryRunScenarioResultSchema);
   });
 
   it("inserts, reads, and lists durable results in recorded order", () => {
@@ -192,7 +192,7 @@ describe("dry-run scenario result authority repository", () => {
     database.authority.dryRunScenarioResults.insert(parsed);
     const raw = new DatabaseSync(path, { readOnly: true });
     const row = raw.prepare(`
-      SELECT record_json FROM dry_run_scenario_results WHERE record_key = ?
+      SELECT record_json FROM dryrun_results WHERE record_key = ?
     `).get(parsed.resultId);
 
     assert.equal(row?.record_json, canonicalJsonStringify(parsed));
@@ -284,7 +284,7 @@ describe("dry-run scenario result authority repository", () => {
     }));
     const raw = new DatabaseSync(path, { readOnly: true });
     const row = raw.prepare(`
-      SELECT count(*) AS count FROM dry_run_scenario_results
+      SELECT count(*) AS count FROM dryrun_results
       WHERE instr(record_json, '10873698') > 0
     `).get();
     assert.equal(row?.count, 0);
@@ -300,7 +300,7 @@ describe("dry-run scenario result authority repository", () => {
     const raw = new DatabaseSync(path);
 
     assert.throws(
-      () => raw.prepare("UPDATE dry_run_scenario_results SET subject_label = ? WHERE record_key = ?")
+      () => raw.prepare("UPDATE dryrun_results SET subject_label = ? WHERE record_key = ?")
         .run("rewritten-canary", NOT_STARTED_BLOCKED_RESULT.resultId),
       /dry-run scenario results are immutable/,
     );
@@ -315,7 +315,7 @@ describe("dry-run scenario result authority repository", () => {
     const raw = new DatabaseSync(path);
 
     assert.throws(
-      () => raw.prepare("DELETE FROM dry_run_scenario_results WHERE record_key = ?")
+      () => raw.prepare("DELETE FROM dryrun_results WHERE record_key = ?")
         .run(NOT_STARTED_BLOCKED_RESULT.resultId),
       /dry-run scenario results are never deleted/,
     );
@@ -333,7 +333,7 @@ describe("dry-run scenario result authority repository", () => {
       subjectLabel: "10873698",
     };
     raw.prepare(`
-      INSERT INTO dry_run_scenario_results
+      INSERT INTO dryrun_results
         (record_key, scenario_id, workflow, subject_label, manifest_digest, verdict,
          execution_state, run_id, trace_id, wall_time_ms, record_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -346,7 +346,7 @@ describe("dry-run scenario result authority repository", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /authority table dry_run_scenario_results record .* failed strict record schema validation/,
+      /authority table dryrun_results record .* failed strict record schema validation/,
     );
   });
 });

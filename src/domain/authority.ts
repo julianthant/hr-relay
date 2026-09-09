@@ -14,16 +14,16 @@ import {
 } from "./ids.js";
 
 export const AuthorityTableNameSchema = z.enum([
-  "authority_meta",
+  "database_state",
   "workflow_runs",
   "run_terminal_authorizations",
   "failures",
   "run_results",
   "run_terminal_outbox",
-  "diagnostic_bundles",
-  "diagnostic_attachments",
-  "evidence_receipts",
-  "dry_run_scenario_results",
+  "diagnostic_snapshots",
+  "diagnostic_files",
+  "run_receipts",
+  "dryrun_results",
   "operator_xlsx_exports",
   "activity_person_pseudonyms",
   "activity_person_pseudonym_generations",
@@ -39,7 +39,7 @@ export const AuthorityTableNameSchema = z.enum([
   "commands",
   "command_audits",
   "notifications",
-  "config_snapshots",
+  "settings_snapshots",
   "settings_current",
   "runtime_config",
   "version_plans",
@@ -62,7 +62,7 @@ export const AuthorityTableNameSchema = z.enum([
   "worker_pools",
   "workflow_run_batches",
   "deleted_runs",
-  "authority_upgrades",
+  "database_upgrades",
   "timeline_events",
 ]);
 
@@ -161,7 +161,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38)]),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -205,7 +205,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   tombstoneBackfill: TombstoneBackfillCountsSchema,
   upgradeId: FingerprintSchema,
   phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38)]),
+  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39)]),
   backupManifest: z.string().min(1),
   ordinaryRevision: PositiveIntSchema,
   ordinaryFingerprint: FingerprintSchema,
@@ -222,7 +222,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
       imported: NonNegativeIntSchema, excludedDeleted: NonNegativeIntSchema }),
   ]).optional(),
 }).superRefine((record, context) => {
-  if ((record.toSchemaVersion === 38) !== (record.timelineImport !== undefined)) {
+  if ((record.toSchemaVersion >= 38) !== (record.timelineImport !== undefined)) {
     context.addIssue({ code: "custom", message: "timeline import evidence must match its upgrade version" });
   }
   if (record.timelineImport?.state === "fresh" && record.fromSchemaVersion !== 0) {

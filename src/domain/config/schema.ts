@@ -213,7 +213,7 @@ export const ConfigSchema = z.strictObject({
      * plus margin). A waiter's budget is its remaining envelope MINUS this
      * grace, so the lease refuses by name before the envelope fires. It is a
      * post-baseline leaf: generation 3 in `snapshot-generations.ts`, so a
-     * stored `config_snapshots` row without it still parses (D133).
+     * stored `settings_snapshots` row without it still parses (D133).
      */
     duoCeremonyLeaseGraceMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),

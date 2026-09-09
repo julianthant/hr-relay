@@ -9,13 +9,13 @@ import { ConfigSchema } from "./schema.js";
  * THE CONFIG SCHEMA'S OWN VERSION LINE, INDEPENDENT OF THE SQLITE MIGRATION
  * CHAIN (D133, ref clock-config-secrets §4.1).
  *
- * A `config_snapshots` row is EVIDENCE of the configuration one run executed
+ * A `settings_snapshots` row is EVIDENCE of the configuration one run executed
  * under. Three facts make it un-rewritable:
  *
  *  1. `ConfigSnapshotRecord.fingerprint` is a SHA-256 over exactly the stored
  *     `config` bytes (`./resolve.ts`), and the run envelope retains that same
  *     fingerprint. Editing the row breaks the binding it exists to prove.
- *  2. `config_snapshots` is an insert-only authority repository. Nothing in the
+ *  2. `settings_snapshots` is an insert-only authority repository. Nothing in the
  *     runtime may UPDATE it, so a migration that did would contradict the store.
  *  3. Back-filling today's default MISSTATES HISTORY. A pre-D125 run had no
  *     `timeouts.sessionAcquireMs` at all — that absence is the whole reason a
