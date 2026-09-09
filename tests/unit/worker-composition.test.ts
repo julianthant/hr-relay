@@ -458,10 +458,11 @@ describe("composed worker runtime", () => {
     }
   });
 
-  it("refuses a queued run whose config fingerprint predates the worker boot settings", async () => {
+  it("executes a retained queued run after settings change", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const original = reopen(stateRoot, clock).authority.runs.get(RUN_ID); assert.ok(original);
     persistJournaledWorkerSettings(
       repoRoot,
       stateRoot,
@@ -470,25 +471,14 @@ describe("composed worker runtime", () => {
     );
 
     const sessions = happySessionHarness();
-    const refusal = await composeWorkerRuntime(composeInput({
-      repoRoot,
-      clock,
-      sessions,
-      poolIndex: POOL_INDEX_1,
-    })).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    assert.equal(sessions.opens("ucpath"), 0);
-    assert.equal(sessions.opens("crm"), 0);
-    assert.match(
-      refusal instanceof Error ? refusal.message : String(refusal),
-      /run lifecycle runtime-stale/u,
-    );
-    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+    assert.ok(sessions.opens("ucpath") > 0);
+    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.envelope.configFingerprint,
+      original.envelope.configFingerprint);
   });
 
-  it("refuses a stale epoch at claim admission before either browser opens", async () => {
+  it("rolls back a nested settings save when ownership fails at claim admission before either browser opens", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
@@ -520,6 +510,7 @@ describe("composed worker runtime", () => {
           admissionSettingsRecord = readSettings(admissionDatabase.authority);
           journalWorkerSettings(admissionDatabase, persisted, stateRoot);
           admissionCrossed = true;
+          throw new Error("synthetic stale owner at claim admission");
         },
       }).then(
       () => undefined,
@@ -532,7 +523,7 @@ describe("composed worker runtime", () => {
     assert.equal(sessions.opens("crm"), 0);
     assert.match(
       refusal instanceof Error ? refusal.message : String(refusal),
-      /run lifecycle runtime-stale/u,
+      /synthetic stale owner at claim admission/u,
     );
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
     assert.equal(database.authority.commands.get("33333333-3333-4333-8333-333333333333"), undefined);
@@ -952,7 +943,7 @@ describe("composed worker runtime", () => {
 });
 
 describe("D331 settings apply during a production worker claim", () => {
-  it.each(["protected", "ordinary"] as const)("%s apply preserves the active run and enforces its restart scope", async (kind) => {
+  it.each(["protected", "ordinary"] as const)("%s apply preserves the active run and permits the next retained run", async (kind) => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
@@ -977,7 +968,7 @@ describe("D331 settings apply during a production worker claim", () => {
       arrived.resolve(); await gate.promise; return sessions.factory.open(...args);
     } } };
     const worker = composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: heldSessions, poolIndex: POOL_INDEX_1 }));
-    // Attach rejection immediately; the ordinary arm deliberately becomes stale on its next poll.
+    // Observe failure promptly while the first run is held at its session boundary.
     const settled = worker.then((report) => ({ report }), (error: unknown) => ({ error }));
     try {
       await Promise.race([arrived.promise, settled.then(() => { throw new Error("worker settled before claim barrier"); })]);
@@ -989,6 +980,8 @@ describe("D331 settings apply during a production worker claim", () => {
       const waitingId = "ffffffff-0001-4000-8000-000000000001";
       if (kind === "ordinary") {
         const waiting = RunRecordSchema.parse(personLookupQueuedRun({ runId: waitingId, itemId: "ffffffff-0002-4000-8000-000000000001" }));
+        waiting.envelope.configSnapshotId = queued.envelope.configSnapshotId;
+        waiting.envelope.configFingerprint = queued.envelope.configFingerprint;
         waiting.envelope.traceId = TraceIdSchema.parse("pl-170000-9999");
         assert.equal(database.authority.runs.enqueue(waiting).state, "inserted");
         spans.emit(runQueuedSpanEvent({ run: waiting, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic waiting fixture" }));
@@ -1004,9 +997,14 @@ describe("D331 settings apply during a production worker claim", () => {
           payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
       })();
       assert.equal(result.state, "applied");
-      assert.deepEqual(database.authority.runtimeConfig.get(), active);
-      assert.deepEqual(database.authority.runtimeConfig.requireActive({ settingsRevision: active.settingsRevision,
-        settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint }), token);
+      if (kind === "protected") {
+        assert.deepEqual(database.authority.runtimeConfig.get(), active);
+        assert.deepEqual(database.authority.runtimeConfig.requireActive({ settingsRevision: active.settingsRevision,
+          settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint }), token);
+      } else {
+        assert.equal(database.authority.runtimeConfig.matchesClaim(token), false, "old authorization is fenced");
+        assert.equal(database.authority.runtimeConfig.get()?.generation, active.generation + 1);
+      }
       assert.deepEqual(database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
       assert.deepEqual(database.authority.runs.get(RUN_ID), run);
       if (kind === "protected") {
@@ -1019,24 +1017,18 @@ describe("D331 settings apply during a production worker claim", () => {
       assert.ok(terminal?.state === "terminal");
       assert.equal(terminal.outcome, "done");
       if (kind === "protected") {
+        if ("error" in outcome) throw outcome.error;
         assert.ok("report" in outcome);
         assert.deepEqual(outcome.report.outcomes.map(({ state }) => state), ["done"]);
       } else {
-        assert.ok("error" in outcome && outcome.error instanceof Error);
-        assert.match(outcome.error.message, /runtime-stale/u);
-        assert.deepEqual(database.authority.runtimeConfig.get(), active);
-        assert.deepEqual(database.authority.runs.get(waitingId), waitingBefore);
-        for (const name of ["package.json", "package-lock.json"])
-          writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
-        const restarted = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
-          backendPortOverride: 0, frontendPortOverride: 0 });
-        await restarted.stop();
+        if ("error" in outcome) throw outcome.error;
+        assert.ok("report" in outcome);
+        assert.deepEqual(outcome.report.outcomes.map(({ state }) => state), ["done", "done"]);
+        const waitingAfter = database.authority.runs.get(waitingId);
+        assert.equal(waitingAfter?.lifecycle.state, "terminal");
+        assert.deepEqual(waitingAfter?.envelope, waitingBefore?.envelope);
         const next = database.authority.runtimeConfig.get(); assert.ok(next);
-        assert.equal(next.generation, active.generation + 1);
         assert.equal(database.authority.configSnapshots.get(next.configSnapshotId)?.config.timeouts.taskMs, 240_000);
-        const freshWorker = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
-          args: ["separations", "--pool-index", "1", "--drain"] }));
-        assert.deepEqual(freshWorker.outcomes, []);
       }
     } finally { gate.resolve(); await settled; }
   });
