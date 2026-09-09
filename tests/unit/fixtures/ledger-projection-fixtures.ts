@@ -53,6 +53,8 @@ export function ledgerCommitFixture(
     workflowId?: string;
     itemId?: string;
     traceId?: string;
+    configFingerprint?: string;
+    instance?: "prod" | "test";
     /**
      * The commit's completion proof, in ONE place. It is stamped into four
      * mutually-bound spots (the entry, the commit's `completionProof`, the
@@ -124,6 +126,8 @@ export function ledgerCommitFixture(
 
   const entry = Object.freeze({
     ...LEDGER_PAYLOAD,
+    configFingerprint: overrides.configFingerprint ?? LEDGER_PAYLOAD.configFingerprint,
+    instance: overrides.instance ?? LEDGER_PAYLOAD.instance,
     system,
     idempotencyKey,
     idempotencyKeyDigest,

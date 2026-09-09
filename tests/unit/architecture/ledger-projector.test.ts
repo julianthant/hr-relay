@@ -1,3 +1,4 @@
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 /**
  * Ref write-safety §6's mechanical arms: one ordered projector, idempotent by outbox id,
  * loud on every disagreement, and a `ledger/` directory that NO cleanup path
@@ -160,8 +161,9 @@ describe("ledger projector", () => {
     const root = newRoot();
     try {
       const database = open(root);
+      seedAtomicWriteOwner(database, fixture.commit);
       database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt });
-      database.commitWriteAttempt(fixture.commit);
+      database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
       const outbox = database.authority.ledgerProjection.getOutbox(fixture.outboxId);
       assert.notEqual(outbox, undefined);
       if (outbox === undefined) return;
@@ -188,8 +190,9 @@ describe("ledger projector", () => {
     try {
       const database = open(root);
       const fixture = ledgerCommitFixture(0);
+      seedAtomicWriteOwner(database, fixture.commit);
       database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt });
-      database.commitWriteAttempt(fixture.commit);
+      database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
       const repository = database.authority.ledgerProjection;
       const lease = repository.acquireLease({
         system: "ucpath", date: "2026-07-31", projectorId: "guard-a", now: NOW, expiresAt: "2026-07-31T17:30:00.000Z",
@@ -238,8 +241,9 @@ describe("ledger projector", () => {
       const database = open(root);
       for (const index of [0, 1]) {
         const fixture = ledgerCommitFixture(index);
+        seedAtomicWriteOwner(database, fixture.commit);
         database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt });
-        database.commitWriteAttempt(fixture.commit);
+        database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
       }
       const report = createLedgerProjector(database, manualClock(new Date(NOW)), {
         stateRoot: root, projectorId: "guard-a", leaseMs: 30_000,

@@ -1,3 +1,4 @@
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,6 +27,7 @@ import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/acti
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  UPGRADE_FLOOR_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
   requiresStoppedSystemAuthorityUpgrade,
 } from "../../src/infra/sqlite/migrations.js";
@@ -476,7 +478,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -887,7 +889,7 @@ afterEach(() => {
 });
 
 describe("native SQLite authority schema", () => {
-  it("requires stopped conversion through v36 and admits v37 directly", () => {
+  it("requires stopped conversion through the current floor", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(29), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(30), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(31), true);
@@ -896,7 +898,8 @@ describe("native SQLite authority schema", () => {
     assert.equal(requiresStoppedSystemAuthorityUpgrade(34), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(35), true);
     assert.equal(requiresStoppedSystemAuthorityUpgrade(36), true);
-    assert.equal(requiresStoppedSystemAuthorityUpgrade(37), false);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(37), true);
+    assert.equal(requiresStoppedSystemAuthorityUpgrade(38), false);
   });
 
   it("creates a fresh authority at the current schema with one baseline journal row", () => {
@@ -1117,7 +1120,7 @@ describe("native SQLite authority schema", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /upgrade-required \{ schemaVersion: 29, floor: 36 \}/u,
+      new RegExp(`upgrade-required \\{ schemaVersion: 29, floor: ${String(UPGRADE_FLOOR_SCHEMA_VERSION)} \\}`, "u"),
     );
     assert.deepEqual(readFileSync(path), before);
   });
@@ -1159,7 +1162,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), corruptBytes);
   });
 
-  it.each([27, 28, 29, 30, 31, 32, 33, 34, 35, 36] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
+  it.each([27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37] as const)("admits the frozen integrated v%s layout for upgrade preflight", (version) => {
     const path = databasePath(`integrated-v${String(version)}.sqlite`);
     createExactReleasedDatabase(path, version);
     const before = readFileSync(path);
@@ -1565,11 +1568,12 @@ describe("native SQLite authority schema", () => {
       )?.writeIntentId,
       OBSERVED_PRESENT_WRITE_INTENT.writeIntentId,
     );
+    seedAtomicWriteOwner(upgraded, ATOMIC_WRITE_COMMIT);
     assert.equal(upgraded.authority.writeIntents.fenceAttempt({
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
-    upgraded.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    upgraded.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
 
@@ -2056,8 +2060,8 @@ describe("authority generation accounting", () => {
     {
       table: "ledger_projections",
       prepare: (db) => {
-        db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
-        db.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+        seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+        db.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
         acquireLedgerLease(db);
       },
       mutate: (db) => {
@@ -2177,15 +2181,25 @@ describe("authority generation accounting", () => {
       mutate: (db) => { db.authority.archiveRelaunches.insert(ARCHIVE_RELAUNCH); },
     },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
-    { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
+    { table: "run_checkpoints", prepare: (db) => {
+      db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+        runId: RUN_CHECKPOINT.runId, itemId: RUN_CHECKPOINT.itemId, workflow: RUN_CHECKPOINT.workflowId } });
+    }, mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
+    { table: "timeline_events", mutate: (db) => {
+      db.authority.timelineEvents.append({ schemaVersion: 1, eventId: UUID_8, workflow: "person-lookup",
+        scope: { kind: "worker", workerId: "timeline-worker" }, occurredAt: NOW, recordedAt: NOW,
+        retentionDate: NOW.slice(0, 10), source: { kind: "native" }, payload: { kind: "span", event: {
+          t: "span.started", kind: "worker", workflow: "person-lookup", ts: NOW, pid: 4242,
+          workerId: "timeline-worker", spanPath: "worker/timeline-worker", name: "Worker" } } });
+    } },
     { table: "workflow_run_requests", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
     { table: "run_operations", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
-    { table: "run_operation_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
+    { table: "run_operation_attempts", prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); }, mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
     {
       table: "operation_outbox",
-      prepare: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); },
-      mutate: (db) => { db.commitWriteAttempt(ATOMIC_WRITE_COMMIT); },
+      prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); },
+      mutate: (db) => { db.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)); },
     },
     { table: "artifact_outbox", mutate: (db) => { db.authority.artifactOutbox.insert(ARTIFACT_OUTBOX); } },
     { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
@@ -2285,6 +2299,7 @@ describe("authority generation accounting", () => {
 
   it("rolls back a caught nested fence failure to its savepoint without leaking an intent", () => {
     const database = openDatabase();
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
     database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
     const competingKey = "10001573|termination|2026-08-03";
@@ -2316,12 +2331,13 @@ describe("authority generation accounting", () => {
       { afterStorageStep: (step) => { if (step === "ledger-outbox") throw new Error("injected nested outbox failure"); } },
     );
     openDatabases.push(database);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
     database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
 
     database.withAuthorityTransaction((authority) => {
       authority.notifications.create(NOTIFICATION);
-      assert.throws(() => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT), /injected nested outbox failure/);
+      assert.throws(() => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /injected nested outbox failure/);
     });
 
     assert.deepEqual(database.authority.notifications.get(UUID_3), NOTIFICATION);
@@ -2539,8 +2555,10 @@ describe("authority persistence invariants", () => {
 
   it("keeps committed and observed-present idempotency keys permanent", () => {
     const database = openDatabase();
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    const generationBefore = database.getMeta().authorityGeneration;
     assert.equal(database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
-    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     const committedReplay = {
       intent: { ...WRITE_INTENT_ATTEMPTING, writeIntentId: UUID_8, currentAttemptId: UUID_6 },
       attempt: { ...WRITE_ATTEMPT, writeIntentId: UUID_8, writeAttemptId: UUID_6 },
@@ -2552,7 +2570,7 @@ describe("authority persistence invariants", () => {
     const observedReplay = { ...OBSERVED_PRESENT_WRITE_INTENT, writeIntentId: UUID_6 };
     assert.equal(database.authority.writeIntents.recordObservedPresent(observedReplay).state, "existing");
     assert.equal(database.authority.writeIntents.findByPermanentKey("ucpath", OBSERVED_PRESENT_WRITE_INTENT.idempotencyKey)?.writeIntentId, UUID_7);
-    assert.equal(database.getMeta().authorityGeneration, 3);
+    assert.equal(database.getMeta().authorityGeneration, generationBefore + 3);
   });
 
   it("enforces command, delegation, write-attempt, and outbox foreign keys", () => {
@@ -2560,7 +2578,7 @@ describe("authority persistence invariants", () => {
     assert.throws(() => database.authority.commandAudits.insert(COMMAND_AUDIT), /FOREIGN KEY constraint failed/);
     assert.throws(() => database.authority.dependencies.insert(DEPENDENCY_RECORD), /FOREIGN KEY constraint failed/);
     assert.throws(
-      () => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT),
+      () => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)),
       /write intent .* does not exist/,
     );
     assert.equal(database.getMeta().authorityGeneration, 0);

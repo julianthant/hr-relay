@@ -34,7 +34,7 @@ import {
   happySessionHarness,
   ManualScheduler,
   openAuthorityHarness,
-  recordingEmitter,
+  recordingTimelineEmitter,
   recordingLogger,
   sessionManagerFor,
   type AuthorityHarness,
@@ -185,13 +185,13 @@ function controlQueuedRun(descriptor: AnyWorkflowDescriptor, route: "left" | "ri
 
 function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunExecutor): Readonly<{
   authority: AuthorityHarness;
-  emitter: ReturnType<typeof recordingEmitter>;
+  emitter: ReturnType<typeof recordingTimelineEmitter>;
   deps: RunExecutorDependencies;
 }> {
   const authority = openAuthorityHarness();
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
-  const emitter = recordingEmitter();
+  const emitter = recordingTimelineEmitter(authority.database, authority.clock);
   const deps: RunExecutorDependencies = {
     lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor,

@@ -1,3 +1,4 @@
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,7 +44,8 @@ describe("dry-run write-safety evidence query", () => {
       { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
     );
 
-    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     assert.deepEqual(
       database.authority.writeIntents.countDryRunEvidenceByRun(WRITE_INTENT_ATTEMPTING.runId),
       { writeIntents: 1, writeAttempts: 1, durableOutbox: 2 },

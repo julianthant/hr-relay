@@ -332,8 +332,8 @@ describe("D334 retires checkpoint saves", () => {
   ])("refuses the retired command regardless of former field/CAS eligibility: %j", ({ version, patch }) => {
     const descriptor = editDescriptor();
     const { database, kernel } = kernelHarness(descriptor);
-    database.authority.runCheckpoints.insert(REPLAYED);
     database.authority.runs.enqueue(queuedRunFor(descriptor));
+    database.authority.runCheckpoints.insert(REPLAYED);
     const before = database.authority.runs.get(RUN_ID);
     const generation = database.getMeta().authorityGeneration;
     assert.throws(() => kernel.execute(editCommand(RUN_ID, version, [patch])));

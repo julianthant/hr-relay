@@ -1,4 +1,5 @@
 import { upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 /**
  * The 2j restore drill, driven through the OPERATOR'S OWN COMMAND (D181).
  *
@@ -258,6 +259,10 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     const credentialStats = statSync(credentialPath);
     const database = open(paths);
     const seeded = seedRealShapedAuthority(database);
+    createTimelineEmitter({ repository: database.authority.timelineEvents, clock: CLOCK, pid: 4242 }).emit({
+      t: "span.started", kind: "worker", workflow: "person-lookup", ts: NOW,
+      workerId: "restored-worker", spanPath: "worker/restored-worker", name: "Restored worker" });
+    const retainedTimeline = database.authority.timelineEvents.page({});
     const generation = database.getMeta().authorityGeneration;
     const manifestPath = await takeBackup(database, paths);
     // A row written AFTER the backup is the control: it must be gone
@@ -316,6 +321,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     // 4 — every family the exit criterion names survived.
     const reopened = open(paths);
     try {
+      assert.deepEqual(reopened.authority.timelineEvents.page({}), retainedTimeline);
       assert.deepEqual(reopened.authority.commands.get(seededCommandId()), COMMAND_FIXTURES[0]);
       const run = reopened.authority.runs.get(seeded.runId);
       assert.ok(run !== undefined);
@@ -377,7 +383,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     });
   });
 
-  it.each([29, 30, 31, 32, 33, 34, 35, 36])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34, 35, 36, 37])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
     const paths = drillPaths();
     const credentialPath = join(paths.stateRoot, "credentials", "protected.json");
     const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(

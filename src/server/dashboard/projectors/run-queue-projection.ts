@@ -13,13 +13,13 @@ import { hasProtectedTransactionInput } from "../../../domain/protected-input.js
  * take a second path because no second aggregation function exists.
  *
  * Canonical RunRecordService read/list owns run existence, identity, membership
- * and lifecycle. The JSONL fold contributes optional execution evidence only.
- * Boot rebuilds that evidence in memory; disk tailing observes other processes.
+ * and lifecycle. The SQLite timeline fold contributes optional execution evidence only.
+ * Boot rebuilds that evidence in memory; cursor paging observes other processes.
  * No runs_view table or persisted lifecycle mirror is used.
  *
- * Failure policy (ref dashboard-surfaces §2.3): JSONL append happens BEFORE any fold sees the
- * event — structurally, because the fold only reads the file. A failing fold
- * or an unparsable tailed line marks the projection degraded and schedules a
+ * Failure policy (ref dashboard-surfaces §2.3): committed events precede every fold;
+ * the reader uses a database snapshot. A failing fold or invalid event marks
+ * the projection degraded and schedules a
  * guarded rebuild — never a skip, and never a throw into the emitting path. A
  * rebuild that itself fails leaves the projection loudly degraded (health
  * carries the exact error); it never serves a half-folded day as healthy.
@@ -80,7 +80,9 @@ import type { WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
-import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
+import type { EventStreamLine } from "../../../infra/events/jsonl-streams.js";
+import type { TimelineRepository } from "../../../events/timeline.js";
+import { readTimelineRecords, timelineSpanLocation } from "../../../infra/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
 import { deriveRunStatus, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
 import { ProjectionDegradedError } from "../../failures.js";
@@ -153,6 +155,7 @@ interface WorkerFold {
 /* ── dependencies ────────────────────────────────────────────────────────── */
 
 export interface RunQueueProjectionDeps {
+  readonly timeline: TimelineRepository;
   readonly reader: Pick<RunRecordService, "read" | "list">;
   readonly stateRoot: string;
   readonly clock: Clock;
@@ -272,10 +275,6 @@ export interface RunQueueReadSnapshot {
   surfaces(runIds: readonly string[]): readonly QueueSurfaceWire[];
 }
 
-interface ParsedSpanLine {
-  readonly line: EventStreamLine;
-  readonly event: SpanEventWire;
-}
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -511,12 +510,10 @@ export class RunQueueProjection {
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedStatus = new Map<string, string>();
   /**
-   * The D218 tail state: how far into each `spans/` file this projection has
-   * folded, in bytes-through-the-last-newline. Seeded by `rebuildFromJsonl`
-   * (so a rebuild and the tail can never double-fold a line) and advanced
-   * only by `ingestFromDisk`.
+   * Last committed ingestion cursor folded from SQLite. Rebuild and incremental
+   * reads share this cursor so a database record is never folded twice.
    */
-  #spanCursors: ReadonlyMap<string, EventStreamFileCursor> = new Map();
+  #timelineCursor = 0;
   /**
    * The Session Panel's authority facts as of the last reconcile — the
    * card-relevant lease facts plus the pool declarations — so a transition no
@@ -562,7 +559,7 @@ export class RunQueueProjection {
   }
 
   /**
-   * Observed/fenced rows indexed by the append-time disk tail. A logs query
+   * Observed/fenced rows indexed by durable SQLite ingestion order. A logs query
    * never reconstructs this list from run-instant partitions.
    */
   runLogSnapshot(runId: string): ProjectedRunLogSnapshot {
@@ -582,8 +579,8 @@ export class RunQueueProjection {
   /**
    * Fold ONE already-durable event. Never throws: a fold failure degrades the
    * projection and schedules the guarded rebuild instead of blocking the
-   * caller. Production ingest reaches this fold only through `ingestFromDisk`
-   * / `rebuildFromJsonl` (D218) — the emitting process may be a DIFFERENT OS
+   * caller. Production ingest reaches this fold only through `ingestFromTimeline`
+   * / `rebuildFromTimeline` (D218) — the emitting process may be a DIFFERENT OS
    * process, so an in-process call can never be the live feed.
    */
   apply(event: SpanEventWire): void {
@@ -597,21 +594,19 @@ export class RunQueueProjection {
   }
 
   /**
-   * The cross-process tail (D218): fold every COMPLETE span line any process
-   * appended since the last read. The boot rebuild seeds the byte cursors, so
-   * a line folds exactly once — this projection's own emissions included. An
-   * unparsable or unfoldable line degrades and schedules the guarded rebuild,
-   * never a skip; a torn trailing line stays on disk until its newline lands.
+   * Read committed SQLite records from every producer since the last cursor.
+   * Invalid evidence degrades the projection and schedules a guarded rebuild.
    */
-  ingestFromDisk(): void {
+  ingestFromTimeline(): void {
     // While degraded, recovery belongs to the scheduled rebuild alone — it
     // re-reads the whole stream and resets these cursors.
     if (this.#health.state === "degraded") return;
     try {
-      const tail = readEventStreamLinesFrom(this.#deps.stateRoot, "spans", this.#spanCursors);
-      this.#spanCursors = tail.cursors;
-      if (tail.lines.length === 0) return;
-      const events = this.#parseSpanLines(tail.lines);
+      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor);
+      this.#timelineCursor = tail.cursor;
+      if (tail.records.length === 0) return;
+      const events = tail.records.filter((record) => record.payload.kind === "span")
+        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }));
       const snapshot = this.#canonicalSnapshot();
       for (const { event, line } of events) {
         const affected = this.#fold(event);
@@ -620,7 +615,7 @@ export class RunQueueProjection {
         this.#notify(affected, snapshot);
       }
     } catch (error) {
-      this.#degrade(`span tail ingest failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -631,7 +626,7 @@ export class RunQueueProjection {
    * maintenance ticker settles `idle`, when an operator directive lands, and
    * when a crash or expiry is settled by whichever process observed it; a
    * pool row moves on `plan-worker-count`, which emits no span either. So the
-   * same tick that tails the span files re-reads exactly what the day wire
+   * same tick that reads timeline rows re-reads exactly what the day wire
    * renders from those two tables and publishes a snapshot when a served fact
    * moved. Heartbeat instants and the versions they bump are not card facts
    * and are excluded on purpose: counting them would republish every live
@@ -657,29 +652,12 @@ export class RunQueueProjection {
   #degrade(lastError: string): void {
     this.#health = { state: "degraded", lastError };
     const schedule = this.#deps.scheduleRebuild ?? ((rebuild: () => void): void => rebuild());
-    schedule(() => this.rebuildFromJsonl());
+    schedule(() => this.rebuildFromTimeline());
   }
 
   /**
-   * Parse + order a batch of stream lines the way the rebuild always has: a
-   * corrupt line refuses by file:line, and events sort by their own instant —
-   * per-run order still comes from each file's append order, since the sort
-   * is stable and one run's spans ride one workflow's files.
+   * Retain the database event identity and cursor alongside each observed log.
    */
-  #parseSpanLines(lines: readonly EventStreamLine[]): readonly ParsedSpanLine[] {
-    const events = lines.map((line) => {
-      try {
-        return { line, event: SpanEventWireSchema.parse(JSON.parse(line.text)) };
-      } catch (error) {
-        throw new Error(
-          `corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
-      }
-    });
-    return events.sort((a, b) => a.event.ts.localeCompare(b.event.ts));
-  }
-
   #recordRunLog(event: SpanEventWire, line: EventStreamLine): void {
     if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
     const entries = this.#runLogs.get(event.runId) ?? [];
@@ -687,11 +665,13 @@ export class RunQueueProjection {
     entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
   }
 
-  /** The `rebuild-from-native-jsonl` recovery class: clear, re-read, re-fold. */
-  rebuildFromJsonl(): void {
+  /** Rebuild derived views from a consistent SQLite timeline snapshot. */
+  rebuildFromTimeline(): void {
     try {
-      const whole = readEventStreamLinesFrom(this.#deps.stateRoot, "spans", new Map());
-      const events = this.#parseSpanLines(whole.lines);
+      const whole = readTimelineRecords(this.#deps.timeline);
+      const events = whole.records.filter((record) => record.payload.kind === "span")
+        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }))
+        .sort((left, right) => left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber);
       this.#rows.clear();
       this.#workers.clear();
       this.#runLogs.clear();
@@ -704,7 +684,7 @@ export class RunQueueProjection {
       }
       // The tail resumes from exactly what this rebuild consumed — set
       // together with `live` so the two ingest paths can never overlap.
-      this.#spanCursors = whole.cursors;
+      this.#timelineCursor = whole.cursor;
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
       this.#cursorValue = Math.max(1, this.#cursorValue);
       this.#health = { state: "live" };
@@ -714,7 +694,7 @@ export class RunQueueProjection {
     } catch (error) {
       this.#health = {
         state: "degraded",
-        lastError: `rebuild-from-native-jsonl failed: ${error instanceof Error ? error.message : String(error)}`,
+        lastError: `timeline rebuild failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -887,7 +867,7 @@ export class RunQueueProjection {
     }
 
     /**
-     * D210 — `transaction.previewed`. The JSONL stream carries it (ref task-contract §6.2)
+     * D210 — `transaction.previewed`. The SQLite timeline carries it (ref task-contract §6.2)
      * and this projection has no arm that could render it without lying: the
      * queue row's vocabulary is task spans and terminal outcomes, and a preview
      * is neither. It is deliberately IGNORED here rather than folded into a

@@ -26,7 +26,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const HistoricalBackupSchemaVersionSchema = z.number().int().refine(
-  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 36,
+  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 37,
   "schema version is not an admitted historical authority layout",
 );
 const BackupSchemaVersionSchema = z.number().int().refine(
@@ -339,6 +339,8 @@ const ArchivedSpanAuthoritySchema = z.strictObject({
 /** `deleted` and `archived` are ACCOUNTED, so neither is ever a problem arm. */
 const SpanAuthorityProblemSchema = z.discriminatedUnion("state", [
   MissingSpanAuthorityRunSchema,
+  z.strictObject({ state: z.literal("restore-loss"), runId: RunIdSchema,
+    possibleExternalWrite: z.literal(true).optional() }),
   MalformedSpanAuthorityRunSchema,
   z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
   MalformedAuthorityRecordSchema,

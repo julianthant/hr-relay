@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createArchiveSnapshotSource } from "../../../src/server/dashboard/queries/archive.js";
-import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import {
   claimEventOf,
   instantOffsetOf,
@@ -65,14 +65,12 @@ function deps(w: DashboardWorld) {
 /**
  * ONE execution of the node, emitted at the SAME identity every time.
  *
- * Each execution goes through its OWN `createSpanJsonlWriter`, because that is
- * how the real file came to hold two: the writer's identity write-once set is
- * per PROCESS, and a gate resume is a fresh claim that a restarted (or second)
- * worker process serves. The lines are written by the production writer, so the
- * fixture is real durable history rather than hand-rolled JSON.
+ * Each execution goes through its own producer, representing a restarted worker.
+ * Distinct durable event identities preserve both historical executions even
+ * when the old span paths are identical.
  */
 function executeOnce(w: DashboardWorld, pid: number, ms: number): void {
-  const writer = createSpanJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid });
+  const writer = createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid });
   const base = {
     workflow: "person-lookup" as const,
     runId: uuidOf(SEED),
@@ -86,7 +84,7 @@ function executeOnce(w: DashboardWorld, pid: number, ms: number): void {
   w.clock.advanceWall(ms);
   writer.emit({ ...base, t: "span.ended", ts: w.clock.now().toISOString(), outcome: "done" });
   w.clock.advanceWall(1_000);
-  w.projection.ingestFromDisk();
+  w.projection.ingestFromTimeline();
 }
 
 /** The poisoned run, terminal exactly as the real one is. */

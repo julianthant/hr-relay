@@ -1,6 +1,7 @@
+import { timelineSourcesForUpgrade, preserveTimelineSources, readPreservedTimelineSources } from "../../infra/events/timeline-import.js";
 /** D336 stopped conversion: SQLite settles first; credentials settle independently. */
 import { existsSync, readdirSync, mkdirSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
@@ -37,6 +38,7 @@ export interface StorageUpgradeInput {
   readonly processLockRoot: string;
   readonly environmentFile: string;
   readonly plan: boolean;
+  readonly timelineSourceDirectory?: string;
   readonly hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void; afterCredentialRename?(): void }>;
 }
 
@@ -80,6 +82,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   requireMigrationSourcePath(path);
   const inspection = existed ? inspectAuthorityBackupReadOnly(path) : undefined;
   const from = inspection?.schemaVersion ?? 0;
+  if (from === 0 && input.timelineSourceDirectory !== undefined) throw new Error("timeline-source-copy-requires-retained-backup-authority");
   let pending: z.infer<typeof AuthorityUpgradeRecordSchema> | undefined;
   let historicalPath: string | undefined;
   if (from >= 32 && from < CURRENT_AUTHORITY_SCHEMA_VERSION && readLatestSettingsUpgrade(path)?.phase === "committed") {
@@ -108,6 +111,16 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
       || canonicalJsonStringify(pending.importedKeys) !== canonicalJsonStringify(sources.importedKeys))) throw new Error("source-changed: committed SQLite conversion requires its original import sources");
   const backupEvidence = inspection !== undefined && from !== CURRENT_AUTHORITY_SCHEMA_VERSION
     ? await requiredBackup(input.stateRoot, inspection.authorityGeneration, inspection.authorityContentFingerprint) : undefined;
+  const timelineSources = backupEvidence === undefined ? undefined : timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
+  const timelineCopyDirectory = timelineSources === undefined || backupEvidence === undefined ? undefined
+    : join(dirname(backupEvidence.manifestPath), "timeline-sources", timelineSources.digest);
+  if (from === 0 && existsSync(join(input.stateRoot, "spans")) && readdirSync(join(input.stateRoot, "spans")).length > 0) {
+    throw new Error("timeline-import-owner-missing: file history requires its retained authority");
+  }
+  if (pending !== undefined && "format" in pending && pending.timelineImport?.state === "imported") {
+    const original = await verifyBackupManifestAtPath(pending.backupManifest, AuthorityDatabase.sourceDatabaseIdentity(path));
+    readPreservedTimelineSources(pending.timelineImport.copyDirectory, pending.timelineImport.manifestDigest, original);
+  }
   const orphanGateRecords = from === CURRENT_AUTHORITY_SCHEMA_VERSION && pending !== undefined && "format" in pending ? pending.orphanGateRecordsRemoved : countOrphanGateRecords(existed ? path : undefined);
   const tombstones = inspectTombstoneBackfill(from === CURRENT_AUTHORITY_SCHEMA_VERSION ? undefined : existed ? path : undefined, input.stateRoot);
   const historicalExposure = pending !== undefined && "format" in pending ? pending.historicalExposure : inspectHistoricalSettingsExposure(existed ? path : undefined);
@@ -120,7 +133,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
     throw new Error("credential-source-conflict: existing independent credentials must not be overwritten by legacy import");
   }
   if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-    const planned = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, verifyOnly: true }, clock);
+    const planned = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, timelineSources, timelineCopyDirectory, verifyOnly: true }, clock);
     if (from < 32) store.verifyUpgradePreflight(planned.upgradeId, sources.protectedPatch);
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION && pending !== undefined && "format" in pending && Object.keys(sources.protectedPatch).length > 0) {
@@ -132,8 +145,9 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock): 
   const admission = acquireRuntimeRestoreAdmission({ processLockRoot: input.processLockRoot, pid: process.pid }, clock);
   try {
     requireStopped(input, clock);
+    if (timelineSources !== undefined && backupEvidence !== undefined) preserveTimelineSources(timelineSources, backupEvidence);
     if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-      pending = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure,
+      pending = convertSettingsDatabase({ ownsCredentialCommandId: store.ownsCommandId, input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones, historicalExposure, timelineSources, timelineCopyDirectory,
         bindCredentials: (upgradeId) => { if (Object.keys(sources.protectedPatch).length > 0) store.bindUpgrade(upgradeId, sources.protectedPatch); } }, clock);
     }
     if (pending === undefined || !("format" in pending)) throw new Error("upgrade-evidence-missing");

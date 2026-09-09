@@ -1,4 +1,4 @@
-import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
@@ -7,7 +7,6 @@ import { createCredentialSecretSource, readSettings } from "../../src/server/set
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { SpanEventWireSchema } from "../../src/events/types.js";
 import { testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
@@ -22,7 +21,7 @@ import { hostConfigFacts } from "../../src/domain/config/host-display.js";
  * a parallel reimplementation.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -626,10 +625,8 @@ describe("composed worker runtime", () => {
     assert.equal(lease.processId, 4242);
     assert.equal(lease.workflow, WORKFLOW_ID);
 
-    // The span emitter is the real JSONL writer under the isolation state root.
-    const spanDirectory = join(stateRoot, "spans");
-    assert.ok(existsSync(spanDirectory));
-    assert.ok(readdirSync(spanDirectory).some((file) => file.startsWith(`${WORKFLOW_ID}-`)));
+    // Composition persists its own cross-process timeline in authority.
+    assert.ok(database.authority.timelineEvents.page({ workflow: WORKFLOW_ID }).length > 0);
 
     // One browser session per system, closed exactly once at worker stop.
     assert.equal(sessions.opens("ucpath"), 1);
@@ -786,10 +783,8 @@ describe("composed worker runtime", () => {
     assert.equal(settled.claimGeneration, claimed.run.claimGeneration);
     // A fresh process repeating startup/global maintenance must not duplicate the terminal event.
     await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
-    const spanDirectory = join(stateRoot, "spans");
-    const terminal = readdirSync(spanDirectory).filter((file) => file.endsWith(".jsonl"))
-      .flatMap((file) => readFileSync(join(spanDirectory, file), "utf8").trim().split("\n"))
-      .filter(Boolean).map((line) => SpanEventWireSchema.parse(JSON.parse(line)))
+    const terminal = database.authority.timelineEvents.page({ runId: RUN_ID })
+      .flatMap((record) => record.payload.kind === "span" ? [record.payload.event] : [])
       .flatMap((event) => event.t === "span.ended" && event.kind === "run" && event.runId === RUN_ID ? [event] : []);
     assert.equal(terminal.length, 1);
     assert.equal(terminal[0]?.outcome, "cancelled");
@@ -957,7 +952,7 @@ describe("D331 settings apply during a production worker claim", () => {
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const database = reopen(stateRoot, clock);
-    const spans = createSpanJsonlWriter({ stateRoot, clock });
+    const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
     const queued = database.authority.runs.get(RUN_ID); assert.ok(queued);
     spans.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic claim fixture" }));
     const credentials = createCredentialStore({ stateRoot });

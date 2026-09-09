@@ -1438,7 +1438,7 @@ that parsed them can drift apart. There is no unchecked cast from the generic ca
 
 <a id="sqlite-operation-history"></a>
 
-**2026-09-08 — approved database-history successor, pending implementation.**
+**2026-09-08 — T1 implementation candidate; T2 remains pending.**
 [Side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) follows the
 accepted operation-name assignment without amending that assignment. Its first unit introduces
 SQLite timeline events and atomically records required state/event facts while retaining existing
@@ -1453,10 +1453,30 @@ checkpoint settlement; a UI wakeup may occur later. Retain actor, instance, time
 kind, proof source and exact evidence references needed to reconstruct every historical ledger and
 committed-span payload. A timeline label is not new proof that an external write succeeded.
 Normal timeline retention cannot remove confirmed transaction history; D308 still governs its
-authorized owner deletion. Do not retire evidence or delivery paths until historical outbox/file/
+authorized owner deletion. Shared checkpoint/operation evidence remains while another retained run
+in the exact workflow/item group can reuse it; deleting an intermediate retry cannot release an
+ancestor's permanent key. After a restore, preserved SQLite evidence of an absent run or lost write
+attempt remains a doctor warning, with `possibleExternalWrite` where applicable; it never restores
+run authority or authorizes a new submission. Do not retire evidence or delivery paths until historical outbox/file/
 archive sources are accounted for, conflicting identities fail loudly, and the replacement readers
 are verified. This does not retire artifact or run-terminal outboxes, activate the unwired ledger
 projector, authorize another live submission or implement stronger run-reference foreign keys.
+
+T1's `commitWriteAttempt` requires the exact transaction checkpoint and commits it, its
+checkpoint event, confirmed-operation event, operation/attempt settlement and both existing
+operation outboxes in one authority transaction. Its confirmed event retains every ledger field
+except the proof body, authenticated through the exact immutable attempt; its checkpoint reference
+binds owner, node, attempt/claim, output digest and write time. Reconstruction verifies the original
+ledger and committed-span payloads, including actor, instance, proof source, completion kind and
+timestamps, before commit. The checkpoint's output/time must match the confirmed outcome/time.
+Injected failure at any storage step rolls back the complete set and authority generation.
+
+Checkpoint replay records the current run/claim and exact prior checkpoint reference without
+rewriting the old observation. Exact retained event replay remains valid after an owner advances
+attempts; a new checkpoint/confirmation event must bind the current attempt. Existing historical
+operation outboxes remain readable and deliverable during T1; T2 must account for those historical
+facts before retirement. The unwired ledger projector below remains unwired. This candidate adds
+no external click, retry permission, cutover or operator-database application.
 
 ### 6.1 As-built — the projector exists, and nothing in production runs it (D134, 2026-08-04)
 <!-- roadmap: p2-2g -->

@@ -108,7 +108,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]",
-  "       storage upgrade [--plan] [--json]",
+  "       storage upgrade [--plan] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage restore --from <manifest.json> [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
@@ -118,7 +118,7 @@ const STORAGE_USAGE = [
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
-  "  repair-span-root  append one marked run.queued root reconstructed from exact",
+  "  repair-span-root  append one marked SQLite run.queued root reconstructed from exact",
   "           run/session/start-plan authority; existing span bytes stay unchanged and",
   "           the runtime must be stopped",
 ].join("\n");
@@ -168,6 +168,7 @@ function formatReport(report: StorageDoctorReport): string {
     const problemSummary = report.spanAuthority.problems.map((problem) => {
       switch (problem.state) {
         case "missing": return `${problem.runId} missing authority${problem.possibleExternalWrite === true ? "; possibleExternalWrite=true" : ""}`;
+        case "restore-loss": return `${problem.runId} newer preserved authority evidence${problem.possibleExternalWrite === true ? "; possibleExternalWrite=true" : ""}`;
         case "missing-span": return `${problem.runId} missing span root`;
         case "malformed": return `${problem.runId} malformed in ${problem.table}`;
         case "malformed-authority": return `${problem.recordKey} malformed in ${problem.source} authority`;
@@ -252,9 +253,9 @@ function formatSpanRootRepairReport(report: SpanRootRepairReport): string {
   return [
     `span root repair — ${report.state} ${report.repairedAt}`,
     `run: ${report.runId}`,
-    `stream: ${report.streamFileName}`,
+    `timeline event: ${report.eventId}`,
     `authority: generation ${String(report.sourceAuthorityGeneration)} · ${report.sourceAuthorityFingerprint}`,
-    `preserved prefix: ${String(report.priorStreamBytes)} bytes · ${report.priorStreamSha256}`,
+    `prior ingestion cursor: ${String(report.priorCursor)}`,
   ].join("\n");
 }
 
@@ -288,6 +289,7 @@ function rebuildStagedProjections(
     );
     try {
       const projection = createRunQueueProjection({
+        timeline: staged.authority.timelineEvents,
         reader: new RunRecordService({ database: staged, clock,
           ids: { uuid: () => { throw new Error("restore projector cannot mint ids"); } },
           publishQueued: () => { throw new Error("restore projector cannot publish runs"); },
@@ -312,10 +314,10 @@ function rebuildStagedProjections(
         },
         descriptors: { resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor },
       });
-      projection.rebuildFromJsonl();
+      projection.rebuildFromTimeline();
       const health = projection.health();
       if (health.state === "degraded") {
-        // `rebuildFromJsonl` never throws — it records. Restoring onto a
+        // `rebuildFromTimeline` never throws — it records. Restoring onto a
         // projection that could not be rebuilt would hand the operator a
         // database whose surfaces are silently empty, so the refusal happens
         // here, while the live authority is still untouched.
@@ -461,7 +463,7 @@ async function repairSpanRootCommand(
       output: [
         `span root repair REFUSED — ${messageChain(error)}`,
         `process locks: ${describeLocksForRefusal(processLockRoot, sourceDatabaseIdentity, clock)}`,
-        "rerun doctor before deciding the next action; a failure after append may have left the exact marked reconstruction present, and an exact repeat is byte-idempotent",
+        "rerun doctor before deciding the next action; an exact repeat reuses the retained marked event without another append",
       ].join("\n"),
       exitCode: 1,
     };
@@ -536,12 +538,22 @@ export async function composeStorageCommand(
 ): Promise<StorageCommandOutcome> {
   const [subcommand, ...rest] = args;
   if (subcommand === "upgrade") {
-    const unsupported = rest.find((arg) => arg !== "--plan" && arg !== "--json");
-    if (unsupported !== undefined) return { output: `unsupported storage upgrade argument: ${unsupported}\n${STORAGE_USAGE}`, exitCode: 2 };
+    let timelineSourceDirectory: string | undefined;
+    for (let index = 0; index < rest.length; index += 1) {
+      const argument = rest[index];
+      if (argument === "--plan" || argument === "--json") continue;
+      if (argument === "--timeline-from" && timelineSourceDirectory === undefined
+        && rest[index + 1] !== undefined && !rest[index + 1]?.startsWith("--")) {
+        timelineSourceDirectory = rest[++index];
+        continue;
+      }
+      return { output: `unsupported storage upgrade argument: ${argument ?? "missing"}\n${STORAGE_USAGE}`, exitCode: 2 };
+    }
     const { upgradeStorage } = await import("./upgrade.js");
     try {
       const report = await upgradeStorage({ stateRoot: join(repoRoot, isolation.stateRoot),
-        processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan") }, clock);
+        processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan"),
+        ...(timelineSourceDirectory === undefined ? {} : { timelineSourceDirectory }) }, clock);
       return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
         `storage upgrade: ${report.state} (v${String(report.fromSchemaVersion)} → v${String(report.toSchemaVersion)})`,
         `imported keys: ${report.importedKeys.join(", ")}`,

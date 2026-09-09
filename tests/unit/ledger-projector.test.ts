@@ -1,3 +1,4 @@
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 /**
  * Ref write-safety §6's recovery bullets, executed. Each `it` here is one of the four
  * failure modes the doc names: commit-then-crash-before-projection,
@@ -58,12 +59,13 @@ function commitEntries(database: AuthorityDatabase, count: number, confirmedAt?:
   const outboxIds: string[] = [];
   for (let index = 0; index < count; index += 1) {
     const fixture = ledgerCommitFixture(index, confirmedAt === undefined ? {} : { confirmedAt });
+    seedAtomicWriteOwner(database, fixture.commit);
     const fenced = database.authority.writeIntents.fenceAttempt({
       intent: fixture.intent,
       attempt: fixture.attempt,
     });
     assert.equal(fenced.state, "fenced");
-    database.commitWriteAttempt(fixture.commit);
+    database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     outboxIds.push(fixture.outboxId);
   }
   return outboxIds;
@@ -136,9 +138,10 @@ describe("ref write-safety §6 ledger projector", () => {
     // Simulate the crash between sequence assignment and the file append: a
     // third entry gains a sequence but its line never lands.
     const third = ledgerCommitFixture(2);
+    seedAtomicWriteOwner(database, third.commit);
     const fenced = database.authority.writeIntents.fenceAttempt({ intent: third.intent, attempt: third.attempt });
     assert.equal(fenced.state, "fenced");
-    database.commitWriteAttempt(third.commit);
+    database.commitWriteAttempt(third.commit, atomicWriteCheckpoint(third.commit));
     const outbox = database.authority.ledgerProjection.getOutbox(third.outboxId);
     assert.notEqual(outbox, undefined);
     if (outbox === undefined) return;
@@ -264,8 +267,9 @@ describe("ref write-safety §6 ledger projector", () => {
 
       // A third commit is waiting; a degraded partition must NOT project it.
       const pending = ledgerCommitFixture(9);
+      seedAtomicWriteOwner(database, pending.commit);
       database.authority.writeIntents.fenceAttempt({ intent: pending.intent, attempt: pending.attempt });
-      database.commitWriteAttempt(pending.commit);
+      database.commitWriteAttempt(pending.commit, atomicWriteCheckpoint(pending.commit));
 
       const report = projector(database, root, "projector-b").project(PARTITION);
       assert.equal(report.state, "degraded", scenario.name);
@@ -297,8 +301,9 @@ describe("ref write-safety §6 ledger projector", () => {
     // Live keeps going and files a third transaction, then the DB is lost.
     const live = open(root);
     const third = ledgerCommitFixture(5);
+    seedAtomicWriteOwner(live, third.commit);
     live.authority.writeIntents.fenceAttempt({ intent: third.intent, attempt: third.attempt });
-    live.commitWriteAttempt(third.commit);
+    live.commitWriteAttempt(third.commit, atomicWriteCheckpoint(third.commit));
     projector(live, root, "projector-a").project(PARTITION);
     assert.equal(ledgerLines(root).length, 3);
     live.close();

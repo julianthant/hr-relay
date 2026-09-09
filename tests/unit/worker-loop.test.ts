@@ -30,7 +30,7 @@ import {
   ManualScheduler,
   openAuthorityHarness,
   personLookupQueuedRun,
-  recordingEmitter,
+  recordingTimelineEmitter,
   recordingLogger,
   sessionFactoryHarness,
   type SessionFactoryHarness,
@@ -51,7 +51,7 @@ function loopHarness(options: Readonly<{
   disposers.push(authority.dispose);
   const sessions = options.sessions ?? happySessionHarness();
   const scheduler = new ManualScheduler(authority.clock, 0);
-  const emitter = recordingEmitter();
+  const emitter = recordingTimelineEmitter(authority.database, authority.clock);
   const stop = new AbortController();
   const deps: WorkerLoopDependencies = {
     ...testWorkerPorts(authority.database, authority.clock),

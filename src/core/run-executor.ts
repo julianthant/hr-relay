@@ -1,3 +1,5 @@
+import { timelineCheckpointReference } from "../events/timeline.js";
+import { localDatePart } from "../domain/clock.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 /**
@@ -139,7 +141,7 @@ import type { WorkerSessionManager } from "./worker-sessions.js";
 
 /** The authority surface a run execution needs; `AuthorityDatabase` satisfies it. */
 export interface RunExecutionAuthority {
-  readonly authority: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "artifactOutbox">
+  readonly authority: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "artifactOutbox" | "timelineEvents">
     & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> };
   afterAuthorityCommit(publish: () => void): void;
   /**
@@ -535,7 +537,6 @@ export async function executeClaimedRun(
       kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
       runId, expectedVersion: current.version, claim, endedAt: instant(),
     }, descriptor));
-    deps.authority.afterAuthorityCommit(() => emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "cancelled" }));
     throw new RunAbandonedError("cancelled");
   };
 
@@ -590,8 +591,6 @@ export async function executeClaimedRun(
         capture.persist(prepared);
       });
     }
-    deps.authority.afterAuthorityCommit(() => emit({ t: "span.ended", kind: "run", ...runSpanIdentity,
-      outcome: "failed", failureId: bound.failureId }));
     return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
   };
 
@@ -694,7 +693,6 @@ export async function executeClaimedRun(
         commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest }),
         terminal: { result: built.record, outbox, authorization },
       }, descriptor, built.authorization));
-      deps.authority.afterAuthorityCommit(() => emit({ t: "span.ended", kind: "run", ...runSpanIdentity, outcome: "done" }));
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });
     };
 
@@ -1447,12 +1445,24 @@ export async function executeClaimedRun(
       throw new Error(`task ${contract.id} exhausted its retry loop without a terminal decision`);
     };
 
+    const recordCheckpointReplay = (nodeId: string, record: RunCheckpointRecord): void => {
+      const now = deps.clock.now();
+      deps.authority.authority.timelineEvents.append({ schemaVersion: 1,
+        eventId: lifecycleCommandId("timeline-checkpoint-replayed", { runId, nodeId: nodeId, claimGeneration: claim.claimGeneration }),
+        workflow: descriptor.id, scope: { kind: "run", runId }, occurredAt: now.toISOString(),
+        recordedAt: now.toISOString(), retentionDate: localDatePart(now), source: { kind: "native" },
+        payload: { kind: "checkpoint-replayed", runId, workflow: descriptor.id, attempt: envelope.attempt,
+          claimGeneration: claim.claimGeneration, checkpoint: timelineCheckpointReference(record) },
+      });
+    };
+
     for (const [index, node] of nodes.entries()) {
       checkCancellation();
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
       const entry = plan.get(String(node.id));
       if (entry === undefined) throw new Error(`node "${node.id}" has no execution plan entry`);
       if (entry.mode === "replay") {
+        recordCheckpointReplay(String(node.id), entry.record);
         if (node.kind === "task") {
           const owed = await resumePendingProjections(node, entry.record);
           if (owed !== undefined) return owed;
@@ -1517,6 +1527,7 @@ export async function executeClaimedRun(
           // asserted. Re-producing would mint a second marked row for one
           // attempt, which the terminal mirror rightly refuses.
           const replayed = entry.replay;
+          recordCheckpointReplay(String(node.id), replayed);
           if (replayed.assertion === undefined) throw new Error(`node "${node.id}" planned an assertion replay over an unmarked row`);
           outputs[String(node.id)] = replayed.output.value;
           checkpointRecords.set(String(node.id), replayed);
@@ -1683,7 +1694,6 @@ export async function executeClaimedRun(
           // §4 park: the checkpoint barrier is already durable (each output
           // was checkpointed at production), then gate.opened, then session
           // release, then the parked state. A parked run owns no browser.
-          emit({ t: "gate.opened", ...runSpanIdentity, gate: node.id });
           await deps.sessions.closeAll("parked");
           const resumeAt = nodes[index + 1]?.id ?? node.id;
           transitionTo({

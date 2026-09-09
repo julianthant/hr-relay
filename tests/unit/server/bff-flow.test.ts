@@ -10,7 +10,7 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The BFF spine end-to-end over REAL machinery: the D109 planner + a real
  * authority database + the D113 kernel behind POST /api/v1/start-plans and
- * POST /api/v1/commands, run.queued span emission into real JSONL, THE
+ * POST /api/v1/commands, run.queued span emission into SQLite, THE
  * projection serving GET /api/v1/dashboard, run detail + note-backed logs,
  * and strict route refusals. No projection fake, no kernel fake — the only
  * fakes are the process seams (worker supervisor, write sequencer) that 1g
@@ -19,7 +19,6 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -78,8 +77,8 @@ import {
   type ServerVerifiedArtifactReader,
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
-import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
+import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { readTimelineRecords, timelineSpanLocation } from "../../../src/infra/events/timeline-reader.js";
 import {
   createDashboardCommandService,
   deriveBulkChildCommandId,
@@ -288,6 +287,7 @@ function harness(options: {
       : undefined,
   };
   const projection = createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
@@ -310,9 +310,9 @@ function harness(options: {
     descriptors,
   });
   // D218: no in-process hook — the command service ticks the projection's
-  // disk tail after emitting, exactly as production wires it.
-  const spans = createSpanJsonlWriter({
-    stateRoot,
+  // database cursor after emitting, exactly as production wires it.
+  const spans = createTimelineEmitter({
+    repository: database.authority.timelineEvents,
     clock,
     pid: 4242,
   });
@@ -389,19 +389,7 @@ function harness(options: {
     },
     settings: createSettingsApplicationExecutor((settings) => { resolveConfigWithProvenance(settings, hostConfigFacts({}), clock); }, credentials),
   });
-  const commands = createDashboardCommandService({
-    kernel,
-    clock,
-    spans,
-    projection,
-    descriptors,
-    authorityRead: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-    },
-  });
+  const commands = createDashboardCommandService({ kernel, projection });
   const startPlans = (options.startPlans ?? ((real: StartPlanService) => real))(createStartPlanService({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: database,
@@ -656,7 +644,7 @@ function persistCurrentSeparationsEvidence(
 }
 
 function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): void {
-  const writer = createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4_243 });
+  const writer = createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock, pid: 4_243 });
   for (const run of runs) {
     writer.emit({
       t: "run.queued",
@@ -681,7 +669,7 @@ function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): 
       configSnapshotId: run.envelope.configSnapshotId,
     });
   }
-  h.projection.ingestFromDisk();
+  h.projection.ingestFromTimeline();
 }
 
 function archiveCurrentSeparationsRun(h: Harness, run: RunRecord): void {
@@ -2402,8 +2390,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const createdRunId = singleAppliedRunId(CommandResultSchema.parse(await json(commandResponse)));
     const created = h.database.authority.runs.get(createdRunId); assert.ok(created);
 
-    // The run.queued span landed in real JSONL (authority first, JSONL after).
-    const spanLines = readEventStreamLines(h.stateRoot, "spans");
+    // The run.queued event commits with its canonical run.
+    const spanLines = readTimelineRecords(h.database.authority.timelineEvents).records.map(timelineSpanLocation);
     assert.equal(spanLines.length, 1);
     assert.match(spanLines[0].text, /"t":"run\.queued"/);
     assert.match(spanLines[0].text, /"title":"Fixture 10873698"/);
@@ -2415,7 +2403,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       body: JSON.stringify(command),
     });
     assert.equal((await json(replay)).state, "already-applied");
-    assert.equal(readEventStreamLines(h.stateRoot, "spans").length, 1);
+    assert.equal(readTimelineRecords(h.database.authority.timelineEvents).records.length, 1);
 
     // THE payload serves the row and its counts from one fold.
     const dayResponse = await h.app.request(`/api/v1/dashboard?day=${DAY}`);
@@ -2487,7 +2475,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     connection.close();
   });
 
-  it("serves the timeline for a run whose spans a WORKER process appended to disk (D218)", async () => {
+  it("serves the timeline for task spans committed through another authority connection (D218)", async () => {
     // The regression the cross-process tail exists for: the run is enqueued
     // by THIS process, its task spans are appended by ANOTHER process (the
     // worker), and the run detail must still serve a timeline — before D218
@@ -2528,17 +2516,21 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const created = h.database.authority.runs.get(runId); assert.ok(created);
     const traceId = created.envelope.traceId;
 
-    // The worker process: raw O_APPEND lines in the shared stream file.
+    // Independent worker connection; no in-process projection callback.
     const base = {
       workflow: "fixture-graph", pid: 777, runId, attempt: 1, traceId,
       spanPath: `${traceId}/probe#1`, parentSpanPath: traceId,
     };
-    const file = join(h.stateRoot, "spans", `fixture-graph-${DAY}.jsonl`);
-    appendFileSync(file, `${JSON.stringify({ ...base, t: "span.started", kind: "task", ts: h.clock.now().toISOString(), name: "probe" })}\n`);
-    appendFileSync(file, `${JSON.stringify({ ...base, t: "span.ended", kind: "task", ts: h.clock.now().toISOString(), outcome: "done" })}\n`);
+    const workerDatabase = AuthorityDatabase.open({ path: join(h.stateRoot, "state.db"),
+      busyTimeoutMs: 1000, migrationOwner: "bff-worker-test" }, h.clock);
+    try {
+      const workerSpans = createTimelineEmitter({ repository: workerDatabase.authority.timelineEvents, clock: h.clock, pid: 777 });
+      workerSpans.emit({ ...base, t: "span.started", kind: "task", ts: h.clock.now().toISOString(), name: "probe" });
+      workerSpans.emit({ ...base, t: "span.ended", kind: "task", ts: h.clock.now().toISOString(), outcome: "done" });
+    } finally { workerDatabase.close(); }
 
     // Production's poll tick, invoked directly.
-    h.projection.ingestFromDisk();
+    h.projection.ingestFromTimeline();
 
     const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
     const timeline = detail.timeline as { events: { label: string; state: string }[] };
@@ -3476,7 +3468,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: RUN_ID }));
     h.database.authority.runs.enqueue(run);
-    createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4242 }).emit({
+    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock, pid: 4242 }).emit({
       t: "run.queued",
       kind: "run",
       ts: run.envelope.enqueuedAt,

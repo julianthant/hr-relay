@@ -111,6 +111,19 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
 }
 
 describe("loaded Settings storage doctor", () => {
+  it.each(["missing", "restore-loss"] as const)("shows possible external write for %s recovery evidence", async (state) => {
+    const runId = "00000000-0000-4000-8000-000000000301";
+    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
+      spanAuthority: { state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
+        problems: [{ state, runId, possibleExternalWrite: true }] } });
+    const dom = await mountDoctor(report);
+    const row = dom.querySelector('[aria-label="Span authority problems"]');
+    assert.ok(row);
+    assert.match(row.textContent ?? "", /possible external write/u);
+    assert.ok(row.textContent?.includes(runId));
+    assert.match(dom.textContent ?? "", /Span authority degraded/u);
+  });
+
   it("renders every degraded span-authority diagnosis with exact counts and identifying facts", async () => {
     const report = StorageDoctorWireSchema.parse({
       ...REPORT_BASE,

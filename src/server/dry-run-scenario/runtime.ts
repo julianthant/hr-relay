@@ -30,8 +30,8 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../domain/separations/identity-approval.js";
 import type { DryRunScenarioAnyCase } from "../../domain/trust/dry-run-scenario.js";
 import { SpanEventWireSchema } from "../../events/types.js";
-import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
-import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
+import { readTimelineRecords } from "../../infra/events/timeline-reader.js";
+import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
@@ -119,15 +119,15 @@ function requireApplied(action: string, outcome: ReturnType<CommandKernel["execu
   throw new Error(`${action} was ${outcome.state}: ${detail}`);
 }
 
-function parseRunEvents(stateRoot: string, workflow: string, runId: string) {
-  return readEventStreamLines(stateRoot, "spans")
-    .filter(({ file }) => file.workflow === workflow)
-    .map(({ text }) => SpanEventWireSchema.parse(JSON.parse(text)))
+function parseRunEvents(database: AuthorityDatabase, workflow: string, runId: string) {
+  return readTimelineRecords(database.authority.timelineEvents, 0, runId).records
+    .filter((record) => record.workflow === workflow && record.payload.kind === "span")
+    .map((record) => SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined))
     .filter((event) => "runId" in event && event.runId === runId);
 }
 
 function reachedNodes(
-  stateRoot: string,
+  database: AuthorityDatabase,
   workflow: string,
   runId: string,
   descriptor: NonNullable<ReturnType<typeof descriptorFor>>,
@@ -142,7 +142,7 @@ function reachedNodes(
     }
     taskIdBySpanName.set(spanName, String(node.id));
   }
-  const events = parseRunEvents(stateRoot, workflow, runId);
+  const events = parseRunEvents(database, workflow, runId);
   // A task the executor SKIPPED on its declared condition (or an omitted step)
   // still owns a span pair — started, then ended `skipped` — so the timeline
   // can say why it did not run. Reached means executed: those spans are held
@@ -222,11 +222,7 @@ export function createProductionDryRunScenarioRuntime(
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
   ).version;
-  const spans = createSpanJsonlWriter({
-    stateRoot,
-    clock: input.clock,
-    ...(input.processId === undefined ? {} : { pid: input.processId }),
-  });
+
   let scenarioCase: DryRunScenarioAnyCase | undefined;
   let scenarioArm: "dry-run-preview" | "live-read" | undefined;
   let configIdentity: Readonly<{ fingerprint: string; snapshotId: string }> | undefined;
@@ -368,7 +364,8 @@ export function createProductionDryRunScenarioRuntime(
           const kernel = createScenarioKernel({
             publishQueued: (run, publication) => {
               if (publication === undefined) throw new Error("scenario queued publication context missing");
-              spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: LOCAL_OPERATOR_ACTOR_ID }));
+              createTimelineEmitter({ repository: database.authority.timelineEvents, clock: input.clock,
+                ...(input.processId === undefined ? {} : { pid: input.processId }) }).emit(runQueuedSpanEvent({ run, ...publication, actorId: LOCAL_OPERATOR_ACTOR_ID }));
             },
             database,
             clock: input.clock,
@@ -555,7 +552,7 @@ export function createProductionDryRunScenarioRuntime(
         };
         const common = {
           reachedNodeIds: reachedNodes(
-            stateRoot,
+            database,
             run.envelope.workflow,
             runId,
             descriptor,

@@ -2232,7 +2232,7 @@ under the operator's subsequent isolated-parallel execution amendment. Stronger 
 a separate investigation; no relationship/deletion redesign or database application is
 approved by this naming decision.
 
-### 2026-09-08 — SQLite timeline and transaction history (pending implementation)
+### 2026-09-08 — SQLite timeline and transaction history (T1 candidate; T2 pending)
 
 Operator selected separate `run_checkpoints` and `timeline_events`, database-derived Activity,
 on-demand exports, and transaction details frozen in the existing `archived_runs` row. The separate
@@ -2243,7 +2243,10 @@ operation outbox. Requirements live in [dashboard surfaces](dashboard-surfaces.m
 and [write safety](write-safety.md#sqlite-operation-history). Preserve confirmed evidence, historical
 identity, canonical archive membership and D308 deletion; ordinary timeline retention remains
 distinct from retained transaction history. This records planning approval, not implementation,
-permission to apply the migration to the operator database, or an amendment of the running renames.
+permission to apply the migration to the operator database, or an amendment of the running renames. T1's
+schema-38 candidate now implements event authority, atomic event/evidence settlement, verified
+source-copy import and current SQLite readers/retention. Candidate gates and independent R1 remain
+recorded at the side owner; T2 Activity/export/archive conversion and outbox retirement remain open.
 
 **2026-09-08 amendment to D323 — Phase 4 numbering.** The operator replaced 4A with 4.1 Background Check and requested concrete tasks under 4.1. Phase 4 now uses decimal subphases; discovery/preparation may be recorded before admission, while Phase 3 prerequisites and D319 implementation approval remain unchanged. Authority: [workflow-model §1.6.2](workflow-model.md#162-workflow-admission-before-a-phase-4-part-d319d323-2026-09-03) and [roadmap naming amendment](../../roadmap/roadmap.md#phase-4-decimal-naming-amendment--2026-09-08).
 

@@ -3,26 +3,14 @@ import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../domai
  * The dashboard command service: the kernel is the ONE command path (D113);
  * this wrapper adds exactly what ref dashboard-surfaces assigns to 1g around it —
  *
- * 1. `run.queued` span emission for every run an applied `start-run` created
- *    (a run is born at ENQUEUE, ref dashboard-surfaces §1.1). Authority commits FIRST inside
- *    the kernel's transaction; the JSONL line follows — the doc's crash gap
- *    ("repairable, never a lost filing") lives between those two steps.
- * 1b. The same emission for every run an applied `enqueue-intake-manifest`
- *    fanned out (D171). A spreadsheet row's run is born at enqueue like any
- *    other, and its title comes from the workflow's OWN presentation over the
- *    manifest's stored `parsedInput` — the manifest is the durable record of
- *    what was enqueued, so the queue rows and the manifest cannot disagree.
- * 2. `gate.resolved` span emission for an applied `resolve-gate`.
- * 3. A projection refresh for applied run-family commands that emit no span
- *    (rename/bump/cancel change authority presentation/lifecycle
- *    only). The run-span END for a cancelled RUNNING run stays executor-owned
- *    — a second emitter here would double-close the span identity.
- * 4. After emitting, each arm ticks `projection.ingestFromDisk()` (D218) so
- *    the lines it just appended fold before the response returns — the
- *    operator's follow-up read then already sees the run it was told about.
- *    That is the SAME disk cursor the compose-level poll advances, not a
- *    second ingest path: every event still reaches the fold as bytes read
- *    back from the stream file.
+ * 1. RunRecordService persists each queued root inside the enqueue transaction,
+ *    using the workflow presentation over retained input for its title.
+ * 2. The kernel persists gate.resolved with its gate result and resume transition.
+ * 3. Applied presentation commands refresh their canonical run snapshot.
+ *    Lifecycle terminal events belong to RunRecordService, including cancellation.
+ * 4. After command settlement, projection.ingestFromTimeline() reads committed
+ *    events before the response returns. The compose poll uses the same durable
+ *    cursor to repair a lost wakeup or observe another process.
  *
  * No transport concern reaches the kernel: this service takes the already
  * schema-recognized command envelope as `unknown` and the kernel does its own
@@ -38,9 +26,6 @@ import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../domai
  *    through this service and never through the kernel directly.
  */
 import { z } from "zod";
-import { type AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
 import {
   BulkRunCommandRequestSchema,
   BulkRunCommandResponseSchema,
@@ -49,29 +34,13 @@ import {
   type BulkRunCommandResponse,
   type CommandResult,
 } from "../../../domain/commands.js";
-import type { IntakePlanManifest } from "../../../domain/intake/manifest.js";
-import type { IntakeSession } from "../../../domain/intake/session.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import type { StartPlanRecord } from "../../../domain/run/start-plan.js";
-import type { RunRecord } from "../../../domain/run/record.js";
 import type { CommandKernel } from "../../../core/command-kernel.js";
-import { runSpanPath } from "../../../core/span-emitter.js";
-import type { SpanJsonlWriter } from "../../../infra/events/span-jsonl-writer.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
-  readonly clock: Clock;
-  readonly spans: SpanJsonlWriter;
   readonly projection: RunQueueProjection;
-  readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
-  readonly authorityRead: {
-    getRun(runId: string): RunRecord | undefined;
-    getStartPlan(startPlanId: string): StartPlanRecord | undefined;
-    getIntakeSession(intakeSessionId: string): IntakeSession | undefined;
-    getIntakeManifest(manifestId: string): IntakePlanManifest | undefined;
-  };
 }
 
 export interface DashboardCommandService {
@@ -126,35 +95,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
         || (request.family === "run" && (request.type === "retry" || request.type === "restart"))
         || (request.family === "version-archive" && request.type === "relaunch-archived-run")) {
-        deps.projection.ingestFromDisk();
+        deps.projection.ingestFromTimeline();
         return result;
       }
 
       if (request.family === "gate") {
-        const run = deps.authorityRead.getRun(request.target.runId);
-        if (run === undefined) {
-          throw new Error(`run ${request.target.runId} vanished after its gate command applied`);
-        }
-        deps.spans.emit({
-          t: "gate.resolved",
-          ts: deps.clock.now().toISOString(),
-          workflow: run.envelope.workflow,
-          runId: run.envelope.runId,
-          attempt: run.envelope.attempt,
-          traceId: run.envelope.traceId,
-          spanPath: runSpanPath(run.envelope.traceId),
-          gate: request.target.gateId,
-          /**
-           * The display/audit key, never the decision payload. Until gate
-           * descriptors declare display keys (2h Review), the one honest key
-           * is the fact of resolution itself.
-           */
-          resolutionKey: "resolved",
-          resultHash: z.string().regex(/^[0-9a-f]{64}$/).parse(
-            sha256Hex(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(request.payload.result)}`),
-          ),
-        });
-        deps.projection.ingestFromDisk();
+        deps.projection.ingestFromTimeline();
         return result;
       }
 

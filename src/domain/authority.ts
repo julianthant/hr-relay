@@ -63,6 +63,7 @@ export const AuthorityTableNameSchema = z.enum([
   "workflow_run_batches",
   "deleted_runs",
   "authority_upgrades",
+  "timeline_events",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([
@@ -160,7 +161,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37)]),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -204,7 +205,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   tombstoneBackfill: TombstoneBackfillCountsSchema,
   upgradeId: FingerprintSchema,
   phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37)]),
+  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38)]),
   backupManifest: z.string().min(1),
   ordinaryRevision: PositiveIntSchema,
   ordinaryFingerprint: FingerprintSchema,
@@ -214,6 +215,19 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   credentialWriteId: z.uuid(),
   importedKeys: z.array(z.string().min(1)),
   envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
+  timelineImport: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("fresh"), imported: z.literal(0), excludedDeleted: z.literal(0) }),
+    z.strictObject({ state: z.literal("imported"), manifestDigest: FingerprintSchema,
+      copyDirectory: z.string().min(1), backupSha256: FingerprintSchema,
+      imported: NonNegativeIntSchema, excludedDeleted: NonNegativeIntSchema }),
+  ]).optional(),
+}).superRefine((record, context) => {
+  if ((record.toSchemaVersion === 38) !== (record.timelineImport !== undefined)) {
+    context.addIssue({ code: "custom", message: "timeline import evidence must match its upgrade version" });
+  }
+  if (record.timelineImport?.state === "fresh" && record.fromSchemaVersion !== 0) {
+    context.addIssue({ code: "custom", message: "existing authority requires verified timeline source evidence" });
+  }
 });
 
 export const AuthorityUpgradeRecordSchema = z.union([

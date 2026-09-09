@@ -29,7 +29,7 @@ import { RunRecordService } from "../../../../src/core/run-record-service.js";
  * ## What this world does NOT fake
  *
  * - the authority database (a real SQLite file, real migrations, real CAS)
- * - the span stream (real JSONL on disk, folded back through `ingestFromDisk`)
+ * - the span stream (real JSONL on disk, folded back through `ingestFromTimeline`)
  * - the descriptor (the REGISTERED `separations` descriptor, never a fixture:
  *   the nine squares ARE its declarations, so a fixture would prove a graph the
  *   product does not have)
@@ -56,7 +56,7 @@ import { UcpathPersonSelectionSchema } from "../../../../src/domain/contracts/uc
 import { SeparationWritePlanSchema } from "../../../../src/domain/separations/write-plan.js";
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
 import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workflow/ingress.js";
-import { createSpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
 import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
 import { AuthorityDatabase } from "../../../../src/infra/sqlite/index.js";
 import { createDashboardCommandService } from "../../../../src/server/dashboard/commands/command-service.js";
@@ -163,6 +163,7 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
 
   const ledger = createLedgerReadThrough(stateRoot);
   const projection = createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
@@ -185,14 +186,14 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
     descriptors: descriptorResolver,
   });
 
-  const jsonlWriter = createSpanJsonlWriter({ stateRoot, clock, pid: 4242 });
-  // D218: the projection's one live feed is the disk tail. Every append is
+  const jsonlWriter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  // D218: the projection's one live feed is the SQLite cursor feed. Every append is
   // followed by the same read-back-from-disk ingest production ticks, so no
   // event reaches the fold by a path the product does not have.
   const spans = Object.freeze({
     emit: (event: unknown): void => {
       jsonlWriter.emit(event);
-      projection.ingestFromDisk();
+      database.afterAuthorityCommit(() => projection.ingestFromTimeline());
     },
   });
 
@@ -246,19 +247,7 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
     },
   });
 
-  const commands = createDashboardCommandService({
-    kernel,
-    clock,
-    spans,
-    projection,
-    descriptors: descriptorResolver,
-    authorityRead: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-    },
-  });
+  const commands = createDashboardCommandService({ kernel, projection });
 
   const startPlans = createStartPlanService({
     protectedSecrets: protectedSecretSource({ timekeeperName: FIXTURE_TIMEKEEPER_NAME }),

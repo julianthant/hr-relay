@@ -14,13 +14,13 @@
  *    UNLESS a tombstone for that run already exists. A stray `DELETE` from any
  *    other code path still aborts by name; only the delete command, which
  *    writes the tombstone first, can pass.
- * 2. **Span files are never rewritten (D301).** The run's span lines stay in
- *    their shared daily JSONL until the 30-day prune. The storage doctor reads
- *    this table so a root whose run was deleted is classified as deleted, not
- *    reported as missing authority forever.
+ * 2. **Timeline rows are owned history.** Deletion removes the run's current
+ *    SQLite events. Historical file import uses the tombstone to exclude
+ *    deleted roots; retired files cannot resurrect current history.
  * 3. **The idempotency key is gone with the ledger.** `removed` records how
- *    many `run_operations` rows left with the run, so the fact that a permanent
- *    write key was released is visible in authority even though the key is not.
+ *    many `run_operations` rows actually left. Shared retry evidence remains
+ *    until its last retained owner/reference is deleted; only then is its
+ *    permanent key released and counted in that deletion receipt.
  */
 import { z } from "zod";
 import {
@@ -38,6 +38,7 @@ export const DeletedRunOriginSchema = z.enum(["queue", "archive"]);
 
 /** Every table the cascade may touch, so a count can never name a table it did not read. */
 export const DeletedRunTableSchema = z.enum([
+  "timeline_events",
   "ledger_projections",
   "operation_outbox",
   "run_operation_attempts",
@@ -81,8 +82,8 @@ export const DeletedRunRecordSchema = z.strictObject({
   /** the journaled command that performed the delete — the tombstone's provenance */
   commandId: CommandIdSchema,
   deletedAt: IsoInstantSchema,
-  /** v1 predates checkpoint_payloads in the tally; v2 includes it. */
-  tallyVersion: z.union([z.literal(1), z.literal(2)]).default(1),
+  /** v1 predates checkpoint_payloads; v2 adds it; v3 includes timeline and held shared evidence. */
+  tallyVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
   /** rows removed per table, in cascade order; a table absent here removed nothing */
   removed: z.array(z.strictObject({
     table: DeletedRunTableSchema,

@@ -526,23 +526,21 @@ describe("atomic success terminal authority", () => {
     const database = openDatabase();
     const running = startRunning(database);
     const { result, outbox, authorization, factoryAuthorization } = resultAndOutbox(database, running);
-    // Remove only the test fixture's checkpoint through a second connection;
-    // the public authority surface intentionally has no delete operation.
-    database.close();
+    // A second connection corrupts the exact checkpoint while this authority
+    // remains open: terminal settlement must independently reject the absence.
     const path = join(roots.at(-1) ?? "", "authority.sqlite");
     const raw = new DatabaseSync(path);
     raw.prepare("DELETE FROM run_checkpoints").run();
     raw.close();
-    databases.splice(databases.indexOf(database), 1);
-    const reopened = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      CLOCK,
-    );
-    databases.push(reopened);
     assert.throws(
-      () => reopened.terminalizeSuccess({ result, outbox, authorization }, factoryAuthorization),
+      () => database.terminalizeSuccess({ result, outbox, authorization }, factoryAuthorization),
       /has no exact stored checkpoint/,
     );
+    // Reopening also refuses the now-dangling durable checkpoint event.
+    assert.throws(() => AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
+    ), /timeline-checkpoint-reference-mismatch/);
+
   });
 
   it("rejects not-run evidence contradicted by a stored checkpoint for the terminal attempt", () => {

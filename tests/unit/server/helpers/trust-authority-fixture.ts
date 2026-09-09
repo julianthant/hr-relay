@@ -153,6 +153,9 @@ export function trustArchiveRecord(run: RunRecord) {
 
 /** Real folded evidence deliberately contradicts the separate SQLite lifecycle oracle. */
 export function foldTrustGate(world: ReturnType<typeof makeWorld>, run: RunRecord, state: "open" | "resolved") {
+  // The fold's separate SQLite fixture still needs the exact retained owner;
+  // its deliberately stale gate evidence does not fabricate a new run.
+  world.authority.records.set(run.envelope.runId, run);
   const e = run.envelope; const ts = world.clock.now().toISOString();
   if (world.projection.runFold(e.runId) === undefined) world.writer.emit({ t: "run.queued", kind: "run", ts, workflow: e.workflow, runId: e.runId,
     attempt: e.attempt, traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId,

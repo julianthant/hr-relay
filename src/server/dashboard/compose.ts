@@ -1,3 +1,5 @@
+import { localDatePart } from "../../domain/clock.js";
+import { EVENT_STREAM_RETENTION_DAYS } from "../../domain/archive/retention.js";
 import { createOperatorProjection, createOperatorRunDetail, createOperatorArchive } from "./compose/operator.js";
 import { createTrustNotifications, createTrustReadDependencies } from "./compose/trust.js";
 import { composeDataQueries } from "./compose/data.js";
@@ -111,7 +113,7 @@ import {
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.js";
-import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server-verified-artifact-reader.js";
@@ -210,13 +212,10 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
  */
 
 /**
- * D218: how often the dashboard tails `spans/*.jsonl` for lines other
- * processes appended. The worker's spans have no other way into this
- * process, so this is the ceiling on how stale a live timeline can be;
- * command-emitted lines don't wait for it (the command service ticks the
- * tail itself after emitting).
+ * D218: maximum polling delay for committed timeline events from other processes.
+ * Commands also tick this durable cursor before their follow-up reads.
  */
-const SPAN_TAIL_POLL_MS = 250;
+const TIMELINE_POLL_MS = 250;
 
 /**
  * D262: how often the needs-you watch re-derives the parked-at-gate set from
@@ -579,7 +578,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     );
   };
 
-  const spanWriter = createSpanJsonlWriter({ stateRoot, clock });
+  const spanWriter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids,
     publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("queued run is missing its publication context");
@@ -672,39 +671,33 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
 
-  // D86: spans/notes prune at 30 days, applied at boot before the fold so the
-  // projection never serves a day the retention policy already retired. The
-  // ledger is exempt by construction — the prune can only see the two event
-  // streams.
-  pruneEventStreams({ stateRoot, clock });
+  // Ordinary timeline and notes retain their 30-day append-day window.
+  // Confirmed operation events remain until explicit owner deletion.
+  pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
+  database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
+    clock.nowMs() - EVENT_STREAM_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  )));
 
   // Fold whatever span history already exists before serving a single count.
-  projection.rebuildFromJsonl();
+  projection.rebuildFromTimeline();
   const initialHealth = projection.health();
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
 
   /**
-   * D218: the ONE live span feed is the disk tail. The worker is a separate
-   * OS process (spawned by this process's supervisor as of W3, but still its
-   * own process), so its task spans exist only as lines in `spans/*.jsonl` — the
-   * old in-process writer hook folded this process's own emissions and
-   * nothing else, which served an empty timeline (and empty pipeline chips
-   * and dataFacts) for every run enqueued after boot. The boot rebuild above
-   * seeded the byte cursors; this poll folds whatever ANY process appends
-   * after it, and the command service ticks the same cursor after its own
-   * emissions so an operator's follow-up read is never a poll behind.
+   * Read the shared SQLite cursor so every producer process reaches the BFF.
+   * Only notifications are process-local; missed notifications cannot lose history.
    */
-  const spanTailTimer = setInterval(() => {
-    projection.ingestFromDisk();
+  const timelineTimer = setInterval(() => {
+    projection.ingestFromTimeline();
     // The Session Panel's cards and pool declarations are authority
     // (D248/D269); a lease moves without a span at birth, on the ticker's
     // `starting` → `idle`, on an operator directive, and on a crash/expiry
     // settled elsewhere, and a pool row moves on `plan-worker-count`.
     projection.reconcileWorkerAuthority();
-  }, SPAN_TAIL_POLL_MS);
-  spanTailTimer.unref();
+  }, TIMELINE_POLL_MS);
+  timelineTimer.unref();
 
   /**
    * W3: the REAL worker process control. Faults observed outside a command
@@ -820,19 +813,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     explorerEdits,
   });
 
-  const commands = createDashboardCommandService({
-    kernel,
-    clock,
-    spans: spanWriter,
-    projection,
-    descriptors,
-    authorityRead: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-    },
-  });
+  const commands = createDashboardCommandService({ kernel, projection });
 
   const startPlans = createStartPlanService({
     protectedSecrets,
@@ -942,7 +923,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const abortStartup = (reason: Error): never => {
     hub.close();
-    clearInterval(spanTailTimer);
+    clearInterval(timelineTimer);
     clearInterval(gateParkTimer);
     for (const evidence of workerControl.supervisor.close()) {
       reportSupervisorFault(new Error(
@@ -1081,7 +1062,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       } catch (error: unknown) {
         failures.push(error);
       }
-      clearInterval(spanTailTimer);
+      clearInterval(timelineTimer);
       clearInterval(gateParkTimer);
       /**
        * W3 shutdown ordering: the supervisor closes AFTER ingress stopped

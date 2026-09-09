@@ -1,3 +1,6 @@
+import { DatabaseSync } from "node:sqlite";
+import type { TimelineRepository } from "../../../../src/events/timeline.js";
+import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/infra/sqlite/timeline-repository.js";
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../../../helpers/canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/domain/run/session.js";
 /**
@@ -32,7 +35,8 @@ import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/d
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
 import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/events/types.js";
-import { createSpanJsonlWriter, type SpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
+type TimelineEmitter = ReturnType<typeof createTimelineEmitter>;
 import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
 import {
   createRunQueueProjection,
@@ -200,13 +204,14 @@ export function authorityFake(): AuthorityFake {
 }
 
 export interface DashboardWorld {
+  readonly timeline: TimelineRepository;
   readonly stateRoot: string;
   readonly clock: TestClock;
   readonly authority: AuthorityFake;
   readonly runReader: CanonicalRunReader;
   readonly runReaderState: InMemoryRunReaderState;
   readonly projection: RunQueueProjection;
-  readonly writer: SpanJsonlWriter;
+  readonly writer: TimelineEmitter;
   readonly changes: RunQueueProjectionChange[];
   readonly scheduledRebuilds: (() => void)[];
   dispose(): void;
@@ -226,6 +231,20 @@ export function makeWorld(input?: Readonly<{
   const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-dashboard-"));
   const clock = manualClock(AT);
   const authority = authorityFake();
+  const eventDatabase = new DatabaseSync(join(stateRoot, "timeline.sqlite"));
+  eventDatabase.exec("PRAGMA foreign_keys=ON; CREATE TABLE workflow_runs(record_key TEXT PRIMARY KEY) STRICT; CREATE TABLE deleted_runs(record_key TEXT PRIMARY KEY) STRICT");
+  eventDatabase.exec(TIMELINE_EVENT_TABLE_DDL);
+  for (const sql of TIMELINE_EVENT_INDEX_DDL) eventDatabase.exec(sql);
+  const timeline = createTimelineRepository({ database: eventDatabase, read: (work) => work(),
+    assertOwner: (record) => {
+      if (record.scope.kind === "run" && authority.records.has(record.scope.runId)) {
+        eventDatabase.prepare("INSERT OR IGNORE INTO workflow_runs(record_key) VALUES (?)").run(record.scope.runId);
+      }
+    }, mutate: (work) => {
+      eventDatabase.exec("BEGIN IMMEDIATE");
+      try { const result = work().result; eventDatabase.exec("COMMIT"); return result; }
+      catch (error) { eventDatabase.exec("ROLLBACK"); throw error; }
+    } });
   const runReaderState = { records: authority.records, archived: authority.archived, deleted: new Map(), generation: 0 };
   const canonical = input?.reader ?? inMemoryRunReaderFake(runReaderState);
   // Keep the consumed port instrumentable for structural read-count proofs;
@@ -236,6 +255,7 @@ export function makeWorld(input?: Readonly<{
   };
   const scheduledRebuilds: (() => void)[] = [];
   const projection = createRunQueueProjection({
+    timeline,
     reader: runReader,
     stateRoot,
     clock,
@@ -254,21 +274,22 @@ export function makeWorld(input?: Readonly<{
   });
   const changes: RunQueueProjectionChange[] = [];
   projection.onChange((change) => changes.push(change));
-  const jsonlWriter = createSpanJsonlWriter({
-    stateRoot,
+  const jsonlWriter = createTimelineEmitter({
+    repository: timeline,
     clock,
     pid: 4242,
   });
-  // D218: the projection's one live feed is the disk tail. The harness ticks
+  // D218: the projection's one live feed is the SQLite cursor feed. The harness ticks
   // it after every append so each emitted event folds through the same
   // read-back-from-disk path production uses.
-  const writer: SpanJsonlWriter = Object.freeze({
+  const writer: TimelineEmitter = Object.freeze({
     emit: (event: unknown): void => {
       jsonlWriter.emit(event);
-      projection.ingestFromDisk();
+      projection.ingestFromTimeline();
     },
   });
   return {
+    timeline,
     stateRoot,
     clock,
     authority,
@@ -278,7 +299,7 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => rmSync(stateRoot, { recursive: true, force: true }),
+    dispose: () => { eventDatabase.close(); rmSync(stateRoot, { recursive: true, force: true }); },
   };
 }
 

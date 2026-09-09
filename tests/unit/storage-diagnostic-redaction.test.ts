@@ -2,14 +2,16 @@ import assert from "node:assert/strict";
 import fs, { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
+import { doctorAuthorityStorage, inspectSpanAuthorityCorpusReadOnly } from "../../src/infra/sqlite/storage-doctor.js";
 import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
 import { composeStorageCommand } from "../../src/server/storage/compose.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
@@ -61,10 +63,10 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
     mkdirSync(stateRoot);
     const authorityPath = join(stateRoot, "state.db");
     const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "redaction-test" }, clock);
-    try { database.authority.runs.enqueue(QUEUED_RUN); } finally { database.close(); }
+    database.authority.runs.enqueue(QUEUED_RUN);
     const e = QUEUED_RUN.envelope;
     const common = { ts: e.enqueuedAt, workflow: e.workflow, runId: e.runId, attempt: e.attempt, traceId: e.traceId };
-    const writer = createSpanJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const writer = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const queued = {
       ...common, t: "run.queued", kind: "run", spanPath: e.traceId,
       itemId: e.itemId, shape: e.shape, priority: e.priority, dryRun: e.dryRun,
@@ -79,7 +81,9 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
       ...common, t: "span.started", kind: "task", spanPath: `${e.traceId}/searching#1`,
       parentSpanPath: e.traceId, name: "searching", [field]: marker,
     });
+    database.close();
     if (event === "invalid-file" || event === "valid-file" || event === "schema-key" || event === "schema-field") {
+      createSpanJsonlWriter({ stateRoot, clock, pid: 4242 }).emit(queued);
       const spans = join(stateRoot, "spans");
       const [fileName] = fs.readdirSync(spans);
       assert.ok(fileName);
@@ -105,10 +109,15 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
           assert.deepEqual(union.path, [], "the union itself has a root path; it does not flatten nested key paths");
         }
         fs.appendFileSync(filePath, `${JSON.stringify(invalid)}\n`);
+        const raw = new DatabaseSync(authorityPath);
+        try {
+          raw.exec("DROP TRIGGER timeline_events_never_updated");
+          raw.prepare("UPDATE timeline_events SET record_json=json_set(record_json, '$.payload.event', json(?))").run(JSON.stringify(invalid));
+        } finally { raw.close(); }
       }
     }
     if ("code" in testCase) {
-      vi.spyOn(fs, "readSync").mockImplementation(() => {
+      vi.spyOn(AuthorityDatabase, "inspectTimelineReadOnly").mockImplementation(() => {
         throw Object.assign(new Error(`${marker} /private/synthetic-home/person-documents 10999999`), { code: testCase.code });
       });
       syncBuiltinESMExports();
@@ -120,7 +129,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
     let output: string;
     if (boundary === "cli-json") {
       const result = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, repoRoot);
-      assert.equal(result.exitCode, 1);
+      if (event !== "invalid-file" && event !== "valid-file") assert.equal(result.exitCode, 1);
       output = result.output;
     } else {
       const report = boundary === "doctor"
@@ -129,15 +138,29 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
       output = JSON.stringify(report);
     }
     assert.equal(output.includes(marker), false, `${boundary} must not echo synthetic sensitive path content`);
-    assert.equal(output.includes(field), true, "diagnosis must still name the offending field");
+    if (event !== "invalid-file" && event !== "valid-file") {
+      assert.equal(output.includes(field), true, "diagnosis must still name the offending field");
+    }
     if ("code" in testCase) {
       assert.equal(output.includes("/private/synthetic-home"), false);
       assert.equal(output.includes("10999999"), false);
       assert.equal(output.includes("SYNTHETIC_ERRNO_NEVER_REAL"), false);
       assert.match(output, /span-stream-invalid/u);
-    } else if (event === "invalid-file" || event === "schema-key" || event === "schema-field" || event === "nested-root") {
+    } else if (event === "invalid-file" || event === "valid-file") {
+      assert.match(output, /"spanAuthority":\s*\{\s*"state":\s*"reconciled"/u);
+      let diagnostic: string;
+      try {
+        const corpus = inspectSpanAuthorityCorpusReadOnly(repoRoot, stateRoot);
+        diagnostic = JSON.stringify(corpus.roots.flatMap((root) => root.streamIssues));
+      } catch (error) {
+        assert.ok(error instanceof Error);
+        diagnostic = error.message;
+      }
+      assert.equal(diagnostic.includes(marker), false);
+      assert.equal(diagnostic.includes(field), true);
+    } else if (event === "schema-key" || event === "schema-field" || event === "nested-root") {
       assert.match(output, /span-stream-invalid/u);
-      if (event === "schema-key" || event === "schema-field") assert.match(output, /line 2/u);
+      if (event === "schema-key" || event === "schema-field") assert.match(output, /timeline-record-invalid/u);
     } else assert.match(output, /span_stream/u);
   });
 });

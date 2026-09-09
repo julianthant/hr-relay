@@ -1,3 +1,4 @@
+import { localDatePart } from "../domain/clock.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
 import { archivedRunReferenceFingerprint, CURRENT_ARCHIVE_SCHEMA_GENERATION } from "../domain/archive/model.js";
@@ -112,8 +113,7 @@ export type RunRecoveryOutcome = RunMutationOutcome | RunExistence | Readonly<{
 }>;
 
 /** Both sweep predicates feed the same service requeue admission. */
-export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: WorkerRunLifecyclePort, input: unknown,
-  publishCancelled: (run: RunRecord) => void) {
+export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: WorkerRunLifecyclePort, input: unknown) {
   const request = RunClaimSweepRequestSchema.parse(input);
   return database.withAuthorityTransaction((repositories) => {
     return repositories.runs.listClaimRecoveryCandidates(request).map((run) => {
@@ -127,11 +127,7 @@ export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: Worker
           : { staleBefore: request.staleBefore }),
       });
       if (outcome.state !== "recovery-required") {
-        const settled = requireLifecycleApplied(outcome);
-        if (outcome.state === "applied" && settled.lifecycle.state === "terminal"
-          && settled.lifecycle.outcome === "cancelled") {
-          database.afterAuthorityCommit(() => publishCancelled(settled));
-        }
+        requireLifecycleApplied(outcome);
       }
       return outcome;
     });
@@ -263,11 +259,9 @@ export class RunRecordService {
       this.hooks?.afterCreateReservation?.();
       repositories.runs.enqueue(run);
       this.recordJournal(repositories, journal.command, journalRun(run));
+      this.dependencies.publishQueued(run, publication);
       return { state: "applied", run };
     });
-    if (outcome.state === "applied") {
-      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run, publication));
-    }
     return outcome;
   }
 
@@ -354,6 +348,9 @@ export class RunRecordService {
           if (cancelled.state !== "applied") {
             throw new Error(`cancel tree lost member version fence for ${member.envelope.runId}`);
           }
+          this.recordLifecycleEvent(repositories, "transition",
+            lifecycleCommandId("cascade-cancel-event", { commandId: journal.command.commandId, runId: member.envelope.runId }),
+            cancelled.run);
         }
         const stillActive = members
           .map((member) => repositories.runs.get(member.envelope.runId))
@@ -366,7 +363,7 @@ export class RunRecordService {
             if (requested.state !== "applied") throw new Error("cancel tree lost anchor version fence");
             anchor = requested.run;
           }
-          this.recordJournal(repositories, journal.command, journalRun(anchor));
+          this.recordJournal(repositories, journal.command, journalRun(anchor), current.run.lifecycle);
           return { state: "applied" as const, run: anchor };
         }
       }
@@ -390,7 +387,7 @@ export class RunRecordService {
             displayName: request.displayName, now })
           : repositories.runs.bumpPriority({ runId: request.runId, expectedVersion: request.expectedVersion, now });
         if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
-        this.recordJournal(repositories, journal.command, journalRun(result.run));
+        this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
         return { state: "applied" as const, run: result.run };
       }
       if (runClaim(current.run) !== undefined) {
@@ -401,7 +398,7 @@ export class RunRecordService {
         const requested = repositories.runs.requestCancellation({ runId: request.runId,
           expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString() });
         if (requested.state !== "applied") throw new Error("cancel request lost its transaction-local version fence");
-        this.recordJournal(repositories, journal.command, journalRun(requested.run));
+        this.recordJournal(repositories, journal.command, journalRun(requested.run), current.run.lifecycle);
         return { state: "applied" as const, run: requested.run };
       }
       const isWriteResolution = "writeResolution" in request;
@@ -457,7 +454,7 @@ export class RunRecordService {
             now,
           });
       if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
-      this.recordJournal(repositories, journal.command, journalRun(result.run));
+      this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
       return { state: "applied" as const, run: result.run };
     });
   }
@@ -508,7 +505,7 @@ export class RunRecordService {
         expectedVersion: current.run.version, lifecycle: request.lifecycle,
         now: this.dependencies.clock.now().toISOString() });
       if (result.state === "conflict") return refused({ reason: "lost" });
-      this.recordJournal(repositories, journal.command, journalRun(result.run));
+      this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
       return { state: "applied", run: result.run };
     });
   }
@@ -830,11 +827,9 @@ export class RunRecordService {
         relaunchedAt: now,
       }));
       this.recordJournal(repositories, journal.command, journalRun(run));
+      this.dependencies.publishQueued(run, publication);
       return { state: "applied", run };
     });
-    if (outcome.state === "applied") {
-      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run, publication));
-    }
     return outcome;
   }
 
@@ -886,11 +881,9 @@ export class RunRecordService {
       });
       repositories.runs.enqueue(next);
       this.recordJournal(repositories, journal.command, journalRun(next));
+      this.dependencies.publishQueued(next, publication);
       return { state: "applied", run: next };
     });
-    if (outcome.state === "applied") {
-      this.dependencies.database.afterAuthorityCommit(() => this.dependencies.publishQueued(outcome.run, publication));
-    }
     return outcome;
   }
 
@@ -1084,11 +1077,53 @@ export class RunRecordService {
     return { state: "replay", command: existing, result: audit.result };
   }
 
+  private recordLifecycleEvent(repositories: AuthorityRepositories, operation: LifecycleOperation,
+    commandId: string, run: RunRecord): void {
+    if (["claim-next", "transition", "worker-transition", "terminalize", "requeue"].includes(operation)) {
+      const lifecycle = run.lifecycle;
+      const event = operation === "claim-next" && lifecycle.state === "claimed"
+        ? { t: "run.claimed", workerId: lifecycle.workerId }
+        : lifecycle.state === "terminal"
+          ? { t: "span.ended", kind: "run", outcome: lifecycle.outcome,
+              ...(lifecycle.outcome === "failed" ? { failureId: lifecycle.failureId } : {}) }
+          : lifecycle.state === "parked-gate"
+            ? { t: "gate.opened", gate: lifecycle.gateId }
+            : operation === "requeue" && lifecycle.state === "queued" && lifecycle.requeuedFrom !== undefined
+              ? { t: "run.requeued", cause: lifecycle.requeuedFrom, nextAttempt: run.envelope.attempt }
+              : undefined;
+      if (event !== undefined) {
+        const now = this.dependencies.clock.now();
+        const occurredAt = lifecycle.state === "terminal" ? lifecycle.endedAt
+          : lifecycle.state === "claimed" ? lifecycle.claimedAt
+            : lifecycle.state === "parked-gate" ? lifecycle.parkedAt : run.updatedAt;
+        repositories.timelineEvents.append({ schemaVersion: 1,
+          eventId: lifecycleCommandId("timeline-lifecycle", commandId),
+          workflow: run.envelope.workflow, scope: { kind: "run", runId: run.envelope.runId },
+          occurredAt, recordedAt: now.toISOString(), retentionDate: localDatePart(now),
+          source: { kind: "native" }, payload: { kind: "span", event: {
+            ...event, pid: process.pid, ts: occurredAt, workflow: run.envelope.workflow,
+            runId: run.envelope.runId, attempt: run.envelope.attempt,
+            traceId: run.envelope.traceId, spanPath: run.envelope.traceId,
+          } },
+        });
+      }
+    }
+  }
+
   private recordJournal(
     repositories: AuthorityRepositories,
     command: z.infer<typeof RunLifecycleCommandRecordSchema>,
     result: z.input<typeof RunLifecycleCommandAuditRecordSchema>["result"],
+    previousLifecycle?: RunRecord["lifecycle"],
   ): void {
+    if (result.kind === "run") {
+      const run = repositories.runs.get(result.runId);
+      if (run === undefined) throw new Error("timeline-lifecycle-owner-missing");
+      if (previousLifecycle === undefined
+        || canonicalJsonStringify(previousLifecycle) !== canonicalJsonStringify(run.lifecycle)) {
+        this.recordLifecycleEvent(repositories, command.operation, command.commandId, run);
+      }
+    }
     repositories.lifecycleJournal.insertCommand(command);
     repositories.lifecycleJournal.insertAudit({
       kind: "run-lifecycle",

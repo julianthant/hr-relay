@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../fixtures/phase1c-contract-fixtures.js";
@@ -1346,6 +1347,32 @@ describe("D113 gate resolution", () => {
       payload: { result },
     };
   }
+
+  it("rolls back gate result, resume and command when the required SQLite event cannot persist", () => {
+    const harness = createHarness();
+    const staged = stageGateRun(harness);
+    const gate = descriptorRuntimeNodes(fixtureDescriptor).find((node) => node.kind === "gate" && String(node.id) === "approval");
+    assert.ok(gate?.kind === "gate");
+    const command = gateCommand(staged.runId, staged.version, {
+      schemaHash: deriveSchemaHash(gate.result, "output"), value: { approved: true } });
+    const before = harness.database.authority.runs.get(staged.runId);
+    const generation = harness.database.getMeta().authorityGeneration;
+    const history = harness.database.authority.timelineEvents.page({});
+    using raw = new DatabaseSync(join(harness.stateRoot, "kernel.sqlite"));
+    raw.exec("CREATE TRIGGER injected_gate_event_failure BEFORE INSERT ON timeline_events BEGIN SELECT RAISE(ABORT, 'injected gate event failure'); END");
+    assert.throws(() => harness.kernel.execute(command), /injected gate event failure/);
+    assert.deepEqual(harness.database.authority.runs.get(staged.runId), before);
+    assert.equal(harness.database.authority.gateResults.get(`${staged.runId}:approval`), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(harness.database.authority.timelineEvents.page({}), history);
+    raw.exec("DROP TRIGGER injected_gate_event_failure");
+    assert.equal(harness.kernel.execute(command).state, "applied");
+    const resolved = harness.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "span" && event.payload.event.t === "gate.resolved");
+    assert.equal(resolved.length, 1);
+    assert.equal(harness.kernel.execute(command).state, "already-applied");
+    assert.equal(harness.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "span" && event.payload.event.t === "gate.resolved").length, 1);
+  });
 
   it("parses the descriptor's exact gate schema, stores the result, and resumes at the parked node", () => {
     const harness = createHarness();

@@ -60,7 +60,6 @@ import {
 import {
   browserSessionSpanPath,
   ExecutorSpanEventSchema,
-  runSpanPath,
   workerSpanPath,
   type SpanEmitter,
 } from "./span-emitter.js";
@@ -341,14 +340,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         workerId,
         claimGeneration: run.claimGeneration,
       };
-      emit({
-        t: "run.claimed",
-        runId: run.envelope.runId,
-        attempt: run.envelope.attempt,
-        traceId: run.envelope.traceId,
-        spanPath: runSpanPath(run.envelope.traceId),
-        workerId,
-      });
+
 
       const runController = new AbortController();
       const onStop = (): void => {

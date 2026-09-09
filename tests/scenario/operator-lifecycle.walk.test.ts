@@ -75,7 +75,7 @@ import { RunTerminalOutboxRecordSchema } from "../../src/domain/run/terminal-out
 import { deriveEvidenceReceiptId } from "../../src/domain/trust/evidence-identity.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
 import { createDashboardCommandService } from "../../src/server/dashboard/commands/command-service.js";
@@ -171,7 +171,7 @@ interface World {
   readonly stateRoot: string;
   readonly clock: ReturnType<typeof manualClock>;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
-  readonly spans: ReturnType<typeof createSpanJsonlWriter>;
+  readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly runDetail: RunDetailQueryDeps;
   readonly receipts: ReturnType<typeof createReceiptService>;
   readonly inbox: ReturnType<typeof createNotificationInbox>;
@@ -212,6 +212,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
   const descriptorResolver = { resolve };
 
   const projection = createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
@@ -233,17 +234,17 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
     },
     descriptors: descriptorResolver,
   });
-  const jsonlWriter = createSpanJsonlWriter({
-    stateRoot,
+  const jsonlWriter = createTimelineEmitter({
+    repository: database.authority.timelineEvents,
     clock,
     pid: 4242,
   });
-  // D218: the projection's one live feed is the disk tail; the walk ticks it
+  // D218: the projection's one live feed is the SQLite cursor feed; the walk ticks it
   // after every append so each event folds through the production path.
-  const spans: ReturnType<typeof createSpanJsonlWriter> = Object.freeze({
+  const spans: ReturnType<typeof createTimelineEmitter> = Object.freeze({
     emit: (event: unknown): void => {
       jsonlWriter.emit(event);
-      projection.ingestFromDisk();
+      database.afterAuthorityCommit(() => projection.ingestFromTimeline());
     },
   });
   const receipts = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors });
@@ -296,19 +297,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       reopenBrowser: () => { throw new Error("this walk runs no browser"); },
     },
   });
-  const commands = createDashboardCommandService({
-    kernel,
-    clock,
-    spans,
-    projection,
-    descriptors: descriptorResolver,
-    authorityRead: {
-      getRun: (runId) => database.authority.runs.get(runId),
-      getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-    },
-  });
+  const commands = createDashboardCommandService({ kernel, projection });
   const intake = createIntakeService({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {

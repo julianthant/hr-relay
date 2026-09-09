@@ -1,4 +1,6 @@
 import { deriveBulkChildCommand } from "../../domain/command-groups.js";
+import { timelineSourcesForUpgrade, readPreservedTimelineSources, type TimelineSourceSnapshot } from "../events/timeline-import.js";
+import { importTimelineSources } from "../sqlite/timeline-conversion.js";
 /** D336 temporary stopped SQLite conversion adapter; Phase 2.6 owns deletion. */
 import { DatabaseSync } from "node:sqlite";
 import { openSync, closeSync, lstatSync, unlinkSync } from "node:fs";
@@ -24,7 +26,7 @@ const VersionSchema = z.strictObject({ user_version: z.number().int().nonnegativ
 const GenerationSchema = z.strictObject({ authority_generation: z.number().int().nonnegative() });
 type UpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 type ConversionInput = Readonly<{
-  stateRoot: string; environmentFile: string;
+  stateRoot: string; environmentFile: string; timelineSourceDirectory?: string;
   hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void }>;
 }>;
 const ORPHAN_GATE_WHERE = "EXISTS (SELECT 1 FROM deleted_runs WHERE deleted_runs.record_key=substr(checkpoint_payloads.record_key,1,36) AND substr(checkpoint_payloads.record_key,37,1)=':')";
@@ -202,6 +204,8 @@ function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
 export function convertSettingsDatabase(args: Readonly<{
   ownsCredentialCommandId: (commandId: string) => boolean;
   verifyOnly?: boolean;
+  timelineSources?: TimelineSourceSnapshot;
+  timelineCopyDirectory?: string;
   bindCredentials?: (upgradeId: string) => void;
   input: ConversionInput; path: string; existed: boolean; from: number;
   inspection: BackupCopyInspection | undefined;
@@ -213,7 +217,9 @@ export function convertSettingsDatabase(args: Readonly<{
   const report = sources;
   let pending: UpgradeRecord | undefined;
       const now = clock.now().toISOString();
-      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
+      const timelineIdentity = existed ? args.timelineSources?.digest : "fresh";
+      if (timelineIdentity === undefined) throw new Error("timeline-import-source-evidence-required");
+      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
       if (!existed && args.verifyOnly !== true) { const fd = openSync(path, "wx", 0o600); closeSync(fd); }
       const createdIdentity = !existed && args.verifyOnly !== true ? lstatSync(path) : undefined;
       let database: DatabaseSync | undefined;
@@ -244,9 +250,32 @@ export function convertSettingsDatabase(args: Readonly<{
         applyTombstoneBackfill(database, tombstones);
         const removed = database.prepare(`DELETE FROM checkpoint_payloads WHERE ${ORPHAN_GATE_WHERE}`).run().changes;
         if (removed !== orphanGateRecords) throw new Error("source-changed: orphan gate inventory differs from preflight");
+        let timelineImport: unknown = { state: "fresh", imported: 0, excludedDeleted: 0 };
+        if (existed) {
+          if (args.timelineSources === undefined || backupEvidence === undefined || args.timelineCopyDirectory === undefined) {
+            throw new Error("timeline-import-source-evidence-required");
+          }
+          const currentSources = timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
+          if (currentSources.digest !== args.timelineSources.digest) throw new Error("timeline-import-source-changed");
+          const verifiedSources = args.verifyOnly === true ? currentSources
+            : readPreservedTimelineSources(args.timelineCopyDirectory, currentSources.digest, backupEvidence);
+          // Authenticate semantic history from the same selected source location.
+          // The final digest recheck below still binds these reads to exact bytes.
+          const historyDirectory = args.verifyOnly === true
+            ? input.timelineSourceDirectory ?? input.stateRoot : args.timelineCopyDirectory;
+          try {
+            const corpus = inspectSpanAuthorityCorpusReadOnly(historyDirectory, historyDirectory);
+            if (corpus.roots.some((root) => root.streamIssues.length > 0)) throw new Error("invalid span ordering or identity");
+          } catch { throw new Error("timeline-import-span-history-invalid"); }
+          const counts = importTimelineSources(database, verifiedSources, now);
+          if (counts.replayed !== 0) throw new Error("timeline-import-unexpected-existing-events");
+          timelineImport = { state: "imported", manifestDigest: currentSources.digest,
+            copyDirectory: args.timelineCopyDirectory, backupSha256: backupEvidence.manifest.sha256,
+            imported: counts.imported, excludedDeleted: counts.excludedDeleted };
+        }
         const revision = from >= 32 ? sources.ordinary.revision : writeOrdinaryConversion(database, sources, now, upgradeId);
         pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-          by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
+          by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport, backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
           ordinaryFingerprint: derivePersistedSettingsFingerprint(sources.settings), sourceFiles: report.sourceFiles, historicalExposure: args.historicalExposure, orphanGateRecordsRemoved: orphanGateRecords, tombstoneBackfill: tombstones.counts,
           credentialCommandId: randomUUID(), credentialWriteId: randomUUID(), importedKeys: report.importedKeys, envKeysToRemove: report.envKeysToRemove });
         appendUpgrade(database, pending);
@@ -255,6 +284,12 @@ export function convertSettingsDatabase(args: Readonly<{
         if (args.verifyOnly !== true) {
           args.bindCredentials?.(upgradeId);
           input.hooks?.beforeCommit?.();
+          if (existed && backupEvidence !== undefined) {
+            const finalSources = timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
+            if (finalSources.digest !== args.timelineSources?.digest) throw new Error("timeline-import-source-changed");
+            if (args.timelineCopyDirectory === undefined) throw new Error("timeline-import-copy-missing");
+            readPreservedTimelineSources(args.timelineCopyDirectory, finalSources.digest, backupEvidence);
+          }
         }
         database.exec(args.verifyOnly === true ? "ROLLBACK" : "COMMIT");
       } catch (error) {

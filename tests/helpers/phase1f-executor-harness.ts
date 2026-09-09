@@ -1,3 +1,6 @@
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
+import { ExecutorSpanEventSchema } from "../../src/core/span-emitter.js";
 import type { ProtectedInputBinding } from "../../src/domain/protected-input.js";
 /**
  * Shared Phase-1f interpreter harness: a real temp-file AuthorityDatabase, a
@@ -141,6 +144,20 @@ export function recordingEmitter(): RecordingEmitter {
   return {
     emitter: { emit: (event): void => { events.push(event); } },
     events: () => Object.freeze([...events]),
+  };
+}
+
+/** Capture this execution's durable events, including service-owned lifecycle facts. */
+export function recordingTimelineEmitter(database: AuthorityDatabase, clock: TestClock): RecordingEmitter {
+  const repository = database.authority.timelineEvents;
+  const after = repository.highWaterMark();
+  return {
+    emitter: createTimelineEmitter({ repository, clock }),
+    events: () => Object.freeze(readTimelineRecords(repository, after).records.flatMap((record) => {
+      if (record.payload.kind !== "span") return [];
+      const { pid: _pid, ...event } = record.payload.event;
+      return [ExecutorSpanEventSchema.parse(event)];
+    })),
   };
 }
 

@@ -119,6 +119,7 @@ export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state
     deleted: z.array(DeletedSpanAuthorityWireSchema),
     problems: z.array(z.discriminatedUnion("state", [
       z.strictObject({ state: z.literal("missing"), runId: RunIdSchema, possibleExternalWrite: z.literal(true).optional() }),
+      z.strictObject({ state: z.literal("restore-loss"), runId: RunIdSchema, possibleExternalWrite: z.literal(true).optional() }),
       z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
       z.strictObject({
         state: z.literal("malformed-authority"),

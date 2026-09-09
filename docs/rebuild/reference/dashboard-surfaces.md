@@ -609,11 +609,12 @@ The **timeline** row is the one that changed meaning since the 1g draft, and the
 reading twice. The draft said *"run span tree's notes ⊕ the owning worker span's lifecycle events"*.
 <a id="sqlite-timeline-history"></a>
 
-**2026-09-08 — approved successor design, pending implementation.**
+**2026-09-08 — T1 implementation candidate; T2 remains pending.**
 [Side plan `side/timeline-history`](../../sidetracks/timeline-history/README.md) owns a SQLite
 timeline, database-derived transaction Activity/exports and frozen archive transaction sections.
-It follows accepted `side/operation-names` integration; that running rename plan remains unchanged.
-The current span/ledger behavior described below remains as-built until the successor is accepted.
+It consumes accepted worker, operation and command-group integration at schema 37. T1 uses
+schema 38/floor 37. The following T1 rules supersede the older file-backed span descriptions
+for this candidate; Activity/export/archive ledger replacement remains assigned to T2.
 
 `timeline_events` becomes event-history authority, separate from `run_checkpoints` and subordinate
 to canonical run lifecycle for membership/state. Related state changes and required events commit
@@ -621,6 +622,42 @@ together; observational events append independently. Cross-process readers use d
 cursors, not an in-process notification as evidence. Preserve event kinds/identity/time, replay,
 omission, worker scope, protected-data rules and explicit missing evidence. Notes are outside this move.
 
+T1 stores strict version-1 event rows with an immutable UUID, SQLite ingestion cursor, exact
+run or worker scope, occurrence/recording timestamps and a local retention day. The payload is
+an existing span event, a checkpoint-recorded/replayed reference, or a confirmed operation with
+exact evidence references. Native append uses the authority clock's local day; file import retains
+the source filename's day. Equal timestamps or text are distinct events. Exact event identity
+replays without a write; divergent content refuses. Required queued/claimed/requeued/gate/terminal
+and checkpoint events join the owning authority transaction. Presentation-only transitions do not
+repeat a lifecycle event. Cross-process queue/detail/log/worker
+readers page one SQLite snapshot and rebuild after a cursor reset; notifications are only wakeups.
+
+Stopped upgrade validates bounded no-follow span sources, freezes a content-addressed source copy
+beside the verified SQLite backup, and binds both digests in the upgrade receipt. Conversion and
+event import commit together. Missing, changed, malformed or orphan history refuses; matching
+deleted owners are excluded. Resuming a committed conversion verifies its retained copy. After
+restoring an older backup without original files, `storage upgrade --timeline-from <verified-copy-directory>`
+requires explicit selection of the original verified copy. Current doctor/root repair use SQLite;
+retired files cannot resurrect events. Restore reconciliation also inspects preserved SQLite copies
+under the configured `suspects` directory as diagnostic evidence only. A displaced run absent from
+current authority and its tombstones is reported as `missing`; a retained run with a newer preserved
+version, missing write attempt, or missing/divergent immutable confirmation is reported as `restore-loss`.
+Confirmation content is compared independently of run versions and delivery cursors; a heartbeat or
+stale-claim recovery cannot account for a lost confirmation. Both carry `possibleExternalWrite`
+when a retained fence/attempt establishes that possibility. No run or event is re-admitted. Damaged,
+unsupported, changed or unsafe copies produce an explicit unavailable finding, never healthy absence.
+Inspection bounds are 128 databases, 384 directory entries and 256 MiB total bytes. Database/WAL
+identity and metadata are checked across the read; SQLite's shared-memory read cache and newly
+initialized empty WAL are not authority changes. Removal of preserved copies remains explicitly
+assigned cleanup after evidence is resolved. This preserves §2.5 item 6 and D332.7 item 6.
+
+Ordinary pruning uses the existing 30-day local-day cutoff, while confirmed events remain until
+D308. Checkpoint and permanent-operation lookup share the exact workflow/item group; evidence stays
+while any other retained run in that group can consume it, including a queued transitive retry with
+no materialized reference yet. Missing or contradictory ownership refuses deletion. Tombstone
+version 3 counts the actual timeline rows and evidence removed. Notes retain their existing files.
+
+**T2 requirements, not implemented by T1.**
 Activity reads retained database facts, counting confirmed automation operations once, including
 retained archived runs and excluding deleted owners. Exports are generated on explicit request;
 daily ledger files and their sequence/writer tables cease to be current authority. New ordinary

@@ -1,4 +1,5 @@
 import { ProtectedSettingsNameSchema } from "../../domain/config/protected-settings.js";
+import { TimelineRecordError } from "./timeline-repository.js";
 import { createCredentialStore } from "../config/credential-store.js";
 import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
@@ -272,10 +273,12 @@ function validateRunEventAgainstRoot(
   fileName: string,
   lineNumber: number,
   lastAttemptByItem: Map<string, number>,
+  allowSameAttemptRequeue = false,
 ): void {
   if (!("runId" in event)) return;
   if (event.t === "transaction.fenced") root.possibleExternalWrite = true;
   const location = `${spanFileLabel(fileName)}:${String(lineNumber)}`;
+  if (allowSameAttemptRequeue && event.t === "run.requeued") root.terminal = false;
   if (root.terminal) addStreamIssue(root, `${event.t} at ${location} appears after its terminal run span`);
   const timestampMs = Date.parse(event.ts);
   if (timestampMs < root.lastTimestampMs) {
@@ -343,6 +346,7 @@ function validateRunEventAgainstRoot(
     );
   }
   if (event.t === "run.requeued") {
+    if (allowSameAttemptRequeue && event.nextAttempt === event.attempt) return;
     if (event.nextAttempt <= event.attempt) {
       addStreamIssue(
         root,
@@ -384,7 +388,7 @@ function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot
     configFingerprint: queued.configFingerprint,
     configSnapshotId: queued.configSnapshotId,
     queuedAt: queued.ts,
-    reconstructed: queued.repair?.kind === "authority-reconstruction",
+    reconstructed: queued.repair !== undefined,
     initialAttempt: queued.attempt,
     finalAttempt: root.finalAttempt,
     streamIssues: root.streamIssues,
@@ -655,6 +659,147 @@ export function inspectSpanAuthorityCorpusReadOnly(
   return spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
 }
 
+function timelineAuthorityCorpus(authorityPath: string, busyTimeoutMs: number, includeRecoveryEvidence = false): SpanAuthorityCorpus & Readonly<{
+  authorityGeneration: number; authorityContentFingerprint: string;
+  recoveryEvidence: ReturnType<typeof AuthorityDatabase.inspectTimelineReadOnly>["recoveryEvidence"];
+}> {
+  const file = lstatSync(authorityPath);
+  if (!file.isFile() || file.isSymbolicLink()) throw new SafeSpanCorpusError("timeline authority is not a regular no-follow file");
+  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(authorityPath, busyTimeoutMs, includeRecoveryEvidence);
+  const after = lstatSync(authorityPath);
+  if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
+  const rows = snapshot.records;
+  const roots: MutableSpanAuthorityRoot[] = [];
+  const firstRoot = new Map<string, MutableSpanAuthorityRoot>();
+  const attempts = new Map<string, number>();
+  const pending = new Map<string, typeof rows[number][]>();
+  const validate = (root: MutableSpanAuthorityRoot, row: typeof rows[number]): void => {
+    if (row.payload.kind !== "span" || row.payload.event.t === "run.queued") return;
+    validateRunEventAgainstRoot(root, row.payload.event, `${row.workflow}-${row.retentionDate}.jsonl`,
+      row.cursor, attempts, row.source.kind === "native");
+  };
+  for (const row of rows) {
+    if (row.payload.kind !== "span" || !("runId" in row.payload.event)) continue;
+    const event = row.payload.event;
+    if (event.t !== "run.queued") {
+      const root = firstRoot.get(event.runId);
+      if (root !== undefined) validate(root, row);
+      else pending.set(event.runId, [...(pending.get(event.runId) ?? []), row]);
+      continue;
+    }
+    const root: MutableSpanAuthorityRoot = { queued: event, finalAttempt: event.attempt, possibleExternalWrite: false,
+      streamIssues: [], lastTimestampMs: Date.parse(event.ts), terminal: false, taskSpans: new Set() };
+    roots.push(root);
+    if (event.spanPath !== event.traceId) addStreamIssue(root, "run.queued root spanPath does not equal traceId");
+    if (event.parentSpanPath !== undefined) addStreamIssue(root, "run.queued root unexpectedly names parentSpanPath");
+    const duplicate = firstRoot.get(event.runId);
+    if (duplicate === undefined) firstRoot.set(event.runId, root);
+    else {
+      const issue = `duplicate run.queued root for run ${event.runId}`;
+      addStreamIssue(duplicate, issue);
+      addStreamIssue(root, issue);
+    }
+    const key = `${event.workflow}\0${event.itemId}`;
+    const previous = attempts.get(key);
+    if (previous !== undefined && event.attempt <= previous) {
+      addStreamIssue(root, `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previous)}`);
+    }
+    attempts.set(key, event.attempt);
+    const prior = pending.get(event.runId) ?? [];
+    pending.delete(event.runId);
+    if (prior.length > 0) {
+      if (event.repair !== undefined) {
+        const repair = event.repair;
+        if (repair.kind === "timeline-authority-reconstruction"
+          && prior.some((entry) => entry.cursor > repair.priorCursor)) {
+          addStreamIssue(root, "timeline repair does not cover the preceding event cursor");
+        }
+        for (const entry of prior) validate(root, entry);
+      } else addStreamIssue(root, "run.queued appears after prior run event(s) without authority-reconstruction repair");
+    }
+  }
+  // Retention may remove an ordinary queued root while retaining later events.
+  // The canonical reconciliation reports that missing root without inventing it.
+  return { state: "present", roots: roots.map(immutableSpanRoot),
+    authorityGeneration: snapshot.authorityGeneration, authorityContentFingerprint: snapshot.authorityContentFingerprint,
+    recoveryEvidence: snapshot.recoveryEvidence };
+}
+
+/** Quarantined SQLite is diagnostic recovery evidence only; it never feeds a current view. */
+function displacedAuthorityProblems(current: ReturnType<typeof timelineAuthorityCorpus>, busyTimeoutMs: number) {
+  return withNoFollowRelativeDirectory("suspects", "preserved authority directory", true, (directory) => {
+    const names = readdirSync(".").sort();
+    if (names.length > 384) throw new SafeSpanCorpusError("preserved authority file count exceeds the inspection limit");
+    const databases = names.filter((name) => /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(name));
+    if (databases.length > 128) throw new SafeSpanCorpusError("preserved authority database count exceeds the inspection limit");
+    const accepted = new Set(databases.flatMap((name) => [name, `${name}-wal`, `${name}-shm`]));
+    if (names.some((name) => !accepted.has(name))) throw new SafeSpanCorpusError("preserved authority directory contains an unexpected entry");
+    let bytes = 0;
+    const observed = new Map<string, Stats>();
+    for (const name of names) {
+      const file = lstatSync(name);
+      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1) {
+        throw new SafeSpanCorpusError("preserved authority is not a direct regular file");
+      }
+      bytes += file.size;
+      if (bytes > 256 * 1024 * 1024) throw new SafeSpanCorpusError("preserved authority bytes exceed the inspection limit");
+      observed.set(name, file);
+    }
+    const currentEvidence = current.recoveryEvidence;
+    if (currentEvidence === undefined) throw new SafeSpanCorpusError("current recovery evidence was not inspected");
+    const retained = new Map(currentEvidence.runs.map((run) => [run.runId, run]));
+    const deleted = new Map(currentEvidence.deleted.map((run) => [run.runId, run]));
+    const findings = new Map<string, { state: "missing" | "restore-loss"; runId: string; possibleExternalWrite?: true }>();
+    for (const name of databases) {
+      const source = AuthorityDatabase.inspectTimelineReadOnly(name, busyTimeoutMs, true).recoveryEvidence;
+      if (source === undefined) throw new SafeSpanCorpusError("preserved recovery evidence was not inspected");
+      for (const run of source.runs) {
+        const tombstone = deleted.get(run.runId);
+        if (tombstone !== undefined) {
+          if (tombstone.workflow !== run.workflow || tombstone.traceId !== run.traceId) {
+            throw new SafeSpanCorpusError("preserved authority conflicts with a current deletion identity");
+          }
+          continue;
+        }
+        const owner = retained.get(run.runId);
+        if (owner !== undefined && (owner.workflow !== run.workflow || owner.traceId !== run.traceId)) {
+          throw new SafeSpanCorpusError("preserved authority conflicts with a current run identity");
+        }
+        if (owner !== undefined && owner.version >= run.version
+          && run.attemptIds.every((id) => owner.attemptIds.includes(id))
+          && run.confirmations.every((digest) => owner.confirmations.includes(digest))) continue;
+        const prior = findings.get(run.runId);
+        findings.set(run.runId, { state: owner === undefined ? "missing" : "restore-loss", runId: run.runId,
+          ...(run.possibleExternalWrite || prior?.possibleExternalWrite === true ? { possibleExternalWrite: true as const } : {}) });
+      }
+    }
+    const afterNames = readdirSync(".").sort();
+    if (!sameDirectoryIdentity(statSync("."), directory)
+      || names.some((name) => !afterNames.includes(name))) {
+      throw new SafeSpanCorpusError("preserved authority directory changed during inspection");
+    }
+    // A read-only SQLite connection may initialize an empty WAL and shared-memory
+    // cache for a checkpointed copy. Neither carries a new authority transaction.
+    for (const name of afterNames.filter((name) => !observed.has(name))) {
+      const file = lstatSync(name);
+      const cache = accepted.has(name) && (name.endsWith("-shm") || (name.endsWith("-wal") && file.size === 0));
+      if (!cache || !file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || file.size > 64 * 1024) {
+        throw new SafeSpanCorpusError("preserved authority directory changed during inspection");
+      }
+    }
+    for (const [name, before] of observed) {
+      const after = lstatSync(name);
+      // SQLite read locks may update the shared-memory cache. The database and
+      // WAL carry authority bytes; their identities and timestamps stay fixed.
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+        || (!name.endsWith("-shm") && (before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs))) {
+        throw new SafeSpanCorpusError("preserved authority file changed during inspection");
+      }
+    }
+    return [...findings.values()];
+  }) ?? [];
+}
+
 function reconcileSpanAuthority(
   stateRootTrustAnchor: string,
   stateRoot: string,
@@ -665,16 +810,25 @@ function reconcileSpanAuthority(
   tombstoneOrdinalFindings?: SpanAuthorityReadSnapshot["tombstoneOrdinalFindings"];
   authorityIdentity?: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
 }> {
-  let corpus: SpanAuthorityCorpus;
+  let corpus: ReturnType<typeof timelineAuthorityCorpus>;
+  let displaced: ReturnType<typeof displacedAuthorityProblems> | undefined;
   try {
-    corpus = spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
+    const authorityName = relative(resolve(stateRoot), resolve(authorityPath));
+    corpus = withStateRootWorkingDirectory(stateRootTrustAnchor, stateRoot, () => {
+      if (authorityName !== basename(authorityName) || authorityName === "." || authorityName === "..") {
+        throw new SafeSpanCorpusError("timeline authority must be a direct state-root file");
+      }
+      const current = timelineAuthorityCorpus(authorityName, busyTimeoutMs, existsSync("suspects"));
+      displaced = displacedAuthorityProblems(current, busyTimeoutMs);
+      return current;
+    });
   } catch (error) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
         cause: {
           code: "span-stream-invalid",
-          summary: error instanceof SafeSpanCorpusError
+          summary: error instanceof SafeSpanCorpusError || error instanceof TimelineRecordError
             ? error.message
             : `span corpus spans could not be safely inspected (${errnoCode(error)})`,
         },
@@ -682,6 +836,7 @@ function reconcileSpanAuthority(
     };
   }
 
+  if (displaced === undefined) throw new Error("restore-evidence-inspection-missing");
   let snapshot: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
   try {
     snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
@@ -699,6 +854,12 @@ function reconcileSpanAuthority(
         },
       }),
     };
+  }
+  if (snapshot.authorityGeneration !== corpus.authorityGeneration
+    || snapshot.authorityContentFingerprint !== corpus.authorityContentFingerprint) {
+    return { reconciliation: SpanAuthorityReconciliationSchema.parse({ state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: "timeline and run authority changed between read snapshots; inspect again" },
+    }) };
   }
   if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
     && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
@@ -745,6 +906,7 @@ function reconcileSpanAuthority(
     : [
         ...resolutions.filter((resolution) => resolution.state === "missing" || resolution.state === "malformed"),
         ...snapshot.missingSpanRunIds.map((runId) => ({ state: "missing-span" as const, runId })),
+        ...displaced,
       ];
   return {
     tombstoneOrdinalFindings: snapshot.tombstoneOrdinalFindings,

@@ -1,3 +1,4 @@
+import { localDatePart } from "../domain/clock.js";
 import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
 import { retainedRawSubmission } from "../services/start/protected-input.js";
 /**
@@ -1949,6 +1950,16 @@ function executeResolveGate(
       + "while the run is still parked; the store is inconsistent",
     );
   }
+  repositories.timelineEvents.append({ schemaVersion: 1,
+    eventId: lifecycleCommandId("timeline-gate-resolved", request.commandId),
+    workflow: current.envelope.workflow, scope: { kind: "run", runId: current.envelope.runId },
+    occurredAt: now, recordedAt: now, retentionDate: localDatePart(new Date(now)), source: { kind: "native" },
+    payload: { kind: "span", event: { t: "gate.resolved", ts: now, pid: process.pid,
+      workflow: current.envelope.workflow, runId: current.envelope.runId, attempt: current.envelope.attempt,
+      traceId: current.envelope.traceId, spanPath: current.envelope.traceId, gate: request.target.gateId,
+      resolutionKey: "resolved", resultHash: createHash("sha256")
+        .update(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(request.payload.result)}`).digest("hex") } },
+  });
   const resumed = dependencies.lifecycle.transition({
     commandId: lifecycleCommandId("operator-gate", request.commandId),
     lifecycle: { state: "queued" },

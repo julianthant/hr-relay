@@ -32,7 +32,7 @@ import { RunTerminalOutboxRecordSchema } from "../../src/domain/run/terminal-out
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
-import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
@@ -702,7 +702,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 1000, migrationOwner: "dashboard-perf-fixture" },
     clock,
   );
-  const spans = createSpanJsonlWriter({ stateRoot, clock, pid: 4242 });
+  const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const notes = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
   const context: SeedContext = { database, clock, spans, notes };
 
@@ -723,6 +723,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
       (workflowId === PERF_FIXTURE_WORKFLOW ? personLookupDescriptor : undefined),
   };
   const projection = createRunQueueProjection({
+    timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,
     clock,
@@ -744,10 +745,10 @@ export function seedDashboardPerfFixture(): PerfFixture {
     },
     descriptors,
   });
-  // D218: the production feed is the disk tail. Every span above is already on
+  // D218: the production feed is the SQLite cursor feed. Every span above is already on
   // disk, so ONE ingest folds the whole corpus through the same path a booting
   // dashboard uses.
-  projection.ingestFromDisk();
+  projection.ingestFromTimeline();
 
   const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
   // D141: a receipt exists because somebody opened the run. Deriving a subset

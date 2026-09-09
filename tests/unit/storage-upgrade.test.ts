@@ -1,3 +1,7 @@
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
+import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { readLatestSettingsUpgrade } from "../../src/infra/compat/settings-database-upgrade.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST, RUN_SESSION } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
@@ -9,7 +13,8 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync, cpSync } from "node:fs";
+import fs, { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync, cpSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -120,7 +125,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it.each([29, 30, 31, 32, 33, 34, 35, 36])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34, 35, 36, 37])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
     await assert.rejects(f.run(true), /backup-required/u);
     assert.deepEqual(readFileSync(f.path), before);
@@ -130,12 +135,13 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it.each([32, 33, 34, 35, 36])("refuses to supersede an unfinished schema-%s settings conversion in plan and apply", async (version) => {
+  it.each([32, 33, 34, 35, 36, 37])("refuses to supersede an unfinished schema-%s settings conversion in plan and apply", async (version) => {
     const seed = fixture(); await seed.run();
     const source = new DatabaseSync(seed.path, { readOnly: true });
     let pending: Record<string, unknown>;
     try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM authority_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
     finally { source.close(); }
+    delete pending.timelineImport; // This historical receipt predates timeline conversion.
     const f = fixture(version);
     const raw = new DatabaseSync(f.path);
     try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: version }), now); }
@@ -156,7 +162,7 @@ describe("D336 stopped SQLite upgrade", () => {
       assert.equal(existsSync(f.input.processLockRoot), false);
     }
   });
-  it.each([32, 33, 34, 35, 36])("renames a v%s database without reimporting settings or touching independent credentials", async (version) => {
+  it.each([32, 33, 34, 35, 36, 37])("renames a v%s database without reimporting settings or touching independent credentials", async (version) => {
     const seed = fixture();
     writeFileSync(seed.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=3\nUCPATH_PASSWORD=synthetic-batch-upgrade\n", { mode: 0o600 });
     await seed.run();
@@ -376,7 +382,7 @@ const RENAMED_TABLES = [
 ] as const;
 
 /** Build historical rows through real repositories, then copy their complete SQL shape. */
-async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36) {
+async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37) {
   const seed = fixture();
   await seed.run();
   const database = AuthorityDatabase.open({ path: seed.path, busyTimeoutMs: 250, migrationOwner: "rename-seed" }, clock);
@@ -437,7 +443,7 @@ async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36) {
 }
 
 describe("worker/auth/request SQL rename through stopped upgrade", () => {
-  it.each([33, 34, 35, 36] as const)("preserves complete populated v%s rows, grouping, historical backup and current readback", async (version) => {
+  it.each([33, 34, 35, 36, 37] as const)("preserves complete populated v%s rows, grouping, historical backup and current readback", async (version) => {
     const f = await populatedWorkerRenameFixture(version);
     const original = readFileSync(f.path);
     const historical = inspectAuthorityBackupReadOnly(f.path);
@@ -459,7 +465,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
       assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
     const current = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(current.schemaVersion, 37);
+    assert.equal(current.schemaVersion, 38);
     assert.equal(current.counts.leases, 1);
     const currentBackup = await f.backup();
     assert.equal(currentBackup.manifests[0]?.authorityContentFingerprint, current.authorityContentFingerprint);
@@ -468,14 +474,14 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     assert.deepEqual(readFileSync(f.path), settled);
   });
 
-  it.each([33, 34, 35, 36] as const)("rolls back populated v%s before commit and resumes exactly after commit", async (version) => {
+  it.each([33, 34, 35, 36, 37] as const)("rolls back populated v%s before commit and resumes exactly after commit", async (version) => {
     const f = await populatedWorkerRenameFixture(version);
     await f.backup();
     const before = readFileSync(f.path);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("rename-before-commit"); } } }, clock), /rename-before-commit/u);
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 37);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 38);
     assert.equal((await f.run()).state, "converted");
     const after = new DatabaseSync(f.path, { readOnly: true });
     try {
@@ -485,7 +491,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     } finally { after.close(); }
   });
 
-  it.each(([34, 35, 36] as const).flatMap((version) => RENAMED_TABLES.map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("refuses corrupt schema-$version $table records instead of omitting their validation", async ({ version, table }) => {
+  it.each(([34, 35, 36, 37] as const).flatMap((version) => RENAMED_TABLES.map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("refuses corrupt schema-$version $table records instead of omitting their validation", async ({ version, table }) => {
     const f = await populatedWorkerRenameFixture(version);
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE ${table} SET record_json='{}'`); } finally { raw.close(); }
@@ -495,7 +501,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     assert.deepEqual(readFileSync(f.path), before);
   });
 
-  it.each(([34, 35, 36] as const).flatMap((version) => RENAMED_TABLES.slice(0, 2).map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("retains schema-$version $table mirrored-column invariants", async ({ version, table }) => {
+  it.each(([34, 35, 36, 37] as const).flatMap((version) => RENAMED_TABLES.slice(0, 2).map(([oldName, currentName]) => ({ version, table: version < 35 ? oldName : currentName }))))("retains schema-$version $table mirrored-column invariants", async ({ version, table }) => {
     const f = await populatedWorkerRenameFixture(version);
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE ${table} SET version=version+1`); } finally { raw.close(); }
@@ -531,3 +537,180 @@ function preRenameFingerprint(path: string): string {
     return createHash("sha256").update(canonicalJsonStringify(entries)).digest("hex");
   } finally { raw.close(); }
 }
+
+
+function timelineImportFixture() {
+  const f = fixture(CURRENT_AUTHORITY_SCHEMA_VERSION - 1);
+  const seedPath = join(f.root, "timeline-owner.db");
+  const seed = AuthorityDatabase.open({ path: seedPath, busyTimeoutMs: 500, migrationOwner: "timeline-owner-fixture" }, clock);
+  seed.authority.runs.enqueue(QUEUED_RUN);
+  seed.close();
+  const source = new DatabaseSync(seedPath);
+  const target = new DatabaseSync(f.path);
+  try {
+    const row = source.prepare("SELECT * FROM workflow_runs").get(); assert.ok(row);
+    const columns = Object.keys(row);
+    target.prepare(`INSERT INTO workflow_runs (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+  } finally { source.close(); target.close(); rmSync(seedPath); }
+  mkdirSync(join(f.root, "spans"));
+  const sourcePath = join(f.root, "spans", `${QUEUED_RUN.envelope.workflow}-2026-07-31.jsonl`);
+  const queued = { ...runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Imported run" }), pid: 4242 };
+  const worker = { t: "span.started", kind: "worker", workflow: QUEUED_RUN.envelope.workflow,
+    ts: now, pid: 4242, workerId: "import-worker", spanPath: "worker/import-worker", name: "Worker" };
+  const bytes = `${JSON.stringify(queued)}\n${JSON.stringify(worker)}\n${JSON.stringify(worker)}\n`;
+  writeFileSync(sourcePath, bytes);
+  writeFileSync(join(f.root, "spans", `${QUEUED_RUN.envelope.workflow}-2026-08-01.jsonl`), `${JSON.stringify(worker)}\n`);
+  const events = () => {
+    const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "timeline-upgrade-read" }, clock);
+    try { return db.authority.timelineEvents.page({}); } finally { db.close(); }
+  };
+  return { ...f, sourcePath, bytes, events };
+}
+
+describe("T1 stopped timeline conversion", () => {
+  it("withholds raw source I/O errors at stopped upgrade egress", async () => {
+    const f = timelineImportFixture();
+    await f.backup();
+    const marker = "SYNTHETIC_SECRET_NEVER_REAL_10999999";
+    const probe = vi.spyOn(fs, "readSync").mockImplementation(() => {
+      throw Object.assign(new Error(`/private/${marker}`), { code: marker });
+    });
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(f.run(), (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /timeline-source-invalid/u);
+        assert.equal(error.message.includes(marker), false);
+        assert.equal(error.message.includes("/private/"), false);
+        return true;
+      });
+    } finally { probe.mockRestore(); syncBuiltinESMExports(); }
+  });
+
+  it.each([false, true])("excludes only a matching historical deletion tombstone (wrong item: %s)", async (wrongItem) => {
+    const f = timelineImportFixture();
+    const envelope = QUEUED_RUN.envelope;
+    const deleted = DeletedRunRecordSchema.parse({
+      runId: envelope.runId, workflow: envelope.workflow, traceId: envelope.traceId,
+      itemId: wrongItem ? "ffffffff-ffff-4fff-8fff-ffffffffffff" : envelope.itemId,
+      attempt: envelope.attempt, origin: "queue", commandId: randomUUID(), deletedAt: now,
+      removed: [{ table: "workflow_runs", rows: 1 }],
+    });
+    const raw = new DatabaseSync(f.path);
+    try {
+      raw.prepare(`INSERT INTO deleted_runs (record_key,workflow,trace_id,origin,command_id,deleted_at,record_json,created_at,item_id,attempt)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(deleted.runId, deleted.workflow, deleted.traceId, deleted.origin,
+        deleted.commandId, deleted.deletedAt, canonicalJsonStringify(deleted), now, deleted.itemId, deleted.attempt);
+      raw.prepare("DELETE FROM workflow_runs WHERE record_key=?").run(envelope.runId);
+    } finally { raw.close(); }
+    await f.backup();
+    const before = readFileSync(f.path);
+    if (wrongItem) {
+      await assert.rejects(f.run(), /timeline-import-tombstone-mismatch/u);
+      assert.deepEqual(readFileSync(f.path), before);
+    } else {
+      assert.equal((await f.run()).state, "converted");
+      assert.equal(f.events().length, 3);
+      assert.ok(f.events().every((event) => event.scope.kind === "worker"));
+      const receipt = readLatestSettingsUpgrade(f.path);
+      assert.ok(receipt && "timelineImport" in receipt && receipt.timelineImport?.state === "imported");
+      assert.equal(receipt.timelineImport.excludedDeleted, 1);
+      const converted = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "timeline-deletion-read" }, clock);
+      try {
+        assert.equal(converted.authority.runs.get(envelope.runId), undefined);
+        assert.equal(converted.authority.deletedRuns.get(envelope.runId)?.itemId, envelope.itemId);
+      } finally { converted.close(); }
+    }
+  });
+
+  it("binds populated multi-day source bytes to backup and receipt, then resumes once without original files", async () => {
+    const f = timelineImportFixture();
+    await f.backup();
+    const before = readFileSync(f.path);
+    assert.equal((await f.run(true)).state, "planned");
+    assert.deepEqual(readFileSync(f.path), before);
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("timeline-after-commit"); } } }, clock), /timeline-after-commit/);
+    const imported = f.events();
+    assert.equal(imported.length, 4);
+    assert.equal(new Set(imported.map((event) => event.eventId)).size, 4);
+    assert.deepEqual(imported.map((event) => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
+    assert.ok(imported.every((event) => event.source.kind === "span-import"));
+    const pending = readLatestSettingsUpgrade(f.path);
+    assert.ok(pending && "timelineImport" in pending && pending.timelineImport?.state === "imported");
+    assert.equal(pending.timelineImport.imported, 4);
+    assert.equal(readFileSync(join(pending.timelineImport.copyDirectory, "spans", f.sourcePath.split("/").at(-1) ?? "missing"), "utf8"), f.bytes);
+    rmSync(join(f.root, "spans"), { recursive: true });
+    assert.equal((await f.run()).state, "converted");
+    assert.deepEqual(f.events(), imported);
+    const settled = readFileSync(f.path);
+    assert.equal((await f.run()).state, "already-upgraded");
+    assert.deepEqual(readFileSync(f.path), settled);
+  });
+
+  it("replays the selected verified source copy after restoring the old backup with original files absent", async () => {
+    const f = timelineImportFixture();
+    const backup = await f.backup();
+    const manifest = backup.manifests.at(-1); assert.ok(manifest);
+    await f.run();
+    const history = f.events();
+    const receipt = readLatestSettingsUpgrade(f.path);
+    assert.ok(receipt && "timelineImport" in receipt && receipt.timelineImport?.state === "imported");
+    const selected = receipt.timelineImport.copyDirectory;
+    rmSync(join(f.root, "spans"), { recursive: true });
+    copyFileSync(join(f.root, "backups", "authority", manifest.backupFileName), f.path);
+    await assert.rejects(f.run(), /timeline-source-originals-missing/);
+    assert.equal((await upgradeStorage({ ...f.input, timelineSourceDirectory: selected }, clock)).state, "converted");
+    assert.deepEqual(f.events(), history);
+  });
+
+  it("refuses changed source bytes at the last precommit seam and retains old schema and backup", async () => {
+    const f = timelineImportFixture(); await f.backup();
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => {
+      writeFileSync(f.sourcePath, f.bytes + f.bytes);
+    } } }, clock), /timeline-import-source-changed/);
+    const raw = new DatabaseSync(f.path);
+    try {
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION - 1);
+      assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='timeline_events'").get()?.n, 0);
+    } finally { raw.close(); }
+    writeFileSync(f.sourcePath, f.bytes);
+    assert.equal((await f.run()).state, "converted");
+    assert.equal(f.events().length, 4);
+  });
+
+  it("refuses schema-valid but contradictory root history before conversion", async () => {
+    const f = timelineImportFixture();
+    const lines = f.bytes.trimEnd().split("\n");
+    const queued = JSON.parse(lines[0]) as Record<string, unknown>;
+    lines[0] = JSON.stringify({ ...queued, parentSpanPath: "contradictory-root" });
+    writeFileSync(f.sourcePath, `${lines.join("\n")}\n`);
+    await f.backup();
+    const before = readFileSync(f.path);
+    await assert.rejects(f.run(true), /timeline-import-span-history-invalid/u);
+    await assert.rejects(f.run(), /timeline-import-span-history-invalid/u);
+    assert.deepEqual(readFileSync(f.path), before);
+  });
+
+  it("refuses an unexplained run owner before conversion instead of inventing a run", async () => {
+    const f = timelineImportFixture();
+    writeFileSync(f.sourcePath, f.bytes.replaceAll(QUEUED_RUN.envelope.runId, "ffffffff-ffff-4fff-8fff-ffffffffffff"));
+    await f.backup(); const before = readFileSync(f.path);
+    await assert.rejects(f.run(), /timeline-import-owner-missing/);
+    assert.deepEqual(readFileSync(f.path), before);
+  });
+
+  it.each([
+    { resolvedInstance: {} },
+    { dryRun: !QUEUED_RUN.envelope.dryRun },
+    { ts: "2026-07-30T12:00:00.000Z" },
+  ])("refuses a schema-valid queued root that contradicts its canonical owner: %j", async (change) => {
+    const f = timelineImportFixture();
+    const lines = f.bytes.trimEnd().split("\n");
+    lines[0] = JSON.stringify({ ...JSON.parse(lines[0]) as Record<string, unknown>, ...change });
+    writeFileSync(f.sourcePath, `${lines.join("\n")}\n`);
+    await f.backup();
+    const before = readFileSync(f.path);
+    await assert.rejects(f.run(), /timeline-import-owner-mismatch/u);
+    assert.deepEqual(readFileSync(f.path), before);
+  });
+});
