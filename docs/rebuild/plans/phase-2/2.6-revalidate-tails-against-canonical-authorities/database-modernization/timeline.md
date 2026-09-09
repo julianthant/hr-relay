@@ -7,7 +7,7 @@ integration when assigned, handover and cleanup. Other phases retain their exist
 
 ## Assignment and boundary
 
-The operator explicitly included remaining timeline T2 on 2026-09-09. This is its current pending
+The operator explicitly included remaining timeline T2 on 2026-09-09. This is its current
 execution owner inside [Phase 2.6](README.md). The original
 [timeline plan](history/timeline-t1.md) retains completed T1
 proof/evidence and its original review/gate schedule. T1 is integrated at `46930920696ab214b036d5f2681b8ffb4e5620ea`; consume its
@@ -84,7 +84,7 @@ The combined workflow replaces T2's former per-candidate heavy/review cadence: f
 lint and affected freshness now; every full coverage, architecture, parity, build and recovery proof
 remains due in 2.6.9 with fresh independent review. No operator DB upgrade or live submit is included.
 
-**Execution plan approved 2026-09-09; implementation unstarted.** The operator approved the
+**T scoped development release complete — 2026-09-09.** The exact candidate, proof and C transfer are recorded in the final release section below. Final acceptance remains 2.6.9. The operator approved the
 [T01–T06 execution brief](#approved-execution-brief--2026-09-09) below. It supplements C0's allocation
 and supersedes the earlier saved launch instructions. Launch readiness requires the committed
 approved brief and its documentation gates, plus verified C0/R/T1 ancestry. No implementation
@@ -308,9 +308,9 @@ Resolve the exact conflict rather than transferring it to C or claiming retireme
 Send Done / Now / Remaining at start/resume and after every verified step, keeping all unfinished
 acceptance, final review, integration and cleanup visible.
 
-## T execution checkpoint — 2026-09-09
+## Historical T execution checkpoint — 2026-09-09
 
-**Blocked during T01; no development candidate and no release to C.** The implementation
+**T01 verified; T02–T05 implemented in the working tree with scoped proof in progress. No committed development candidate or release to C.** The implementation
 checkout is `/Users/julianhein/Projects/hr-worktree-database-contracts` on `codex/history-views`,
 created from the approved C0 base `c7b8b1e037bf27dd70d4df62bbfcac407e475631`.
 C0 admission `0010c51c4189f14a8aa61dac55984c2df791045e`, R
@@ -320,14 +320,14 @@ The approved planning commit `52558d04eafca64fe0771b3d8dc995d769f93550` was appl
 `36a20db324c0890ecf277d02b0791fd307996534` (tree
 `540b5e9e707f0daafb90d4569cf9289dbbbfc9aa`). Its two documentation conflicts were resolved
 from the verified C0 release and approved readiness text; both resulting planning files were
-byte-identical to the approved commit before this execution checkpoint was added. No product,
-test, migration or configuration source has changed. Schema39/floor37 remains unchanged.
+byte-identical to the approved commit before implementation edits. The input was schema39/floor37.
+The working implementation appends schema40, requiring stopped conversion through floor39.
 
-### Allocation issue requiring operator disposition
+### Approved allocation amendment
 
 T02/P6/P8 require exact historical outbox and file provenance to survive retirement, and T05
 replaces the current atomic outbox input. The following directly coupled files are absent from
-T's exclusive allocation. The proposed amendment is limited to these existing paths:
+T's exclusive allocation. The operator approved this amendment in the task on 2026-09-09. Additional ownership is limited to these existing paths:
 
 | Proposed additional path | Required bounded work |
 | --- | --- |
@@ -346,7 +346,7 @@ question, not permission to retain a current outbox alias, invent another histor
 weaken the schema, change shared paths unilaterally or drop the required provenance proof.
 
 The approved brief's stop condition for a necessary material ownership change applies. The
-proposal above is **not approved by this checkpoint**. No subordinate agents or reviewer were
+proposal above was approved by the operator’s “approve” response; dependent work may resume. No subordinate agents or reviewer were
 started. The unrelated separation-accounting worktree was preserved. The task lane is retained
 for resumption and has not been released to C.
 
@@ -363,15 +363,24 @@ for resumption and has not been released to C.
   independently of mutable run progress. Its historical accepted proof is consumed, not rerun
   as a new T recovery claim.
 
-T01's checkout/schema checks are complete; its conversion inventory/admission remains open.
-T02 conversion, T03 history queries/export, T04 archive transaction freeze, T05 ledger retirement,
-T06 focused-gated commit/release and all new P1–P9 changed-seam evidence remain unperformed.
-The two new required test files do not exist yet. Full gates, independent review, remaining
+T01's checkout, prerequisites and source inventory are complete. The working implementation adds
+version-2 source manifests while retaining version-1 span grammar, exact historical operation-source
+records, atomic native confirmation settlement, one database history query, explicit exclusive-output
+JSON export and separately authenticated same-row archive transactions. Native ledger/outbox writers
+and tables are retired in schema40. Both required new test files exist and collect meaningful cases.
+
+T02–T04 scoped proofs now include populated multi-day conversion, missing files, disagreement and
+orphan refusal, precommit changed-source rollback, postcommit settlement resume, exact no-write
+repeat, deterministic pinned export and collision refusal, historical archive byte preservation,
+separate enrichment replay/integrity, protected presentation and empty-registry archive rendering.
+T05 shared-owner deletion, no-repeat/UNKNOWN and real restore-loss after worker recovery remain in
+the focused set; current counter consumers and transitive fixture/lint repairs require the pending
+allocation below. T06 is held until required scoped gates pass. No failed gate is waived. Full gates, independent review, remaining
 repairs, operator-assigned master integration and final cleanup remain 2.6.9. No operator database
 upgrade, live submit, master merge, push or successor dispatch occurred.
 
-Checkpoint documentation validation: full `npm run lint` exited 0
-(`/tmp/history-views-baseline-lint.log`); its source/test/configuration inputs are unchanged
+Historical pre-implementation checkpoint validation: full `npm run lint` exited 0
+(`/tmp/history-views-baseline-lint.log`); its source/test/configuration inputs at that checkpoint were unchanged
 from `36a20db324c0890ecf277d02b0791fd307996534`. The documentation-only delta is this
 execution checkpoint. The scoped `roadmap-doc-binding.test.ts` architecture selector passed
 24 tests with exit 0 (`/tmp/history-views-checkpoint-binding.log`). Roadmap generation and
@@ -379,3 +388,259 @@ freshness exited 0 with no generated change (`/tmp/history-views-checkpoint-road
 `/tmp/history-views-checkpoint-freshness.log`). All five owner links/anchors resolved, nine
 existing instruction pairs matched, the maximum project instruction chain was 17,333 bytes,
 and `git diff --check` passed. No full product gate or independent review is claimed.
+
+### Approved transitive repair allocation — 2026-09-09
+
+The required full lint command exposed shared tests/fixtures importing the retired projector or
+repository aliases. The approved exclusive allocation does not include them. Current storage and
+dry-run counter consumers also require four additional source edits. These are required for T's
+retirement and lint gate, not a request to run the final full acceptance suite. The proposed amendment
+is limited to adapting the following paths to confirmed database history while preserving test
+assertions, historical fixture bytes and safety guarantees. No lint suppression or guard weakening
+is authorized by this amendment. The operator approved all 31 paths with “approve” on 2026-09-09. Repair work may proceed.
+
+- `tests/fixtures/archive-seams.ts`
+- `tests/helpers/kuali-finalization-fixtures.ts`
+- `tests/helpers/separations-composition-fixtures.ts`
+- `tests/helpers/ucpath-termination-fixtures.ts`
+- `tests/parity/helpers/seeded-bff.ts`
+- `tests/perf/dashboard-fixture.ts`
+- `tests/scenario/dashboard/separations/world.ts`
+- `tests/scenario/operator-lifecycle.walk.test.ts`
+- `tests/unit/architecture/one-projection-counts.test.ts`
+- `tests/unit/architecture/permanent-key-dedupe.test.ts`
+- `tests/unit/architecture/redaction-surface-scan.test.ts`
+- `tests/unit/architecture/worker-teardown-soak.test.ts`
+- `tests/unit/operation-names.test.ts`
+- `tests/unit/server/bff-flow.test.ts`
+- `tests/unit/server/helpers/dashboard-harness.ts`
+- `tests/unit/server/intake-surface.test.ts`
+- `tests/unit/server/run-queue-projection.test.ts`
+- `tests/unit/sqlite-authority-database.test.ts`
+- `tests/unit/write-recovery.test.ts`
+- `src/domain/dashboard/storage.ts`
+- `src/dashboard/surfaces/settings.tsx`
+- `src/domain/trust/dry-run-scenario.ts`
+- `src/core/dry-run-scenario-runner.ts`
+
+Associated counter/rendering regressions are included in the proposed amendment so the four
+consumer edits can be verified without another allocation change. Historical manifest and backup
+fixtures must retain their old grammar where they deliberately represent released bytes.
+
+- `tests/parity/helpers/fixture-day.ts`
+- `tests/unit/dashboard/settings-storage-doctor.test.ts`
+- `tests/unit/dry-run-scenario-composition.test.ts`
+- `tests/unit/dry-run-scenario-live-read.test.ts`
+- `tests/unit/dry-run-scenario-runner.test.ts`
+- `tests/unit/dry-run-write-safety-counts.test.ts`
+- `tests/unit/architecture/storage-recovery.test.ts`
+- `tests/unit/architecture/strict-boundary-schemas.test.ts`
+
+The final full lint run exited 1 with 95 errors in the 19 unchanged shared files listed above
+(`/tmp/history-views-lint-2.log`); none is in a T-modified file. The four current-counter source
+consumers and eight associated fixture/test files are also unchanged. No lint suppression,
+worker/reviewer dispatch, master integration, push or successor launch occurred.
+
+### Superseded scoped verification checkpoint — release held at that time
+
+The complete 16-file unit command in the approved brief passed 337 tests, exit 0
+(`/tmp/history-views-focused-6.log`). The four assigned architecture files plus document binding
+passed 52 tests, exit 0 (`/tmp/history-views-architecture-5.log`); the final owner-only binding check
+passed 24 tests (`/tmp/history-views-binding-final.log`). Lint over every changed/new source and
+test file passed, exit 0 (`/tmp/history-views-owned-lint-3.log`). These checks are development
+evidence; required full lint remains failed as recorded above.
+
+| Proof | Focused evidence and acceptance boundary |
+| --- | --- |
+| P1 | Native atomic commit and sequenced worker settlement have successful controls and rollback injection at every remaining storage step. Exact replay preserves confirmation; divergent evidence refuses. Unchanged lifecycle composites retain accepted T1 evidence. |
+| P2 | Timeline identity, cursor/restart and retention cases plus two independent real database transaction readers pass. Unchanged T1 lifecycle/SSE evidence is consumed at its recorded commit; broad BFF/concurrency acceptance remains 2.6.9. |
+| P3 | Populated schema39 two-day conversion with/without ledger files; raw outbox provenance; torn/divergent/orphan refusal; changed-source precommit rollback; interrupted postcommit settlement, source-copy resume and no-write repeat. Historical backup schemas 1–18 and 27–39 are admitted; current backup/restore and real recovery-accounting controls pass. |
+| P4 | Confirmations survive ordinary retention. Original/intermediate/final retry deletion preserves shared checkpoints and operations, removes owned history and reports honest source-row tallies. Converted source metadata remains until final ownership ends; Activity/query excludes the deleted owner. Corrupt operation/attempt ownership refuses mutation. |
+| P5 | Activity reports, existing exports, archive detail and current storage restore composition pass their focused cases. Generic Activity scope and protected shapes remain unchanged. Browser/rendering fixture repair is pending the allocation; full parity/build/recovery/scenario acceptance remains 2.6.9. |
+| P6 | One row per confirmed operation/generation; identical timestamps retain distinct identities. System/instance/local-date folds, dry-run/no-repeat/UNKNOWN controls, reconstructed old facts, exact assignments and missing-file evidence pass. |
+| P7 | New and historical same-row transaction sections preserve original archive bytes/digest/replay. Separate enrichment rejects divergent or corrupt content. Protected presentation, explicit unknown values, empty workflow registry and source-file removal controls pass. |
+| P8 | Explicit JSON range/system/output export pins content, refuses existing files and symlinks, and uses private output permissions. Current retired tables and writer/read-through repositories are absent. Historical invariant/retirement guards have violating controls. Current legacy-named counter consumers await allocation; full lint is not waived. |
+| P9 | Released migration1–39 fingerprints, settings/credential independence, tombstones, checkpoint replay, non-terminal archive/delete admission and UNKNOWN no-repeat behavior pass focused checks. Unrelated notes/artifact/run-terminal behavior remains with its existing owners; broad acceptance remains 2.6.9. |
+
+Affected generation and freshness passed: `npm run build:manifest`, `npm run build:manifest:check`,
+`npm run stores:catalog`, `npm run stores:catalog:check`, `npm run roadmap`, `npm run roadmap:check`.
+Generation produced no final tracked change to the generated outputs. Logs use
+`/tmp/history-views-{manifest,stores,roadmap}-{generate,check}.log` (latest manifest generation
+uses `manifest-generate-2.log`). `npm run cli -- storage transactions --help` passed, exit 0
+(`/tmp/history-views-cli-help.log`), without opening operator authority. Nine instruction twins
+remain byte-identical; whitespace checks pass.
+
+The implementation remained uncommitted on `codex/history-views` at checkpoint HEAD
+`36de85ed7e5388f4ee1de450fc4a958461626866` (HEAD tree
+`5bac8fd11f83d71a7a4edbd51e4d5deabd0aa95d`). No development candidate had been released at that checkpoint.
+The exact uncommitted tree and resume state were recorded in the temporary handoff
+`docs/handoffs/2026-09-09-history-views-transitive-repairs.md`. The worktree remains reserved for
+this task until the approved repairs and T are completed. Master remains
+`52558d04eafca64fe0771b3d8dc995d769f93550`; the unrelated separation-accounting worktree
+remains at `c20afe60a6450ac0d569fc317e81715cd645659d`.
+
+Resume verified the exact uncommitted snapshot tree `c5a95a72532be993d933c79520a92f14a7bbb990`
+with an isolated temporary index; the real index remained untouched. The operator approved the
+31-path transitive amendment. Its temporary handoff was consumed and removed; the repair and
+release obligations above remain active in this owner.
+
+
+## Final T development release to 2.6.5 C — 2026-09-09
+
+**T01–T06 are complete within the Phase 2.6 development scope.** This release supplies a working
+candidate to C, not phase acceptance. One supervisor performed the work, with zero implementation
+workers and no intermediate reviewer. The operator approved both bounded allocation amendments;
+the 31-path transitive repair amendment is implemented. The temporary dashboard-harness duplicate
+was consolidated into the allocated shared harness and removed. The consumed recovery handoff was
+verified against its exact tree and removed.
+
+| Identity | Exact value |
+| --- | --- |
+| C0 implementation base | `c7b8b1e037bf27dd70d4df62bbfcac407e475631` |
+| Approved planning commit | `52558d04eafca64fe0771b3d8dc995d769f93550` |
+| Applied planning commit | `36a20db324c0890ecf277d02b0791fd307996534` |
+| Development candidate head | `ede8ccd4a2398288ac91a6186ee77e4d3050746f` |
+| Development candidate tree | `792dcfaeea54f664ceaf3f93a017114070ba565a` |
+| Branch | `codex/history-views` |
+| Released checkout | `/Users/julianhein/Projects/hr-worktree-database-contracts` |
+| Next consumer | `2.6.5 C`, `codex/run-completion`, using this same physical lane only after its own availability check |
+
+The approved brief and PROMPTS bytes at the applied planning commit were compared again with the
+approved planning commit: no difference. C0/R/T1 prerequisite ancestry remains valid. The candidate
+contains 80 explicitly staged implementation/test/guard paths. This recording commit changes only
+this owner; candidate runtime, tests, configuration and dependency inputs remain unchanged.
+
+### Delivered interfaces and preservation
+
+- Schema40/floor39 requires stopped, explicitly backed-up conversion for the prior layout.
+  Migrations1–39 retain their pinned statement bytes. Current tables and repositories no longer
+  include `ledger_partitions`, `ledger_projections`, `operation_outbox`, `durableOutbox` or
+  `ledgerProjection`; current file writer/read-through modules are deleted.
+- `timeline_operation_sources` retains strict version1 historical source rows: exact old ledger/span
+  outboxes, assignment/partition, source manifest/backup binding and file identity when present.
+  Version2 source manifests admit ledger bytes; released version1 span-only manifests remain strict.
+  Both backup inspection and historical read-only admission validate retired rows and invariants.
+- `createTransactionHistory` takes narrow read repositories and supplies the one pinned query,
+  Activity fold and archive capture. Immutable attempts/checkpoints authenticate each confirmation.
+  No current file, setting or workflow registry reconstructs historical transaction identity.
+- Current atomic settlement takes `transaction` and `committedSpan` facts, atomically commits the
+  checkpoint and confirmation, and creates no operation outbox IDs. Dry-run runtime counts now use
+  `confirmedOperations`; released zero-outbox scenario manifests explicitly map to zero confirmations.
+  Current storage pending-count wire/Settings/CLI omit the retired counter. Shared test footprint
+  field `outboxes` is retained only as a fixture interface and now contains real confirmations.
+- `archived_runs.transactions_json` and `transactions_digest` freeze the separately authenticated
+  section in the same row. Original archive JSON, content digest, issued references and command
+  replay remain unchanged. A must transfer this section into its later generic saved report; T adds
+  no archive.sqlite model. L/A must extend saved-history queries without double counting or
+  resurrecting explicitly deleted owners.
+- `storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH`
+  emits deterministic public presentation from one pinned snapshot, uses exclusive private output,
+  and refuses existing paths and symlinks. Existing Activity CSV/XLSX shapes remain unchanged.
+
+### Final focused proof
+
+The 27-file unit run and 11-file architecture run tested working tree
+`71d3b50d766c05f2647c45d57123237e0edf2772`. Guard-manifest verification subsequently found a
+**type-import cycle** between the database and query. The query now declares a narrow read interface
+from leaf domain/event types. TypeScript transpilation proved before/after emitted JavaScript
+byte-identical (`/tmp/history-type-only-equivalence.log`). The final query, archive and Activity
+selectors, guard manifest and full lint were rerun on tree
+`ab3dea93a906b093af426ab732f996405b11b5ee`. That tree differs from the committed development
+candidate only in this owner document. The earlier tree differs in the type-only query seam and
+owner/guard evidence text. Unchanged executable evidence is reused explicitly, not claimed as a
+second complete run.
+
+| Command/evidence | Result | Log |
+| --- | --- | --- |
+| Unit command below: original required16 plus11 transitive files | PASS, 27 files / 754 tests, exit0 | `/tmp/history-final-unit.log` |
+| Architecture command below: required guards plus transitive guards | PASS, 11 files / 193 tests, exit0 | `/tmp/history-final-architecture.log` |
+| `VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/guard-manifest.test.ts` | PASS, 6 tests, exit0; every active ratchet and its violating control executed | `/tmp/history-final-guard-manifest-2.log` |
+| `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/transaction-history.test.ts tests/unit/transaction-export.test.ts tests/unit/archive-model.test.ts tests/unit/server/activity-report.test.ts` | PASS, 68 tests, exit0 after the type-only repair | `/tmp/history-final-query-interface.log` |
+| Scenario command below | PASS, 7 files / 68 tests, exit0 | `/tmp/history-transitive-scenario.log` |
+| `npm run lint` | PASS, exit0, no suppression | `/tmp/history-final-lint-2.log` |
+| `VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS, 24 tests, exit0 for this release record | `/tmp/history-release-doc-binding.log` |
+| `npm run build:manifest` and `npm run build:manifest:check` | PASS, exit0, no generated delta | `/tmp/history-final-manifest-generate-2.log`, `/tmp/history-final-manifest-check-2.log` |
+| `npm run stores:catalog` and `npm run stores:catalog:check` | PASS, exit0, no generated delta | `/tmp/history-final-stores-generate.log`, `/tmp/history-final-stores-check-2.log` |
+| `npm run roadmap` and `npm run roadmap:check` | PASS, exit0, no generated delta; repeated for this owner record | `/tmp/history-final-roadmap-generate.log`, `/tmp/history-final-roadmap-check.log` |
+| `npm run cli -- storage transactions --help` | PASS, exit0 through secure bootstrap, no operator database opened | `/tmp/history-final-cli-help.log` |
+
+Exact suite invocations (all from the released checkout):
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/write-sequencer-restart-no-repeat.test.ts tests/unit/write-sequencer.test.ts tests/unit/archive-ledger-read-through.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-model.test.ts tests/unit/ledger-activity-fold.test.ts tests/unit/ledger-projector.test.ts tests/unit/events/timeline-history.test.ts tests/unit/server/activity-report.test.ts tests/unit/server/activity-export.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/transaction-history.test.ts tests/unit/transaction-export.test.ts tests/unit/operation-names.test.ts tests/unit/sqlite-authority-database.test.ts tests/unit/write-recovery.test.ts tests/unit/dry-run-write-safety-counts.test.ts tests/unit/dry-run-scenario-runner.test.ts tests/unit/dry-run-scenario-composition.test.ts tests/unit/dry-run-scenario-live-read.test.ts tests/unit/dashboard/settings-storage-doctor.test.ts tests/unit/server/run-queue-projection.test.ts tests/unit/server/intake-surface.test.ts tests/unit/server/bff-flow.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/atomic-write-outbox.test.ts tests/unit/architecture/ledger-projector.test.ts tests/unit/architecture/archive-invariants.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/one-projection-counts.test.ts tests/unit/architecture/permanent-key-dedupe.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/worker-teardown-soak.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project scenario --maxWorkers=1 tests/scenario/dashboard/separations tests/scenario/operator-lifecycle.walk.test.ts tests/scenario/workflows/separations/structural.scenario.test.ts tests/scenario/workflows/separations-ucpath-termination/structural.scenario.test.ts tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts
+```
+
+| P row | Final development evidence and remaining acceptance |
+| --- | --- |
+| P1 | Real atomic and sequenced settlement success/rollback controls, exact/divergent replay, recovery continuation and UNKNOWN refusal pass. Unchanged lifecycle composites consume accepted T1 evidence. |
+| P2 | Timeline cursor/restart/retention, independent database readers, BFF flow, queue/run projection and scenario composition pass. Full cross-task event scope remains final 2.6.9. |
+| P3 | Populated multi-day schema39 and completed historical rename fixtures, missing files, exact source copies, torn/divergent/orphan refusal, precommit rollback, postcommit resume and no-write repeat pass. Real restore loss remains visible after worker recovery. |
+| P4 | Original/intermediate/final retry deletion preserves reusable evidence, removes owner history, reports honest source tallies and refuses corrupt ownership. Deleted transactions do not reappear. |
+| P5 | Shared SQLite-backed dashboard, archive, recovery, scenario and performance fixtures are adapted and pass lint; BFF/scenario regressions and focused rendering below pass. Complete performance/build/parity acceptance remains final 2.6.9. |
+| P6 | One count per operation/generation, timestamp collisions, prod/test/system/local-date folds, protected identities, dry-run/observed-present/replay exclusion and missing-file preservation pass. |
+| P7 | New/historical frozen transactions retain original archive bytes/digests, exact enrichment replay and canonical membership. Divergent/corrupt sections refuse; protected/unknown presentation and empty registry/source removal pass. |
+| P8 | Explicit pinned JSON and existing Activity exports pass; exclusive output and symlink controls pass. Current writer/read-through/table/repository retirement has violating guards. Runtime pending/dry-run consumers are adapted. |
+| P9 | Released migration fingerprints, historical strict admission, settings/credentials, tombstones, operation identity/proof, checkpoint replay, archive/delete admission, terminal outbox and UNKNOWN behavior pass the focused set. Full combined compatibility remains final 2.6.9. |
+
+### Rendering evidence and explicit finalizer repair
+
+The `/ui` lead remained local Components. The only visible T change removes the retired doctor
+counter from the existing count grid. The specimen and loaded Storage health surface were opened
+with the owned `history-views-ui` playwright-cli session against an isolated fixture server and the
+built working-tree dashboard. Role/text checks found all six remaining counters and no retired
+counter. Inspected captures at 1440×900 Graphite Warm and 1024×768 Paper Ink show readable labels,
+values and degraded-state content. Captures: `/tmp/history-storage-doctor-1440.png`,
+`/tmp/history-storage-doctor-1024.png`; assertion transcript `/tmp/history-storage-rendering.log`,
+accessibility snapshots `/tmp/history-storage-doctor.a11y.log` and
+`/tmp/history-storage-doctor-1024.a11y.log`. The owned browser and server were stopped.
+
+`npm run test:parity -- tests/parity/panel-heading-accessibility.spec.ts tests/parity/archive-accessibility.spec.ts --workers=1`
+ran seven browser tests successfully, but its wrapper exited1 because this filter emits no required
+body-backed reference attachment. A second existing-reference run used:
+
+```sh
+npm run test:parity -- tests/parity/dashboard-reference.spec.ts tests/parity/panel-heading-accessibility.spec.ts tests/parity/archive-accessibility.spec.ts --grep '1440x900.*(activity-report|archive-run|settings$)|PanelHeader|archive warning count' --workers=1
+```
+
+It exited1: eight reference cases stopped at descriptor metadata and three interaction cases passed.
+Stored reference hash `3e459f4b09a28d4992efe712a98310053030f263ac11d9c0610234142f2c8df9`
+differs from actual `6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e`.
+A read-only import of `FIXTURE_DESCRIPTOR_HASH` from the clean approved primary checkout at
+`52558d04eafca64fe0771b3d8dc995d769f93550` returned the same actual hash. This is evidenced
+baseline drift, not a passing parity gate; pixel comparison was not reached. No reference was
+refreshed, suppressed or weakened. Final2.6.9 owns deliberate reference reconciliation (including
+the now-removed doctor counter) and the complete parity/build gate. Logs:
+`/tmp/history-parity-focused.log`, `/tmp/history-parity-focused-2.log`.
+
+### Release conditions and remaining work
+
+This record releases T's exclusive checkout ownership once committed with a clean index/worktree.
+Retain `codex/history-views` and its candidate history. C may consume the recorded candidate and
+release record only in an operator-started task after verifying its own approved brief and the
+clean physical lane. No successor was created or dispatched; shared readiness indices were not
+rewritten. Master remains `52558d04eafca64fe0771b3d8dc995d769f93550`; the unrelated
+separation-accounting worktree remains at `c20afe60a6450ac0d569fc317e81715cd645659d`.
+Nine instruction pairs remain byte-identical, maximum project chain 17,333 bytes, all five owner
+links resolve, and whitespace checks pass. No instruction, dependency or operator state changed.
+
+Full typecheck, complete coverage/architecture/scenario/performance/recovery/parity/build gates,
+remaining combined repairs, fresh independent read-only review, operator-assigned master
+integration and final cleanup are **still required in 2.6.9**. T performed no master merge, push,
+operator database upgrade, live submit or independent review. No heavy gate is waived by this
+scoped release.
+
+Proof log SHA-256 values (transcripts are local supporting evidence; commands/results above are
+the durable record):
+
+```text
+b31cfb7eb7cfb146055ccfa769227d06254fd8387f23a3c3ee0588c65b60e229  /tmp/history-final-unit.log
+a504e400156859838932b6413211fc05eb89163ce12ded668dcb701ff8052eec  /tmp/history-final-architecture.log
+271960db19dc37edc7c1a201efed4ef9acc9502d2cb0b14ee78bf7572fa5c7ce  /tmp/history-final-guard-manifest-2.log
+942c4fac1b0cb78c236c0057f7a809ebdb0837b5b5f7b685fd785d343e935d5b  /tmp/history-final-query-interface.log
+9f2f830346c57a1969995764f267188f39b480ea5a0d5db0c4648410b4d5ed0d  /tmp/history-transitive-scenario.log
+7ddb1ed4692d7f46ded772bee29d287ee65a7f38e09708bb0ca19a4c7f9c695f  /tmp/history-final-lint-2.log
+a21e077416a415b41d44b9465f108a28f67d141317913a0e76a3493a45d08bdb  /tmp/history-parity-focused-2.log
+8ae61d2c2e133bed4eeff1fa9eeef8945798bbaa7b6f3725fab080e6ff65d8d0  /tmp/history-storage-rendering.log
+```
