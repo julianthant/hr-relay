@@ -95,6 +95,8 @@ describe("F imported-artifact baseline contracts", () => {
         a.intakeSessions.create(session()); a.intakeManifests.insert(manifest());
         a.intakeSessions.update({ ...session(), state: "enqueued", intakeManifestId: id(11), version: 2 });
       });
+      const raw = new DatabaseSync(join(root,"state.db"));
+      try { assert.throws(() => raw.exec("INSERT OR REPLACE INTO imported_artifacts SELECT * FROM imported_artifacts"), /insert conflicts/u); } finally { raw.close(); }
       const frozen = canonicalJsonStringify(db.authority.intakeManifests.get(id(11)));
       const savedGeneration = db.getMeta().authorityGeneration;
       assert.equal(db.authority.intakeManifests.insert(manifest()).state, "existing");

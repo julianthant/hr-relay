@@ -1,7 +1,6 @@
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
-import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +21,7 @@ import { runRuntimeMatches } from "../../../src/core/run-claim-admission.js";
 import { createRunResourcesFactory } from "../../../src/server/worker/run-resources.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { foundationFixture,failure,update,NOW,HASH,id } from "./fixtures.js";
+import { foundationFixture,failure,terminalizeFixtureFailure,update,NOW,HASH,id } from "./fixtures.js";
 
 type Fixture=ReturnType<typeof foundationFixture>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
@@ -36,11 +35,9 @@ const flows={
   assert.equal(f.db.authority.providerAdmissions.get(id(60))?.lifecycle.state,"settled");
  },
  async D(f:Fixture){
-  const record=failure();const capture=bindFailureCapture(createRunDiagnosticCapture({service:createDiagnosticCaptureService({artifacts:artifacts(f),authority:f.db.authority,clock:f.clock,ids:sequentialIdFactory("d")})}));
+  const run=f.createRun(id(81));const record={...failure(),runId:run.envelope.runId,traceId:run.envelope.traceId};const capture=bindFailureCapture(createRunDiagnosticCapture({service:createDiagnosticCaptureService({artifacts:artifacts(f),authority:f.db.authority,clock:f.clock,ids:sequentialIdFactory("d")})}));
   const bundle=await capture.captureForFailure({failure:record,configFingerprint:f.snapshot.fingerprint,descriptorFingerprint:HASH});
-  const seed=new DatabaseSync(f.path);
-  try{seed.prepare("INSERT INTO run_failures(record_key,run_id,fingerprint,record_json,created_at) VALUES(?,?,?,?,?)").run(record.failureId,record.runId,record.fingerprint,JSON.stringify({...record,diagnosticBundleId:bundle.bundleId}),record.occurredAt);}finally{seed.close();}
-  f.db.withAuthorityTransaction(()=>capture.persist(bundle));
+  f.db.withAuthorityTransaction(()=>{terminalizeFixtureFailure(f,run,{...record,diagnosticBundleId:bundle.bundleId});capture.persist(bundle);});
   const api=composeFailureResolution(f.db.authority);assert.equal(api.query.getFailure(record.failureId)?.writeState,"unknown");assert.deepEqual(api.query.read(record.runId,record.failureId)?.resolution,{status:"unresolved",version:1});assert.equal(api.commands.capability().state,"unavailable");
   assert.deepEqual(f.db.authority.diagnosticBundles.get(bundle.bundleId),bundle);
  },

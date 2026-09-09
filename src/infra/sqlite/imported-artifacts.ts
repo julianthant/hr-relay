@@ -21,6 +21,9 @@ export const IMPORTED_ARTIFACT_DDL = `CREATE TABLE imported_artifacts (
   CHECK(created_at IS json_extract(record_json,'$.createdAt'))
 ) STRICT`;
 export const IMPORTED_ARTIFACT_TRIGGERS = [
+  `CREATE TRIGGER imported_artifacts_insert_conflict BEFORE INSERT ON imported_artifacts
+   WHEN EXISTS(SELECT 1 FROM imported_artifacts WHERE record_key=NEW.record_key OR session_id=NEW.session_id OR manifest_id=NEW.manifest_id)
+   BEGIN SELECT RAISE(ABORT,'imported artifact insert conflicts with retained identity'); END`,
   `CREATE TRIGGER imported_artifacts_submission_retained BEFORE DELETE ON imported_artifacts
    WHEN json_type(OLD.record_json,'$.submittedJson') = 'text'
    BEGIN SELECT RAISE(ABORT,'submitted imports are never deleted'); END`,

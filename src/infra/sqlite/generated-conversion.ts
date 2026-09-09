@@ -22,6 +22,9 @@ export const GENERATED_ARTIFACT_DDL = `CREATE TABLE generated_artifacts (
  CHECK((sink_id IS NULL) <> (export_id IS NULL))
 ) STRICT`;
 export const GENERATED_ARTIFACT_CONSTRAINTS = [
+ `CREATE TRIGGER generated_artifact_insert_conflict BEFORE INSERT ON generated_artifacts
+ WHEN EXISTS(SELECT 1 FROM generated_artifacts WHERE record_key=NEW.record_key OR sink_id=NEW.sink_id OR export_id=NEW.export_id)
+ BEGIN SELECT RAISE(ABORT,'generated artifact insert conflicts with immutable evidence'); END`,
  `CREATE TRIGGER generated_artifact_evidence_immutable BEFORE UPDATE ON generated_artifacts
  WHEN NEW.record_key IS NOT OLD.record_key OR NEW.sink_id IS NOT OLD.sink_id OR NEW.export_id IS NOT OLD.export_id
  OR NEW.created_at IS NOT OLD.created_at OR NEW.version != OLD.version+1

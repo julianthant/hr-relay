@@ -697,3 +697,16 @@ its repository worker configuration. Mandatory committed reruns remain distinct 
 Full typecheck, coverage, whole architecture, broad parity/build/performance and independent review
 were not run. They remain 2.6.9 duties, including inherited T incomplete reviews and measured
 performance failures (5,574 > 5,569 day statements; 3,234 > 13 archive freeze statements).
+
+
+The first committed expanded focused run found seven export-service failures (941 passed): its
+raw SQL assertions still addressed the retired export table. Updating those assertions exposed a
+real replacement bypass, repaired with explicit BEFORE INSERT conflict guards for generated,
+imported and provider identities/accounting even when recursive triggers are disabled. Historical
+migration pins through41 remain unchanged; only unreleased F migration pins were refreshed.
+The direct annotation rollback/CAS proof also required a valid terminal fixture. F fixtures now
+use real claim/terminal transitions, with D on a separate run/worker in each paired scenario;
+no invalid running-run failure row substitutes for the production lifecycle. The 30-case targeted
+repair run passed; full committed focused rerun follows. These are implementation/fixture defects
+within approved F scope, not changed product requirements. The export-service test is a necessary
+closure of G's existing allocated baseline; it preserves every old assertion's purpose.

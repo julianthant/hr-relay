@@ -35,6 +35,14 @@ export const PROVIDER_USAGE_DDL = `CREATE TABLE provider_usage (
 ) STRICT`;
 export const PROVIDER_STORAGE_CONSTRAINTS = [
  `CREATE UNIQUE INDEX provider_usage_scope_meter ON provider_usage(json_extract(record_json,'$.scope.id'),json_extract(record_json,'$.meter')) WHERE json_extract(record_json,'$.kind')='generic'`,
+ `CREATE TRIGGER provider_requests_insert_conflict BEFORE INSERT ON provider_requests
+ WHEN EXISTS(SELECT 1 FROM provider_requests WHERE record_key=NEW.record_key)
+ BEGIN SELECT RAISE(ABORT,'provider request insert conflicts with retained identity'); END`,
+ `CREATE TRIGGER provider_usage_insert_conflict BEFORE INSERT ON provider_usage
+ WHEN EXISTS(SELECT 1 FROM provider_usage WHERE record_key=NEW.record_key OR
+ (json_extract(record_json,'$.kind')='generic' AND json_extract(NEW.record_json,'$.kind')='generic'
+ AND json_extract(record_json,'$.scope.id')=json_extract(NEW.record_json,'$.scope.id') AND json_extract(record_json,'$.meter')=json_extract(NEW.record_json,'$.meter')))
+ BEGIN SELECT RAISE(ABORT,'provider usage insert conflicts with retained accounting'); END`,
  `CREATE TRIGGER provider_requests_identity_immutable BEFORE UPDATE ON provider_requests
  WHEN NEW.record_key IS NOT OLD.record_key OR NEW.run_id IS NOT OLD.run_id OR NEW.capability IS NOT OLD.capability
  OR NEW.config_snapshot_id IS NOT OLD.config_snapshot_id OR NEW.config_fingerprint IS NOT OLD.config_fingerprint
