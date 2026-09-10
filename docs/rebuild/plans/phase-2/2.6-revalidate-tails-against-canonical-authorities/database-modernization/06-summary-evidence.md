@@ -1,10 +1,10 @@
 # Q run summaries — scoped release evidence
 
-Status: **Q01–Q05 focused PASS; committed candidate awaiting Q06 local integration**. Independent review is explicitly deferred to 2.6.9. Full gates and independent review remain assigned to 2.6.9.
+Status: **Q01–Q06 complete as a scoped development release: focused PASS, locally integrated, owned cleanup verified.** Full gates and independent review remain assigned to 2.6.9.
 
 ## Binding and current state
 
-The approved Q01–Q06 brief is `decisions.md` at instructions commit `1d4629c358f3ba35a6603e118373abf777967415`. Product base is `42df5095160e1ff448e76c155a048134ec395ba5`, with repaired L implementation `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57` verified as an ancestor. The checkout is `/Users/julianhein/Projects/hr-worktree-database-other`, branch `codex/run-summaries`.
+The approved Q01–Q06 brief is `decisions.md` at instructions commit `1d4629c358f3ba35a6603e118373abf777967415`. Product base is `42df5095160e1ff448e76c155a048134ec395ba5`, with repaired L implementation `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57` verified as an ancestor. The owned checkout was `/Users/julianhein/Projects/hr-worktree-database-other`, branch `codex/run-summaries`; both were removed after verified local integration.
 
 Q changes its three production files, five unit files, performance script and this record. The operator additionally authorized the two prerequisite regression-test repairs below. No shared contract, shared fixture harness, migration bytes, registry, dashboard route or operator database was changed. The temporary handoff was consumed, its unique state retained here, and removed. There are no implementation/reviewer agents, pushes or sibling dispatches. Master was initially in another owner's documentation merge conflict; that owner completed it. Before integration master was clean at `6d2ab9201bc454cd893053d2e63416b938163440`. A subsequently created its separate `hr-worktree-database-peer` checkout; Q preserves it and its branch.
 
@@ -13,11 +13,11 @@ Q changes its three production files, five unit files, performance script and th
 | Step | State and evidence |
 | --- | --- |
 | Q01 | Complete: fixed-base ancestry, ownership/capacity and consumer mapping; baseline measurements retained. |
-| Q02 | Implemented with owned mutation tests: heartbeat/no-op suppression, creation, presentation, parent/dependency updates, batch grouping, receipt replay, cancellation, timeline append/replay and rollback. L failure-resolution tests also pass. Complete acceptance remains subject to the assigned regression gates. |
+| Q02 | Implemented with owned mutation tests: heartbeat/no-op suppression, creation, presentation, parent/dependency updates, batch grouping, receipt replay, cancellation, timeline append/replay and rollback. L failure-resolution tests also pass. The complete assigned regression gates passed. |
 | Q03 | Implemented: atomic rebuild, independent snapshots, blocked writers, interruption after partial insertion, rollback/restart, missing rows, old/corrupt digest refusal, explicit rebuild recovery. |
 | Q04 | Implemented: bounded state/workflow partition pages, status/range/parent/batch filters, top-level member exclusion, selected-set Activity, distinct identities across days, retry/member eligibility, lower median, warning availability, timezone and retained-projector equivalence. V still owns real route/export composition; existing served surfaces were not switched. |
 | Q05 | Complete: full scoped batch PASS, baseline fixture/pin repairs approved, candidate SHA/tree frozen below. |
-| Q06 | Not started: local integration, invalidated integration checks and owned worktree/branch removal remain with Q after focused PASS. |
+| Q06 | Complete: local merge `cb3675770`, integrated input identity and affected checks PASS; owned path, registration and branch verified absent. |
 
 ## Gate results
 
@@ -67,3 +67,13 @@ The missing prerequisite fixture/pin updates are planning/preflight omissions: t
 - Exact commands/exits: `amended-gates.json` plus `amended-unit.log` (unit command printed in the runner log); all exit 0. Candidate input hashes: `amended-tested-inputs.json`. All 2,087 recorded inputs match the committed candidate.
 - Documentation-only evidence recording reuses those executable results on verified identical hashes, rerunning roadmap binding/freshness, instruction pairs/chains, local links and whitespace. No new relative links were introduced; the evidence owner and instruction SHA paths resolve.
 - No reviewer was dispatched under the approved Q exception. This is a scoped development release, awaiting independent review and full combined acceptance at 2.6.9.
+
+## Verified local integration and cleanup
+
+Release/evidence tip `52ab28b6711f3310a6ee7fcfee103da2e5b1cd7a` (tree `ef69226232c5f64508727acef4f9fec029eeb53b`) merged without conflicts into clean master `6d2ab9201bc454cd893053d2e63416b938163440`. Integration commit is `cb36757703873d7da0c571a126bf3676894dd2db`, tree `ccd13d5b8f1aaa5602e10318b48b6ab8acb7d3fe`.
+
+`integration-inputs.json` verifies every one of the 2,087 frozen executable/test/tooling hashes on that integration. Relative to the candidate, master adds only five previously approved planning/governance Markdown changes; their paths are retained in that receipt. Unit, lint and synthetic performance results are reused on input identity. The exact three-file architecture batch reran **32/32 PASS**; manifest, store catalog and roadmap generation/check pairs, instruction-pair/chain audit and whitespace all passed with unchanged generated output (`integration-gates.json`). No full gate or independent review is represented by this reuse.
+
+Cleanup followed gate acceptance and ancestry verification. Q had no uncommitted tracked/untracked content and zero unique commits. Its only ignored content was the owned `node_modules` symlink, removed without touching the dependency target. Ordinary `git worktree remove` and `git branch -d` succeeded. `cleanup.json` verifies the physical Q path, registration and branch ref absent. A's active `hr-worktree-database-peer` / `codex/archive-transfer` remained intact. No task was archived, no push or sibling/next-task dispatch occurred. Synthetic evidence remains outside the removed checkout at the retained evidence root.
+
+Final completion recording changes only this evidence file. `completion-gates.json` records the rerun roadmap binding (24 tests), roadmap generation/freshness, instruction pair/chain audit and whitespace checks; executable hashes remain identical. This closes Q only. V may consume Q's actual integrated release when its other prerequisites are met; route/export composition remains V-owned, and complete combined review/full gates remain 2.6.9.
