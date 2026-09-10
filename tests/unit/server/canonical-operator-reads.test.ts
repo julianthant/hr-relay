@@ -1,3 +1,4 @@
+import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
@@ -326,25 +327,29 @@ it.each([
   if (planned.state !== "applied") throw new Error("plan not applied");
   const target = planned.affectedTargets.find(value => value.family === "version-archive");
   assert.ok(target?.family === "version-archive");
-  const plan = f.database.authority.versionPlans.get(target.versionPlanId); assert.ok(plan);
+  const plan = f.database.readVersionChange(target.versionPlanId); assert.ok(plan);
   f.resetListCalls();
   const applied = CommandResultSchema.parse(kernel.execute({ ...envelope, commandId: uuidOf(7502), type: "apply-version-bump",
-    target: { versionPlanId: plan.versionPlanId, expectedVersion: plan.version }, payload: { planFingerprint: plan.planFingerprint },
+    target: { versionPlanId: plan.changeId, expectedVersion: 1 }, payload: { planFingerprint: plan.reviewFingerprint },
   }));
   assert.equal(applied.state, "applied", JSON.stringify(applied));
   for (const run of runs) {
     const existence = f.reader.read(run.envelope.runId);
     assert.ok(existence.state === "present" && existence.disposition === "archived");
   }
-  const frozen = f.database.authority.archivedRuns.get(parent.envelope.runId);
-  assert.ok(frozen?.row.surfaceKind === "operation");
-  assert.deepEqual(frozen.row.memberRunIds, [child.envelope.runId]);
-  assert.deepEqual(frozen.row.memberRollup, { total: 1, terminal: 1, failed: 0 });
-  assert.equal(frozen.sections?.people.state, "present");
-  if (frozen.sections?.people.state !== "present") throw new Error("missing frozen people");
-  assert.equal(frozen.sections.people.value.total, 1);
-  assert.deepEqual(frozen.sections.people.value.members.map(({ runId, parentRunId, status }) =>
-    ({ runId, parentRunId, status })), [{ runId: child.envelope.runId, parentRunId: parent.envelope.runId, status: "cancelled" }]);
+  const frozen = createRunLifecycleStorage(f.database).readReport(parent.envelope.runId); assert.ok(frozen);
+  const section = frozen.content.sections.find(section => section.title === "Displayed run"); assert.ok(section?.kind === "values");
+  const value = (label: string) => section.values.find(cell => cell.label === label)?.value;
+  assert.equal(value("row.surfaceKind"), "operation");
+  assert.equal(value("row.memberRunIds.0"), child.envelope.runId);
+  assert.equal(value("row.memberRollup.total"), 1);
+  assert.equal(value("row.memberRollup.terminal"), 1);
+  assert.equal(value("row.memberRollup.failed"), 0);
+  assert.equal(value("sections.people.state"), "present");
+  assert.equal(value("sections.people.value.total"), 1);
+  assert.equal(value("sections.people.value.members.0.runId"), child.envelope.runId);
+  assert.equal(value("sections.people.value.members.0.parentRunId"), parent.envelope.runId);
+  assert.equal(value("sections.people.value.members.0.status"), "cancelled");
   assert.equal(f.listCalls(), 1, "archive batch enumeration must not grow with candidate count");
 });
 

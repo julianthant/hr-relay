@@ -1,3 +1,4 @@
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 /**
  * D258 — TWO executions at ONE span identity, and the id that has to tell them
  * apart (ref dashboard-surfaces §2.3; separations §9.22 item 6).
@@ -96,9 +97,10 @@ function poisonedWorld(): DashboardWorld {
   // The gate park and its resume: a second execution of the SAME node, inside
   // one attempt, at an identity nothing distinguished before D214.
   executeOnce(w, 4243, 9_000);
-  w.authority.put(runRecordOf({
-    seed: SEED,
-    lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) },
+  const endedAt = instantOffsetOf(0, 60_000);
+  w.authority.put(RunRecordSchema.parse({ ...runRecordOf({ seed: SEED }),
+    lifecycle: { state: "terminal", outcome: "done", endedAt }, version: 2, claimGeneration: 1, updatedAt: endedAt,
+    completion: { schemaVersion: 1, kind: "done", expectedVersion: 1, claim: { workerId: "worker-1", claimGeneration: 1 }, authorizedAt: endedAt, resultDigest: "a".repeat(64) },
   }));
   return w;
 }

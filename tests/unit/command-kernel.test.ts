@@ -1,6 +1,9 @@
+import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
+import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
+import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
+import { projectArchiveReport } from "../../src/infra/sqlite/archive-records.js";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../fixtures/phase1c-contract-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../src/core/run-record-service.js";
 /**
@@ -82,10 +85,7 @@ import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import {
-  ARCHIVED_RUN,
   UNWIRED_ARCHIVE_SNAPSHOTS,
-  VERSION_BUMP_APPLICATION,
-  VERSION_PLAN_ROW,
 } from "../fixtures/archive-fixtures.js";
 import { createExplorerEditService } from "../../src/server/dashboard/commands/explorer-edit-service.js";
 import { createExplorerOverrideStore } from "../../src/server/dashboard/commands/explorer-override-store.js";
@@ -413,7 +413,7 @@ function runCommand(type: string, runId: string, expectedVersion: number, extra?
   };
 }
 
-function applySettingsRequiringRestart(harness: Harness): void {
+function applyCurrentSettings(harness: Harness): void {
   const patch = { "browser.headless": { set: false } } as const;
   harness.kernel.execute({
     commandId: nextCommandId(),
@@ -464,57 +464,55 @@ function commandFixture(family: CommandRequest["family"], type: string): Command
   return CommandRequestSchema.parse(fixture);
 }
 
-describe("settings restart fence", () => {
-  it("refuses intake run fan-out after settings make this runtime stale", () => {
+describe("settings activation and target fences", () => {
+  it("activates settings while refusing an absent intake target", () => {
     const harness = createHarness();
-    applySettingsRequiringRestart(harness);
+    applyCurrentSettings(harness);
     const fixture = commandFixture("intake", "enqueue-intake-manifest");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
-    assert.throws(
-      () => harness.kernel.execute(command),
-      /dashboard runtime settings are stale; restart activation is required/u,
-    );
+    assert.doesNotThrow(() => harness.database.authority.runtimeConfig.requireSettingsCurrent());
+    const result = harness.kernel.execute(command);
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "target-not-found");
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 
-  it("refuses retry run fan-out after settings make this runtime stale", () => {
+  it("activates settings while refusing an absent retry target", () => {
     const harness = createHarness();
-    applySettingsRequiringRestart(harness);
+    applyCurrentSettings(harness);
     const fixture = commandFixture("run", "retry");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
-    assert.throws(
-      () => harness.kernel.execute(command),
-      /dashboard runtime settings are stale; restart activation is required/u,
-    );
+    assert.doesNotThrow(() => harness.database.authority.runtimeConfig.requireSettingsCurrent());
+    const result = harness.kernel.execute(command);
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "target-not-found");
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 
-  it("refuses archive relaunch fan-out after settings make this runtime stale", () => {
+  it("refuses retired archive relaunch after settings activation", () => {
     const harness = createHarness();
-    applySettingsRequiringRestart(harness);
+    applyCurrentSettings(harness);
     const fixture = commandFixture("version-archive", "relaunch-archived-run");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
-    assert.throws(
-      () => harness.kernel.execute(command),
-      /dashboard runtime settings are stale; restart activation is required/u,
-    );
+    const result = harness.kernel.execute(command);
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "policy-refused");
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 });
 
 describe("D113 start arm — atomic D109 plan consumption", () => {
-  it("refuses a pre-apply start plan after settings make this runtime stale", () => {
+  it("requires renewed review for a start plan made before settings activation", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
-    applySettingsRequiringRestart(harness);
+    applyCurrentSettings(harness);
 
-    assert.throws(
-      () => harness.kernel.execute(startCommand(plan)),
-      /dashboard runtime settings are stale; restart activation is required/u,
-    );
+    const refused = harness.kernel.execute(startCommand(plan));
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, "replan-required");
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
   });
@@ -1445,20 +1443,13 @@ describe("D113 worker-browser arms", () => {
     };
   }
 
-  it("refuses worker-pool starts after settings make this runtime stale", () => {
+  it("plans worker capacity under activated settings without spawning an unreviewed worker", () => {
     const harness = createHarness();
-    applySettingsRequiringRestart(harness);
-
-    assert.throws(
-      () => harness.kernel.execute(workerCommand(
-        "plan-worker-count",
-        { workflowId: "kernel-reject", expectedVersion: 0 },
-        { desiredWorkers: 2 },
-      )),
-      /dashboard runtime settings are stale; restart activation is required/u,
-    );
-    assert.equal(harness.database.authority.workerPools.get("kernel-reject"), undefined);
-    assert.deepEqual(harness.workerCalls, []);
+    applyCurrentSettings(harness);
+    const result = harness.kernel.execute(workerCommand("plan-worker-count", { workflowId: "kernel-reject", expectedVersion: 0 }, { desiredWorkers: 2 }));
+    assert.equal(result.state, "applied");
+    assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 2);
+    assert.deepEqual(harness.workerCalls, ["plan:plan-worker-count"]);
   });
 
   it("writes durable lease directives for stop/pause/resume against current authority", () => {
@@ -1757,7 +1748,7 @@ describe("apply-settings authority", () => {
       state: "already-applied",
       commandId: command.commandId,
       affectedTargets: [{ family: "settings", revision: 2 }],
-      restartRequired: true,
+      restartRequired: false,
       settingsRevision: 2,
       settingsFingerprint: committed.settingsFingerprint,
     });
@@ -1797,7 +1788,7 @@ describe("apply-settings authority", () => {
       state: "applied",
       commandId,
       affectedTargets: [{ family: "settings", revision: 2 }],
-      restartRequired: true,
+      restartRequired: false,
       settingsRevision: 2,
       settingsFingerprint,
     });
@@ -2163,17 +2154,19 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     const harness = createHarness();
     assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
     const version = settle(harness, RUN_ID);
-    harness.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-    harness.database.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
-    assert.equal(harness.database.authority.archivedRuns.insert(ARCHIVED_RUN).state, "inserted");
+    const storage = createRunLifecycleStorage(harness.database);
+    const snapshot = storage.capture(RUN_ID);
+    const report = captureArchiveReport({ snapshot, transferId: nextCommandId(), capturedAt: NOW, sections: [], files: [] });
+    transferArchiveReport(storage, report, version);
+    const view = projectArchiveReport(report); assert.ok(view.state === "available");
 
     const queueDoor = harness.kernel.execute(runCommand("delete", RUN_ID, version));
     assert.equal(queueDoor.state, "rejected");
     if (queueDoor.state === "rejected") {
-      assert.equal(queueDoor.code, "invalid-state");
-      assert.match(queueDoor.message, /archived; delete it from the Archive/u);
+      assert.equal(queueDoor.code, "target-not-found");
+      assert.equal(harness.database.authority.deletedRuns.get(RUN_ID), undefined);
     }
-    assert.ok(harness.database.authority.archivedRuns.get(RUN_ID) !== undefined);
+    assert.ok(storage.readReport(RUN_ID) !== undefined);
 
     const archiveDoor = (archiveFingerprint: string) => ({
       commandId: nextCommandId(),
@@ -2187,17 +2180,17 @@ describe("D308 delete — a terminal run leaves authority behind one tombstone",
     const wrongRecord = harness.kernel.execute(archiveDoor(HASH_B));
     assert.equal(wrongRecord.state, "rejected");
     if (wrongRecord.state === "rejected") assert.equal(wrongRecord.code, "schema-mismatch");
-    assert.ok(harness.database.authority.archivedRuns.get(RUN_ID) !== undefined, "a mismatched digest removes nothing");
+    assert.ok(storage.readReport(RUN_ID) !== undefined, "a mismatched digest removes nothing");
 
-    const deleted = harness.kernel.execute(archiveDoor(archivedRunReferenceFingerprint(ARCHIVED_RUN)));
+    const deleted = harness.kernel.execute(archiveDoor(view.archiveFingerprint));
     assert.equal(deleted.state, "applied");
-    assert.equal(harness.database.authority.archivedRuns.get(RUN_ID), undefined);
+    assert.equal(storage.readReport(RUN_ID), undefined);
     assert.equal(harness.database.authority.runs.get(RUN_ID), undefined, "the retained tasks row goes with the record");
     const tombstone = harness.database.authority.deletedRuns.get(RUN_ID);
     assert.equal(tombstone?.origin, "archive");
     assert.deepEqual(
-      tombstone?.removed.filter(({ table }) => table === "archived_runs" || table === "workflow_runs"),
-      [{ table: "archived_runs", rows: 1 }, { table: "workflow_runs", rows: 1 }],
+      tombstone?.removed.filter(({ table }) => table === "archive_transfers"),
+      [{ table: "archive_transfers", rows: 1 }],
     );
   });
 

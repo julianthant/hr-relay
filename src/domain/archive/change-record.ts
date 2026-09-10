@@ -93,6 +93,7 @@ export const VersionChangeSchema=VersionChangeReviewSchema.extend({
   state:z.enum(["planned","applying","applied","superseded"]),completedRunIds:z.array(z.string().uuid()),
   supersededBy:z.string().uuid().optional(),
   application:z.strictObject({commandId:z.string().uuid(),actorId:z.string().min(1),startedAt:z.string().datetime(),
+    requestFingerprint:z.string().regex(/^[a-f0-9]{64}$/u).optional(),
     appVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema),completedAt:z.string().datetime().optional()}).optional(),
 }).superRefine((row,ctx)=>{
   const review=VersionChangeReviewSchema.parse(Object.fromEntries(Object.entries(row).filter(([key])=>key in VersionChangeReviewSchema.shape)));
@@ -118,7 +119,8 @@ export function versionChangeReview(row:VersionChange):VersionChangeReview {
   return VersionChangeReviewSchema.parse(Object.fromEntries(Object.entries(row).filter(([key])=>key in VersionChangeReviewSchema.shape)));
 }
 export const ArchiveVersionChangeSchema=z.strictObject({review:VersionChangeReviewSchema,reviewFingerprint:z.string().regex(/^[a-f0-9]{64}$/u),
-  application:z.strictObject({commandId:z.string().uuid(),actorId:z.string().min(1),startedAt:z.string().datetime(),appVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema)})})
+  application:z.strictObject({commandId:z.string().uuid(),actorId:z.string().min(1),startedAt:z.string().datetime(),
+    requestFingerprint:z.string().regex(/^[a-f0-9]{64}$/u).optional(),appVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema)})})
   .refine(value=>value.reviewFingerprint===versionChangeReviewFingerprint(value.review),"archive-change-review-mismatch");
 export function archiveVersionChange(row:VersionChange) {
   if(row.application===undefined)throw new Error("version-change-not-claimed");

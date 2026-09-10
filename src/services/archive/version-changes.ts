@@ -1,503 +1,227 @@
+import { archivedRunReferenceFingerprint } from "../../domain/archive/model.js";
 import type { createRunLifecycleStorage } from "../../core/run-lifecycle-storage.js";
-/** A owns reviewed selection policy; shared storage owns immutable membership and progress fencing. */
-export function createVersionChanges(storage: ReturnType<typeof createRunLifecycleStorage>) {
-  return Object.freeze({read:storage.readVersionChange,write:storage.writeVersionChange});
-}
-
+import { lifecycleSourceDigest } from "../../core/run-lifecycle-storage.js";
 import type { CommandKernelDependencies, ArchiveCommandTools } from "../../core/command-kernel.js";
 import type { CommandApplication } from "../../core/command-application.js";
 import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
-import type { CommandRequest } from "../../domain/commands.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { lifecycleCommandId } from "../../core/run-record-service.js";
-import { runTarget, fanOutQueuedRuns, type TargetReference } from "../../core/run-fan-out.js";
-import { selectNewRunIdentity } from "../../core/run-settings.js";
-import { retainedRawSubmission } from "../start/protected-input.js";
-import { planStart } from "../start/plan.js";
-import { assessVersionBump, deriveArchivedRunRecord, describeBlocker, resolveBumpEffect } from "./archive-service.js";
-import { archivedRunReferenceFingerprint, CURRENT_ARCHIVE_SCHEMA_GENERATION, VersionBumpApplicationSchema,
-  VersionBumpPlanSchema, versionBumpPlanFingerprint, type WorkflowVersionIdentity } from "../../domain/archive/model.js";
-import { VersionPlanStorageRecordSchema } from "../../infra/sqlite/storage-records.js";
+import { CommandIdentityConflictError, type CommandRequest, type CommandResult } from "../../domain/commands.js";
+import { JsonValueSchema, canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { sha256Hex } from "../../domain/sha256.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../domain/identifiers.js";
+import { runTarget } from "../../core/run-fan-out.js";
+import { assessVersionBump, resolveBumpEffect, describeBlocker } from "./archive-service.js";
+import { VersionChangeSchema, versionChangeReviewFingerprint, archiveVersionChange, type VersionChange } from "../../domain/archive/change-record.js";
+import { captureArchiveReport, genericArchiveSection } from "./report-capture.js";
+import { transferArchiveReport } from "./archive-transfer.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/storage-records.js";
+import { projectArchiveReport } from "../../infra/sqlite/archive-records.js";
 
-/** Production command policy belongs to A. The kernel retains journal/audit and transaction authority. */
-export function executeArchiveCommand(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
-  request: Extract<CommandRequest,{family:"version-archive"}>, now: string, tools: ArchiveCommandTools): CommandApplication {
-  const reject: ArchiveCommandTools["reject"] = tools.reject;
-  const conflict: ArchiveCommandTools["conflict"] = tools.conflict;
-  const applied: ArchiveCommandTools["applied"] = tools.applied;
-  const requireRun: ArchiveCommandTools["requireRun"] = tools.requireRun;
-  const deleteTreeOrder: ArchiveCommandTools["deleteTreeOrder"] = tools.deleteTreeOrder;
-  const lifecycleRun: ArchiveCommandTools["lifecycleRun"] = tools.lifecycleRun;
-  const lifecycleRefusal: ArchiveCommandTools["lifecycleRefusal"] = tools.lifecycleRefusal;
-/* ── version-archive: the D80 archive model (D179) ───────────────────────── */
-
-type VersionArchiveCommand = Extract<CommandRequest, { family: "version-archive" }>;
-
-/**
- * A relaunch mints its plan and consumes it inside ONE transaction, so the TTL
- * never expires in practice. It is stated rather than omitted because the plan
- * row is durable and a reader must be able to see what window it was minted
- * for.
- */
-const RELAUNCH_PLAN_TTL_MS = 60_000;
-
-function versionPlanTarget(versionPlanId: string): TargetReference {
-  return { family: "version-archive", versionPlanId };
+class ArchivePolicyRefusal extends Error {
+  constructor(readonly result: Extract<CommandResult, { state: "rejected" | "conflict" }>) { super(result.message); }
 }
 
-/**
- * The registry's identity for a workflow. `undefined` means the descriptor is
- * no longer registered — a real state for an application-scope sweep, and a
- * refusal for a workflow-scope one, because there is nothing to bump TO.
- */
-function currentIdentityOf(
-  dependencies: CommandKernelDependencies,
-  workflowId: string,
-): WorkflowVersionIdentity | undefined {
-  const descriptor = dependencies.descriptors.resolve(workflowId);
-  if (descriptor === undefined) return undefined;
-  return {
-    workflowId: descriptor.id,
-    descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint,
-  } as WorkflowVersionIdentity;
-}
+type Request = Extract<CommandRequest, { family: "version-archive" }>;
+type Apply = Extract<Request, { type: "apply-version-bump" }>;
+type Storage = ReturnType<typeof createRunLifecycleStorage>;
+const planTarget = (versionPlanId: string) => ({ family: "version-archive" as const, versionPlanId });
 
-function assessOrReject(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: VersionArchiveCommand,
-  scope: Extract<VersionArchiveCommand, { type: "plan-version-bump" }>["target"]["scope"],
-): ReturnType<typeof assessVersionBump> {
-  try {
-    return assessVersionBump(
-      {
-        repositories,
-        currentIdentity: (workflowId) => currentIdentityOf(dependencies, workflowId),
-        appVersion: dependencies.appVersion,
-      },
-      scope,
-    );
-  } catch (error) {
-    reject(request, "target-not-found", error instanceof Error ? error.message : String(error));
-  }
+export function createVersionChanges(storage: Storage) {
+  return Object.freeze({ read: storage.readVersionChange, write: storage.writeVersionChange });
 }
-
-function executeVersionBumpPlan(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<VersionArchiveCommand, { type: "plan-version-bump" }>,
-  now: string,
-): CommandApplication {
-  const { scope } = request.target;
-  // The operator's claimed application version is checked against the build
-  // that is actually running. A scope nobody can verify is a scope that could
-  // archive every run on the strength of a typo.
-  if (scope.kind === "application" && scope.applicationVersion !== dependencies.appVersion) {
-    reject(
-      request,
-      "invalid-state",
-      `an application-scope bump must name the RUNNING build (${dependencies.appVersion}); `
-      + `this plan names ${scope.applicationVersion}`,
-    );
-  }
-  const assessment = assessOrReject(dependencies, repositories, request, scope);
-  /**
-   * D274: the run sets the plan records are the ones its KIND will act on. A
-   * major plan lists what apply will archive and what will refuse it; a minor
-   * plan lists neither, because a minor bump archives nothing and cannot be
-   * blocked — recording the assessment's raw lists on it would be a review
-   * copy that lies about the sweep it reviews.
-   */
-  const effect = resolveBumpEffect(request.payload.changeRecord.kind, assessment);
-  const versionPlanId = dependencies.ids.uuid();
-  const plan = VersionBumpPlanSchema.parse({
-    archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
-    versionPlanId,
-    scope,
-    targetVersion: request.payload.targetVersion,
-    changeFingerprint: request.payload.changeFingerprint,
-    // Charter §25's change record, authored by the person making the change.
-    // It rides the PLAN, so the fingerprint the operator's apply cites back
-    // covers the words as well as the run sets — an apply cannot rewrite the
-    // reason it was reviewed under.
-    changeRecord: request.payload.changeRecord,
-    observedAppVersion: dependencies.appVersion,
-    observedIdentities: assessment.identities,
-    candidates: effect.candidates,
-    // Charter §25: the flow LISTS the runs that block it. A plan is minted
-    // even when it cannot be applied, because the list is the thing the
-    // operator needs in order to clear it. (For a MINOR bump the list is
-    // empty by D274's definition, not by observation.)
-    blockers: effect.blockers,
-    plannedBy: request.requestedBy,
-    plannedAt: now,
+function refuse(request: Request, code: Extract<CommandResult, { state: "rejected" }>["code"], message: string): never {
+  throw new ArchivePolicyRefusal({ state: "rejected", commandId: request.commandId, code, message });
+}
+function assess(deps: CommandKernelDependencies, repos: AuthorityRepositories, scope: VersionChange["scope"]) {
+  return assessVersionBump({ repositories: repos, appVersion: deps.appVersion, currentIdentity: workflowId => {
+    const descriptor = deps.descriptors.resolve(workflowId);
+    return descriptor === undefined ? undefined : { workflowId: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint };
+  } }, scope);
+}
+function review(deps: CommandKernelDependencies, repos: AuthorityRepositories, input: Pick<VersionChange, "changeId" | "actorId" | "reviewedAt" | "scope" | "targetVersion" | "change" | "supersedes">): VersionChange {
+  const assessment = assess(deps, repos, input.scope);
+  const effect = resolveBumpEffect(input.change.kind, assessment);
+  const storage = deps.lifecycle.lifecycleStorage();
+  const members = effect.candidates.map(candidate => {
+    const snapshot = storage.capture(candidate.runId);
+    return { runId: candidate.runId, version: snapshot.run.version, sourceDigest: lifecycleSourceDigest(snapshot) };
   });
-  const stored = repositories.versionPlans.insert(VersionPlanStorageRecordSchema.parse({
-    versionPlanId,
-    version: 1,
-    planFingerprint: versionBumpPlanFingerprint(plan),
-    state: "planned",
-    plan,
-    createdAt: now,
-  }));
-  if (stored.state !== "inserted") {
-    throw new Error(`version plan ${versionPlanId} collided with an existing plan; refusing to reuse it`);
-  }
-  return applied(request, [versionPlanTarget(versionPlanId)], []);
+  const value = { ...input, observedAppVersion: deps.appVersion,
+    targets: assessment.identities.map(identity => ({ workflow: identity.workflowId, version: identity.descriptorVersion, fingerprint: identity.contractFingerprint })),
+    members, blockers: effect.blockers.map(blocker => blocker.runId), membershipDigest: sha256Hex(canonicalJsonStringify(members)) };
+  return VersionChangeSchema.parse({ ...value, schemaVersion: 2, reviewFingerprint: versionChangeReviewFingerprint(value), state: "planned", completedRunIds: [] });
+}
+function requiredChange(storage: Storage, request: Apply) {
+  const row = storage.readVersionChange(request.target.versionPlanId);
+  if (row === undefined) refuse(request, "target-not-found", "Version change is unavailable; create a new review.");
+  if (request.target.expectedVersion !== 1) throw new ArchivePolicyRefusal({ state: "conflict", commandId: request.commandId, currentVersion: 1, message: "Version review revision differs." });
+  if (row.reviewFingerprint !== request.payload.planFingerprint) refuse(request, "schema-mismatch", "Version review fingerprint differs.");
+  if (row.state === "superseded") refuse(request, "replan-required", `Review replaced by ${row.supersededBy}; confirm that review explicitly.`);
+  return row;
 }
 
-function executeVersionBumpApply(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<VersionArchiveCommand, { type: "apply-version-bump" }>,
-  now: string,
-): CommandApplication {
-  const stored = repositories.versionPlans.get(request.target.versionPlanId);
-  if (stored === undefined) {
-    reject(request, "target-not-found", `version plan ${request.target.versionPlanId} does not exist; plan before applying`);
-  }
-  const { plan } = stored;
-
-  /**
-   * D274 branches every archive/blocker decision on the bump KIND, and the
-   * kind lives on the plan's change record — never on the apply request, so a
-   * kind cannot be rewritten between review and apply (the plan fingerprint
-   * covers it). A generation-1 plan predates the change record entirely: it
-   * declares NO kind, and guessing one — major would archive runs nobody
-   * reviewed for archival, minor would silently downgrade a sweep to a no-op —
-   * is exactly the substitution fail-loud forbids.
-   */
-  if (plan.changeRecord === undefined) {
-    reject(
-      request,
-      "policy-refused",
-      `version plan ${plan.versionPlanId} predates charter §25's change record and declares no bump kind `
-      + "(major archives and can be blocked; minor archives nothing and cannot be — D274); re-plan so the "
-      + "kind is reviewed",
-    );
-  }
-  const bumpKind = plan.changeRecord.kind;
-
-  /**
-   * Drift, checked BEFORE anything is archived: the plan is a review copy of
-   * what the registry looked like, and applying it against a registry that has
-   * moved would sweep runs the operator never saw the shape of.
-   */
-  if (plan.observedAppVersion !== dependencies.appVersion) {
-    reject(
-      request,
-      "policy-refused",
-      `version plan ${plan.versionPlanId} was reviewed under app build ${plan.observedAppVersion}; `
-      + `this process is ${dependencies.appVersion}. Re-plan against the build you are applying from.`,
-    );
-  }
-  const assessment = assessOrReject(dependencies, repositories, request, plan.scope);
-  const planned = canonicalJsonStringify(plan.observedIdentities);
-  const current = canonicalJsonStringify(assessment.identities);
-  if (planned !== current) {
-    reject(
-      request,
-      "policy-refused",
-      `version plan ${plan.versionPlanId} was reviewed against ${planned} but the registry now serves ${current}; `
-      + "re-plan before applying",
-    );
-  }
-
-  /**
-   * Charter §25's non-negotiable, and it is checked HERE — inside the applying
-   * transaction — not against the plan's own list. A run that went queued
-   * between planning and applying is exactly the possible-submit this refusal
-   * exists to keep out of an archive. D274 scopes it to the bump's KIND: a
-   * minor bump archives nothing, so `resolveBumpEffect` gives it no blockers
-   * and no candidates and nothing can refuse it here.
-   */
-  const effect = resolveBumpEffect(bumpKind, assessment);
-  if (effect.blockers.length > 0) {
-    reject(
-      request,
-      "active-version-blockers",
-      `${String(effect.blockers.length)} prior-version run(s) are not terminal and must be settled first: `
-      + `${effect.blockers.map(describeBlocker).join(", ")}`,
-    );
-  }
-
-  const consumption = repositories.versionPlans.consume({
-    versionPlanId: request.target.versionPlanId,
-    expectedVersion: request.target.expectedVersion,
-    planFingerprint: request.payload.planFingerprint,
-    now,
-  });
-  if (consumption.state === "refused") {
-    if (consumption.code === "version-mismatch") conflict(request, stored.version, consumption.message);
-    if (consumption.code === "fingerprint-mismatch") reject(request, "schema-mismatch", consumption.message);
-    reject(request, "invalid-state", consumption.message);
-  }
-  if (consumption.state !== "consumed") {
-    throw new Error(
-      `version plan ${plan.versionPlanId} reported ${consumption.state} for a first execution of command `
-      + `${request.commandId}; an unjournaled command cannot have applied a plan`,
-    );
-  }
-
-  const applicationId = dependencies.ids.uuid();
-  const archivedRunIds = effect.candidates.map(({ runId }) => runId);
-  repositories.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
-    archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
-    applicationId,
-    versionPlanId: plan.versionPlanId,
-    scope: plan.scope,
-    targetVersion: plan.targetVersion,
-    changeFingerprint: plan.changeFingerprint,
-    appliedAppVersion: dependencies.appVersion,
-    appliedIdentities: assessment.identities,
-    archivedRunIds,
-    // Verbatim from the reviewed plan. Re-authoring it at apply would let the
-    // recorded reason differ from the one the plan fingerprint covers.
-    changeRecord: plan.changeRecord,
-    appliedBy: request.requestedBy,
-    appliedAt: now,
-  }));
-
-  const affectedTargets: TargetReference[] = [versionPlanTarget(plan.versionPlanId)];
-  // Freeze the complete batch while every candidate is still live. UUID order
-  // must not erase a child from its parent's immutable archived membership.
-  const snapshots = dependencies.archiveSnapshots.snapshotBatch(archivedRunIds);
-  for (const candidate of effect.candidates) {
-    const run = repositories.runs.get(candidate.runId);
-    if (run === undefined) {
-      throw new Error(`run ${candidate.runId} vanished between assessment and archival inside one transaction`);
-    }
-    const drift = assessment.driftByRunId.get(candidate.runId);
-    if (drift === undefined) {
-      throw new Error(`run ${candidate.runId} was assessed as prior-version with no recorded drift`);
-    }
-    // ONE lookup, both frozen facts (D179 label, D242 code). Resolving twice
-    // would let a registry that moved between the two calls freeze a label
-    // beside a blank code — a half-resolved descriptor the record refuses.
-    const registered = dependencies.descriptors.resolve(candidate.workflowId);
-    const snapshot = snapshots.get(candidate.runId);
-    if (snapshot === undefined) throw new Error(`archive batch omitted candidate ${candidate.runId}`);
-    lifecycleRun(request, dependencies.lifecycle.archive({
-      commandId: lifecycleCommandId("operator-archive", { commandId: request.commandId, runId: run.envelope.runId }),
-      expectedVersion: run.version, archive: deriveArchivedRunRecord({
-      repositories,
-      run,
-      snapshot,
-      applicationId,
-      drift,
-      archivedBy: request.requestedBy,
-      archivedAt: now,
-      workflowLabel: registered?.label,
-      workflowCode: registered?.code,
-    }) }));
-    affectedTargets.push(runTarget(candidate.runId));
-  }
-
-  return applied(request, affectedTargets, [{
-    target: versionPlanTarget(plan.versionPlanId),
-    before: request.target.expectedVersion,
-    after: consumption.plan.version,
-  }]);
-}
-
-/**
- * D308 — the Archive's delete door. The archived record's content digest is
- * cited exactly as a relaunch cites it (ref frontend-backend-integration §5):
- * a mismatch means the operator is looking at a different record than the one
- * their command names, and nothing is removed. The retained `tasks` row and
- * everything under it go with the archive record; the tombstone records the
- * `archive` origin.
- */
-function executeArchivedRunDelete(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<VersionArchiveCommand, { type: "delete-archived-run" }>,
-  _now: string,
-): CommandApplication {
-  const archived = repositories.archivedRuns.get(request.target.archivedRunId);
-  if (archived === undefined) {
-    reject(request, "target-not-found", `archived run ${request.target.archivedRunId} is not in the archive`);
-  }
-  if (archivedRunReferenceFingerprint(archived) !== request.target.archiveFingerprint) {
-    reject(
-      request,
-      "schema-mismatch",
-      `archived run ${archived.runId} does not match the archive reference this delete cited`,
-    );
-  }
-  const retained = requireRun(repositories, request, archived.runId);
-  const order = deleteTreeOrder(repositories, request, retained);
-  const outcome = dependencies.lifecycle.deleteArchived({ commandId: lifecycleCommandId("operator-delete-archive", request.commandId),
-    runId: archived.runId, archiveFingerprint: request.target.archiveFingerprint });
-  if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
-  if (outcome.state !== "deleted" && outcome.state !== "applied-already") throw new Error(`archive delete: ${outcome.state}`);
-  return applied(request, order.map((run) => runTarget(run.envelope.runId)), []);
-}
-
-function executeArchivedRunRelaunch(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<VersionArchiveCommand, { type: "relaunch-archived-run" }>,
-  now: string,
-): CommandApplication {
-  const archived = repositories.archivedRuns.get(request.target.archivedRunId);
-  if (archived === undefined) {
-    reject(request, "target-not-found", `archived run ${request.target.archivedRunId} is not in the archive`);
-  }
-  // ref frontend-backend-integration §5's "integrity": a relaunch cites the exact bytes it read. A
-  // mismatch means the operator is looking at a different record than the one
-  // their command names.
-  if (archivedRunReferenceFingerprint(archived) !== request.target.archiveFingerprint) {
-    reject(
-      request,
-      "schema-mismatch",
-      `archived run ${archived.runId} does not match the archive reference this relaunch cited`,
-    );
-  }
-  const descriptor = dependencies.descriptors.resolve(archived.workflowId);
-  if (descriptor === undefined) {
-    reject(
-      request,
-      "policy-refused",
-      `${archived.workflowId} is no longer registered; an archived run can only be relaunched on a CURRENT `
-      + "version, and there is none",
-    );
-  }
-
-  /**
-   * Charter §25: a relaunch is a FRESH run on the current version, planned
-   * from the archived RAW submission through today's ingress and canonical
-   * schemas. It is never a resume, and it never replays the archived canonical
-   * value — that value was validated by a schema which has, by definition,
-   * since moved.
-   */
-  let record;
-  try {
-    record = planStart(
-      {
-        authority: { authority: { runs: repositories.runs } },
-        clock: dependencies.clock,
-        ids: dependencies.ids,
-        planTtlMs: RELAUNCH_PLAN_TTL_MS,
-      },
-      {
-        descriptor,
-        submissions: [retainedRawSubmission(descriptor, archived.input.raw)],
-        retainedInputs: [archived.input.parsed],
-        dryRun: false,
-        priority: "interactive",
-        shape: "single",
-        ...selectNewRunIdentity(repositories, dependencies.configIdentity),
-        plannedBy: request.requestedBy,
-      },
-    );
-  } catch (error) {
-    reject(
-      request,
-      "policy-refused",
-      `archived run ${archived.runId}'s input cannot be planned against the current ${archived.workflowId}: `
-      + `${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (record.planned.length !== 1) {
-    reject(
-      request,
-      "policy-refused",
-      `archived run ${archived.runId} could not be relaunched: `
-      + `${record.refused.map((refusal) => `${refusal.code} — ${refusal.message}`).join("; ")}`,
-    );
-  }
-  const created = repositories.startPlans.create(record);
-  if (created.state !== "inserted") {
-    throw new Error(`relaunch of ${archived.runId} minted start plan ${record.startPlanId}, which already exists`);
-  }
-  const consumption = repositories.startPlans.consume({
-    startPlanId: record.startPlanId,
-    expectedVersion: record.version,
-    commandId: request.commandId,
-    descriptorFingerprint: record.descriptorFingerprint,
-    configFingerprint: record.configFingerprint,
-    ingressSchemaHash: record.ingressSchemaHash,
-    canonicalInputSchemaHash: record.canonicalInputSchemaHash,
-    inputFingerprint: record.inputFingerprint,
-    now,
-  });
-  if (consumption.state !== "consumed") {
-    throw new Error(
-      `relaunch of ${archived.runId} could not consume the plan it just minted (${consumption.state}); `
-      + "the durable record is inconsistent",
-    );
-  }
-
-  const fanOut = fanOutQueuedRuns(
-    repositories,
-    dependencies.lifecycle,
-    (message, refusal) => refusal === undefined ? reject(request, "policy-refused", message) : lifecycleRefusal(request, refusal),
-    descriptor,
-    {
-      commandId: request.commandId, actorId: request.requestedBy,
-      relaunch: { archivedRunId: archived.runId, archiveFingerprint: request.target.archiveFingerprint },
-      workflow: record.workflowId,
-      descriptorVersion: record.descriptorVersion,
-      contractFingerprint: record.descriptorFingerprint,
-      resolvedInstance: record.resolvedInstance,
-      configFingerprint: record.configFingerprint,
-      configSnapshotId: record.configSnapshotId,
-      shape: record.shape,
-      priority: record.priority,
-      dryRun: record.dryRun,
-      ...(record.browserMode === undefined ? {} : { browserMode: record.browserMode }),
-      ...(record.captureBrowserScreenshots === undefined
-        ? {}
-        : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
-      ...(record.stepOmissions === undefined ? {} : { stepOmissions: record.stepOmissions }),
-      ingressSchemaHash: record.ingressSchemaHash,
-      appVersion: dependencies.appVersion,
-      // D269: a relaunch is a dashboard-started group of one, and the archived
-      // run it relaunches is the origin the session names.
-      session: {
-        sessionId: dependencies.ids.uuid(),
-        origin: { kind: "archive-relaunch", archivedRunId: archived.runId, actorId: request.requestedBy },
-      },
-    },
-    record.planned.map((entry) => ({
-      itemId: entry.itemId,
-      title: entry.title, subtitle: entry.subtitle,
-      matchKey: entry.matchKey,
-      rawInput: entry.rawInput,
-      parsedInput: entry.input,
-    })),
-    now,
-    `relaunch of archived run ${archived.runId}`,
-  );
-
-  return applied(request, fanOut.affectedTargets, fanOut.versionChanges);
-}
-
-function dispatchArchive(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: VersionArchiveCommand,
-  now: string,
-): CommandApplication {
+/** Kernel alone writes the final command journal/audit; cross-store work precedes it. */
+export function executeArchiveCommand(deps: CommandKernelDependencies, repos: AuthorityRepositories,
+  request: Request, now: string, tools: ArchiveCommandTools): CommandApplication {
+  const storage = deps.lifecycle.lifecycleStorage();
   switch (request.type) {
-    case "plan-version-bump": return executeVersionBumpPlan(dependencies, repositories, request, now);
-    case "apply-version-bump": return executeVersionBumpApply(dependencies, repositories, request, now);
-    case "relaunch-archived-run": return executeArchivedRunRelaunch(dependencies, repositories, request, now);
-    case "delete-archived-run": return executeArchivedRunDelete(dependencies, repositories, request, now);
+    case "plan-version-bump": {
+      if (request.target.scope.kind === "application" && request.target.scope.applicationVersion !== deps.appVersion) {
+        refuse(request, "invalid-state", "Application review must name the running build.");
+      }
+      if (request.target.scope.kind === "workflows" && request.target.scope.workflowIds.some(id => deps.descriptors.resolve(id) === undefined)) refuse(request, "target-not-found", "Workflow is not registered.");
+      const row = review(deps, repos, { changeId: deps.ids.uuid(), actorId: request.requestedBy, reviewedAt: now,
+        scope: request.target.scope, targetVersion: request.payload.targetVersion, change: request.payload.changeRecord });
+      storage.writeVersionChange(row);
+      return tools.applied(request, [planTarget(row.changeId)], []);
+    }
+    case "apply-version-bump": {
+      const row = requiredChange(storage, request);
+      if (row.state !== "applied" || row.application?.commandId !== request.commandId
+        || row.application.requestFingerprint !== sha256Hex(canonicalJsonStringify(request))) refuse(request, "invalid-state", "Version transfer is not complete for this command.");
+      return tools.applied(request, [planTarget(row.changeId), ...row.members.map(member => runTarget(member.runId))], []);
+    }
+    case "delete-archived-run": {
+      const receipt = repos.deletedRuns.get(request.target.archivedRunId);
+      if (receipt === undefined || receipt.origin !== "archive" || receipt.commandId !== lifecycleCommandId("operator-delete-archive", request.commandId)) {
+        refuse(request, "target-not-found", "Archive deletion has not completed for this command.");
+      }
+      return tools.applied(request, [runTarget(request.target.archivedRunId)], []);
+    }
+    case "relaunch-archived-run":
+      refuse(request, "policy-refused", "Archive relaunch is retired. Saved reports cannot create or resume runs.");
   }
 }
 
-
-return dispatchArchive(dependencies,repositories,request,now);
+function prepareApply(deps: CommandKernelDependencies, request: Apply): CommandResult | undefined {
+  const storage = deps.lifecycle.lifecycleStorage();
+  return deps.authority.withAuthorityTransaction(repos => {
+    repos.commands.assertIdentity(request);
+    if (repos.commands.get(request.commandId) !== undefined) return undefined;
+    if (storage.readVersionChange(request.target.versionPlanId) === undefined && repos.versionPlans.get(request.target.versionPlanId) !== undefined) refuse(request, "policy-refused", "Historical reviews have no current membership proof (generation 1 has no bump kind); re-plan explicitly.");
+    const row = requiredChange(storage, request);
+    const requestFingerprint = sha256Hex(canonicalJsonStringify(request));
+    if (row.observedAppVersion !== deps.appVersion) refuse(request, "policy-refused", "Running build changed; re-plan and confirm the new review.");
+    for (const target of row.targets) {
+      const current = deps.descriptors.resolve(target.workflow);
+      if (current === undefined || current.version !== target.version || current.contractFingerprint !== target.fingerprint) refuse(request, "policy-refused", "Workflow identities changed; re-plan and confirm the new review.");
+    }
+    if (row.application !== undefined) {
+      if (row.application.commandId !== request.commandId || row.application.requestFingerprint !== requestFingerprint) throw new CommandIdentityConflictError();
+      return undefined;
+    }
+    if (row.observedAppVersion !== deps.appVersion) refuse(request, "policy-refused", "Running build changed; re-plan and confirm the new review.");
+    const current = review(deps, repos, { changeId: row.changeId, actorId: row.actorId, reviewedAt: row.reviewedAt,
+      scope: row.scope, targetVersion: row.targetVersion, change: row.change, ...(row.supersedes === undefined ? {} : { supersedes: row.supersedes }) });
+    if (canonicalJsonStringify(current.targets) !== canonicalJsonStringify(row.targets)) refuse(request, "policy-refused", "Workflow identities changed; re-plan and confirm the new review.");
+    if (current.membershipDigest !== row.membershipDigest || canonicalJsonStringify(current.blockers) !== canonicalJsonStringify(row.blockers)) {
+      const replacement = review(deps, repos, { changeId: deps.ids.uuid(), actorId: request.requestedBy, reviewedAt: deps.clock.now().toISOString(),
+        scope: row.scope, targetVersion: row.targetVersion, change: row.change, supersedes: row.changeId });
+      storage.replaceVersionChange(row.changeId, row.reviewFingerprint, replacement);
+      return { state: "rejected" as const, commandId: request.commandId, code: "replan-required" as const,
+        message: `Reviewed membership changed. Review-required: confirm replacement ${replacement.changeId}.` };
+    }
+    if (row.blockers.length > 0) refuse(request, "active-version-blockers", `Prior-version blockers: ${assess(deps, repos, row.scope).blockers.map(describeBlocker).join("; ")}`);
+    storage.claimVersionChange({ changeId: row.changeId, reviewFingerprint: row.reviewFingerprint,
+      application: { commandId: request.commandId, actorId: request.requestedBy, startedAt: request.requestedAt,
+        appVersion: deps.appVersion, targets: row.targets, requestFingerprint } });
+    return undefined;
+  });
 }
 
-/** A owns cross-store orchestration outside the kernel's final atomic journal/audit callback.
- * The baseline preserves existing execution until A replaces its own selection/conversion policy.
- */
-export function runArchiveCommand(request: Extract<CommandRequest,{family:"version-archive"}>,
-  dependencies: CommandKernelDependencies, executeAtomic: () => import("../../domain/commands.js").CommandResult) {
-  void request; void dependencies;
-  return executeAtomic();
+/** Every report is captured before the first cleanup; replay uses those exact bytes. */
+function applyTransfer(deps: CommandKernelDependencies, request: Apply) {
+  const storage = deps.lifecycle.lifecycleStorage();
+  const row = requiredChange(storage, request);
+  if (row.state === "applied") return;
+  if (row.application === undefined) throw new Error("archive-claim-missing");
+  const reports = deps.authority.withAuthorityTransaction(() => {
+    const pending = row.members.map(member => ({ member, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`) }));
+    const missing = pending.filter(({ member, transferId }) => storage.readPendingReport(member.runId, transferId) === undefined);
+    const displays = deps.archiveSnapshots.snapshotBatch(missing.map(({ member }) => member.runId));
+    return pending.map(({ member, transferId }) => {
+      const saved = storage.readPendingReport(member.runId, transferId);
+      if (saved !== undefined) return saved.report;
+      const snapshot = storage.capture(member.runId);
+      if (lifecycleSourceDigest(snapshot) !== member.sourceDigest || snapshot.run.version !== member.version) throw new Error("archive-reviewed-source-changed");
+      const display = displays.get(member.runId);
+      if (display === undefined) throw new Error("archive-display-capture-missing");
+      const files = (snapshot.records.find(group => group.table === "diagnostic_files")?.rows ?? []).map(record => {
+        const { attachment } = DiagnosticAttachmentStorageRecordSchema.parse(JSON.parse(record.json));
+        return { digest: attachment.digest, byteLength: attachment.byteLength, mediaType: attachment.mediaType,
+          name: attachment.kind, artifactIds: [attachment.artifactId] };
+      });
+      const unique = [...new Map(files.map(file => [file.digest, file])).values()];
+      for (const file of unique) storage.retainFile(file, storage.readSourceFile(file));
+      const report = captureArchiveReport({ snapshot, transferId, capturedAt: row.application!.startedAt,
+        versionChange: archiveVersionChange(row), files: unique,
+        sections: [genericArchiveSection("Displayed run", JsonValueSchema.parse(display))] });
+      storage.saveReport(report); storage.verifyReport(member.runId, report.digest);
+      return report;
+    });
+  });
+  const byId = new Map(reports.map(report => [report.content.runId, report]));
+  const depth = (runId: string, seen = new Set<string>()): number => {
+    if (seen.has(runId)) throw new Error("archive-parent-cycle");
+    seen.add(runId);
+    const report = byId.get(runId);
+    if (report === undefined) return 0;
+    const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+    if (source === undefined) throw new Error("archive-source-snapshot-missing");
+    const snapshot = JSON.parse(source.json) as { run: { envelope: { parent?: { runId: string } } } };
+    return snapshot.run.envelope.parent === undefined ? 0 : 1 + depth(snapshot.run.envelope.parent.runId, seen);
+  };
+  reports.sort((a, b) => depth(b.content.runId) - depth(a.content.runId) || a.content.runId.localeCompare(b.content.runId));
+  for (const report of reports) {
+    const member = row.members.find(value => value.runId === report.content.runId);
+    if (member === undefined) throw new Error("archive-member-missing");
+    transferArchiveReport(storage, report, member.version);
+    const current = storage.readVersionChange(row.changeId);
+    if (current === undefined) throw new Error("archive-change-missing");
+    storage.writeVersionChange({ ...current, completedRunIds: [...new Set([...current.completedRunIds, member.runId])].sort() });
+  }
+  const current = storage.readVersionChange(row.changeId);
+  if (current?.application === undefined) throw new Error("archive-change-missing");
+  storage.writeVersionChange({ ...current, state: "applied", application: { ...current.application, completedAt: deps.clock.now().toISOString() } });
+}
+
+export function runArchiveCommand(request: Request, deps: CommandKernelDependencies, executeAtomic: () => CommandResult) {
+  try {
+    // Even retired or absent targets must not bypass global command identity.
+    const journaled = deps.authority.withAuthorityTransaction(repos => {
+      repos.commands.assertIdentity(request); return repos.commands.get(request.commandId) !== undefined;
+    });
+    if (!journaled && (request.type === "delete-archived-run" || request.type === "relaunch-archived-run")) {
+      const historical = deps.authority.withAuthorityTransaction(repos => repos.archivedRuns.get(request.target.archivedRunId));
+      if (historical !== undefined) archivedRunReferenceFingerprint(historical);
+    }
+    if (journaled || request.type === "plan-version-bump" || request.type === "relaunch-archived-run") return executeAtomic();
+    if (request.type === "apply-version-bump") {
+      const refusal = prepareApply(deps, request);
+      if (refusal !== undefined) return refusal;
+      applyTransfer(deps, request);
+    } else {
+      const storage = deps.lifecycle.lifecycleStorage();
+      const report = storage.readReport(request.target.archivedRunId);
+      if (report !== undefined) {
+        const view = projectArchiveReport(report);
+        if (view.state !== "available" || view.archiveFingerprint !== request.target.archiveFingerprint) refuse(request, "schema-mismatch", "Archive reference differs.");
+        // Canonical deletion binds the independently verified private report digest.
+        const outcome = storage.deleteArchive({ commandId: lifecycleCommandId("operator-delete-archive", request.commandId), runId: report.content.runId, archiveFingerprint: report.digest, operatorRequest: request });
+        if (outcome.state !== "deleted" && outcome.state !== "applied-already") refuse(request, "policy-refused", "Archive deletion refused.");
+      } else {
+        const receipt = deps.authority.withAuthorityTransaction(repos => repos.deletedRuns.get(request.target.archivedRunId));
+        if (receipt?.commandId === lifecycleCommandId("operator-delete-archive", request.commandId)) {
+          // The exact journal replay supplies every tree receipt and resumes
+          // archive/file settlement without fabricating a removed report digest.
+          const outcome = storage.deleteArchive({ commandId: receipt.commandId, runId: receipt.runId, operatorRequest: request });
+          if (outcome.state !== "applied-already") throw new Error("archive-delete-replay-incomplete");
+        }
+      }
+    }
+    return executeAtomic();
+  } catch (error) {
+    if (error instanceof CommandIdentityConflictError) return { state: "rejected" as const, commandId: request.commandId, code: "command-divergent" as const, message: error.message };
+    if (error instanceof ArchivePolicyRefusal) return error.result;
+    throw error;
+  }
 }

@@ -1,3 +1,6 @@
+import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
+import { projectArchiveReport, queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
+import { ArchiveReportSchema } from "../../src/domain/archive/report.js";
 import { DatabaseSync } from "node:sqlite";
 import { atomicWriteCheckpoint } from "./helpers/timeline-write-fixture.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
@@ -35,7 +38,6 @@ import { manualClock } from "../../src/domain/clock.js";
 import { CommandResultSchema, type CommandResult } from "../../src/domain/commands.js";
 import { QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
 import { EidSchema } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
@@ -454,14 +456,14 @@ function plan(
   assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "plan refused");
   const target = result.state === "applied" ? result.affectedTargets[0] : undefined;
   assert.equal(target?.family, "version-archive");
-  const stored = world.database.authority.versionPlans.get(
+  const stored = world.database.readVersionChange(
     target?.family === "version-archive" ? target.versionPlanId : "",
   );
   assert.notEqual(stored, undefined);
   return {
-    versionPlanId: String(stored?.versionPlanId),
-    expectedVersion: Number(stored?.version),
-    planFingerprint: String(stored?.planFingerprint),
+    versionPlanId: String(stored?.changeId),
+    expectedVersion: 1,
+    planFingerprint: String(stored?.reviewFingerprint),
   };
 }
 
@@ -482,6 +484,18 @@ function apply(world: World, reviewed: ReturnType<typeof plan>): CommandResult {
  * over the SAME state root the world writes to, so a pointer this test
  * archived resolves the way production would.
  */
+function reportOf(world: World, runId: string) {
+  const report = createRunLifecycleStorage(world.database).readReport(runId); assert.ok(report); return report;
+}
+function displayValue(world: World, runId: string, label: string) { return displayValueFrom(reportOf(world, runId), label); }
+function displayValueFrom(report: ReturnType<typeof reportOf>, label: string) {
+  const section = projectArchiveReport(report); assert.equal(section.state, "available");
+  if (section.state !== "available") throw new Error("report unavailable");
+  const display = section.sections.find(value => value.title === "Displayed run");
+  assert.ok(display?.kind === "values");
+  return display.values.find(value => value.label === label)?.value;
+}
+
 function emptyRegistryDeps(world: World): Parameters<typeof buildArchivedRunDetail>[0] {
   return {
     clock: manualClock(new Date(NOW)),
@@ -562,28 +576,19 @@ describe("the D80 archive model", () => {
   it("moves prior-version runs into the archive and out of every live read", () => {
     const world = createWorld();
     const archived = startRun(world, "10873698", true);
-    const current = (() => {
-      world.registry = V2;
-      return startRun(world, "10456712", true);
-    })();
-
-    assert.equal(world.database.authority.archivedRuns.isArchived(archived), false);
-    const result = apply(world, plan(world));
-    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "apply refused");
-
-    // The prior-version run is archived; the current-version one is not.
-    assert.equal(world.database.authority.archivedRuns.isArchived(archived), true);
-    assert.equal(world.database.authority.archivedRuns.isArchived(current), false);
-
-    // Both run rows still exist: archiving is a DISPLAY lifecycle, not a delete.
-    assert.notEqual(world.database.authority.runs.get(archived), undefined);
-
-    const record = world.database.authority.archivedRuns.get(archived);
-    assert.equal(record?.archivedIdentity.descriptorVersion, 1);
-    assert.equal(record?.archivedIdentity.contractFingerprint, HASH_A);
-    assert.deepEqual([...(record?.drift ?? [])], ["descriptor-version", "contract-fingerprint"]);
-    // Charter §25: the app build a run was ENQUEUED under is stamped and kept.
-    assert.deepEqual(record?.appVersion, { state: "present", value: "0.1.0" });
+    world.registry = V2;
+    const current = startRun(world, "10456712", true);
+    assert.equal(apply(world, plan(world)).state, "applied");
+    const report = reportOf(world, archived);
+    assert.equal(report.content.descriptorVersion, "1");
+    assert.equal(world.database.authority.runs.get(archived), undefined);
+    assert.equal(world.database.authority.archivedRuns.get(archived), undefined);
+    assert.ok(world.database.authority.runs.get(current));
+    assert.equal(createRunLifecycleStorage(world.database).readReport(current), undefined);
+    assert.equal(world.database.authority.deletedRuns.get(archived), undefined);
+    const original = JSON.parse(report.content.sources[0].json) as { run: { appVersion: string; envelope: { contractFingerprint: string } } };
+    assert.equal(original.run.appVersion, "0.1.0");
+    assert.equal(original.run.envelope.contractFingerprint, HASH_A);
   });
 
   it("renders an archived run with the workflow registry EMPTY — zero old-version code paths", () => {
@@ -591,52 +596,27 @@ describe("the D80 archive model", () => {
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
-    assert.equal(detail.runId, archived);
-    assert.equal(detail.row.title.length > 0, true);
-    assert.equal(detail.detail.header.runId, archived);
-    assert.equal(detail.archivedIdentity.descriptorVersion, 1);
-    // The one thing the empty registry legitimately costs: a relaunch has no
-    // current version to start, and the wire says so instead of offering one.
-    assert.equal(detail.relaunch.state, "unavailable");
-
-    // And the index reads too, with no registered workflow to describe.
-    const index = buildArchiveIndex(emptyRegistryDeps(world));
-    assert.equal(index.entries.length, 1);
-    assert.equal(index.versionState.length, 0);
+    const report = reportOf(world, archived);
+    world.database.close();
+    const detail = projectArchiveReport(report);
+    assert.equal(detail.state, "available");
+    assert.equal(displayValueFrom(report, "detail.header.runId"), archived);
+    assert.equal(report.content.descriptorVersion, "1");
+    assert.equal("sources" in detail, false);
   });
 
   it("serves all five tabs' frozen payloads with the workflow registry EMPTY", () => {
-    /*
-     * D223's acceptance bar, and the reason the sections are FROZEN rather
-     * than fetched: the descriptor list is empty, there is no live run to ask,
-     * and every tab still has its bytes. A section that resolved anything at
-     * read time would fail here — which is exactly what `archive-invariants`
-     * proves structurally, one level up.
-     */
     const world = createWorld();
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
-    assert.equal(detail.sections.state, "present");
-    if (detail.sections.state !== "present") return;
-    const { logs, data, people, attempts, captures } = detail.sections.value;
-
-    assert.equal(logs.state, "present");
-    assert.equal(logs.state === "present" ? logs.value.notes[0]?.message : "", "frozen log line");
-    assert.equal(data.state, "present");
-    assert.equal(data.state === "present" ? data.value.entries[0]?.label : "", "eid");
-    assert.equal(attempts.state, "present");
-    assert.equal(attempts.state === "present" ? attempts.value[0]?.attempt : 0, 1);
-    // Both absences carry their own sentence: this run fanned out no members
-    // and captured no artifact, which are facts about the RUN — a record that
-    // predates the frozen block says something else entirely (below).
-    assert.equal(people.state, "absent");
-    assert.equal(captures.state, "absent");
-    assert.match(captures.state === "absent" ? captures.reason : "", /captured no diagnostic artifact/u);
+    assert.equal(displayValue(world, archived, "sections.logs.state"), "present");
+    assert.equal(displayValue(world, archived, "sections.logs.value.notes.0.message"), "frozen log line");
+    assert.equal(displayValue(world, archived, "sections.data.value.entries.0.label"), "eid");
+    assert.equal(displayValue(world, archived, "sections.attempts.value.0.attempt"), 1);
+    assert.equal(displayValue(world, archived, "sections.people.state"), "absent");
+    assert.equal(reportOf(world, archived).content.files.length, 0);
+    assert.equal(reportOf(world, archived).content.sections.find(value => value.title === "diagnostic_files")?.kind, "unavailable");
   });
 
   it.each([5, 6])("withholds protected generation-%s receipt, failure, queue, and log diagnostics without rewriting the archive", (generation) => {
@@ -1007,117 +987,54 @@ describe("the D80 archive model", () => {
 
     // The archived record NAMES the line and copies none of it, and the bump
     // left the partition byte-identical — the ledger is an audit lifecycle.
-    const stored = world.database.authority.archivedRuns.get(archived);
-    assert.deepEqual(
-      stored?.evidence.ledgerPartitions.map((pointer) => ({ ...pointer })),
-      [], // Native confirmations use exact event references in the frozen section.
-    );
     assert.deepEqual(ledgerBytes(world.stateRoot), before);
-
-    // And the archived detail resolves it — with the registry EMPTY, because a
-    // ledger line is interpreted by its commit contract, never by a descriptor.
-    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
-    assert.equal(detail.ledger.length, 1);
-    const [line] = detail.ledger;
-    assert.equal(line.state, "resolved");
-    if (line.state !== "resolved") return;
-    assert.equal(line.system, "ucpath");
-    assert.equal(line.instance, "prod");
-    assert.deepEqual({ ...line.action }, {
-      state: "present",
-      value: `Termination for ${directIdentifierDigestReference("10873698")} effective 06/11/2026 (Pending)`,
-    });
-    assert.deepEqual({ ...line.confirmation }, { state: "present", value: "T002209631" });
+    const frozen = JSON.stringify(projectArchiveReport(reportOf(world, archived)));
+    assert.ok(frozen.includes("T002209631"));
+    assert.ok(frozen.includes("ucpath"));
+    assert.ok(frozen.includes("prod"));
+    assert.ok(frozen.includes("06/11/2026"));
   });
 
   it("replays frozen enrichment exactly and refuses divergent or corrupted transaction bytes", () => {
-    const world = createWorld(); const archived = startRun(world, "10873698", true);
-    world.registry = V2; assert.equal(apply(world, plan(world)).state, "applied");
-    const original = world.database.authority.archivedRuns.get(archived); assert.ok(original);
-    const section = world.database.authority.archivedRuns.transactions(archived);
+    const world = createWorld();
+    const archived = startRun(world, "10873698", true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+    const original = reportOf(world, archived);
+    const storage = createRunLifecycleStorage(world.database);
     const before = world.database.getMeta();
-    assert.deepEqual(world.database.authority.archivedRuns.enrichTransactions(section), section);
+    assert.deepEqual(storage.saveReport(original), original);
     assert.deepEqual(world.database.getMeta(), before);
-    assert.throws(() => world.database.authority.archivedRuns.enrichTransactions({ ...section, capturedAt: "2030-01-01T00:00:00.000Z" }), /divergent-enrichment/u);
-    assert.deepEqual(world.database.authority.archivedRuns.get(archived), original);
-    assert.equal(buildArchivedRunDetail(emptyRegistryDeps(world), archived).archiveFingerprint, archivedRunReferenceFingerprint(original));
-    const raw = new DatabaseSync(join(world.stateRoot, "..", "authority.sqlite"));
-    try {
-      assert.throws(() => raw.exec("UPDATE archived_runs SET transactions_digest='" + "a".repeat(64) + "'"), /immutable/u);
-      raw.exec("DROP TRIGGER archived_runs_immutable_update");
-      raw.exec("UPDATE archived_runs SET transactions_digest='" + "a".repeat(64) + "'");
-    } finally { raw.close(); }
-    assert.throws(() => buildArchivedRunDetail(emptyRegistryDeps(world), archived), /archive-transactions-integrity/u);
-    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(world.stateRoot, "..", "authority.sqlite")), /archive-transactions-integrity/u);
+    assert.throws(() => ArchiveReportSchema.parse({ ...original, content: { ...original.content, capturedAt: "2030-01-01T00:00:00.000Z" } }), /digest-mismatch/u);
+    assert.deepEqual(reportOf(world, archived), original);
+    const raw = new DatabaseSync(join(world.stateRoot, "..", "archive.sqlite"));
+    try { raw.exec("DROP TRIGGER archive_records_immutable"); raw.exec("UPDATE archive_records SET digest='" + "a".repeat(64) + "'"); } finally { raw.close(); }
+    assert.throws(() => storage.readReport(archived), /archive/u);
   });
 
   it("carries the frozen row's resolved instances onto the INDEX entry", () => {
     const world = createWorld();
-    world.resolvedInstances = [
-      { system: "ucpath", instance: "prod" },
-      { system: "kuali", instance: "test" },
-    ];
+    world.resolvedInstances = [{ system: "ucpath", instance: "prod" }, { system: "kuali", instance: "test" }];
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const deps = {
-      clock: manualClock(new Date(NOW)),
-      appVersion: "0.1.0",
-      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
-      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
-      descriptors: { list: () => [] },
-      // The read-through over the SAME state root the world writes to, so a
-      // pointer this test archived resolves the way production would.
-      ledger: createTransactionHistory(world.database.authority),
-    } as unknown as Parameters<typeof buildArchiveIndex>[0];
-
-    const entry = buildArchiveIndex(deps).entries[0];
-    // The index and the detail must name the SAME instances — the entry is a
-    // copy of the frozen row's own field, not a second derivation of it.
-    assert.deepEqual([...entry.resolvedInstances], [
-      { system: "ucpath", instance: "prod" },
-      { system: "kuali", instance: "test" },
-    ]);
-    assert.deepEqual(
-      [...buildArchivedRunDetail(deps, archived).row.resolvedInstances],
-      [...entry.resolvedInstances],
-    );
+    assert.equal(displayValue(world, archived, "row.resolvedInstances.0.system"), "ucpath");
+    assert.equal(displayValue(world, archived, "row.resolvedInstances.0.instance"), "prod");
+    assert.equal(displayValue(world, archived, "row.resolvedInstances.1.system"), "kuali");
+    assert.equal(displayValue(world, archived, "row.resolvedInstances.1.instance"), "test");
+    assert.deepEqual(queryArchiveReports(createRunLifecycleStorage(world.database), { limit: 10 }).items, [projectArchiveReport(reportOf(world, archived))]);
   });
 
   it("carries the frozen row's dry-run flag and warning count onto the INDEX entry", () => {
     const world = createWorld();
     world.warnings = { state: "present", count: 3, first: "CRM returned a stale session on attempt 1" };
-    // A REHEARSAL. Until the index carried the flag, the only way to tell this
-    // row apart from a real filing was to open it — which is the hazard, not
-    // the inconvenience: a dry run and a submitted transaction rendered
-    // identically in the one list an operator scans before acting.
     const archived = startRun(world, "10873698", true, true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const deps = {
-      clock: manualClock(new Date(NOW)),
-      appVersion: "0.1.0",
-      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
-      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
-      descriptors: { list: () => [] },
-      ledger: createTransactionHistory(world.database.authority),
-    } as unknown as Parameters<typeof buildArchiveIndex>[0];
-
-    const entry = buildArchiveIndex(deps).entries[0];
-    assert.equal(entry.dryRun, true);
-    assert.deepEqual({ ...entry.warnings }, {
-      state: "present",
-      count: 3,
-      first: "CRM returned a stale session on attempt 1",
-    });
-
-    // Both are COPIES of the frozen row, not second derivations — so the list
-    // and the run's own page can never disagree about whether it wrote.
-    const detail = buildArchivedRunDetail(deps, archived);
-    assert.equal(entry.dryRun, detail.row.dryRun);
-    assert.deepEqual({ ...entry.warnings }, { ...detail.row.warnings });
+    assert.equal(displayValue(world, archived, "row.dryRun"), true);
+    assert.equal(displayValue(world, archived, "row.warnings.count"), 3);
+    assert.equal(displayValue(world, archived, "row.warnings.first"), world.warnings.first);
+    assert.deepEqual(queryArchiveReports(createRunLifecycleStorage(world.database), { limit: 10 }).items, [projectArchiveReport(reportOf(world, archived))]);
   });
 
   it("keeps the two absences apart: a real filing that recorded no warning", () => {
@@ -1125,25 +1042,9 @@ describe("the D80 archive model", () => {
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const deps = {
-      clock: manualClock(new Date(NOW)),
-      appVersion: "0.1.0",
-      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
-      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
-      descriptors: { list: () => [] },
-      ledger: createTransactionHistory(world.database.authority),
-    } as unknown as Parameters<typeof buildArchiveIndex>[0];
-
-    const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);
-    assert.equal(entry?.dryRun, false);
-    // NOT a silent zero: the absent arm states WHY there is no count, which is
-    // what separates "this run recorded no warning" from "nothing has derived
-    // this run's warnings yet". A chip drawn from a zero could not tell them
-    // apart, and the surface draws no chip for either.
-    assert.equal(entry?.warnings.state, "absent");
-    if (entry?.warnings.state !== "absent") return;
-    assert.match(entry.warnings.reason, /no warning/);
+    assert.equal(displayValue(world, archived, "row.dryRun"), false);
+    assert.equal(displayValue(world, archived, "row.warnings.state"), "absent");
+    assert.match(String(displayValue(world, archived, "row.warnings.reason")), /no warning/u);
   });
 
   it("serves an EMPTY instance list for a run that resolved no system", () => {
@@ -1151,22 +1052,7 @@ describe("the D80 archive model", () => {
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const deps = {
-      clock: manualClock(new Date(NOW)),
-      appVersion: "0.1.0",
-      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
-      reader: sqliteRunReader(world.database, manualClock(new Date(NOW))),
-      descriptors: { list: () => [] },
-      // The read-through over the SAME state root the world writes to, so a
-      // pointer this test archived resolves the way production would.
-      ledger: createTransactionHistory(world.database.authority),
-    } as unknown as Parameters<typeof buildArchiveIndex>[0];
-
-    const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);
-    // An empty list is the honest value, and the surface reads it as
-    // production: "touched a test instance" is a claim nothing here supports.
-    assert.deepEqual([...(entry?.resolvedInstances ?? [{ system: "x", instance: "test" }])], []);
+    assert.equal(displayValue(world, archived, "row.resolvedInstances"), "Empty list");
   });
 
   it("leaves the ledger byte-identical across the bump", () => {
@@ -1187,7 +1073,7 @@ describe("the D80 archive model", () => {
     assert.equal(before.length, 1);
 
     assert.equal(apply(world, plan(world)).state, "applied");
-    assert.equal(world.database.authority.archivedRuns.isArchived(archived), true);
+    assert.ok(world.database.transferredRun(archived));
 
     assert.deepEqual(ledgerBytes(world.stateRoot), before);
   });
@@ -1201,10 +1087,10 @@ describe("the D80 archive model", () => {
     const reviewed = plan(world);
     // The plan is still MINTED — charter §25's flow lists the blockers so the
     // operator can clear them; it is `apply` that refuses.
-    const stored = world.database.authority.versionPlans.get(reviewed.versionPlanId);
-    assert.equal(stored?.plan.blockers.length, 1);
-    assert.equal(stored?.plan.blockers[0]?.runId, blocking);
-    assert.equal(stored?.plan.candidates.length, 1);
+    const stored = world.database.readVersionChange(reviewed.versionPlanId);
+    assert.equal(stored?.blockers.length, 1);
+    assert.equal(stored?.blockers[0], blocking);
+    assert.equal(stored?.members.length, 1);
 
     const result = apply(world, reviewed);
     assert.equal(result.state, "rejected");
@@ -1220,58 +1106,25 @@ describe("the D80 archive model", () => {
     assert.equal(world.database.authority.versionBumpApplications.list().length, 0);
     // The plan is left `planned`, so the SAME reviewed plan applies once the
     // blocker settles — a refused apply is not a spent one.
-    assert.equal(world.database.authority.versionPlans.get(reviewed.versionPlanId)?.state, "planned");
+    assert.equal(world.database.readVersionChange(reviewed.versionPlanId)?.state, "planned");
   });
 
-  it("relaunches an archived run as a FRESH run on the CURRENT version", () => {
+  it("refuses retired archive relaunch without creating a run or lineage", () => {
     const world = createWorld();
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const record = world.database.authority.archivedRuns.get(archived);
-    assert.notEqual(record, undefined);
-
-    const result = CommandResultSchema.parse(world.kernel.execute({
-      ...envelope(),
-      family: "version-archive",
-      type: "relaunch-archived-run",
-      target: { archivedRunId: archived, archiveFingerprint: archivedRunReferenceFingerprint(ArchivedRunRecordSchema.parse(record)) },
-    }));
-    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "relaunch refused");
-    if (result.state !== "applied") return;
-
-    const fresh = result.affectedTargets.find((target) => target.family === "run");
-    assert.notEqual(fresh, undefined);
-    if (fresh?.family !== "run") return;
-    assert.notEqual(fresh.runId, archived, "a relaunch is a new run, never the archived one");
-
-    const run = world.database.authority.runs.get(fresh.runId);
-    // The FRESH run carries the CURRENT identity, not the archived one.
-    assert.equal(run?.envelope.descriptorVersion, 2);
-    assert.equal(run?.envelope.contractFingerprint, HASH_B);
-    assert.equal(run?.lifecycle.state, "queued");
-    assert.equal(run?.envelope.retryOf, undefined, "a relaunch is not a retry");
-
-    // The archived run is untouched and STILL archived.
-    assert.equal(world.database.authority.archivedRuns.isArchived(archived), true);
-    assert.deepEqual(world.database.authority.archivedRuns.get(archived), record);
-
-    // The link is its own insert-only fact.
-    const relaunches = world.database.authority.archiveRelaunches.listByArchivedRun(archived);
-    assert.equal(relaunches.length, 1);
-    assert.equal(relaunches[0]?.runId, fresh.runId);
-    assert.equal(relaunches[0]?.relaunchedIdentity.descriptorVersion, 2);
-
-    // A relaunch citing a digest the record does not hold is refused.
-    const stale = CommandResultSchema.parse(world.kernel.execute({
-      ...envelope(),
-      family: "version-archive",
-      type: "relaunch-archived-run",
-      target: { archivedRunId: archived, archiveFingerprint: HASH_A },
-    }));
-    assert.equal(stale.state, "rejected");
-    if (stale.state === "rejected") assert.equal(stale.code, "schema-mismatch");
+    const record = reportOf(world, archived);
+    const view = projectArchiveReport(record); assert.ok(view.state === "available");
+    for (const fingerprint of [HASH_A, view.archiveFingerprint]) {
+      const before = world.database.authority.runs.listByWorkflow("archive-fixture");
+      const result = world.kernel.execute({ ...envelope(), family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: archived, archiveFingerprint: fingerprint } });
+      assert.equal(result.state, "rejected");
+      if (result.state === "rejected") assert.equal(result.code, "policy-refused");
+      assert.deepEqual(world.database.authority.runs.listByWorkflow("archive-fixture"), before);
+      assert.deepEqual(reportOf(world, archived), record);
+      assert.deepEqual(world.database.authority.archiveRelaunches.listByArchivedRun(archived), []);
+    }
   });
 
   /**
@@ -1285,54 +1138,19 @@ describe("the D80 archive model", () => {
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-
-    const record = world.database.authority.archivedRuns.get(archived);
-    assert.notEqual(record, undefined);
-
-    /*
-      What the ARCHIVED DETAIL serves is what the delete cites back. The
-      surface reads no other digest, so this equality is the whole reason
-      `schema-mismatch` can mean "you are looking at a different record".
-    */
-    const detail = buildArchivedRunDetail(emptyRegistryDeps(world), archived);
-    assert.equal(detail.archiveFingerprint, archivedRunReferenceFingerprint(ArchivedRunRecordSchema.parse(record)));
-
-    // A delete citing a digest the record does not hold removes NOTHING.
-    const stale = CommandResultSchema.parse(world.kernel.execute({
-      ...envelope(),
-      family: "version-archive",
-      type: "delete-archived-run",
-      target: { archivedRunId: archived, archiveFingerprint: HASH_A },
-    }));
+    const detail = projectArchiveReport(reportOf(world, archived)); assert.ok(detail.state === "available");
+    const request = { ...envelope(), family: "version-archive", type: "delete-archived-run", target: { archivedRunId: archived, archiveFingerprint: detail.archiveFingerprint } };
+    const stale = world.kernel.execute({ ...request, commandId: envelope().commandId, target: { ...request.target, archiveFingerprint: HASH_A } });
     assert.equal(stale.state, "rejected");
     if (stale.state === "rejected") assert.equal(stale.code, "schema-mismatch");
-    assert.equal(world.database.authority.archivedRuns.isArchived(archived), true);
-    assert.notEqual(world.database.authority.runs.get(archived), undefined);
+    assert.ok(reportOf(world, archived));
     assert.equal(world.database.authority.deletedRuns.get(archived), undefined);
-
-    // The served digest opens it.
-    const result = CommandResultSchema.parse(world.kernel.execute({
-      ...envelope(),
-      family: "version-archive",
-      type: "delete-archived-run",
-      target: { archivedRunId: archived, archiveFingerprint: detail.archiveFingerprint },
-    }));
-    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "delete refused");
-
-    // The archived record, the retained run, and the ledger row are gone —
-    // behind the one tombstone that records the origin they left through.
-    assert.equal(world.database.authority.archivedRuns.get(archived), undefined);
-    assert.equal(world.database.authority.archivedRuns.isArchived(archived), false);
+    assert.equal(world.kernel.execute(request).state, "applied");
+    assert.equal(world.kernel.execute(request).state, "already-applied");
+    assert.equal(createRunLifecycleStorage(world.database).readReport(archived), undefined);
     assert.equal(world.database.authority.runs.get(archived), undefined);
     assert.equal(world.database.authority.deletedRuns.get(archived)?.origin, "archive");
-
-    // The ledger the surface returns to no longer lists it, and its detail
-    // route refuses by name rather than serving a hollow record.
-    assert.equal(
-      buildArchiveIndex(emptyRegistryDeps(world)).entries.some((entry) => entry.runId === archived),
-      false,
-    );
-    assert.throws(() => buildArchivedRunDetail(emptyRegistryDeps(world), archived));
+    assert.deepEqual(queryArchiveReports(createRunLifecycleStorage(world.database), { limit: 10 }).items, []);
   });
 
   it("refuses an apply whose plan was reviewed against a registry that has since moved", () => {
@@ -1387,18 +1205,15 @@ describe("D274 — bump kind semantics", () => {
 
     // The sweep is still RECORDED — the version moved — with an empty archive
     // set and the reviewed change record carried verbatim.
-    const applications = world.database.authority.versionBumpApplications.list();
+    const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied");
     assert.equal(applications.length, 1);
-    assert.deepEqual([...(applications[0]?.archivedRunIds ?? ["unread"])], []);
-    assert.equal(applications[0]?.changeRecord?.kind, "minor");
+    assert.deepEqual([...(applications[0]?.members.map(member => member.runId) ?? ["unread"])], []);
+    assert.equal(applications[0]?.change.kind, "minor");
 
     // And the archive read path serves that sweep as what it is: a version
     // record that took no run with it.
-    const index = buildArchiveIndex(emptyRegistryDeps(world));
-    assert.equal(index.entries.length, 0);
-    assert.equal(index.sweeps.length, 1);
-    assert.equal(index.sweeps[0]?.archivedCount, 0);
-    assert.deepEqual([...(index.sweeps[0]?.fromVersions ?? ["unread"])], []);
+    assert.deepEqual(queryArchiveReports(createRunLifecycleStorage(world.database), { limit: 10 }).items, []);
+    assert.equal(applications[0]?.state, "applied");
   });
 
   it("a minor plan's review copy states what apply will do: no candidates, no blockers", () => {
@@ -1409,21 +1224,21 @@ describe("D274 — bump kind semantics", () => {
     world.registry = V2;
 
     const reviewed = plan(world, "minor");
-    const stored = world.database.authority.versionPlans.get(reviewed.versionPlanId);
+    const stored = world.database.readVersionChange(reviewed.versionPlanId);
     // …and the MINOR plan lists neither: its candidates are "what apply will
     // archive" and its blockers are "what apply will refuse on", and for a
     // minor bump both are empty by definition (D274). Listing them would be a
     // review copy that lies about the sweep it reviews.
-    assert.deepEqual([...(stored?.plan.candidates ?? ["unread"])], []);
-    assert.deepEqual([...(stored?.plan.blockers ?? ["unread"])], []);
-    assert.equal(stored?.plan.changeRecord?.kind, "minor");
+    assert.deepEqual([...(stored?.members ?? ["unread"])], []);
+    assert.deepEqual([...(stored?.blockers ?? ["unread"])], []);
+    assert.equal(stored?.change?.kind, "minor");
 
     // The same registry facts under a MAJOR plan list both — the kind, not
     // the facts, is what changed.
     const major = plan(world);
-    const majorStored = world.database.authority.versionPlans.get(major.versionPlanId);
-    assert.equal(majorStored?.plan.candidates.length, 1);
-    assert.equal(majorStored?.plan.blockers.length, 1);
+    const majorStored = world.database.readVersionChange(major.versionPlanId);
+    assert.equal(majorStored?.members.length, 1);
+    assert.equal(majorStored?.blockers.length, 1);
   });
 
   it("refuses to apply a generation-1 plan that declares no bump kind, rather than guessing one", () => {
@@ -1510,24 +1325,17 @@ describe("D274 — bump kind semantics", () => {
     assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "major apply refused");
 
     // The application row names exactly the two prior-version runs.
-    const applications = world.database.authority.versionBumpApplications.list();
+    const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied");
     assert.equal(applications.length, 1);
-    assert.deepEqual([...(applications[0]?.archivedRunIds ?? [])].sort(), [priorA, priorB].sort());
-    assert.equal(applications[0]?.changeRecord?.kind, "major");
+    assert.deepEqual([...(applications[0]?.members.map(member => member.runId) ?? [])].sort(), [priorA, priorB].sort());
+    assert.equal(applications[0]?.change.kind, "major");
 
-    // And the archive holds exactly those two — the current-version run stays.
-    assert.deepEqual(
-      world.database.authority.archivedRuns.list().map(({ runId }) => runId).sort(),
-      [priorA, priorB].sort(),
-    );
-    assert.equal(world.database.authority.archivedRuns.isArchived(current), false);
-    const source=world.database.captureLifecycleSource(priorA);
-    const supplement=source.records.find(group=>group.table==="archive_transactions")?.rows[0];
-    assert.ok(supplement);
-    assert.equal(world.database.historicalArchiveSource().source.archives.length,2);
-    const retained=JSON.parse(supplement.json) as {json:string;digest:string};
-    assert.equal(retained.digest,sha256Hex(retained.json));
-    assert.deepEqual(JSON.parse(retained.json),world.database.authority.archivedRuns.transactions(priorA));
-
+    const storage = createRunLifecycleStorage(world.database);
+    assert.deepEqual(queryArchiveReports(storage, { limit: 10 }).items.map(item => item.state === "available" ? item.runId : "missing").sort(), [priorA, priorB].sort());
+    assert.equal(storage.readReport(current), undefined);
+    assert.equal(world.database.historicalArchiveSource().source.archives.length, 0);
+    const report = reportOf(world, priorA);
+    assert.equal(sha256Hex(report.content.sources[0].json), report.content.sources[0].digest);
+    assert.equal(world.database.authority.runs.get(priorA), undefined);
   });
 });

@@ -31,7 +31,7 @@ import {
   WorkerLifecycleSchema,
 } from "../../domain/run/worker.js";
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
-import { RunDisplayNameSchema } from "../../domain/commands.js";
+import { RunDisplayNameSchema, VersionArchiveCommandRequestSchema } from "../../domain/commands.js";
 import { CheckpointPatchSchema } from "../../domain/workflow/checkpoint.js";
 import { RuntimeConfigClaimTokenSchema } from "../../domain/config/runtime-generation.js";
 import { RunEnvelopeSchema } from "../../domain/run/envelope.js";
@@ -404,8 +404,11 @@ export const CanonicalDeleteRequestSchema = z.strictObject(CanonicalVersionIdent
 export const CanonicalDeleteArchivedRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
   runId: RunIdSchema,
-  archiveFingerprint: FingerprintSchema,
-});
+  archiveFingerprint: FingerprintSchema.optional(),
+  operatorRequest: VersionArchiveCommandRequestSchema.optional(),
+}).refine(request => request.archiveFingerprint !== undefined || request.operatorRequest !== undefined, "archive-delete-reference-required")
+.refine(request => request.operatorRequest === undefined || (request.operatorRequest.type === "delete-archived-run"
+  && request.operatorRequest.target.archivedRunId === request.runId), "archive-operator-request-binding-mismatch");
 
 export const CanonicalPurgeRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
