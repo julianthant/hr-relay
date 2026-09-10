@@ -1,3 +1,4 @@
+import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { QueueStatusSchema } from "../../domain/dashboard/projection.js";
@@ -90,7 +91,7 @@ export function createRunSummaries(database: DatabaseSync) {
         workflow_runs:["$.envelope.runId","$.envelope.parent.runId"], run_results:["$.runId"],
         run_receipts:["$.runId"],run_failures:["$.runId"],timeline_events:["$.scope.runId"],
         delegation_dependencies:["$.parentRunId","$.childRunId"],run_delegations:["$.parentRunId"],
-        archived_runs:["$.runId"],archive_transfers:["$.run.envelope.runId"],
+        ...(hasHistoricalArchiveTables(database) ? { archived_runs:["$.runId"] } : {}),archive_transfers:["$.run.envelope.runId"],
       };
       for(const [table,paths] of Object.entries(sources)) for(const action of ["INSERT","UPDATE","DELETE"]) {
         const refs=action==="INSERT"?["NEW"]:action==="DELETE"?["OLD"]:["OLD","NEW"];
@@ -104,7 +105,7 @@ export function createRunSummaries(database: DatabaseSync) {
     },
     /** Explicit rebuild; no half-publication escapes the caller's write transaction. */
     refresh(sourceGeneration:number,now:string) {
-      const runs=database.prepare("SELECT record_json FROM workflow_runs WHERE record_key NOT IN (SELECT record_key FROM archived_runs)").all().map(row=>RunRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)));
+      const runs=database.prepare(`SELECT record_json FROM workflow_runs WHERE ${unarchivedRunSql(database,"workflow_runs.record_key")}`).all().map(row=>RunRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)));
       database.exec("DELETE FROM run_summaries");write(runs,sourceGeneration,now);return publish(sourceGeneration,now);
     },
     /** Shared transaction hook. Q can refine maintenance inside this owned adapter. */
@@ -117,7 +118,7 @@ export function createRunSummaries(database: DatabaseSync) {
         }
         const ids=database.prepare("SELECT run_id FROM summary_dirty UNION SELECT parent_run_id FROM run_summaries WHERE record_key IN (SELECT run_id FROM summary_dirty) AND parent_run_id IS NOT NULL UNION SELECT json_extract(record_json,'$.envelope.parent.runId') FROM workflow_runs WHERE record_key IN (SELECT run_id FROM summary_dirty) AND json_extract(record_json,'$.envelope.parent.runId') IS NOT NULL").all().map(row=>z.object({run_id:z.string()}).parse(row).run_id);
         for(const id of ids) {
-          const row=database.prepare("SELECT record_json FROM workflow_runs WHERE record_key=? AND record_key NOT IN (SELECT record_key FROM archived_runs)").get(id);
+          const row=database.prepare(`SELECT record_json FROM workflow_runs WHERE record_key=? AND ${unarchivedRunSql(database,"workflow_runs.record_key")}`).get(id);
           if(row===undefined)database.prepare("DELETE FROM run_summaries WHERE record_key=?").run(id);
           else write([RunRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))],sourceGeneration,now);
         }

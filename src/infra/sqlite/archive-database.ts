@@ -62,6 +62,7 @@ function fileBytes(path:string): Buffer {
 export class ArchiveDatabase {
   readonly #database: DatabaseSync;
   readonly #readOnly: boolean;
+  #memoryFiles: Map<string, Buffer> | undefined;
   constructor(readonly path: string, options: Readonly<{readOnly?:boolean}> = {}) {
     const existed=existsSync(path); this.#readOnly=options.readOnly===true;
     if ((!existed && this.#readOnly) || (existed && (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).size===0))) throw new Error("archive-database-invalid-path");
@@ -77,6 +78,26 @@ export class ArchiveDatabase {
       for(const raw of this.#database.prepare("SELECT run_id FROM archive_records").all())this.read(z.strictObject({run_id:z.string()}).parse(raw).run_id);
       for(const raw of this.#database.prepare("SELECT * FROM archive_deletions").all())this.parseDeletion(raw);
     } catch(error) {this.#database.close();throw error;}
+  }
+  /** Disposable preflight snapshot; neither database nor retained files write to disk. */
+  static preflightCopy(path: string): ArchiveDatabase {
+    const copy = new ArchiveDatabase(":memory:");
+    copy.#memoryFiles = new Map();
+    if (!existsSync(path)) return copy;
+    const source = new ArchiveDatabase(path, {readOnly:true});
+    try {
+      source.#database.exec("BEGIN");
+      for (const table of ["archive_records", "archive_deletions"]) {
+        for (const row of source.#database.prepare(`SELECT * FROM ${table}`).all()) {
+          const columns = Object.keys(row);
+          copy.#database.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+        }
+      }
+      for (const file of source.files()) copy.#memoryFiles.set(file.digest, source.readFile(file));
+      source.#database.exec("COMMIT");
+      return copy;
+    } catch (error) { copy.close(); throw error; }
+    finally { source.close(); }
   }
   close():void{this.#database.close();}
   async onlineBackupTo(path:string):Promise<number>{return sqliteBackup(this.#database,path,{rate:100});}
@@ -133,13 +154,20 @@ export class ArchiveDatabase {
   retainFile(input:ArchiveReport["content"]["files"][number],bytes:Uint8Array):void{
     const file=ArchiveFileReferenceSchema.parse(input);
     if(bytes.length!==file.byteLength||createHash("sha256").update(bytes).digest("hex")!==file.digest)throw new Error("archive-file-source-mismatch");
+    if (this.#memoryFiles !== undefined) { this.#memoryFiles.set(file.digest, Buffer.from(bytes)); return; }
     const root=this.fileRoot();mkdirSync(root,{recursive:true,mode:0o700});
     const path=join(root,file.digest);
     if(!existsSync(path))writeFileSync(path,bytes,{flag:"wx",mode:0o600,flush:true});
     this.readFile(file);syncPath(root);
   }
   readFile(input:ArchiveReport["content"]["files"][number]):Buffer{
-    const file=ArchiveFileReferenceSchema.parse(input),path=join(this.fileRoot(),file.digest);
+    const file=ArchiveFileReferenceSchema.parse(input);
+    if (this.#memoryFiles !== undefined) {
+      const bytes = this.#memoryFiles.get(file.digest);
+      if (bytes === undefined || bytes.length !== file.byteLength || createHash("sha256").update(bytes).digest("hex") !== file.digest) throw new Error("archive-file-integrity-mismatch");
+      return Buffer.from(bytes);
+    }
+    const path=join(this.fileRoot(),file.digest);
     if(!existsSync(path)||!lstatSync(path).isFile()||lstatSync(path).isSymbolicLink())throw new Error("archive-file-unavailable");
     const bytes=fileBytes(path);
     if(bytes.length!==file.byteLength||createHash("sha256").update(bytes).digest("hex")!==file.digest)throw new Error("archive-file-integrity-mismatch");

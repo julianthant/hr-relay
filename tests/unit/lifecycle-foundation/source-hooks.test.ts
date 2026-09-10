@@ -1,3 +1,4 @@
+import { sha256Hex } from "../../../src/domain/sha256.js";
 import assert from "node:assert/strict";
 import { lifecycleSourceDigest } from "../../../src/core/run-lifecycle-storage.js";
 import { describe, it } from "vitest";
@@ -63,13 +64,16 @@ it("reads a consistent publication across an independent writer and refuses a co
   }finally{peer?.close();f.dispose();}
 });
 
-import { VERSION_PLAN_ROW } from "../../fixtures/archive-fixtures.js";
+import { versionChangeReviewFingerprint } from "../../../src/domain/archive/change-record.js";
 import { queryRunSummarySource } from "../../../src/server/dashboard/queries/run-summaries.js";
 it("keeps unrelated summaries unchanged, rolls nested notifications back, and pages through the real indexed port",()=>{
   const f=foundationFixture();
   try {
     f.db.refreshRunSummaries();const before=f.db.readRunSummaries();
-    f.db.authority.versionPlans.insert(VERSION_PLAN_ROW);
+    const review={changeId:id(820),actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
+      change:{kind:"minor" as const,what:"Synthetic",why:"Unrelated source write",commit:{state:"absent" as const,reason:"test"}},
+      scope:{kind:"application" as const,applicationVersion:"1.0.0"},targetVersion:"1.1.0",targets:[],members:[],membershipDigest:sha256Hex("[]")};
+    f.db.writeVersionChange({...review,schemaVersion:2,reviewFingerprint:versionChangeReviewFingerprint(review),state:"planned",completedRunIds:[]});
     assert.deepEqual(f.db.readRunSummaries(),before);
     f.db.withAuthorityTransaction(()=>{
       assert.throws(()=>f.db.withAuthorityTransaction(()=>{f.createRun(id(810));throw new Error("savepoint-rollback");}),/savepoint-rollback/u);

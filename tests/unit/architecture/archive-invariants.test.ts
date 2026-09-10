@@ -1,3 +1,4 @@
+import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
 /**
  * `archive-invariants` — the structural half of D80/D179 (ref dashboard-surfaces §10.2, ref frontend-backend-integration
  * §8 guard #11).
@@ -42,7 +43,7 @@ import {
   ArchivedRunContentSchema,
   ArchivedRunRecordSchema,
 } from "../../../src/domain/archive/model.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
@@ -207,10 +208,7 @@ describe("archive invariants", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-archive-immutable-"));
     roots.push(root);
     const path = join(root, "authority.sqlite");
-    const database = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "archive-guard" },
-      manualClock(new Date(NOW)),
-    );
+    const database = historicalArchiveAuthority(path, manualClock(new Date(NOW)));
     databases.push(database);
     database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);

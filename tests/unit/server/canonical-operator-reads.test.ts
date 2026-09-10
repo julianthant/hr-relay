@@ -1,3 +1,4 @@
+import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
@@ -27,11 +28,11 @@ import { AT, DAY, makeWorld, queuedEventOf, runRecordOf, uuidOf } from "./helper
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
-function fixture() {
+function fixture(historical=false) {
   const root = mkdtempSync(join(tmpdir(), "canonical-operator-"));
   cleanups.push(() => rmSync(root, { recursive: true }));
   const clock = manualClock(AT);
-  const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
+  const database = historical ? historicalArchiveAuthority(join(root,"authority.sqlite"),clock) : AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
   cleanups.push(() => database.close());
   const realReader = sqliteRunReader(database, clock);
   let listCalls = 0;
@@ -57,7 +58,7 @@ function fixture() {
 }
 
 it.each(["single", "operation-member"] as const)("freezes a spanless canonical %s and converges live/archive/deleted views without reconstructing evidence", async (shape) => {
-  const f = fixture();
+  const f = fixture(true);
   const parent = shape === "operation-member" ? runRecordOf({ seed: 412, shape: "operation" }) : undefined;
   if (parent !== undefined) f.database.authority.runs.enqueue(parent);
   const run = runRecordOf({ seed: 409, shape, ...(parent === undefined ? {} : { parentSeed: 412 }) });

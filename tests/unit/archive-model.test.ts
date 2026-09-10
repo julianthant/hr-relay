@@ -1,3 +1,5 @@
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
+import { VersionChangeStorageSchema } from "../../src/domain/archive/change-record.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
 import { projectArchiveReport, queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
 import { ArchiveReportSchema } from "../../src/domain/archive/report.js";
@@ -324,13 +326,13 @@ function snapshotSource(world: {
   };
 }
 
-function createWorld(): World {
+function createWorld(historical = false): World {
   const root = mkdtempSync(join(tmpdir(), "hrauto-archive-"));
   roots.push(root);
   const stateRoot = join(root, "state");
   mkdirSync(stateRoot, { recursive: true });
   const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open(
+  const database = historical ? historicalArchiveAuthority(join(root, "authority.sqlite"),clock) : AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "archive-test" },
     clock,
   );
@@ -518,7 +520,7 @@ function ledgerBytes(stateRoot: string): readonly [string, string][] {
 describe("the D80 archive model", () => {
   for (const changed of ["raw", "parsed", "both"] as const) {
     it(`refuses changed protected ${changed} input at archive reads and commands without effects`, () => {
-      const world = createWorld();
+      const world = createWorld(true);
       const fingerprint = archivedRunReferenceFingerprint(ARCHIVED_RUN);
       const corrupt = structuredClone(ARCHIVED_RUN);
       if (changed !== "parsed") corrupt.input.raw = { emplId: "10854321" };
@@ -550,7 +552,7 @@ describe("the D80 archive model", () => {
     });
   }
   it("refuses corrupt retained content at archive reads and commands without effects", () => {
-    const world = createWorld();
+    const world = createWorld(true);
     const fingerprint = archivedRunReferenceFingerprint(ARCHIVED_RUN);
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
@@ -620,7 +622,7 @@ describe("the D80 archive model", () => {
   });
 
   it.each([5, 6])("withholds protected generation-%s receipt, failure, queue, and log diagnostics without rewriting the archive", (generation) => {
-    const world = createWorld();
+    const world = createWorld(true);
     const raw = "ucpath:termination|10812345|2026-08-29";
     const sections = ARCHIVED_RUN_WITH_SECTIONS.sections;
     if (sections === undefined || sections.logs.state !== "present") {
@@ -742,7 +744,7 @@ describe("the D80 archive model", () => {
      * payloads were never captured rather than serving empty panels that would
      * read as "this run did nothing".
      */
-    const world = createWorld();
+    const world = createWorld(true);
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
       repositories.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: 1, now: NOW,
@@ -782,7 +784,7 @@ describe("the D80 archive model", () => {
   });
 
   it("reads a pre-D269 archived row forward without changing its stored digest", () => {
-    const world = createWorld();
+    const world = createWorld(true);
     const { session: _session, ...preD269Row } = ARCHIVED_RUN.row;
     const { contentDigest: _oldDigest, ...historicalContent } = ARCHIVED_RUN;
     const historicalDigest = sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify({ ...historicalContent, row: preD269Row })}`);
@@ -1205,7 +1207,7 @@ describe("D274 — bump kind semantics", () => {
 
     // The sweep is still RECORDED — the version moved — with an empty archive
     // set and the reviewed change record carried verbatim.
-    const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied");
+    const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied").map(row => VersionChangeStorageSchema.parse(row));
     assert.equal(applications.length, 1);
     assert.deepEqual([...(applications[0]?.members.map(member => member.runId) ?? ["unread"])], []);
     assert.equal(applications[0]?.change.kind, "minor");
@@ -1242,7 +1244,7 @@ describe("D274 — bump kind semantics", () => {
   });
 
   it("refuses to apply a generation-1 plan that declares no bump kind, rather than guessing one", () => {
-    const world = createWorld();
+    const world = createWorld(true);
     // A stored generation-1 plan predates charter §25's change record: those
     // bytes are on disk and nothing may back-fill them, so it names NO kind.
     // Guessing major would archive runs nobody reviewed for archival; guessing
@@ -1325,7 +1327,7 @@ describe("D274 — bump kind semantics", () => {
     assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "major apply refused");
 
     // The application row names exactly the two prior-version runs.
-    const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied");
+    const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied").map(row => VersionChangeStorageSchema.parse(row));
     assert.equal(applications.length, 1);
     assert.deepEqual([...(applications[0]?.members.map(member => member.runId) ?? [])].sort(), [priorA, priorB].sort());
     assert.equal(applications[0]?.change.kind, "major");

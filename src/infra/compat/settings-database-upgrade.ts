@@ -1,3 +1,9 @@
+import { createRunSummaries } from "../sqlite/run-summaries.js";
+import { convertHistoricalArchives } from "../../services/archive/archive-transfer.js";
+import { createRunLifecycleStorage } from "../../core/run-lifecycle-storage.js";
+import { ArchiveDatabase } from "../sqlite/archive-database.js";
+import { HistoricalVersionChangeSchema } from "../sqlite/storage-records.js";
+import { join } from "node:path";
 import { assertFoundationRetirement } from "../sqlite/foundation-retirement.js";
 import { readGeneratedSources, generatedSourceDigest, readPreservedGeneratedSources, installGeneratedSources, convertGeneratedArtifacts, type GeneratedSourceManifest } from "../sqlite/generated-conversion.js";
 import { convertAppSettings, writeAppSettings, readAppSettings } from "../sqlite/settings-storage.js";
@@ -22,7 +28,7 @@ import { AuthorityUpgradeRecordSchema } from "../../domain/authority.js";
 import { BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../domain/commands.js";
 import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../domain/config/settings.js";
-import { inspectConvertedAuthority } from "../sqlite/authority-database.js";
+import { withStoppedArchiveConversion, inspectConvertedAuthority } from "../sqlite/authority-database.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, databaseStateTable, databaseUpgradesTable, settingsSnapshotsTable } from "../sqlite/migrations.js";
 import type { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
@@ -33,7 +39,7 @@ const GenerationSchema = z.strictObject({ authority_generation: z.number().int()
 type UpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 type ConversionInput = Readonly<{
   stateRoot: string; environmentFile: string; timelineSourceDirectory?: string; generatedSourceDirectory?: string;
-  hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void }>;
+  hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void; archiveStep?(step: "captured" | "verified" | "cleaned" | "published" | "retired"): void }>;
 }>;
 const ORPHAN_GATE_WHERE = "EXISTS (SELECT 1 FROM deleted_runs WHERE deleted_runs.record_key=substr(checkpoint_payloads.record_key,1,36) AND substr(checkpoint_payloads.record_key,37,1)=':')";
 export function countOrphanGateRecords(path: string | undefined): number {
@@ -211,6 +217,7 @@ function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
 export function convertSettingsDatabase(args: Readonly<{
   ownsCredentialCommandId: (commandId: string) => boolean;
   verifyOnly?: boolean;
+  archiveRecordedAt?: string;
   timelineSources?: TimelineSourceSnapshot;
   timelineCopyDirectory?: string;
   generatedSources?: GeneratedSourceManifest;
@@ -225,7 +232,7 @@ export function convertSettingsDatabase(args: Readonly<{
   const { input, path, existed, from, inspection, backupEvidence, sources, orphanGateRecords, tombstones } = args;
   const report = sources;
   let pending: UpgradeRecord | undefined;
-      const now = clock.now().toISOString();
+      const now = args.archiveRecordedAt ?? clock.now().toISOString();
       const timelineIdentity = existed ? args.timelineSources?.digest : "fresh";
       if (timelineIdentity === undefined) throw new Error("timeline-import-source-evidence-required");
       const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, generated: args.generatedSources === undefined ? "fresh" : generatedSourceDigest(args.generatedSources), settings: derivePersistedSettingsFingerprint(sources.settings), names: Object.keys(sources.protectedPatch).sort() }));
@@ -250,7 +257,7 @@ export function convertSettingsDatabase(args: Readonly<{
             readPreservedGeneratedSources(args.generatedCopyDirectory, generatedSourceDigest(again), backupEvidence);
           }
         }
-        for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > from)) {
+        for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > from && version < 49)) {
           if (migration.version === 41) convertRunCompletions(database);
           const links = migration.version === 37 ? commandGroupLinks(database, args.ownsCredentialCommandId) : undefined;
           for (const [index, statement] of migration.statements.entries()) {
@@ -272,6 +279,7 @@ export function convertSettingsDatabase(args: Readonly<{
           if (migration.version === 1) database.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,1,0,?)").run(now);
           database.prepare(`UPDATE ${databaseStateTable(migration.version)} SET schema_version=? WHERE singleton_id=1`).run(migration.version);
           database.exec(`PRAGMA user_version=${String(migration.version)}`);
+
         }
         database.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
         applyTombstoneBackfill(database, tombstones);
@@ -300,7 +308,46 @@ export function convertSettingsDatabase(args: Readonly<{
             copyDirectory: args.timelineCopyDirectory, backupSha256: backupEvidence.manifest.sha256,
             imported: counts.imported, excludedDeleted: counts.excludedDeleted };
         }
-        freezeConvertedArchiveTransactions(database, now);
+          if (from < 49) {
+            // Finish historical transaction presentation while its sources still exist.
+            freezeConvertedArchiveTransactions(database, now);
+            const archive = args.verifyOnly === true ? ArchiveDatabase.preflightCopy(join(input.stateRoot, "archive.sqlite")) : undefined;
+            const converted = withStoppedArchiveConversion(database, path, clock, archive, authority => {
+              const baseStorage = createRunLifecycleStorage(authority);
+              const step = (at: "captured" | "verified" | "cleaned" | "published") => { if(args.verifyOnly !== true) input.hooks?.archiveStep?.(at); };
+              const storage = {...baseStorage,
+                saveReport: (report: Parameters<typeof baseStorage.saveReport>[0]) => { const result=baseStorage.saveReport(report);step("captured");return result; },
+                verifyReport: (runId:string,digest:string) => { const result=baseStorage.verifyReport(runId,digest);step("verified");return result; },
+                transfer: (request: Parameters<typeof baseStorage.transfer>[0]) => { const result=baseStorage.transfer(request);step("cleaned");return result; },
+                publishReport: (runId:string,digest:string) => { const result=baseStorage.publishReport(runId,digest);step("published");return result; },
+              };
+              const source = storage.historicalArchiveSource();
+              const result = convertHistoricalArchives(storage, source, now);
+              for (const expected of result.reports) {
+                const report = storage.readReport(expected.runId);
+                if (report?.digest !== expected.reportDigest || report.content.sourceDigest !== expected.sourceDigest
+                  || authority.authority.runs.get(expected.runId) !== undefined
+                  || authority.authority.deletedRuns.get(expected.runId) !== undefined) throw new Error("archive-retirement-verification-failed");
+              }
+              return result;
+            });
+            for (const plan of converted.retainedVersionSources.plans) {
+              const application = converted.retainedVersionSources.applications.find(row => row.versionPlanId === plan.versionPlanId) ?? null;
+              const record = HistoricalVersionChangeSchema.parse({schemaVersion:"historical-archive-v1",state:"historical",changeId:plan.versionPlanId,
+                sourceDigest:converted.sourceDigest,plan,application,
+                reports:converted.reports.filter(row => application?.archivedRunIds.includes(row.runId)),
+                absentRunIds:converted.absentHistoricalMembers.filter(row => row.applicationId === application?.applicationId).map(row => row.runId)});
+              const json = canonicalJsonStringify(record);
+              const existing = database.prepare("SELECT record_json FROM version_changes WHERE record_key=?").get(record.changeId);
+              if (existing !== undefined && RowSchema.parse(existing).record_json !== json) throw new Error("archive-retirement-version-identity-conflict");
+              if (existing === undefined) database.prepare("INSERT INTO version_changes VALUES (?,?,?)").run(record.changeId,json,plan.createdAt);
+            }
+            const retirement = SQLITE_MIGRATIONS.find(row => row.version === 49);
+            if (retirement === undefined) throw new Error("archive-retirement-migration-missing");
+            for (const statement of retirement.statements) database.exec(statement);
+            database.exec("UPDATE database_state SET schema_version=49 WHERE singleton_id=1; PRAGMA user_version=49");
+            if (args.verifyOnly !== true) input.hooks?.archiveStep?.("retired");
+          }
         const revision = from >= 32 ? sources.ordinary.revision : writeOrdinaryConversion(database, sources, now, upgradeId);
         pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
           by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport,
@@ -309,6 +356,7 @@ export function convertSettingsDatabase(args: Readonly<{
           credentialCommandId: randomUUID(), credentialWriteId: randomUUID(), importedKeys: report.importedKeys, envKeysToRemove: report.envKeysToRemove });
         appendUpgrade(database, pending);
         database.prepare(`UPDATE ${databaseStateTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1`).run(now);
+        createRunSummaries(database).refresh(GenerationSchema.parse(database.prepare("SELECT authority_generation FROM database_state").get()).authority_generation,now);
         inspectConvertedAuthority(database);
         if (args.verifyOnly !== true) {
           args.bindCredentials?.(upgradeId);
@@ -349,6 +397,7 @@ export function settleSettingsUpgrade(path: string, pending: UpgradeRecord, now:
     database.exec("BEGIN IMMEDIATE");
     appendUpgrade(database, { ...pending, recordKey: randomUUID(), phase: "settled", recordedAt: now });
     database.prepare(`UPDATE ${databaseStateTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1`).run(now);
+    createRunSummaries(database).refresh(GenerationSchema.parse(database.prepare("SELECT authority_generation FROM database_state").get()).authority_generation,now);
     database.exec("COMMIT");
   } catch (error) { if (database.isTransaction) database.exec("ROLLBACK"); throw error; }
   finally { database.close(); }

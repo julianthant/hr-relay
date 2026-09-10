@@ -41,10 +41,10 @@ export function historicalWorld(options: { files?: boolean; confirmation?: boole
   const world = historyWorld();
   const fixtures = [world.commit(101, { confirmedAt: "2026-07-31T17:30:00.000Z" }),
     world.commit(102, { confirmedAt: "2026-08-01T17:30:00.000Z", instance: "test" })];
-  if (options.archive) world.database.withAuthorityTransaction((repositories) => {
-    repositories.runs.enqueue(QUEUED_RUN); repositories.versionPlans.insert(VERSION_PLAN_ROW);
-    repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION); repositories.archivedRuns.insert(ARCHIVED_RUN);
-  });
+  if (options.archive) {
+    world.database.authority.runs.enqueue(QUEUED_RUN);
+    world.database.authority.runs.transition({runId:QUEUED_RUN.envelope.runId,expectedVersion:QUEUED_RUN.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:HISTORY_NOW},now:HISTORY_NOW});
+  }
   const root = mkdtempSync(join(tmpdir(), "history-conversion-"));
   const path = join(root, "state.db");
   const source = new DatabaseSync(world.path, { readOnly: true });
@@ -54,11 +54,19 @@ export function historicalWorld(options: { files?: boolean; confirmation?: boole
     for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= 39)) for (const statement of migration.statements) target.exec(statement);
     target.prepare("INSERT INTO database_state(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,39,7,?)").run(HISTORY_NOW);
     target.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=39`);
-    for (const table of ["workflow_runs", "run_operations", "run_operation_attempts", "run_checkpoints", ...(options.confirmation ? ["timeline_events"] : []), ...(options.archive ? ["version_plans", "version_bump_applications", "archived_runs"] : [])]) {
+    for (const table of ["workflow_runs", "run_operations", "run_operation_attempts", "run_checkpoints", ...(options.confirmation ? ["timeline_events"] : [])]) {
       for (const row of source.prepare(`SELECT * FROM ${table}`).all()) {
         const columns = Object.keys(row).filter((column) => column !== "transactions_json" && column !== "transactions_digest");
         target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...columns.map((column) => row[column]));
       }
+    }
+    if(options.archive) {
+      const plan={...VERSION_PLAN_ROW,state:"applied",version:2,appliedAt:VERSION_BUMP_APPLICATION.appliedAt};
+      target.prepare("INSERT INTO version_plans VALUES (?,?,?)").run(plan.versionPlanId,canonicalJsonStringify(plan),plan.createdAt);
+      const app=VERSION_BUMP_APPLICATION;
+      target.prepare("INSERT INTO version_bump_applications VALUES (?,?,?,?,?,?,?,?)").run(app.applicationId,app.versionPlanId,app.scope.kind,app.targetVersion,app.appliedAppVersion,app.archivedRunIds.length,canonicalJsonStringify(app),app.appliedAt);
+      const archive=ARCHIVED_RUN;
+      target.prepare("INSERT INTO archived_runs VALUES (?,?,?,?,?,?,?,?,?)").run(archive.runId,archive.applicationId,archive.workflowId,archive.archivedIdentity.descriptorVersion,archive.archivedIdentity.contractFingerprint,archive.appVersion.state === "present" ? archive.appVersion.value : null,archive.contentDigest,canonicalJsonStringify(archive),archive.archivedAt);
     }
     for (const fixture of fixtures) {
       for (const value of [fixture.historicalCommit.ledgerOutbox, fixture.historicalCommit.terminalSpanOutbox]) {
