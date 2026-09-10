@@ -87,6 +87,53 @@ The old WAITING ON condition is satisfied. V01–V06 are complete with local int
 in [the execution receipt](prerequisites.md#v-execution-binding--2026-09-10).
 No task is dispatched by this registry.
 
+### Approved U supervisor prompt — 2026-09-10
+
+```text
+/supervise 2.6.8.1 (U), GPT-6 Astra/high.
+
+Repository: /Users/julianhein/Projects/hr-automation-rebuild
+Plan owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md
+Section: Approved U01–U06 execution brief — 2026-09-10
+Approved plan commit: 25ec4b5ed0f6bca575db8d9f204268b1dd840ff4
+Required integrated V base: ea83e77d378d2b8c000c425205f44887c65a9a94
+Branch/worktree: codex/activity-views at /Users/julianhein/Projects/hr-worktree-database-peer
+
+READY only after reading the committed U brief, verifying its plan commit is reachable from local master,
+and checking V's immutable release, integration, and cleanup records under
+/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/. Recheck V ancestry; branch/path absence,
+the four-auxiliary-worktree capacity, no conflicting owner, and clean master target. Create the U branch
+and worktree from the exact base above; never implement on master. If V evidence is missing or contradictory,
+report WAITING ON V release evidence and stop without a candidate.
+
+One Astra/high supervisor; zero implementation workers. Use /ui's Components route and the committed U01–U06
+controls. Change only U's five Queue/Activity surface/model paths, its three named test paths, and
+07-activity-ui-evidence.md. Consume V's strict served Queue/Activity summaries; preserve selected scope,
+group containment, durations, warnings, protected/unavailable facts, keyboard/zoom/resizing and existing
+served action authorization. No second calculation/fetch, command/schema/route/fixture/registry/guard change,
+H renderer/test edit, archive redesign, legacy workflow read, live database application, or HR submission.
+A required shared edit is a stop-and-amendment condition.
+
+Run the exact focused U unit paths and affected architecture selectors with one worker, lint, affected
+manifest/catalog/roadmap generation plus freshness checks, and the committed 1024×720/1440×900 synthetic
+desktop proof via playwright-cli, including keyboard, 125% zoom, filters, grouping, pagination, loading,
+stale/unavailable states, and unchanged action semantics. Record exact commands, exits, candidate/tree,
+input identity, screenshots, and limitations in U's owned evidence plus
+/Users/julianhein/Projects/hr-u-activity-views-evidence-20260910/ before cleanup. Do not run full gates,
+broad parity/build/performance, full coverage, or independent review here: those remain 2.6.9.
+
+After focused PASS, commit exact U paths and freeze the candidate. Recheck clean target ownership, target HEAD,
+candidate ancestry, and U/H disjoint scopes, then locally merge U alone into master. H remains an independent
+V-base peer: no routine message, wait, reservation, handoff, or dispatch; either later merge order is allowed.
+Rerun invalidated integration checks or prove exact input-identical reuse. Record merge/tree/check/closure
+evidence. From a safe non-U checkout remove only the incorporated U worktree and codex/activity-views branch;
+verify physical path, registration, and ref absence while preserving the primary checkout, H, and external
+evidence. No push or unrelated cleanup.
+
+Send Done / Now / Remaining at start/resume and after every verified step, keeping local merge, U cleanup,
+and deferred 2.6.9 acceptance visible. Stop after U06; do not launch H or 2.6.9.
+```
+
 ### Historical V conditional supervisor prompt — superseded 2026-09-10
 
 Approved full plan: `c4beb7679b46e15c3aeeb06846ebc3a895469c70`. The following planning-time
