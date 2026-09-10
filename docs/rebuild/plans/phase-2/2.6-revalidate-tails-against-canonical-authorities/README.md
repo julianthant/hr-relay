@@ -251,6 +251,11 @@ this card does not assign duplicate implementation or bypass C0 admission.
 <!-- roadmap: p2db-activity-views -->
 
 Assignment **U**, display **2.6.8.1**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-5-dryrun-results-and-shared-run-summaries).
+The operator approved U01–U06, including focused proof, local `master` integration, and U-owned
+worktree/ref cleanup after PASS; [the resolved prompt](database-modernization/PROMPTS.md#approved-u-supervisor-prompt--2026-09-10)
+pins plan `25ec4b5ed0f6bca575db8d9f204268b1dd840ff4` and V release
+`ea83e77d378d2b8c000c425205f44887c65a9a94`. H remains an independent same-base peer.
+Full gates and complete independent review remain only at 2.6.9; U implementation is unstarted.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
