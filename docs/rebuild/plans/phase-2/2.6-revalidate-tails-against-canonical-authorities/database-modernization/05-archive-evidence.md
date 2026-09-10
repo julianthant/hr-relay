@@ -1,6 +1,6 @@
 # A — archive transfer scoped release evidence
 
-Status: A01–A05 complete; focused candidate PASS. A06 local integration and cleanup in progress.
+Status: A01–A05 complete; focused candidate PASS. A06 integration verified; owned cleanup in progress.
 Full acceptance and independent review remain 2.6.9; no reviewer was dispatched here.
 
 ## Immutable binding
@@ -29,7 +29,7 @@ before A creation. Q was preserved and independently integrated. One supervisor;
 | A03 | Immutable v2 preview, minor/major membership, explicit superseding review, build/workflow validation, full-request application claim and replay. Capture/verify the whole batch before children-first cleanup/publication. Save, verify, cleanup, publish, progress and final-audit interruptions reopen/resume exactly; competing commands refuse. Mixed publication never falsely completes; deleted members cannot resurrect. Transfer creates no deletion receipt. |
 | A04 | Populated old plans/applications, transaction supplements, relaunch lineage and files convert through a callable entrypoint, retaining original IDs/bytes/digests and stable mappings across interruption. Bounded cross-workflow filters/paging, parser-independent safe projection, digest-authenticated deletion and retired relaunch. Shared file owners survive; missing/corrupt/symlinked source bytes refuse. Independent connections serialize deletion. Paired backup/restore retains tombstones and numbering without resurrection. Full operator identity survives a failed audit; exact replay finishes interrupted file settlement first. |
 | A05 | Exact 14-file unit and 9-file architecture batches, lint, applicable generation/freshness, instruction audit and whitespace PASS. Twenty-one implementation/test paths committed explicitly. |
-| A06 | Awaiting local integration verification and owned cleanup; receipts will be appended below. |
+| A06 | Local integration PASS; exact release and gate receipts below. Owned cleanup remains until its separate verified receipt. |
 
 Historical conversion returns original plan/application sources and explicit absent-member/disposition
 facts for L. A does not claim physical historical-table retirement, stopped-upgrade invocation or
@@ -106,3 +106,30 @@ change occurred. No independent review or full-gate claim is inferred from focus
 
 A owns local integration and cleanup. No push, live database application, browser/HR transaction,
 other-task cleanup or successor dispatch is authorized or performed.
+
+## A06 integration receipt — 2026-09-09
+
+- Candidate including evidence: `1c70514c6e89c7a3e411dfbc78f8ff70b3fe6f1c`, tree `0d03897ed2f05731ff279347adeeec2ced3c8492`.
+- Local product merge: `7e20edc073d4a5a233ef960783e97d08578e8e9e`, tree `408b55dac2416f22b01f5249f9addd57b0acaa93`. Parents are pre-integration master `dba937de867d81528b33ad605f5550439f35f6e8` and the exact A candidate.
+- No merge conflict. Every A executable/test path equals its candidate; every Q executable/test path equals pre-integration master. The complete newer decisions document is preserved with the approved A amendments appended.
+- `git merge-tree --write-tree` in BOTH parent orders produces exactly `408b55dac2416f22b01f5249f9addd57b0acaa93`; merge-order-proof.json preserves this commutativity proof.
+
+| Integrated gate | Result |
+| --- | --- |
+| Exact A unit selector | PASS: 14 files, 185 tests |
+| Exact A architecture selector | PASS: 9 files, 198 tests |
+| Exact Q focused unit selector, additionally run for shared-boundary integration | PASS: 11 files, 131 tests |
+| Lint | PASS, exit 0 |
+| All six generation/freshness commands | PASS, exit 0; no generated changes |
+| Instructions / whitespace | PASS: nine pairs, maximum chain 17,335 bytes; diff check clean |
+
+`integration-results.json` contains all exact commands/exits and shows no input mutation during any
+gate. `integration-inputs.json` binds the tested files. All three test invocations observed exactly
+one file worker with unchanged isolation and gate configuration. `integration-identity.json` records
+ancestry, tree, byte equality and clean status. These real integration reruns replace candidate-only
+reuse for combined A/Q behavior. Full gates/review remain 2.6.9.
+
+This integration receipt changes only owned evidence. Its scoped documentation checks run again;
+executable-gate reuse is justified by exact source/test/config/dependency equality with the integrated
+tested input manifest. A remains the cleanup owner. Only its merged branch/worktree and owned
+dependency symlink may be removed; the dependency target and primary checkout must survive.
