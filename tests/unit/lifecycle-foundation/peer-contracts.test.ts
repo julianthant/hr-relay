@@ -118,22 +118,27 @@ describe("L retained retry ownership",()=>{
 });
 
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-it("binds version-change review membership, refuses changed sources and requires verified transfer progress",()=>{
+it("binds version-change review membership, refuses changed sources and requires published transfer progress",()=>{
   const f=foundationFixture();
   try{
     terminalizeFixtureFailure(f,f.run,failure());
     const storage=createRunLifecycleStorage(f.db),snapshot=storage.capture(f.run.envelope.runId);
-    const report=captureArchiveReport({snapshot,transferId:id(770),capturedAt:NOW,sections:[],files:[]});
-    const members=[{runId:snapshot.run.envelope.runId,version:snapshot.run.version,sourceDigest:report.content.sourceDigest}];
-    const change={changeId:id(771),actorId:"local-operator",reviewedAt:NOW,
-      change:{kind:"minor" as const,what:"Synthetic change",why:"Contract proof",commit:{state:"absent" as const,reason:"test"}},
-      scope:{kind:"workflows" as const,workflowIds:[snapshot.run.envelope.workflow]},targetVersion:"2.0.0",targets:[{workflow:snapshot.run.envelope.workflow,version:2,fingerprint:HASH}],members,membershipDigest:sha256Hex(canonicalJsonStringify(members)),state:"reviewed" as const,completedRunIds:[]};
+    const members=[{runId:snapshot.run.envelope.runId,version:snapshot.run.version,sourceDigest:lifecycleSourceDigest(snapshot)}];
+    const review={changeId:id(771),actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
+      change:{kind:"major" as const,what:"Synthetic change",why:"Contract proof",commit:{state:"absent" as const,reason:"test"}},
+      scope:{kind:"workflows" as const,workflowIds:[snapshot.run.envelope.workflow]},targetVersion:"2.0.0",targets:[{workflow:snapshot.run.envelope.workflow,version:2,fingerprint:HASH}],members,membershipDigest:sha256Hex(canonicalJsonStringify(members))};
+    const change={...review,schemaVersion:2 as const,reviewFingerprint:versionChangeReviewFingerprint(review),state:"planned" as const,completedRunIds:[]};
     storage.writeVersionChange(change);
-    assert.throws(()=>storage.writeVersionChange({...change,targets:[{...change.targets[0],version:3}]}),/fence-conflict/u);
-    assert.throws(()=>storage.writeVersionChange({...change,state:"applying",completedRunIds:[members[0].runId]}),/progress-unverified/u);
-    storage.writeVersionChange({...change,state:"applying"});
-    transferArchiveReport(storage,report,snapshot.run.version);
-    storage.writeVersionChange({...change,state:"applied",completedRunIds:[members[0].runId]});
+    assert.throws(()=>storage.writeVersionChange({...change,actorId:"different"}),/contract-invalid/u);
+    const application={commandId:id(772),actorId:"local-operator",startedAt:NOW,appVersion:"1.0.0",targets:review.targets};
+    const applying=storage.claimVersionChange({changeId:change.changeId,reviewFingerprint:change.reviewFingerprint,application});
+    assert.throws(()=>storage.claimVersionChange({changeId:change.changeId,reviewFingerprint:change.reviewFingerprint,application:{...application,commandId:id(773)}}),/claim-conflict/u);
+    const report=captureArchiveReport({snapshot,transferId:id(770),capturedAt:NOW,sections:[],files:[],versionChange:archiveVersionChange(applying)});
+    storage.saveReport(report);storage.verifyReport(snapshot.run.envelope.runId,report.digest);storage.transfer({runId:snapshot.run.envelope.runId,digest:report.digest,expectedVersion:snapshot.run.version});
+    assert.throws(()=>storage.writeVersionChange({...applying,state:"applied",application:{...application,completedAt:NOW},completedRunIds:[members[0].runId]}),/progress-unverified/u);
+    assert.equal(storage.readPendingReport(snapshot.run.envelope.runId,report.content.transferId)?.state,"verified");
+    storage.publishReport(snapshot.run.envelope.runId,report.digest);
+    storage.writeVersionChange({...applying,state:"applied",application:{...application,completedAt:NOW},completedRunIds:[members[0].runId]});
     assert.equal(storage.readVersionChange(change.changeId)?.state,"applied");
   }finally{f.dispose();}
 });
@@ -159,5 +164,52 @@ it("refuses a corrupt archived peer before deleting a live retry or writing a to
     assert.throws(()=>f.db.authority.runs.delete({runId:retry.envelope.runId,origin:"queue",commandId:id(783),now:NOW}),/archive-identity-mismatch/u);
     assert.ok(f.db.authority.runs.get(retry.envelope.runId));
     assert.equal(f.db.authority.deletedRuns.get(retry.envelope.runId),undefined);
+  }finally{f.dispose();}
+});
+
+import { versionChangeReviewFingerprint, archiveVersionChange } from "../../../src/domain/archive/change-record.js";
+import { lifecycleSourceDigest } from "../../../src/core/run-lifecycle-storage.js";
+
+it("reserves one apply across connections and supersedes reviews without letting old confirmations claim replacements",()=>{
+  const f=foundationFixture();let peer:AuthorityDatabase|undefined;
+  try {
+    const review={changeId:id(820),actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
+      change:{kind:"minor" as const,what:"Synthetic",why:"Review replacement",commit:{state:"absent" as const,reason:"test"}},
+      scope:{kind:"application" as const,applicationVersion:"1.0.0"},targetVersion:"1.1.0",targets:[],members:[],membershipDigest:sha256Hex("[]")};
+    const planned={...review,schemaVersion:2 as const,reviewFingerprint:versionChangeReviewFingerprint(review),state:"planned" as const,completedRunIds:[]};
+    f.db.writeVersionChange(planned);
+    const replacementReview={...review,changeId:id(821),supersedes:review.changeId};
+    const replacement={...replacementReview,schemaVersion:2 as const,reviewFingerprint:versionChangeReviewFingerprint(replacementReview),state:"planned" as const,completedRunIds:[]};
+    f.db.replaceVersionChange(review.changeId,planned.reviewFingerprint,replacement);
+    const application={commandId:id(822),actorId:"local-operator",startedAt:NOW,appVersion:"1.0.0",targets:[]};
+    assert.throws(()=>f.db.claimVersionChange({changeId:review.changeId,reviewFingerprint:planned.reviewFingerprint,application}),/fence-conflict/u);
+    assert.throws(()=>f.db.claimVersionChange({changeId:replacement.changeId,reviewFingerprint:planned.reviewFingerprint,application}),/review-required/u);
+    peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"claim-peer"},f.clock);
+    const request={changeId:replacement.changeId,reviewFingerprint:replacement.reviewFingerprint,application};
+    const claimed=f.db.claimVersionChange(request);
+    assert.deepEqual(peer.claimVersionChange(request),claimed);
+    assert.throws(()=>peer?.claimVersionChange({...request,application:{...application,commandId:id(823)}}),/claim-conflict/u);
+    assert.equal(f.db.readVersionChange(review.changeId)?.state,"superseded");
+  }finally{peer?.close();f.dispose();}
+});
+
+it("exposes canonical list, pending replay and deletion through the production lifecycle service",()=>{
+  const f=foundationFixture();
+  try {
+    terminalizeFixtureFailure(f,f.run,failure());
+    const service=new RunRecordService({database:f.db,clock:f.clock,ids:{uuid:()=>id(831)},publishQueued:()=>{throw new Error("unexpected enqueue");}});
+    const storage=service.lifecycleStorage(),snapshot=storage.capture(f.run.envelope.runId);
+    const report=captureArchiveReport({snapshot,transferId:id(830),capturedAt:NOW,sections:[],files:[]});
+    transferArchiveReport(storage,report,snapshot.run.version);
+    assert.equal(storage.readPendingReport(report.content.runId,report.content.transferId)?.state,"published");
+    assert.throws(()=>storage.readPendingReport(report.content.runId,id(839)),/replay-conflict/u);
+    assert.deepEqual(storage.listReports({workflow:snapshot.run.envelope.workflow,limit:1}).items,[report]);
+    assert.equal(storage.listReports({workflow:"other",limit:1}).items.length,0);
+    assert.equal(storage.deleteArchive({commandId:id(832),runId:report.content.runId,archiveFingerprint:HASH}).state,"refused");
+    const request={commandId:id(833),runId:report.content.runId,archiveFingerprint:report.digest};
+    assert.equal(storage.deleteArchive(request).state,"deleted");
+    assert.equal(storage.deleteArchive(request).state,"applied-already");
+    assert.deepEqual(storage.listReports({workflow:snapshot.run.envelope.workflow,limit:1}).items,[]);
+    assert.throws(()=>storage.readPendingReport(report.content.runId,report.content.transferId),/deleted/u);
   }finally{f.dispose();}
 });

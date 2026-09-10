@@ -53,6 +53,11 @@ describe("L paired recovery",()=>{
       const bytes=Buffer.from([0,255,128,4]),file={digest:createHash("sha256").update(bytes).digest("hex"),byteLength:bytes.length,name:"capture.bin",mediaType:"application/octet-stream"};
       const report=captureArchiveReport({snapshot,transferId:id(820),capturedAt:NOW,sections:[],files:[file]});
       storage.retainFile(file,bytes);transferArchiveReport(storage,report,snapshot.run.version);storage.refreshSummaries();
+      const review={changeId:id(826),actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
+        change:{kind:"minor" as const,what:"Recovery metadata",why:"Preserve reviewed authority",commit:{state:"absent" as const,reason:"test"}},
+        scope:{kind:"application" as const,applicationVersion:"1.0.0"},targetVersion:"1.1.0",targets:[],members:[],membershipDigest:createHash("sha256").update("[]").digest("hex")};
+      const change={...review,schemaVersion:2 as const,reviewFingerprint:versionChangeReviewFingerprint(review),state:"planned" as const,completedRunIds:[]};
+      storage.writeVersionChange(change);
       const backup=await backupLifecyclePair(f.db,f.root,f.clock);
       if(!("pairedManifestPath" in backup))throw new Error("paired manifest missing");
       await verifyLifecyclePair(backup.pairedManifestPath);
@@ -74,6 +79,7 @@ describe("L paired recovery",()=>{
       assert.equal(reopened.transferredRun(report.content.runId)?.reportDigest,report.digest);
       assert.deepEqual(createRunLifecycleStorage(reopened).readFile(report.content.runId,file.digest).bytes,bytes);
       assert.deepEqual(reopened.readRunSummaries(),[]);
+      assert.deepEqual(reopened.readVersionChange(change.changeId),change);
       assert.equal(existsSync(join(f.root,".lifecycle-restore.json")),false);
     }finally{reopened?.close();if(closed){const {rmSync}=await import("node:fs");rmSync(f.root,{recursive:true,force:true});}else f.dispose();}
   });
@@ -125,3 +131,5 @@ it("resumes file deletion after unlink and keeps a file referenced by another ar
     assert.equal(storage.readReport(first.content.runId),undefined);
   }finally{reopened?.close();f.dispose();}
 });
+
+import { versionChangeReviewFingerprint } from "../../../src/domain/archive/change-record.js";

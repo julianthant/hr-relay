@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync, lstatSync, unlinkSy
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
-import { ArchiveReportSchema, ArchiveFileReferenceSchema, type ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, type ArchiveQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { z } from "zod";
@@ -99,6 +99,27 @@ export class ArchiveDatabase {
     const row=RowSchema.parse(raw),report=ArchiveReportSchema.parse(JSON.parse(row.report_json)),c=report.content;
     if(c.runId!==runId||report.digest!==row.digest||c.transferId!==row.transfer_id||c.workflow!==row.workflow||c.title!==row.title||c.descriptorVersion!==row.descriptor_version||c.outcome!==row.outcome||c.completedAt!==row.completed_at||c.capturedAt!==row.captured_at)throw new Error("archive-report-index-mismatch");
     return report;
+  }
+  workflows() { return this.#database.prepare("SELECT DISTINCT workflow FROM archive_records WHERE state='published' ORDER BY workflow").all().map(row=>z.object({workflow:z.string()}).parse(row).workflow); }
+  query(input:ArchiveQuery) {
+    this.#database.exec("BEGIN");
+    try { const result=this.querySnapshot(input);this.#database.exec("COMMIT");return result; }
+    catch(error){this.#database.exec("ROLLBACK");throw error;}
+  }
+  private querySnapshot(input:ArchiveQuery) {
+    const q=ArchiveQuerySchema.parse(input),clauses=["workflow=?","state='published'"],values:(string|number)[]=[q.workflow];
+    if(q.title!==undefined){clauses.push("title=?");values.push(q.title);}
+    if(q.capturedFrom!==undefined){clauses.push("captured_at>=?");values.push(q.capturedFrom);}
+    if(q.capturedTo!==undefined){clauses.push("captured_at<=?");values.push(q.capturedTo);}
+    if(q.from!==undefined){clauses.push("completed_at>=?");values.push(q.from);}
+    if(q.to!==undefined){clauses.push("completed_at<=?");values.push(q.to);}
+    if(q.descriptorVersion!==undefined){clauses.push("descriptor_version=?");values.push(q.descriptorVersion);}
+    if(q.outcome!==undefined){clauses.push("outcome=?");values.push(q.outcome);}
+    if(q.after!==undefined){clauses.push("(completed_at,run_id)>(?,?)");values.push(q.after.completedAt,q.after.runId);}
+    const rows=this.#database.prepare(`SELECT run_id FROM archive_records WHERE ${clauses.join(" AND ")} ORDER BY completed_at,run_id LIMIT ?`).all(...values,q.limit+1);
+    const reports=rows.map(raw=>{const id=z.object({run_id:z.string()}).parse(raw).run_id;const report=this.readPublished(id);if(report===undefined)throw new Error("archive-query-state-changed");return report;});
+    const items=reports.slice(0,q.limit),last=items.at(-1);
+    return {items,next:reports.length>q.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
   }
   state(runId:string):"captured"|"verified"|"published"|"deleting"|"deleted"|undefined{
     const row=this.#database.prepare("SELECT state FROM archive_records WHERE run_id=?").get(runId);

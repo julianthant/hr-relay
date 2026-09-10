@@ -1,8 +1,10 @@
+import { RunRecordService, type RunDeletionOutcome } from "../../core/run-record-service.js";
+import { ArchiveQuerySchema, type ArchiveQuery } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
 import { deriveCanonicalPerson } from "../../core/run-summary.js";
-import { VersionChangeSchema, type VersionChange } from "../../domain/archive/change-record.js";
+import { VersionChangeSchema, VersionChangeStorageSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
 import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../core/run-lifecycle-storage.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { ArchiveTransferIdentitySchema, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
@@ -2900,6 +2902,7 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
 
+    if (!readOnlyNoMigrate) createRunSummaries(this.#database).installTracking();
     this.authority = this.#buildAuthorityRepositories();
   }
 
@@ -3123,6 +3126,12 @@ export class AuthorityDatabase implements Disposable {
   transferLifecycleSources(input: { runId: string; digest: string; expectedVersion: number }) {
     return this.#authorityWrite("archive_transfers", () => {
       const report = this.lifecycleArchive(true).verified(input.runId, input.digest);
+      if(report.content.versionChange!==undefined) {
+        const change=this.readVersionChange(report.content.versionChange.review.changeId);
+        if(change===undefined || !["applying","applied"].includes(change.state)
+          || canonicalJsonStringify(archiveVersionChange(change))!==canonicalJsonStringify(report.content.versionChange)
+          || !change.members.some(member=>member.runId===input.runId && member.sourceDigest===report.content.sourceDigest && member.version===input.expectedVersion))throw new Error("archive-change-membership-mismatch");
+      }
       const existing = this.transferredRun(input.runId);
       if (existing !== undefined) {
         if (existing.reportDigest !== input.digest || existing.run.version !== input.expectedVersion) throw new Error("archive-transfer-replay-conflict");
@@ -3159,6 +3168,42 @@ export class AuthorityDatabase implements Disposable {
     this.lifecycleArchive(true).publish(runId,digest);
   }
 
+  deleteLifecycleArchive(input:unknown):RunDeletionOutcome {
+    return new RunRecordService({database:this,clock:this.#clock,ids:{uuid:randomUUID},publishQueued:()=>{throw new Error("archive-delete-cannot-enqueue");}}).deleteArchived(input);
+  }
+
+  readPendingArchiveReport(runId:string,transferId:string) {
+    if(this.authority.deletedRuns.get(runId)!==undefined)throw new Error("archive-report-deleted");
+    const report=this.lifecycleArchive(true).read(runId);
+    if(report===undefined)return undefined;
+    if(report.content.transferId!==transferId)throw new Error("archive-report-replay-conflict");
+    const transferred=this.transferredRun(runId);
+    if(transferred===undefined && this.authority.runs.get(runId)===undefined)throw new Error("archive-source-run-missing");
+    return {report,state:this.lifecycleArchive(true).state(runId)};
+  }
+
+  archiveWorkflows() {
+    return this.withAuthorityReadSnapshot(()=>{
+      if(!existsSync(join(dirname(this.#path),"archive.sqlite"))){
+        if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");
+        return [];
+      }
+      return this.lifecycleArchive(true).workflows();
+    });
+  }
+
+  queryArchiveReports(query:ArchiveQuery) {
+    query=ArchiveQuerySchema.parse(query);
+    return this.withAuthorityReadSnapshot(()=>{
+      const path=join(dirname(this.#path),"archive.sqlite");
+      if(!existsSync(path)){if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");return {items:[],next:null};}
+      const page=this.lifecycleArchive(true).query(query);
+      const items=page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined);
+      for(const report of items)if(this.transferredRun(report.content.runId)?.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch");
+      return {...page,items};
+    });
+  }
+
   settleArchivedDeletion(runId: string) {
     const receipt = this.authority.deletedRuns.get(runId);
     if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
@@ -3177,29 +3222,84 @@ export class AuthorityDatabase implements Disposable {
     return this.#authorityWrite("version_changes", () => {
       const previous = this.readVersionChange(change.changeId);
       if (previous !== undefined) {
-        const immutable = ({state,completedRunIds,...identity}: VersionChange) => { void state; void completedRunIds; return identity; };
-        const rank = {reviewed:0,applying:1,applied:2};
-        if (canonicalJsonStringify(immutable(previous)) !== canonicalJsonStringify(immutable(change))
-          || rank[change.state] < rank[previous.state] || rank[change.state] > rank[previous.state]+1
-          || previous.completedRunIds.some(id=>!change.completedRunIds.includes(id))) throw new Error("version-change-fence-conflict");
-        if (canonicalJsonStringify(previous) === canonicalJsonStringify(change)) return {result:previous,changes:0};
-      } else {
-        if (change.state !== "reviewed") throw new Error("version-change-review-required");
+        if(canonicalJsonStringify(previous)===canonicalJsonStringify(change))return {result:previous,changes:0};
+        if(previous.reviewFingerprint!==change.reviewFingerprint || canonicalJsonStringify(versionChangeReview(previous))!==canonicalJsonStringify(versionChangeReview(change)))throw new Error("version-change-fence-conflict");
+        if(previous.state==="applied"||previous.state==="superseded")throw new Error("version-change-fence-conflict");
+        const valid=previous.state==="planned" ? ["applying","superseded"].includes(change.state) : ["applying","applied"].includes(change.state);
+        if(!valid || previous.completedRunIds.some(id=>!change.completedRunIds.includes(id)))throw new Error("version-change-fence-conflict");
+        if(previous.application!==undefined) {
+          const {completedAt,...application}=change.application??{};void completedAt;
+          if(canonicalJsonStringify(previous.application)!==canonicalJsonStringify(application))throw new Error("version-change-claim-conflict");
+        }
+      } else if(change.state!=="planned")throw new Error("version-change-review-required");
+      if(previous===undefined || (previous.state==="planned"&&change.state==="applying")) {
         for(const member of change.members) {
           const snapshot=this.captureLifecycleSource(member.runId);
-          if(!change.targets.some(target=>target.workflow === snapshot.run.envelope.workflow) || snapshot.run.version!==member.version || lifecycleSourceDigest(snapshot)!==member.sourceDigest) throw new Error("version-change-source-stale");
+          if((change.scope.kind==="workflows" && !change.scope.workflowIds.includes(snapshot.run.envelope.workflow)) || snapshot.run.version!==member.version || lifecycleSourceDigest(snapshot)!==member.sourceDigest)throw new Error("version-change-source-stale");
         }
       }
-      for (const runId of change.completedRunIds) {
-        const member=change.members.find(candidate=>candidate.runId===runId);
-        const transfer=this.transferredRun(runId);
-        if (member === undefined || transfer === undefined || member.sourceDigest !== transfer.sourceDigest
-          || member.version !== transfer.run.version) throw new Error("version-change-progress-unverified");
+      if(change.application!==undefined && previous?.application===undefined) {
+        const application=change.application;
+        const existing=this.#database.prepare("SELECT record_json FROM commands WHERE record_key=?").get(application.commandId);
+        if(existing!==undefined) {
+          const parsed=CommandRequestSchema.safeParse(JSON.parse(JsonRowSchema.parse(existing).record_json));
+          if(!parsed.success || parsed.data.family!=="version-archive"||parsed.data.type!=="apply-version-bump"
+            || parsed.data.target.versionPlanId!==change.changeId || parsed.data.payload.planFingerprint!==change.reviewFingerprint
+            || parsed.data.requestedBy!==application.actorId)throw new CommandIdentityConflictError();
+        }
+        if(this.#credentialCommandIds(application.commandId) || this.#database.prepare("SELECT record_key FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=? AND record_key<>? LIMIT 1").get(application.commandId,change.changeId)!==undefined)throw new CommandIdentityConflictError();
       }
-      this.#database.prepare(`INSERT INTO version_changes VALUES (?,?,?) ON CONFLICT(record_key)
-        DO UPDATE SET record_json=excluded.record_json`).run(change.changeId,canonicalJsonStringify(change),this.#now());
+      if(change.application!==undefined && (change.application.appVersion!==change.observedAppVersion
+        || canonicalJsonStringify(change.application.targets)!==canonicalJsonStringify(change.targets)))throw new Error("version-change-review-required");
+      for(const runId of change.completedRunIds) {
+        const member=change.members.find(candidate=>candidate.runId===runId),transfer=this.transferredRun(runId);
+        const report=this.lifecycleArchive(true).readPublished(runId);
+        if(member===undefined||transfer===undefined||member.sourceDigest!==transfer.sourceDigest||member.version!==transfer.run.version
+          || report===undefined||report.content.versionChange===undefined||canonicalJsonStringify(report.content.versionChange)!==canonicalJsonStringify(archiveVersionChange(change)))throw new Error("version-change-progress-unverified");
+      }
+      this.#database.prepare("INSERT INTO version_changes VALUES (?,?,?) ON CONFLICT(record_key) DO UPDATE SET record_json=excluded.record_json")
+        .run(change.changeId,canonicalJsonStringify(change),this.#now());
       return {result:change,changes:1};
     });
+  }
+
+  claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>}) {
+    return this.withAuthorityTransaction(()=>{
+      const row=this.readVersionChange(input.changeId);
+      if(row===undefined||row.reviewFingerprint!==input.reviewFingerprint)throw new Error("version-change-review-required");
+      if(row.state==="superseded")throw new Error("version-change-fence-conflict");
+      if(row.application!==undefined) {
+        const {completedAt,...application}=row.application;void completedAt;
+        if(canonicalJsonStringify(application)!==canonicalJsonStringify(input.application))throw new Error("version-change-claim-conflict");
+        return row;
+      }
+      return this.writeVersionChange({...row,state:"applying",application:input.application});
+    });
+  }
+
+  replaceVersionChange(priorId:string,expectedFingerprint:string,replacement:VersionChange) {
+    return this.withAuthorityTransaction(()=>{
+      const prior=this.readVersionChange(priorId);
+      if(prior===undefined||prior.reviewFingerprint!==expectedFingerprint||prior.state!=="planned"
+        || replacement.supersedes!==priorId||replacement.changeId===priorId||replacement.state!=="planned")throw new Error("version-change-replacement-conflict");
+      this.writeVersionChange({...prior,state:"superseded",supersededBy:replacement.changeId});
+      return this.writeVersionChange(replacement);
+    });
+  }
+
+  historicalArchiveSource() {
+    return this.withAuthorityReadSnapshot(()=>{
+      const plans=this.authority.versionPlans.list(),applications=this.authority.versionBumpApplications.list();
+      for(const application of applications)if(!plans.some(plan=>plan.versionPlanId===application.versionPlanId))throw new Error("archive-historical-plan-missing");
+      const archives=this.authority.archivedRuns.list().map(archive=>({archive,source:this.captureLifecycleSource(archive.runId)}));
+      const source={plans,applications,archives};
+      return {source,digest:sha256Hex(canonicalJsonStringify(source))};
+    });
+  }
+
+  historicalVersionChanges() {
+    return this.withAuthorityReadSnapshot(()=>this.#database.prepare("SELECT record_json FROM version_changes ORDER BY record_key").all()
+      .map(row=>VersionChangeStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))));
   }
 
   captureLifecycleSource(runIdInput: string) {
@@ -3229,6 +3329,11 @@ export class AuthorityDatabase implements Disposable {
       collect("settings_snapshots","SELECT record_key,record_json FROM settings_snapshots WHERE record_key=?",run.envelope.configSnapshotId);
       collect("archive_relaunches","SELECT record_key,record_json FROM archive_relaunches WHERE record_key=? OR archived_run_id=?",runId,runId);
       collect("archived_runs","SELECT record_key,record_json FROM archived_runs WHERE record_key=?",runId);
+      const historical=this.authority.archivedRuns.get(runId);
+      if(historical!==undefined)this.authority.archivedRuns.transactions(runId);
+      collect("version_bump_applications","SELECT record_key,record_json FROM version_bump_applications WHERE record_key IN (SELECT application_id FROM archived_runs WHERE record_key=?)",runId);
+      collect("version_plans","SELECT record_key,record_json FROM version_plans WHERE record_key IN (SELECT version_plan_id FROM version_bump_applications WHERE record_key IN (SELECT application_id FROM archived_runs WHERE record_key=?))",runId);
+      collect("archive_transactions","SELECT record_key,json_object('json',transactions_json,'digest',transactions_digest) AS record_json FROM archived_runs WHERE record_key=?",runId);
       collect("delegation_dependencies","SELECT record_key,record_json FROM delegation_dependencies WHERE json_extract(record_json,'$.parentRunId')=? OR json_extract(record_json,'$.childRunId')=?",runId,runId);
       collect("run_delegations","SELECT record_key,record_json FROM run_delegations WHERE json_extract(record_json,'$.parentRunId')=?",runId);
       collect("dryrun_results","SELECT record_key,record_json FROM dryrun_results WHERE run_id=?",runId);
@@ -3254,6 +3359,14 @@ export class AuthorityDatabase implements Disposable {
     return createRunSummaries(this.#database).publication();
   }
 
+  summaryWorkflows() {
+    return this.withAuthorityReadSnapshot(()=>createRunSummaries(this.#database).workflows(this.getMeta().authorityGeneration));
+  }
+
+  queryRunSummaries(query: Parameters<ReturnType<typeof createRunSummaries>["query"]>[1]) {
+    return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).query(this.getMeta().authorityGeneration,query));
+  }
+
   readRunSummaries() {
     return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).read(this.getMeta().authorityGeneration));
   }
@@ -3265,6 +3378,14 @@ export class AuthorityDatabase implements Disposable {
   #assertCommandIdentity(record: z.infer<typeof StoredAuthorityCommandRecordSchema>, parentCommandId?: string): void {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
+    }
+    const claims=this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=?").all(record.commandId);
+    if(claims.length>1)throw new CommandIdentityConflictError();
+    if(claims.length===1) {
+      const change=VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(claims[0]).record_json));
+      if(!("family" in record)||record.family!=="version-archive"||record.type!=="apply-version-bump"
+        ||record.target.versionPlanId!==change.changeId||record.payload.planFingerprint!==change.reviewFingerprint
+        ||record.requestedBy!==change.application?.actorId)throw new CommandIdentityConflictError();
     }
     const parent = "kind" in record && record.kind === "bulk-parent";
     if (parentCommandId !== undefined) {
@@ -4063,9 +4184,7 @@ export class AuthorityDatabase implements Disposable {
         `).run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
-      if (this.#authorityDirty && createRunSummaries(this.#database).publication().state === "published") {
-        createRunSummaries(this.#database).refresh(this.getMeta().authorityGeneration, this.#now());
-      }
+      if (this.#authorityDirty) createRunSummaries(this.#database).commit(this.getMeta().authorityGeneration, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");

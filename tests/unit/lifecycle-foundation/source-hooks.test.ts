@@ -19,7 +19,8 @@ describe("L summary publication and transaction hooks", () => {
       fixture.createRun(id(602));
       const after = fixture.db.readRunSummaries();
       assert.equal(after.length, 2);
-      assert.ok(after.every((row) => row.sourceGeneration === fixture.db.getMeta().authorityGeneration));
+      assert.equal(after.find(row=>row.runId===before[0].runId)?.sourceGeneration,before[0].sourceGeneration);
+      assert.equal(after.find(row=>row.runId===id(602))?.sourceGeneration,fixture.db.getMeta().authorityGeneration);
       assert.ok(after.every((row) => row.person.state === "unavailable"));
     } finally { fixture.dispose(); }
   });
@@ -30,7 +31,7 @@ describe("L summary publication and transaction hooks", () => {
       terminalizeFixtureFailure(f,f.run,record);
       f.db.refreshRunSummaries();
       const before = f.db.captureLifecycleSource(record.runId);
-      assert.equal(before.records.length,20);
+      assert.equal(before.records.length,23);
       f.db.authority.failureResolution.update({ runId:record.runId,failureId:record.failureId,expectedVersion:1,
         resolution:{status:"resolved",version:2,by:"local-operator",at:NOW} });
       const after = f.db.captureLifecycleSource(record.runId);
@@ -60,4 +61,34 @@ it("reads a consistent publication across an independent writer and refuses a co
     peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-restart"},f.clock);
     assert.throws(()=>peer?.readRunSummaries(),/generation-unavailable/u);
   }finally{peer?.close();f.dispose();}
+});
+
+import { VERSION_PLAN_ROW } from "../../fixtures/archive-fixtures.js";
+import { queryRunSummarySource } from "../../../src/server/dashboard/queries/run-summaries.js";
+it("keeps unrelated summaries unchanged, rolls nested notifications back, and pages through the real indexed port",()=>{
+  const f=foundationFixture();
+  try {
+    f.db.refreshRunSummaries();const before=f.db.readRunSummaries();
+    f.db.authority.versionPlans.insert(VERSION_PLAN_ROW);
+    assert.deepEqual(f.db.readRunSummaries(),before);
+    f.db.withAuthorityTransaction(()=>{
+      assert.throws(()=>f.db.withAuthorityTransaction(()=>{f.createRun(id(810));throw new Error("savepoint-rollback");}),/savepoint-rollback/u);
+      f.createRun(id(811));
+    });
+    assert.equal(f.db.authority.runs.get(id(810)),undefined);
+    assert.deepEqual(f.db.readRunSummaries().find(row=>row.runId===before[0].runId),before[0]);
+    const read=f.db.readRunSummaries.bind(f.db);f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
+    try {
+      const first=queryRunSummarySource(f.db,{workflow:"person-lookup",limit:1});
+      assert.equal(first.items.length,1);assert.ok(first.next);
+      const second=queryRunSummarySource(f.db,{workflow:"person-lookup",limit:1,after:first.next});
+      assert.equal(second.items.length,1);assert.equal(second.next,null);
+      assert.notEqual(first.items[0].runId,second.items[0].runId);
+      assert.deepEqual(f.db.summaryWorkflows(),["person-lookup"]);
+    }finally{f.db.readRunSummaries=read;}
+    const raw=new DatabaseSync(f.path,{readOnly:true});try{
+      const plan=JSON.stringify(raw.prepare("EXPLAIN QUERY PLAN SELECT record_json FROM run_summaries WHERE workflow=? AND local_day>=? ORDER BY local_day,record_key LIMIT ?").all("person-lookup","2026-01-01",2));
+      assert.match(plan,/USING INDEX/u);assert.doesNotMatch(plan,/SCAN run_summaries/u);
+    }finally{raw.close();}
+  }finally{f.dispose();}
 });
