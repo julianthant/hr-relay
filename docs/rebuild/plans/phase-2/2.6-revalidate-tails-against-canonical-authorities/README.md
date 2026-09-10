@@ -219,7 +219,9 @@ for exact identities, local integration and cleanup; final phase acceptance rema
 #### Task 7.1 · Transfer runs into independent archive reports
 <!-- roadmap: p2db-archive-transfer -->
 
-Assignment **A**, display **2.6.7.1**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+Assignment **A**, display **2.6.7.1**. Single scope/proof owner: [approved A01–A06 plan](database-modernization/decisions.md#approved-a-execution-brief--2026-09-09).
+Approved for a focused development release with local merge and owned cleanup; implementation remains unstarted.
+A supplies populated conversion proof before L’s explicit retirement follow-up; full acceptance stays at 2.6.9.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 

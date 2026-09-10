@@ -64,7 +64,7 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | G | codex/artifact-outputs | hr-worktree-artifact-outputs | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | S | codex/settings-activation | hr-worktree-settings-activation | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
-| A | codex/archive-transfer | hr-worktree-database-peer | Common repaired L release below, identical to Q; A execution plan approval remains due |
+| A | codex/archive-transfer | hr-worktree-database-peer | Common repaired L release below, identical to Q; approved A01–A06 brief |
 | Q | codex/run-summaries | hr-worktree-database-other | Common repaired L release below, identical to A; see amended Q01–Q06 |
 | V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
 | U | codex/activity-views | hr-worktree-database-peer | V |
@@ -342,7 +342,8 @@ The repaired implementation is `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`.
 A owns conversion; the approved L retirement follow-up in prerequisites.md follows A's populated
 conversion proof and blocks combined completion. Q remains independent; either peer merge order is
 allowed. Both own local integration and cleanup after focused PASS. Full gates/review remain 2.6.9.
-A's detailed execution-plan approval remains due; Q's amended brief is revalidated and operator-approved below.
+A's approved A01–A06 brief is in decisions.md; its planner verifies persistence and launch readiness.
+Q's amended brief is revalidated and operator-approved below.
 This registry releases the prerequisite and does not launch either implementation or the follow-up.
 
 ### Exact common execution base
@@ -352,9 +353,9 @@ incorporation. This exact commit contains the repaired implementation and approv
 amendment. Later plan-only commits may supply instructions but must not silently change one peer's
 product base. Recheck shared input identity if either planner proposes a different base.
 Implementation: `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`; full gates/review remain 2.6.9.
-No implementation is launched. A detailed plan approval remains with its planning task; Q amended-plan
-revalidation is complete and operator-approved. The former Q shared-file authorization and launch SHA
-are superseded.
+No implementation is launched. A's plan is approved and its planner verifies persistence/integration;
+Q amended-plan revalidation is complete and operator-approved. The former Q shared-file authorization
+and launch SHA are superseded.
 
 ### Q amended approval — 2.6.7.2
 
@@ -389,4 +390,43 @@ Execute Q01–Q06 autonomously with one GPT-6 Astra/high supervisor, no implemen
 Run the exact focused tests, lint, bounded benchmark and generation/freshness checks in the committed brief. Full gates and fresh complete independent review remain 2.6.9. Follow Parallel coordination in /Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md: no routine messages, reservations or peer dispatch; serialize actual shared-target mutations only. Commit exact paths, freeze the candidate and evidence, merge Q locally into master at /Users/julianhein/Projects/hr-automation-rebuild after focused PASS and target checks, rerun invalidated integration checks, record 06-summary-evidence.md, and remove only Q's owned auxiliary worktree/branch from a safe checkout with verified absence.
 
 Send Done / Now / Remaining at start/resume and after each verified step, keeping merge, cleanup and deferred 2.6.9 review visible. No push, live database application, UNKNOWN-submit retry or next-task dispatch. Stop after Q's scoped release and cleanup; do not claim full Phase 2.6 acceptance.
+```
+
+## Approved A planning handoff — 2.6.7.1
+
+The operator approved the complete [A01–A06 execution brief](decisions.md#approved-a-execution-brief--2026-09-09).
+A retains five production paths, four new owned suites, and three bounded existing-test amendments.
+Use the exact common product base `42df5095160e1ff448e76c155a048134ec395ba5`; the planner returns a
+separate verified plan SHA after persistence/integration/cleanup. Create `codex/archive-transfer` at
+`/Users/julianhein/Projects/hr-worktree-database-peer`. One Astra/high supervisor, zero workers/reviewers
+here. Execute A01–A06, run the explicit focused gates/lint/freshness, merge locally and remove owned
+resources. L owns subsequent physical retirement/shared upgrade wiring after A conversion proof;
+V/H own served dashboard and desktop proof; full gates and independent review stay at 2.6.9.
+Follow the linked parallel protocol without check-ins/broadcasts or sibling dispatch. No push or live
+database application. This pointer does not launch implementation or alter Q's product base.
+
+### Resolved A supervisor prompt — 2026-09-09
+
+Approved full plan: `f8c21e168a421e462665c0c868c781893ce95f88`. Common product base remains
+`42df5095160e1ff448e76c155a048134ec395ba5`. The planner verified committed content and all
+A01–A06 controls, 24 roadmap-binding tests, lint, freshness, links and instruction chains,
+with 2,088 unchanged runtime/test/tooling inputs. Local planning integration and owned cleanup
+are verified before the final READY delivery; this record does not launch A.
+
+```text
+/supervise 2.6.7.1 A. READY after verifying the recorded planning integration and cleanup. Use GPT-6 Astra/high.
+
+Repository: /Users/julianhein/Projects/hr-automation-rebuild
+Owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md
+Section: Approved A execution brief — 2026-09-09
+Approved full plan commit: f8c21e168a421e462665c0c868c781893ce95f88
+Exact common A/Q product base: 42df5095160e1ff448e76c155a048134ec395ba5
+
+Read the complete owner at the plan commit with git show; the plan SHA is separate from the product base. Verify both are incorporated in local master, the repaired L evidence/closure, and all A01–A06 controls before editing. Create codex/archive-transfer at /Users/julianhein/Projects/hr-worktree-database-peer from that exact product base after ref/path/capacity checks. Do not substitute the newer plan commit as the product base. One supervisor; zero workers or reviewers here.
+
+Execute A01–A06 completely within the five production files, four new suites and three bounded existing-test amendments. Implement generic capture, version-change review/claim/replay, recoverable transfer, historical conversion entrypoint/mappings, bounded report queries, canonical deletion and relaunch refusal. Preserve command identity before effects, immutable private source versus public report integrity, protected data, shared custody, UNKNOWN refusal, numbering and normal live start/retry/restart. Prove every assigned positive/negative and interruption case; fix in-scope failures autonomously.
+
+Follow the linked parallel protocol: independent work, no check-ins/broadcasts/reservations or observer loops, no sibling dispatch. Either A/Q order is permitted. Run exact scoped unit/architecture selectors, lint and affected generation/freshness from the full brief; record real commands, exits and tested inputs. Full typecheck/coverage, broad parity/build and fresh complete independent review remain 2.6.9; do not run them merely to commit or merge A. L owns physical old-table retirement/shared upgrade-reader wiring after A populated conversion proof; V/H own served UI/desktop proof. Do not launch those owners or claim their work complete.
+
+Commit exact paths, freeze candidate/tree/evidence, merge A locally into master after focused PASS and verified target ownership/cleanliness, rerun invalidated integration checks or prove input-identical reuse. Record release in database-modernization/05-archive-evidence.md, preserve evidence outside the checkout, then remove only A's clean incorporated worktree/ref and verify absence. Send Done / Now / Remaining at start/resume and after every verified step, keeping merge/cleanup and deferred owners visible. No push, operator database migration, HR submission, shared scope expansion or unrelated cleanup. Stop after A's scoped release and owned cleanup.
 ```
