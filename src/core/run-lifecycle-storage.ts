@@ -41,16 +41,17 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
     querySummaries: (query: Parameters<AuthorityDatabase["queryRunSummaries"]>[0]) => database.queryRunSummaries(query),
     transfer: (input: {runId: string; digest: string; expectedVersion: number}) => database.transferLifecycleSources(input),
     publishReport: (runId: string, digest: string) => database.publishTransferredReport(runId,digest),
+    reportOwner: (runId: string) => database.savedReportOwner(runId),
     readReport: (runId: string) => {
-      const identity = database.transferredRun(runId);
-      return identity === undefined ? undefined : database.lifecycleArchive(true).readPublished(runId);
+      const identity = database.savedReportOwner(runId);
+      return identity.state !== "archived" ? undefined : database.lifecycleArchive(true).readPublishedReport(runId);
     },
     readSourceFile: (file: ArchiveReport["content"]["files"][number]) => database.readLifecycleSourceFile(file),
     retainFile: (file: ArchiveReport["content"]["files"][number], bytes: Uint8Array) => database.lifecycleArchive().retainFile(file,bytes),
     readFile: (runId: string, digest: string) => {
-      const identity = database.transferredRun(runId);
-      if (identity === undefined) throw new Error("archive-download-owner-missing");
-      const report = database.lifecycleArchive(true).verified(runId,identity.reportDigest);
+      const identity = database.savedReportOwner(runId);
+      if (identity.state !== "archived") throw new Error("archive-download-owner-missing");
+      const report = database.lifecycleArchive(true).verifiedReport(runId,identity.reportDigest);
       const file = report.content.files.find(candidate => candidate.digest === digest);
       if (file === undefined) throw new Error("archive-download-membership-missing");
       return {file, bytes:database.lifecycleArchive(true).readFile(file)};

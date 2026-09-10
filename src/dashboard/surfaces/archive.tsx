@@ -99,7 +99,6 @@ import {
   FlaskConical,
   Info,
   Lock,
-  RotateCw,
   ShieldAlert,
   Trash2,
   TriangleAlert,
@@ -223,7 +222,6 @@ import {
   archivedNotRunNote,
   archivedOmittedStepsNote,
   archivedDeleteConfirm,
-  archivedRelaunchCautions,
   archivedRelaunchHeadline,
   archivedRunHeading,
   archivedRunTouchedTest,
@@ -1315,7 +1313,7 @@ export function ArchivedRunDetail({
   busy,
   relaunched,
   refusal,
-  onRelaunch,
+  onRelaunch: _onRelaunch,
   onDelete,
   onDismiss,
   onReadCapture,
@@ -1979,22 +1977,7 @@ export function ArchivedRunDetail({
         <span className={cn(dsText.meta, "max-w-[80ch] text-[color:var(--ds-fg-muted)]")}>
           Read-only. There is no retry, cancel or edit here — the code this run executed is not the code that is loaded.
         </span>
-        {detail.relaunch.state === "available" ? (
-          <Button
-            className="ml-auto"
-            variant="primary"
-            size="sm"
-            loading={busy}
-            icon={<RotateCw aria-hidden className={dsIcon.md} />}
-            onClick={onRelaunch}
-          >
-            Relaunch on v{detail.relaunch.current.descriptorVersion}…
-          </Button>
-        ) : (
-          <span className={cn(dsText.meta, "ml-auto max-w-[40ch] text-right text-[color:var(--ds-status-waiting-fg)]")}>
-            {detail.relaunch.reason}
-          </span>
-        )}
+        <span>Archive relaunch is retired.</span>
         {/*
           D308's delete, beside the relaunch and never in front of it. It is
           `dangerGhost` rather than `danger` because the footer already spends
@@ -2869,141 +2852,6 @@ function BumpChangeRecordDialog({
   );
 }
 
-/* ── relaunch — it asks, it previews, and it names what already landed ───── */
-
-function RelaunchConfirmDialog({
-  detail,
-  onCancel,
-  onConfirm,
-}: {
-  detail: ArchivedRunDetailWire | undefined;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const cautions = detail === undefined ? [] : archivedRelaunchCautions(detail.row);
-  return (
-    <Dialog open={detail !== undefined} onOpenChange={(open) => { if (!open) onCancel(); }}>
-      {detail !== undefined && detail.relaunch.state === "available" && (
-        <DialogContent
-          size="lg"
-          title={`Relaunch ${detail.detail.header.title} on v${String(detail.relaunch.current.descriptorVersion)}?`}
-          description={`A fresh ${detail.workflowLabel} run from the archived input — never a resume of ${detail.detail.header.traceId}.`}
-        >
-          <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
-            {(detail.evidence.writeIntentIds.length > 0 || detail.ledger.length > 0) && (
-              <Banner
-                tone="danger"
-                title={`This run already filed ${plural(Math.max(detail.evidence.writeIntentIds.length, detail.ledger.length), "record")} in a real system`}
-                icon={<TriangleAlert aria-hidden className={dsIcon.lg} />}
-              >
-                <span className="flex flex-col gap-[var(--ds-space-snug)]">
-                  <span className={dsText.body}>
-                    A relaunch does not know about them. If the work still stands, this files it a second time.
-                  </span>
-                  <Well>
-                    <ul className="flex flex-col gap-[var(--ds-space-hair)]">
-                      {/*
-                        The SAME resolved rows the Write-ledger card renders, so
-                        the danger banner and the evidence tab can never name
-                        different transactions. A pointer that did not resolve
-                        still appears: "we cannot read what this filed" is a
-                        stronger reason to hesitate than a short list.
-                      */}
-                      {detail.ledger.map((line) => (
-                        <li
-                          key={`${line.pointer.system}-${line.pointer.date}-${String(line.pointer.sequence)}`}
-                          className={cn(dsText.body, "flex min-w-0 items-baseline gap-[var(--ds-space-snug)]")}
-                        >
-                          <span className={cn(dsText.caps, "w-[80px] shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                            {line.pointer.system}
-                          </span>
-                          <span
-                            className="min-w-0 flex-1 truncate text-[color:var(--ds-fg)]"
-                            title={line.state === "unresolved" ? line.reason : line.idempotencyKeyDigest === "withheld-protected-input" ? "protected transaction" : line.idempotencyKeyDigest}
-                          >
-                            {line.state === "resolved"
-                              ? line.idempotencyKeyDigest === "withheld-protected-input" ? "protected transaction" : `key ${shortHash(line.idempotencyKeyDigest)}`
-                              : `ledger ${line.pointer.date} — ${line.failure.replace(/-/gu, " ")}`}
-                          </span>
-                          <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                            line {line.pointer.sequence}
-                          </span>
-                        </li>
-                      ))}
-                      {detail.evidence.writeIntentIds.map((intentId) => (
-                        <li
-                          key={intentId}
-                          className={cn(dsText.body, "flex min-w-0 items-baseline gap-[var(--ds-space-snug)]")}
-                        >
-                          <span className={cn(dsText.caps, "w-[80px] shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                            intent
-                          </span>
-                          <span className={cn(dsText.nums, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
-                            {intentId}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </Well>
-                </span>
-              </Banner>
-            )}
-
-            <Field label="What this would create">
-              <Well>
-                <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
-                  <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
-                    <BadgeCheck aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
-                    <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>
-                      1 {detail.workflowLabel} run on v{detail.relaunch.current.descriptorVersion}
-                    </span>
-                    <Badge tone="neutral" className="ml-auto">lands in the queue</Badge>
-                  </div>
-                  <MetaLine
-                    items={[
-                      "trace id assigned at enqueue",
-                      `archived run ran v${String(detail.archivedIdentity.descriptorVersion)}`,
-                      `on ${shortHash(detail.relaunch.current.contractFingerprint)}`,
-                    ]}
-                  />
-                </div>
-              </Well>
-            </Field>
-
-            <Field label="Input it replays">
-              <Well>
-                <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
-                  The archived RAW submission, replanned through today's ingress and canonical schemas inside the
-                  command transaction. It is not a retry: the fresh run records no retry link, and neither side of
-                  the pair is rewritten to claim one.
-                </span>
-              </Well>
-            </Field>
-
-            <div className="min-w-0">
-              <SectionLabel className="mb-[var(--ds-space-snug)]">Decide these, rather than discover them</SectionLabel>
-              <BulletList
-                items={[
-                  ...cautions,
-                  `The fresh run executes v${String(detail.relaunch.current.descriptorVersion)}, whose shape moved — its steps and its written fields are not this record's.`,
-                  "Nothing here is undone. The archived row stays exactly as it ended, and this relaunch is recorded against it.",
-                ]}
-              />
-            </div>
-          </DialogBody>
-
-          <DialogFooter meta={`Archived run ${detail.detail.header.traceId} stays exactly as it ended.`}>
-            <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-            <Button variant="primary" icon={<RotateCw aria-hidden className={dsIcon.md} />} onClick={onConfirm}>
-              Enqueue a new run
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
-    </Dialog>
-  );
-}
-
 /* ── the footer's refusals, and D308's delete ────────────────────────────── */
 
 /**
@@ -3720,7 +3568,7 @@ function VersionsView({
 
 /* ── the takeover ────────────────────────────────────────────────────────── */
 
-export function ArchiveWorkspace({
+export function LegacyArchiveWorkspace({
   selection,
   view,
   actorId,
@@ -3844,22 +3692,6 @@ export function ArchiveWorkspace({
       );
     },
     [client],
-  );
-
-  const relaunch = useCallback(
-    (target: ArchivedRunDetailWire) => {
-      setActed({ runId: target.runId, action: "relaunch" });
-      onCommand({
-        commandId: crypto.randomUUID(),
-        requestedAt: systemClock.now().toISOString(),
-        requestedBy: actorId,
-        source: SOURCE_SURFACE,
-        family: "version-archive",
-        type: "relaunch-archived-run",
-        target: { archivedRunId: target.runId, archiveFingerprint: target.archiveFingerprint },
-      });
-    },
-    [actorId, onCommand],
   );
 
   /**
@@ -4064,14 +3896,6 @@ export function ArchiveWorkspace({
         }
       />
       {body()}
-      <RelaunchConfirmDialog
-        detail={confirming === "relaunch" ? loadedDetail : undefined}
-        onCancel={() => setConfirming(undefined)}
-        onConfirm={() => {
-          setConfirming(undefined);
-          if (loadedDetail !== undefined) relaunch(loadedDetail);
-        }}
-      />
       <DeleteConfirmDialog
         detail={confirming === "delete" ? loadedDetail : undefined}
         onCancel={() => setConfirming(undefined)}
@@ -4083,3 +3907,5 @@ export function ArchiveWorkspace({
     </TakeoverFrame>
   );
 }
+
+export { SavedArchiveWorkspace as ArchiveWorkspace } from "./archive-report.js";

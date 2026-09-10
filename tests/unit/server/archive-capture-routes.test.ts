@@ -1,3 +1,4 @@
+import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA4: the real HTTP boundary over an immutable test archive repository. */
 import assert from "node:assert/strict";
@@ -26,7 +27,6 @@ import {
   type VerifiedByteLease,
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import type { AuthorityRepositories } from "../../../src/infra/sqlite/authority-database.js";
 import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
 import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
@@ -152,10 +152,7 @@ function fixture(options: {
   const root = mkdtempSync(join(tmpdir(), "hrauto-archive-resource-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const clock = manualClock(new Date("2026-08-30T12:00:00.000Z"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "archive-resource-test" },
-    clock,
-  );
+  const database = historicalArchiveAuthority(join(root, "state.sqlite"), clock);
   cleanups.push(() => database.close());
   const record = options.record ?? recordWithTile();
   database.withAuthorityTransaction((repositories) => {

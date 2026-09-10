@@ -1,3 +1,9 @@
+import { SavedArchiveFileWireSchema } from "../../../domain/dashboard/archive.js";
+import { FingerprintSchema } from "../../../domain/ids.js";
+import { SavedVersionIndexWireSchema } from "../../../domain/dashboard/archive.js";
+import type { createRunLifecycleStorage } from "../../../core/run-lifecycle-storage.js";
+import { readArchiveReport, queryArchiveReports } from "./archive-reports.js";
+import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, type SavedArchiveQuery } from "../../../domain/dashboard/archive.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "./canonical-runs.js";
 import { requireCanonicalRun } from "./run-read.js";
@@ -212,6 +218,7 @@ import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetail
 import { TargetNotFoundError } from "../../failures.js";
 
 export interface ArchiveQueryDeps {
+  readonly storage?: ReturnType<typeof createRunLifecycleStorage>;
   readonly ledger: unknown;
   readonly reader: Pick<RunRecordService, "read" | "list">;
   readonly clock: Clock;
@@ -899,4 +906,102 @@ function foldAttempts(fold: RunFoldRecord, currentAttempt: number): readonly Arc
         unfinished,
       });
     });
+}
+
+function savedArchiveRead<T>(read: () => T): T {
+  try { return read(); }
+  catch (error: unknown) {
+    if (error instanceof z.ZodError) throw new Error("saved-archive-report-integrity-failed", { cause: error });
+    throw error;
+  }
+}
+
+/** Current saved-report reads use only the generic report and canonical disposition. */
+export function savedArchiveDetail(deps: ArchiveQueryDeps, runIdInput: string) {
+  const runId = RunIdSchema.parse(runIdInput);
+  if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
+  const storage = deps.storage;
+  const existence = savedArchiveRead(() => storage.reportOwner(runId));
+  if (existence.state === "deleted") return SavedArchiveDetailWireSchema.parse({ state: "deleted", runId, reason: "This run was explicitly deleted." });
+  if (existence.state === "missing") return SavedArchiveDetailWireSchema.parse({ state: "missing", runId, reason: "No retained run has this identity." });
+  if (existence.state !== "archived") return SavedArchiveDetailWireSchema.parse({ state: "unavailable", runId, reason: "This run has no published saved report." });
+  if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
+  const report = savedArchiveRead(() => readArchiveReport(storage, runId));
+  if (report.state !== "available") throw new Error("saved-archive-report-unavailable");
+  return SavedArchiveDetailWireSchema.parse(report);
+}
+export function savedArchiveIndex(deps: ArchiveQueryDeps, query: SavedArchiveQuery) {
+  if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
+  const storage = deps.storage;
+  return savedArchiveRead(() => SavedArchiveIndexWireSchema.parse(queryArchiveReports(storage, query)));
+}
+
+function savedAttachment(deps: ArchiveQueryDeps, runId: string, artifactId: string, byDigest: boolean) {
+  const report = savedArchiveDetail(deps, runId);
+  if (report.state !== "available") throw new TargetNotFoundError(report.reason);
+  const matches = report.files.filter(file => byDigest ? file.digest === artifactId : file.artifactIds?.includes(artifactId));
+  if (matches.length !== 1) throw new TargetNotFoundError("The saved report does not name this exact attachment.");
+  return matches[0];
+}
+export async function prepareSavedCaptureLease(deps: ArchiveQueryDeps, runId: string, artifactId: string, signal?: AbortSignal, byDigest = false): Promise<ArchivedCaptureLease> {
+  signal?.throwIfAborted();
+  const file = savedAttachment(deps, RunIdSchema.parse(runId), byDigest ? FingerprintSchema.parse(artifactId) : ArtifactIdSchema.parse(artifactId), byDigest);
+  if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
+  let bytes: Uint8Array;
+  try { bytes = deps.storage.readFile(runId, file.digest).bytes; }
+  catch (error: unknown) {
+    if (error instanceof Error && error.message === "archive-file-unavailable") throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_BYTES_MISSING", "The retained attachment bytes are missing.", { cause: error });
+    if (error instanceof Error && error.message === "archive-file-integrity-mismatch") throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_CORRUPT", "The retained attachment bytes failed integrity verification.", { cause: error });
+    throw error;
+  }
+  const ref = ArtifactRefSchema.parse({ id: byDigest ? (file.artifactIds?.[0] ?? runId) : artifactId, sha256: file.digest, bytes: file.byteLength, mediaType: file.mediaType });
+  let available = true;
+  const lease: VerifiedByteLease = {
+    ref,
+    takeBody: () => {
+      signal?.throwIfAborted();
+      if (!available) return Promise.reject(new Error("saved-attachment-lease-consumed"));
+      available = false;
+      return Promise.resolve(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close(); } }));
+    },
+    dispose: () => { available = false; bytes = new Uint8Array(); return Promise.resolve(); },
+  };
+  return { ref, lease };
+}
+export async function savedCaptureResource(deps: ArchiveQueryDeps, runId: string, artifactId: string, signal?: AbortSignal) {
+  try {
+    const { lease } = await prepareSavedCaptureLease(deps, runId, artifactId, signal);
+    await lease.dispose();
+    return ArchivedCaptureResourceWireSchema.parse({ runId, artifactId, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${encodeURIComponent(runId)}/${encodeURIComponent(artifactId)}` } });
+  } catch (error: unknown) {
+    if (!(error instanceof ArchivedCaptureReadError)) throw error;
+    return ArchivedCaptureResourceWireSchema.parse({ runId, artifactId, resource: error.code === "ARCHIVED_CAPTURE_BYTES_MISSING"
+      ? { state: "missing", reason: error.message } : { state: "error", message: error.message } });
+  }
+}
+
+export function savedArchiveVersions(deps: ArchiveQueryDeps) {
+  if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
+  const retained = deps.storage.historicalVersionChanges();
+  const current = retained.filter(row => "schemaVersion" in row && row.schemaVersion === 2);
+  return SavedVersionIndexWireSchema.parse({ appVersion: deps.appVersion,
+    workflows: deps.descriptors.list().map(row => ({ workflow: row.id, label: row.label, version: row.version, fingerprint: row.contractFingerprint })),
+    changes: current.map(row => {
+      if (!("reviewFingerprint" in row)) throw new Error("version-change-current-contract-invalid");
+      return { changeId: row.changeId, state: row.state, targetVersion: row.targetVersion, change: row.change,
+        reviewFingerprint: row.reviewFingerprint, scope: row.scope, memberRunIds: row.members.map(member => member.runId),
+        blockerRunIds: row.blockers, completedRunIds: row.completedRunIds };
+    }), historicalChanges: retained.length - current.length });
+}
+
+export async function savedFileResource(deps: ArchiveQueryDeps, runId: string, digest: string, signal?: AbortSignal) {
+  try {
+    const { lease } = await prepareSavedCaptureLease(deps, runId, digest, signal, true);
+    await lease.dispose();
+    return SavedArchiveFileWireSchema.parse({ runId, digest, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/files/${digest}` } });
+  } catch (error: unknown) {
+    if (!(error instanceof ArchivedCaptureReadError)) throw error;
+    return SavedArchiveFileWireSchema.parse({ runId, digest, resource: error.code === "ARCHIVED_CAPTURE_BYTES_MISSING"
+      ? { state: "missing", reason: error.message } : { state: "error", message: error.message } });
+  }
 }

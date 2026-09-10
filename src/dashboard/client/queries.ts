@@ -1,3 +1,8 @@
+import { SavedArchiveFileWireSchema, type SavedArchiveFileWire } from "../../domain/dashboard/archive.js";
+import { FingerprintSchema } from "../../domain/ids.js";
+import { SavedVersionIndexWireSchema, type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import { SavedArchiveIndexWireSchema, SavedArchiveDetailWireSchema, SavedArchiveQuerySchema,
+  type SavedArchiveIndexWire, type SavedArchiveDetailWire, type SavedArchiveQuery } from "../../domain/dashboard/archive.js";
 /**
  * Typed query surface: every response parses through its owning wire schema
  * before a caller sees it. A response outside the contract is a schema error
@@ -183,6 +188,10 @@ export interface DashboardQueries {
    * whose blocker list the operator had already been shown as empty.
    */
   archiveIndex(): Promise<ArchiveIndexWire>;
+  savedArchiveFile(runId: string, digest: string): Promise<SavedArchiveFileWire>;
+  savedArchiveVersions(): Promise<SavedVersionIndexWire>;
+  savedArchiveIndex(query: SavedArchiveQuery): Promise<SavedArchiveIndexWire>;
+  savedArchiveReport(runId: string): Promise<SavedArchiveDetailWire>;
   /** ONE archived run, whole. Nothing on this path resolves a descriptor. */
   archivedRun(runId: string): Promise<ArchivedRunDetailWire>;
   /** Re-verifies one exact frozen archived capture before serving resource state. */
@@ -360,6 +369,28 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       return parseOrThrow(IntakeSessionWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 
+    async savedArchiveFile(runId: string, digest: string): Promise<SavedArchiveFileWire> {
+      const path = `/api/v1/archive/reports/${RunIdSchema.parse(runId)}/files/${FingerprintSchema.parse(digest)}`;
+      const file = parseOrThrow(SavedArchiveFileWireSchema, `GET ${path}`, await transport.requestJson(path));
+      if (file.runId !== runId || file.digest !== digest) throw runIdentityError(`GET ${path}`, "SAVED_FILE_IDENTITY_MISMATCH", runId);
+      return file;
+    },
+    async savedArchiveVersions(): Promise<SavedVersionIndexWire> {
+      return parseOrThrow(SavedVersionIndexWireSchema, "GET /api/v1/archive/versions", await transport.requestJson("/api/v1/archive/versions"));
+    },
+    async savedArchiveIndex(input: SavedArchiveQuery): Promise<SavedArchiveIndexWire> {
+      const query = SavedArchiveQuerySchema.parse(input);
+      const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
+      const path = `/api/v1/archive/reports?${params.toString()}`;
+      return parseOrThrow(SavedArchiveIndexWireSchema, `GET ${path}`, await transport.requestJson(path));
+    },
+    async savedArchiveReport(runId: string): Promise<SavedArchiveDetailWire> {
+      const requested = RunIdSchema.parse(runId);
+      const path = `/api/v1/archive/reports/${encodeURIComponent(requested)}`;
+      const report = parseOrThrow(SavedArchiveDetailWireSchema, `GET ${path}`, await transport.requestJson(path));
+      if (report.runId !== requested) throw archivedRunIdentityError(`GET ${path}`, requested);
+      return report;
+    },
     async archiveIndex(): Promise<ArchiveIndexWire> {
       return parseOrThrow(
         ArchiveIndexWireSchema,

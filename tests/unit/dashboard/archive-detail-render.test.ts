@@ -220,3 +220,12 @@ describe("the frozen log line (AR163)", () => {
     assert.equal(new Set(tints).size, 3, `two log levels resolved to one tint: ${tints.join(", ")}`);
   });
 });
+
+import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive-report.js";
+import { FIXTURE_SAVED_REPORT } from "../../parity/helpers/fixture-archive.js";
+it("renders every generic section without a current workflow and exposes no relaunch control", () => {
+  const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...FIXTURE_SAVED_REPORT, files: [] } }));
+  for (const value of ["Saved facts", "Saved work", "Historical note", "No additional evidence was retained.", "Not recorded", "retired-synthetic-workflow"]) assert.ok(html.includes(value), value);
+  assert.doesNotMatch(html, /Relaunch|Retry|Restart/);
+  assert.doesNotMatch(markup(), /Relaunch on v/);
+});

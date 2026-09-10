@@ -796,3 +796,37 @@ describe("the archived capture viewer's read-time resource state", () => {
     });
   }
 });
+
+import { SavedArchiveWorkspace } from "../../../src/dashboard/surfaces/archive-report.js";
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { FIXTURE_SAVED_REPORT, FIXTURE_SAVED_VERSIONS } from "../../parity/helpers/fixture-archive.js";
+
+it("keeps generic loading, empty, deleted and failed responses distinct, and discards a stale detail response", async () => {
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container); mounted = root;
+  const pending = new Map<string, (response: Response) => void>();
+  const client = createDashboardClient({ baseUrl: "http://bff.test", fetchImpl: async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/v1/archive/reports") return new Response(JSON.stringify({ items: [], next: null }));
+    if (path === "/api/v1/archive/versions") return new Response(JSON.stringify(FIXTURE_SAVED_VERSIONS));
+    return new Promise<Response>(resolve => pending.set(path, resolve));
+  } });
+  const render = async (selection: string) => { await act(async () => root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(SavedArchiveWorkspace, { selection, view: "runs", actorId: "local-operator", onSelection: noop, onView: noop, onClose: noop }),
+  }))); };
+  const first = FIXTURE_SAVED_REPORT.runId, second = "00000000-0000-4000-8000-000000008899";
+  await render(first);
+  assert.match(container.textContent ?? "", /No saved reports match this query/);
+  assert.match(container.textContent ?? "", /Loading saved report/);
+  await render(second);
+  const resolve = (id: string, body: unknown, status = 200) => { const reply = pending.get(`/api/v1/archive/reports/${id}`); assert.ok(reply); reply(new Response(JSON.stringify(body), { status })); };
+  await act(async () => resolve(second, { state: "deleted", runId: second, reason: "This run was explicitly deleted." }));
+  await act(async () => resolve(first, FIXTURE_SAVED_REPORT));
+  assert.match(container.textContent ?? "", /explicitly deleted/);
+  assert.doesNotMatch(container.textContent ?? "", /Synthetic saved lookup/);
+  await render(first);
+  await act(async () => resolve(first, { state: "error", code: "STALE_REPORT", message: "Saved report authority is stale.", retryable: false }, 409));
+  assert.match(container.textContent ?? "", /Saved report authority is stale/);
+  assert.doesNotMatch(container.textContent ?? "", /explicitly deleted/);
+});

@@ -1,3 +1,6 @@
+import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
+import { CanonicalRelaunchRequestSchema } from "../../../src/infra/sqlite/run-store-contracts.js";
+import { ArchiveRelaunchStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { selectRunRuntime } from "../../../src/core/run-settings.js";
 import { makeWorld } from "../server/helpers/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
@@ -53,11 +56,12 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 function fixture(
   terminalizationHooks?: AuthorityTerminalizationHooks,
   lifecycleHooks?: AuthorityLifecycleHooks,
+  historical = false,
 ) {
   const root = mkdtempSync(join(tmpdir(), "run-record-service-"));
   cleanups.push(() => rmSync(root, { recursive: true }));
   const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open(
+  const database = historical ? historicalArchiveAuthority(join(root, "authority.sqlite"), clock) : AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
     clock,
     undefined,
@@ -107,10 +111,30 @@ function created(service: RunRecordService, request: CreateRunRequest) {
   return outcome.run;
 }
 
+/** Seed a released journal/lineage; never exercise retired creation as a fixture producer. */
+function historicalRelaunch(service: RunRecordService, database: AuthorityDatabase, input: unknown) {
+  const request = CanonicalRelaunchRequestSchema.parse(input);
+  const run = created(service, { ...request.create, commandId: lifecycleCommandId("historical-fixture", request.commandId) });
+  const safe = valueFreeProtectedData(request, retainedRunProtectedBindings({ envelope: { workflow: request.create.workflow }, input: request.create.input }));
+  const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId: request.commandId,
+    operation: "relaunch", requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0relaunch\0${canonicalJsonStringify(safe)}`),
+    fence: { kind: "none" }, recordedAt: NOW });
+  database.withAuthorityTransaction(repositories => {
+    repositories.archiveRelaunches.insert(ArchiveRelaunchStorageRecordSchema.parse({ archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
+      runId: run.envelope.runId, archivedRunId: request.archivedRunId,
+      relaunchedIdentity: { workflowId: request.create.workflow, descriptorVersion: request.create.descriptorVersion, contractFingerprint: request.create.contractFingerprint },
+      relaunchedBy: request.relaunchedBy, relaunchedAt: NOW }));
+    repositories.lifecycleJournal.insertCommand(command);
+    repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: command.commandId, request: command,
+      result: { kind: "run", runId: run.envelope.runId, appliedVersion: run.version }, completedAt: NOW });
+  });
+  return { state: "applied" as const, run };
+}
+
 describe("protected canonical command fingerprints", () => {
   it("retains safe historical archive identity for relaunch/delete replay after source deletion", () => {
     const exercise = (emplId: string) => {
-      const f = fixture();
+      const f = fixture(undefined, undefined, true);
       const request = { ...f.request, descriptorVersion: personLookupDescriptor.version,
         contractFingerprint: personLookupDescriptor.contractFingerprint,
         input: { ...f.request.input, raw: { emplId }, parsed: { ...f.request.input.parsed,
@@ -135,7 +159,7 @@ describe("protected canonical command fingerprints", () => {
       const relaunch = { commandId: "83000000-0000-4000-8000-000000000001",
         archivedRunId: source.envelope.runId, archiveFingerprint: archivedRunReferenceFingerprint(archived),
         relaunchedBy: "local-operator", create };
-      assert.equal(f.service.relaunch(relaunch, personLookupDescriptor).state, "applied");
+      assert.equal(historicalRelaunch(f.service, f.database, relaunch).state, "applied");
       const deletion = { commandId: "83000000-0000-4000-8000-000000000002",
         runId: source.envelope.runId, archiveFingerprint: archivedRunReferenceFingerprint(archived) };
       assert.equal(f.service.deleteArchived(deletion).state, "deleted");
@@ -167,7 +191,7 @@ describe("protected canonical command fingerprints", () => {
 
   it("binds protected input identity and safe facts across create and archive journals", () => {
     const journals = (emplId: string, memo = "ordinary fact", sourceId = "10000000-0000-4000-8000-000000000001") => {
-      const f = fixture();
+      const f = fixture(undefined, undefined, true);
       const request = { ...f.request, input: { ...f.request.input, raw: { emplId, memo },
         parsed: { ...f.request.input.parsed, value: { emplId, memo }, protectedBindings: [{
           kind: "test-data-local" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const, sourceId }] } } };
@@ -1388,8 +1412,8 @@ describe("canonical run-record service", () => {
     }).length, 1);
   });
 
-  it("#13/#14/#18/#19/#20 relaunches freshly and preserves lineage when the archived source is deleted", () => {
-    const { service, request, database, runtimeConfig } = fixture();
+  it("#13/#14/#18/#19/#20 preserves historical relaunch replay and lineage when the archived source is deleted", () => {
+    const { service, request, database, runtimeConfig } = fixture(undefined, undefined, true);
     const source = created(service, {
       ...request,
       descriptorVersion: personLookupDescriptor.version,
@@ -1445,17 +1469,17 @@ describe("canonical run-record service", () => {
       create: relaunchCreate,
     }, personLookupDescriptor), {
       state: "refused",
-      refusal: { reason: "schema-mismatch", digest: HASH_A },
+      refusal: { reason: "invalid-state" },
     });
     assert.equal(database.getMeta().authorityGeneration, mismatchGeneration);
 
-    const relaunched = service.relaunch({
+    const relaunched = historicalRelaunch(service, database, {
       commandId: "81000000-0000-4000-8000-000000000006",
       archivedRunId: source.envelope.runId,
       archiveFingerprint: archivedRunReferenceFingerprint(archived.archive),
       relaunchedBy: "local-operator",
       create: relaunchCreate,
-    }, personLookupDescriptor);
+    });
     assert.equal(relaunched.state, "applied");
     if (relaunched.state !== "applied") throw new Error("relaunch refused");
     assert.equal(relaunched.run.envelope.retryOf, undefined);
@@ -1527,7 +1551,7 @@ describe("canonical run-record service", () => {
   });
 
   it("#20 returns every closed existence arm", () => {
-    const { service, request, database } = fixture();
+    const { service, request, database } = fixture(undefined, undefined, true);
     const live = created(service, request);
     const archiveSource = created(service, {
       ...request,
@@ -1905,7 +1929,7 @@ describe("canonical run-record service", () => {
   });
 
   it("D330.10 table-class coverage drives every public service method and its generation class", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+    const { service, request, runtimeConfig, database } = fixture(undefined, undefined, true);
     const covered = new Set<string>();
     let commandSequence = 100;
     const commandId = () => `99000000-0000-4000-8000-${String(commandSequence++).padStart(12, "0")}`;
@@ -1926,6 +1950,7 @@ describe("canonical run-record service", () => {
     if (sourceResult.state !== "applied") throw new Error("coverage create refused");
     const source = sourceResult.run;
     measure("read", 0, () => service.read(source.envelope.runId));
+    assert.ok(measure("lifecycleStorage", 0, () => service.lifecycleStorage()));
     measure("list", 0, () => service.list({ disposition: "live", limit: 10 }));
     const terminal = measure("transition", 1, () => service.transition({
       commandId: commandId(), runId: source.envelope.runId, expectedVersion: source.version,
@@ -1968,11 +1993,10 @@ describe("canonical run-record service", () => {
       descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint,
     };
-    const relaunched = measure("relaunch", 1, () => service.relaunch({
-      commandId: commandId(), archivedRunId: source.envelope.runId,
-      archiveFingerprint: archivedRunReferenceFingerprint(archive), relaunchedBy: "local-operator",
-      create: relaunchCreate,
-    }, personLookupDescriptor));
+    const historicalRequest = { commandId: commandId(), archivedRunId: source.envelope.runId,
+      archiveFingerprint: archivedRunReferenceFingerprint(archive), relaunchedBy: "local-operator", create: relaunchCreate };
+    const relaunched = historicalRelaunch(service, database, historicalRequest);
+    assert.equal(measure("relaunch", 0, () => service.relaunch(historicalRequest, personLookupDescriptor)).state, "applied-already");
     if (relaunched.state !== "applied") throw new Error("coverage relaunch refused");
     const settledRelaunch = service.transition({
       commandId: commandId(), runId: relaunched.run.envelope.runId,

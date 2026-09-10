@@ -1,3 +1,4 @@
+import { SavedArchiveQuerySchema } from "../../../domain/dashboard/archive.js";
 import { z } from "zod";
 
 
@@ -10,6 +11,7 @@ import { readRunDetail } from "../queries/run-detail.js";
 
 
 import {
+  savedFileResource, savedArchiveVersions, savedArchiveIndex, savedArchiveDetail, savedCaptureResource, prepareSavedCaptureLease,
   buildArchiveIndex,
   buildArchivedCaptureResource,
   buildArchivedRunDetail,
@@ -40,10 +42,26 @@ export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps
   app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
 
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
-  app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
+  app.get("/api/v1/archive/reports/:runId/files/:digest", async c => c.json(await savedFileResource(deps.archive, c.req.param("runId"), c.req.param("digest"), c.req.raw.signal)));
+  app.get("/artifacts/v1/archive/:runId/files/:digest", async c => {
+    const artifact = await prepareSavedCaptureLease(deps.archive, c.req.param("runId"), c.req.param("digest"), c.req.raw.signal, true);
+    return verifiedByteResponse({ lease: artifact.lease, method: c.req.method, range: c.req.header("range"), profile: "archive" });
+  });
+  app.get("/api/v1/archive/versions", (c) => c.json(savedArchiveVersions(deps.archive)));
+  app.get("/api/v1/archive/reports", (c) => {
+    const params = Object.fromEntries(new URL(c.req.url).searchParams);
+    const { after, limit, ...filters } = params;
+    const query = SavedArchiveQuerySchema.parse({ ...filters, limit: limit === undefined ? 50 : Number(limit),
+      ...(after === undefined ? {} : { after: JSON.parse(after) as unknown }) });
+    return c.json(savedArchiveIndex(deps.archive, query));
+  });
+  app.get("/api/v1/archive/reports/:runId", (c) => c.json(savedArchiveDetail(deps.archive, c.req.param("runId"))));
+  app.get("/api/v1/archive", (c) => c.json(deps.archive.storage === undefined ? buildArchiveIndex(deps.archive) : savedArchiveIndex(deps.archive, { limit: 50 })));
+
 
   app.get("/api/v1/archive/:runId/captures/:artifactId/resource", async (c) => {
     c.header("cache-control", "no-store");
+    if (deps.archive.storage !== undefined) return c.json(await savedCaptureResource(deps.archive, c.req.param("runId"), c.req.param("artifactId"), c.req.raw.signal));
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
     }
@@ -56,10 +74,14 @@ export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps
   });
 
   app.get("/api/v1/archive/:runId", (c) =>
-    c.json(buildArchivedRunDetail(deps.archive, c.req.param("runId"))));
+    c.json(deps.archive.storage === undefined ? buildArchivedRunDetail(deps.archive, c.req.param("runId")) : savedArchiveDetail(deps.archive, c.req.param("runId"))));
 
   app.get("/artifacts/v1/archive/:runId/:artifactId", async (c) => {
     c.header("cache-control", "no-store");
+    if (deps.archive.storage !== undefined) {
+      const artifact = await prepareSavedCaptureLease(deps.archive, c.req.param("runId"), c.req.param("artifactId"), c.req.raw.signal);
+      return verifiedByteResponse({ lease: artifact.lease, method: c.req.method, range: c.req.header("range"), profile: "archive" });
+    }
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError("archived capture bytes are not available: no artifact store is composed");
     }

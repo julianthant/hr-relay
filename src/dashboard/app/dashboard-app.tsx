@@ -33,7 +33,7 @@ import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { ActivityReport } from "../surfaces/activity.js";
-import { ArchiveWorkspace } from "../surfaces/archive.js";
+import { SavedArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-report.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";

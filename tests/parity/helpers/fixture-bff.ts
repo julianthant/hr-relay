@@ -44,6 +44,8 @@ import {
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
 import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
+  FIXTURE_SAVED_REPORT,
+  FIXTURE_SAVED_VERSIONS,
   FIXTURE_ACTIVITY_REPORT,
   FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
   FIXTURE_ACTIVITY_UNAVAILABLE_REPORT,
@@ -251,10 +253,19 @@ export function createFixtureBff(
    * served by exact run id: a fixture that answered any id with the same
    * record would let a surface pass while addressing the wrong run.
    */
+  app.get("/api/v1/archive/reports/:runId/files/:digest", c => c.json({ runId: c.req.param("runId"), digest: c.req.param("digest"),
+    resource: { state: "missing", reason: "The retained synthetic attachment is missing. Saved report remains readable." } }));
+  app.get("/api/v1/archive/reports", c => c.json({ items: c.req.query("workflow") && c.req.query("workflow") !== FIXTURE_SAVED_REPORT.workflow ? [] : [FIXTURE_SAVED_REPORT], next: null }));
+  app.get("/api/v1/archive/versions", c => c.json(FIXTURE_SAVED_VERSIONS));
+  app.get("/api/v1/archive/reports/:runId", c => c.json(c.req.param("runId") === FIXTURE_SAVED_REPORT.runId
+    ? FIXTURE_SAVED_REPORT : { state: "missing", runId: c.req.param("runId"), reason: "No retained run has this identity." }));
   app.get("/api/v1/archive", (c) => c.json((archiveEvidence ? FIXTURE_ARCHIVE_EVIDENCE_INDEX : FIXTURE_ARCHIVE_INDEX) as unknown));
   app.get("/api/v1/archive/:runId/captures/:artifactId/resource", (c) => {
     const runId = c.req.param("runId");
     const artifactId = c.req.param("artifactId");
+    if (!archiveEvidence && runId === FIXTURE_SAVED_REPORT.runId && artifactId === FIXTURE_SAVED_REPORT.files[0].artifactIds?.[0]) {
+      return c.json({ runId, artifactId, resource: { state: "missing", reason: "The retained synthetic attachment is missing. Saved report remains readable." } });
+    }
     if (!archiveEvidence || runId !== archivedRun.runId || artifactId !== FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId) {
       return c.json(wireError("ARCHIVE_CAPTURE_UNKNOWN", `no frozen fixture capture ${artifactId} for archived run ${runId}`), 404);
     }
