@@ -1,6 +1,6 @@
 # A — archive transfer scoped release evidence
 
-Status: A01–A05 complete; focused candidate PASS. A06 integration verified; owned cleanup in progress.
+Status: A01–A06 complete; focused candidate and integration PASS; owned cleanup verified.
 Full acceptance and independent review remain 2.6.9; no reviewer was dispatched here.
 
 ## Immutable binding
@@ -29,7 +29,7 @@ before A creation. Q was preserved and independently integrated. One supervisor;
 | A03 | Immutable v2 preview, minor/major membership, explicit superseding review, build/workflow validation, full-request application claim and replay. Capture/verify the whole batch before children-first cleanup/publication. Save, verify, cleanup, publish, progress and final-audit interruptions reopen/resume exactly; competing commands refuse. Mixed publication never falsely completes; deleted members cannot resurrect. Transfer creates no deletion receipt. |
 | A04 | Populated old plans/applications, transaction supplements, relaunch lineage and files convert through a callable entrypoint, retaining original IDs/bytes/digests and stable mappings across interruption. Bounded cross-workflow filters/paging, parser-independent safe projection, digest-authenticated deletion and retired relaunch. Shared file owners survive; missing/corrupt/symlinked source bytes refuse. Independent connections serialize deletion. Paired backup/restore retains tombstones and numbering without resurrection. Full operator identity survives a failed audit; exact replay finishes interrupted file settlement first. |
 | A05 | Exact 14-file unit and 9-file architecture batches, lint, applicable generation/freshness, instruction audit and whitespace PASS. Twenty-one implementation/test paths committed explicitly. |
-| A06 | Local integration PASS; exact release and gate receipts below. Owned cleanup remains until its separate verified receipt. |
+| A06 | Local integration PASS, evidence preserved and owned cleanup verified. See the receipts below. |
 
 Historical conversion returns original plan/application sources and explicit absent-member/disposition
 facts for L. A does not claim physical historical-table retirement, stopped-upgrade invocation or
@@ -133,3 +133,26 @@ This integration receipt changes only owned evidence. Its scoped documentation c
 executable-gate reuse is justified by exact source/test/config/dependency equality with the integrated
 tested input manifest. A remains the cleanup owner. Only its merged branch/worktree and owned
 dependency symlink may be removed; the dependency target and primary checkout must survive.
+
+## A06 cleanup receipt — 2026-09-09
+
+The evidence-only follow-up `3b945d013a7a395f05c0681ec318f62b46e22ee6` was incorporated by local
+merge `bfd44232be1b201b9a7326198d1eb96f74ea3e7b`. All executable inputs remained identical to the
+passing integrated manifest. Scoped roadmap binding/freshness, instruction and whitespace checks
+passed before cleanup. No new relative Markdown links were introduced.
+
+At `2026-09-10T05:20:57Z` (2026-09-09 local), after clean-state and incorporation checks:
+
+- Removed only A's owned node_modules symlink; the primary dependency directory survives.
+- Ordinary `git worktree remove /Users/julianhein/Projects/hr-worktree-database-peer` succeeded.
+- Ordinary `git branch -d codex/archive-transfer` succeeded; last tip was `3b945d013`.
+- Verified physical path absent, registration absent and exact branch ref absent.
+- Only the primary worktree remains; master was clean. No other task was archived or dispatched.
+
+The durable external `cleanup-receipt.json` records all checks; `final-state.json` records the final
+evidence commit/tree and hashes. Logs, input manifests, original failure evidence and the consumed
+handoff survive outside the removed checkout. This final documentation receipt changes no executable
+input; integrated unit/architecture/Q/lint results are reused by hash equality, with fresh scoped
+document checks. A's scoped release is complete. L physical retirement, V/H served proof and 2.6.9
+full gates/independent review remain explicitly assigned; none was launched or claimed complete here.
+No push or live database application occurred.
