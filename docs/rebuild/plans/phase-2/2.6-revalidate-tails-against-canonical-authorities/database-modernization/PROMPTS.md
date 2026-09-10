@@ -66,7 +66,7 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
 | A | codex/archive-transfer | hr-worktree-database-peer | Common repaired L release below, identical to Q; approved A01–A06 brief |
 | Q | codex/run-summaries | hr-worktree-database-other | Common repaired L release below, identical to A; see amended Q01–Q06 |
-| V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
+| V | codex/database-surfaces | hr-worktree-database-contracts | A + Q + archived-history repair + integrated L retirement; approved V01–V06 |
 | U | codex/activity-views | hr-worktree-database-peer | V |
 | H | codex/archive-viewer | hr-worktree-database-other | V |
 | 2.6.9 | codex/database-validation | hr-worktree-database-contracts | U + H and their complete prerequisite ancestry |
@@ -77,6 +77,13 @@ S/A/Q/U/H use the named approved section of decisions.md plus their C0-resolved 
 L/V use prerequisites.md. Do not launch before the brief exists and is complete.
 
 ## Implementation prompt — one resolved copy per assignment
+
+**V-specific approval:** [V01–V06](prerequisites.md#approved-v-execution-brief--2026-09-09)
+assigns focused PASS, local master merge and owned worktree/ref cleanup to V. Full gates and
+complete independent review remain at 2.6.9. L retirement stays separately owned and now blocks
+V launch, superseding V's earlier early-start permission. A/Q and the archived-history repair are
+integrated; the actual L retirement release must be verified before resolving V's product base.
+V is WAITING ON that release, not READY. No task is dispatched by this registry.
 
 C0/prerequisite release fills the five binding fields from verified evidence; placeholders must
 never be presented as READY. The following template applies except where the approved C/F brief
