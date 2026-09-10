@@ -1,3 +1,4 @@
+import { RunLifecycleSchema } from "../../../src/domain/run/record.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 // @vitest-environment jsdom
@@ -305,10 +306,16 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
 
   const reachable = new Set<string>();
   const statesSwept = new Set<string>();
-  for (const { lifecycle, claimGeneration } of lifecycleCases()) {
+  for (const { lifecycle: lifecycleInput, claimGeneration } of lifecycleCases()) {
+    const lifecycle = RunLifecycleSchema.parse(lifecycleInput);
     const record: RunRecord = RunRecordSchema.parse({
       ...runRecordOf({ seed: 1, enqueuedAt: PARK_INSTANT, ...(claimGeneration === undefined ? {} : { claimGeneration }) }),
       lifecycle,
+      ...(lifecycle.state === "terminal" && (lifecycle.outcome === "done" || lifecycle.outcome === "failed") ? {
+        version: 2, claimGeneration: 1, updatedAt: lifecycle.endedAt,
+        completion: { schemaVersion: 1, kind: lifecycle.outcome, expectedVersion: 1, claim: { workerId: "worker-1", claimGeneration: 1 }, authorizedAt: lifecycle.endedAt,
+          ...(lifecycle.outcome === "done" ? { resultDigest: "a".repeat(64) } : { failureId: lifecycle.failureId }) },
+      } : {}),
     });
     statesSwept.add(record.lifecycle.state);
     // BOTH compositions: the trust seam is optional, so a section it gates is
@@ -402,6 +409,7 @@ function projectedRowCommands(): ReadonlySet<string> {
 }
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
+  "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
   "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
   "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",
   "plan-worker-count": "worker-browser commands target the worker pool, not a run row",

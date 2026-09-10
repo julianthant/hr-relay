@@ -45,6 +45,7 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
       const identity = database.transferredRun(runId);
       return identity === undefined ? undefined : database.lifecycleArchive(true).readPublished(runId);
     },
+    readSourceFile: (file: ArchiveReport["content"]["files"][number]) => database.readLifecycleSourceFile(file),
     retainFile: (file: ArchiveReport["content"]["files"][number], bytes: Uint8Array) => database.lifecycleArchive().retainFile(file,bytes),
     readFile: (runId: string, digest: string) => {
       const identity = database.transferredRun(runId);

@@ -1,3 +1,4 @@
+import { projectArchiveReport } from "../infra/sqlite/archive-records.js";
 import { createRunLifecycleStorage } from "./run-lifecycle-storage.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "./run-settings.js";
 import { runRuntimeMatches } from "./run-claim-admission.js";
@@ -967,9 +968,14 @@ export class RunRecordService {
 
   private deleteTree(request: Readonly<{ commandId: string; runId: string }> & (
     | Readonly<{ origin: "queue"; expectedVersion: number }>
-    | Readonly<{ origin: "archive"; archiveFingerprint: string }>
+    | Readonly<{ origin: "archive"; archiveFingerprint?: string; operatorRequest?: z.infer<typeof CanonicalDeleteArchivedRequestSchema>["operatorRequest"] }>
   )): RunDeletionOutcome {
     return this.dependencies.database.withAuthorityTransaction((repositories): RunDeletionOutcome => {
+      if (request.origin === "archive" && request.operatorRequest !== undefined) {
+        if (request.operatorRequest.type !== "delete-archived-run" || request.operatorRequest.target.archivedRunId !== request.runId
+          || request.commandId !== lifecycleCommandId("operator-delete-archive", request.operatorRequest.commandId)) throw new Error("archive-operator-request-binding-mismatch");
+        repositories.commands.assertIdentity(request.operatorRequest);
+      }
       const journal = this.inspectJournal(
         repositories,
         request.origin === "queue" ? "delete" : "delete-archived",
@@ -980,6 +986,7 @@ export class RunRecordService {
       );
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayDeletion(repositories, journal.result);
+      if (request.origin === "archive" && request.archiveFingerprint === undefined) throw new Error("archive-delete-report-required");
       const existence = this.read(request.runId);
       if (existence.state === "deleted") return refused({ reason: "tombstoned" });
       if (existence.state === "absent") return existence;
@@ -988,6 +995,10 @@ export class RunRecordService {
         if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
         if (existence.disposition === "archived") return refused({ reason: "use-archive-door" });
       } else {
+        if (request.operatorRequest !== undefined && request.operatorRequest.type === "delete-archived-run") {
+          const view = projectArchiveReport(this.lifecycleStorage().readReport(request.runId));
+          if (view.state !== "available" || view.archiveFingerprint !== request.operatorRequest.target.archiveFingerprint) return refused({ reason: "schema-mismatch", digest: request.operatorRequest.target.archiveFingerprint });
+        }
         const archive = repositories.archivedRuns.get(request.runId);
         if (archive === undefined ? this.dependencies.database.transferredRun(request.runId)?.reportDigest !== request.archiveFingerprint : archivedRunReferenceFingerprint(archive) !== request.archiveFingerprint) {
           return refused({ reason: "schema-mismatch", digest: FingerprintSchema.parse(request.archiveFingerprint) });
@@ -1046,6 +1057,10 @@ export class RunRecordService {
     } else if (operation === "archive") {
       const archive = CanonicalArchiveRequestSchema.parse(request);
       fingerprintInput = { ...archive, archive: archivedRunReferenceFingerprint(archive.archive) };
+    }
+    if (operation === "delete-archived") {
+      const operator = CanonicalDeleteArchivedRequestSchema.safeExtend({ origin: z.literal("archive") }).parse(request).operatorRequest;
+      if (operator !== undefined) fingerprintInput = operator;
     }
     const requestFingerprint = FingerprintSchema.parse(sha256Hex(
       `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(fingerprintInput)}`,

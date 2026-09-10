@@ -1580,3 +1580,41 @@ Future-base binding remains WAITING ON the actual prerequisite release, not a fa
 Authored release evidence: `08-archive-ui-evidence.md` in this folder (new, exclusively owned by H).
 The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
 only the consuming prerequisite/finalizer updates shared status.
+
+## A shared cleanup amendment — 2026-09-09
+
+The operator approved repairing the discovered shared cleanup defect in the A supervisor
+session, then completing A01–A06 with focused gates, local merge and owned cleanup.
+A additionally owns the narrowly scoped reference-preserving cleanup repair in
+`src/infra/sqlite/authority-database.ts` and its regression under A's existing
+`tests/unit/archive-transfer/` ownership. Preserve delegation evidence while another live
+run still needs it; prove child-first frozen transfer, interruption/replay and neighboring
+lifecycle safety. This changes ownership, not source integrity or deletion semantics.
+
+The exact original product base remains `42df5095160e1ff448e76c155a048134ec395ba5`;
+no reset, substituted base or Q checkout change is authorized. Preserve Q's contribution
+at integration and rerun affected combined checks. A records execution and repair evidence
+in [05-archive-evidence.md](05-archive-evidence.md). Zero workers/reviewers here;
+full gates and independent review remain 2.6.9. L retains physical historical retirement;
+V/H retain served UI proof. No push or successor dispatch.
+
+The operator subsequently approved two bounded companion repairs: optional durable full
+apply-request fingerprints in `src/domain/archive/change-record.ts`, and verified source
+attachment reads through `src/core/run-lifecycle-storage.ts`, with corresponding changes
+in the shared SQLite adapter and A-owned focused tests. Historical rows remain readable;
+new A claims bind the complete request before file/archive effects. Source file reads
+resolve from the authority's own isolated state root and verify bytes before custody.
+
+### A completion repairs amendment — 2026-09-09
+
+The operator approved all three pending repairs ("do them all"). A additionally owns
+`src/infra/sqlite/run-store-contracts.ts` and `src/core/run-record-service.ts` for binding the
+complete operator delete request to durable lifecycle identity and resumable file settlement.
+Direct canonical callers retain their existing fingerprints. A also owns the six obsolete Settings
+expectations in `tests/unit/command-kernel.test.ts`, the missing annotate-failure fixture in
+`tests/unit/commands-authority.test.ts`, and exact terminal-completion fixture/command-explanation
+repairs in `tests/unit/server/run-detail-timeline-collision.test.ts` and
+`tests/unit/architecture/wire-connectivity.test.ts`. Preserve every case, lifecycle arm and negative
+control; no shared harness rewrite, guard retirement, runtime Settings policy change or new public
+wire is authorized. The exact product base and Q ownership remain unchanged. The focused batches
+must pass before A's local merge and cleanup; full acceptance and independent review remain 2.6.9.

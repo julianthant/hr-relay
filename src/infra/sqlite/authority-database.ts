@@ -39,7 +39,7 @@ import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
 import { archivedRunContentDigest } from "../../domain/archive/model.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, lstatSync, openSync, closeSync, readFileSync, fstatSync, constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -3096,10 +3096,16 @@ export class AuthorityDatabase implements Disposable {
             DELETE FROM notifications WHERE EXISTS (
               SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
             )`, runId);
-          // Delegation edges in either direction, then the manifests this run authored.
+          // A frozen sibling/parent snapshot also owns these edges. Keep them
+          // until the last live endpoint leaves; child-first transfer must not
+          // mutate the parent's reviewed source before its own verification.
           remove("delegation_dependencies", `
             DELETE FROM delegation_dependencies
-            WHERE json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?`, runId, runId);
+            WHERE (json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?)
+              AND NOT EXISTS (SELECT 1 FROM workflow_runs AS retained
+                WHERE retained.record_key <> ? AND retained.record_key IN (
+                  json_extract(delegation_dependencies.record_json, '$.parentRunId'),
+                  json_extract(delegation_dependencies.record_json, '$.childRunId')))`, runId, runId, runId);
           remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
           // Relaunch lineage belongs to the new run; deleting its source preserves it.
           remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
@@ -3168,12 +3174,33 @@ export class AuthorityDatabase implements Disposable {
     this.lifecycleArchive(true).publish(runId,digest);
   }
 
+  /** Source custody is rooted beside this authority, never the process cwd. */
+  readLifecycleSourceFile(file: import("../../domain/archive/report.js").ArchiveReport["content"]["files"][number]) {
+    const root = join(dirname(this.#path), "artifacts");
+    if (lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) throw new Error("archive-source-file-root-invalid");
+    if (!/^[a-f0-9]{64}$/u.test(file.digest)) throw new Error("archive-source-file-digest-invalid");
+    const fd = openSync(join(root, `${file.digest}.artifact`), constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      if (!fstatSync(fd).isFile()) throw new Error("archive-source-file-invalid");
+      const stored = z.strictObject({ ref: z.strictObject({ id: z.string().uuid(), sha256: z.string(), bytes: z.number().int().nonnegative(), mediaType: z.string() }), payloadBase64: z.string() }).parse(JSON.parse(readFileSync(fd, "utf8")));
+      const bytes = Buffer.from(stored.payloadBase64, "base64");
+      if (bytes.toString("base64") !== stored.payloadBase64 || createHash("sha256").update(bytes).digest("hex") !== file.digest
+        || stored.ref.sha256 !== file.digest || stored.ref.bytes !== file.byteLength || bytes.length !== file.byteLength
+        || stored.ref.mediaType !== file.mediaType) throw new Error("archive-source-file-integrity-mismatch");
+      return bytes;
+    } finally { closeSync(fd); }
+  }
+
   deleteLifecycleArchive(input:unknown):RunDeletionOutcome {
     return new RunRecordService({database:this,clock:this.#clock,ids:{uuid:randomUUID},publishQueued:()=>{throw new Error("archive-delete-cannot-enqueue");}}).deleteArchived(input);
   }
 
   readPendingArchiveReport(runId:string,transferId:string) {
     if(this.authority.deletedRuns.get(runId)!==undefined)throw new Error("archive-report-deleted");
+    if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) {
+      if (this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get() !== undefined) throw new Error("archive-database-missing");
+      return undefined;
+    }
     const report=this.lifecycleArchive(true).read(runId);
     if(report===undefined)return undefined;
     if(report.content.transferId!==transferId)throw new Error("archive-report-replay-conflict");
@@ -3245,7 +3272,8 @@ export class AuthorityDatabase implements Disposable {
           const parsed=CommandRequestSchema.safeParse(JSON.parse(JsonRowSchema.parse(existing).record_json));
           if(!parsed.success || parsed.data.family!=="version-archive"||parsed.data.type!=="apply-version-bump"
             || parsed.data.target.versionPlanId!==change.changeId || parsed.data.payload.planFingerprint!==change.reviewFingerprint
-            || parsed.data.requestedBy!==application.actorId)throw new CommandIdentityConflictError();
+            || parsed.data.requestedBy!==application.actorId
+            ||(application.requestFingerprint!==undefined && application.requestFingerprint!==sha256Hex(canonicalJsonStringify(parsed.data))))throw new CommandIdentityConflictError();
         }
         if(this.#credentialCommandIds(application.commandId) || this.#database.prepare("SELECT record_key FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=? AND record_key<>? LIMIT 1").get(application.commandId,change.changeId)!==undefined)throw new CommandIdentityConflictError();
       }
@@ -3379,13 +3407,18 @@ export class AuthorityDatabase implements Disposable {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
     }
+    const deletion = this.authority.lifecycleJournal.getCommand(lifecycleCommandId("operator-delete-archive", record.commandId));
+    if (deletion !== undefined && (!("kind" in deletion) || deletion.kind !== "run-lifecycle"
+      || deletion.operation !== "delete-archived" || !("family" in record) || record.family !== "version-archive" || record.type !== "delete-archived-run"
+      || deletion.requestFingerprint !== sha256Hex(`hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(record)}`))) throw new CommandIdentityConflictError();
     const claims=this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=?").all(record.commandId);
     if(claims.length>1)throw new CommandIdentityConflictError();
     if(claims.length===1) {
       const change=VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(claims[0]).record_json));
       if(!("family" in record)||record.family!=="version-archive"||record.type!=="apply-version-bump"
         ||record.target.versionPlanId!==change.changeId||record.payload.planFingerprint!==change.reviewFingerprint
-        ||record.requestedBy!==change.application?.actorId)throw new CommandIdentityConflictError();
+        ||record.requestedBy!==change.application?.actorId
+        ||(change.application?.requestFingerprint!==undefined && change.application.requestFingerprint!==sha256Hex(canonicalJsonStringify(record))))throw new CommandIdentityConflictError();
     }
     const parent = "kind" in record && record.kind === "bulk-parent";
     if (parentCommandId !== undefined) {
