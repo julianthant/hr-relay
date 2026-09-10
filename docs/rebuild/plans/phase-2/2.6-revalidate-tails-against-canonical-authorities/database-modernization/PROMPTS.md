@@ -345,3 +345,15 @@ gates and fresh independent review remain 2.6.9. Follow the linked no-default-me
 protocol and Q01–Q06's exact proof/gate/stop boundaries. The planner returns the resolved full plan
 SHA after committed-content, gate, integration and cleanup verification; this registry is not itself
 a launch prompt before those checks.
+
+### Verified supervisor prompt — Q
+
+Plan and execution base: `ceac987a209e0f63d0798c35695bf35b3c674de9`. This commit contains the full
+approved Q01–Q06 section; its executable inputs equal the integrated L product base. The registry
+commit only adds this resolved prompt. Planning verification: 24 roadmap binding tests, lint,
+freshness, added links, instruction pairs/chains and whitespace PASS. READY after this planning
+branch is incorporated into local master; the planner verifies incorporation before delivery.
+
+```text
+/supervise 2.6.7.2 Q. READY. Repository: /Users/julianhein/Projects/hr-automation-rebuild. Approved plan SHA and implementation base: ceac987a209e0f63d0798c35695bf35b3c674de9. Read docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md, section “Approved Q execution brief — 2026-09-09”, from that commit; use its full Q01–Q06 ownership, proof, gate and stop rules. Verify the plan is reachable from local master, L candidate 08d9f4f5334eb20a49334acda268727b622b1163 and integration a8ee826dc are ancestors, and paths/refs are available. Create codex/run-summaries at /Users/julianhein/Projects/hr-worktree-database-other from the exact implementation base before editing. One GPT-6 Astra/high supervisor, zero implementation workers; no reviewer here. Implement Q01–Q06 autonomously: one derivation, incremental atomic source/parent updates, consistent rebuild/recovery, indexed internal Queue queries and selected-set Activity aggregates with protected identity. The approved narrow shared authority/lifecycle/summary-type changes are allowed; preserve A's archive interfaces and either merge order. V owns route/UI cutover; no new DDL or live database application. Run the exact focused tests, lint, bounded benchmark and affected generation/freshness checks. Full gates and fresh complete independent review stay at 2.6.9. Follow /Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md “Parallel coordination”: no routine peer messages, reservations or sibling dispatch. Commit exact paths, freeze candidate/evidence, merge Q locally into master at /Users/julianhein/Projects/hr-automation-rebuild after focused PASS and target ownership checks, rerun invalidated integration checks, record 06-summary-evidence.md, and remove only Q's owned worktree/branch from a safe checkout with verified absence. Send Done / Now / Remaining at start/resume and after each verified step; keep merge/cleanup and deferred review visible. No push, next-task dispatch or UNKNOWN-submit retry. Stop after Q's scoped local release and cleanup; do not claim Phase 2.6 acceptance.
+```
