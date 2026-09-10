@@ -1078,54 +1078,226 @@ separate from the required first integration run.
 
 ## C0 execution allocation — 2.6.7.1 A
 
-Prerequisite: **one frozen L release, identical to Q base**. One Astra/high supervisor, zero implementation workers.
-Use the exact `A` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
-This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
-The repaired L product baseline is `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`, schema48/floor46.
-Use the common A/Q execution base recorded in PROMPTS.md. A detailed execution-plan approval remains
-with its planning task. A owns conversion; the approved L follow-up owns subsequent physical table
-retirement and shared upgrade/reader changes. See prerequisites.md, approved L retirement follow-up.
+The operator approved the complete [A01–A06 execution brief](#approved-a-execution-brief--2026-09-09)
+on 2026-09-09. It supersedes A's older allocation, no-merge timing and generic desktop-proof clause.
+The five production paths remain exclusive to A. Three bounded existing-test amendments are approved.
+A owns local focused-PASS integration and cleanup; full gates and independent review remain 2.6.9.
 
-Ordered outcomes: Verify archive/identity/cleanup/summary hook baseline; implement generic capture, historical conversion, version-change transfer and explicit archive deletion; prove each cross-store interruption; release to V.
+## Approved A execution brief — 2026-09-09
 
-### Exclusive changing paths
+The operator requested `/phase-plan 2.6.7.1`, local merge and cleanup, full gates only at the end
+of 2.6, and the parallel-work protocol, then explicitly approved this entire proposal. Planning
+persists and verifies this brief; it does not implement or launch A, Q or L's retirement follow-up.
+The [archive/version contracts](#approved-group-3-independent-archive-reports-and-no-relaunch),
+[version lifecycle](#approved-group-2-versions-one-change-row-from-proposal-to-completion),
+[shared surface contract](../../../../reference/dashboard-surfaces.md#c0-archive-summary-and-surface-contract--2026-09-09)
+and [L repair/retirement owner](prerequisites.md#approved-l-retirement-follow-up-after-a-conversion-proof)
+retain their complete product requirements. This brief changes allocation and proof timing, not safety.
 
-- `src/services/archive/report-capture.ts` (new target)
-- `src/services/archive/archive-transfer.ts` (new target)
-- `src/services/archive/version-changes.ts` (new target)
-- `src/infra/sqlite/archive-records.ts` (new target)
-- `src/server/dashboard/queries/archive-reports.ts` (new target)
+### Assignment, prerequisite and isolation
 
-### Proof and test ownership
+| Item | Binding |
+| --- | --- |
+| Task and implementer | 2.6.7.1 A; one GPT-6 Astra/high supervisor, zero implementation workers and zero reviewers here. Capture, command identity, transfer and conversion are one coupled seam; dependent worker splits would add shared ownership. Final 2.6.9 owns fresh complete `sup_review` of A and the combined product. |
+| Product base | Exactly `42df5095160e1ff448e76c155a048134ec395ba5`, identical to Q. It contains repaired L implementation `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57` and the approved ordering amendment. Later plan-only commits supply instructions without silently changing this product base. |
+| Plan identity | The planner resolves the exact committed SHA containing this entire approved section. Read it with `git show <plan-sha>:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md` before editing. Its absence from the older product-base checkout is expected; do not copy uncommitted authority or substitute a later product base. |
+| Branch and checkout | Create `codex/archive-transfer` at `/Users/julianhein/Projects/hr-worktree-database-peer` from the exact product base. Both were absent during planning; recheck ref/path ownership, actual branch and ancestry, and the four-auxiliary-worktree capacity before creation. Never implement on master or another task's checkout. |
+| Integration owner | A supervisor owns A's local merge into `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, invalidated integration checks, evidence and owned cleanup after focused PASS. This planner owns only approved documentation integration and planning cleanup. No peer receives a new duty. |
+| Independence | Q owns only its three summary files and proof. Shared L ports support either A/Q implementation and merge order. Neither consumes unmerged sibling work. Preserve Q derivation and publication contracts; prove A against the common summary baseline. |
+| Downstream | A releases conversion proof and its entrypoint to the already assigned L retirement follow-up and its query/report contracts to V. L owns subsequent physical table retirement and shared upgrade/reader wiring. V/H own served dashboard wiring/rendering. Combined completion cannot precede L retirement proof; initial V implementation is not newly blocked. No successor is launched here. |
 
-All approved archive/version/deletion proof remains, including populated historical relaunch provenance, membership change requiring re-review, immutable source and report integrity, required file custody, live/shared-owner preservation, stable numbering and no deletion receipt on transfer. L supplies real backup/restore, explicit tombstones, source fences and live cleanup including summary removal; A cannot edit Q derivation or shared command/authority files.
+Repaired release incorporation was verified at local master `b679d9b76ac8e16a53015b98f1af7a2d68b016fb`:
+common base, implementation and merge `6b453df208c30c7c3e863507fc2630a00dc73bab` are ancestors.
+All 2,088 hashes in `/Users/julianhein/Projects/hr-lifecycle-repair-evidence-20260909/tested-inputs.json`
+match. L recorded 266 unit tests, 139 architecture tests and lint PASS, with commands/exits in
+`candidate-gates.json`; planning verified evidence/input identity, not rerun those gates. L's owned
+repair branch/worktree are removed. Recheck incorporation, evidence and changed shared inputs before
+A01 and integration; an explicitly superseded prerequisite blocks its dependent boundary.
 
-- `tests/unit/archive-transfer/capture.test.ts` (new required test)
-- `tests/unit/archive-transfer/recovery.test.ts` (new required test)
-- `tests/unit/archive-transfer/deletion.test.ts` (new required test)
-- `tests/unit/archive-transfer/historical-conversion.test.ts` (new required test)
+### Exact write ownership
 
-Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
-followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
-and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
-with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
-before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
-Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
-and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+Production paths (all already exist on the repaired base):
 
-The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
-owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
-prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
-or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
-prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+- `src/services/archive/report-capture.ts`
+- `src/services/archive/archive-transfer.ts`
+- `src/services/archive/version-changes.ts`
+- `src/infra/sqlite/archive-records.ts`
+- `src/server/dashboard/queries/archive-reports.ts`
 
-Release committed candidate/base/tree and focused evidence, integrate locally after focused PASS,
-and complete owned cleanup. No independent review here, sibling dispatch or live database application.
-Combined completion requires the approved L retirement follow-up after A conversion proof.
+Required new test paths, with owned fixture files beside them:
 
-Authored release evidence: `05-archive-evidence.md` in this folder (new, exclusively owned by A).
-The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
-only the consuming prerequisite/finalizer updates shared status.
+- `tests/unit/archive-transfer/capture.test.ts`
+- `tests/unit/archive-transfer/recovery.test.ts`
+- `tests/unit/archive-transfer/deletion.test.ts`
+- `tests/unit/archive-transfer/historical-conversion.test.ts`
+
+The operator also approved narrowly bounded updates to these existing tests:
+
+- `tests/unit/archive-model.test.ts`: migrate current version-command/report expectations to the
+  approved model; replace successful relaunch with inert/refused execution proof. Retain supported
+  historical format cases and all membership, integrity, absence, minor/major and protected controls.
+- `tests/unit/command-kernel.test.ts`: update archive/relaunch/delete expectations only; preserve
+  command identity, stale state, digest refusal, canonical deletion and normal run controls.
+- `tests/unit/server/canonical-operator-reads.test.ts`: update its version-plan/report access in the
+  actual archive command proof; retain complete parent/member frozen snapshots and enumeration bound.
+
+These three tests assert retired behavior or storage. A may update them only against the approved
+contract, not merely because output changed. Preserve or replace negative controls and maintain test
+membership. No shared fixture, architecture guard, schema, registry or production path gains ownership.
+The remaining selected regression suites are read-only. A discovered required shared change blocks
+release until its named owner is amended and revalidated; do not conceal it behind an unused export.
+
+A's authored release/evidence owner is `05-archive-evidence.md` in this folder. During implementation,
+`decisions.md`, `prerequisites.md`, `PROMPTS.md` and shared status remain read-only. A records its
+release in that exclusive file; consuming prerequisite/finalizer owns shared status updates.
+Run affected generators through their commands, never manually edit their outputs. Generated output
+is a derived integration artifact, not permission to edit shared source registries or another lane.
+
+### Feasibility and acceptance bindings
+
+| Boundary and inspected mechanism | Assigned change, required result and proof |
+| --- | --- |
+| The kernel calls A's outer `runArchiveCommand` and inner `executeArchiveCommand`; journal/audit and local transaction ownership stay in the kernel. `dependencies.lifecycle.lifecycleStorage()` supplies L ports. | A implements selection and cross-store orchestration in its existing policy module. Admit command identity before any archive/file effect; final audit alone is insufficient. Prove reused/divergent identity, competing apply, failed audit plus exact replay, and valid positive control through the production kernel. Retired relaunch cannot create/fan out a run even from a stale/direct client; historical envelopes remain readable. Normal live start/retry/restart remain governed by existing safety. |
+| L V2 provides immutable review, claim/replacement, published progress, separate application facts and saved report change metadata. | Implement planned preview, authenticated application, distinct review-required refusal for changed membership, replacement linked by supersedes/supersededBy, and stale replacement rejection. Validate build/workflow identities, membership and blockers at the effect boundary. A newer/cleared blocker never silently authorizes added membership. Minor changes have no archive members/blockers. Applied completion requires every report/file verification, live cleanup and publication. |
+| L capture exposes 23 source groups plus private original bytes; generic reports carry typed sections and attachment references. | A freezes the complete supported Queue/run-detail inventory, inputs/settings, results, receipt/failure/resolution, logs/diagnostics, transaction facts and lineage while sources exist. Capture full parent/member snapshots before removing any member. Use labelled values/tables/text and explicit unavailable states, not opaque live wire objects. Keep source-specific parsers inside capture/conversion; queries project safe generic data without exposing private original JSON or protected values/digests. |
+| L's pending report read and stable transfer identity permit replay after sources disappear; capture/verify/cleanup/publication are distinct durable boundaries. | A resumes the same report and claim rather than recapturing removed data, generating another identity or erasing a durable report after cleanup failure. Interrupt each boundary, reopen connections, resume, and prove no loss/duplicates/false completion in mixed completed/in-progress batches. Integrity mismatch refuses; no whole-two-store rollback claim. Preserve shared operation/checkpoint/file ownership, provider accounting, archived disposition and reserved IDs/ordinals; transfer creates no deletion receipt. |
+| Historical source inspection exposes old plans/applications, archives and transaction supplements; actual stopped-upgrade/physical retirement stays with L. | A supplies a callable populated conversion entrypoint, validated source-to-report mappings, original IDs/bytes/digests, required file custody and replay proof for L. Preserve historical relaunch/command/audit/batch/descendant evidence. Missing historical fields remain explicitly absent, never invented; inconsistent pairs refuse. Record unresolved historical dispositions explicitly in conversion output for L. A does not claim shared historical tables rewritten/retired or the stopped-upgrade invocation completed. |
+| L exposes bounded workflow-partitioned archive queries and canonical delete with pending settlement. | A adds stable cross-workflow filtering/paging and safe projection, without current descriptor/live parser dependencies. Verify exact selected results, stable paging and corruption/absence behavior. Delete authenticates the served immutable report reference, uses existing command/audit/deleted_runs ownership, resumes cleanup and preserves shared files. Prove repeated/concurrent delete, stale commands, numbering and paired backup/restore without resurrection. |
+| Existing tests read old storage and expect relaunch; V/H still own real dashboard consumers. | The three approved test amendments retain the underlying safety and report facts through the new A boundary. A proves generic display-data completeness/parser independence in its owned tests; V/H own served preview/viewer and desktop rendering/accessibility. This explicitly replaces A's older generic desktop-proof-due-here clause. It does not waive visual acceptance or claim the current dashboard cutover is complete. |
+
+No actual-target preflight applies here: A uses synthetic/disposable databases and files only.
+No operator database migration, live HR session or submission is authorized. Actual stopped upgrade,
+old-backup conversion through that route, physical retirement and current open/list/claim/delete after
+retirement remain explicit L follow-up proof. A's scope can release before that follow-up, but V and
+2.6.9 cannot claim combined completion until its exact evidence is incorporated.
+
+The highest-risk order matrix is required at A03–A05: divergent command identity plus valid archive
+source (no effects); changed membership plus cleared blockers (renewed review, no transfer); same
+versus different apply after interruption (resume versus refuse); partial cleanup plus published and
+unpublished reports (no false batch completion); delete during/replayed transfer (no resurrection);
+stale confirmation after replacement (cannot approve replacement). Each refusal has a valid positive
+control so it cannot pass through unrelated fixture/setup failure. Recheck neighboring rows after an
+ordering fix. UNKNOWN submissions remain blockers and must never be retried merely to archive.
+
+### Ordered execution
+
+| Step | Outcome and completion proof |
+| --- | --- |
+| A01 — Bind and establish fixtures | Verify committed full plan, exact common base, repaired interfaces/evidence, checkout ownership and capacity. Build owned synthetic terminal-tree, shared-file, protected-input and populated historical fixtures; record source identities before conversion. |
+| A02 — Complete generic capture | Implement complete typed generic capture and safe query projection. Prove private original integrity separately from report integrity, explicit absence, protected-data removal, parent/member completeness and viewing without current workflow/live-schema parsers. |
+| A03 — Version changes and transfer | Implement immutable preview, review-required replacement, authenticated claim/replay and planned/applying/applied progress. Freeze the whole batch before cleanup; retain/verify files and reports, remove exclusively owned live records, publish, then settle completion/journal/audit. Prove the order matrix and every cross-store interruption with reopened connections. |
+| A04 — Historical conversion, queries and deletion | Deliver conversion entrypoint and validated mappings for L, including populated old records/transaction supplements/lineage/files and durable replay. Complete bounded generic report queries and canonical digest-bound deletion. Retire executable archive relaunch; preserve historical envelopes and normal live start/retry/restart. |
+| A05 — Focused candidate | Run every assigned scoped gate, fix in-scope failures, retain exact commands/exits/tested inputs, and freeze candidate SHA/tree plus proof matrix. Keep L/V/H and final 2.6.9 obligations visibly unfinished; no full-gate or independent-review claim. |
+| A06 — Integrate and clean | Recheck target/index/dirty ownership and candidate identity, merge A locally, reconcile derived outputs and rerun invalidated checks or prove input-identical reuse. Record release at 05-archive-evidence.md, preserve external evidence, then remove only A's clean incorporated worktree/ref from the primary checkout and verify all three absence checks. Stop; no successor dispatch. |
+
+### Exact focused gates and evidence cadence
+
+Run from `/Users/julianhein/Projects/hr-worktree-database-peer`. The repository runner already
+isolates scratch. Use one effective file worker per invocation; verify configuration/observed process
+count rather than assuming the CLI flag overrides project settings. Sequential invocations are
+sufficient; no shared gate slot or resource queue is implied. Preserve the four-worker host ceiling,
+all test membership, assertions, timeouts, isolation and coverage floors. New suites must collect
+meaningful cases before release.
+
+Unit candidate gate:
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/archive-transfer/capture.test.ts tests/unit/archive-transfer/recovery.test.ts tests/unit/archive-transfer/deletion.test.ts tests/unit/archive-transfer/historical-conversion.test.ts tests/unit/archive-model.test.ts tests/unit/command-kernel.test.ts tests/unit/server/canonical-operator-reads.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-retention.test.ts tests/unit/commands-authority.test.ts tests/unit/lifecycle-foundation/source-hooks.test.ts tests/unit/lifecycle-foundation/peer-contracts.test.ts tests/unit/lifecycle-foundation/two-store-recovery.test.ts tests/unit/server/run-detail-timeline-collision.test.ts
+```
+
+Architecture candidate gate:
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/archive-invariants.test.ts tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/authority-upgrade-adapters-isolated.test.ts tests/unit/architecture/runtime-dependency-coverage.test.ts tests/unit/architecture/test-runtime-root-isolation.test.ts tests/unit/architecture/control-command-single-path.test.ts tests/unit/architecture/wire-connectivity.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts
+npm run lint
+```
+
+Run each affected generator before its matching check, sequentially for the same output:
+
+```sh
+npm run build:manifest
+npm run build:manifest:check
+npm run stores:catalog
+npm run stores:catalog:check
+npm run roadmap
+npm run roadmap:check
+```
+
+Apply generation only when its inputs are affected; record the input-based reason for unchanged
+output reuse. Check changed local links/anchors, all existing AGENTS.md/CLAUDE.md twins and instruction
+chains below 32,768 UTF-8 bytes, and `git diff --check`. No guard retirement is authorized here.
+
+Iteration runs the smallest affected cases plus lint for tested changes. Group related fixes into
+logical exact-path commits. A05 runs the complete commands above on the final candidate. A06 reruns
+invalidated integration checks; reuse only with named tested tree, command/result and equality of
+all relevant source/test/config/dependency/generated inputs. A new SHA alone is not a rerun trigger.
+Documentation-only evidence commits use the D191 scoped document checks and verified input reuse.
+Failed or unknown exits remain failures/unknown, never deferred PASS.
+
+Full typecheck, coverage, whole architecture/parity, broad build/performance, phase recovery/scenario
+acceptance and fresh complete independent review remain **2.6.9**. Do not run them merely to commit
+or merge A. V/H retain desktop rendering/accessibility and served preview/viewer proof; L retains
+its approved retirement/upgrade follow-up. A retains meaningful focused recovery, concurrency,
+privacy and query proof here. Preserve logs/input manifests outside the removable checkout, for
+example `/Users/julianhein/Projects/hr-archive-transfer-evidence-20260909/`, without overwriting another
+owner. The A evidence file records exact actual paths, candidate/base/tree/integration SHA, exits,
+proof rows, failure repairs, delivery assessment, remaining owners and cleanup receipt.
+
+### Parallel protocol, integration and stop conditions
+
+Read [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination)
+and [native parallel work](/Users/julianhein/.agents/skill-library/parallel-agent-work/REFERENCE.md).
+Default to independent work and no peer messages. Do not create check-ins, reservation rounds,
+availability surveys, readiness broadcasts, acknowledgment rounds, speculative queues or observer
+loops. Inspect primary evidence first. Contact only the exact affected owner when an unresolved
+conflict/input/duty transfer requires their action; normal release records already serve L/V/2.6.9.
+No agent or sibling is dispatched under this plan.
+
+Only actual shared-target/index/generated-output mutation and evidenced resource conflicts serialize.
+Use supported isolation first; preserve active owners and check actual target dirt before integration.
+A clean status alone does not grant another task's checkout. Do not steal locks, infer permission
+from silence or pass the shared index through a reservation chain. The A supervisor remains owner
+of A integration, verification and cleanup until completed or explicitly transferred and accepted.
+
+Routine fixes within approved ownership stay with A. Changed shared prerequisites, a required extra
+production/test/guard path, a material contract conflict, unavailable capacity or actual target
+collision stop only dependent work and require its owning resolution. Never weaken assertions,
+retire guards or fabricate historical data to pass. No push, operator database migration, live HR
+submission, sibling launch, unrelated cleanup or automatic L follow-up is authorized.
+
+Send Done / Now / Remaining at start/resume and after every verified A01–A06 step before the next
+tool call. Keep merge, cleanup and all deferred acceptance owners visible. After A's own release and
+cleanup, end the turn; no sibling monitoring. Interrupted unique state uses /handoff; routine release
+uses this plan and A's evidence. Physical old-table retirement remains L's explicit post-A dependency.
+
+### Planning persistence and launch state
+
+The approved planning stage uses `codex/archive-plan` at
+`/Users/julianhein/Projects/hr-worktree-archive-plan`, based on
+`b679d9b76ac8e16a53015b98f1af7a2d68b016fb`. This planner owns the authorized local documentation
+merge and cleanup only. Scope: this full brief, A-only registry/parent pointers, its D191 cadence
+pointer and derived roadmap output. Preserve Q's approved section and common product base unchanged.
+After scoped documentation checks, commit exact paths, verify this complete section with git show,
+merge locally, verify integration/prerequisite availability and remove only the planning checkout/ref.
+Return one resolved A supervisor prompt with separate immutable plan and product-base SHAs, then stop.
+A implementation remains unstarted. READY requires those verification steps; approval alone is not
+launch evidence. Final 2.6.9 review remains outstanding, not a planning-stage requirement.
+
+### A planning verification — 2026-09-09
+
+Operator approval covers this entire A01–A06 brief, the three existing-test amendments and V/H
+visual-proof allocation. The planning candidate changes only the four declared Markdown owners;
+roadmap generation leaves its tracked output unchanged. Scoped checks passed: 24 roadmap-binding
+tests, `npm run lint`, roadmap generation/freshness, nine changed links/anchors, nine instruction
+pairs, maximum instruction chain 17,333 bytes, and whitespace. The explicit gate commands name
+23 suites: four required new owned suites and 19 existing suites verified present. Q and every
+following section remain byte-identical to planning base b679d9b76.
+
+Evidence is `/Users/julianhein/Projects/hr-archive-plan-evidence-20260909/` (plan-binding.log,
+plan-lint.log and verify-docs.py). All 2,088 repaired runtime/test/tooling inputs match L's recorded
+hashes; no implementation or full runtime gate is claimed by these planning checks. The planner
+verifies the committed full section, exact plan/product-base separation, local incorporation and
+owned cleanup before returning READY. A, Q and the L retirement follow-up are not launched here.
 
 ## C0 execution allocation — 2.6.7.2 Q
 

@@ -1348,6 +1348,17 @@ build/performance, original phase-wide recovery/scenario proof and complete inde
 remain 2.6.9. No failing assertion, floor, safety boundary or sibling ownership is waived. S
 completion means a merged scoped development release, not full phase acceptance.
 
+**2026-09-09 A integration and proof-allocation exception.** The operator approved 2.6.7.1 A
+[A01–A06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-a-execution-brief--2026-09-09),
+including three bounded existing-test updates. Run its exact focused unit/architecture selectors,
+lint and affected freshness; merge locally after focused PASS and verify owned cleanup. Recheck
+invalidated integration inputs or prove exact input reuse. A proves generic display data and parser
+independence; V/H retain served preview/viewer and desktop rendering/accessibility. L owns physical
+old-table retirement and shared upgrade/readers after A's populated conversion proof. Combined
+completion requires that follow-up. Full typecheck/coverage, broad architecture/parity/build and
+fresh complete independent review remain 2.6.9. No assertions, floors, safety or peer ownership are
+waived; no failing focused check is deferred. No push, live application or successor dispatch.
+
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
 <!-- roadmap: p2-2j -->

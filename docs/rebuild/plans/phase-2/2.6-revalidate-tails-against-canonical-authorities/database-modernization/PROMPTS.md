@@ -64,7 +64,7 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | G | codex/artifact-outputs | hr-worktree-artifact-outputs | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | S | codex/settings-activation | hr-worktree-settings-activation | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
-| A | codex/archive-transfer | hr-worktree-database-peer | Common repaired L release below, identical to Q; A execution plan approval remains due |
+| A | codex/archive-transfer | hr-worktree-database-peer | Common repaired L release below, identical to Q; approved A01–A06 brief |
 | Q | codex/run-summaries | hr-worktree-database-other | Common repaired L release below, identical to A; see amended Q01–Q06 |
 | V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
 | U | codex/activity-views | hr-worktree-database-peer | V |
@@ -342,7 +342,7 @@ The repaired implementation is `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`.
 A owns conversion; the approved L retirement follow-up in prerequisites.md follows A's populated
 conversion proof and blocks combined completion. Q remains independent; either peer merge order is
 allowed. Both own local integration and cleanup after focused PASS. Full gates/review remain 2.6.9.
-A's detailed execution-plan approval remains due; Q's planning task revalidates its amended brief.
+A's approved A01–A06 brief is in decisions.md; its planner verifies persistence and launch readiness. Q's planning task revalidates its amended brief.
 This registry releases the prerequisite and does not launch either implementation or the follow-up.
 
 ### Exact common execution base
@@ -352,5 +352,18 @@ incorporation. This exact commit contains the repaired implementation and approv
 amendment. Later plan-only commits may supply instructions but must not silently change one peer's
 product base. Recheck shared input identity if either planner proposes a different base.
 Implementation: `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`; full gates/review remain 2.6.9.
-No implementation is launched. A detailed plan approval and Q amended-plan revalidation remain with
+No implementation is launched. A’s approved-plan persistence/verification and Q amended-plan revalidation remain with
 the existing planning tasks. The former Q shared-file authorization and launch SHA are superseded.
+
+## Approved A planning handoff — 2.6.7.1
+
+The operator approved the complete [A01–A06 execution brief](decisions.md#approved-a-execution-brief--2026-09-09).
+A retains five production paths, four new owned suites, and three bounded existing-test amendments.
+Use the exact common product base `42df5095160e1ff448e76c155a048134ec395ba5`; the planner returns a
+separate verified plan SHA after persistence/integration/cleanup. Create `codex/archive-transfer` at
+`/Users/julianhein/Projects/hr-worktree-database-peer`. One Astra/high supervisor, zero workers/reviewers
+here. Execute A01–A06, run the explicit focused gates/lint/freshness, merge locally and remove owned
+resources. L owns subsequent physical retirement/shared upgrade wiring after A conversion proof;
+V/H own served dashboard and desktop proof; full gates and independent review stay at 2.6.9.
+Follow the linked parallel protocol without check-ins/broadcasts or sibling dispatch. No push or live
+database application. This pointer does not launch implementation or alter Q's product base.
