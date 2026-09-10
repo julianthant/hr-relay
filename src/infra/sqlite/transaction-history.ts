@@ -10,6 +10,10 @@ import { ArchivedTransactionsSchema } from "../../domain/archive/model.js";
 import { reconstructConfirmedOperation } from "../../events/confirmed-operation.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, HistoricalOperationSource } from "../../events/timeline.js";
+import { TimelineEventRecordSchema } from "../../events/timeline.js";
+import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from "../../domain/write-safety.js";
+import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
+import type { LifecycleSourceSnapshot } from "../../core/run-lifecycle-storage.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import type { DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import type { WriteIntentRecord } from "../../domain/write-safety.js";
@@ -23,6 +27,8 @@ export const TransactionHistorySelectionSchema = z.strictObject({
 /** One consistent database query serves Activity, archive capture and explicit exports. */
 type HistoryRepositories = Parameters<typeof reconstructConfirmedOperation>[0] & {
   timelineEvents: TimelineRepository;
+  /** Omitted only by pre-transfer conversion and isolated live-only fixtures. */
+  archivedTransactionSources?: { list(): readonly LifecycleSourceSnapshot[] };
   historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
   runs: { get(runId: string): RunRecord | undefined };
   deletedRuns: { get(runId: string): DeletedRunRecord | undefined };
@@ -34,18 +40,40 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
     return repositories.timelineEvents.withReadSnapshot(() => {
       const { records } = readTimelineRecords(repositories.timelineEvents);
       const sources = repositories.historicalOperationSources.list();
-      const rows = records.flatMap((event) => {
+      const archived = (repositories.archivedTransactionSources?.list() ?? []).flatMap(snapshot => {
+        const read = <T>(table: string, schema: z.ZodType<T>) => {
+          const groups = snapshot.records.filter(group => group.table === table);
+          const group = groups[0];
+          if (groups.length !== 1 || group === undefined) throw new Error("transaction-history-archive-group-missing-or-duplicate");
+          if (new Set(group.rows.map(row => row.key)).size !== group.rows.length) throw new Error("transaction-history-archive-row-duplicate");
+          return group.rows.map(row => schema.parse(JSON.parse(row.json)));
+        };
+        const events = read("timeline_events", TimelineEventRecordSchema);
+        const operations = read("run_operations", WriteIntentRecordSchema);
+        const attempts = read("run_operation_attempts", WriteAttemptRecordSchema);
+        const checkpoints = read("run_checkpoints", RunCheckpointRecordSchema);
+        const evidence = {
+          runs: { get: (id: string) => id === snapshot.run.envelope.runId ? snapshot.run : undefined },
+          writeIntents: { get: (id: string) => operations.find(row => row.writeIntentId === id) },
+          writeAttempts: { get: (id: string) => attempts.find(row => row.writeAttemptId === id) },
+          runCheckpoints: { get: (workflow: string, item: string, node: string, attempt: number, claim?: number) =>
+            checkpoints.find(row => row.workflowId === workflow && row.itemId === item && row.nodeId === node
+              && row.attempt === attempt && row.claimGeneration === claim) },
+        };
+        return events.map(event => ({ event, evidence }));
+      });
+      const rows = [...records.map(event => ({ event, evidence: repositories })), ...archived].flatMap(({ event, evidence }) => {
         if (event.payload.kind !== "operation-confirmed") return [];
         const facts = event.payload.facts;
-        const run = repositories.runs.get(facts.runId);
+        const run = evidence.runs.get(facts.runId);
         if (run === undefined) throw new Error("transaction-history-owner-missing");
         if (repositories.deletedRuns.get(facts.runId) !== undefined) throw new Error("transaction-history-owner-deleted");
-        const operation = repositories.writeIntents.get(facts.writeIntentId);
+        const operation = evidence.writeIntents.get(facts.writeIntentId);
         if (operation === undefined || operation.status === "observed-present" || run.envelope.dryRun
           || run.envelope.workflow !== facts.workflowId || run.envelope.itemId !== facts.itemId
           || run.envelope.configFingerprint !== facts.configFingerprint
           || run.envelope.resolvedInstance[facts.system] !== facts.instance) throw new Error("transaction-history-owner-mismatch");
-        const { ledger, span } = reconstructConfirmedOperation(repositories, event);
+        const { ledger, span } = reconstructConfirmedOperation(evidence, event);
         const localDate = localDatePart(new Date(facts.confirmedAt));
         if (localDate < range.from || localDate > range.to || (range.system !== undefined && facts.system !== range.system)) return [];
         const source = sources.find((item) => item.operationId === facts.writeIntentId && item.generation === facts.intentGeneration);

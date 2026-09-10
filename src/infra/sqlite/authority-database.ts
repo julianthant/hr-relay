@@ -918,6 +918,7 @@ export type AuthorityRepositories = Readonly<{
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
   historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
+  archivedTransactionSources: { list(): readonly z.infer<typeof LifecycleSourceSnapshotSchema>[] };
   failureResolution: ReturnType<typeof createFailureResolutionRepository>;
   providerAdmissions: ProviderAdmissionRepository;
   providerAccounting: ProviderAccountingStorage;
@@ -4754,6 +4755,20 @@ export class AuthorityDatabase implements Disposable {
         listByRun: (_runId: string): never => { throw new Error("activity-person-pseudonyms-retired"); },
         listByRuns: (_runIds: unknown): never => { throw new Error("activity-person-pseudonyms-retired"); },
       }),
+      archivedTransactionSources: { list: () => this.withAuthorityReadSnapshot(() => this.listTransferredRuns().map(run => {
+        const identity = this.transferredRun(run.envelope.runId);
+        if (identity === undefined) throw new Error("transaction-history-transfer-missing");
+        // Verified custody is sufficient after cleanup, even before publication replay.
+        const report = this.lifecycleArchive(true).verified(run.envelope.runId, identity.reportDigest);
+        const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+        if (source === undefined) throw new Error("transaction-history-archive-source-missing");
+        const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+        if (lifecycleSourceDigest(snapshot) !== identity.sourceDigest
+          || canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(identity.run)) {
+          throw new Error("transaction-history-archive-source-mismatch");
+        }
+        return snapshot;
+      })) },
       historicalOperationSources: { list: () => this.#database.prepare("SELECT record_json FROM timeline_operation_sources ORDER BY record_key").all().map((row) => readHistoricalOperationSource(this.#database, JsonRowSchema.parse(row).record_json)) },
       runResults: Object.freeze({
         get: (runId: string) => this.#readRecord(
