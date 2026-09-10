@@ -342,7 +342,7 @@ The repaired implementation is `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`.
 A owns conversion; the approved L retirement follow-up in prerequisites.md follows A's populated
 conversion proof and blocks combined completion. Q remains independent; either peer merge order is
 allowed. Both own local integration and cleanup after focused PASS. Full gates/review remain 2.6.9.
-A's detailed execution-plan approval remains due; Q's planning task revalidates its amended brief.
+A's detailed execution-plan approval remains due; Q's amended brief is revalidated and operator-approved below.
 This registry releases the prerequisite and does not launch either implementation or the follow-up.
 
 ### Exact common execution base
@@ -352,5 +352,16 @@ incorporation. This exact commit contains the repaired implementation and approv
 amendment. Later plan-only commits may supply instructions but must not silently change one peer's
 product base. Recheck shared input identity if either planner proposes a different base.
 Implementation: `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`; full gates/review remain 2.6.9.
-No implementation is launched. A detailed plan approval and Q amended-plan revalidation remain with
-the existing planning tasks. The former Q shared-file authorization and launch SHA are superseded.
+No implementation is launched. A detailed plan approval remains with its planning task; Q amended-plan
+revalidation is complete and operator-approved. The former Q shared-file authorization and launch SHA
+are superseded.
+
+### Q amended approval — 2.6.7.2
+
+The operator approved the revalidated Q01–Q06 brief after L repair. The full owner is
+[Approved Q execution brief](decisions.md#approved-q-execution-brief--2026-09-09), including its
+amended approval/revalidation record. Exactly three production files, owned proof/evidence, local
+merge and cleanup are assigned to Q. Shared authority/lifecycle/domain files remain read-only.
+The exact product base stays `42df5095160e1ff448e76c155a048134ec395ba5` for both A and Q;
+the resolved prompt distinguishes this base from the later instructions-only approval SHA.
+No implementation is launched by this approval or registry.

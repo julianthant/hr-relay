@@ -1149,7 +1149,7 @@ independent review remain with **2.6.9**, not Q.
 | --- | --- |
 | Implementer | One GPT-6 Astra/high supervisor; zero implementation workers and zero reviewer dispatches here. The coupled mutation/publication/query seam fits one supervisor; splitting it would create dependent writers. Final 2.6.9 owns fresh complete `sup_review` coverage of Q and combined archive/served behavior. |
 | Branch / checkout | Create `codex/run-summaries` at `/Users/julianhein/Projects/hr-worktree-database-other`. Both were absent at planning; recheck ownership/capacity before creation. Never use master for implementation. |
-| Product base | Repaired L `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`. Use the exact common A/Q execution base in PROMPTS.md, which incorporates the amended ownership and retirement dependency. Preserve L interfaces used by A. |
+| Product base | Exactly `42df5095160e1ff448e76c155a048134ec395ba5`, common to A and Q, containing repaired L `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`. Later plan-only commits supply instructions, never a replacement product base. Read the approved plan from its committed SHA without merging unrelated later product changes into this base. Preserve L interfaces used by A. |
 | Integration owner | Q supervisor owns Q's local integration into `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, after Q focused PASS, and owned cleanup. This planner owns only this approved documentation integration. No peer receives a new duty. |
 | Peer independence | A owns its five archive implementation files and archive-transfer tests; Q owns only the three summary feature files below; L owns shared interfaces. Neither consumes the other's unmerged implementation. Either order is permitted, subject to unchanged A contracts and Q's independent archive-baseline regression proof. V consumes both actual releases. |
 | Coordination | Follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination) and [supporting-agent protocol](/Users/julianhein/.agents/skill-library/parallel-agent-work/REFERENCE.md). No check-in, reservation chain, peer messages or dispatch by default. Only shared-target mutation is serialized. An actual conflicting write blocks that integration, not unrelated worktree-local work. |
@@ -1206,7 +1206,7 @@ requirements through those repaired mechanisms without changing shared authority
 | Step | Outcome and proof |
 | --- | --- |
 | Q01 — Bind and measure | Verify plan/base/L ancestry, exact branch/path and scope; inspect the retained consumers and source-writer map. Build owned synthetic fixtures and capture baseline read/update measurements with reproducible parameters before replacing behavior. |
-| Q02 — Derivation and atomic maintenance | Complete one reusable derivation and contributing-source inventory; implement affected-run/parent updates with transactional rollback-safe tracking and explicit freshness. Prove every mutation and no-op/unrelated-write controls at the earliest stable boundary. |
+| Q02 — Derivation and atomic maintenance | Consume L's transactional tracking and complete one reusable derivation plus affected-run/parent maintenance policy inside Q's owned adapter. Prove contributing mutations, explicit freshness, rollback and no-op/unrelated-write controls without editing shared authority, lifecycle or domain files. |
 | Q03 — Rebuild and recovery | Publish complete generations using the source snapshot/cursor contract; prove concurrency, interruption, replay, restart, corruption and historical populated-source rebuilding without half-publication. |
 | Q04 — Indexed query ports | Implement bounded Queue queries and selected-set Activity calculations over summary rows. Prove range/group/filter/duration/identity semantics, privacy, stable paging and query plans independently of A or new routes. |
 | Q05 — Focused candidate | Run all scoped gates below, compare baseline/new measurements, fix in-scope failures and freeze exact candidate SHA/tree and evidence. Preserve negative controls and thresholds. No full-gate or independent-review claim. |
@@ -1271,6 +1271,46 @@ No product implementation or Q acceptance is claimed.
 Full gates and independent review were not run or represented as passed; they remain 2.6.9 duties.
 The planner verifies the committed section and prerequisite ancestry before returning the exact
 resolved supervisor prompt. Only planning documents are merged and cleaned up in this session.
+
+### Q amended-plan approval and feasibility revalidation — 2026-09-09
+
+The operator explicitly approved the revalidated three-production-file plan with “approve.”
+This supersedes the initial expanded ownership and old execution base, while retaining the complete
+Q01–Q06 feature/proof requirements, focused gate schedule, local merge and owned cleanup.
+Implementation remains unlaunched. The exact common A/Q product base is
+`42df5095160e1ff448e76c155a048134ec395ba5`; the later approval commit is instructions only.
+
+Revalidation inspected the actual adapter, derivation/domain contracts, authority/lifecycle ports,
+existing source-hook and peer/recovery tests, and amended L release records. The source notifications
+and outer transaction now call Q's adapter atomically; rebuild stays under the authority write
+transaction. Unchanged row source revisions remain valid under a current publication. Query parameter
+and result types flow from the owned adapter through the authority read snapshot, permitting Q policy
+without shared-file edits. Existing proof disables the whole-row reader while exercising indexed
+pagination, nested rollback and unchanged summaries. These repairs resolve Q's earlier feasibility
+blockers; full Q mutation/aggregate/privacy/performance acceptance is still implementation work.
+
+Verified integrated ancestry: repaired implementation
+`a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`, binding release
+`a77f6aa99b70ce9e7c2244c2945d17c6758bae54`, common execution base, local merge
+`6b453df208c30c7c3e863507fc2630a00dc73bab` and cleanup receipt
+`b679d9b76ac8e16a53015b98f1af7a2d68b016fb`. All 2,088 hashes from
+`/Users/julianhein/Projects/hr-lifecycle-repair-evidence-20260909/tested-inputs.json` match the
+inspected tree. Retained candidate logs/gate receipt establish 266 unit tests, 139 architecture
+tests and lint PASS. This is verified prerequisite evidence, not a new execution of Q's tests.
+
+A and Q remain independent and may integrate in either order. A owns populated historical
+conversion; the explicit L-owned retirement follow-up after A's conversion proof blocks combined
+completion, not Q start. This approval launches neither A/Q nor that follow-up. Full gates and
+fresh complete independent review remain 2.6.9. The planner commits this approval, verifies scoped
+documentation checks and the exact saved prompt, integrates the planning changes and removes only
+its own temporary worktree/ref. No product files or user data are changed.
+
+Approval persistence checks: roadmap binding 24/24 tests with one worker, `npm run lint`,
+roadmap generation/freshness, added local link/anchor validation, existing instruction pair/chain
+audit and `git diff --check` all PASS. The diff changes only the two owning Markdown files;
+all 2,088 frozen runtime/test/tooling inputs remain identical. Subsequent prompt-only recording
+reuses lint and prerequisite runtime evidence on that verified input identity, and reruns affected
+documentation checks. No full gate or implementation review is claimed.
 
 ## C0 execution allocation — 2.6.8.1 U
 
