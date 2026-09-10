@@ -1271,6 +1271,9 @@ export function QueueRow({
           aria-label={queueRowAccessibleName(surface, state.nowIso)}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
+            // Nested controls keep native Enter/Space activation. Only the
+            // focused row itself uses those keys to open its detail.
+            if (event.target !== event.currentTarget) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               handlers.onSelect(surface.runId);

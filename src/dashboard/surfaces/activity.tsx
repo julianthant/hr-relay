@@ -47,7 +47,7 @@
  *
  * The demo's report reads a fixture corpus of whole rows; this one reads an
  * aggregate wire. Its distinct-people axis now counts only declared durable
- * generation-bound keyed pseudonym evidence, and its workflow code comes from the registry;
+ * validated canonical identity evidence, and its workflow code comes from the registry;
  * neither is reconstructed from display rows. One demo element is absent by
  * ruling rather than by gap — the hours-saved tile, whose
  * only input would be an operator-entered minutes constant with no durable
@@ -111,10 +111,12 @@ import { dsStatusOf, statusText, type QueueStatus } from "./status-model.js";
 import { fmtClock, plural } from "./format.js";
 import {
   activityPeopleMeta,
+  activityPeopleEvidenceItems,
   activityPeopleNote,
   activityRangeLabel,
   activityRangeValue,
   parseActivityRange,
+  resolveActivityWho,
   type QueueRowIdentity,
 } from "./activity-model.js";
 
@@ -589,40 +591,6 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
  * the run announces itself by id, which is a fact, rather than by a name this
  * surface would have to guess at from a workflow and a date.
  */
-interface ResolvedWho {
-  runId: string;
-  /** the subject or the operator's rename — the queue row's own choice */
-  name: { state: "present"; value: string } | { state: "absent"; reason: string };
-  workflowLabel: string | undefined;
-  traceId: string | undefined;
-}
-
-function resolveWho(
-  runId: string,
-  rows: readonly QueueRowIdentity[],
-  report: ActivityReportWire,
-): ResolvedWho {
-  const row = rows.find((candidate) => candidate.runId === runId);
-  if (row === undefined) {
-    return {
-      runId,
-      name: {
-        state: "absent",
-        reason: "this run is not among the queue rows loaded for the day on screen, so its name is not known here",
-      },
-      workflowLabel: undefined,
-      traceId: undefined,
-    };
-  }
-  const registration = report.workflows.find((entry) => entry.workflowId === row.workflowId)?.registration;
-  return {
-    runId,
-    name: { state: "present", value: row.displayName.state === "present" ? row.displayName.value : row.title },
-    workflowLabel: registration?.state === "registered" ? registration.label : row.workflowId,
-    traceId: row.traceId,
-  };
-}
-
 /**
  * One outstanding STATE, its count, and WHO is behind it.
  *
@@ -648,7 +616,7 @@ function OutstandingRow({
   rows: readonly QueueRowIdentity[];
   report: ActivityReportWire;
 }) {
-  const who = sample.map((runId) => resolveWho(runId, rows, report));
+  const who = sample.map((runId) => resolveActivityWho(runId, rows, report));
   const first = who[0];
   const beyondSample = runs - sample.length;
   return (
@@ -725,7 +693,7 @@ function OutstandingRow({
  * label composed out of a workflow and a date, which would read exactly like
  * a real name and be one for nobody.
  */
-function WhoName({ who }: { who: ResolvedWho }) {
+function WhoName({ who }: { who: ReturnType<typeof resolveActivityWho> }) {
   if (who.name.state === "present") return <>{who.name.value}</>;
   return (
     <span className={cn(dsText.nums, "text-[color:var(--ds-fg-muted)]")} title={who.name.reason}>
@@ -800,16 +768,7 @@ export function ActivityBody({
           note={activityPeopleNote(report.people)}
           info={
             <BulletList
-              items={report.people.state === "present"
-                ? [
-                  `${plural(report.people.evidenceRows, "current Separations run/member row")} supplied compatible keyed pseudonym evidence.`,
-                  "The projection deduplicates within one compatible key generation; only the count reaches this page or its export.",
-                  "Full identifiers, last-four suffixes, item ids, row titles and receipt digests are never counted instead.",
-                ]
-                : [
-                  report.people.reason,
-                  "Unavailable is not zero. The report refuses the whole axis when range coverage is missing or incompatible.",
-                ]}
+              items={[...activityPeopleEvidenceItems(report.people)]}
             />
           }
         />
@@ -1057,10 +1016,16 @@ export function ActivityReport({
 }) {
   const client = useDashboardClient();
   const resolved = useMemo(() => parseActivityRange(range, today), [range, today]);
-  const [resource, setResource] = useState<AsyncResource<ActivityReportWire>>(LOADING);
+  const requestRange = activityRangeValue(resolved);
+  const [response, setResponse] = useState<{ range: string; resource: AsyncResource<ActivityReportWire> }>({ range: requestRange, resource: LOADING });
+  const resource: AsyncResource<ActivityReportWire> = resolved.refusal !== undefined
+    ? failed(new DashboardClientError({ kind: "schema", message: resolved.refusal }))
+    : response.range === requestRange ? response.resource : LOADING;
 
   useEffect(() => {
     let live = true;
+    if (resolved.refusal !== undefined) return;
+    const setResource = (next: AsyncResource<ActivityReportWire>): void => { setResponse({ range: requestRange, resource: next }); };
     setResource(LOADING);
     client.activityReport(resolved.from, resolved.to).then(
       (value) => { if (live) setResource(loaded(value)); },
@@ -1071,9 +1036,9 @@ export function ActivityReport({
       },
     );
     return () => { live = false; };
-  }, [client, resolved.from, resolved.to]);
+  }, [client, requestRange, resolved.from, resolved.to, resolved.refusal]);
 
-  const spanLabel = activityRangeLabel(resolved.from, resolved.to);
+  const spanLabel = resolved.refusal === undefined ? activityRangeLabel(resolved.from, resolved.to) : "Invalid report span";
   const report = resource.state === "loaded" ? resource.value : undefined;
 
   /**
