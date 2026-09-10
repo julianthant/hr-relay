@@ -1,3 +1,4 @@
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { ledgerCommitFixture, fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
 import { seedAtomicWriteOwner, atomicWriteCheckpoint } from "../helpers/timeline-write-fixture.js";
 /**
@@ -32,7 +33,7 @@ import { seedAtomicWriteOwner, atomicWriteCheckpoint } from "../helpers/timeline
  *    ledger is a different authority whose entries outlive the runs that filed
  *    them (ref dashboard-surfaces §10.1). An exemption nothing bounds is an exemption anything
  *    can join, so it is pinned from both sides: STRUCTURALLY, a ledger block is
- *    built in exactly one module and consumed in exactly one, so a third path
+ *    built in exactly one module and consumed only by the retained projection and approved Q port, so another path
  *    over the ledger fails by file name; and BEHAVIOURALLY, filing entries into
  *    the seeded world's ledger must move the block and must move NO count —
  *    "reported beside the totals" is a claim about what does not happen.
@@ -64,7 +65,7 @@ const THE_PROJECTION = "src/server/dashboard/projectors/run-queue-projection.ts"
  * `ActivityLedgerBlockSchema` is where a block is BUILT: the domain module
  * declares it and the one ledger read-through parses one. `foldActivityRange`
  * is where a block is ASKED FOR: the read-through offers it and the projection
- * passes it through. Any other `src/` module naming either identifier is a
+ * passes it through. Q adds the admitted internal summary consumer. Any other `src/` module naming either identifier is a
  * second counting path over the write ledger — the exact thing D81 deletes,
  * one authority over.
  */
@@ -75,6 +76,7 @@ const LEDGER_BLOCK_BUILDERS = [
 const LEDGER_BLOCK_CONSUMERS = [
   "src/infra/sqlite/transaction-history.ts",
   THE_PROJECTION,
+  "src/server/dashboard/queries/run-summaries.ts",
 ];
 
 function identifiers(filePath: string): ReadonlySet<string> {
@@ -202,10 +204,13 @@ describe("one-projection-counts (D81)", () => {
       runId: uuidOf(7), attempt: 1, traceId: `pl-100007-${uuidOf(7).slice(0, 4)}`,
       spanPath: `pl-100007-${uuidOf(7).slice(0, 4)}`, outcome: "failed", failureId: uuidOf(9007),
     });
-    world.authority.put(runRecordOf({
-      seed: 7,
+    world.authority.put(RunRecordSchema.parse({
+      ...runRecordOf({ seed: 7, version: 3, claimGeneration: 1 }),
       lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T17:20:00.000Z", failureId: uuidOf(9007) },
-      version: 3,
+      updatedAt: "2026-08-03T17:20:00.000Z",
+      completion: { schemaVersion: 1, kind: "failed", expectedVersion: 2,
+        claim: { workerId: "projection-fixture-worker", claimGeneration: 1 },
+        authorizedAt: "2026-08-03T17:20:00.000Z", failureId: uuidOf(9007) },
     }));
     // D179/D80: a prior-version run a bump has archived. It is dropped in the
     // SAME pass member containment is applied, which is why adding it here
