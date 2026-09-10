@@ -365,3 +365,28 @@ merge and cleanup are assigned to Q. Shared authority/lifecycle/domain files rem
 The exact product base stays `42df5095160e1ff448e76c155a048134ec395ba5` for both A and Q;
 the resolved prompt distinguishes this base from the later instructions-only approval SHA.
 No implementation is launched by this approval or registry.
+
+### Verified Q supervisor prompt after repaired L approval
+
+Instructions-only approved plan commit: `1d4629c358f3ba35a6603e118373abf777967415`.
+Exact common A/Q execution base: `42df5095160e1ff448e76c155a048134ec395ba5`.
+The full committed Q01–Q06 owner and approval record have been read back and verified; all scoped
+planning checks passed. The planner verifies local incorporation and owned cleanup before delivering
+this prompt as READY. The later instructions commit does not replace the product base.
+
+```text
+/supervise 2.6.7.2 Q. READY.
+Repository: /Users/julianhein/Projects/hr-automation-rebuild
+Plan owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md
+Section: Approved Q execution brief — 2026-09-09, including its amended approval/revalidation record.
+Approved instructions SHA: 1d4629c358f3ba35a6603e118373abf777967415
+Exact common A/Q product base: 42df5095160e1ff448e76c155a048134ec395ba5
+
+Read the complete owner from the instructions SHA with git show; verify its local master ancestry and repaired L implementation a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57 in the exact product base. Recheck branch/path ownership and capacity, then create codex/run-summaries at /Users/julianhein/Projects/hr-worktree-database-other from that product base. Do not substitute the newer plan commit or master as the product base. Consume the approved instructions separately; do not merge later product changes merely to obtain them.
+
+Execute Q01–Q06 autonomously with one GPT-6 Astra/high supervisor, no implementation workers and no reviewer here. Q owns only src/core/run-summary.ts, src/infra/sqlite/run-summaries.ts and src/server/dashboard/queries/run-summaries.ts plus the explicitly owned tests/performance/evidence. Shared authority/lifecycle/domain files and L regression fixtures remain read-only. Preserve A's archive interfaces and either merge order; do not implement A, V, UI cutover, new DDL or the L retirement follow-up. A's conversion then L's retirement blocks combined completion, not Q start.
+
+Run the exact focused tests, lint, bounded benchmark and generation/freshness checks in the committed brief. Full gates and fresh complete independent review remain 2.6.9. Follow Parallel coordination in /Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md: no routine messages, reservations or peer dispatch; serialize actual shared-target mutations only. Commit exact paths, freeze the candidate and evidence, merge Q locally into master at /Users/julianhein/Projects/hr-automation-rebuild after focused PASS and target checks, rerun invalidated integration checks, record 06-summary-evidence.md, and remove only Q's owned auxiliary worktree/branch from a safe checkout with verified absence.
+
+Send Done / Now / Remaining at start/resume and after each verified step, keeping merge, cleanup and deferred 2.6.9 review visible. No push, live database application, UNKNOWN-submit retry or next-task dispatch. Stop after Q's scoped release and cleanup; do not claim full Phase 2.6 acceptance.
+```
