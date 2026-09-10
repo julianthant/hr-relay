@@ -172,14 +172,37 @@ when producing its prompt:
 
 ## Final session prompt
 
-The operator approved [F01–F07](final-validation.md#approved-execution-brief--2026-09-10), including
-recovery separation, one Astra/medium supervisor, zero implementation workers, R1–R4 focused
-Astra/high reviews followed by fresh R5 integration review, full gates and local master integration/
-cleanup. The older generic final-session prompt is superseded. Implementation is unstarted.
+**READY — approved plan committed and integrated locally.** Substantive plan and exact execution
+base: `7f77978716319c4329392a19e7a971f18af37362`, tree
+`9e2768a476a05b17b664f7b555bb5f9430b581b3`. Product inputs remain those at
+`22bf85d3aa055a658b343127cf88db035164ecaf`; the plan changes documentation/generated roadmap only.
+The complete brief and recovery/guard contracts were read back using `git show`; all prerequisite
+integrations are ancestors. Local master incorporated the plan by fast-forward, preserving the
+three unrelated dirty instruction/reference files byte-for-byte. The initial registry staging
+sentence inside the plan commit is superseded by this verified receipt, not an unmet prerequisite.
 
-Planning persistence is in progress. A resolved launch prompt is recorded here only after the full
-brief is committed, scoped checks pass, prerequisites are verified and documentation integration is
-available. No product task is dispatched by this registry.
+Planning checks passed: 24 roadmap-binding tests, lint, roadmap generation/freshness, changed links,
+instruction twins/chain cap and diff checks. Logs and committed input verification are in
+`/Users/julianhein/Projects/hr-final-plan-evidence-20260910/`. The implementation branch/path remain
+absent and available; recheck before creation. Finalizer gates/reviews/product work are unstarted.
+This receipt changes no implementation or review scope; it adds the verified launch binding.
+
+```text
+/supervise 2.6.9 (p2f-proof), GPT-6 Astra/medium. READY.
+
+Repository: /Users/julianhein/Projects/hr-automation-rebuild
+Approved plan and exact implementation base: 7f77978716319c4329392a19e7a971f18af37362
+Plan owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md
+Section: Approved execution brief — 2026-09-10, including the complete F01–F07 steps, P1–P8 proofs, exact gates and R1–R5 review allocation.
+
+Verify the committed plan/contracts and tabled prerequisite ancestry through U/H, including L retirement and historical repairs. Create codex/database-validation at /Users/julianhein/Projects/hr-worktree-database-contracts from the exact base after rechecking branch/path availability, ownership and capacity. Never implement on master. The earlier registry staging sentence in the plan commit is superseded by this verified READY receipt.
+
+One supervisor, zero implementation workers. Complete F01–F07 autonomously; all combined defects stay here. Preserve pre-retirement synthetic fresh/v29 and migrated-copy recovery proof before deleting old settings import adapters. Retain supported stopped database/archive recovery, named below-floor refusal, historical readers, immutable migration/journal bytes, protected identity and UNKNOWN refusal. No operator database application or second controlled HR write.
+
+Run the complete proof/gate/performance schedule; preserve assertions, membership, floors and deadlines. Freeze the full candidate against review base 0df282e45efab2e5a4768386b5c4d5202a7cfc93. Obtain four read-only sup_review scopes R1–R4 on Astra/high, maximum three concurrent, followed by fresh R5 integration review. Fix findings locally, renew affected scopes/neighbors, gates and integration review. A partial verdict is not complete acceptance.
+
+After all reviews and gates PASS, the same supervisor is authorized to merge locally into master at /Users/julianhein/Projects/hr-automation-rebuild, verify integration, hand 3.1 its contracts/fixtures/defect dispositions and complete owned worktree/ref/resource cleanup. Preserve unrelated work; never push or dispatch another task. Send Done / Now / Remaining at start/resume and each verified step, keeping review, integration and cleanup visible. Stop after 2.6.9 completion or report an actual blocker; do not re-ask approved choices.
+```
 
 ## Four-checkout capacity and ownership transfer
 
