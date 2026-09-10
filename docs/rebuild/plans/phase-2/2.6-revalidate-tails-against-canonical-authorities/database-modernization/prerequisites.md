@@ -1016,3 +1016,11 @@ no independent verdict or elapsed-time estimate is claimed.
 An optional selected-file semantic diagnostic probe also reported an artifact sink head branded
 `generation` return mismatch in the unchanged generated-artifact adapter. No full typecheck result
 is claimed. The required focused runtime/lint gates above pass; final 2.6.9 owns full type validation.
+
+### Repaired release binding and verification
+
+Common A/Q execution base: `42df5095160e1ff448e76c155a048134ec395ba5`. The registry records
+the exact shared binding. Documentation checks passed: 24 roadmap-binding tests, roadmap freshness,
+10 changed local links/anchors, nine instruction pairs/chains and whitespace. All 2,088 frozen inputs
+match the passing implementation, so 266 unit tests, 139 architecture tests and full lint are reused
+under D191. Integration/owned cleanup receipt follows after local incorporation.

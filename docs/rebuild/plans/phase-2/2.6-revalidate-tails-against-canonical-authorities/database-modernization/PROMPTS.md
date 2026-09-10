@@ -344,3 +344,13 @@ conversion proof and blocks combined completion. Q remains independent; either p
 allowed. Both own local integration and cleanup after focused PASS. Full gates/review remain 2.6.9.
 A's detailed execution-plan approval remains due; Q's planning task revalidates its amended brief.
 This registry releases the prerequisite and does not launch either implementation or the follow-up.
+
+### Exact common execution base
+
+A and Q both start from `42df5095160e1ff448e76c155a048134ec395ba5`, after verifying local
+incorporation. This exact commit contains the repaired implementation and approved ownership/ordering
+amendment. Later plan-only commits may supply instructions but must not silently change one peer's
+product base. Recheck shared input identity if either planner proposes a different base.
+Implementation: `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`; full gates/review remain 2.6.9.
+No implementation is launched. A detailed plan approval and Q amended-plan revalidation remain with
+the existing planning tasks. The former Q shared-file authorization and launch SHA are superseded.
