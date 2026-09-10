@@ -11,10 +11,13 @@ independent reviewers. Full acceptance and independent review remain **2.6.9**.
 - Worktree: `/Users/julianhein/Projects/hr-worktree-database-peer`.
 - Implementation: `939ae45f0532faa5a1e1766b520b046a6acdf2ae`.
 - Tested implementation tree: `99fe5127938aa96b3db1c1958b9f0b4cd7e6c3c4`.
-- **U01–U05 focused PASS. U06 integration and incorporated cleanup pending.**
-- Integration target last observed at `482f3491fd68fb1f7047cfbeb8521e64329e9134` on
-  `master`, with unrelated, unstaged edits to `AGENTS.md` and `CLAUDE.md`. The approved
-  clean-target condition is not met. U does not stage, stash, overwrite or commit those edits.
+- **U01–U06 focused PASS, locally integrated and cleaned up.**
+- Candidate: `8f77db366eea2f618c23e0ae46e897db5b1d9654`.
+- Local merge: `1e2981f2ef8897612e7ca02deccea2e30386605e`.
+- Integrated product tree: `24a194c4c67f86242094d2208a1e8a94c402dc24`.
+- The initial clean-target blocker was resolved after the operator's explicit "resolve it"
+  instruction: existing identical instruction edits were preserved unchanged in separate commit
+  `595be9d72e0baa915ef9689d1c5ce8762fbe40bf`. No edits were discarded or stashed.
 - H remains independent at `/Users/julianhein/Projects/hr-worktree-database-other`,
   branch `codex/archive-viewer`. No H files, refs, sessions or runtime resources were changed.
 
@@ -145,14 +148,31 @@ keyboard failure and corrected filter assertion are iteration evidence, not acce
 No unhandled render failure remained. This is focused desktop proof, not full visual parity,
 mobile/coarse-pointer acceptance, an automated accessibility audit or independent review.
 
-## U06 — integration and cleanup gate
+## U06 — verified integration and cleanup
 
-The implementation is committed and available for focused integration. Do not mark the entire
-assignment complete until clean-target admission, local merge, input-identity reuse or invalidated
-checks, release recording, and incorporated worktree/ref removal are verified. Preserve the
-external evidence and H. Do not push or dispatch a successor.
+The target was clean on `master` at `595be9d72e0baa915ef9689d1c5ce8762fbe40bf` immediately
+before `git merge --no-ff codex/activity-views`. Candidate ancestry and nonoverlapping U/H
+ownership were verified; the merge completed without conflicts. H was not incorporated.
 
-Before merging, recheck target HEAD/branch/cleanliness and U/H ownership. After a successful local
-merge, append candidate/merge/final-tree identities and integration checks here, then remove only
-the incorporated U worktree and `codex/activity-views` from a safe primary checkout. Never clear
-someone else's edits merely to meet the clean-target condition.
+`integration-inputs.json` records the merge and integrated tree above. All 2,085 hashed tested
+inputs are identical. The only candidate-to-integration differences are the two instruction
+files and three already-approved U/H planning documents. Unit (17), affected architecture (67),
+lint and desktop results are therefore reused with their original tested-tree identities.
+Affected documentation checks were rerun on master: roadmap generation and freshness both
+exited 0 without changing tracked output; documentation binding passed 24 tests (`run-iQ3jS5`);
+root/dashboard instruction equality and `git diff --check` exited 0. Logs are retained as
+`integration-roadmap-generate.log`, `integration-roadmap-check.log` and
+`integration-doc-binding.log`.
+
+From the primary checkout, U's clean candidate and incorporation were checked again. Its only
+ignored residue was the owned dependency symlink; that link was removed without touching the
+primary dependency directory. Ordinary `git worktree remove` removed the exact U path, and
+`git branch -d codex/activity-views` removed the incorporated ref. Physical-path, registration
+and ref absence were verified. H's worktree/ref and the primary dependencies remain present.
+Both owned browser sessions and the synthetic Vite/BFF were already stopped.
+
+The external `release.json`, `integration.json` and `cleanup.json` bind this recording-only
+closure commit/tree and final clean state; the former blocked receipt is retained separately.
+The consumed temporary handoff is removed after its recovery facts are preserved here and in
+those receipts. No task was archived or dispatched, no push occurred, and no full gate or
+independent review was run. **2.6.9 retains phase-wide acceptance.**
