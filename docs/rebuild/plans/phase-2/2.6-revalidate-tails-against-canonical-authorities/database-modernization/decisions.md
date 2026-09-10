@@ -1081,8 +1081,10 @@ separate from the required first integration run.
 Prerequisite: **one frozen L release, identical to Q base**. One Astra/high supervisor, zero implementation workers.
 Use the exact `A` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
 This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
-Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
-Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+The repaired L product baseline is `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`, schema48/floor46.
+Use the common A/Q execution base recorded in PROMPTS.md. A detailed execution-plan approval remains
+with its planning task. A owns conversion; the approved L follow-up owns subsequent physical table
+retirement and shared upgrade/reader changes. See prerequisites.md, approved L retirement follow-up.
 
 Ordered outcomes: Verify archive/identity/cleanup/summary hook baseline; implement generic capture, historical conversion, version-change transfer and explicit archive deletion; prove each cross-store interruption; release to V.
 
@@ -1117,9 +1119,9 @@ prerequisite with violating fixtures and guard-inventory evidence. No peer may e
 or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
 prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
 
-Release committed candidate/base/tree and focused evidence to the next named consumer. No master
-integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
-Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+Release committed candidate/base/tree and focused evidence, integrate locally after focused PASS,
+and complete owned cleanup. No independent review here, sibling dispatch or live database application.
+Combined completion requires the approved L retirement follow-up after A conversion proof.
 
 Authored release evidence: `05-archive-evidence.md` in this folder (new, exclusively owned by A).
 The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
@@ -1129,7 +1131,7 @@ only the consuming prerequisite/finalizer updates shared status.
 
 The Q01–Q06 feature and proof requirements below remain approved. On 2026-09-09 the operator
 superseded the expanded shared-file ownership: L repairs both A/Q shared boundaries and binds both
-peers to the same repaired release. Q is WAITING ON that release; the prior READY prompt is obsolete.
+peers to the same repaired release in PROMPTS.md. The prior READY prompt is obsolete.
 Q retains its original three production files, owned tests/performance script and evidence. Local
 merge and owned cleanup remain assigned to Q, with full gates and independent review at 2.6.9.
 
@@ -1147,7 +1149,7 @@ independent review remain with **2.6.9**, not Q.
 | --- | --- |
 | Implementer | One GPT-6 Astra/high supervisor; zero implementation workers and zero reviewer dispatches here. The coupled mutation/publication/query seam fits one supervisor; splitting it would create dependent writers. Final 2.6.9 owns fresh complete `sup_review` coverage of Q and combined archive/served behavior. |
 | Branch / checkout | Create `codex/run-summaries` at `/Users/julianhein/Projects/hr-worktree-database-other`. Both were absent at planning; recheck ownership/capacity before creation. Never use master for implementation. |
-| Product base | `5d47c27ac114f91c8a0574cfe5649ed96f876c3a`, containing L candidate `08d9f4f5334eb20a49334acda268727b622b1163` and integration `a8ee826dc`. Use the committed approved planning release that descends from this base as the execution start; the resolved prompt supplies its exact SHA. Preserve L's frozen interfaces used by A. |
+| Product base | Repaired L `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`. Use the exact common A/Q execution base in PROMPTS.md, which incorporates the amended ownership and retirement dependency. Preserve L interfaces used by A. |
 | Integration owner | Q supervisor owns Q's local integration into `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, after Q focused PASS, and owned cleanup. This planner owns only this approved documentation integration. No peer receives a new duty. |
 | Peer independence | A owns its five archive implementation files and archive-transfer tests; Q owns only the three summary feature files below; L owns shared interfaces. Neither consumes the other's unmerged implementation. Either order is permitted, subject to unchanged A contracts and Q's independent archive-baseline regression proof. V consumes both actual releases. |
 | Coordination | Follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination) and [supporting-agent protocol](/Users/julianhein/.agents/skill-library/parallel-agent-work/REFERENCE.md). No check-in, reservation chain, peer messages or dispatch by default. Only shared-target mutation is serialized. An actual conflicting write blocks that integration, not unrelated worktree-local work. |
@@ -1185,10 +1187,10 @@ Inspected at the product base; these are source findings, not executed Q proof. 
 
 | Boundary / inspected mechanism | Q change and required proof |
 | --- | --- |
-| `AuthorityDatabase.#withTransaction` refreshes all summaries after every dirty authority commit; `createRunSummaries.refresh` deletes/rebuilds all live rows. | Track contributing changes and update affected runs plus parents in the same transaction. Unrelated writes/heartbeats must not rederive or rewrite every summary. Test creation, lifecycle/result/receipt/failure/resolution, title, batch/group, dependencies and relevant timeline events, exact replay, multiple writes, nested rollback and outer rollback; committed source and summary must never diverge. |
-| Global authority generation and `read` currently demand the same generation on every row; existing L tests assert that implementation. | Separate publication freshness from a row's last contributing source revision. A validated publication can include unchanged older rows; an unaccounted source change cannot be accepted. Rebuild old-format rows explicitly as needed. Prove unrelated writes remain readable, meaningful changes update immediately, corruption/stale publication refuses after restart, and no default zero totals escape. |
+| Repaired L installs transactional TEMP source notifications and updates affected runs/parents at outer commit. | Track contributing changes and update affected runs plus parents in the same transaction. Unrelated writes/heartbeats must not rederive or rewrite every summary. Test creation, lifecycle/result/receipt/failure/resolution, title, batch/group, dependencies and relevant timeline events, exact replay, multiple writes, nested rollback and outer rollback; committed source and summary must never diverge. |
+| Repaired L separates publication freshness from unchanged row source revisions. | Separate publication freshness from a row's last contributing source revision. A validated publication can include unchanged older rows; an unaccounted source change cannot be accepted. Rebuild old-format rows explicitly as needed. Prove unrelated writes remain readable, meaningful changes update immediately, corruption/stale publication refuses after restart, and no default zero totals escape. |
 | `refresh` is already called under `BEGIN IMMEDIATE`; timeline inputs are SQLite rows with durable cursors. | Reuse the transaction/snapshot boundary for atomic rebuild publication. A rebuild failure preserves the previous committed generation, never a partially rebuilt table. Prove independent reader/writer connections, update before/during/after rebuild, blocked or serialized writers, rollback, restart and exact replay; no new in-memory-only freshness authority. |
-| `readRunSummaries` loads every row; the query module is only a pass-through. Existing workflow/day/state and parent indexes are available. | Add bounded internal Queue filtering/order/pagination and selected-set Activity aggregation through the real authority read snapshot. Verify SQL query plans, query/row counts, bounded relation reads and stable pagination ties. No receipt/checkpoint/failure reconstruction per displayed row; never silently fall back to the old whole-run reader. |
+| Repaired L exposes bounded `queryRunSummaries` and workflow enumeration through the authority snapshot; workflow/day/state and parent indexes are available. | Add bounded internal Queue filtering/order/pagination and selected-set Activity aggregation through the real authority read snapshot. Verify SQL query plans, query/row counts, bounded relation reads and stable pagination ties. No receipt/checkpoint/failure reconstruction per displayed row; never silently fall back to the old whole-run reader. |
 | Current Activity uses local enqueue day, counts operations once but excludes operation-members from top-level totals, includes eligible member identities, and uses the lower median over the selected durations. | Compare independent expected results and the retained projector on identical synthetic sets: grouped/ungrouped batches, members, retry attempts, repeated people across days, date/timezone boundaries, unknown duration, completion/warning/failure and unregistered workflows. Preserve existing status and duration contracts; distinguish source defects from legitimate unavailable facts. Do not sum daily distinct counts or average daily medians. |
 | `deriveCanonicalPerson` validates Separations result/schema and run tuple; L already retired current pseudonym tables. | Preserve validated server-internal identities and explicit unavailable counts. Identity mismatches refuse; unsupported/missing identity stays unavailable. Verify aggregate/query serialization and export-compatible projections expose no person IDs or protected-derived digests; sanitized errors/benchmark logs do not leak. Existing Activity export tests remain unchanged and pass; V owns later route/export wiring. |
 | L provides real capture/transfer/deletion with summary cleanup, independently of A. | Exercise Q against L alone with summary-first/archive-first fixtures, transfer/deletion/replay and reopened databases. No live summary resurrection or archive included in generic Activity. Run L peer-contract and two-store-recovery tests without editing them. A's immutable source digest/report and shared file ownership remain unaffected. |
@@ -1196,8 +1198,8 @@ Inspected at the product base; these are source findings, not executed Q proof. 
 No actual-target preflight applies: this assignment runs synthetic databases only. It does not
 upgrade the operator's database or spend a live HR session. L's release evidence is in
 [prerequisites.md](prerequisites.md#l06-scoped-release--2026-09-09). Its baseline tests prove usable
-ports, not Q's incremental/query acceptance; the generation and full-scan gaps above are assigned
-here rather than passed to supervisor discovery.
+ports, not Q's complete derivation/query/performance acceptance. Q extends policy and proves its
+requirements through those repaired mechanisms without changing shared authority paths.
 
 ### Ordered execution
 

@@ -1,4 +1,3 @@
-> **A/Q WAITING ON repaired L.** The operator superseded Q’s shared-file expansion on 2026-09-09. Earlier Q READY/launch bindings below are historical until the common repaired release is recorded. No child implementation is launched.
 
 # Launch registry and exact prompts
 
@@ -65,8 +64,8 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | G | codex/artifact-outputs | hr-worktree-artifact-outputs | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | S | codex/settings-activation | hr-worktree-settings-activation | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
-| A | codex/archive-transfer | hr-worktree-database-peer | L `08d9f4f5334eb20a49334acda268727b622b1163`; consume after local incorporation |
-| Q | codex/run-summaries | hr-worktree-database-other | Integrated L on `5d47c27ac114f91c8a0574cfe5649ed96f876c3a` plus approved Q planning release; see Q01–Q06 |
+| A | codex/archive-transfer | hr-worktree-database-peer | Common repaired L release below, identical to Q; A execution plan approval remains due |
+| Q | codex/run-summaries | hr-worktree-database-other | Common repaired L release below, identical to A; see amended Q01–Q06 |
 | V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
 | U | codex/activity-views | hr-worktree-database-peer | V |
 | H | codex/archive-viewer | hr-worktree-database-other | V |
@@ -332,30 +331,16 @@ its implementation base is the plan commit itself, which contains all required r
 /supervise 2.6.7 L. READY: use approved plan and implementation base c3eb6725e3607a7df82a6c2a94a4765e8579efbd in /Users/julianhein/Projects/hr-automation-rebuild. Read /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md, section “Approved L execution brief — 2026-09-09”, plus its retained L allocation, exact paths and proof selectors. Use GPT-6 Astra/high, one supervisor and zero implementation workers. Verify plan content and P/D/G/S plus F/T/C/R ancestry; create codex/lifecycle-foundation at /Users/julianhein/Projects/hr-worktree-database-contracts from the exact implementation base after checking availability/capacity. Never implement on master. Execute L01–L06 completely, resolving routine in-scope choices and combination defects autonomously. Deliver real archive/summary baseline ports, verified shared evidence ownership, atomic lifecycle hooks and paired database/file recovery; prove A/Q independent baseline capability orders before release. Preserve historical migrations, protected identity, UNKNOWN refusal and source data until verified capture. Run the committed focused tests, lint and affected freshness; full gates and fresh complete independent review belong only to 2.6.9. Commit exact paths, merge the focused-PASS candidate into local master at /Users/julianhein/Projects/hr-automation-rebuild, rerun invalidated checks, record release evidence and remove the owned worktree/branch. Send Done / Now / Remaining at start/resume and after each verified step, keeping merge, cleanup and deferred review visible. No push, operator database mutation, sibling dispatch or implementation of A/Q beyond the assigned baseline extraction. Stop after 2.6.7 is integrated and cleaned up; report its scoped release without claiming phase acceptance.
 ```
 
-## Q planning release — 2.6.7.2
+## Common repaired L release — A and Q
 
-The [approved Q01–Q06 brief](decisions.md#approved-q-execution-brief--2026-09-09) supersedes Q's
-historical retention/no-master restriction and narrow file list. One Astra/high supervisor creates
-`codex/run-summaries` at `/Users/julianhein/Projects/hr-worktree-database-other` from the verified
-committed planning release descending from `5d47c27ac114f91c8a0574cfe5649ed96f876c3a`.
-L candidate `08d9f4f5334eb20a49334acda268727b622b1163` is incorporated. This does not dispatch Q.
+The Q expansion and launch binding at `ceac987a209e0f63d0798c35695bf35b3c674de9` are superseded.
+Use the amended Q01–Q06 brief in decisions.md: only its original three production paths plus owned
+proof/evidence. A retains its five production paths plus owned proof/evidence. Both use the same
+execution base, resolved in the release receipt below after this amendment is committed.
+The repaired implementation is `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`.
 
-Q owns summary-specific shared adapters/types and proof, preserves A's interfaces, and delivers
-internal indexed queries to V. No dashboard cutover or new DDL is assigned. Q runs focused tests,
-lint and affected freshness, then merges locally and removes only its owned worktree/ref. Full
-gates and fresh independent review remain 2.6.9. Follow the linked no-default-messaging parallel
-protocol and Q01–Q06's exact proof/gate/stop boundaries. The planner returns the resolved full plan
-SHA after committed-content, gate, integration and cleanup verification; this registry is not itself
-a launch prompt before those checks.
-
-### Verified supervisor prompt — Q
-
-Plan and execution base: `ceac987a209e0f63d0798c35695bf35b3c674de9`. This commit contains the full
-approved Q01–Q06 section; its executable inputs equal the integrated L product base. The registry
-commit only adds this resolved prompt. Planning verification: 24 roadmap binding tests, lint,
-freshness, added links, instruction pairs/chains and whitespace PASS. READY after this planning
-branch is incorporated into local master; the planner verifies incorporation before delivery.
-
-```text
-/supervise 2.6.7.2 Q. READY. Repository: /Users/julianhein/Projects/hr-automation-rebuild. Approved plan SHA and implementation base: ceac987a209e0f63d0798c35695bf35b3c674de9. Read docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md, section “Approved Q execution brief — 2026-09-09”, from that commit; use its full Q01–Q06 ownership, proof, gate and stop rules. Verify the plan is reachable from local master, L candidate 08d9f4f5334eb20a49334acda268727b622b1163 and integration a8ee826dc are ancestors, and paths/refs are available. Create codex/run-summaries at /Users/julianhein/Projects/hr-worktree-database-other from the exact implementation base before editing. One GPT-6 Astra/high supervisor, zero implementation workers; no reviewer here. Implement Q01–Q06 autonomously: one derivation, incremental atomic source/parent updates, consistent rebuild/recovery, indexed internal Queue queries and selected-set Activity aggregates with protected identity. The approved narrow shared authority/lifecycle/summary-type changes are allowed; preserve A's archive interfaces and either merge order. V owns route/UI cutover; no new DDL or live database application. Run the exact focused tests, lint, bounded benchmark and affected generation/freshness checks. Full gates and fresh complete independent review stay at 2.6.9. Follow /Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md “Parallel coordination”: no routine peer messages, reservations or sibling dispatch. Commit exact paths, freeze candidate/evidence, merge Q locally into master at /Users/julianhein/Projects/hr-automation-rebuild after focused PASS and target ownership checks, rerun invalidated integration checks, record 06-summary-evidence.md, and remove only Q's owned worktree/branch from a safe checkout with verified absence. Send Done / Now / Remaining at start/resume and after each verified step; keep merge/cleanup and deferred review visible. No push, next-task dispatch or UNKNOWN-submit retry. Stop after Q's scoped local release and cleanup; do not claim Phase 2.6 acceptance.
-```
+A owns conversion; the approved L retirement follow-up in prerequisites.md follows A's populated
+conversion proof and blocks combined completion. Q remains independent; either peer merge order is
+allowed. Both own local integration and cleanup after focused PASS. Full gates/review remain 2.6.9.
+A's detailed execution-plan approval remains due; Q's planning task revalidates its amended brief.
+This registry releases the prerequisite and does not launch either implementation or the follow-up.

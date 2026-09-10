@@ -1189,6 +1189,7 @@ needs:
 log:
 - 2026-09-09 | database roadmap expansion | 2.6.6; assignment L; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | L scoped release complete | L01–L06; 263 unit tests, 139 architecture tests, lint and freshness PASS. Candidate 08d9f4f53 merged locally as a8ee826dc; owned worktree/ref removed. A/Q remain unlaunched; full gates and independent review remain 2.6.9. Exact contracts and evidence: L06 release in prerequisites.md.
+- 2026-09-09 | L shared-boundary repair | Implementation a1d0c4a5; 266 unit tests, 139 architecture tests and lint PASS. A/Q share the repaired release and original ownership. A conversion precedes an explicit L retirement follow-up; combined completion remains blocked on that proof. Full gates/review remain 2.6.9.
 
 ##### 1 · Transfer runs into independent archive reports {#p2db-archive-transfer}
 status: planned
@@ -1282,6 +1283,7 @@ doc: 2.6 §Task 9 · Finalization · ref:operator-trust §1 · ref:guards-and-te
 > D341: consume shared fixtures and private-test source identities; recovery uses reproducible synthetic fresh/v29 copies, never the removed operator database/backup. Existing adapter-retirement ownership remains.
 
 builds:
+- [ ] PROOF incorporate A populated conversion proof and the approved L-owned table/reader retirement follow-up before combined completion
 - [ ] PROOF combine database development candidates, run required heavy gates, fix remaining defects here and obtain fresh complete independent review
 - [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
 - [ ] PROOF cite historical D135 and perform no second controlled write

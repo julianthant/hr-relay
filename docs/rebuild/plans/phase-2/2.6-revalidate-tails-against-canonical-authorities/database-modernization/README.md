@@ -1,4 +1,4 @@
-> **A/Q prerequisite repair in progress.** The operator superseded Q’s shared-file expansion. Both peers wait for the same repaired L release; earlier READY bindings are obsolete.
+> **A/Q shared repair released:** use the common repaired L binding in [PROMPTS.md](PROMPTS.md#common-repaired-l-release--a-and-q). A conversion precedes the explicit L retirement follow-up; combined completion requires that follow-up. Q shared-file expansion is superseded. Neither peer is launched here.
 
 # Phase 2.6 · Database modernization
 

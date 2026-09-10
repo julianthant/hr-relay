@@ -231,7 +231,7 @@ The operator approved narrow shared summary ownership and local merge/cleanup af
 full gates and independent review remain 2.6.9. Implementation is not yet released.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
-Q is WAITING ON the common L repair; its prior shared-file expansion and READY prompt are superseded.
+Q consumes the common repaired L binding with A; its prior shared-file expansion and READY prompt are superseded.
 
 
 ### Task 8 · Prepare independent dashboard consumers
@@ -256,6 +256,9 @@ Follow the [combined release and final-validation rules](database-modernization/
 this card does not assign duplicate implementation or bypass C0 admission.
 
 ### Task 9 · Finalization
+
+- [ ] Incorporate A populated conversion proof and the explicit L-owned retirement follow-up in
+  database-modernization/prerequisites.md before claiming combined completion.
 
 Consume the database development releases under the [final validation plan](database-modernization/final-validation.md).
 This fresh session owns integration repairs, all required heavy gates and independent review before

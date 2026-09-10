@@ -933,7 +933,7 @@ migration bytes, source/report integrity and paired recovery. A owns full conver
 Q owns complete derivation, filtering/aggregation and performance acceptance. Prove the shared ports
 through production composition and both consumer orders, then rebind both plans to the same SHA.
 
-### Verified shared-port contribution; retirement ordering pending
+### Verified shared-port contribution; retirement ordering approved
 
 Implementation `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`, tree
 `1c2b3e868ec2087939410904d0a5265aa2083c3f`, passes the complete L focused batch:
@@ -969,15 +969,49 @@ Q query types flow from its owned adapter through the shared snapshot port, pres
 policy implementation without editing AuthorityDatabase. Q still owns complete query, aggregate,
 performance and derivation acceptance, not yet implemented here.
 
-A's feasibility clarification exposed the remaining material dependency: removing `archived_runs`,
-`version_plans` and `version_bump_applications` requires verified populated conversion first,
-forward migration/registry changes and retirement of unconditional shared SQL. The stopped upgrade
-path must invoke A conversion outside any falsely claimed cross-store rollback. These changes are
-not implemented or waived by this contribution. The operator was asked whether to keep conversion
-in A with an explicit L retirement follow-up after its proof, or expand L now to baseline historical
-conversion and retirement. No response is inferred. Both peers remain WAITING ON the final repaired
-release and revised ordering; no new READY prompt or common base is released. No local merge,
-worktree/ref deletion or push has occurred for this repair.
+The operator approved keeping historical conversion in A and adding the explicit L-owned retirement
+follow-up below. This resolves the ordering choice. Both peers consume one repaired L baseline;
+Q's former shared-file expansion is superseded. Neither peer is launched by this release.
+
+### Approved L retirement follow-up after A conversion proof
+
+Status: **WAITING ON A conversion candidate and populated conversion proof**. This is a follow-up
+under the existing L owner, not a new numbered task or intermediate finalizer. Bind its exact
+branch/base/checkout when A's proof exists; do not fabricate a future commit. A and Q retain their
+original five/three production paths and can implement and merge in either order from the same
+repaired L release. Neither consumes the other's unmerged work. A owns the historical conversion
+entrypoint, conversion policy and durable replay proof; its scoped release does not claim physical
+retirement. Q remains independent of A conversion.
+
+L owns forward migration/registry, unconditional shared readers, stopped upgrade/restore wiring
+and their focused tests. Invoke A conversion through the actual stopped
+`upgradeStorage -> convertSettingsDatabase` path, with verify-only preflight, source identity and
+backup admission. Do not claim rollback across separate databases. Remove `archived_runs`,
+`version_plans` and `version_bump_applications` only after verified populated conversion. Preserve
+historical migration bytes and backup grammars; do not blanket-delete `archive_relaunches`, whose
+remaining descendant lineage is still meaningful after migration 31 removed its foreign key.
+Retire unconditional current SQL against removed tables; confine old readers to explicit compatibility.
+
+Required proof: populated old archives and plan/application pairs, transaction supplements and file
+custody; interruption before/after verification and retirement; old backup restore through the same
+conversion route; no transfer tombstone; current open/list/claim/delete and generic reads after
+retirement; A/Q combination regressions. Release only after focused tests, lint and affected freshness,
+local integration and owned cleanup. Full gates and independent review remain 2.6.9.
+
+V and 2.6.9 cannot claim combined completion until this L retirement follow-up and its exact evidence
+are incorporated. Initial V implementation is not newly blocked by this ordering amendment.
+No conversion, physical retirement, follow-up dispatch or live database application occurs in this release.
+
+### Delivery assessment
+
+The shared-boundary repair addresses an implementation/proof gap in the original L consumer-readiness
+claim: production delegation and incremental/query ports were not sufficient for independent peers.
+The retirement sequence was a planning omission: populated A conversion must precede L-owned DDL and
+shared-reader retirement. The operator approved that explicit dependency without expanding Q.
+One shared-interface repair candidate is recorded here; earlier diagnostic failures are not release
+PASS evidence. End-to-end consumer feasibility and an explicit conversion-to-retirement owner would
+have exposed both issues before the original release. Full review remains deferred as approved;
+no independent verdict or elapsed-time estimate is claimed.
 
 An optional selected-file semantic diagnostic probe also reported an artifact sink head branded
 `generation` return mismatch in the unchanged generated-artifact adapter. No full typecheck result
