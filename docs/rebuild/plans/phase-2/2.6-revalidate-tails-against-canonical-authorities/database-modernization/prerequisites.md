@@ -1024,3 +1024,18 @@ the exact shared binding. Documentation checks passed: 24 roadmap-binding tests,
 10 changed local links/anchors, nine instruction pairs/chains and whitespace. All 2,088 frozen inputs
 match the passing implementation, so 266 unit tests, 139 architecture tests and full lint are reused
 under D191. Integration/owned cleanup receipt follows after local incorporation.
+
+### Repaired local integration and owned cleanup receipt
+
+Merge `6b453df208c30c7c3e863507fc2630a00dc73bab` incorporated repair release
+`a77f6aa99b70ce9e7c2244c2945d17c6758bae54` over clean target
+`3596a1b0bc8e48aa1363634c382a95ecf35ee2b8`, without conflicts. A/Q common execution base remains
+`42df5095160e1ff448e76c155a048134ec395ba5`. Integration repeated 24 roadmap-binding tests,
+roadmap freshness, local links/anchors, instruction pairs/chains and whitespace: PASS. All 2,088
+runtime/test/tooling hashes match the tested implementation; runtime/lint evidence is reused.
+
+Only the owned dependency symlink was unlinked; its primary target remains. Ordinary worktree removal
+and `git branch -d codex/lifecycle-repair` succeeded. Physical path, registration and ref are absent.
+Primary local files and other tasks were preserved; no auxiliary task was created or archived.
+The repaired shared-interface assignment is complete. Neither A/Q implementation nor the approved
+L retirement follow-up has launched. Full acceptance/review remains 2.6.9. No push occurred.
