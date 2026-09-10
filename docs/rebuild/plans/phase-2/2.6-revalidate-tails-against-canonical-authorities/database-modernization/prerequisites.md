@@ -1176,7 +1176,7 @@ isolated; only actual shared-target mutations serialize. Full gates and independ
 2.6.9. No V implementation, push, operator database migration or HR submission is authorized here.
 
 
-Status: **FOCUSED PASS — local integration and owned cleanup pending.** This is a follow-up
+Status: **COMPLETE — focused release integrated locally; owned cleanup verified.** This is a follow-up
 under the existing L owner, not a new numbered task or intermediate finalizer. Bind its exact
 branch/base/checkout as resolved above. A and Q retain their
 original five/three production paths and can implement and merge in either order from the same
@@ -1270,6 +1270,26 @@ All command lists contain literal selectors and flags; logs and JSON receipts re
 checkout after cleanup. No full typecheck, coverage, broad architecture/parity/build or independent
 review was run for this focused release. The failed earlier unit/architecture/lint invocations are
 superseded by the explicitly named passing receipts, not counted as successes.
+
+#### L retirement local integration and closure
+
+Focused release: `51c0271a7ab6f00dddcff5b5c0faf678d9969d64`.
+Local master integration: `4591b263ed26d68af91b048a5cfae07f88400b38`, incorporating the release over
+clean verified target `f88a82d3828c2c2f9f70750f5676cc82b53bd0eb` without conflicts. V may consume
+this incorporated L release. This session did not start 2.6.8 V or claim 2.6.9 completion.
+
+Integration repeated 24 roadmap-binding tests, scoped lint, manifest/catalog/roadmap freshness and
+whitespace checks: all exit 0. All 2,133 final runtime/test/tooling inputs matched exactly, supporting
+reuse of the focused implementation evidence. Exact commands and exits are in `integration-gates.json`;
+`release.json` records implementation, tested tree, release and integration identities.
+
+After ancestry and clean-checkout verification, only the owned dependency symlink was unlinked;
+its primary target remains. `git worktree remove /Users/julianhein/Projects/hr-worktree-archive-retirement`
+and `git branch -d codex/archive-retirement` both exited 0. Physical path, worktree registration and
+branch ref absence were verified; `cleanup.json` preserves that receipt outside the removed checkout.
+The final documentation-only closure follows integration and cleanup; no runtime changes were made
+on master. No push, operator database migration, HR submission, sibling dispatch or reviewer occurred.
+L's approved focused follow-up is complete. Full gates and complete independent review remain 2.6.9.
 
 ### Delivery assessment
 
