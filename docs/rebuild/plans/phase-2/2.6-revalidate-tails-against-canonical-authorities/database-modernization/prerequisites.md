@@ -1163,9 +1163,22 @@ Q's former shared-file expansion is superseded. Neither peer is launched by this
 
 ### Approved L retirement follow-up after A conversion proof
 
-Status: **WAITING ON A conversion candidate and populated conversion proof**. This is a follow-up
+Resolved execution binding (2026-09-09): one supervisor, zero implementation workers or reviewers;
+`codex/archive-retirement` at `/Users/julianhein/Projects/hr-worktree-archive-retirement`, created from
+verified clean master `f88a82d3828c2c2f9f70750f5676cc82b53bd0eb`. Branch/path availability and base
+ancestry passed before edits. A candidate `42b49b464b791d46fff59bb3103cd1e9a442bb43`, A integration
+`7e20edc073d4a5a233ef960783e97d08578e8e9e`, Q integration
+`cb36757703873d7da0c571a126bf3676894dd2db`, and history repair integration
+`9892575c332299d3907a58f05439fa0a7b5584d0` are committed prerequisites, evidenced in
+`05-archive-evidence.md` and `06-summary-evidence.md`. The previous WAITING status is superseded.
+The operator authorizes local master integration after focused PASS and owned cleanup. Writes remain
+isolated; only actual shared-target mutations serialize. Full gates and independent review remain
+2.6.9. No V implementation, push, operator database migration or HR submission is authorized here.
+
+
+Status: **FOCUSED PASS — local integration and owned cleanup pending.** This is a follow-up
 under the existing L owner, not a new numbered task or intermediate finalizer. Bind its exact
-branch/base/checkout when A's proof exists; do not fabricate a future commit. A and Q retain their
+branch/base/checkout as resolved above. A and Q retain their
 original five/three production paths and can implement and merge in either order from the same
 repaired L release. Neither consumes the other's unmerged work. A owns the historical conversion
 entrypoint, conversion policy and durable replay proof; its scoped release does not claim physical
@@ -1188,7 +1201,75 @@ local integration and owned cleanup. Full gates and independent review remain 2.
 
 V and 2.6.9 cannot claim combined completion until this L retirement follow-up and its exact evidence
 are incorporated. Initial V implementation is not newly blocked by this ordering amendment.
-No conversion, physical retirement, follow-up dispatch or live database application occurs in this release.
+The earlier repaired-L release did not execute conversion or physical retirement. This separately authorized
+follow-up implements and tests stopped conversion/retirement; it does not apply an operator database.
+
+#### L retirement implementation and evidence
+
+Schema 49 retires `archived_runs`, `version_plans` and `version_bump_applications` only after A's
+populated conversion verifies report identity, source cleanup and retained custody. Released migration
+bytes 1–48 are unchanged. Historical plans/applications are preserved in immutable historical
+`version_changes` records; update, delete and replacement refuse. Meaningful `archive_relaunches`
+lineage remains. Current registry/readers no longer require the retired tables, while explicit
+historical fixtures and backup inspection preserve their original grammar.
+
+The actual stopped route is `upgradeStorage → convertSettingsDatabase → convertHistoricalArchives`.
+Preflight uses an in-memory archive copy. A durable source/backup-bound conversion journal preserves
+replay identity across independent archive commits and live rollback; ordinary boot refuses an
+incomplete conversion. Old unpaired backup restore retains displaced archive files in suspects and
+holds stopped admission through the same upgrade route. Paired historical restore also invokes that
+route. Both restore and upgrade remain behind the composer's dynamic stopped-command import.
+Q summary publication refreshes after conversion and final settlement generation changes.
+
+The nine new retirement/restore cases prove interruptions after capture, verification, cleanup,
+publication, retirement and commit, plus old-backup restore interruptions after replacement,
+quarantine and conversion. They verify exact historical plan/application values, retained file bytes,
+transaction supplements, relaunch lineage, no transfer tombstone, generic report reads and current
+open/list/claim/delete after physical retirement. Existing A/Q and transaction-history negative
+controls remain. Historical mirror tests now explicitly use released schema 48 rather than making
+current schema 49 admit retired writers. The source snapshot keeps its 23-group grammar.
+
+Evidence is preserved outside the owned checkout at
+`/Users/julianhein/Projects/hr-archive-retirement-evidence-20260909/README.md`.
+`accepted-unit-gates.json`, `release-focused-gates.json` (architecture/lint entries only),
+`committed-checks-gates.json`, `generation-gates.json` and their command lists/logs
+record literal commands, exits and durations. `tested-inputs.json` freezes 2,133 runtime/test/tooling
+inputs. `release.json` records tested commit/tree and integration identities. Earlier failed probes
+are diagnostic history, never release PASS evidence.
+
+The initial focused candidate exposed a static import across the stopped boundary and lint errors
+from historical-record union handling. Both were corrected without weakening the guards. The native
+SQLite inventory is synchronized with the existing recovery boundary; the public connection and
+SQL escape-hatch assertions remain. A selected-file semantic probe reports six diagnostics, all
+reproduced at exact base `f88a82d3828c2c2f9f70750f5676cc82b53bd0eb`; this is not a full typecheck
+or a passing semantic gate. Full typecheck, coverage, broad architecture/parity/build and complete
+independent review remain at 2.6.9 under the operator's explicit scope. Zero workers or reviewers
+were dispatched. This release does not claim combined V/H acceptance.
+
+#### L retirement focused gate receipt
+
+Implementation: `3bda69fbd8af1050ce8db4bf1632fbc3f05612c6`; tested committed tree:
+`a1cc018cfbfc41f13859d06fc24e64f44f11e11c`. Primary gate tree:
+`24ccee2ddea386e665bac4783ef3ed8562e62d85`. The sole runtime delta after the primary freeze removed
+one trailing blank line from the conversion journal; `whitespace-delta.json` verifies it. Committed
+checks below cover the final candidate. Final 2,133-input manifest SHA-256:
+`42b96f289a557b4cd5844af76ab992751a717b04657566d0846f47b6d0868f9b`.
+
+| Check | Exact receipt in external evidence root | Result |
+| --- | --- | --- |
+| Focused unit, 25 suites | `accepted-unit-gates.json` / `accepted-unit-0.log` | 325 tests PASS, exit 0 |
+| Selected architecture, 10 suites | `release-focused-gates.json` entry 1 | 202 tests PASS, exit 0 |
+| Full lint | `release-focused-gates.json` entry 2, `npm run lint` | PASS, exit 0 |
+| Affected generation and freshness | `generation-gates.json`, manifest/catalog/roadmap generation and checks | Six commands PASS, exits 0 |
+| Committed populated conversion/restore | `committed-checks-gates.json` entry 0 | 9 tests PASS, exit 0 |
+| Committed roadmap binding | `committed-checks-gates.json` entry 1 | 24 tests PASS, exit 0 |
+| Final scoped lint/freshness/whitespace/input identity | `committed-checks-gates.json` entries 2–7 | PASS, exits 0; 2,133 identical inputs |
+| Instruction pairs/chains | `instruction-check.json` | Nine identical pairs; largest project chain 17,333 bytes |
+
+All command lists contain literal selectors and flags; logs and JSON receipts remain outside the
+checkout after cleanup. No full typecheck, coverage, broad architecture/parity/build or independent
+review was run for this focused release. The failed earlier unit/architecture/lint invocations are
+superseded by the explicitly named passing receipts, not counted as successes.
 
 ### Delivery assessment
 
