@@ -1,3 +1,4 @@
+import { RunRecordSchema, RunLifecycleSchema } from "../../../src/domain/run/record.js";
 import { DatabaseSync } from "node:sqlite";
 import { createTimelineRepository } from "../../../src/infra/sqlite/timeline-repository.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
@@ -33,11 +34,11 @@ import {
   makeWorld,
   notificationRecordOf,
   cleanReceiptOf,
-  queuedEventOf,
+  queuedEventOf as queuedEventBase,
   receiptWithOutputOf,
   receiptWithWarningsOf,
   runEndedEventOf,
-  runRecordOf,
+  runRecordOf as runRecordBase,
   taskEventsOf,
   traceOf,
   uuidOf,
@@ -46,6 +47,24 @@ import {
 } from "./helpers/dashboard-harness.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+
+/** C completion contract: projection fixtures still carry a valid terminal settlement. */
+function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
+  const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
+  if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
+  const base = runRecordBase({...input,lifecycle:{state:"queued"}});
+  const version = Math.max(2,base.version), claimGeneration = Math.max(1,base.claimGeneration);
+  return RunRecordSchema.parse({...base,lifecycle,version,claimGeneration,updatedAt:lifecycle.endedAt,completion:{
+    schemaVersion:1,kind:lifecycle.outcome,expectedVersion:version-1,
+    claim:{workerId:"queue-fixture-worker",claimGeneration},authorizedAt:lifecycle.endedAt,
+    ...(lifecycle.outcome === "done" ? {resultDigest:"a".repeat(64)} : {failureId:lifecycle.failureId}),
+  }});
+}
+function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase>[0]) {
+  const event = queuedEventBase(w,{...input,lifecycle:{state:"queued"}});
+  if (input.lifecycle !== undefined) w.authority.put(runRecordOf({...input,enqueuedAt:input.enqueuedAt ?? w.clock.now().toISOString()}));
+  return event;
+}
 
 const worlds: DashboardWorld[] = [];
 

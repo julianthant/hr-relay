@@ -67,6 +67,8 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 45, sha256: "2fdb9d16bab229dd5f91a69d0c7bc4a98d5fdad772dcc08bc1a3f129a7efb988" },
   { version: 46, sha256: "6d6110548381575a03fe19b5b4a492372691aa45a3bd21f8671cccb94b55eb80" },
   { version: 47, sha256: "6543066f191996475d3fac4d8262a202f496402d73429af13d499a9ba5eac0fa" },
+  // Released L foundation bytes at 42df509; Q proof ownership amended by the operator.
+  { version: 48, sha256: "c7ec15732fac549fce184f1cd8454203fd332e1f5b2e373d9182fba6060fcbeb" },
 ] as const);
 
 const DCC1_SOURCE_SUFFIX_DIGESTS = Object.freeze([
