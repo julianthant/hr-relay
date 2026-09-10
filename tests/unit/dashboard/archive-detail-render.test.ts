@@ -229,3 +229,11 @@ it("renders every generic section without a current workflow and exposes no rela
   assert.doesNotMatch(html, /Relaunch|Retry|Restart/);
   assert.doesNotMatch(markup(), /Relaunch on v/);
 });
+
+// H: the served saved-document renderer never mounts the retired live detail actions.
+import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
+it("renders captured resolution as text without a relaunch or resolution control", () => {
+  const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...H_REPORT, files: [] } }));
+  assert.match(html, /Captured approval/u);
+  assert.doesNotMatch(html, /<button|relaunch-archived-run|Restart|Retry/u);
+});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { systemClock } from "../../domain/clock.js";
-import type { SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import { SavedArchiveFileWireSchema, type SavedArchiveQuery, type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 
 export type SavedResource<T> = { state: "loading" } | { state: "loaded"; value: T } | { state: "error"; message: string };
 export function useSavedResource<T>(read: () => Promise<T>, revision = 0): SavedResource<T> {
@@ -25,4 +25,19 @@ export function savedPlanRequest(wire: SavedVersionIndexWire, actorId: string, w
   if (target === undefined) throw new Error("Select a currently registered workflow.");
   return { ...savedCommandEnvelope(actorId), type: "plan-version-bump", target: { scope: workflow === "application" ? { kind: "application", applicationVersion: wire.appVersion } : { kind: "workflows", workflowIds: [workflow] } },
     payload: { targetVersion: wire.appVersion, changeFingerprint: target.fingerprint, changeRecord: { kind, what, why, commit: { state: "absent", reason: "No commit reference supplied." } } } };
+}
+
+/** A native download sink accepts only the exact typed, retained member response. */
+export function savedDownload(input: unknown, runId: string, digest: string) {
+  const file = SavedArchiveFileWireSchema.parse(input);
+  if (file.runId !== runId || file.digest !== digest) throw new Error("Saved attachment identity mismatch.");
+  return file.resource;
+}
+
+/** Filter changes discard the server cursor while retaining the other filters. */
+export function savedFilterQuery(query: SavedArchiveQuery, key: "workflow" | "title" | "descriptorVersion" | "outcome" | "from" | "to" | "capturedFrom" | "capturedTo", value: string): SavedArchiveQuery {
+  const next = { ...query };
+  delete next.after;
+  if (value === "") delete next[key]; else next[key] = value;
+  return next;
 }

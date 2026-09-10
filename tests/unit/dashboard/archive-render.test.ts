@@ -830,3 +830,10 @@ it("keeps generic loading, empty, deleted and failed responses distinct, and dis
   assert.match(container.textContent ?? "", /Saved report authority is stale/);
   assert.doesNotMatch(container.textContent ?? "", /explicitly deleted/);
 });
+
+// H: filtering retains indexed fields, never reconstructs an old page locally.
+import { savedFilterQuery } from "../../../src/dashboard/surfaces/archive-report-model.js";
+it("retains exact title/version/outcome filters while replacing workflow and dropping pagination", () => {
+  const query = savedFilterQuery({ limit: 50, title: "Exact retained title", descriptorVersion: "7", outcome: "interrupted", after: { runId: "00000000-0000-4000-8000-000000000081", completedAt: "2026-08-01T12:00:00.000Z" } }, "workflow", "removed-workflow");
+  assert.deepEqual(query, { limit: 50, title: "Exact retained title", descriptorVersion: "7", outcome: "interrupted", workflow: "removed-workflow" });
+});

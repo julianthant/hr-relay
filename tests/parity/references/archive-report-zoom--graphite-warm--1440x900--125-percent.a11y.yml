@@ -1,0 +1,133 @@
+# archive-report-zoom--graphite-warm--1440x900--125-percent
+# adapter: fixture
+# fixture: H retained document without live workflow
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: 125-percent
+# capturedAt: 2026-09-10T00:00:00.000Z
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive" [pressed]
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Paper Ink"
+  - button "Settings"
+- main:
+  - button "Back"
+  - text: Archive
+  - button "Saved reports" [pressed]
+  - button "Versions & bumps"
+  - button "Refresh"
+  - region "Saved reports":
+    - heading "Saved reports" [level=2]
+    - form "Filter saved reports":
+      - text: Workflow
+      - textbox "Workflow"
+      - text: Title
+      - textbox "Title"
+      - text: Version
+      - textbox "Version"
+      - text: Outcome
+      - combobox "Outcome":
+        - option "All outcomes" [selected]
+        - option "done"
+        - option "failed"
+        - option "cancelled"
+        - option "discarded"
+        - option "interrupted"
+        - option "superseded"
+      - text: Completed from (UTC)
+      - textbox "Completed from (UTC)"
+      - text: Completed through (UTC)
+      - textbox "Completed through (UTC)"
+      - text: Captured from (UTC)
+      - textbox "Captured from (UTC)"
+      - text: Captured through (UTC)
+      - textbox "Captured through (UTC)"
+      - button "Clear filters"
+    - table:
+      - rowgroup:
+        - row "Report Outcome Completed":
+          - columnheader "Report"
+          - columnheader "Outcome"
+          - columnheader "Completed"
+      - rowgroup:
+        - row "Synthetic retained report removed-workflow · vretired-v7 superseded 2026-08-01T12:00:00.000Z":
+          - cell "Synthetic retained report removed-workflow · vretired-v7":
+            - button "Synthetic retained report" [pressed]
+            - paragraph: removed-workflow · vretired-v7
+          - cell "superseded"
+          - cell "2026-08-01T12:00:00.000Z"
+        - row "Second saved report removed-workflow · vretired-v7 superseded 2026-08-01T12:00:00.000Z":
+          - cell "Second saved report removed-workflow · vretired-v7":
+            - button "Second saved report"
+            - paragraph: removed-workflow · vretired-v7
+          - cell "superseded"
+          - cell "2026-08-01T12:00:00.000Z"
+  - region "Selected saved report":
+    - article "Saved archive report":
+      - heading "Synthetic retained report" [level=2]
+      - paragraph: removed-workflow · version retired-v7
+      - paragraph: "Outcome: superseded"
+      - paragraph: Report 00000000-0000-4000-8000-000000000081
+      - paragraph: Completed 2026-08-01T12:00:00.000Z · Captured 2026-08-02T12:00:00.000Z
+      - paragraph: Saved record · read-only
+      - region "Captured facts":
+        - heading "Captured facts" [level=3]
+        - term: Subject
+        - definition: Synthetic subject
+        - term: Count
+        - definition: "0"
+        - term: Verified
+        - definition: "Yes"
+        - term: Submitted
+        - definition: "No"
+        - term: Absent
+        - definition: Not recorded
+      - region "Retained work":
+        - heading "Retained work" [level=3]
+        - table:
+          - rowgroup:
+            - row "Step Result":
+              - columnheader "Step"
+              - columnheader "Result"
+          - rowgroup:
+            - row "Review Recorded":
+              - cell "Review"
+              - cell "Recorded"
+            - row "Resolution Captured approval":
+              - cell "Resolution"
+              - cell "Captured approval"
+      - region "Saved logs":
+        - heading "Saved logs" [level=3]
+        - text: Review recorded No live resolution is available. <script>unsafe()</script>
+      - region "Old evidence":
+        - heading "Old evidence" [level=3]
+        - paragraph: These bytes were not retained.
+      - region "Recorded version change":
+        - heading "Archived old workflow" [level=3]
+        - paragraph: Replaced input contract
+        - paragraph: Reviewed 2026-08-02T10:00:00.000Z · Started 2026-08-02T11:00:00.000Z
+        - paragraph: "Scope: removed-workflow"
+        - paragraph: major · target 8 · applied by Synthetic operator
+        - paragraph: Commit not captured
+      - region "Retained attachments":
+        - heading "Retained attachments" [level=3]
+        - link "Synthetic receipt.txt":
+          - /url: /artifacts/v1/archive/00000000-0000-4000-8000-000000000081/files/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    - region "Delete saved report":
+      - button "Delete saved report"
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live
