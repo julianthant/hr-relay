@@ -912,3 +912,73 @@ auxiliary task was created and the calling task is not archived. No push occurre
 
 L01–L06 are complete. The completion record changes documentation only. A/Q remain unlaunched,
 and their own implementation/gates plus the full 2.6.9 integration/review remain due.
+
+## L shared-boundary repair — 2026-09-09
+
+The operator approved repairing both shared A/Q boundaries in L and superseding the expanded Q
+ownership. The original L release remains immutable historical evidence; its consumer-readiness claim
+is reopened. Both peers wait for one repaired release. This supervisor owns all shared contract,
+command delegation, storage, source capture, transaction/publication and consumer-port repairs;
+A/Q retain their original five/three feature paths, tests and policy. No agents or children launch.
+
+Base: `3596a1b0bc8e48aa1363634c382a95ecf35ee2b8`; branch `codex/lifecycle-repair`;
+checkout `/Users/julianhein/Projects/hr-worktree-lifecycle-repair`. Local master integration and
+owned cleanup follow complete focused PASS. Full gates and independent review remain 2.6.9.
+
+Repair outcomes: production archive command delegation into A ownership; strict review/application,
+claim/replacement/progress and report association ports; bounded archive queries, canonical deletion,
+replay and retained historical supplements; transactional affected-source summary hooks, publication
+freshness independent of unchanged row revisions, and bounded snapshot query ports. Preserve released
+migration bytes, source/report integrity and paired recovery. A owns full conversion/selection policy;
+Q owns complete derivation, filtering/aggregation and performance acceptance. Prove the shared ports
+through production composition and both consumer orders, then rebind both plans to the same SHA.
+
+### Verified shared-port contribution; retirement ordering pending
+
+Implementation `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`, tree
+`1c2b3e868ec2087939410904d0a5265aa2083c3f`, passes the complete L focused batch:
+14 unit suites/266 tests, seven architecture suites/139 tests and full lint, all exit 0.
+Manifest and store catalog generation/freshness, roadmap generation/freshness, nine instruction
+pairs (maximum chain 17,333 bytes) and whitespace pass. Two effective file workers were observed,
+one per test project. Exact commands/exits and logs are in
+`/Users/julianhein/Projects/hr-lifecycle-repair-evidence-20260909/`; `tested-inputs.json` binds 2,088
+runtime/test/tooling hashes. Released migration source and archive DDL remain unchanged. No full
+typecheck, coverage, broad parity/build or independent review was run; those remain at 2.6.9.
+
+Production archive command orchestration and atomic policy now dispatch into A-owned
+`services/archive/version-changes.ts`; the kernel retains command identity, journal, audit and
+transaction authority. Existing archive/version/relaunch behavior is preserved pending A's feature
+implementation. This extraction gives A a real production policy boundary, not a claim that its
+new version-change conversion or relaunch retirement is already implemented.
+
+The shared V2 version contract preserves immutable planned review and separate application facts,
+claim identity, replacement/supersession and verified published progress. Historical L `reviewed`
+rows remain readable through the storage compatibility union and explicit historical reader.
+Reports can save standalone change metadata. Common lifecycle ports provide claim, replacement,
+old source inspection, pending report replay, indexed workflow-partitioned archive list, canonical
+explicit deletion and summary queries. Capture includes 23 source groups, preserving the original
+archive transaction supplement and old version plan/application records separately from report
+integrity. Existing command-route fixtures and new independent-connection, ownership, supersession,
+query, historical supplement and paired recovery proofs pass.
+
+Summary source tracking uses connection-local TEMP triggers whose writes roll back with source
+savepoints/transactions. Outer authority commits update affected runs/parents and publication;
+unrelated writes preserve unchanged summary bytes/revisions. Explicit rebuild remains atomic;
+read publication freshness is distinct from an unchanged row's last contributing source generation.
+Q query types flow from its owned adapter through the shared snapshot port, preserving independent
+policy implementation without editing AuthorityDatabase. Q still owns complete query, aggregate,
+performance and derivation acceptance, not yet implemented here.
+
+A's feasibility clarification exposed the remaining material dependency: removing `archived_runs`,
+`version_plans` and `version_bump_applications` requires verified populated conversion first,
+forward migration/registry changes and retirement of unconditional shared SQL. The stopped upgrade
+path must invoke A conversion outside any falsely claimed cross-store rollback. These changes are
+not implemented or waived by this contribution. The operator was asked whether to keep conversion
+in A with an explicit L retirement follow-up after its proof, or expand L now to baseline historical
+conversion and retirement. No response is inferred. Both peers remain WAITING ON the final repaired
+release and revised ordering; no new READY prompt or common base is released. No local merge,
+worktree/ref deletion or push has occurred for this repair.
+
+An optional selected-file semantic diagnostic probe also reported an artifact sink head branded
+`generation` return mismatch in the unchanged generated-artifact adapter. No full typecheck result
+is claimed. The required focused runtime/lint gates above pass; final 2.6.9 owns full type validation.

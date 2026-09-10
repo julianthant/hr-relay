@@ -1,3 +1,5 @@
+> **A/Q prerequisite repair in progress.** The operator superseded Q’s shared-file expansion. Both peers wait for the same repaired L release; earlier READY bindings are obsolete.
+
 # Phase 2.6 · Database modernization
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of

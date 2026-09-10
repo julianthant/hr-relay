@@ -231,6 +231,7 @@ The operator approved narrow shared summary ownership and local merge/cleanup af
 full gates and independent review remain 2.6.9. Implementation is not yet released.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
+Q is WAITING ON the common L repair; its prior shared-file expansion and READY prompt are superseded.
 
 
 ### Task 8 · Prepare independent dashboard consumers

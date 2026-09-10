@@ -1,3 +1,5 @@
+> **A/Q WAITING ON repaired L.** The operator superseded Q’s shared-file expansion on 2026-09-09. Earlier Q READY/launch bindings below are historical until the common repaired release is recorded. No child implementation is launched.
+
 # Launch registry and exact prompts
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of

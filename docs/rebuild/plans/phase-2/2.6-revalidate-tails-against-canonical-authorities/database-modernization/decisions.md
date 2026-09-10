@@ -1127,18 +1127,19 @@ only the consuming prerequisite/finalizer updates shared status.
 
 ## C0 execution allocation — 2.6.7.2 Q
 
-The approved Q01–Q06 brief below supersedes the historical three-file allocation and its
-no-master/retention wording for Q only. All [Group 5 product proof](#approved-group-5-dryrun-results-and-shared-run-summaries)
-remains required. A's ownership and the final 2.6.9 acceptance are unchanged.
+The Q01–Q06 feature and proof requirements below remain approved. On 2026-09-09 the operator
+superseded the expanded shared-file ownership: L repairs both A/Q shared boundaries and binds both
+peers to the same repaired release. Q is WAITING ON that release; the prior READY prompt is obsolete.
+Q retains its original three production files, owned tests/performance script and evidence. Local
+merge and owned cleanup remain assigned to Q, with full gates and independent review at 2.6.9.
 
 ## Approved Q execution brief — 2026-09-09
 
 The operator requested `/phase-plan 2.6.7.2`, local merge and cleanup, full gates only at the end
-of 2.6, and the parallel-work protocol. After inspection identified the excluded shared hooks,
-the operator approved the recommended narrow Q ownership expansion with “okay do it.” This
-brief implements that allocation decision; it does not mark Q implemented or launch a supervisor.
-Full typecheck, coverage, broad architecture/parity/build, phase recovery/performance acceptance,
-and fresh complete independent review remain with **2.6.9**, not Q.
+of 2.6, and the parallel-work protocol. The later L-repair decision supersedes Q's initial narrow
+shared-file expansion. It does not launch a supervisor or mark Q implemented. Full typecheck,
+coverage, broad architecture/parity/build, phase recovery/performance acceptance and fresh complete
+independent review remain with **2.6.9**, not Q.
 
 ### Assignment and isolation
 
@@ -1148,30 +1149,23 @@ and fresh complete independent review remain with **2.6.9**, not Q.
 | Branch / checkout | Create `codex/run-summaries` at `/Users/julianhein/Projects/hr-worktree-database-other`. Both were absent at planning; recheck ownership/capacity before creation. Never use master for implementation. |
 | Product base | `5d47c27ac114f91c8a0574cfe5649ed96f876c3a`, containing L candidate `08d9f4f5334eb20a49334acda268727b622b1163` and integration `a8ee826dc`. Use the committed approved planning release that descends from this base as the execution start; the resolved prompt supplies its exact SHA. Preserve L's frozen interfaces used by A. |
 | Integration owner | Q supervisor owns Q's local integration into `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, after Q focused PASS, and owned cleanup. This planner owns only this approved documentation integration. No peer receives a new duty. |
-| Peer independence | A owns its five archive implementation files and archive-transfer tests; Q owns the summary files and narrow shared sections below. Neither consumes the other's unmerged implementation. Either order is permitted, subject to unchanged A contracts and Q's independent archive-baseline regression proof. V consumes both actual releases. |
+| Peer independence | A owns its five archive implementation files and archive-transfer tests; Q owns only the three summary feature files below; L owns shared interfaces. Neither consumes the other's unmerged implementation. Either order is permitted, subject to unchanged A contracts and Q's independent archive-baseline regression proof. V consumes both actual releases. |
 | Coordination | Follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination) and [supporting-agent protocol](/Users/julianhein/.agents/skill-library/parallel-agent-work/REFERENCE.md). No check-in, reservation chain, peer messages or dispatch by default. Only shared-target mutation is serialized. An actual conflicting write blocks that integration, not unrelated worktree-local work. |
 | Resources | At planning only the main worktree existed; the planner uses owned `hr-worktree-summary-plan`. Tests use runner-owned temporary SQLite roots and one effective worker; benchmark uses its own synthetic temporary root. No browser, provider, operator database or shared runtime port is needed. Never steal a lock or alter another task's processes. |
 
 ### Changing ownership and exclusions
 
 Q owns `src/core/run-summary.ts`, `src/infra/sqlite/run-summaries.ts`, and
-`src/server/dashboard/queries/run-summaries.ts`. The approved expansion additionally permits:
+`src/server/dashboard/queries/run-summaries.ts`. Source notifications, authority transaction hooks,
+shared domain contracts and lifecycle ports are L-owned and read-only to Q. Query signatures flow
+from Q's adapter through the shared ports, so Q can implement its internal policy without changing
+shared authority files. L supplies atomic commit/rebuild invocation and rollback-safe notifications.
 
-- `src/infra/sqlite/authority-database.ts`: summary query/refresh entrypoints, affected-source
-  tracking and summary publication at outer transactions, including nested rollback bookkeeping
-  and relevant source-writer notifications. Preserve authority generation and all command/archive
-  identity, fencing, deletion, capture, backup and recovery semantics.
-- `src/core/run-lifecycle-storage.ts`: summary ports only; all archive and paired-recovery exports
-  remain compatible. `src/domain/run/summary.ts`: summary source, publication and internal query
-  types only. Keep persisted historical rows readable or explicitly rebuild-required; no silent
-  defaults and no public identity fields.
-- Owned `tests/unit/run-summaries/{derivation,mutations,rebuild,privacy,queries}.test.ts`, local
-  fixture helpers, and `tests/perf/run-summaries.ts`. In
-  `tests/unit/lifecycle-foundation/source-hooks.test.ts`, update only assertions tied to the
-  superseded every-row/every-authority-generation rewrite, replacing them with stronger freshness,
-  affected-row and rollback assertions. Keep other L tests/fixtures read-only and run them.
-- Q alone authors `06-summary-evidence.md` in this folder. Generated manifest/catalog outputs may
-  be regenerated from owned inputs, never hand-edited; reconcile combined output at integration.
+Q owns `tests/unit/run-summaries/{derivation,mutations,rebuild,privacy,queries}.test.ts`, local
+fixture helpers and `tests/perf/run-summaries.ts`. Existing L source-hooks, peer-contracts and
+recovery fixtures are read-only regressions. Q alone authors `06-summary-evidence.md` in this
+folder. A retains its five archive feature files and own tests. Generated manifest/catalog outputs
+may be regenerated from owned inputs, never hand-edited; reconcile output at integration.
 
 No live migration, new table, historical migration rewrite, new public route/wire, dashboard/UI
 cutover, archive policy edit, pseudonym replacement, guard retirement, daily-totals table or
