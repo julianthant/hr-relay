@@ -1671,6 +1671,108 @@ Authored release evidence: `08-archive-ui-evidence.md` in this folder (new, excl
 The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
 only the consuming prerequisite/finalizer updates shared status.
 
+## Approved H execution brief — 2026-09-10
+
+The operator approved H01–H06 for **2.6.8.2 H**, including focused-PASS local integration and
+owned cleanup. This approval changes only H's former no-master release boundary: H integrates its
+review-ready focused candidate locally after the checks below, records its scoped release, and
+removes its incorporated worktree/ref. It does not authorize a full gate, broad parity/build,
+independent review, a U launch, a 2.6.9 launch, a live database application, or a push.
+
+### Assignment, prerequisite, and isolation
+
+| Binding | Approved value and verification |
+| --- | --- |
+| Assignment | 2.6.8.2 H; one GPT-6 Astra/high supervisor; zero implementation workers and zero reviewers in this task. `/ui` uses the Components lead locally for the established Archive surface, with focused browser verification. |
+| Approved plan owner | This section, retaining the preceding C0 H allocation and all inherited archive-report/deletion decisions. |
+| Exact immutable implementation base | `ea83e77d378d2b8c000c425205f44887c65a9a94`, V's common U/H release in `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/release.json`; its tree is `79bc84b857740a9ad2bcc06e5b8e7eec5495e40b`. It includes V integration `4c9500bacc99fcccf96254b100a5f009acb666f0`; H must verify both ancestry and the release receipt before edits. |
+| Checkout | Create `codex/archive-viewer` at `/Users/julianhein/Projects/hr-worktree-database-other` from that exact base after rechecking branch/path/worktree capacity and ownership. The inspection found the ref and path absent; those are proposals until H starts. Never implement on `master`, the U lane, or this planning checkout. |
+| Independent peer boundary | U and H consume the identical V base and own disjoint production/test/parity paths. Either local integration order is valid. H does not edit U, V, server, client, route, domain, shared fixture/registry, generated, or planning files; a required shared edit is a stop condition for its named owner/amendment. |
+| Integration and cleanup | H alone verifies the clean local `master` target and candidate/plan/base identities, merges its focused-PASS candidate there, reruns invalidated scoped integration checks (or proves input-identical reuse), records `08-archive-ui-evidence.md`, and from a safe checkout removes only its incorporated worktree/ref. Verify the physical path, Git registration, branch ref, owned synthetic server, browser session, and temporary output roots are absent. No push. |
+
+### Feasibility and acceptance bindings
+
+| Requirement / risk | Current mechanism and approved H proof |
+| --- | --- |
+| A saved report must render after its workflow and live records disappear, without an old parser or relaunch door. | V already serves strict `SavedArchiveReportWire` list/detail responses and freezes `archive-report.tsx`; H consumes only those wires. H's render/no-live-schema proof removes any descriptor/live-shape assumption and asserts generic values, tables, text, unavailable sections, captured version facts, read-only state, and absence of Relaunch/Retry/Restart controls. |
+| Filters and pagination must be server-authoritative and stable. | `SavedArchiveQuerySchema` and `queryArchiveReports` own the indexed request/cursor contract. H exposes only supported request fields, resets pagination/selection when a filter changes, sends the typed query, and proves no client-side reconstruction or sorting can mask an empty, stale, missing, deleted, or unavailable response. |
+| An attachment must be downloadable only when the exact retained report member authorizes it. | V's typed file query verifies returned run/digest and its server route verifies report membership/bytes. H uses the native URL only after that typed response, keeps loading/missing/error distinct, and proves foreign/malformed/native-sink substitutions cannot expose a download. |
+| Explicit archive deletion is terminal and not a relaunch substitute. | The existing V command/wire is the sole deletion path. H keeps confirmation and request identity intact, clears the selected report only after an applied result, refreshes the list, and proves deleted/missing/unavailable states are factual read-only outcomes with no earlier effect or new archive authority. |
+| The established operator console must remain desktop-accessible, dense, and honest. | H preserves the existing Archive route/shell and design-system primitives. Its owned browser proof covers 1024×720 and 1440×900, light/dark themes, keyboard selection/filtering, 125% zoom, loading/empty/error/deleted states, attachment refusal, and no stale detail replacement. It creates only its dedicated reference set; it never refreezes another surface. |
+
+### Exact scope and exclusions
+
+H owns the four surface paths named in the C0 allocation:
+
+- `src/dashboard/surfaces/archive.tsx`
+- `src/dashboard/surfaces/archive-model.ts`
+- `src/dashboard/surfaces/archive-report.tsx`
+- `src/dashboard/surfaces/archive-report-model.ts`
+
+It also owns its three new unit paths under `tests/unit/archive-report-ui/`, the bounded amendments to
+`tests/unit/dashboard/archive-render.test.ts` and `tests/unit/dashboard/archive-detail-render.test.ts`,
+its new `tests/parity/archive-report.spec.ts`, local `tests/parity/helpers/fixture-archive-report.ts`,
+and `tests/parity/references/archive-report-*`. H alone writes its scoped release evidence
+`08-archive-ui-evidence.md` after integration. Existing V fixtures/routes/client/navigation and shared
+architecture fixtures/registries remain read-only. No API/schema/DDL, workflow descriptor lookup,
+legacy reader, report capture/conversion, storage ownership, version-planning UI, command policy,
+relaunch producer, or U Activity/Queue work is in scope.
+
+### Ordered execution
+
+1. **H01 — admit the frozen consumer.** Verify this committed plan, V release JSON/base/tree, ancestry,
+   local target cleanliness, branch/path/capacity, and exclusive H ownership. Record actual base/head/tree
+   before editing. Stop on a changed V contract, missing release receipt, occupied H lane, or needed
+   excluded shared change.
+2. **H02 — render the retained document.** Complete the report component/model using only
+   `SavedArchive*` wires: clearly bounded generic sections, captured version facts, and read-only
+   attachment states. Preserve desktop tokens, semantics, focus, and route-owned selection. Do not infer
+   a descriptor, reopen a live run, or introduce an action the wire does not serve.
+3. **H03 — serve the report index faithfully.** Complete indexed list/detail/filter/pagination behavior
+   through the typed client query. Keep selection and refresh race-safe, reset dependent cursors on input
+   changes, and distinguish loading, empty, transport error, missing, deleted, and unavailable states.
+4. **H04 — hold the safety boundary.** Add the owned unit proofs for generic rendering/no-live-schema
+   and exact download identity; extend the named dashboard regressions for filtering, stale responses,
+   deletion settlement, and attachment missing/error/foreign refusal. Preserve a valid available control.
+5. **H05 — verify the established UI.** Use `/ui` Components lead locally, inspect the frozen dashboard
+   surface through Playwright CLI, and add only H's isolated archive-report parity fixture/spec/references.
+   Prove keyboard, zoom, desktop geometry and the listed honest failure states. Do not update shared
+   references merely to absorb a difference.
+6. **H06 — freeze, integrate, and clean up.** Run the complete focused release batch; commit exact H
+   paths and freeze candidate/tree/evidence. Recheck master ownership/mergeability, merge locally after
+   focused PASS, rerun invalidated scoped checks or record eligible reuse, write the evidence receipt,
+   stop owned processes, and remove only the incorporated H branch/worktree. Report H as a scoped
+   development release, not Phase 2.6 acceptance.
+
+### Focused gates, evidence, and stop conditions
+
+At iteration use the smallest relevant selector. At H05/H06 run the complete unit batch with one
+effective file worker:
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/archive-report-ui/render.test.ts tests/unit/archive-report-ui/no-live-schema.test.ts tests/unit/archive-report-ui/download.test.ts tests/unit/dashboard/archive-render.test.ts tests/unit/dashboard/archive-detail-render.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/archive-invariants.test.ts tests/unit/architecture/wire-connectivity.test.ts tests/unit/architecture/dashboard-wire-boundary.test.ts tests/unit/architecture/dashboard-refresh-boundary.test.ts
+npm run lint
+npm run build:manifest && npm run build:manifest:check
+npm run stores:catalog && npm run stores:catalog:check
+npm run roadmap && npm run roadmap:check
+```
+
+Run the owned Playwright parity spec against H's isolated output/server root; it may build only its
+candidate bundle and must not share mutable report/reference output with another task. The global
+full `npm run test:parity`, `npm run web:build`, `npm run typecheck`, `npm run test:coverage`, broad
+architecture/recovery/performance proof, and fresh complete independent `sup_review` remain solely
+for **2.6.9**. Do not treat a passing focused check as a waiver or phase acceptance.
+
+Record commands, effective worker count, exits, tested base/candidate/integration trees, browser
+viewport/theme/state evidence, and cleanup results in `08-archive-ui-evidence.md`. A focused failure,
+changed prerequisite, candidate/master conflict, required shared edit, stale/missing V receipt, or
+unexpected report/download state blocks release and cleanup until H repairs it in scope or the owner
+amends the plan. Follow Parallel coordination: no routine peer messages, reservations, broadcasts,
+observer loops, or sibling dispatch; serialize only the actual local master mutation and an evidenced
+resource conflict. Send Done / Now / Remaining at start/resume and after each verified step, keeping
+merge, cleanup, and deferred 2.6.9 review/full gates visible.
+
 ## A shared cleanup amendment — 2026-09-09
 
 The operator approved repairing the discovered shared cleanup defect in the A supervisor

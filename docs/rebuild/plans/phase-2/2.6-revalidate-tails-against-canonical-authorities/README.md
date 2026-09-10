@@ -263,6 +263,7 @@ this card does not assign duplicate implementation or bypass C0 admission.
 <!-- roadmap: p2db-archive-viewer -->
 
 Assignment **H**, display **2.6.8.2**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-3-independent-archive-reports-and-no-relaunch).
+The operator approved H01–H06 in its [execution brief](database-modernization/decisions.md#approved-h-execution-brief--2026-09-10): H consumes V's immutable common U/H release, uses its isolated lane, performs focused proof, then locally merges and cleans up. Full gates and fresh independent review remain exclusively 2.6.9.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
