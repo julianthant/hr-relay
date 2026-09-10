@@ -12,6 +12,11 @@ execution contract. Former numeric aliases: 2.6.2, then 2.6.3; stable roadmap no
 
 ## Inputs and ownership
 
+Combined completion requires the approved L retirement follow-up recorded in prerequisites.md:
+A populated conversion proof first, then L forward migration, shared reader/upgrade retirement and
+focused recovery evidence. Consume the exact follow-up release; do not treat the repaired shared
+interfaces as proof of physical table retirement. Finalization still owns all remaining fixes.
+
 Consume exact R/C0/T/C/F/P/D/G/S/L/A/Q/V/U/H plan and development candidate records, accepted T1
 and the existing completed 2.6.1 input evidence. Reject missing candidates, unexplained failed
 focused tests or a claimed pass without tested identity. Inspect owned refs/checkouts and create

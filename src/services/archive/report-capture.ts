@@ -9,6 +9,7 @@ import { lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../core/
 
 /** Baseline source capture preserves source bytes separately from generic display content. */
 export function captureArchiveReport(input: Readonly<{
+  versionChange?: ArchiveReport["content"]["versionChange"];
   snapshot: LifecycleSourceSnapshot; transferId: string; capturedAt: string;
   sections: ArchiveReport["content"]["sections"]; files: ArchiveReport["content"]["files"];
 }>): ArchiveReport {
@@ -35,6 +36,6 @@ export function captureArchiveReport(input: Readonly<{
     title:run.displayName ?? run.envelope.workflow,descriptorVersion:String(run.envelope.descriptorVersion),
     outcome:run.lifecycle.outcome,completedAt:run.lifecycle.endedAt,capturedAt:input.capturedAt,
     sourceDigest:lifecycleSourceDigest(input.snapshot),sources:[{kind:"authority-snapshot",json,digest:sha256Hex(json)}],
-    sections,files,
+    sections,files,...(input.versionChange===undefined?{}:{versionChange:input.versionChange}),
   });
 }

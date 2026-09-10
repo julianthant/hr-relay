@@ -1,3 +1,4 @@
+import type { RunDeletionOutcome } from "./run-record-service.js";
 import type { VersionChange } from "../domain/archive/change-record.js";
 import { z } from "zod";
 import type { AuthorityDatabase } from "../infra/sqlite/authority-database.js";
@@ -9,7 +10,7 @@ import { RunRecordSchema } from "../domain/run/record.js";
 export const LifecycleSourceSnapshotSchema = z.strictObject({
   run: RunRecordSchema,
   records: z.array(z.strictObject({
-    table: z.enum(["workflow_runs", "run_results", "run_receipts", "run_failures", "timeline_events", "diagnostic_snapshots", "diagnostic_files",
+    table: z.enum(["version_plans", "version_bump_applications", "archive_transactions", "workflow_runs", "run_results", "run_receipts", "run_failures", "timeline_events", "diagnostic_snapshots", "diagnostic_files",
       "run_checkpoints", "run_operations", "run_operation_attempts", "settings_snapshots", "archive_relaunches", "archived_runs",
       "delegation_dependencies", "run_delegations", "dryrun_results", "checkpoint_payloads", "commands", "command_audits", "notes_files"]),
     rows: z.array(z.strictObject({ key: z.string(), json: z.string() })),
@@ -23,11 +24,21 @@ export function lifecycleSourceDigest(snapshot: LifecycleSourceSnapshot): string
 /** The common lifecycle port: A owns capture policy; Q owns derivation and query policy. */
 export function createRunLifecycleStorage(database: AuthorityDatabase) {
   return Object.freeze({
+    claimVersionChange: (input: Parameters<AuthorityDatabase["claimVersionChange"]>[0]) => database.claimVersionChange(input),
+    replaceVersionChange: (priorId:string,fingerprint:string,replacement:VersionChange) => database.replaceVersionChange(priorId,fingerprint,replacement),
+    historicalArchiveSource: () => database.historicalArchiveSource(),
+    historicalVersionChanges: () => database.historicalVersionChanges(),
+    deleteArchive: (input:unknown):RunDeletionOutcome => database.deleteLifecycleArchive(input),
+    readPendingReport: (runId:string,transferId:string) => database.readPendingArchiveReport(runId,transferId),
+    archiveWorkflows: () => database.archiveWorkflows(),
+    listReports: (query: import("../domain/archive/report.js").ArchiveQuery) => database.queryArchiveReports(query),
     readVersionChange: (id: string) => database.readVersionChange(id),
     writeVersionChange: (change: VersionChange) => database.writeVersionChange(change),
     capture: (runId: string) => database.captureLifecycleSource(runId),
     refreshSummaries: () => database.refreshRunSummaries(),
     summaries: () => database.readRunSummaries(),
+    summaryWorkflows: () => database.summaryWorkflows(),
+    querySummaries: (query: Parameters<AuthorityDatabase["queryRunSummaries"]>[0]) => database.queryRunSummaries(query),
     transfer: (input: {runId: string; digest: string; expectedVersion: number}) => database.transferLifecycleSources(input),
     publishReport: (runId: string, digest: string) => database.publishTransferredReport(runId,digest),
     readReport: (runId: string) => {

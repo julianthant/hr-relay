@@ -40,3 +40,12 @@ export const RunSummarySourceSchema = z.strictObject({
   children:RunSummarySchema.shape.children,dependencyRunIds:z.array(RunIdSchema),
 });
 export type RunSummarySource = z.infer<typeof RunSummarySourceSchema>;
+
+/** Internal partitioned cursor. Q owns public filtering/aggregation policy. */
+export const SummaryQuerySchema=z.strictObject({
+  workflow:z.string().min(1),fromDay:z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  toDay:z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),state:z.string().min(1).optional(),
+  parentRunId:RunIdSchema.nullable().optional(),limit:z.number().int().min(1).max(500),
+  after:z.strictObject({localDay:z.string(),runId:RunIdSchema}).optional(),
+});
+export type SummaryQuery=z.infer<typeof SummaryQuerySchema>;

@@ -1521,5 +1521,13 @@ describe("D274 — bump kind semantics", () => {
       [priorA, priorB].sort(),
     );
     assert.equal(world.database.authority.archivedRuns.isArchived(current), false);
+    const source=world.database.captureLifecycleSource(priorA);
+    const supplement=source.records.find(group=>group.table==="archive_transactions")?.rows[0];
+    assert.ok(supplement);
+    assert.equal(world.database.historicalArchiveSource().source.archives.length,2);
+    const retained=JSON.parse(supplement.json) as {json:string;digest:string};
+    assert.equal(retained.digest,sha256Hex(retained.json));
+    assert.deepEqual(JSON.parse(retained.json),world.database.authority.archivedRuns.transactions(priorA));
+
   });
 });

@@ -1,3 +1,4 @@
+import { ArchiveVersionChangeSchema } from "./change-record.js";
 import { z } from "zod";
 import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../ids.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -23,6 +24,7 @@ export const ArchiveReportContentSchema = z.strictObject({
   outcome: z.enum(["done", "failed", "cancelled", "discarded", "interrupted", "superseded"]),
   completedAt: IsoInstantSchema, capturedAt: IsoInstantSchema,
   sourceDigest: FingerprintSchema,
+  versionChange: ArchiveVersionChangeSchema.optional(),
   sources: z.array(z.strictObject({ kind: z.string().min(1), digest: FingerprintSchema, json: z.string().min(1) })),
   sections: z.array(ArchiveReportSectionSchema), files: z.array(ArchiveFileReferenceSchema),
 }).superRefine((report, context) => {
@@ -40,3 +42,9 @@ export function sealArchiveReport(input: z.input<typeof ArchiveReportContentSche
   const content = ArchiveReportContentSchema.parse(input);
   return ArchiveReportSchema.parse({ content, digest: sha256Hex(canonicalJsonStringify(content)) });
 }
+
+export const ArchiveQuerySchema=z.strictObject({workflow:z.string().min(1),limit:z.number().int().min(1).max(500),
+  title:z.string().optional(),capturedFrom:z.string().datetime().optional(),capturedTo:z.string().datetime().optional(),
+  from:z.string().datetime().optional(),to:z.string().datetime().optional(),descriptorVersion:z.string().optional(),outcome:z.string().optional(),
+  after:z.strictObject({completedAt:z.string().datetime(),runId:RunIdSchema}).optional()});
+export type ArchiveQuery=z.infer<typeof ArchiveQuerySchema>;

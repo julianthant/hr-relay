@@ -42,7 +42,7 @@ export const VersionBumpChangeRecordSchema = z.strictObject({
 export type VersionBumpChangeRecord = z.infer<typeof VersionBumpChangeRecordSchema>;
 
 /** Reviewed membership is immutable; progress belongs to the same fenced operation. */
-export const VersionChangeSchema = z.strictObject({
+export const LegacyLifecycleVersionChangeSchema = z.strictObject({
   changeId: z.string().uuid(), actorId: z.string().min(1), reviewedAt: z.string().datetime(),
   change: VersionBumpChangeRecordSchema,
   scope: z.discriminatedUnion("kind", [
@@ -68,4 +68,60 @@ export const VersionChangeSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "version-change-membership-invalid" });
   }
 });
-export type VersionChange = z.infer<typeof VersionChangeSchema>;
+
+
+const ApplicationVersionSchema=z.string().regex(/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u);
+const IdentitySchema=z.strictObject({workflow:z.string().min(1),version:z.number().int().positive(),fingerprint:z.string().regex(/^[a-f0-9]{64}$/u)});
+export const VersionChangeReviewSchema=z.strictObject({
+  changeId:z.string().uuid(),actorId:z.string().min(1),reviewedAt:z.string().datetime(),
+  change:VersionBumpChangeRecordSchema,
+  scope:z.discriminatedUnion("kind",[
+    z.strictObject({kind:z.literal("workflows"),workflowIds:z.array(z.string().min(1)).min(1)}),
+    z.strictObject({kind:z.literal("application"),applicationVersion:ApplicationVersionSchema}),
+  ]),
+  observedAppVersion:ApplicationVersionSchema,targetVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema),
+  members:z.array(z.strictObject({runId:z.string().uuid(),version:z.number().int().positive(),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/u)})),
+  blockers:z.array(z.string().uuid()),membershipDigest:z.string().regex(/^[a-f0-9]{64}$/u),
+  supersedes:z.string().uuid().optional(),
+});
+export type VersionChangeReview=z.infer<typeof VersionChangeReviewSchema>;
+export function versionChangeReviewFingerprint(input:VersionChangeReview) {
+  return sha256Hex(canonicalJsonStringify(VersionChangeReviewSchema.parse(input)));
+}
+export const VersionChangeSchema=VersionChangeReviewSchema.extend({
+  schemaVersion:z.literal(2),reviewFingerprint:z.string().regex(/^[a-f0-9]{64}$/u),
+  state:z.enum(["planned","applying","applied","superseded"]),completedRunIds:z.array(z.string().uuid()),
+  supersededBy:z.string().uuid().optional(),
+  application:z.strictObject({commandId:z.string().uuid(),actorId:z.string().min(1),startedAt:z.string().datetime(),
+    appVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema),completedAt:z.string().datetime().optional()}).optional(),
+}).superRefine((row,ctx)=>{
+  const review=VersionChangeReviewSchema.parse(Object.fromEntries(Object.entries(row).filter(([key])=>key in VersionChangeReviewSchema.shape)));
+  const ids=row.members.map(member=>member.runId),targets=row.targets.map(target=>target.workflow);
+  const invalid=row.reviewFingerprint!==versionChangeReviewFingerprint(review)
+    || row.membershipDigest!==sha256Hex(canonicalJsonStringify(row.members))
+    || new Set(row.blockers).size!==row.blockers.length || row.blockers.some(id=>ids.includes(id))
+    || (row.scope.kind==="application" && row.scope.applicationVersion!==row.observedAppVersion)
+    || new Set(ids).size!==ids.length || new Set(targets).size!==targets.length
+    || new Set(row.completedRunIds).size!==row.completedRunIds.length || row.completedRunIds.some(id=>!ids.includes(id))
+    || (row.scope.kind==="workflows" && (new Set(row.scope.workflowIds).size!==row.scope.workflowIds.length || targets.length!==row.scope.workflowIds.length || row.scope.workflowIds.some(id=>!targets.includes(id))))
+    || (row.change.kind==="minor" && (row.members.length>0 || row.blockers.length>0))
+    || ((row.state==="planned"||row.state==="superseded") && (row.application!==undefined || row.completedRunIds.length>0))
+    || ((row.state==="applying"||row.state==="applied") && (row.application===undefined || row.blockers.length>0))
+    || (row.state==="applied" && (row.completedRunIds.length!==ids.length || row.application?.completedAt===undefined))
+    || (row.state!=="applied" && row.application?.completedAt!==undefined)
+    || ((row.state==="superseded") !== (row.supersededBy!==undefined));
+  if(invalid)ctx.addIssue({code:"custom",message:"version-change-contract-invalid"});
+});
+export type VersionChange=z.infer<typeof VersionChangeSchema>;
+export const VersionChangeStorageSchema=z.union([VersionChangeSchema,LegacyLifecycleVersionChangeSchema]);
+export function versionChangeReview(row:VersionChange):VersionChangeReview {
+  return VersionChangeReviewSchema.parse(Object.fromEntries(Object.entries(row).filter(([key])=>key in VersionChangeReviewSchema.shape)));
+}
+export const ArchiveVersionChangeSchema=z.strictObject({review:VersionChangeReviewSchema,reviewFingerprint:z.string().regex(/^[a-f0-9]{64}$/u),
+  application:z.strictObject({commandId:z.string().uuid(),actorId:z.string().min(1),startedAt:z.string().datetime(),appVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema)})})
+  .refine(value=>value.reviewFingerprint===versionChangeReviewFingerprint(value.review),"archive-change-review-mismatch");
+export function archiveVersionChange(row:VersionChange) {
+  if(row.application===undefined)throw new Error("version-change-not-claimed");
+  const {completedAt,...application}=row.application;void completedAt;
+  return ArchiveVersionChangeSchema.parse({review:versionChangeReview(row),reviewFingerprint:row.reviewFingerprint,application});
+}

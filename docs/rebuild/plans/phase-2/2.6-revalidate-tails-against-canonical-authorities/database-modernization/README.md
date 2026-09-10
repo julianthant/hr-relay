@@ -1,3 +1,5 @@
+> **A/Q shared repair released:** use the common repaired L binding in [PROMPTS.md](PROMPTS.md#common-repaired-l-release--a-and-q). A conversion precedes the explicit L retirement follow-up; combined completion requires that follow-up. Q shared-file expansion is superseded. Neither peer is launched here.
+
 # Phase 2.6 · Database modernization
 
 **Phase 2.6-only execution rule:** 2.6.9 is the single Finalization task and the last task of

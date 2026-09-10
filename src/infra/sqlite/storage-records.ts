@@ -1,4 +1,4 @@
-import { VersionChangeSchema } from "../../domain/archive/change-record.js";
+import { VersionChangeStorageSchema } from "../../domain/archive/change-record.js";
 import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
 import { RunSummarySchema, SummaryPublicationSchema } from "../../domain/run/summary.js";
 import { AppSettingsSchema } from "../../domain/config/app-settings.js";
@@ -179,7 +179,7 @@ type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   archive_transfers: ArchiveTransferIdentitySchema,
-  version_changes: VersionChangeSchema,
+  version_changes: VersionChangeStorageSchema,
   run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,
   // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row

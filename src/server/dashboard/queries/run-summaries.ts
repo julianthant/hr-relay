@@ -4,3 +4,7 @@ import type { AuthorityDatabase } from "../../../infra/sqlite/authority-database
 export function readRunSummarySource(database: AuthorityDatabase) {
   return database.readRunSummaries();
 }
+
+export function queryRunSummarySource(database:AuthorityDatabase,query:Parameters<AuthorityDatabase["queryRunSummaries"]>[0]) {
+  return database.queryRunSummaries(query);
+}
