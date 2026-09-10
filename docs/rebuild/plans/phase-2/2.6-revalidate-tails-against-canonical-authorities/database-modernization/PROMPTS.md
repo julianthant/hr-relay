@@ -83,7 +83,7 @@ assigns focused PASS, local master merge and owned worktree/ref cleanup to V. Fu
 complete independent review remain at 2.6.9. L retirement is complete: integration
 `4591b263ed26d68af91b048a5cfae07f88400b38` and committed closure/base
 `9f853d60fd347a998eeacd86a014d1f71b31f391` were verified with the external L evidence.
-The old WAITING ON condition is satisfied. V execution and its common U/H release are recorded
+The old WAITING ON condition is satisfied. V01–V06 are complete with local integration and owned cleanup. V execution and its common U/H release are recorded
 in [the execution receipt](prerequisites.md#v-execution-binding--2026-09-10).
 No task is dispatched by this registry.
 

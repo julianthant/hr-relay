@@ -1225,21 +1225,22 @@ log:
 
 
 #### 8 · Prepare independent dashboard consumers {#p2db-served-interfaces}
-status: planned
+status: done
 doc: 2.6 §Task 8 · Prepare independent dashboard consumers
 
 > Sequential working prerequisite. Release only complete composed interfaces and focused proof; heavy gates and independent review remain in 2.6.9.
 
 builds:
-- [ ] BOTH assemble A/Q candidates and fix immediate combination defects with focused checks
-- [ ] BOTH finish real served queries, shared routes/wires, download authorization and shared UI wiring
-- [ ] PROOF freeze independent Queue/Activity and archive viewer paths, fixtures and references; verify either merge order
+- [x] BOTH assemble A/Q candidates and fix immediate combination defects with focused checks
+- [x] BOTH finish real served queries, shared routes/wires, download authorization and shared UI wiring
+- [x] PROOF freeze independent Queue/Activity and archive viewer paths, fixtures and references; verify either merge order
 
 needs:
 - p2db-archive-transfer
 - p2db-run-summaries
 
 log:
+- 2026-09-10 | V01–V06 complete | served summaries/exports, generic reports and authorized retained files, retired relaunch, independent U/H baselines; focused PASS, local merge 4c9500bacc99fcccf96254b100a5f009acb666f0 and owned cleanup verified; common release in V receipt · left: U/H and 2.6.9
 - 2026-09-09 | database roadmap expansion | 2.6.7; assignment V; visible dependency card only; no implementation or launch readiness claimed
 
 ##### 1 · Connect Queue and Activity to shared summaries {#p2db-activity-views}
