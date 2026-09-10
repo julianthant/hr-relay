@@ -10,6 +10,11 @@ assigns 2.6.7 local master merge and owned worktree/ref cleanup after focused PA
 supervisor. Full gates and complete independent review remain at 2.6.9. This supersedes generic
 retention/no-master wording for L only; it does not launch implementation or its children.
 
+**Q-specific operator approval, 2026-09-09:** [Q01–Q06](decisions.md#approved-q-execution-brief--2026-09-09)
+assigns Q the summary-specific shared mutation/query interfaces needed beyond its original three
+files, local master integration after focused PASS and owned cleanup. Full gates and independent
+review remain at 2.6.9. Q's amendment preserves A's archive contracts and either merge order.
+
 ## Approval and scope
 
 On 2026-09-09 the operator approved combining database-parallel, database-remaining and the

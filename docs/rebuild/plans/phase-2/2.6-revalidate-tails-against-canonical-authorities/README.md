@@ -226,7 +226,9 @@ this card does not assign duplicate implementation or bypass C0 admission.
 #### Task 7.2 · Build shared run summaries for Queue and Activity
 <!-- roadmap: p2db-run-summaries -->
 
-Assignment **Q**, display **2.6.7.2**. Single scope/proof owner: [owning plan](database-modernization/decisions.md#approved-group-5-dryrun-results-and-shared-run-summaries).
+Assignment **Q**, display **2.6.7.2**. Single scope/proof owner: [approved Q01–Q06 plan](database-modernization/decisions.md#approved-q-execution-brief--2026-09-09).
+The operator approved narrow shared summary ownership and local merge/cleanup after focused PASS;
+full gates and independent review remain 2.6.9. Implementation is not yet released.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 

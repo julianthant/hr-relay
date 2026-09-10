@@ -64,7 +64,7 @@ C0 records R and its own actual release; later prerequisite cells remain unresol
 | S | codex/settings-activation | hr-worktree-settings-activation | `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` |
 | L | codex/lifecycle-foundation | hr-worktree-database-contracts | P + D + G + S |
 | A | codex/archive-transfer | hr-worktree-database-peer | L `08d9f4f5334eb20a49334acda268727b622b1163`; consume after local incorporation |
-| Q | codex/run-summaries | hr-worktree-database-other | L `08d9f4f5334eb20a49334acda268727b622b1163`; consume after local incorporation |
+| Q | codex/run-summaries | hr-worktree-database-other | Integrated L on `5d47c27ac114f91c8a0574cfe5649ed96f876c3a` plus approved Q planning release; see Q01–Q06 |
 | V | codex/database-surfaces | hr-worktree-database-contracts | A + Q |
 | U | codex/activity-views | hr-worktree-database-peer | V |
 | H | codex/archive-viewer | hr-worktree-database-other | V |
@@ -329,3 +329,19 @@ its implementation base is the plan commit itself, which contains all required r
 ```text
 /supervise 2.6.7 L. READY: use approved plan and implementation base c3eb6725e3607a7df82a6c2a94a4765e8579efbd in /Users/julianhein/Projects/hr-automation-rebuild. Read /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md, section “Approved L execution brief — 2026-09-09”, plus its retained L allocation, exact paths and proof selectors. Use GPT-6 Astra/high, one supervisor and zero implementation workers. Verify plan content and P/D/G/S plus F/T/C/R ancestry; create codex/lifecycle-foundation at /Users/julianhein/Projects/hr-worktree-database-contracts from the exact implementation base after checking availability/capacity. Never implement on master. Execute L01–L06 completely, resolving routine in-scope choices and combination defects autonomously. Deliver real archive/summary baseline ports, verified shared evidence ownership, atomic lifecycle hooks and paired database/file recovery; prove A/Q independent baseline capability orders before release. Preserve historical migrations, protected identity, UNKNOWN refusal and source data until verified capture. Run the committed focused tests, lint and affected freshness; full gates and fresh complete independent review belong only to 2.6.9. Commit exact paths, merge the focused-PASS candidate into local master at /Users/julianhein/Projects/hr-automation-rebuild, rerun invalidated checks, record release evidence and remove the owned worktree/branch. Send Done / Now / Remaining at start/resume and after each verified step, keeping merge, cleanup and deferred review visible. No push, operator database mutation, sibling dispatch or implementation of A/Q beyond the assigned baseline extraction. Stop after 2.6.7 is integrated and cleaned up; report its scoped release without claiming phase acceptance.
 ```
+
+## Q planning release — 2.6.7.2
+
+The [approved Q01–Q06 brief](decisions.md#approved-q-execution-brief--2026-09-09) supersedes Q's
+historical retention/no-master restriction and narrow file list. One Astra/high supervisor creates
+`codex/run-summaries` at `/Users/julianhein/Projects/hr-worktree-database-other` from the verified
+committed planning release descending from `5d47c27ac114f91c8a0574cfe5649ed96f876c3a`.
+L candidate `08d9f4f5334eb20a49334acda268727b622b1163` is incorporated. This does not dispatch Q.
+
+Q owns summary-specific shared adapters/types and proof, preserves A's interfaces, and delivers
+internal indexed queries to V. No dashboard cutover or new DDL is assigned. Q runs focused tests,
+lint and affected freshness, then merges locally and removes only its owned worktree/ref. Full
+gates and fresh independent review remain 2.6.9. Follow the linked no-default-messaging parallel
+protocol and Q01–Q06's exact proof/gate/stop boundaries. The planner returns the resolved full plan
+SHA after committed-content, gate, integration and cleanup verification; this registry is not itself
+a launch prompt before those checks.

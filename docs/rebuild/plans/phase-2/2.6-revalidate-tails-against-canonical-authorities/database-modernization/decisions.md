@@ -1127,51 +1127,154 @@ only the consuming prerequisite/finalizer updates shared status.
 
 ## C0 execution allocation — 2.6.7.2 Q
 
-Prerequisite: **one frozen L release, identical to A base**. One Astra/high supervisor, zero implementation workers.
-Use the exact `Q` branch and absolute worktree in [PROMPTS.md](PROMPTS.md#binding-registry).
-This allocation supersedes older shared-file/side-task ownership in this owner; product proof is retained.
-Current inspected baseline is R `60b356dd119140dc972a077751ad16af934acb2e`, schema39/floor37.
-Future prerequisites build the explicitly named new modules before peers launch; names do not assert readiness.
+The approved Q01–Q06 brief below supersedes the historical three-file allocation and its
+no-master/retention wording for Q only. All [Group 5 product proof](#approved-group-5-dryrun-results-and-shared-run-summaries)
+remains required. A's ownership and the final 2.6.9 acceptance are unchanged.
 
-Ordered outcomes: Verify complete source hooks and summary schema; implement one derivation, indexed queries and atomic rebuild publication; prove mutation/rebuild races and selected-set equivalence; release to V.
+## Approved Q execution brief — 2026-09-09
 
-### Exclusive changing paths
+The operator requested `/phase-plan 2.6.7.2`, local merge and cleanup, full gates only at the end
+of 2.6, and the parallel-work protocol. After inspection identified the excluded shared hooks,
+the operator approved the recommended narrow Q ownership expansion with “okay do it.” This
+brief implements that allocation decision; it does not mark Q implemented or launch a supervisor.
+Full typecheck, coverage, broad architecture/parity/build, phase recovery/performance acceptance,
+and fresh complete independent review remain with **2.6.9**, not Q.
 
-- `src/core/run-summary.ts` (new target)
-- `src/infra/sqlite/run-summaries.ts` (new target)
-- `src/server/dashboard/queries/run-summaries.ts` (new target)
+### Assignment and isolation
 
-### Proof and test ownership
+| Assignment | Binding |
+| --- | --- |
+| Implementer | One GPT-6 Astra/high supervisor; zero implementation workers and zero reviewer dispatches here. The coupled mutation/publication/query seam fits one supervisor; splitting it would create dependent writers. Final 2.6.9 owns fresh complete `sup_review` coverage of Q and combined archive/served behavior. |
+| Branch / checkout | Create `codex/run-summaries` at `/Users/julianhein/Projects/hr-worktree-database-other`. Both were absent at planning; recheck ownership/capacity before creation. Never use master for implementation. |
+| Product base | `5d47c27ac114f91c8a0574cfe5649ed96f876c3a`, containing L candidate `08d9f4f5334eb20a49334acda268727b622b1163` and integration `a8ee826dc`. Use the committed approved planning release that descends from this base as the execution start; the resolved prompt supplies its exact SHA. Preserve L's frozen interfaces used by A. |
+| Integration owner | Q supervisor owns Q's local integration into `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, after Q focused PASS, and owned cleanup. This planner owns only this approved documentation integration. No peer receives a new duty. |
+| Peer independence | A owns its five archive implementation files and archive-transfer tests; Q owns the summary files and narrow shared sections below. Neither consumes the other's unmerged implementation. Either order is permitted, subject to unchanged A contracts and Q's independent archive-baseline regression proof. V consumes both actual releases. |
+| Coordination | Follow [Parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination) and [supporting-agent protocol](/Users/julianhein/.agents/skill-library/parallel-agent-work/REFERENCE.md). No check-in, reservation chain, peer messages or dispatch by default. Only shared-target mutation is serialized. An actual conflicting write blocks that integration, not unrelated worktree-local work. |
+| Resources | At planning only the main worktree existed; the planner uses owned `hr-worktree-summary-plan`. Tests use runner-owned temporary SQLite roots and one effective worker; benchmark uses its own synthetic temporary root. No browser, provider, operator database or shared runtime port is needed. Never steal a lock or alter another task's processes. |
 
-All summary proof above remains. L supplies mutation/capture/deletion hooks and a rebuildable source snapshot independent of A. Test all contributing mutations, parent rollups, concurrent rebuild, stale generation refusal, selected-set distinct/median semantics, unavailable identity, archive/delete and no protected export leakage. Capture query counts, rows scanned, latency and update overhead on isolated representative fixtures; no speedup is assumed.
+### Changing ownership and exclusions
 
-- `tests/unit/run-summaries/derivation.test.ts` (new required test)
-- `tests/unit/run-summaries/mutations.test.ts` (new required test)
-- `tests/unit/run-summaries/rebuild.test.ts` (new required test)
-- `tests/unit/run-summaries/privacy.test.ts` (new required test)
-- `tests/perf/run-summaries.ts` (new required test)
+Q owns `src/core/run-summary.ts`, `src/infra/sqlite/run-summaries.ts`, and
+`src/server/dashboard/queries/run-summaries.ts`. The approved expansion additionally permits:
 
-Run the owned unit files with `VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`
-followed by their explicit paths above (exclude a performance script from Vitest). New paths must exist
-and collect meaningful cases before release. Use `npm run lint`; run affected architecture guards
-with `--project architecture --maxWorkers=1`, and the affected manifest/catalog/roadmap generators
-before their `:check` commands. Preserve existing floors, membership, assertions and timeouts.
-Desktop visual work uses `/ui`; focused rendering/accessibility proof is due here, complete parity/build
-and all heavy gates remain 2.6.9. Preserve every inherited proof row; record exact tested tree and exits.
+- `src/infra/sqlite/authority-database.ts`: summary query/refresh entrypoints, affected-source
+  tracking and summary publication at outer transactions, including nested rollback bookkeeping
+  and relevant source-writer notifications. Preserve authority generation and all command/archive
+  identity, fencing, deletion, capture, backup and recovery semantics.
+- `src/core/run-lifecycle-storage.ts`: summary ports only; all archive and paired-recovery exports
+  remain compatible. `src/domain/run/summary.ts`: summary source, publication and internal query
+  types only. Keep persisted historical rows readable or explicitly rebuild-required; no silent
+  defaults and no public identity fields.
+- Owned `tests/unit/run-summaries/{derivation,mutations,rebuild,privacy,queries}.test.ts`, local
+  fixture helpers, and `tests/perf/run-summaries.ts`. In
+  `tests/unit/lifecycle-foundation/source-hooks.test.ts`, update only assertions tied to the
+  superseded every-row/every-authority-generation rewrite, replacing them with stronger freshness,
+  affected-row and rollback assertions. Keep other L tests/fixtures read-only and run them.
+- Q alone authors `06-summary-evidence.md` in this folder. Generated manifest/catalog outputs may
+  be regenerated from owned inputs, never hand-edited; reconcile combined output at integration.
 
-The prerequisite owns shared fixtures, registries, global unions and generated inputs; create only
-owned fixture files beside the new tests. Shared architecture guard retirement is recorded by the
-prerequisite with violating fixtures and guard-inventory evidence. No peer may edit another peer
-or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
-prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
+No live migration, new table, historical migration rewrite, new public route/wire, dashboard/UI
+cutover, archive policy edit, pseudonym replacement, guard retirement, daily-totals table or
+transaction-metric redefinition. Existing summary indexes permit workflow/range partitioned reads
+and parent lookups; cross-workflow queries must enumerate indexed partitions and combine bounded
+pages/selected aggregates, not materialize every source row. If measured query plans establish that
+new persistent DDL is necessary, return that concrete evidence for amendment before changing it.
+V owns real served-route composition and U owns surface changes. Q supplies executable, validated
+internal query ports for V; it must not claim the existing dashboard already uses them.
 
-Release committed candidate/base/tree and focused evidence to the next named consumer. No master
-integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
-Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+### Feasibility and acceptance evidence
 
-Authored release evidence: `06-summary-evidence.md` in this folder (new, exclusively owned by Q).
-The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
-only the consuming prerequisite/finalizer updates shared status.
+Inspected at the product base; these are source findings, not executed Q proof. Contracts:
+[shared read model](#approved-shared-read-model),
+[dashboard target](../../../../reference/dashboard-surfaces.md), and
+[aggregate privacy](../../../../reference/operator-trust.md).
+
+| Boundary / inspected mechanism | Q change and required proof |
+| --- | --- |
+| `AuthorityDatabase.#withTransaction` refreshes all summaries after every dirty authority commit; `createRunSummaries.refresh` deletes/rebuilds all live rows. | Track contributing changes and update affected runs plus parents in the same transaction. Unrelated writes/heartbeats must not rederive or rewrite every summary. Test creation, lifecycle/result/receipt/failure/resolution, title, batch/group, dependencies and relevant timeline events, exact replay, multiple writes, nested rollback and outer rollback; committed source and summary must never diverge. |
+| Global authority generation and `read` currently demand the same generation on every row; existing L tests assert that implementation. | Separate publication freshness from a row's last contributing source revision. A validated publication can include unchanged older rows; an unaccounted source change cannot be accepted. Rebuild old-format rows explicitly as needed. Prove unrelated writes remain readable, meaningful changes update immediately, corruption/stale publication refuses after restart, and no default zero totals escape. |
+| `refresh` is already called under `BEGIN IMMEDIATE`; timeline inputs are SQLite rows with durable cursors. | Reuse the transaction/snapshot boundary for atomic rebuild publication. A rebuild failure preserves the previous committed generation, never a partially rebuilt table. Prove independent reader/writer connections, update before/during/after rebuild, blocked or serialized writers, rollback, restart and exact replay; no new in-memory-only freshness authority. |
+| `readRunSummaries` loads every row; the query module is only a pass-through. Existing workflow/day/state and parent indexes are available. | Add bounded internal Queue filtering/order/pagination and selected-set Activity aggregation through the real authority read snapshot. Verify SQL query plans, query/row counts, bounded relation reads and stable pagination ties. No receipt/checkpoint/failure reconstruction per displayed row; never silently fall back to the old whole-run reader. |
+| Current Activity uses local enqueue day, counts operations once but excludes operation-members from top-level totals, includes eligible member identities, and uses the lower median over the selected durations. | Compare independent expected results and the retained projector on identical synthetic sets: grouped/ungrouped batches, members, retry attempts, repeated people across days, date/timezone boundaries, unknown duration, completion/warning/failure and unregistered workflows. Preserve existing status and duration contracts; distinguish source defects from legitimate unavailable facts. Do not sum daily distinct counts or average daily medians. |
+| `deriveCanonicalPerson` validates Separations result/schema and run tuple; L already retired current pseudonym tables. | Preserve validated server-internal identities and explicit unavailable counts. Identity mismatches refuse; unsupported/missing identity stays unavailable. Verify aggregate/query serialization and export-compatible projections expose no person IDs or protected-derived digests; sanitized errors/benchmark logs do not leak. Existing Activity export tests remain unchanged and pass; V owns later route/export wiring. |
+| L provides real capture/transfer/deletion with summary cleanup, independently of A. | Exercise Q against L alone with summary-first/archive-first fixtures, transfer/deletion/replay and reopened databases. No live summary resurrection or archive included in generic Activity. Run L peer-contract and two-store-recovery tests without editing them. A's immutable source digest/report and shared file ownership remain unaffected. |
+
+No actual-target preflight applies: this assignment runs synthetic databases only. It does not
+upgrade the operator's database or spend a live HR session. L's release evidence is in
+[prerequisites.md](prerequisites.md#l06-scoped-release--2026-09-09). Its baseline tests prove usable
+ports, not Q's incremental/query acceptance; the generation and full-scan gaps above are assigned
+here rather than passed to supervisor discovery.
+
+### Ordered execution
+
+| Step | Outcome and proof |
+| --- | --- |
+| Q01 — Bind and measure | Verify plan/base/L ancestry, exact branch/path and scope; inspect the retained consumers and source-writer map. Build owned synthetic fixtures and capture baseline read/update measurements with reproducible parameters before replacing behavior. |
+| Q02 — Derivation and atomic maintenance | Complete one reusable derivation and contributing-source inventory; implement affected-run/parent updates with transactional rollback-safe tracking and explicit freshness. Prove every mutation and no-op/unrelated-write controls at the earliest stable boundary. |
+| Q03 — Rebuild and recovery | Publish complete generations using the source snapshot/cursor contract; prove concurrency, interruption, replay, restart, corruption and historical populated-source rebuilding without half-publication. |
+| Q04 — Indexed query ports | Implement bounded Queue queries and selected-set Activity calculations over summary rows. Prove range/group/filter/duration/identity semantics, privacy, stable paging and query plans independently of A or new routes. |
+| Q05 — Focused candidate | Run all scoped gates below, compare baseline/new measurements, fix in-scope failures and freeze exact candidate SHA/tree and evidence. Preserve negative controls and thresholds. No full-gate or independent-review claim. |
+| Q06 — Integrate and clean | Recheck master HEAD/index/dirty ownership, integrate Q only, reconcile generated output and run invalidated checks. Record candidate/base/integration trees and input-based reuse. From the primary checkout remove only Q's owned auxiliary worktree and merged branch; verify physical path, registration and ref absent. Preserve evidence outside the removed worktree. Release to V without launching it. |
+
+### Exact scoped gates and evidence
+
+Run from Q's worktree. Unit gate (all files must collect real cases):
+
+```sh
+VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1 tests/unit/run-summaries/derivation.test.ts tests/unit/run-summaries/mutations.test.ts tests/unit/run-summaries/rebuild.test.ts tests/unit/run-summaries/privacy.test.ts tests/unit/run-summaries/queries.test.ts tests/unit/lifecycle-foundation/source-hooks.test.ts tests/unit/lifecycle-foundation/peer-contracts.test.ts tests/unit/lifecycle-foundation/two-store-recovery.test.ts tests/unit/server/activity-report.test.ts tests/unit/server/activity-export.test.ts tests/unit/server/run-queue-projection.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --project architecture --maxWorkers=1 tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts
+npm run lint
+TZ=UTC ./node_modules/.bin/tsx tests/perf/run-summaries.ts
+npm run build:manifest
+npm run build:manifest:check
+npm run stores:catalog
+npm run stores:catalog:check
+npm run roadmap
+npm run roadmap:check
+git diff --check
+```
+
+The performance script is a focused diagnostic, not the phase-wide performance gate. It must use
+synthetic stable seeds/cardinalities and record baseline versus new query counts, actual measured
+rows visited (or explicitly distinguish an unavailable metric from a query-plan estimate), latency
+and write overhead. Include growing out-of-range populations and fixed selected pages; assert
+bounded materialization and unchanged-row write behavior without inventing a speedup target.
+No private identity values in reports. Measure real executable paths, not only mocked call counts.
+
+During iteration use the relevant selectors plus lint whenever tests run. Before implementation
+commits/candidate run the complete scoped batch; retain command/exits, effective worker count,
+fixture sizes, input hashes and tested tree in Q's evidence. The runner's real config must retain
+suite membership, isolation, timeouts and floors. No compiler/coverage contention is needed here.
+Generation finishes before its check. Integration reuses only proven input-identical results;
+changed code/tests/config/dependencies or combined generated inputs require affected reruns.
+Documentation-only recording runs roadmap binding/freshness, scoped links, existing instruction
+pair/chain audit and whitespace checks, with explicit unchanged executable-input evidence.
+
+Tactical fixes stay with this supervisor. New shared ownership, required DDL, changed archive
+interfaces, weakened privacy or changed user-visible semantics return for amendment. No nested fix
+workers, peer launch, push, automatic next task, live migration or UNKNOWN-submit retry. Report
+Done / Now / Remaining at start/resume and after each verified step, keeping integration, cleanup
+and deferred 2.6.9 acceptance explicit. A scoped Q release is not full Phase 2.6 acceptance.
+
+### Q planning validation — 2026-09-09
+
+Prepared on `5d47c27ac114f91c8a0574cfe5649ed96f876c3a` in the isolated documentation branch
+`codex/summary-plan`. The final four-file planning diff changes Markdown only; source, tests,
+configuration, dependencies, migration statements and runtime generated inputs are unchanged.
+No product implementation or Q acceptance is claimed.
+
+| Check | Result |
+| --- | --- |
+| Roadmap binding | PASS: one architecture file, 24 tests, one worker; command is the Q architecture selector narrowed to `roadmap-doc-binding.test.ts` |
+| Repository lint | `npm run lint`: exit 0 |
+| Roadmap generation/freshness | `npm run roadmap` then `npm run roadmap:check`: exit 0; generated output unchanged |
+| Added local links/anchors | PASS: ten newly added local links/anchors resolve |
+| Instructions | `python3 /Users/julianhein/.agents/skills/docs/scripts/audit.py . --check`: exit 0; existing pairs equal and project chains below 32,768 bytes |
+| Whitespace / input scope | `git diff --check`: exit 0; no executable inputs changed |
+
+Full gates and independent review were not run or represented as passed; they remain 2.6.9 duties.
+The planner verifies the committed section and prerequisite ancestry before returning the exact
+resolved supervisor prompt. Only planning documents are merged and cleaned up in this session.
 
 ## C0 execution allocation — 2.6.8.1 U
 
