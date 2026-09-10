@@ -514,3 +514,19 @@ export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityR
 });
 
 export const FIXTURE_ARCHIVED_RUN_ID = ARCHIVED_RUN_ID;
+
+import { SavedArchiveReportWireSchema, SavedVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
+/** V's generic H baseline is authored independently of live descriptors and Queue shapes. */
+export const FIXTURE_SAVED_REPORT = SavedArchiveReportWireSchema.parse({ state: "available", runId: ARCHIVED_RUN_ID,
+  title: "Synthetic saved lookup", workflow: "retired-synthetic-workflow", descriptorVersion: "1", outcome: "done",
+  completedAt: at(21), capturedAt: at(25), archiveFingerprint: ARCHIVE_DIGEST,
+  sections: [
+    { kind: "values", title: "Saved facts", values: [{ label: "Subject", value: "Synthetic person" }, { label: "Result", value: "Verified" }, { label: "Unrecorded fact", value: null }] },
+    { kind: "table", title: "Saved work", columns: ["Step", "Outcome"], rows: [["Lookup", "Completed"], ["Cross-check", "Completed"]] },
+    { kind: "text", title: "Historical note", text: "Saved before this workflow was retired. Readable without current workflow registration." },
+    { kind: "unavailable", title: "Unretained evidence", reason: "No additional evidence was retained." },
+  ], files: [{ digest: PRIOR_HASH, byteLength: 28, mediaType: "text/yaml", name: "Synthetic attachment", artifactIds: [CAPTURE_ARTIFACT_ID] }],
+});
+export const FIXTURE_SAVED_VERSIONS = SavedVersionIndexWireSchema.parse({ appVersion: FIXTURE_APP_VERSION,
+  workflows: [{ workflow: "person-lookup", label: "Person lookup", version: 2, fingerprint: FIXTURE_DESCRIPTOR_HASH }],
+  changes: [], historicalChanges: 1 });

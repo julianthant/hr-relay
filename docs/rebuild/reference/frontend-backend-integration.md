@@ -857,7 +857,12 @@ GET  /api/v1/runs/:runId/:section              # one lazy panel section, cursor-
 GET  /api/v1/diagnostic-bundles/:bundleId      # exact D137 readback; verified index and stored bytes
 GET  /api/v1/diagnostic-bundles/:bundleId/manifest # canonical durable manifest download, never client-built
 POST /api/v1/runs/:runId/advisory              # the optional AI failure advisory (unjournaled, D178)
-GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
+GET  /api/v1/archive/reports?limit=&workflow=&after=  # generic saved reports; bounded indexed filters
+GET  /api/v1/archive/reports/:runId                  # available/missing/deleted/unavailable
+GET  /api/v1/archive/reports/:runId/files/:digest     # exact report-member file availability
+GET  /artifacts/v1/archive/:runId/files/:digest       # verified retained bytes, including files without artifact UUIDs
+GET  /api/v1/archive/versions                       # current version reviews and retained history
+GET  /api/v1/archive           ·  GET /api/v1/archive/:runId  # saved-report aliases
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment
 GET  /api/v1/search?q=…                        # strict bounded cross-date search over the measured corpus (DCR3)
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
@@ -870,6 +875,21 @@ POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
 POST /api/v1/commands          ·  POST /api/v1/commands/bulk
 GET  /events/v1?topics=…                       # the one stream; cursor via Last-Event-ID
 ```
+
+V (2.6.8) composes Queue and Activity with the published summary query ports. Selected Queue
+rows are enriched from canonical authority; summaries never authorize an action. CSV and XLSX use
+the same served Activity calculation, with transaction history kept separate from live-run metrics.
+A stale or missing publication refuses; it does not fall back to a whole-history calculation.
+
+Saved report reads use generic sections, sealed source digests and frozen transfer identity; they do
+not parse current workflow inputs or require current registration. Missing attachment bytes do not
+hide the report or other intact files. A file digest is admitted only when that exact report names it.
+All saved-report and file routes require loopback Host and matching Origin when supplied, and use
+`no-store`. Byte routes retain verified MIME/disposition, no-sniff, range refusal and one-use leases.
+The existing archive/artifact UUID capture routes remain available for retained issued identities.
+Archive relaunch is absent from active registration and UI; stale requests are refused. Historical
+journals and descendant lineage remain readable, including exact historical replay. Normal start,
+retry and restart retain their canonical authorization.
 
 Route count is not the goal; coherent resources are. The exact split may be adjusted for lazy
 loading, but there must be only one route per fact/command family and no workflow-specific API path

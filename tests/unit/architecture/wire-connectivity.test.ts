@@ -48,7 +48,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../../parity/helpers/fixture-archive-evidence.js";
-import { archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
+import { savedArchiveBrowserRouteReferences, archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
 import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../dashboard/fixtures/run-captures-app-fixture.js";
 import { runCaptureBrowserRouteReferences, type RunCaptureBrowserProbe } from "./helpers/run-capture-browser-route-references.js";
 import { ActionCommandKeySchema } from "../../../src/domain/dashboard/actions.js";
@@ -119,6 +119,10 @@ const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
 const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
 const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
 
+async function scannedAndSavedReferences() {
+  return [...clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root))), ...await savedArchiveBrowserRouteReferences()];
+}
+
 function archiveProbe(runId: string = FIXTURE_ARCHIVE_EVIDENCE_RUN.runId, artifactId: string = FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId): ArchiveBrowserProbe {
   const seed = FIXTURE_ARCHIVE_EVIDENCE_RUN;
   if (seed.sections.state !== "present") throw new Error("the Archive guard fixture requires frozen sections");
@@ -142,7 +146,7 @@ async function auditArchiveBrowser(probe: ArchiveBrowserProbe, accounting: {
   readonly pending?: readonly PendingWireBinding[];
 } = {}) {
   const routes = accounting.routes ?? servedRoutes(dashboardRouteSource());
-  const scanned = accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+  const scanned = accounting.references ?? await scannedAndSavedReferences();
   const observation = await archiveBrowserRouteReferences(probe).then(
     (references) => ({ state: "observed", references }) as const,
     (error: unknown) => ({ state: "refused", error }) as const,
@@ -185,7 +189,7 @@ async function auditRunCaptureBrowser(probe: RunCaptureBrowserProbe, accounting:
     references => ({ state: "observed", references }) as const,
     (error: unknown) => ({ state: "refused", error }) as const,
   );
-  const references = [...(accounting.references ?? clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)))),
+  const references = [...(accounting.references ?? await scannedAndSavedReferences()),
     ...(observation.state === "observed" ? observation.references : [])];
   const problems = routeConnectivityProblems({
     routes: accounting.routes ?? servedRoutes(dashboardRouteSource()),
@@ -432,7 +436,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-snooze": "notification target, not a run row",
   "plan-version-bump": "D179's archive planning surface targets the application/workflow scope",
   "apply-version-bump": "archive scope target, not a run row",
-  "relaunch-archived-run": "D179 serves the relaunch from the ARCHIVED detail, which is not a live run row",
+  "relaunch-archived-run": "V retains historical request parsing; current HTTP and internal producers refuse creation",
   "delete-archived-run": "D308 serves the delete from the ARCHIVED detail, which is not a live run row",
   "apply-explorer-edit": "D283's reviewed Explorer draft targets a workflow override revision, not a run row",
 };
@@ -600,7 +604,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
     const routes = servedRoutes(dashboardRouteSource());
     assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
-    const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+    const references = await scannedAndSavedReferences();
     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
 
     const archive = await auditArchiveBrowser(archiveProbe(), { routes, references });
@@ -821,7 +825,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   }
 
   it("A8 a generic one-ID reference cannot satisfy the two-ID Archive route", async () => {
-    const references = clientRouteReferences(CLIENT_ROOTS.map((root) => join(REPO_ROOT, root)));
+    const references = await scannedAndSavedReferences();
     const generic = { file: "A8 synthetic generic-only control", path: "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a" };
     assert.equal(routeMatches(GENERIC_ROUTE, generic.path), true);
     assert.equal(routeMatches(ARCHIVE_ROUTE, generic.path), false);
@@ -985,4 +989,9 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       );
     }
   });
+});
+
+it("V refuses missing or foreign native saved-file sinks", async () => {
+  await assert.rejects(savedArchiveBrowserRouteReferences(withoutNativeSinks("a[href]")), /no exact native download sink/);
+  await assert.rejects(savedArchiveBrowserRouteReferences(changedNativeAttribute("a[href]", "href", "/artifacts/v1/archive/foreign/files/foreign")), /saved-file-download-identity-mismatch/);
 });

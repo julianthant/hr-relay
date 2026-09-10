@@ -154,9 +154,19 @@ interface WorkerFold {
 
 /* ── dependencies ────────────────────────────────────────────────────────── */
 
+/** Production summary queries share the authority read snapshot. Legacy fixture readers omit this port. */
+export interface ServedSummaryQueries {
+  withSnapshot<T>(read: () => T): T;
+  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; after?: { localDay: string; runId: string } }): {
+    items: readonly { runId: string; localDay: string; shape: string; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
+    next: { localDay: string; runId: string } | null;
+  };
+  activity(from: string, to: string): ActivityReportWire;
+}
+
 export interface RunQueueProjectionDeps {
   readonly timeline: TimelineRepository;
-  readonly reader: Pick<RunRecordService, "read" | "list">;
+  readonly reader: Pick<RunRecordService, "read" | "list"> & { readonly summaries?: ServedSummaryQueries };
   readonly stateRoot: string;
   readonly clock: Clock;
   readonly appVersion: string;
@@ -1357,8 +1367,8 @@ export class RunQueueProjection {
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
     if (members.length === 0) return { state: "absent", reason: "this group has fanned out to no members yet" };
     const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) =>
-      this.#subjectTitle(member.envelope.workflow, member)
-        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId);
+      hasProtectedTransactionInput(member) ? "Protected test subject" : (this.#subjectTitle(member.envelope.workflow, member)
+        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId));
     const remaining = members.length - shown.length;
     return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
   }
@@ -1510,11 +1520,11 @@ export class RunQueueProjection {
        * `displayName` beside this, so a renamed row can still state the subject
        * it was renamed away from.
        */
-      title: this.#subjectTitle(queued.workflow, authority) ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : (row?.queued.title ?? queued.runId)),
-      displayName: authority.displayName === undefined
+      title: hasProtectedTransactionInput(authority) ? "Protected test subject" : (this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId),
+      displayName: hasProtectedTransactionInput(authority) ? { state: "absent", reason: "Protected run display name withheld." } : authority.displayName === undefined
         ? { state: "absent", reason: "the operator has not renamed this run" }
         : { state: "present", value: authority.displayName },
-      subtitle: row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+      subtitle: hasProtectedTransactionInput(authority) || row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
@@ -1587,6 +1597,12 @@ export class RunQueueProjection {
   /* ── THE payload (D81) ─────────────────────────────────────────────────── */
 
   buildDashboardDayWire(day: string): DashboardDayWire {
+    const summaries = this.#deps.reader.summaries;
+    return summaries === undefined ? this.#buildDashboardDayWire(day)
+      : summaries.withSnapshot(() => this.#buildDashboardDayWire(day));
+  }
+
+  #buildDashboardDayWire(day: string): DashboardDayWire {
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
@@ -1594,20 +1610,42 @@ export class RunQueueProjection {
     const surfaces: QueueSurfaceWire[] = [];
     const monthPrefix = parsedDay.slice(0, 7);
     const monthCounts = new Map<string, number>();
-    const runs = listCanonicalRuns(this.#deps.reader, "live");
-    const children = canonicalRunChildren(runs);
-    for (const authority of runs) {
-      const row = this.#rows.get(authority.envelope.runId);
-      const rowDay = localDatePart(new Date(authority.envelope.enqueuedAt));
-      // D80: a prior-version run has left every active surface. It is excluded
-      // here — before the month count, before the day filter, before the row
-      // is pushed — so no count can disagree about whether it is still live.
-      const countsAtTopLevel = authority.envelope.shape !== "operation-member";
-      if (rowDay.startsWith(monthPrefix) && countsAtTopLevel) {
-        monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
+    const summaries = this.#deps.reader.summaries;
+    if (summaries !== undefined) {
+      let after: { localDay: string; runId: string } | undefined;
+      const readLive = (runId: string): RunRecord => {
+        const existence = this.#deps.reader.read(runId);
+        if (existence.state !== "present" || existence.disposition !== "live") {
+          throw new ProjectionDegradedError("run-summary-source-missing");
+        }
+        return existence.run;
+      };
+      do {
+        const page = summaries.queue({ fromDay: `${monthPrefix}-01`, toDay: new Date(Date.UTC(Number(parsedDay.slice(0, 4)), Number(parsedDay.slice(5, 7)), 0)).toISOString().slice(0, 10), limit: 500,
+          topLevel: false, ...(after === undefined ? {} : { after }) });
+        for (const summary of page.items) {
+          if (summary.shape !== "operation-member") monthCounts.set(summary.localDay, (monthCounts.get(summary.localDay) ?? 0) + 1);
+          if (summary.localDay !== parsedDay) continue;
+          const authority = readLive(summary.runId);
+          const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)));
+          if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
+          surfaces.push(QueueSurfaceWireSchema.parse({ ...surface, title: hasProtectedTransactionInput(authority) ? surface.title : summary.title }));
+        }
+        after = page.next ?? undefined;
+      } while (after !== undefined);
+    } else {
+      // Explicit fixture-only compatibility. Production composition always supplies summaries.
+      const runs = listCanonicalRuns(this.#deps.reader, "live");
+      const children = canonicalRunChildren(runs);
+      for (const authority of runs) {
+        const row = this.#rows.get(authority.envelope.runId);
+        const rowDay = localDatePart(new Date(authority.envelope.enqueuedAt));
+        if (rowDay.startsWith(monthPrefix) && authority.envelope.shape !== "operation-member") {
+          monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
+        }
+        if (rowDay !== parsedDay) continue;
+        surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
       }
-      if (rowDay !== parsedDay) continue;
-      surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
     }
     surfaces.sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
 
@@ -1716,6 +1754,7 @@ export class RunQueueProjection {
    * rather than reconciled against them. See `ActivityLedgerBlockSchema`.
    */
   buildActivityReportWire(from: string, to: string): ActivityReportWire {
+    if (this.#deps.reader.summaries !== undefined) return this.#deps.reader.summaries.activity(from, to);
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(
         `the run/queue projection is degraded and refuses to serve activity aggregates: ${this.#health.lastError ?? "unknown"}`,

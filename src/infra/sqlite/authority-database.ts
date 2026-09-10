@@ -9,7 +9,7 @@ import { deriveCanonicalPerson } from "../../core/run-summary.js";
 import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
 import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../core/run-lifecycle-storage.js";
 import { ArchiveDatabase } from "./archive-database.js";
-import { ArchiveTransferIdentitySchema, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
+import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
@@ -3158,10 +3158,14 @@ export class AuthorityDatabase implements Disposable {
       .map(row => {const id=z.object({record_key:z.string()}).parse(row).record_key;const transfer=this.transferredRun(id);if(transfer===undefined)throw new Error("archive-transfer-missing");return transfer.run;}));
   }
 
+  savedReportOwner(runId: string) {
+    return this.withAuthorityReadSnapshot(() => resolveSavedReportOwner(this.#database, () => this.lifecycleArchive(true), RunIdSchema.parse(runId)));
+  }
+
   transferredRun(runId: string) {
     const identity = this.#readRecord("archive_transfers", RunIdSchema.parse(runId), ArchiveTransferIdentitySchema);
     if (identity === undefined) return undefined;
-    const owner = resolveRunEvidenceOwner(this.#database, () => this.lifecycleArchive(true), runId);
+    const owner = resolveRunEvidenceOwner(this.#database, () => this.lifecycleArchive(true), runId, false);
     if (owner.state !== "archived") throw new Error("archive-transfer-owner-invalid");
     return identity;
   }
@@ -3263,7 +3267,7 @@ export class AuthorityDatabase implements Disposable {
       if(!existsSync(path)){if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");return {items:[],next:null};}
       const page=this.lifecycleArchive(true).query(query);
       const items=page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined);
-      for(const report of items)if(this.transferredRun(report.content.runId)?.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch");
+      for(const report of items) { const owner=this.savedReportOwner(report.content.runId); if(owner.state!=="archived" || owner.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch"); }
       return {...page,items};
     });
   }

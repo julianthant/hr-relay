@@ -241,8 +241,9 @@ Q consumes the common repaired L binding with A; its prior shared-file expansion
 
 Assignment **V**, display **2.6.8**. Single scope/proof owner: [owning plan](database-modernization/prerequisites.md#v--served-interface-release-unlock-u-and-h).
 The operator approved [V01–V06](database-modernization/prerequisites.md#approved-v-execution-brief--2026-09-09),
-including focused checks, local merge and owned cleanup. Launch waits for the separate L retirement
-follow-up to pass and merge; full gates and complete independent review remain at 2.6.9.
+including focused checks, local merge and owned cleanup. L retirement is verified and incorporated.
+V serves independent U/H baselines; the [V execution receipt](database-modernization/prerequisites.md#v-execution-binding--2026-09-10)
+owns candidate, integration and cleanup evidence. Full gates and complete independent review remain at 2.6.9.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 

@@ -138,7 +138,7 @@ export class ArchiveDatabase {
     if(q.outcome!==undefined){clauses.push("outcome=?");values.push(q.outcome);}
     if(q.after!==undefined){clauses.push("(completed_at,run_id)>(?,?)");values.push(q.after.completedAt,q.after.runId);}
     const rows=this.#database.prepare(`SELECT run_id FROM archive_records WHERE ${clauses.join(" AND ")} ORDER BY completed_at,run_id LIMIT ?`).all(...values,q.limit+1);
-    const reports=rows.map(raw=>{const id=z.object({run_id:z.string()}).parse(raw).run_id;const report=this.readPublished(id);if(report===undefined)throw new Error("archive-query-state-changed");return report;});
+    const reports=rows.map(raw=>{const id=z.object({run_id:z.string()}).parse(raw).run_id;const report=this.readPublishedReport(id);if(report===undefined)throw new Error("archive-query-state-changed");return report;});
     const items=reports.slice(0,q.limit),last=items.at(-1);
     return {items,next:reports.length>q.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
   }
@@ -173,10 +173,14 @@ export class ArchiveDatabase {
     if(bytes.length!==file.byteLength||createHash("sha256").update(bytes).digest("hex")!==file.digest)throw new Error("archive-file-integrity-mismatch");
     return bytes;
   }
-  verified(runId:string,digest:string):ArchiveReport{
+  verifiedReport(runId:string,digest:string):ArchiveReport{
     const report=this.read(runId);
     if(report?.digest!==digest)throw new Error("archive-verification-report-mismatch");
     if(!["verified","published"].includes(this.state(runId)??""))throw new Error("archive-report-unverified");
+    return report;
+  }
+  verified(runId:string,digest:string):ArchiveReport{
+    const report=this.verifiedReport(runId,digest);
     for(const file of report.content.files)this.readFile(file);
     return report;
   }
@@ -187,7 +191,8 @@ export class ArchiveDatabase {
     return this.verified(runId,digest);
   }
   publish(runId:string,digest:string):void{this.verified(runId,digest);if(this.state(runId)!=="published")this.advance(runId,digest,"verified","published");}
-  readPublished(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return this.verified(runId,report.digest);}
+  readPublishedReport(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return this.verifiedReport(runId,report.digest);}
+  readPublished(runId:string):ArchiveReport|undefined{const report=this.readPublishedReport(runId);return report===undefined?undefined:this.verified(runId,report.digest);}
   files():ArchiveReport["content"]["files"]{
     const files=new Map<string,ArchiveReport["content"]["files"][number]>();
     for(const raw of this.#database.prepare("SELECT run_id FROM archive_records ORDER BY run_id").all()){

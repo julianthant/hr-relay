@@ -80,19 +80,18 @@ L/V use prerequisites.md. Do not launch before the brief exists and is complete.
 
 **V-specific approval:** [V01–V06](prerequisites.md#approved-v-execution-brief--2026-09-09)
 assigns focused PASS, local master merge and owned worktree/ref cleanup to V. Full gates and
-complete independent review remain at 2.6.9. L retirement stays separately owned and now blocks
-V launch, superseding V's earlier early-start permission. A/Q and the archived-history repair are
-integrated; the actual L retirement release must be verified before resolving V's product base.
-V is WAITING ON that release, not READY. No task is dispatched by this registry.
+complete independent review remain at 2.6.9. L retirement is complete: integration
+`4591b263ed26d68af91b048a5cfae07f88400b38` and committed closure/base
+`9f853d60fd347a998eeacd86a014d1f71b31f391` were verified with the external L evidence.
+The old WAITING ON condition is satisfied. V execution and its common U/H release are recorded
+in [the execution receipt](prerequisites.md#v-execution-binding--2026-09-10).
+No task is dispatched by this registry.
 
-### Verified V conditional supervisor prompt — 2026-09-09
+### Historical V conditional supervisor prompt — superseded 2026-09-10
 
-Approved full plan: `c4beb7679b46e15c3aeeb06846ebc3a895469c70`. Committed content was read back
-and verified for V01–V06, ownership, proofs, gate schedule and local integration/cleanup. The
-planning checks and input identity are recorded at the V owner. This prompt remains **WAITING ON
-the separately owned L retirement focused release and local integration** even after planning
-integration. The initial A/Q and archived-history repair inputs are verified ancestors. A future
-product base cannot be resolved until L's actual receipt exists; the plan SHA is not that base.
+Approved full plan: `c4beb7679b46e15c3aeeb06846ebc3a895469c70`. The following planning-time
+prompt is retained as history; its L waiting condition has been satisfied by the verified release.
+Do not repeat L retirement or use this historical prompt to relaunch completed V work.
 
 ```text
 /supervise 2.6.8 V. WAITING ON L retirement focused PASS and local integration; do not launch implementation before that prerequisite is verified. Use GPT-6 Astra/high.

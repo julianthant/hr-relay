@@ -129,6 +129,8 @@ function deps(record: ArchivedRunRecord | undefined, open: (ref: ArtifactRef) =>
   const run = RunRecordSchema.parse({ ...QUEUED_RUN,
     envelope: { ...QUEUED_RUN.envelope, runId: canonicalId },
     lifecycle: { state: "terminal", outcome: "done", endedAt: ARCHIVED_RUN_WITH_SECTIONS.archivedAt },
+    version: 2, claimGeneration: 1,
+    completion: { schemaVersion: 1, kind: "done", expectedVersion: 1, claim: { workerId: "archive-fixture", claimGeneration: 1 }, authorizedAt: ARCHIVED_RUN_WITH_SECTIONS.archivedAt, resultDigest: "a".repeat(64) },
   });
   return {
     reader: inMemoryRunReaderFake({ records: new Map(record === undefined ? [] : [[run.envelope.runId, run]]),

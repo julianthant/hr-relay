@@ -190,6 +190,21 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/runs/:runId/advisory", operatorOpaqueIngressGuard);
 
+  // Saved documents and bytes share the same loopback admission before any authority read.
+  for (const path of ["/api/v1/archive", "/api/v1/archive/*", "/artifacts/v1/archive/*"]) {
+    app.use(path, async (c, next) => {
+      if (deps.archive.storage !== undefined) {
+        c.header("cache-control", "no-store");
+        const host = c.req.header("host");
+        const origin = c.req.header("origin");
+        if (!isLoopbackHost(host) || (origin !== undefined && origin !== `http://${host}`)) {
+          return c.json(wireError("ARCHIVE_INGRESS_FORBIDDEN", "Saved archive reads require a loopback Host and matching Origin when supplied", false), 403);
+        }
+      }
+      return next();
+    });
+  }
+
   registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
   registerOperatorRoutes(app, deps);
   registerTrustRoutes(app, deps);

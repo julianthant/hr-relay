@@ -142,7 +142,7 @@ const PHASE1_ACTIVE = {
   ],
   settings: ["apply-settings", "apply-protected-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
-  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -2717,9 +2717,6 @@ function dispatchActive(
       }
       return executeIntake(dependencies, repositories, request, now);
     case "version-archive":
-      if (request.type === "relaunch-archived-run") {
-        repositories.runtimeConfig.requireSettingsCurrent();
-      }
       return executeVersionArchive(dependencies, repositories, request, now);
     case "explorer":
       return executeExplorerEdit(dependencies, request);

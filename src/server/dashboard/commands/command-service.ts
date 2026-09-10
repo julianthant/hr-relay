@@ -93,8 +93,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       const request = CommandRequestSchema.parse(input);
 
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
-        || (request.family === "run" && (request.type === "retry" || request.type === "restart"))
-        || (request.family === "version-archive" && request.type === "relaunch-archived-run")) {
+        || (request.family === "run" && (request.type === "retry" || request.type === "restart"))) {
         deps.projection.ingestFromTimeline();
         return result;
       }

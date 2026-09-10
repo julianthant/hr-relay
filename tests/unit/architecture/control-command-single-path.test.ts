@@ -122,7 +122,7 @@ const EXPECTED_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   // D308: the Archive's delete door.
-  "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run", "delete-archived-run"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -349,7 +349,11 @@ describe("control-command-single-path", () => {
       seen.push(key);
       const generationBefore = harness.database.getMeta().authorityGeneration;
       const result = CommandResultSchema.parse(harness.kernel.execute(structuredClone(fixture)));
-      if (DEFERRED_KEYS.has(key)) {
+      if (request.type === "relaunch-archived-run") {
+        assert.equal(result.state, "rejected", key);
+        assert.equal(harness.database.getMeta().authorityGeneration, generationBefore, key);
+        assert.equal(harness.database.authority.commands.get(request.commandId), undefined, key);
+      } else if (DEFERRED_KEYS.has(key)) {
         assert.equal(result.state, "rejected", key);
         if (result.state !== "rejected") continue;
         assert.equal(result.code, "capability-unavailable", key);
@@ -366,7 +370,7 @@ describe("control-command-single-path", () => {
     }
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
       actions.map((action) => `${family}/${action}`));
-    assert.deepEqual([...new Set(seen)].sort(), [...registry].sort(), "the fixture corpus must cover every family/action");
+    assert.deepEqual([...new Set(seen)].sort(), [...registry, "version-archive/relaunch-archived-run"].sort(), "the fixture corpus must cover every active and historical family/action");
   });
 
   /*

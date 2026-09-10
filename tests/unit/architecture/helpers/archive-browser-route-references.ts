@@ -153,3 +153,38 @@ export async function archiveBrowserRouteReferences(input: ArchiveBrowserProbe):
   assert.ok(references !== undefined, "Archive browser observation produced no result");
   return references;
 }
+
+import { SavedArchiveReport } from "../../../../src/dashboard/surfaces/archive-report.js";
+import { SavedArchiveFileWireSchema } from "../../../../src/domain/dashboard/archive.js";
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { FIXTURE_SAVED_REPORT } from "../../../parity/helpers/fixture-archive.js";
+
+/** Generic saved files must reach a real native link, independently of historical capture viewers. */
+export async function savedArchiveBrowserRouteReferences(beforeObservation?: (host: HTMLElement) => () => void): Promise<readonly ClientRouteReference[]> {
+  const report = FIXTURE_SAVED_REPORT, digest = report.files[0].digest;
+  const resource = { runId: report.runId, digest, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${report.runId}/files/${digest}` } };
+  const paths: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://saved-wire.test", fetchImpl: async url => { paths.push(url); return Response.json(resource); } });
+  const host = document.createElement("div"); const previous = [...document.body.childNodes];
+  const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+  document.body.append(host); const root = createRoot(host); let restore: (() => void) | undefined;
+  try {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveReport, { report }) })));
+    assert.deepEqual(paths, [`http://saved-wire.test/api/v1/archive/reports/${report.runId}/files/${digest}`]);
+    restore = beforeObservation?.(host);
+    const links = host.querySelectorAll("a[href]");
+    assert.equal(links.length, 1, "saved report has no exact native download sink");
+    const path = links[0].getAttribute("href");
+    SavedArchiveFileWireSchema.parse({ runId: report.runId, digest, resource: { state: "available", downloadUrl: path } });
+    assert.equal(path, resource.resource.downloadUrl);
+    assert.equal(typeof path, "string");
+    return [{ file: "src/dashboard/surfaces/archive-report.tsx", path: String(path) }];
+  } finally {
+    restore?.(); await act(async () => root.unmount()); host.remove();
+    assert.deepEqual([...document.body.childNodes], previous);
+    if (priorAct === undefined) Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    else Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", priorAct);
+  }
+}

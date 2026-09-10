@@ -2,7 +2,7 @@ import type { RunRecordRefusal } from "../domain/authority.js";
 /**
  * The ONE place N queued runs are inserted (ref dashboard-surfaces §2.4 Enqueue, D171, D174).
  *
- * Start, intake, and archive-relaunch commands share this atomic fan-out.
+ * Start and intake commands share this atomic fan-out.
  * Lifecycle creation and publication belong to the injected run service.
  *
  * Everything it writes is inside the CALLER's authority transaction, so a
@@ -112,6 +112,7 @@ export function fanOutQueuedRuns(
   now: string,
   origin: string,
 ): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[]; runs: readonly RunRecord[] }> {
+  if (envelope.relaunch !== undefined) refuse("archive relaunch is retired", { reason: "invalid-state" });
   const runs: RunRecord[] = [];
   const activeConfig = repositories.runtimeConfig.get();
   if (activeConfig === undefined) throw new Error("fan-out has no active runtime config");
@@ -182,11 +183,7 @@ export function fanOutQueuedRuns(
       runtimeConfig,
     }).filter(([, value]) => value !== undefined)));
     const publication = { title: entry.title, ...(entry.subtitle === undefined ? {} : { subtitle: entry.subtitle }), actorId: envelope.actorId };
-    const { commandId, retryOf: unusedRetryOf, ...relaunchCreate } = create;
-    void unusedRetryOf;
-    const outcome = envelope.relaunch === undefined ? lifecycle.create(create, publication)
-      : lifecycle.relaunch({ commandId: lifecycleCommandId("operator-relaunch", commandId),
-        ...envelope.relaunch, relaunchedBy: envelope.actorId, create: relaunchCreate }, descriptor, publication);
+    const outcome = lifecycle.create(create, publication);
     if (outcome.state === "refused") refuse("run lifecycle refused", outcome.refusal);
     const record = requireLifecycleApplied(outcome);
     runs.push(record);

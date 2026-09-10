@@ -5,7 +5,7 @@ import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../domain/clock.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
-import { archivedRunReferenceFingerprint, CURRENT_ARCHIVE_SCHEMA_GENERATION } from "../domain/archive/model.js";
+import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
 import {
   RunExistenceSchema,
   type RunExistence,
@@ -52,7 +52,6 @@ import {
   CanonicalTransitionRequestSchema,
   CanonicalWorkerTransitionRequestSchema,
 } from "../infra/sqlite/run-store-contracts.js";
-import { ArchiveRelaunchStorageRecordSchema } from "../infra/sqlite/storage-records.js";
 import type { AuthorityDatabase, AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 
 const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
@@ -756,89 +755,16 @@ export class RunRecordService {
     return this.retrySource(input, descriptor, true, publication);
   }
 
+  /** Historical replay remains readable; new archive relaunch creation is retired. */
   relaunch(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
+    void descriptor; void publication;
     const request = CanonicalRelaunchRequestSchema.parse(input);
-    descriptorRuntimeNodes(descriptor);
-    const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
+    return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
       const journal = this.inspectJournal(repositories, "relaunch", request, { kind: "none" });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
-      const archived = repositories.archivedRuns.get(request.archivedRunId);
-      if (archived === undefined) {
-        const tombstone = repositories.deletedRuns.get(request.archivedRunId);
-        return tombstone === undefined
-          ? { state: "absent", runId: request.archivedRunId }
-          : refused({ reason: "source-deleted" });
-      }
-      const archiveFingerprint = archivedRunReferenceFingerprint(archived);
-      if (archiveFingerprint !== request.archiveFingerprint) {
-        return refused({ reason: "schema-mismatch", digest: request.archiveFingerprint });
-      }
-      const create = request.create;
-      if (descriptor.id !== archived.workflowId || create.workflow !== descriptor.id) {
-        return refused({ reason: "workflow-unregistered" });
-      }
-      if (create.descriptorVersion !== descriptor.version
-        || create.contractFingerprint !== descriptor.contractFingerprint
-        || canonicalJsonStringify(create.input.raw) !== canonicalJsonStringify(archived.input.raw)) {
-        return refused({ reason: "schema-mismatch", digest: archiveFingerprint });
-      }
-      if (!this.runtimeMatches(create.runtimeConfig)) {
-        return refused({ reason: "runtime-stale" });
-      }
-      if (!runSettingsAvailable(repositories, create)) {
-        return refused({ reason: "runtime-stale" });
-      }
-      if (create.sessionId !== undefined) {
-        const session = repositories.runSessions.get(create.sessionId);
-        if (session === undefined || session.workflow !== create.workflow) {
-          return refused({ reason: "identity-conflict", field: "sessionId" });
-        }
-      }
-      const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
-      if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
-      const now = this.dependencies.clock.now().toISOString();
-      const itemId = deriveItemId(create.workflow, create.matchKey);
-      const { code, matchKey, runtimeConfig, input: storedInput, sessionId, appVersion, ...envelope } = create;
-      void matchKey; void runtimeConfig;
-      const run = RunRecordSchema.parse({
-        envelope: {
-          ...selectNewRunIdentity(repositories, envelope),
-          runId,
-          itemId,
-          traceId: deriveTraceId(code, runId, this.dependencies.clock),
-          attempt: repositories.runs.nextItemAttempt({ workflow: create.workflow, itemId }),
-          enqueuedAt: now,
-        },
-        input: storedInput,
-        lifecycle: { state: "queued" },
-        claimGeneration: 0,
-        runNumber: repositories.runs.nextWorkflowRunNumber(create.workflow),
-        ...(sessionId === undefined ? {} : { sessionId }),
-        ...(appVersion === undefined ? {} : { appVersion }),
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-      });
-      repositories.runs.enqueue(run);
-      repositories.archiveRelaunches.insert(ArchiveRelaunchStorageRecordSchema.parse({
-        archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
-        runId,
-        archivedRunId: archived.runId,
-        relaunchedIdentity: {
-          workflowId: descriptor.id,
-          descriptorVersion: descriptor.version,
-          contractFingerprint: descriptor.contractFingerprint,
-        },
-        relaunchedBy: request.relaunchedBy,
-        relaunchedAt: now,
-      }));
-      this.recordJournal(repositories, journal.command, journalRun(run));
-      this.dependencies.publishQueued(run, publication);
-      return { state: "applied", run };
+      return refused({ reason: "invalid-state" });
     });
-    return outcome;
   }
 
   private retrySource(input: unknown, descriptor: AnyWorkflowDescriptor, restart: boolean, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {

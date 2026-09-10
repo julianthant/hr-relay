@@ -1,3 +1,5 @@
+import { queryQueueSummaries, queryActivitySummaries } from "./queries/run-summaries.js";
+import type { ServedSummaryQueries } from "./projectors/run-queue-projection.js";
 import { composeFailureResolution } from "./compose/failure-resolution.js";
 import { localDatePart } from "../../domain/clock.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../domain/archive/retention.js";
@@ -668,7 +670,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    */
   const ledger = createTransactionHistory(database.authority);
 
-  const projection = createOperatorProjection({ stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: lifecycle });
+  const summaries: ServedSummaryQueries = {
+    withSnapshot: read => database.withAuthorityReadSnapshot(read),
+    queue: query => queryQueueSummaries(database, query),
+    activity: (from, to) => queryActivitySummaries(database, { from, to, generatedAt: clock.now().toISOString() }, { descriptors, ledger }),
+  };
+  const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), summaries };
+  const projection = createOperatorProjection({ stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
 
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
 
@@ -767,7 +775,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
-  const archiveDeps = createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle });
+  const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
 
   const explorerDeps = {
     clock,
