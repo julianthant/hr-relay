@@ -1328,3 +1328,60 @@ and `git branch -d codex/lifecycle-repair` succeeded. Physical path, registratio
 Primary local files and other tasks were preserved; no auxiliary task was created or archived.
 The repaired shared-interface assignment is complete. Neither A/Q implementation nor the approved
 L retirement follow-up has launched. Full acceptance/review remains 2.6.9. No push occurred.
+
+## V execution binding — 2026-09-10
+
+V01–V06 execute under approved plan `c4beb7679b46e15c3aeeb06846ebc3a895469c70`, with one supervisor and zero workers/reviewers. Branch `codex/database-surfaces`, checkout `/Users/julianhein/Projects/hr-worktree-database-contracts`, exact base `9f853d60fd347a998eeacd86a014d1f71b31f391`, tree `7fd6a6f2be464668d11e9e4db84135cd93f995c8`. A/Q, repaired L, both archived transaction repairs and L integration `4591b263ed26d68af91b048a5cfae07f88400b38` are verified ancestors. The L committed closure and external release/cleanup receipts satisfy the older WAITING ON wording; V does not repeat retirement.
+
+This supervisor owns local master integration after complete focused PASS and target checks, followed by incorporated owned cleanup. All retained allocation boundaries and stop conditions apply. Full gates and independent review remain at 2.6.9. Evidence is preserved at `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910`. V remains in progress; U/H are not launched.
+
+### V shared custody-read blocker — 2026-09-10
+
+V01's seven combination suites pass 53 tests. Initial V02 summary composition passes 33 tests across the new summary selector and existing Activity/report-export selectors; V02 is not complete. V03 preflight exposes an excluded shared-storage boundary: removing one retained attachment makes canonical archived disposition, saved report reading, and reading a different intact attachment all throw `archive-file-unavailable`. Three new regression cases fail; restoring the exact removed bytes restores all three original answers without changing either database. The shared storage and A source files are byte-identical to the assigned base.
+
+`RunRecordService.read -> AuthorityDatabase.transferredRun -> resolveRunEvidenceOwner -> ArchiveDatabase.verified` verifies every attachment before returning canonical ownership. The lifecycle report and file ports use that same path. Therefore V cannot authenticate an individual missing/foreign attachment independently of unrelated file availability, and cannot preserve the existing separation between frozen report metadata and per-file resource availability. Catching the error as the requested file's absence would assert membership that was never admitted; serving a raw report would bypass canonical integrity. Neither workaround is permitted.
+
+The approved V stop boundary applies: shared storage/custody repair needs an explicit scope amendment or an incorporated repair from its owner. The repair must separate canonical transfer/report integrity from per-file byte availability while preserving full verification for transfer, recovery and deletion. No storage/schema changes were made here. No release candidate, merge, U/H launch or owned cleanup occurred. The incomplete V work remains isolated on its assigned branch. Full 2.6.9 acceptance remains outstanding. Logs, exact commands, frozen working inputs and recovery state are in `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`.
+
+Final blocked-state validation: full lint and whitespace PASS. The three custody cases remain FAIL after the test-only lint repair. Ten upstream source/fixture/migration files match the exact base (`unchanged-blocker-inputs.json`). Recovery state is in `docs/handoffs/2026-09-10-v-custody-boundary.md`; no acceptance or integration is claimed.
+
+### V custody-read scope amendment — 2026-09-10
+
+The operator answered the explicit shared-repair authorization request with “complete it.” V now owns the narrow canonical report/file-read separation in `src/infra/sqlite/archive-database.ts`, `src/infra/sqlite/run-evidence-ownership.ts`, `src/core/run-lifecycle-storage.ts` and necessary authority composition, plus its focused regression proof. Preserve full verification for transfer, recovery and deletion; no new migration or operator database application is authorized. Resume the existing V01–V06 assignment and its focused cadence, integration and cleanup.
+
+
+### V implementation and focused proof — 2026-09-10
+
+V01–V04 are implemented on the recorded isolated base. Real composition now supplies Q's published
+Queue/Activity ports, with canonical selected-row action enrichment and unchanged transaction-history
+authority. Generic report and exact-member file reads use A's sealed display document and minimal
+frozen transfer identity, without current run/workflow parsing. Missing file bytes remain distinct
+from report availability; full transfer/recovery/deletion verification remains intact. The original
+custody blocker is resolved by the approved narrow repair. No migration was added or run.
+
+Active relaunch registration, UI producer and fan-out/run-service creation are retired. Historical
+schemas, journal replay and lineage remain. The service regression fixtures explicitly use the
+released historical schema; they seed historical relaunch records instead of reopening creation.
+Normal start/retry/restart and UNKNOWN refusal remain covered by the named kernel/service suites.
+
+The app imports H's generic `archive-report.tsx` baseline directly. U's existing Queue/Activity
+surfaces consume the composed served wires. Their consumer paths, pure models and shared fixtures
+are frozen together here; neither downstream peer is launched. Generic report values/tables/text,
+explicit missing sections, attachment status, version review/application results, deletion and
+navigation are usable on V alone. Private display names/subtitles/member titles are withheld on
+protected Queue rows, while canonical private source data stays unchanged.
+
+The full named unit batch passes 338 tests in 14 suites. The combination batch passes 53 tests in
+seven suites. The six named architecture selectors plus roadmap binding pass 101 tests, including
+new native saved-file sink observation and missing/foreign-sink negative controls. These are scoped
+V checks, not 2.6.9 acceptance. Exact final logs, input hashes, desktop fixtures/screenshots, release
+and cleanup receipts are retained at `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`.
+Candidate, integration and cleanup identities are recorded below only after verification.
+
+### V05 focused candidate — 2026-09-10
+
+Implementation `1d434465c4cf8c82d52363df07264d11fea08f6e`, tree `e76273c71882dfbf1168b202fa658f7fdb014868`, passes the complete named unit batch (14 suites / 338 tests), combination batch (7 / 53), six architecture selectors plus roadmap binding (7 / 101), and lint. Manifest/store generation and freshness, roadmap generation/freshness, added links, nine existing instruction pairs, maximum chain 17,333 bytes and whitespace pass. No full gate or independent review is claimed.
+
+The 2,346 frozen inputs and exact commands/results are retained in `candidate-inputs.json`, `candidate.json` and `final-*` files in the external evidence directory. Playwright CLI proof covers both independent consumer orders, light/dark, 1024×720 and 1440×900, keyboard, genuine 125% browser zoom, generic sections, attachment refusal and empty/loading/stale/deleted recovery. Final screenshots were captured after transitions settled. The intentional stale HTTP 409 and fixture favicon 404 are documented; no unresolved application failure remains. Owned browser sessions and synthetic server were stopped.
+
+V05 is complete. V06 integration and cleanup are recorded only after verification below. U/H consume one common immutable release from the external `release.json`; this candidate does not launch them.
