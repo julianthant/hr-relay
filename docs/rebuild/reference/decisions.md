@@ -2419,3 +2419,15 @@ own G's local master merge and owned cleanup after focused PASS. Full gates and 
 independent review remain in 2.6.9. The verified resolver-port release updates only G's prerequisite
 binding; it adds no product scope or new approval requirement. Implementation is unstarted;
 no push, live application, sibling dispatch or final phase acceptance is claimed.
+
+
+### 2026-09-10 — 2.6.9 recovery separation and final acceptance allocation
+
+The operator approved deleting expired settings import adapters while retaining supported stopped
+database conversion and historical archive recovery. [D332.9](dashboard-surfaces.md#phase-269-recovery-separation--2026-09-10)
+owns admission/expiry; [guard mapping](guards-and-tests.md#phase-269-retirement-proof-amendment--2026-09-10)
+owns replacement proof. The [F01–F07 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-execution-brief--2026-09-10)
+and [workflow amendment](../../roadmap/roadmap.md#phase-269-final-acceptance-allocation-2026-09-10)
+own one Astra/medium supervisor, zero implementation workers, four focused Astra/high read-only
+reviews plus fresh integration review, full gates, local master integration and cleanup. Implementation
+and guard activation remain unstarted; no operator database action, HR write or push is authorized.

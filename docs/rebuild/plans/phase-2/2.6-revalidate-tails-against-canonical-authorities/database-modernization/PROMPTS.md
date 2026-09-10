@@ -172,9 +172,14 @@ when producing its prompt:
 
 ## Final session prompt
 
-```text
-/supervise 2.6.9 (p2f-proof; historical numbers are not launch IDs) using /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md and the parent phase Task 9. Use GPT-6 Astra/high. Verify the approved plan commit and every recorded development candidate before creating the registry's task-owned validation branch/worktree. You are the single final integration/repair owner. Combine the exact candidates, check peer merge order independence, run all required heavy gates and original migration/recovery/adapter-retirement proof, and fix every remaining failure here. Do not send repair work back to completed peers. Obtain fresh independent read-only sup_review on Astra/high for the complete frozen candidate; fix findings here and rerun required gates/review. Preserve all assertions, coverage floors, historical recovery evidence, UNKNOWN refusal and no-second-controlled-write boundaries. Integrate locally only when the operator assigns it after PASS and gates; never push. Complete fixture handover and owned cleanup within this same final task after acceptance, reusing unchanged gate evidence only under D191. Keep Done / Now / Remaining visible. No automatic next-task dispatch or idle observers.
-```
+The operator approved [F01–F07](final-validation.md#approved-execution-brief--2026-09-10), including
+recovery separation, one Astra/medium supervisor, zero implementation workers, R1–R4 focused
+Astra/high reviews followed by fresh R5 integration review, full gates and local master integration/
+cleanup. The older generic final-session prompt is superseded. Implementation is unstarted.
+
+Planning persistence is in progress. A resolved launch prompt is recorded here only after the full
+brief is committed, scoped checks pass, prerequisites are verified and documentation integration is
+available. No product task is dispatched by this registry.
 
 ## Four-checkout capacity and ownership transfer
 

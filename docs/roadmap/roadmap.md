@@ -1288,7 +1288,7 @@ builds:
 - [ ] PROOF combine database development candidates, run required heavy gates, fix remaining defects here and obtain fresh complete independent review
 - [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
 - [ ] PROOF cite historical D135 and perform no second controlled write
-- [ ] PROOF displaced sources and compatibility adapters cannot affect a response
+- [ ] PROOF retire obsolete settings imports with named below-floor refusal while preserving supported stopped database/archive recovery; displaced sources cannot affect a response
 - [ ] DOCS finish stable-contract fixture handover to 3.1 and owned cleanup within this final task
 
 needs:
@@ -1301,6 +1301,7 @@ needs:
 
 log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.4 with M17/M22 over a migrated copy and §D332.7 item 6 (no redesign) · left: A0/A1 deleted and their two inventory entries flipped to `active` in that commit
+- 2026-09-10 | F01–F07 plan approved | integrated prerequisites through 22bf85d3a; recovery separation ratified; one Astra/medium supervisor, four focused Astra/high reviews plus integration review; full gates, local merge, handover and cleanup required. Implementation unstarted; exact brief and verified prompt at final-validation.md/PROMPTS.md
 
 ### Historical disposition record after 2E
 status: never
@@ -4036,3 +4037,18 @@ This file's own appendices went too:
   2026-08-20), dated because it is an inventory of a moving world.
 - **Appendix C (verify any of this yourself)** — the project `CLAUDE.md` §Commands, which already
   carries every command it listed (`phase` and `storage doctor` are subcommands of `npm run cli`).
+
+
+### Phase 2.6.9 final acceptance allocation (2026-09-10)
+
+The operator approved the [F01–F07 execution brief](../rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-execution-brief--2026-09-10).
+One Astra/medium supervisor implements and repairs the combined candidate; zero implementation
+workers. Four bounded read-only `sup_review` assignments on Astra/high cover storage/recovery,
+archive/lifecycle, execution/domains and served summaries/UI; one fresh Astra/high integration
+reviewer follows all four. Maximum three reviewers concurrently. This supersedes the earlier
+single-complete-reviewer and Astra/high supervisor allocation for 2.6.9 only. All scopes plus
+integration must PASS; no author-only or partial coverage acceptance. The same supervisor owns
+local master integration after review and required full gates, handover and owned cleanup.
+The [recovery amendment](../rebuild/reference/dashboard-surfaces.md#phase-269-recovery-separation--2026-09-10)
+resolves adapter expiry without removing supported database/archive recovery. No Phase 3 work,
+operator database application, second controlled HR write, push or next-task dispatch is authorized.

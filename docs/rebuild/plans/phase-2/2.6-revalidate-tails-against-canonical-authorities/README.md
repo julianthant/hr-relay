@@ -279,7 +279,13 @@ none is replaced by the database redesign or a new controlled write.
 
 **Task 1.6.6 deletion handoff.** Delete the migration-only
 `src/infra/compat/{upgrade-sources,pre-floor-settings,settings-source-recovery,settings-database-upgrade}.ts`
-modules and their stopped upgrade entry after the required recovery proof. Activate
+modules and their obsolete settings-import entry behavior after the required recovery proof.
+The operator-approved [recovery separation](../../../reference/dashboard-surfaces.md#phase-269-recovery-separation--2026-09-10)
+retains supported stopped database conversion and historical archive recovery under an explicit owner;
+do not delete those L consumers with the expired settings adapters. The complete
+[F01–F07 brief](database-modernization/final-validation.md#approved-execution-brief--2026-09-10)
+owns implementation, four focused reviews plus integration review, gates and local merge/cleanup.
+Activate
 `authority-upgrade-adapters-retired` with module-absence and named legacy-input refusal tests.
 `sqlite-settings-authority` remains active; `authority-upgrade-adapters-isolated` retires when its
 subjects are deleted. Preserve the strict v1/v2 historical-backup readers

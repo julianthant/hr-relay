@@ -168,7 +168,7 @@ If the proposed split cannot satisfy both merge orders, amend it before launchin
 | V | Freeze working served APIs and shared UI wiring from accepted development A/Q candidates; remove remaining shared relaunch wiring | prerequisites.md |
 | U | Queue/Activity consumers and exports through served queries; benchmark query count/latency with isolated fixtures | decisions.md group 5; timeline.md transaction metric boundary |
 | H | Generic saved archive report list/detail/filter/download viewer; remove archive relaunch UI | decisions.md group 3 |
-| 2.6.9 | Sole final integration/repair owner; required migration/recovery, full gates, fresh independent review; no repair handbacks | final-validation.md and parent phase Task 9 |
+| 2.6.9 | Sole Astra/medium finalizer; approved recovery separation, full gates, four focused Astra/high reviews plus fresh integration review, local merge/handover/cleanup; no repair handbacks | [F01–F07 brief](final-validation.md#approved-execution-brief--2026-09-10) and parent phase Task 9 |
 
 R exclusively owns the seven naming-only changes in [renames.md](renames.md). F consumes those
 names and owns approved removal of unused gates, ocr_approvals and SQL notes, diagnostic retirement

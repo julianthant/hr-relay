@@ -2346,6 +2346,31 @@ policy has five rules; the roster and each adapter's deletion test live in ref g
    the remedy "restore and upgrade on a checkout at the last release that carried `storage upgrade`, or
    start a fresh root (D321)" — the same posture D290 takes toward a foreign suffix.
 
+###### Phase 2.6.9 recovery separation — 2026-09-10
+
+The operator approved separating A0/A1 expiry from supported database conversion and recovery.
+Delete the four settings-import adapters named by the actual §5.2 binding and their obsolete import
+entry behavior. Do not preserve settings-file/environment imports, old pathname settlement,
+tombstone backfill or orphan-gate migration under a renamed module. First execute and record the
+original synthetic fresh/v29 migration and migrated-copy restore proof while the adapters exist.
+
+The current supported database conversion and historical archive recovery introduced by Phase 2.6 L
+remain explicitly owned stopped operations. Preserve their source/backup binding, populated archive
+conversion, two-database/file interruption and exact replay guarantees. The installed schema/floor
+at approval are 49/46; this amendment does not lower the floor or admit a new source range. After
+expiry, below-floor databases and backups refuse `authority-below-floor` with schema/floor and an
+original-compatible-release or fresh-root remedy, before authority replacement, conversion or
+credential access. If an incomplete old conversion requires expired import behavior, refuse with
+its original-release remedy rather than guessing completion or rewriting its journal.
+
+Strict historical backup readers and immutable journal grammars remain available for authenticated
+inspection. Inspection does not authorize restoring a below-floor source. Preserve supported
+historical database recovery independently of these expired settings imports; valid supported-source
+controls must still reach successful settlement. Ordinary boot and current responses never obtain
+values from displaced sources. No operator database application or second controlled write is
+introduced. [The approved F01–F07 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-execution-brief--2026-09-10)
+owns execution and proof; this amendment is a requirement, not an implementation claim.
+
 The roster this contract names, with the phase each expires (ref guards-and-tests §5.2 carries the
 oracle per row): **A0** the upgrade command's pre-floor readers (the old-layout parser and sidecar
 reader over FROZEN pre-floor copies of `SettingsFileRecordSchema`, `EditableSettingsOverrideSchema`

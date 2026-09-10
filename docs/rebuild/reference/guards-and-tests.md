@@ -1689,9 +1689,30 @@ only runtime ordinary authority. The active `authority-upgrade-adapters-isolated
 transitive imports and the dynamic storage dispatch boundary. Its A0 paths are
 `src/infra/compat/upgrade-sources.ts`, `pre-floor-settings.ts` and
 `settings-database-upgrade.ts`; A1 is `src/infra/compat/settings-source-recovery.ts`.
-Only `src/server/storage/upgrade.ts` may enter this migration graph. Phase 2.6 Task 2 deletes these
+Only `src/server/storage/upgrade.ts` may enter this migration graph. Current Phase 2.6 Task 9 deletes these
 four adapters and activates `authority-upgrade-adapters-retired`; its test file remains absent
 until that deletion. A2/A3 retain their existing assignments.
+
+#### Phase 2.6.9 retirement proof amendment — 2026-09-10
+
+The operator-approved [D332.9 separation](dashboard-surfaces.md#phase-269-recovery-separation--2026-09-10)
+retains supported stopped database conversion/historical archive recovery while deleting the four
+expired settings adapters and their import behavior. Before deletion, execute and preserve the
+fresh/v29 migration and migrated-copy recovery proof. At deletion, activate
+`authority-upgrade-adapters-retired` and retire `authority-upgrade-adapters-isolated` in the same
+implementation commit and inventory update. Keep `sqlite-settings-authority` active. The retirement
+guard must fail for any restored adapter module/import or equivalent old settings import behavior;
+module absence alone cannot excuse copying that behavior to another file.
+
+Add named below-floor database/backup refusal tests at the actual stopped entry boundaries, proving
+no replacement, conversion or credential access, with successful supported-source controls. Retain
+historical-reader grammar/integrity tests and supported populated archive conversion/interruption/
+replay cases. Rebind old fixtures only with an assertion-by-assertion historical/current/refusal
+mapping; never blanket-delete their coverage or execute deleted adapters from another checkout in
+finished gates. A renamed/refactored supported conversion entry must remain behind explicit stopped
+admission and have import/consumer coverage. This planning amendment changes no guard status yet.
+
+The following strict-reader implementation binding remains applicable after retirement.
 
 Strict historical-backup readers `backup-inspection.ts`, `d331-settings-current.ts`,
 `d331-settings-root.ts` and `d331-protected-journal.ts` under `src/infra/compat/` remain after
