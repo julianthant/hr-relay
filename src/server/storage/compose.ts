@@ -1,4 +1,5 @@
-import { restoreLifecyclePair } from "../../core/run-lifecycle-storage.js";
+import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
+import { restoreLifecyclePair, verifyLifecyclePair } from "../../core/run-lifecycle-storage.js";
 import { RunRecordService } from "../../core/run-record-service.js";
 /**
  * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
@@ -381,13 +382,21 @@ async function restoreCommand(
     );
     const resolvedManifest = resolve(manifestArgument);
     const paired = resolvedManifest.endsWith(".lifecycle.json");
-    if (!paired && existsSync(join(stateRoot,"archive.sqlite"))) throw new Error("paired-lifecycle-backup-required");
-    const report = paired ? await restoreLifecyclePair({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
+    const pairedSelection=paired ? await verifyLifecyclePair(resolvedManifest) : undefined;
+    const selected = paired ? undefined : await verifyBackupManifestAtPath(resolvedManifest,sourceDatabaseIdentity);
+    const historical = selected !== undefined && selected.manifest.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION;
+    if (!paired && !historical && existsSync(join(stateRoot,"archive.sqlite"))) throw new Error("paired-lifecycle-backup-required");
+    const { restoreHistoricalStorage, upgradeStorage } = await import("./upgrade.js");
+    const historicalResult = historical ? await restoreHistoricalStorage({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
+      processLockRoot,stoppedProofMaxAgeMs:RESTORE_STOPPED_PROOF_MAX_AGE_MS},{manifestPath:resolvedManifest,stoppedSystemProof},join(repoRoot,".env"),clock) : undefined;
+    const report = historicalResult !== undefined ? historicalResult.report : paired ? await restoreLifecyclePair({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
       processLockRoot,stoppedProofMaxAgeMs:RESTORE_STOPPED_PROOF_MAX_AGE_MS},
       {manifestPath:resolvedManifest,stoppedSystemProof},rebuildStagedProjections(stateRoot,appVersion,clock),clock) : await service.restore({
       manifestPath: resolve(manifestArgument),
       stoppedSystemProof,
     });
+    const upgrade = historicalResult?.upgrade ?? (report.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION
+      ? await upgradeStorage({stateRoot,processLockRoot,environmentFile:join(repoRoot,".env"),plan:false,backupManifest:pairedSelection?.live.manifestPath},clock) : undefined);
     // Observe credentials only AFTER successful SQLite replacement. Their failure
     // neither authorizes a rollback nor changes the reported restore outcome.
     const credentials = (() => {
@@ -398,7 +407,7 @@ async function restoreCommand(
       ? `credentials: revision ${String(credentials.revision)}; ${Object.entries(credentials.entries).map(([name, entry]) => `${name}=${entry.present ? "present" : "absent"}`).join(" · ")}`
       : "credentials: unavailable — credential-store-unavailable";
     return {
-      output: json ? JSON.stringify({ ...report, credentials }, null, 2) : `${formatRestoreReport(report)}\n${availability}`,
+      output: json ? JSON.stringify({ ...report, credentials, ...(upgrade === undefined ? {} : {upgrade}) }, null, 2) : `${formatRestoreReport(report)}\n${availability}${upgrade === undefined ? "" : `\nstorage upgrade: ${upgrade.state} (v${String(upgrade.fromSchemaVersion)} → v${String(upgrade.toSchemaVersion)})`}`,
       exitCode: 0,
     };
   } catch (error) {
@@ -559,8 +568,8 @@ export async function composeStorageCommand(
       }
       return { output: `unsupported storage upgrade argument: ${argument ?? "missing"}\n${STORAGE_USAGE}`, exitCode: 2 };
     }
-    const { upgradeStorage } = await import("./upgrade.js");
     try {
+      const { upgradeStorage } = await import("./upgrade.js");
       const report = await upgradeStorage({ stateRoot: join(repoRoot, isolation.stateRoot),
         processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan"),
         ...(timelineSourceDirectory === undefined ? {} : { timelineSourceDirectory }),

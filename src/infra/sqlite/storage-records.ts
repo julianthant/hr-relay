@@ -175,11 +175,23 @@ export const ProjectionStorageRecordSchema = z.strictObject({
   updatedAt: IsoInstantSchema,
 });
 
+/** Exact historical review/application sources, never executable current claims. */
+export const HistoricalVersionChangeSchema = z.strictObject({
+  schemaVersion: z.literal("historical-archive-v1"), state:z.literal("historical"), changeId: z.string().uuid(),
+  sourceDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+  plan: VersionPlanStorageRecordSchema, application: VersionBumpApplicationStorageRecordSchema.nullable(),
+  reports: z.array(z.strictObject({runId:z.string().uuid(), transferId:z.string().uuid(),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/u),reportDigest:z.string().regex(/^[a-f0-9]{64}$/u)})),
+  absentRunIds: z.array(z.string().uuid()),
+}).refine(row => row.changeId === row.plan.versionPlanId
+  && (row.plan.state === "applied") === (row.application !== null)
+  && (row.application === null || row.application.versionPlanId === row.changeId), "historical-version-change-identity-mismatch");
+export const RetainedVersionChangeSchema = z.union([VersionChangeStorageSchema, HistoricalVersionChangeSchema]);
+
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   archive_transfers: ArchiveTransferIdentitySchema,
-  version_changes: VersionChangeStorageSchema,
+  version_changes: RetainedVersionChangeSchema,
   run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,
   // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row

@@ -1,3 +1,4 @@
+import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
 import { completionFromAuthorization } from "../../../src/domain/run/completion.js";
 import { databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
@@ -304,6 +305,11 @@ function openDatabase(path: string): AuthorityDatabase {
   return database;
 }
 
+function openHistoricalDatabase(path:string):AuthorityDatabase {
+  timelineFixturePaths.set(resolve(dirname(path)),path);
+  const database=historicalArchiveAuthority(path,CLOCK);databases.push(database);return database;
+}
+
 function corruptTerminalRun(
   path: string,
   runId: string,
@@ -557,7 +563,7 @@ function rewriteArchivedFailureIdentity(
 }
 
 function seedFailedArchivedAuthority(root: string, authorityPath: string): void {
-  const database = openDatabase(authorityPath);
+  const database = openHistoricalDatabase(authorityPath);
   const sourceRun = archivedSourceRun();
   database.authority.runs.enqueue(sourceRun);
   corruptTerminalRun(authorityPath, sourceRun.envelope.runId, (run) => ({
@@ -847,7 +853,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
-  it("prepares the three span authority lookup statements once for the whole root batch", () => {
+  it("prepares current span authority lookup statements once and omits retired archive SQL", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     const database = openDatabase(authorityPath);
@@ -887,7 +893,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       probe.mockRestore();
     }
 
-    assert.equal(rootLookupPrepares, 3);
+    assert.equal(rootLookupPrepares, 2);
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
   });
 
@@ -960,7 +966,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("refuses archived authority whose required retained task is missing", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(sourceRun);
@@ -992,7 +998,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("refuses archived authority whose required retained task is malformed", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(sourceRun);
@@ -1693,7 +1699,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("refuses archived authority paired with a retained queued task", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(sourceRun);
@@ -1728,7 +1734,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("reconciles an archive paired with its exact terminal retained task", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.authority.runs.enqueue(sourceRun);
     const terminal = database.authority.runs.transition({
@@ -1896,7 +1902,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("refuses terminal retained authority whose outcome contradicts the archive", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.authority.runs.enqueue(sourceRun);
     const terminal = database.authority.runs.transition({
@@ -1938,7 +1944,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("refuses terminal retained authority whose end instant contradicts the archive", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.authority.runs.enqueue(sourceRun);
     const terminal = database.authority.runs.transition({
@@ -2022,7 +2028,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     it(`refuses archived authority paired with a retained ${fixture.state} task`, async () => {
       const root = testRoot();
       const authorityPath = join(root, "state.sqlite");
-      const database = openDatabase(authorityPath);
+      const database = openHistoricalDatabase(authorityPath);
       const sourceRun = archivedSourceRun();
       database.withAuthorityTransaction((repositories) => {
         repositories.runs.enqueue(sourceRun);
@@ -2063,7 +2069,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("classifies a retained task tuple that contradicts its paired archive root", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     const sourceRun = archivedSourceRun();
     database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(sourceRun);
@@ -2133,7 +2139,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   it("classifies priority drift in the exact archived tuple", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
-    const database = openDatabase(authorityPath);
+    const database = openHistoricalDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
     const terminal = database.authority.runs.transition({
       runId: QUEUED_RUN.envelope.runId,
@@ -3736,6 +3742,8 @@ describe("authority.health preflight and static recovery boundary", () => {
   it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {
     const adapterPath = "src/infra/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
+      "src/infra/compat/archive-upgrade-journal.ts",
+      "src/infra/sqlite/archive-compatibility.ts",
       "src/infra/compat/backup-inspection.ts",
       "src/infra/compat/upgrade-sources.ts",
       adapterPath,

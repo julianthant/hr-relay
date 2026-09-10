@@ -1,3 +1,5 @@
+import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../src/core/run-lifecycle-storage.js";
+import { ArchivedTransactionsSchema } from "../../src/domain/archive/model.js";
 import { HistoricalOperationSourceSchema } from "../../src/events/timeline.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
@@ -110,22 +112,26 @@ describe("confirmed database transaction history", () => {
     assert.equal((await w.upgrade()).state, "already-upgraded");
     const after = readFileSync(w.path); assert.equal((await w.upgrade()).state, "already-upgraded"); assert.deepEqual(readFileSync(w.path), after);
   });
-  it("enriches historical archives in the same row without changing original bytes or replay identity", async () => {
+  it("preserves historical archive and transaction bytes through retirement and inert replay", async () => {
     const w = historicalWorld({ files: true, archive: true }); cleanup.push(() => w.dispose());
     const readArchive = () => { const raw = new DatabaseSync(w.path, { readOnly: true });
       try { return raw.prepare("SELECT record_key,record_json,content_digest FROM archived_runs").get(); } finally { raw.close(); } };
     const original = readArchive(); assert.ok(original); await w.backup(); await w.upgrade();
-    assert.deepEqual(readArchive(), original);
     const db = w.open(); try {
-      const runId = String(original.record_key); const section = db.authority.archivedRuns.transactions(runId);
-      assert.equal(section.contentDigest, original.content_digest);
-      const before = db.getMeta();
-      assert.equal(db.authority.archivedRuns.insert(JSON.parse(String(original.record_json))).state, "existing");
-      assert.deepEqual(db.authority.archivedRuns.enrichTransactions(section), section);
-      assert.deepEqual(db.getMeta(), before);
-      assert.throws(() => db.authority.archivedRuns.enrichTransactions({ ...section, contentDigest: "a".repeat(64) }), /owner-mismatch/u);
-      for (const line of w.lines) rmSync(line.path);
-      assert.deepEqual(db.authority.archivedRuns.transactions(runId), section);
+      const runId=String(original.record_key),storage=createRunLifecycleStorage(db);
+      const report=storage.readReport(runId);assert.ok(report);
+      const source=LifecycleSourceSnapshotSchema.parse(JSON.parse(report.content.sources[0].json));
+      assert.equal(source.records.find(group=>group.table==="archived_runs")?.rows[0].json,original.record_json);
+      const supplement=JSON.parse(source.records.find(group=>group.table==="archive_transactions")?.rows[0].json ?? "null") as {json:string};
+      const section=ArchivedTransactionsSchema.parse(JSON.parse(supplement.json));
+      assert.equal(section.contentDigest,original.content_digest);
+      const before=db.getMeta();
+      assert.throws(()=>db.authority.archivedRuns.insert(JSON.parse(String(original.record_json))),/writer-retired/u);
+      assert.throws(()=>db.authority.archivedRuns.enrichTransactions(section),/writer-retired/u);
+      assert.deepEqual(db.getMeta(),before);
+      for(const line of w.lines)rmSync(line.path);
+      assert.deepEqual(storage.readReport(runId),report);
+      assert.equal((await w.upgrade()).state,"already-upgraded");
     } finally { db.close(); }
   });
   it.each(["torn", "divergent", "orphan"] as const)("refuses %s ledger evidence without retiring history", async (fault) => {

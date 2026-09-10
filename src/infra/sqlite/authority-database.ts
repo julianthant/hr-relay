@@ -1,10 +1,12 @@
+import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
+import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
 import { RunRecordService, type RunDeletionOutcome } from "../../core/run-record-service.js";
 import { ArchiveQuerySchema, type ArchiveQuery } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
 import { deriveCanonicalPerson } from "../../core/run-summary.js";
-import { VersionChangeSchema, VersionChangeStorageSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
+import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
 import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../core/run-lifecycle-storage.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { ArchiveTransferIdentitySchema, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
@@ -1094,12 +1096,12 @@ function runSearchRankSql(scope: z.infer<typeof CrossDateSearchScopeSchema>): st
   return `CASE ${clauses.join(" ")} ELSE NULL END`;
 }
 
-function runSearchFilter(input: RunSearchReadRequest): Readonly<{
+function runSearchFilter(input: RunSearchReadRequest, database: DatabaseSync): Readonly<{
   sql: string;
   parameters: readonly RunSearchSqlParameter[];
 }> {
   const conditions = [
-    "NOT EXISTS (SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key)",
+    unarchivedRunSql(database, "t.record_key"),
   ];
   const parameters: RunSearchSqlParameter[] = [];
   const { facets } = input;
@@ -1557,6 +1559,7 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
 
 /** Frozen transaction presentation is authenticated independently of original archive bytes. */
 function archiveTransactionIntegrityViolations(database: DatabaseSync): readonly string[] {
+  if (!hasHistoricalArchiveTables(database)) return [];
   for (const value of database.prepare("SELECT record_key,record_json,transactions_json,transactions_digest FROM archived_runs").all()) {
     try {
       const row = z.strictObject({ record_key: z.string(), record_json: z.string(), transactions_json: z.string(), transactions_digest: z.string() }).parse(value);
@@ -2072,6 +2075,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
       ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   })) {
     if (presentTables !== undefined && !presentTables.has(table)) continue;
+    if (["archived_runs", "version_plans", "version_bump_applications"].includes(table) && !hasHistoricalArchiveTables(database)) continue;
     const rows = database.prepare(`
       SELECT record_key, record_json FROM ${table} ORDER BY record_key
     `).iterate();
@@ -2102,7 +2106,7 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   }
   const hash = createHash("sha256");
   hash.update("[");
-  for (const [tableIndex, name] of AuthorityTableNameSchema.options.entries()) {
+  for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name)).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "database_state") {
@@ -2152,14 +2156,14 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   if (schemaVersion > CURRENT_AUTHORITY_SCHEMA_VERSION) {
     throw new Error(`authority schema ${String(schemaVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   }
-  if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+  if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && schemaVersion !== 48) {
     throw new Error(`authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   }
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
   const names = tableNames(database);
-  const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+  const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
   }
@@ -2194,6 +2198,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
 
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
 export function inspectConvertedAuthority(database: DatabaseSync): void {
+  if (readIntPragma(database,"user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("converted-authority-schema-mismatch");
   inspectOpenDatabase(database, false);
 }
 
@@ -2267,13 +2272,13 @@ function inspectAuthorityReadIdentityReadOnly(
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
     }
     const schemaVersion = readIntPragma(database, "user_version");
-    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && schemaVersion !== 48) {
       throw new Error(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
     const names = tableNames(database);
-    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
     }
@@ -2559,13 +2564,13 @@ function inspectSpanRunAuthorityReadOnly(
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
     }
     const schemaVersion = readIntPragma(database, "user_version");
-    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && schemaVersion !== 48) {
       throw new Error(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
     const names = tableNames(database);
-    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
     }
@@ -2579,8 +2584,8 @@ function inspectSpanRunAuthorityReadOnly(
     }));
     if(transfers.size>0)archive=new ArchiveDatabase(join(dirname(parsedPath),"archive.sqlite"),{readOnly:true});
     for(const runId of transfers.keys())resolveRunEvidenceOwner(database,()=>{if(archive===undefined)throw new Error("archive-authority-missing");return archive;},runId);
-    const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count+transfers.size;
-    const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
+    const archivedRunCount = (hasHistoricalArchiveTables(database) ? CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count : 0)+transfers.size;
+    const archivedRunById = hasHistoricalArchiveTables(database) ? database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?") : { get: (_id: string) => undefined };
     const taskById = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?");
     // D308: the delete cascade removes the `workflow_runs` row (and any `archived_runs`
     // row) but writes ONE tombstone first, and span files are never rewritten
@@ -2593,6 +2598,7 @@ function inspectSpanRunAuthorityReadOnly(
     const missingSpanRunIds: RunId[] = [];
     const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
     for (const [table, source] of [["workflow_runs", "current"], ["archived_runs", "archived"]] as const) {
+      if (table === "archived_runs" && !hasHistoricalArchiveTables(database)) continue;
       for (const raw of database.prepare(`SELECT record_key, record_json FROM ${table} ORDER BY record_key`).iterate()) {
         const row = AuthorityRecordFingerprintRowSchema.parse(raw);
         const parsedKey = RunIdSchema.safeParse(row.record_key);
@@ -2814,6 +2820,14 @@ function inspectSpanRunAuthorityReadOnly(
 }
 
 
+// Private adapter capability: deliberately absent from the public SQLite entrypoint/class.
+let stoppedArchiveConversion: <T>(database: DatabaseSync, path: string, clock: Clock,
+  archive: ArchiveDatabase | undefined, work: (authority: AuthorityDatabase) => T) => T;
+export function withStoppedArchiveConversion<T>(database: DatabaseSync, path: string, clock: Clock,
+  archive: ArchiveDatabase | undefined, work: (authority: AuthorityDatabase) => T): T {
+  return stoppedArchiveConversion(database, path, clock, archive, work);
+}
+
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
   #clock: Clock;
@@ -2834,6 +2848,7 @@ export class AuthorityDatabase implements Disposable {
 
   #archiveDatabase: ArchiveDatabase | undefined;
   lifecycleArchive(requireExisting = false): ArchiveDatabase {
+    if (this.#archiveDatabase !== undefined) return this.#archiveDatabase;
     if (this.#path === ":memory:") throw new Error("archive-requires-durable-root");
     if (requireExisting && !existsSync(join(dirname(this.#path), "archive.sqlite"))) throw new Error("archive-authority-missing");
     this.#archiveDatabase ??= new ArchiveDatabase(join(dirname(this.#path), "archive.sqlite"));
@@ -2848,15 +2863,17 @@ export class AuthorityDatabase implements Disposable {
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
+    conversion?: Readonly<{ database: DatabaseSync; archive?: ArchiveDatabase }>,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     const existed = options.path !== ":memory:" && existsSync(options.path);
-    if (options.openMode === "read-write" && options.path.endsWith("/state.db") && existsSync(join(dirname(options.path), ".lifecycle-restore.json"))) throw new Error("lifecycle-restore-incomplete");
+    if (conversion === undefined && options.openMode === "read-write" && options.path.endsWith("/state.db") && existsSync(join(dirname(options.path), ".lifecycle-restore.json"))) throw new Error("lifecycle-restore-incomplete");
+    if (conversion === undefined && options.openMode === "read-write" && options.migrationOwner !== "storage-upgrade-audit" && (existsSync(join(dirname(options.path), ".archive-conversion.json")) || existsSync(join(dirname(options.path), ".archive-restore.json")))) throw new Error("archive-conversion-incomplete");
     const readOnlyNoMigrate = options.openMode !== "read-write";
     if (readOnlyNoMigrate && !existed) {
       throw new Error(`${options.openMode} requires an existing authority database`);
     }
-    if (existed && statSync(options.path).size === 0) {
+    if (conversion === undefined && existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
     }
     this.#clock = clock;
@@ -2868,6 +2885,16 @@ export class AuthorityDatabase implements Disposable {
       ? () => { throw new Error("command identity admission requires a durable authority root"); }
       : createCredentialStore({ stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
     this.#busyTimeoutMs = options.busyTimeoutMs;
+    if (conversion !== undefined) {
+      if (!conversion.database.isTransaction) throw new Error("archive-conversion-requires-stopped-transaction");
+      this.#database = conversion.database;
+      this.#archiveDatabase = conversion.archive;
+      this.#transactionDepth = 1;
+      this.#transactionMode = "authority";
+      createRunSummaries(this.#database).installTracking();
+      this.authority = this.#buildAuthorityRepositories();
+      return;
+    }
     this.#database = new DatabaseSync(options.path, {
       readOnly: readOnlyNoMigrate,
       enableForeignKeyConstraints: true,
@@ -2915,6 +2942,15 @@ export class AuthorityDatabase implements Disposable {
     lifecycleHooks?: AuthorityLifecycleHooks,
   ): AuthorityDatabase {
     return new AuthorityDatabase(input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
+  }
+
+  static {
+    stoppedArchiveConversion = (database, path, clock, archive, work) => {
+      const authority = new AuthorityDatabase({path, busyTimeoutMs:5000, migrationOwner:"stopped-archive-conversion"}, clock,
+        undefined, undefined, undefined, {database, archive});
+      try { return work(authority); }
+      finally { authority.#archiveDatabase?.close(); authority.#closed = true; }
+    };
   }
 
   static sourceDatabaseIdentity(path: string): string {
@@ -3110,7 +3146,7 @@ export class AuthorityDatabase implements Disposable {
           remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
           // Relaunch lineage belongs to the new run; deleting its source preserves it.
           remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
-          remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
+          if (hasHistoricalArchiveTables(this.#database)) remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
 
     remove("workflow_runs", "DELETE FROM workflow_runs WHERE record_key = ?", runId);
     if (!transfer) remove("archive_transfers", "DELETE FROM archive_transfers WHERE record_key = ?", runId);
@@ -3328,7 +3364,7 @@ export class AuthorityDatabase implements Disposable {
 
   historicalVersionChanges() {
     return this.withAuthorityReadSnapshot(()=>this.#database.prepare("SELECT record_json FROM version_changes ORDER BY record_key").all()
-      .map(row=>VersionChangeStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))));
+      .map(row=>RetainedVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))));
   }
 
   captureLifecycleSource(runIdInput: string) {
@@ -3357,12 +3393,16 @@ export class AuthorityDatabase implements Disposable {
       collect("run_operation_attempts","SELECT record_key,record_json FROM run_operation_attempts WHERE write_intent_id IN (SELECT record_key FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?)",run.envelope.workflow,run.envelope.itemId);
       collect("settings_snapshots","SELECT record_key,record_json FROM settings_snapshots WHERE record_key=?",run.envelope.configSnapshotId);
       collect("archive_relaunches","SELECT record_key,record_json FROM archive_relaunches WHERE record_key=? OR archived_run_id=?",runId,runId);
+      if (hasHistoricalArchiveTables(this.#database)) {
       collect("archived_runs","SELECT record_key,record_json FROM archived_runs WHERE record_key=?",runId);
       const historical=this.authority.archivedRuns.get(runId);
       if(historical!==undefined)this.authority.archivedRuns.transactions(runId);
       collect("version_bump_applications","SELECT record_key,record_json FROM version_bump_applications WHERE record_key IN (SELECT application_id FROM archived_runs WHERE record_key=?)",runId);
       collect("version_plans","SELECT record_key,record_json FROM version_plans WHERE record_key IN (SELECT version_plan_id FROM version_bump_applications WHERE record_key IN (SELECT application_id FROM archived_runs WHERE record_key=?))",runId);
       collect("archive_transactions","SELECT record_key,json_object('json',transactions_json,'digest',transactions_digest) AS record_json FROM archived_runs WHERE record_key=?",runId);
+      } else {
+        for (const table of ["archived_runs","version_plans","version_bump_applications","archive_transactions"]) records.push({table,rows:[]});
+      }
       collect("delegation_dependencies","SELECT record_key,record_json FROM delegation_dependencies WHERE json_extract(record_json,'$.parentRunId')=? OR json_extract(record_json,'$.childRunId')=?",runId,runId);
       collect("run_delegations","SELECT record_key,record_json FROM run_delegations WHERE json_extract(record_json,'$.parentRunId')=?",runId);
       collect("dryrun_results","SELECT record_key,record_json FROM dryrun_results WHERE run_id=?",runId);
@@ -4260,6 +4300,7 @@ export class AuthorityDatabase implements Disposable {
     table: AuthorityTableName,
     operation: () => Outcome,
   ): Outcome["result"] {
+    if (["archived_runs", "version_plans", "version_bump_applications"].includes(table) && !hasHistoricalArchiveTables(this.#database)) throw new Error("historical-archive-writer-retired");
     if (table === "database_state") throw new Error("database_state is mutated only by the generation and migration protocols");
     return this.#withTransaction("authority", () => {
       const outcome = operation();
@@ -4272,6 +4313,13 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readRecord<Schema extends z.ZodType>(table: TableName, recordKey: string, schema: Schema): z.output<Schema> | undefined {
+    if (["archived_runs", "version_plans", "version_bump_applications"].includes(table) && !hasHistoricalArchiveTables(this.#database)) {
+      if (table === "archived_runs") return undefined;
+      const historical = this.historicalVersionChanges().filter(row => "schemaVersion" in row && row.schemaVersion === "historical-archive-v1");
+      const source = table === "version_plans" ? historical.find(row => row.plan.versionPlanId === recordKey)?.plan
+        : historical.find(row => row.application?.applicationId === recordKey)?.application;
+      return source == null ? undefined : schema.parse(source);
+    }
     const row = this.#database.prepare(`SELECT record_json FROM ${table} WHERE record_key = ?`).get(recordKey);
     if (row === undefined) return undefined;
     return parseJsonRecord(schema, JsonRowSchema.parse(row).record_json);
@@ -5124,7 +5172,7 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("version_plans", record.versionPlanId, record, VersionPlanStorageRecordSchema, record.createdAt);
         },
         get: (versionPlanId: string) => this.#readRecord("version_plans", versionPlanId, VersionPlanStorageRecordSchema),
-        list: () => Object.freeze(this.#database.prepare(`
+        list: () => !hasHistoricalArchiveTables(this.#database) ? this.historicalVersionChanges().filter(row => "schemaVersion" in row && row.schemaVersion === "historical-archive-v1").map(row => HistoricalVersionChangeSchema.parse(row).plan) : Object.freeze(this.#database.prepare(`
           SELECT record_json FROM version_plans ORDER BY created_at DESC, record_key
         `).all().map((row) => parseJsonRecord(VersionPlanStorageRecordSchema, JsonRowSchema.parse(row).record_json))),
         /**
@@ -5210,7 +5258,7 @@ export class AuthorityDatabase implements Disposable {
         get: (applicationId: string) => this.#readRecord(
           "version_bump_applications", applicationId, VersionBumpApplicationStorageRecordSchema,
         ),
-        list: () => Object.freeze(this.#database.prepare(`
+        list: () => !hasHistoricalArchiveTables(this.#database) ? this.historicalVersionChanges().flatMap(row => { if (!("schemaVersion" in row) || row.schemaVersion !== "historical-archive-v1") return []; const source = HistoricalVersionChangeSchema.parse(row).application; return source === null ? [] : [source]; }) : Object.freeze(this.#database.prepare(`
           SELECT record_json FROM version_bump_applications ORDER BY created_at DESC, record_key
         `).all().map((row) => parseJsonRecord(
           VersionBumpApplicationStorageRecordSchema, JsonRowSchema.parse(row).record_json,
@@ -5304,10 +5352,10 @@ export class AuthorityDatabase implements Disposable {
          * It reads the index rather than the record so excluding an archived
          * row never costs a JSON parse.
          */
-        isArchived: (runId: string) => CountRowSchema.parse(this.#database.prepare(`
+        isArchived: (runId: string) => !hasHistoricalArchiveTables(this.#database) ? this.transferredRun(runId) !== undefined : CountRowSchema.parse(this.#database.prepare(`
           SELECT count(*) AS count FROM archived_runs WHERE record_key = ?
         `).get(runId)).count > 0,
-        list: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`
+        list: () => !hasHistoricalArchiveTables(this.#database) ? [] : this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`
           SELECT record_json FROM archived_runs ORDER BY created_at DESC, record_key
         `).all().map((row) => this.#verifyArchivedPrivateInput(
           parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))))),
@@ -5661,9 +5709,7 @@ export class AuthorityDatabase implements Disposable {
       SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
         ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms
       FROM workflow_runs AS t
-      WHERE NOT EXISTS (
-        SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
-      )
+      WHERE ${unarchivedRunSql(this.#database, "t.record_key")}
       ORDER BY t.record_key
     `).all());
     for (const row of rows) reconcileRunSearchCorpusRow(row);
@@ -5799,7 +5845,7 @@ export class AuthorityDatabase implements Disposable {
         WHERE workflow = ? AND state = 'queued'
           AND (not_before IS NULL OR not_before <= ?)
           AND (? = 0 OR (
-            NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
+            ${unarchivedRunSql(this.#database, "workflow_runs.record_key")}
             AND NOT EXISTS (
               SELECT 1 FROM delegation_dependencies d
               WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
@@ -5814,7 +5860,7 @@ export class AuthorityDatabase implements Disposable {
           SELECT min(not_before) AS next_eligible_at FROM workflow_runs
           WHERE workflow = ? AND state = 'queued' AND not_before > ?
             AND (? = 0 OR (
-              NOT EXISTS (SELECT 1 FROM archived_runs a WHERE a.record_key = workflow_runs.record_key)
+              ${unarchivedRunSql(this.#database, "workflow_runs.record_key")}
               AND NOT EXISTS (
                 SELECT 1 FROM delegation_dependencies d
                 WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
@@ -5959,7 +6005,7 @@ export class AuthorityDatabase implements Disposable {
         const request = RunSearchReadRequestSchema.parse(input);
         return this.withAuthorityReadSnapshot(() => {
           this.#assertRunSearchCorpusReconciled();
-          const filter = runSearchFilter(request);
+          const filter = runSearchFilter(request, this.#database);
           const afterSql = request.after === undefined ? "" : `
             AND (
               match_rank > ?
@@ -6039,9 +6085,7 @@ export class AuthorityDatabase implements Disposable {
       listCurrentByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT t.record_json FROM workflow_runs AS t
         WHERE t.workflow = ?
-          AND NOT EXISTS (
-            SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
-          )
+          AND ${unarchivedRunSql(this.#database, "t.record_key")}
         ORDER BY t.created_at, t.record_key
       `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       listWorkflows: () => Object.freeze(

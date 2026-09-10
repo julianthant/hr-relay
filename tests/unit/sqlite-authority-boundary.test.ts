@@ -8,14 +8,28 @@ import { gitVisibleFiles, REPO_ROOT } from "./architecture/helpers/guard-files.j
 // Private adapter modules have no raw connection in the public SQLite entrypoint.
 // D336 historical backup readers remain; stopped conversion adapters expire in 2.6.
 const PRIVATE_SQLITE_ADAPTERS = [
+  "src/infra/compat/archive-upgrade-journal.ts",
   "src/infra/compat/backup-inspection.ts",
   "src/infra/compat/settings-database-upgrade.ts",
   "src/infra/compat/upgrade-sources.ts",
+  "src/infra/sqlite/archive-compatibility.ts",
+  "src/infra/sqlite/archive-database.ts",
   "src/infra/sqlite/authority-database.ts",
   "src/infra/sqlite/backup-service.ts",
   "src/infra/sqlite/completion-conversion.ts",
+  "src/infra/sqlite/failure-resolution.ts",
+  "src/infra/sqlite/foundation-retirement.ts",
+  "src/infra/sqlite/generated-artifacts.ts",
+  "src/infra/sqlite/generated-conversion.ts",
+  "src/infra/sqlite/imported-artifacts.ts",
+  "src/infra/sqlite/provider-accounting.ts",
+  "src/infra/sqlite/provider-storage.ts",
+  "src/infra/sqlite/run-evidence-ownership.ts",
+  "src/infra/sqlite/run-summaries.ts",
+  "src/infra/sqlite/settings-activation.ts",
+  "src/infra/sqlite/settings-storage.ts",
   "src/infra/sqlite/timeline-conversion.ts",
-  "src/infra/sqlite/timeline-repository.ts",
+  "src/infra/sqlite/timeline-repository.ts"
 ];
 const ADAPTER_PATH = "src/infra/sqlite/authority-database.ts";
 

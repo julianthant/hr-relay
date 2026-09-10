@@ -253,7 +253,7 @@ function assertOnlyExpectedRowsRemain(fixture: HistoricalFixture): void {
   for (const [table, count] of counts) {
     const expected = table === "database_state" || table === "commands" || table === "command_audits"
       ? 1
-      : table === "database_upgrades" ? 2 : 0;
+      : table === "database_upgrades" ? 2 : table === "summary_publication" ? 1 : 0;
     assert.equal(count, expected, `${table} must retain exactly ${String(expected)} row(s)`);
   }
   assert.equal(readJournalJson(fixture.path, "commands", COMMAND_ID), fixture.commandJson);

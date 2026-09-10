@@ -12,7 +12,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 48;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 49;
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -38,7 +38,8 @@ export function settingsSnapshotsTable(schemaVersion: number): "config_snapshots
 }
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
-  return schemaVersion > 0 && schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION;
+  // Schema49 retires populated archive authorities; later additive migrations retain their existing policy.
+  return schemaVersion > 0 && (schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION || schemaVersion < 49);
 }
 
 /**
@@ -816,6 +817,7 @@ const V36_TABLES = V35_TABLES.map((name) => name === "write_intents" ? "run_oper
 const V37_TABLES = V36_TABLES.filter((name) => name !== "bulk_command_acceptances")
   .map((name) => name === "delegation_manifests" ? "run_delegations" : name === "dependencies" ? "delegation_dependencies" : name).sort();
 export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, readonly string[]>> = deepFreeze({
+  48: ["app_settings", "archive_relaunches", "archive_transfers", "archived_runs", "checkpoint_payloads", "command_audits", "commands", "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files", "diagnostic_snapshots", "dryrun_results", "extracted_artifacts", "generated_artifacts", "imported_artifacts", "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures", "run_operation_attempts", "run_operations", "run_receipts", "run_results", "run_summaries", "settings_snapshots", "summary_publication", "timeline_events", "timeline_operation_sources", "version_bump_applications", "version_changes", "version_plans", "worker_auth", "worker_pools", "workflow_run_batches", "workflow_run_requests", "workflow_runs", "workflow_workers"],
   30: V30_TABLES,
   31: [...V30_TABLES],
   32: V32_TABLES,
@@ -2105,6 +2107,21 @@ export const SQLITE_MIGRATIONS = deepFreeze([
          AND NOT EXISTS (SELECT 1 FROM archive_transfers WHERE record_key=OLD.${key})
        BEGIN SELECT RAISE(ABORT,'owned evidence is never deleted outside deletion or verified transfer'); END`]),
     "CREATE INDEX run_summaries_filter_idx ON run_summaries(workflow,local_day,state,record_key)", "CREATE INDEX run_summaries_parent_idx ON run_summaries(parent_run_id)"] },
+  { version: 49, statements: [
+    "DROP TABLE archived_runs",
+    "DROP TRIGGER version_bump_applications_never_deleted",
+    "DROP TABLE version_bump_applications",
+    "DROP TABLE version_plans",
+    `CREATE TRIGGER version_changes_historical_immutable BEFORE UPDATE ON version_changes
+      WHEN json_extract(OLD.record_json,'$.schemaVersion')='historical-archive-v1'
+      BEGIN SELECT RAISE(ABORT,'historical version change is immutable'); END`,
+    `CREATE TRIGGER version_changes_historical_no_replace BEFORE INSERT ON version_changes
+      WHEN EXISTS (SELECT 1 FROM version_changes WHERE record_key=NEW.record_key AND json_extract(record_json,'$.schemaVersion')='historical-archive-v1')
+      BEGIN SELECT RAISE(ABORT,'historical version change is immutable'); END`,
+    `CREATE TRIGGER version_changes_historical_retained BEFORE DELETE ON version_changes
+      WHEN json_extract(OLD.record_json,'$.schemaVersion')='historical-archive-v1'
+      BEGIN SELECT RAISE(ABORT,'historical version change is retained'); END`,
+  ] },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
@@ -2121,7 +2138,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
   };
   const ddlNames = Object.keys(SQLITE_TABLE_DDL).map(renamed);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
-  const retiredNames: readonly string[] = ["activity_person_pseudonyms", "activity_person_pseudonym_generations", ...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox", "intake_sessions", "intake_manifests", "provider_admissions", "provider_budget_counters", "settings_current", "runtime_config", "artifact_outbox", "artifact_sink_heads", "operator_xlsx_exports", "spans", "gates", "notes", "ocr_approvals", "knowledge_records", "fix_records"];
+  const retiredNames: readonly string[] = ["archived_runs", "version_plans", "version_bump_applications", "activity_person_pseudonyms", "activity_person_pseudonym_generations", ...RETIRED_PHONE_CAPTURE_TABLES, "protected_settings_current", "runs_view", "bulk_command_acceptances", "ledger_partitions", "ledger_projections", "operation_outbox", "run_terminal_authorizations", "run_terminal_outbox", "intake_sessions", "intake_manifests", "provider_admissions", "provider_budget_counters", "settings_current", "runtime_config", "artifact_outbox", "artifact_sink_heads", "operator_xlsx_exports", "spans", "gates", "notes", "ocr_approvals", "knowledge_records", "fix_records"];
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
   for (const name of ddlNames) {
     if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {

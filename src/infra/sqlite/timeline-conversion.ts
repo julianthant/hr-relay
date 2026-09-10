@@ -1,3 +1,4 @@
+import { hasHistoricalArchiveTables } from "./archive-compatibility.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { ArchivedRunRecordSchema, ArchivedTransactionsSchema } from "../../domain/archive/model.js";
 import { sha256Hex } from "../../domain/sha256.js";
@@ -188,6 +189,7 @@ export function convertOperationHistory(database: DatabaseSync, source: Timeline
 
 export function freezeConvertedArchiveTransactions(database: DatabaseSync, recordedAt: string): void {
   if (!database.isTransaction) throw new Error("archive-history-conversion-requires-transaction");
+  if (!hasHistoricalArchiveTables(database)) return;
   const read = <T>(schema: z.ZodType<T>, table: string): T[] => database.prepare(`SELECT record_json FROM ${table}`).all().map((row) => sourceAuthorityRecord(schema, row));
   const runs = read(RunRecordSchema, "workflow_runs");
   const deleted = read(DeletedRunRecordSchema, "deleted_runs");
