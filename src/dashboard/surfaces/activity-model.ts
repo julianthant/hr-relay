@@ -7,7 +7,10 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
-import type { ActivityPeopleTotal } from "../../domain/dashboard/activity.js";
+import type {
+  ActivityPeopleTotal,
+  ActivityReportWire,
+} from "../../domain/dashboard/activity.js";
 import { dayLabel, plural } from "./format.js";
 
 /** What the Activity Who column needs off a queue row, and nothing else. */
@@ -17,6 +20,46 @@ export interface QueueRowIdentity {
   traceId: string;
   title: string;
   displayName: { state: "present"; value: string } | { state: "absent"; reason: string };
+}
+
+/** A sampled open run resolved only against Queue rows the shell already holds. */
+export interface ResolvedActivityWho {
+  runId: string;
+  /** the subject or the operator's rename — the Queue row's own choice */
+  name: { state: "present"; value: string } | { state: "absent"; reason: string };
+  workflowLabel: string | undefined;
+  traceId: string | undefined;
+}
+
+/**
+ * Resolve one served Activity sample without fetching or inventing identity.
+ * A range routinely names a run outside the one Queue day held by the shell;
+ * that run stays identified by its served id.
+ */
+export function resolveActivityWho(
+  runId: string,
+  rows: readonly QueueRowIdentity[],
+  report: ActivityReportWire,
+): ResolvedActivityWho {
+  const row = rows.find((candidate) => candidate.runId === runId);
+  if (row === undefined) {
+    return {
+      runId,
+      name: {
+        state: "absent",
+        reason: "this run is not among the queue rows loaded for the day on screen, so its name is not known here",
+      },
+      workflowLabel: undefined,
+      traceId: undefined,
+    };
+  }
+  const registration = report.workflows.find((entry) => entry.workflowId === row.workflowId)?.registration;
+  return {
+    runId,
+    name: { state: "present", value: row.displayName.state === "present" ? row.displayName.value : row.title },
+    workflowLabel: registration?.state === "registered" ? registration.label : row.workflowId,
+    traceId: row.traceId,
+  };
 }
 
 /** The compact people-axis phrase shared by the panel header and its tiles. */
@@ -33,15 +76,34 @@ export function activityPeopleNote(people: ActivityPeopleTotal): string {
     : "Distinct people unavailable";
 }
 
+/** The Runs tile's explanation of the server-internal people count. */
+export function activityPeopleEvidenceItems(people: ActivityPeopleTotal): readonly string[] {
+  return people.state === "present"
+    ? [
+      `${plural(people.evidenceRows, "current Separations run/member row")} supplied validated canonical identity.`,
+      "The server deduplicates those identities inside this selected range; only the count reaches this page or its export.",
+      "Full identifiers, last-four suffixes, item ids, row titles and receipt digests are never counted instead.",
+    ]
+    : [
+      people.reason,
+      "Unavailable is not zero. The report refuses the whole axis when range coverage is missing or incompatible.",
+    ];
+}
+
 /** `from..to`, the one shape the URL carries. */
-export function parseActivityRange(value: string, today: string): { from: string; to: string } {
-  const [from, to] = value.split("..");
-  const valid = (candidate: string | undefined): candidate is string =>
-    candidate !== undefined && /^\d{4}-\d{2}-\d{2}$/u.test(candidate);
-  if (valid(from) && valid(to) && from <= to) return { from, to };
-  // The default is the current month to date — a range the operator can widen,
-  // never a silently different one than the link said.
-  return { from: `${today.slice(0, 7)}-01`, to: today };
+export function parseActivityRange(value: string, today: string): { from: string; to: string; refusal?: string } {
+  // Only a navigation entry with no selection gets the month-to-date default.
+  if (value === "") return { from: `${today.slice(0, 7)}-01`, to: today };
+  const parts = value.split("..");
+  const from = parts[0] ?? "";
+  const to = parts[1] ?? "";
+  const valid = (candidate: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(candidate)) return false;
+    const date = new Date(`${candidate}T00:00:00.000Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === candidate;
+  };
+  if (parts.length === 2 && valid(from) && valid(to) && from <= to) return { from, to };
+  return { from, to, refusal: "Choose valid From and To dates, with From no later than To. The requested range was not replaced." };
 }
 
 export function activityRangeValue(range: { from: string; to: string }): string {
