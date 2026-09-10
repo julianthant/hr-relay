@@ -1524,9 +1524,99 @@ prerequisite with violating fixtures and guard-inventory evidence. No peer may e
 or prerequisite path. A newly discovered required shared edit blocks peer release until its owning
 prerequisite is amended and revalidated. Do not replace a missing baseline with an unused export.
 
-Release committed candidate/base/tree and focused evidence to the next named consumer. No master
-integration, independent review, heavy-gate waiver, sibling dispatch or live database application.
-Future-base binding remains WAITING ON the actual prerequisite release, not a fabricated SHA.
+### Approved U01–U06 execution brief — 2026-09-10
+
+**Approval:** the operator approved this complete U brief on 2026-09-10, including U's local
+`master` merge and incorporated worktree/ref cleanup after focused PASS. This narrowly supersedes
+the preceding U-only no-master timing. It does not move Phase 2.6's full gates, complete
+independent review, remaining combined repairs, H integration, handover, or final cleanup from
+2.6.9.
+
+| Assignment | Branch | Absolute worktree | Verified base | Owned scope | Focused acceptance | Integration and cleanup |
+| --- | --- | --- | --- | --- | --- | --- |
+| U / 2.6.8.1 | `codex/activity-views` | `/Users/julianhein/Projects/hr-worktree-database-peer` | `ea83e77d378d2b8c000c425205f44887c65a9a94`, V's committed closure | the five exclusive U surface/model paths, the three named tests, and `07-activity-ui-evidence.md` | named unit and architecture proof, lint, affected freshness, and Components-route desktop/accessibility evidence | U alone merges locally into clean verified `master`, records the integrated release, preserves evidence outside the worktree, then removes only its own incorporated worktree/ref |
+
+V's external `release.json`, `integration.json`, and `cleanup.json` at
+`/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/` are the immutable common release
+evidence. Before U01, verify their availability, V ancestry, U branch/path absence, capacity, and
+the `master` target's clean ownership. A missing or contradictory receipt is **WAITING ON V
+release evidence**; do not substitute a later checkout or fabricate a base.
+
+#### U01 — admit the frozen served boundary
+
+Read the committed V release and the current Queue/Activity consumers together. Verify that V's
+`queryQueueSummaries` and `queryActivitySummaries`, their strict client parsing, and the existing
+route composition provide the public-safe facts U needs without a new route, schema, command,
+registry, global union, shared fixture, or generated-input change. Preserve action authorization in
+the served Queue path: summaries never authorize an action. Stop for an approved amendment if a
+required shared change is discovered.
+
+#### U02 — connect Queue without changing its operator contract
+
+Adapt only U's Queue component/model/toolbar paths to the V-served summary facts. Preserve selected
+scope, group containment, row/member ordering, duration and warning presentation, unavailable
+facts, accessible names, keyboard controls, zoom/resizing behavior, and the existing served action
+descriptors. Do not reconstruct private display identity from current configuration, infer
+availability, create a second Queue counter, alter a command, or edit H/V/prerequisite ownership.
+
+#### U03 — connect Activity to the same served facts
+
+Adapt only U's Activity component/model paths so filters, grouping, pagination, range/report facts,
+and Queue-linked identities consume V's served summaries. Preserve explicit range refusal, D81's
+one-counting rule, the already-served CSV/XLSX report calculation, protected/unavailable facts, and
+the rule that a sampled run absent from the held Queue rows names itself by id. Do not reintroduce a
+second fetch or calculation, redesign the surface, or change archive rendering.
+
+#### U04 — prove the consumer boundary
+
+Add meaningful U-owned cases in `tests/unit/summary-surfaces/queue.test.ts` and
+`tests/unit/summary-surfaces/activity.test.ts`, and update
+`tests/unit/dashboard/activity-render.test.ts` only as required by the approved consumer behavior.
+Cover the selected shared data for grouped and ungrouped rows, filters, pagination, retry/repeated
+people, missing identity, warnings, failed/unmeasured durations, and unavailable facts. Preserve the
+valid controls proving an authorized action still reaches the existing served descriptor; the
+negative control proves summaries cannot manufacture authorization. Do not add or edit shared
+fixtures, guards, registries, or H tests.
+
+#### U05 — focused checks and desktop proof
+
+Run the named U unit paths with
+`VITEST_MAX_WORKERS=1 npm run test -- --project unit --maxWorkers=1`, then the explicit paths;
+run affected architecture selectors with `--project architecture --maxWorkers=1`, `npm run lint`,
+and each affected manifest/catalog/roadmap generator before its `:check` command. Preserve workers,
+coverage floors, memberships, assertions, and timeouts. Use `/ui`'s Components route and
+`playwright-cli` against U's synthetic served state at 1024×720 and 1440×900, including keyboard
+access, 125% zoom, filtering, grouping, pagination, loading/stale/unavailable states, and unchanged
+action semantics. Record commands, tested tree, screenshots, exits, input identity, and coverage
+limits in `07-activity-ui-evidence.md`; preserve any external artifacts under
+`/Users/julianhein/Projects/hr-u-activity-views-evidence-20260910/` before cleanup.
+
+#### U06 — release, local integration, and owned cleanup
+
+Commit only U's exact paths and freeze the focused candidate/tree/evidence. Recheck the target
+checkout's path, branch, clean status, HEAD, candidate ancestry, and U/H file ownership immediately
+before merging U locally into `master`. H remains independent from the same V base; U neither waits
+for nor messages H, and either later merge order is permitted because their owned production/test
+paths do not overlap. Serialize only this shared-target merge. Rerun invalidated integration checks
+or record exact input-identical reuse, then record the candidate, merge, final tree, checks, and
+closure in U's evidence owner. From a safe non-U checkout, remove only the incorporated
+`/Users/julianhein/Projects/hr-worktree-database-peer` worktree and `codex/activity-views` ref,
+verify physical-path/registration/ref absence, and leave the primary checkout, H, retained evidence,
+and unrelated sessions untouched.
+
+No push, operator database application, live submission, sibling launch, branch/worktree cleanup
+outside U, full typecheck/coverage, broad architecture/parity/build/performance gates, or complete
+independent review is authorized here. Those final acceptance duties remain solely with 2.6.9.
+
+### Parallel coordination binding — U
+
+U and H are independent peer assignments, not a coordination group. Default to no peer messages,
+availability surveys, reservations, acknowledgments, status broadcasts, or observer loops. Use
+committed V receipts and the shared plan before asking another owner for anything. If a concrete
+changed prerequisite, shared resource conflict, or required duty transfer cannot be resolved from
+that evidence, contact only the exact owner with the specific action needed; otherwise continue U
+locally. U retains focused proof, merge, release record, and cleanup until complete; 2.6.9 retains
+all phase-wide acceptance work without a new completion handshake.
 
 Authored release evidence: `07-activity-ui-evidence.md` in this folder (new, exclusively owned by U).
 The shared `decisions.md`, prerequisite and registry files remain read-only during peer work;
