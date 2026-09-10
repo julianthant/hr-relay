@@ -85,6 +85,36 @@ V launch, superseding V's earlier early-start permission. A/Q and the archived-h
 integrated; the actual L retirement release must be verified before resolving V's product base.
 V is WAITING ON that release, not READY. No task is dispatched by this registry.
 
+### Verified V conditional supervisor prompt — 2026-09-09
+
+Approved full plan: `c4beb7679b46e15c3aeeb06846ebc3a895469c70`. Committed content was read back
+and verified for V01–V06, ownership, proofs, gate schedule and local integration/cleanup. The
+planning checks and input identity are recorded at the V owner. This prompt remains **WAITING ON
+the separately owned L retirement focused release and local integration** even after planning
+integration. The initial A/Q and archived-history repair inputs are verified ancestors. A future
+product base cannot be resolved until L's actual receipt exists; the plan SHA is not that base.
+
+```text
+/supervise 2.6.8 V. WAITING ON L retirement focused PASS and local integration; do not launch implementation before that prerequisite is verified. Use GPT-6 Astra/high.
+
+Repository: /Users/julianhein/Projects/hr-automation-rebuild
+Plan owner: /Users/julianhein/Projects/hr-automation-rebuild/docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md
+Section: Approved V execution brief — 2026-09-09, retaining the C0 V allocation and proof.
+Approved full plan SHA: c4beb7679b46e15c3aeeb06846ebc3a895469c70
+
+Read the full committed plan with git show and verify its local master incorporation. Resolve the exact L retirement implementation/release/integration SHA from its committed receipt, verify focused conversion/upgrade/restore/retirement evidence and A/Q plus archived-history repair ancestry, and record that full product base SHA/tree before editing. Do not substitute the planning SHA or today's master for the required release. L remains separate; do not implement its retirement in V. If the receipt is absent or incomplete, report WAITING ON and stop without creating an implementation candidate.
+
+After admission, recheck ownership, refs, paths and capacity; create codex/database-surfaces at /Users/julianhein/Projects/hr-worktree-database-contracts from the verified base. Consume these approved instructions separately if newer than that product base. One supervisor, zero implementation workers/reviewers here. Never implement on master.
+
+Execute V01–V06 completely: reconcile A/Q and history behavior; serve Queue/Activity summaries and matching exports; serve descriptor-independent saved reports and authenticated retained attachments; retire archive relaunch including the narrowly approved internal fan-out/run-service creation paths; deliver working, independently consumable U/H baselines. Preserve historical journals and lineage, normal start/retry/restart, canonical action authorization, protected projections, missing/stale/deleted distinctions and UNKNOWN refusal. Use /ui locally and the committed focused desktop proof. Run every named focused unit/architecture selector, lint and affected freshness. Full typecheck/coverage, broad architecture/parity/build/performance and complete independent review remain at 2.6.9; no intermediate full gate or reviewer.
+
+Follow Parallel coordination in /Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md and the platform supporting-agent reference. No routine peer messages, reservations, broadcasts, observer loops or sibling dispatch. Preserve L/U/H ownership and serialize only actual shared-target mutations or evidenced resource conflicts.
+
+Commit exact paths, freeze the candidate/tree/evidence, then merge V locally into master at /Users/julianhein/Projects/hr-automation-rebuild after focused PASS and target checks. Rerun invalidated integration checks or prove input-identical reuse. Record one immutable V release for U/H, preserve evidence outside the checkout and remove only the incorporated V worktree/ref from a safe checkout; verify physical path, registration and ref absence. No push, operator database migration, HR submission or unrelated cleanup.
+
+Send Done / Now / Remaining at start/resume and after every verified step, keeping merge, cleanup and deferred phase acceptance visible. Stop after V06; do not launch U/H or claim full Phase 2.6 acceptance.
+```
+
 C0/prerequisite release fills the five binding fields from verified evidence; placeholders must
 never be presented as READY. The following template applies except where the approved C/F brief
 explicitly assigns local merge/cleanup; F uses its resolved handoff below. Preserve that exception
