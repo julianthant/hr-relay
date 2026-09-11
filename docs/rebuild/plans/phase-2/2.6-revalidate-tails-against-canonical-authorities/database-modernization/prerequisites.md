@@ -1189,8 +1189,9 @@ and their focused tests. Invoke A conversion through the actual stopped
 `upgradeStorage -> convertSettingsDatabase` path, with verify-only preflight, source identity and
 backup admission. Do not claim rollback across separate databases. Remove `archived_runs`,
 `version_plans` and `version_bump_applications` only after verified populated conversion. Preserve
-historical migration bytes and backup grammars; do not blanket-delete `archive_relaunches`, whose
-remaining descendant lineage is still meaningful after migration 31 removed its foreign key.
+historical migration bytes and backup grammars. The 2026-09-10 2.6.9 amendment supersedes
+retention of `archive_relaunches`: migration 50 discards these relationships, preserving source
+archives and descendant runs. See [the finalization owner](final-validation.md#approved-obsolete-table-retirement-amendment--2026-09-10).
 Retire unconditional current SQL against removed tables; confine old readers to explicit compatibility.
 
 Required proof: populated old archives and plan/application pairs, transaction supplements and file
@@ -1393,3 +1394,12 @@ Local merge `4c9500bacc99fcccf96254b100a5f009acb666f0` incorporates candidate `5
 Ordinary worktree removal and merged branch deletion succeeded. Physical `/Users/julianhein/Projects/hr-worktree-database-contracts`, its registration and `refs/heads/codex/database-surfaces` are absent. Only the owned dependency symlink was unlinked; primary dependencies and other sessions remain. Owned browser sessions and the synthetic server are stopped. External evidence is preserved at `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`; `candidate.json`, `integration.json`, `cleanup.json` and immutable `release.json` bind the implementation, checked merge and final committed closure.
 
 V01–V06 are complete. U and H use the single common closure SHA in `release.json`, preserving their C0 path/test ownership and either implementation order. Neither peer was launched. Shared files and both usable baselines are frozen at this release; their later dedicated feature/proof work remains theirs. Full typecheck, coverage, broad architecture/parity/build/performance, complete independent review and Phase 2.6 acceptance remain at 2.6.9. No push, operator database migration, HR submission or unrelated cleanup occurred.
+
+### 2.6.9 approved relaunch-history retirement — 2026-09-10
+
+Earlier L/V release statements retaining relaunch lineage describe those historical candidates.
+The operator now approves its removal without a replacement relationship store. Migration 50
+removes `archive_relaunches`, current storage methods and historical-link projections while preserving
+runs, archive reports, numbering, shared custody and inert command/journal recognition. The
+[finalization amendment](final-validation.md#approved-obsolete-table-retirement-amendment--2026-09-10)
+owns the complete obsolete-table inventory, populated proof, full gates and R1–R5 acceptance.

@@ -7247,3 +7247,22 @@ controls. Live controls use durable annotation readback and cross-process refres
 the run's logical version. Refusals and refresh failures remain visible; no optimistic resolved
 state may stand as authority. Saved-report capture-time resolution and post-transfer readability
 remain L/A/H and final 2.6.9 obligations. This is approved implementation scope, not completion.
+
+## Phase 2.6.9 obsolete relaunch-history retirement — 2026-09-10
+
+This operator amendment supersedes D330.7/D330.9 and C0 requirements to retain
+`archive_relaunches` or project those historical relationships into new reports. Discard the
+relationship history without a replacement store, endpoint or UI. Preserve source archive reports
+and descendant runs, immutable existing report bytes, command/audit grammar, numbering and all
+other retained evidence. Migration 50 follows unchanged released migrations 1–49; floor remains 46.
+Supported stopped conversion/restore must preserve paired archive recovery and shared files.
+Archived confirmed transactions remain in Activity until explicit deletion. The
+[owning finalization amendment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-obsolete-table-retirement-amendment--2026-09-10)
+freezes the full removed/renamed inventory and proof/review obligations. No operator database
+application or local tracker cleanup is authorized.
+
+For supported historical recovery, a live-half backup containing archive transfer custody refuses
+single-database restore with `paired-lifecycle-backup-required` before replacement or quarantine.
+The operator selects its explicit verified lifecycle pair; both archive reports and retained files
+are restored before the required stopped schema upgrade. An old schema alone does not imply that
+its independent archive half is disposable.
