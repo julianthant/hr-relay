@@ -12,8 +12,8 @@ import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 
-export function archiveFixture() {
-  const base = foundationFixture();
+export function archiveFixture(options: Parameters<typeof foundationFixture>[0] = {}) {
+  const base = foundationFixture(options);
   let database = base.db;
   let sequence = 9500;
   let fail: string | undefined;

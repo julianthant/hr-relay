@@ -3287,16 +3287,21 @@ export class AuthorityDatabase implements Disposable {
   }
 
   settleArchivedDeletion(runId: string) {
-    const receipt = this.authority.deletedRuns.get(runId);
-    if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
-    const archive = this.lifecycleArchive(true);
-    const report = archive.read(runId);
-    if (report !== undefined) archive.beginDelete(receipt,report.digest);
-    const pendingDigests = new Set(this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
-      const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-      return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
-    }));
-    archive.settleDelete(runId, undefined, pendingDigests);
+    // Claim acquisition retains files while holding the authority write lock.
+    // Hold that same lock through owner inspection and unlinking so another
+    // connection cannot commit a new capture whose verified bytes we removed.
+    return this.withAuthorityTransaction(() => {
+      const receipt = this.authority.deletedRuns.get(runId);
+      if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
+      const archive = this.lifecycleArchive(true);
+      const report = archive.read(runId);
+      if (report !== undefined) archive.beginDelete(receipt,report.digest);
+      const pendingDigests = new Set(this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+        const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+        return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
+      }));
+      archive.settleDelete(runId, undefined, pendingDigests);
+    });
   }
 
   readVersionChange(changeId: string) {

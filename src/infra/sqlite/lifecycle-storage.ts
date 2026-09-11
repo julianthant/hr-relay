@@ -4,6 +4,7 @@ import type { VersionChange } from "../../domain/archive/change-record.js";
 import { z } from "zod";
 import type { AuthorityDatabase } from "./authority-database.js";
 import type { ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveFileReferenceSchema } from "../../domain/archive/report.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 
 export { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
@@ -153,7 +154,13 @@ export async function restoreLifecyclePair(optionsInput:z.input<typeof OfflineRe
     durableDirectory(stagedFiles);
     if(existsSync(fileRoot)){if(lstatSync(fileRoot).isSymbolicLink())throw new Error("lifecycle-restore-symlink");renameSync(fileRoot,join(options.suspectDirectory,`archive-files.${token}`));}
     renameSync(stagedFiles,fileRoot);durableDirectory(stateRoot);afterStep?.("files");
-    const archive=new ArchiveDatabase(archivePath,{readOnly:true});try{if(archive.fingerprint()!==verified.pair.archiveFingerprint)throw new Error("lifecycle-restore-archive-mismatch");archive.files();}finally{archive.close();}
+    const archive=new ArchiveDatabase(archivePath,{readOnly:true});try{
+      if(archive.fingerprint()!==verified.pair.archiveFingerprint)throw new Error("lifecycle-restore-archive-mismatch");
+      archive.files();
+      // Pending captures need not have an archive row yet. Verify every copied
+      // attachment before clearing the marker that blocks runtime admission.
+      for(const file of verified.pair.files)archive.readFile(ArchiveFileReferenceSchema.parse(file));
+    }finally{archive.close();}
     unlinkSync(journal);durableDirectory(stateRoot);return report;
   }catch(error){
     if(createdJournal && !changed && error instanceof OfflineRestoreFailure && error.authorityState === "unchanged") {unlinkSync(journal);durableDirectory(stateRoot);throw error;}

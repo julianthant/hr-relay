@@ -1,4 +1,5 @@
 import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
+import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspection.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../infra/sqlite/lifecycle-storage.js";
 import { RunRecordService } from "../../core/run-record-service.js";
 /**
@@ -385,7 +386,8 @@ async function restoreCommand(
     const pairedSelection=paired ? await verifyLifecyclePair(resolvedManifest) : undefined;
     const selected = paired ? undefined : await verifyBackupManifestAtPath(resolvedManifest,sourceDatabaseIdentity);
     const historical = selected !== undefined && selected.manifest.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION;
-    if (!paired && !historical && existsSync(join(stateRoot,"archive.sqlite"))) throw new Error("paired-lifecycle-backup-required");
+    if (selected !== undefined && !historical && (existsSync(join(stateRoot,"archive.sqlite"))
+      || backupHasArchiveTransferCustody(selected.backupPath))) throw new Error("paired-lifecycle-backup-required");
     const { upgradeStorage } = await import("./upgrade.js");
     const { restoreHistoricalStorage } = await import("./historical-restore.js");
     const historicalResult = historical ? await restoreHistoricalStorage({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
