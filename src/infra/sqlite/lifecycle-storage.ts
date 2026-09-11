@@ -1,3 +1,4 @@
+import { backupPendingCaptureFiles, backupHasArchiveTransferCustody } from "../compat/backup-inspection.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import type { VersionChange } from "../../domain/archive/change-record.js";
 import { z } from "zod";
@@ -73,9 +74,13 @@ function fileDigest(path:string){return createHash("sha256").update(safeBytes(pa
 /** Pair publication is last: mutation during either native snapshot refuses the whole set. */
 export async function backupLifecyclePair(source: ConstructorParameters<typeof AuthorityBackupService>[0], stateRoot:string,clock:Clock) {
   const archivePath=join(stateRoot,"archive.sqlite"),directory=join(stateRoot,"backups","authority");
+  if (!existsSync(archivePath) && backupHasArchiveTransferCustody(join(stateRoot,"state.db"))) throw new Error("archive-database-missing");
   const archive=existsSync(archivePath)?new ArchiveDatabase(archivePath,{readOnly:true}):undefined;
   try {
     const generation=source.getMeta().authorityGeneration, fingerprint=archive?.fingerprint();
+    // Refuse known missing custody before publishing even the live-half manifest.
+    const files = [...new Map([...(archive?.files() ?? []), ...backupPendingCaptureFiles(join(stateRoot,"state.db"))].map(file => [file.digest, file])).values()];
+    for (const file of files) archive?.readFile(file);
     const report=await new AuthorityBackupService(source,{directory},clock).request({trigger:"operator",requiredGeneration:generation});
     if(archive===undefined){if(existsSync(archivePath))throw new Error("lifecycle-backup-source-changed");return report;}
     const manifest=report.manifests.at(-1);if(manifest===undefined)throw new Error("lifecycle-backup-live-missing");
@@ -83,7 +88,7 @@ export async function backupLifecyclePair(source: ConstructorParameters<typeof A
     await archive.onlineBackupTo(join(directory,archiveFile));
     const copy=new ArchiveDatabase(join(directory,archiveFile),{readOnly:true});
     try{if(copy.fingerprint()!==fingerprint)throw new Error("lifecycle-backup-archive-changed");}finally{copy.close();}
-    const files=archive.files();mkdirSync(join(directory,fileDirectory),{mode:0o700});
+    mkdirSync(join(directory,fileDirectory),{mode:0o700});
     for(const file of files)writeFileSync(join(directory,fileDirectory,file.digest),archive.readFile(file),{flag:"wx",mode:0o600,flush:true});
     durableDirectory(join(directory,fileDirectory));
     if(source.getMeta().authorityGeneration!==generation || manifest.authorityGeneration!==generation || archive.fingerprint()!==fingerprint)throw new Error("lifecycle-backup-source-changed");
@@ -104,7 +109,15 @@ export async function verifyLifecyclePair(path:string) {
   if(fileDigest(liveManifestPath)!==pair.liveManifestDigest || fileDigest(join(root,pair.archiveFile))!==pair.archiveDigest)throw new Error("lifecycle-backup-digest-mismatch");
   const live=await verifyBackupManifestAtPath(liveManifestPath,pair.sourceDatabaseIdentity);
   const archive=new ArchiveDatabase(join(root,pair.archiveFile),{readOnly:true});
-  try{if(archive.fingerprint()!==pair.archiveFingerprint)throw new Error("lifecycle-backup-archive-mismatch");}finally{archive.close();}
+  try {
+    if(archive.fingerprint()!==pair.archiveFingerprint)throw new Error("lifecycle-backup-archive-mismatch");
+    const pending = backupPendingCaptureFiles(live.backupPath);
+    const required = [...archive.fileReferences(false), ...pending];
+    const admitted = [...archive.fileReferences(), ...pending];
+    if (new Set(pair.files.map(file=>file.digest)).size !== pair.files.length
+      || required.some(file => !pair.files.some(candidate => candidate.digest === file.digest && candidate.byteLength === file.byteLength))
+      || pair.files.some(file => !admitted.some(candidate => candidate.digest === file.digest))) throw new Error("lifecycle-backup-file-membership-mismatch");
+  } finally {archive.close();}
   for(const file of pair.files){const bytes=safeBytes(join(root,pair.fileDirectory,file.digest));if(bytes.length!==file.byteLength||createHash("sha256").update(bytes).digest("hex")!==file.digest)throw new Error("lifecycle-backup-file-mismatch");}
   return {pair,live,root};
 }

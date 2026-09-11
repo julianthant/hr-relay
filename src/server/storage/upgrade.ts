@@ -1,3 +1,4 @@
+import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspection.js";
 import { requireSupportedRecoverySchema, requireDatabaseSourcePath } from "../../infra/sqlite/recovery-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../infra/compat/backup-inspection.js";
 import { inspectRecoveryFloor, readLatestDatabaseUpgrade, convertStoppedDatabase, settleDatabaseUpgrade, inspectHistoricalSettingsExposure } from "../../infra/sqlite/stopped-database-conversion.js";
@@ -58,15 +59,24 @@ export async function backupStoppedAuthority(stateRoot: string, clock: Clock) {
 
 async function requiredBackup(stateRoot: string, generation: number, fingerprint: string, selectedManifest?: string) {
   const directory = join(stateRoot, "backups", "authority");
+  const journal=readArchiveUpgradeJournal(stateRoot);
+  const requiresPair=journal===undefined && existsSync(join(stateRoot,"archive.sqlite"));
+  if (!existsSync(join(stateRoot,"archive.sqlite")) && backupHasArchiveTransferCustody(join(stateRoot,"state.db"))) throw new Error("archive-database-missing");
   if (selectedManifest === undefined && !existsSync(directory)) throw new Error("backup-required: run storage backup first");
   const names = selectedManifest === undefined ? readdirSync(directory).filter((name) => name.endsWith(".manifest.json")).sort().map(name=>join(directory,name)) : [selectedManifest];
   let matching: Awaited<ReturnType<typeof verifyBackupManifestAtPath>> | undefined;
   for (const name of names) {
     const verified = await verifyBackupManifestAtPath(name, AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db")));
-    if (verified.manifest.authorityGeneration === generation && verified.manifest.authorityContentFingerprint === fingerprint) matching = verified;
+    if (verified.manifest.authorityGeneration === generation && verified.manifest.authorityContentFingerprint === fingerprint) {
+      // A live manifest is not publication of a completed lifecycle pair.
+      if (requiresPair && !existsSync(`${verified.manifestPath}.lifecycle.json`)) {
+        if (selectedManifest !== undefined) throw new Error("paired-lifecycle-backup-required");
+        continue;
+      }
+      matching = verified;
+    }
   }
   if (matching === undefined) throw new Error("backup-stale: run storage backup against the current authority first");
-  const journal=readArchiveUpgradeJournal(stateRoot);
   if(journal!==undefined) {
     if(journal.sourceIdentity!==matching.manifest.sourceDatabaseIdentity || journal.backupSha256!==matching.manifest.sha256) throw new Error("archive-conversion-resume-mismatch");
     return matching;
@@ -75,7 +85,10 @@ async function requiredBackup(stateRoot: string, generation: number, fingerprint
     const paired=await verifyLifecyclePair(`${matching.manifestPath}.lifecycle.json`);
     const {ArchiveDatabase}=await import("../../infra/sqlite/archive-database.js");
     const archive=new ArchiveDatabase(join(stateRoot,"archive.sqlite"),{readOnly:true});
-    try{if(archive.fingerprint()!==paired.pair.archiveFingerprint)throw new Error("archive-backup-stale");}finally{archive.close();}
+    try{
+      if(archive.fingerprint()!==paired.pair.archiveFingerprint)throw new Error("archive-backup-stale");
+      for(const file of archive.files()) archive.readFile(file);
+    }finally{archive.close();}
   }
   return matching;
 }

@@ -1,4 +1,5 @@
 import { PositiveIntSchema, NonNegativeIntSchema, RunIdSchema } from "../domain/ids.js";
+import { parsePendingCapture } from "../domain/archive/pending-capture.js";
 import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
 import type { createRunLifecycleStorage } from "../infra/sqlite/lifecycle-storage.js";
 import { lifecycleSourceDigest } from "../infra/sqlite/lifecycle-storage.js";
@@ -139,29 +140,23 @@ function prepareApply(deps: ArchiveCommandDependencies, request: Apply): Command
         message: `Reviewed membership changed. Review-required: confirm replacement ${replacement.changeId}.` };
     }
     if (row.blockers.length > 0) refuse(request, "active-version-blockers", `Prior-version blockers: ${assess(deps, repos, row.scope).blockers.map(describeBlocker).join("; ")}`);
-    storage.claimVersionChange({ changeId: row.changeId, reviewFingerprint: row.reviewFingerprint,
+    const claimed = VersionChangeSchema.parse({ ...row, state: "applying",
       application: { commandId: request.commandId, actorId: request.requestedBy, startedAt: request.requestedAt,
         appVersion: deps.appVersion, targets: row.targets, requestFingerprint } });
+    const displays = deps.archiveSnapshots.snapshotBatch(row.members.map(member => member.runId));
+    const pendingCaptures = row.members.map(member => {
+      const report = captureMember(storage, claimed, member, displays.get(member.runId));
+      return { runId: member.runId, reportJson: canonicalJsonStringify(report) };
+    });
+    storage.claimVersionChange({ changeId: row.changeId, reviewFingerprint: row.reviewFingerprint,
+      application: claimed.application!, pendingCaptures });
     return undefined;
   });
 }
 
-/** Every report is captured before the first cleanup; replay uses those exact bytes. */
-function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
-  const storage = deps.lifecycle.lifecycleStorage();
-  const row = requiredChange(storage, request);
-  if (row.state === "applied") return;
-  if (row.application === undefined) throw new Error("archive-claim-missing");
-  const reports = deps.authority.withAuthorityTransaction(() => {
-    const pending = row.members.map(member => ({ member, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`) }));
-    const missing = pending.filter(({ member, transferId }) => storage.readPendingReport(member.runId, transferId) === undefined);
-    const displays = deps.archiveSnapshots.snapshotBatch(missing.map(({ member }) => member.runId));
-    return pending.map(({ member, transferId }) => {
-      const saved = storage.readPendingReport(member.runId, transferId);
-      if (saved !== undefined) return saved.report;
+function captureMember(storage: Storage, row: VersionChange, member: VersionChange["members"][number], display: unknown) {
       const snapshot = storage.capture(member.runId);
-      if (lifecycleSourceDigest(snapshot) !== member.sourceDigest || snapshot.run.version !== member.version) throw new Error("archive-reviewed-source-changed");
-      const display = displays.get(member.runId);
+      if (lifecycleSourceDigest(snapshot) !== member.sourceDigest || snapshot.run.version !== member.version) throw new Error("archive-claim-source-unprovable");
       if (display === undefined) throw new Error("archive-display-capture-missing");
       const files = (snapshot.records.find(group => group.table === "diagnostic_files")?.rows ?? []).map(record => {
         const { attachment } = DiagnosticAttachmentStorageRecordSchema.parse(JSON.parse(record.json));
@@ -170,9 +165,32 @@ function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
       });
       const unique = [...new Map(files.map(file => [file.digest, file])).values()];
       for (const file of unique) storage.retainFile(file, storage.readSourceFile(file));
-      const report = captureArchiveReport({ snapshot, transferId, capturedAt: row.application!.startedAt,
+      const report = captureArchiveReport({ snapshot, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`), capturedAt: row.application!.startedAt,
         versionChange: archiveVersionChange(row), files: unique,
         sections: [genericArchiveSection("Displayed run", JsonValueSchema.parse(display))] });
+      return report;
+}
+
+/** Every report is frozen in the claim before the first cleanup; replay uses those exact bytes. */
+function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
+  const storage = deps.lifecycle.lifecycleStorage();
+  const row = requiredChange(storage, request);
+  if (row.state === "applied") return;
+  if (row.application === undefined) throw new Error("archive-claim-missing");
+  const reports = deps.authority.withAuthorityTransaction(() => {
+    const pending = row.members.map(member => ({ member, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`) }));
+    const missing = pending.filter(({ member, transferId }) => row.pendingCaptures === undefined && storage.readPendingReport(member.runId, transferId) === undefined);
+    const displays = deps.archiveSnapshots.snapshotBatch(missing.map(({ member }) => member.runId));
+    return pending.map(({ member, transferId }) => {
+      const saved = storage.readPendingReport(member.runId, transferId);
+      const frozen = row.pendingCaptures?.find(capture => capture.runId === member.runId);
+      if (saved !== undefined) {
+        if (frozen !== undefined && parsePendingCapture(row, frozen).digest !== saved.report.digest) throw new Error("archive-claim-capture-conflict");
+        return saved.report;
+      }
+      const report = frozen === undefined
+        ? captureMember(storage, row, member, displays.get(member.runId))
+        : parsePendingCapture(row, frozen);
       storage.saveReport(report); storage.verifyReport(member.runId, report.digest);
       return report;
     });
@@ -195,11 +213,12 @@ function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
     transferArchiveReport(storage, report, member.version);
     const current = storage.readVersionChange(row.changeId);
     if (current === undefined) throw new Error("archive-change-missing");
-    storage.writeVersionChange({ ...current, completedRunIds: [...new Set([...current.completedRunIds, member.runId])].sort() });
+    storage.writeVersionChange({ ...current, ...(current.pendingCaptures === undefined ? {} : { pendingCaptures: current.pendingCaptures.filter(capture => capture.runId !== member.runId) }), completedRunIds: [...new Set([...current.completedRunIds, member.runId])].sort() });
   }
   const current = storage.readVersionChange(row.changeId);
   if (current?.application === undefined) throw new Error("archive-change-missing");
-  storage.writeVersionChange({ ...current, state: "applied", application: { ...current.application, completedAt: deps.clock.now().toISOString() } });
+  const { pendingCaptures, ...completed } = current; void pendingCaptures;
+  storage.writeVersionChange({ ...completed, state: "applied", application: { ...current.application, completedAt: deps.clock.now().toISOString() } });
 }
 
 export function runArchiveCommand(request: Request, deps: ArchiveCommandDependencies, executeAtomic: () => CommandResult) {

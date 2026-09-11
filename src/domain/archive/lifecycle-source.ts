@@ -17,3 +17,12 @@ export function lifecycleSourceDigest(snapshot: LifecycleSourceSnapshot): string
   return sha256Hex(canonicalJsonStringify(LifecycleSourceSnapshotSchema.parse(snapshot)));
 }
 
+
+/** These facts survive transfer under independent owners; reports retain their claim-time values. */
+const RETAINED_SHARED_SOURCE_TABLES = new Set<LifecycleSourceSnapshot["records"][number]["table"]>([
+  "provider_usage", "run_checkpoints", "run_operations", "run_operation_attempts", "settings_snapshots",
+  "commands", "command_audits", "notes_files", "version_plans", "version_bump_applications",
+]);
+export function lifecycleOwnedSourceDigest(snapshot: LifecycleSourceSnapshot): string {
+  return lifecycleSourceDigest({ ...snapshot, records: snapshot.records.filter(group => !RETAINED_SHARED_SOURCE_TABLES.has(group.table)) });
+}

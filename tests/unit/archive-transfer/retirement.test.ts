@@ -198,3 +198,40 @@ for(const interruption of ["live","archive","files"] as const)it(`restores the e
     }finally{db.close();}
   }finally{f.dispose();}
 });
+
+for (const missing of ["archive.sqlite", "archive-files"] as const) it(`refuses schema-49 backup and upgrade with missing ${missing} custody`, async () => {
+  const f = await populated49Fixture();
+  try {
+    await backupStoppedAuthority(f.root, f.clock);
+    renameSync(join(f.root, missing), join(f.root, `${missing}.quarantined`));
+    const before = readFileSync(f.path);
+    const input = { stateRoot: f.root, processLockRoot: join(f.root, "locks"), environmentFile: join(f.root, ".env"), plan: true };
+    const refusal = missing === "archive.sqlite" ? /archive-database-missing/u : /archive-file-unavailable/u;
+    await assert.rejects(backupStoppedAuthority(f.root, f.clock), refusal);
+    await assert.rejects(upgradeStorage(input, f.clock), refusal);
+    await assert.rejects(upgradeStorage({ ...input, plan: false }, f.clock), refusal);
+    assert.deepEqual(readFileSync(f.path), before);
+  } finally { f.dispose(); }
+});
+
+import { AuthorityBackupService } from "../../../src/infra/sqlite/backup-service.js";
+import { openAuthorityBackupSourceReadOnly } from "../../../src/infra/compat/backup-inspection.js";
+it("selects a published pair rather than a later standalone live manifest", async () => {
+  const f = await populated49Fixture();
+  try {
+    await backupStoppedAuthority(f.root, f.clock);
+    f.clock.advanceWall(1000);
+    const source = openAuthorityBackupSourceReadOnly(f.path);
+    const directory = join(f.root, "backups", "authority");
+    let standalone;
+    try { standalone = await new AuthorityBackupService(source, { directory }, f.clock).request({ trigger: "operator", requiredGeneration: source.getMeta().authorityGeneration }); }
+    finally { source.close(); }
+    const manifest = standalone.manifests.at(-1); assert.ok(manifest);
+    const backupManifest = join(directory, `${manifest.backupFileName}.manifest.json`);
+    assert.equal(existsSync(`${backupManifest}.lifecycle.json`), false);
+    const input = { stateRoot: f.root, processLockRoot: join(f.root, "locks"), environmentFile: join(f.root, ".env"), plan: true };
+    await assert.rejects(upgradeStorage({ ...input, backupManifest }, f.clock), /paired-lifecycle-backup-required/u);
+    assert.equal((await upgradeStorage(input, f.clock)).state, "planned");
+    assert.equal((await upgradeStorage({ ...input, plan: false }, f.clock)).state, "converted");
+  } finally { f.dispose(); }
+});

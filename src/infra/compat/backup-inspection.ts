@@ -1,3 +1,5 @@
+import { VersionChangeSchema } from "../../domain/archive/change-record.js";
+import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { ArchiveRelaunchStorageRecordSchema } from "../sqlite/storage-records.js";
 import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
 import { KnowledgeRecordSchema, FixRecordSchema } from "../../domain/trust/knowledge.js";
@@ -648,10 +650,29 @@ export function openAuthorityBackupSourceReadOnly(
   });
 }
 
-/** A live-half backup with transfer custody requires its explicitly selected archive pair. */
+/** Published transfers and nonempty applying claims require archive custody.
+ * An applying claim may already have captured reports before its first live transfer;
+ * absent archive bytes cannot prove that capture never happened.
+ */
 export function backupHasArchiveTransferCustody(path: string): boolean {
   return withAuthorityDatabaseReadOnly(path, database => {
-    if (database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_transfers'").get() === undefined) return false;
-    return database.prepare("SELECT 1 FROM archive_transfers LIMIT 1").get() !== undefined;
+    const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('archive_transfers','version_changes')").all()
+      .map(row => z.object({ name: z.string() }).parse(row).name));
+    if (tables.has("archive_transfers") && database.prepare("SELECT 1 FROM archive_transfers LIMIT 1").get() !== undefined) return true;
+    return tables.has("version_changes") && database.prepare("SELECT 1 FROM version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_array_length(record_json,'$.members')>0 LIMIT 1").get() !== undefined;
+  });
+}
+
+/** Claim-owned bytes are recovery assets before archive report publication. */
+export function backupPendingCaptureFiles(path: string) {
+  return withAuthorityDatabaseReadOnly(path, database => {
+    if (database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='version_changes'").get() === undefined) return [];
+    return database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+      const change = VersionChangeSchema.parse(JSON.parse(z.object({record_json:z.string()}).parse(raw).record_json));
+      return (change.pendingCaptures ?? []).flatMap(capture => {
+        const report = parsePendingCapture(change, capture);
+        return report.content.files;
+      });
+    });
   });
 }

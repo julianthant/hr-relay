@@ -92,13 +92,19 @@ export const VersionChangeSchema=VersionChangeReviewSchema.extend({
   schemaVersion:z.literal(2),reviewFingerprint:z.string().regex(/^[a-f0-9]{64}$/u),
   state:z.enum(["planned","applying","applied","superseded"]),completedRunIds:z.array(z.string().uuid()),
   supersededBy:z.string().uuid().optional(),
+  // Private temporary captures; the archive header and dashboard projections omit them.
+  pendingCaptures:z.array(z.strictObject({runId:z.string().uuid(),reportJson:z.string().min(1)})).optional(),
   application:z.strictObject({commandId:z.string().uuid(),actorId:z.string().min(1),startedAt:z.string().datetime(),
     requestFingerprint:z.string().regex(/^[a-f0-9]{64}$/u).optional(),
     appVersion:ApplicationVersionSchema,targets:z.array(IdentitySchema),completedAt:z.string().datetime().optional()}).optional(),
 }).superRefine((row,ctx)=>{
   const review=VersionChangeReviewSchema.parse(Object.fromEntries(Object.entries(row).filter(([key])=>key in VersionChangeReviewSchema.shape)));
   const ids=row.members.map(member=>member.runId),targets=row.targets.map(target=>target.workflow);
-  const invalid=row.reviewFingerprint!==versionChangeReviewFingerprint(review)
+  const pendingIds=row.pendingCaptures?.map(capture=>capture.runId);
+  const invalid=(pendingIds!==undefined && (row.state!=="applying" || new Set(pendingIds).size!==pendingIds.length
+      || pendingIds.some(id=>!ids.includes(id) || row.completedRunIds.includes(id))
+      || ids.some(id=>!row.completedRunIds.includes(id) && !pendingIds.includes(id))))
+    || row.reviewFingerprint!==versionChangeReviewFingerprint(review)
     || row.membershipDigest!==sha256Hex(canonicalJsonStringify(row.members))
     || new Set(row.blockers).size!==row.blockers.length || row.blockers.some(id=>ids.includes(id))
     || (row.scope.kind==="application" && row.scope.applicationVersion!==row.observedAppVersion)

@@ -193,6 +193,16 @@ export class ArchiveDatabase {
   publish(runId:string,digest:string):void{this.verified(runId,digest);if(this.state(runId)!=="published")this.advance(runId,digest,"verified","published");}
   readPublishedReport(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return this.verifiedReport(runId,report.digest);}
   readPublished(runId:string):ArchiveReport|undefined{const report=this.readPublishedReport(runId);return report===undefined?undefined:this.verified(runId,report.digest);}
+  /** Metadata-only membership for independently located backup file bundles. */
+  fileReferences(includeCaptured = true): ArchiveReport["content"]["files"] {
+    return this.#database.prepare("SELECT run_id FROM archive_records ORDER BY run_id").all().flatMap(raw => {
+      const runId = z.strictObject({run_id:z.string()}).parse(raw).run_id;
+      if (!includeCaptured && this.state(runId) === "captured") return [];
+      const report = this.read(runId);
+      if (report === undefined) throw new Error("archive-report-missing");
+      return report.content.files;
+    });
+  }
   files():ArchiveReport["content"]["files"]{
     const files=new Map<string,ArchiveReport["content"]["files"][number]>();
     for(const raw of this.#database.prepare("SELECT run_id FROM archive_records ORDER BY run_id").all()){
@@ -215,11 +225,11 @@ export class ArchiveDatabase {
       this.#database.exec("COMMIT");
     }catch(error){this.#database.exec("ROLLBACK");throw error;}
   }
-  settleDelete(runId:string,afterFile?:(digest:string)=>void):void{
+  settleDelete(runId:string,afterFile?:(digest:string)=>void,pendingDigests:ReadonlySet<string> = new Set()):void{
     const deletion=this.deletion(runId);if(deletion===undefined)throw new Error("archive-deletion-missing");if(deletion.state==="deleted")return;
     this.#database.exec("BEGIN IMMEDIATE");try{
       const retained=this.files();
-      for(const file of deletion.files){if(retained.some(other=>other.digest===file.digest))continue;const path=join(this.fileRoot(),file.digest);if(existsSync(path)){this.readFile(file);unlinkSync(path);syncPath(this.fileRoot());}afterFile?.(file.digest);}
+      for(const file of deletion.files){if(pendingDigests.has(file.digest)||retained.some(other=>other.digest===file.digest))continue;const path=join(this.fileRoot(),file.digest);if(existsSync(path)){this.readFile(file);unlinkSync(path);syncPath(this.fileRoot());}afterFile?.(file.digest);}
       this.#database.prepare("UPDATE archive_deletions SET state='deleted' WHERE run_id=? AND state='deleting'").run(runId);this.#database.exec("COMMIT");
     }catch(error){this.#database.exec("ROLLBACK");throw error;}
   }

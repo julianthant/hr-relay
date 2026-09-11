@@ -42,6 +42,15 @@ function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: stri
   const resource = useSavedResource(read, nonce);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const applyRequests = useRef(new Map<string, unknown>());
+  const apply = (change: SavedVersionIndexWire["changes"][number]) => {
+    const request = applyRequests.current.get(change.changeId) ?? change.resumeRequest ?? (change.state === "planned"
+      ? { ...savedCommandEnvelope(actorId), type: "apply-version-bump", target: { versionPlanId: change.changeId, expectedVersion: 1 }, payload: { planFingerprint: change.reviewFingerprint } }
+      : undefined);
+    if (request === undefined) { setMessage("Original apply request unavailable. Resume with the original command."); return; }
+    applyRequests.current.set(change.changeId, request);
+    execute(request, change.changeId);
+  };
   const [appliedChanges,setAppliedChanges]=useState<ReadonlySet<string>>(new Set());
   const pending=useRef(false);
   const execute = (request: unknown, changeId?:string) => {
@@ -64,7 +73,7 @@ function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: stri
         {resource.value.changes.map(change => <section key={change.changeId} className="border-b py-[var(--ds-space-cozy)]">
           <h3>{change.change.what}</h3><p>{change.change.why}</p><p>{change.state} · target {change.targetVersion} · {change.memberRunIds.length} reviewed runs · {change.completedRunIds.length} archived</p>
           {change.blockerRunIds.length > 0 && <p role="status">Blocked by: {change.blockerRunIds.join(", ")}</p>}
-          {(change.state === "planned" || change.state === "applying") && !appliedChanges.has(change.changeId) && <Button disabled={busy || change.blockerRunIds.length > 0} onClick={() => execute({ ...savedCommandEnvelope(actorId), type: "apply-version-bump", target: { versionPlanId: change.changeId, expectedVersion: 1 }, payload: { planFingerprint: change.reviewFingerprint } },change.changeId)}>Apply reviewed change</Button>}
+          {(change.state === "planned" || change.state === "applying") && !appliedChanges.has(change.changeId) && <Button disabled={busy || change.blockerRunIds.length > 0} onClick={() => apply(change)}>Apply reviewed change</Button>}
         </section>)}</>}
     {message && <div role="status"><pre className="whitespace-pre-wrap break-words">{message}</pre><Button onClick={onArchive}>Open the archive</Button></div>}
   </PanelBody></Panel>;

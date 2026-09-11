@@ -1,3 +1,4 @@
+import { VersionArchiveCommandRequestSchema } from "../commands.js";
 import { ArchiveReportSectionSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema } from "../archive/report.js";
 import { VersionChangeReviewSchema } from "../archive/change-record.js";
 /**
@@ -404,6 +405,7 @@ export const SavedVersionIndexWireSchema = z.strictObject({
   appVersion: z.string(), workflows: z.array(z.strictObject({ workflow: z.string(), label: z.string(), version: z.number(), fingerprint: FingerprintSchema })),
   changes: z.array(z.strictObject({ changeId: z.string().uuid(), state: z.enum(["planned", "applying", "applied", "superseded"]),
     targetVersion: z.string(), change: VersionBumpChangeRecordSchema, reviewFingerprint: FingerprintSchema,
+    resumeRequest: VersionArchiveCommandRequestSchema.options[1].omit({ reason: true }).optional(),
     scope: VersionChangeReviewSchema.shape.scope, memberRunIds: z.array(RunIdSchema), blockerRunIds: z.array(RunIdSchema), completedRunIds: z.array(RunIdSchema) })),
   historicalChanges: z.number().int().nonnegative(),
 });

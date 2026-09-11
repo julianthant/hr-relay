@@ -1,12 +1,13 @@
+import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { ArchiveQuerySchema, type ArchiveQuery } from "../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveQuerySchema, type ArchiveQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
 import { deriveCanonicalPerson } from "../../domain/run/summary-derivation.js";
 import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
-import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../domain/archive/lifecycle-source.js";
+import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../domain/archive/lifecycle-source.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
@@ -2830,6 +2831,7 @@ export class AuthorityDatabase implements Disposable {
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
+  #archiveSourcesDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
   #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
@@ -3190,8 +3192,11 @@ export class AuthorityDatabase implements Disposable {
       const run = snapshot.run;
       if (run.lifecycle.state !== "terminal" || run.version !== input.expectedVersion) throw new Error("archive-transfer-source-fence");
       if (this.authority.runs.listChildren(input.runId).length !== 0) throw new Error("archive-transfer-children-retained");
-      if (report.content.sourceDigest !== lifecycleSourceDigest(snapshot)
-        || report.content.sources.find(source => source.kind === "authority-snapshot")?.json !== canonicalJsonStringify(snapshot)
+      const source = report.content.sources.find(source => source.kind === "authority-snapshot");
+      if (source === undefined) throw new Error("archive-source-snapshot-missing");
+      const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+      if (report.content.sourceDigest !== lifecycleSourceDigest(frozen)
+        || lifecycleOwnedSourceDigest(frozen) !== lifecycleOwnedSourceDigest(snapshot)
         || report.content.workflow !== run.envelope.workflow || report.content.itemId !== run.envelope.itemId
         || report.content.attempt !== run.envelope.attempt || report.content.runNumber !== (run.runNumber ?? null)) throw new Error("archive-transfer-source-mismatch");
       for (const row of snapshot.records.find(group=>group.table === "diagnostic_files")?.rows ?? []) {
@@ -3263,10 +3268,21 @@ export class AuthorityDatabase implements Disposable {
     return this.withAuthorityReadSnapshot(()=>{
       const path=join(dirname(this.#path),"archive.sqlite");
       if(!existsSync(path)){if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");return {items:[],next:null};}
-      const page=this.lifecycleArchive(true).query(query);
-      const items=page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined);
+      // A live tombstone can precede archive settlement. Fill the visible page
+      // across those excluded rows, including one lookahead for its cursor.
+      const archive=this.lifecycleArchive(true);
+      const visible: ArchiveReport[]=[];
+      let after=query.after;
+      while(visible.length<=query.limit) {
+        const page=archive.query({...query, ...(after===undefined?{}:{after})});
+        visible.push(...page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined));
+        if(page.next===null)break;
+        after=page.next;
+      }
+      const items=visible.slice(0,query.limit);
       for(const report of items) { const owner=this.savedReportOwner(report.content.runId); if(owner.state!=="archived" || owner.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch"); }
-      return {...page,items};
+      const last=items.at(-1);
+      return {items,next:visible.length>query.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
     });
   }
 
@@ -3276,11 +3292,17 @@ export class AuthorityDatabase implements Disposable {
     const archive = this.lifecycleArchive(true);
     const report = archive.read(runId);
     if (report !== undefined) archive.beginDelete(receipt,report.digest);
-    archive.settleDelete(runId);
+    const pendingDigests = new Set(this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+      const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+      return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
+    }));
+    archive.settleDelete(runId, undefined, pendingDigests);
   }
 
   readVersionChange(changeId: string) {
-    return this.#readRecord("version_changes", changeId, VersionChangeSchema);
+    const row = this.#readRecord("version_changes", changeId, VersionChangeSchema);
+    if (row !== undefined) for (const capture of row.pendingCaptures ?? []) parsePendingCapture(row, capture);
+    return row;
   }
 
   writeVersionChange(input: VersionChange) {
@@ -3304,6 +3326,14 @@ export class AuthorityDatabase implements Disposable {
           if((change.scope.kind==="workflows" && !change.scope.workflowIds.includes(snapshot.run.envelope.workflow)) || snapshot.run.version!==member.version || lifecycleSourceDigest(snapshot)!==member.sourceDigest)throw new Error("version-change-source-stale");
         }
       }
+      for (const capture of change.pendingCaptures ?? []) {
+        const report = parsePendingCapture(change, capture);
+        const old = previous?.pendingCaptures?.find(value => value.runId === capture.runId);
+        if (previous?.state === "applying" && old?.reportJson !== capture.reportJson) throw new Error("version-change-capture-conflict");
+        if (old === undefined) for (const file of report.content.files) this.lifecycleArchive(true).readFile(file);
+      }
+      if (previous?.pendingCaptures !== undefined && change.pendingCaptures === undefined
+        && change.state !== "applied") throw new Error("version-change-capture-conflict");
       if(change.application!==undefined && previous?.application===undefined) {
         const application=change.application;
         const existing=this.#database.prepare("SELECT record_json FROM commands WHERE record_key=?").get(application.commandId);
@@ -3330,7 +3360,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>}) {
+  claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>;pendingCaptures?:VersionChange["pendingCaptures"]}) {
     return this.withAuthorityTransaction(()=>{
       const row=this.readVersionChange(input.changeId);
       if(row===undefined||row.reviewFingerprint!==input.reviewFingerprint)throw new Error("version-change-review-required");
@@ -3340,7 +3370,10 @@ export class AuthorityDatabase implements Disposable {
         if(canonicalJsonStringify(application)!==canonicalJsonStringify(input.application))throw new Error("version-change-claim-conflict");
         return row;
       }
-      return this.writeVersionChange({...row,state:"applying",application:input.application});
+      // Establish archive custody even for a capture with no attachments or published rows.
+      if (row.members.length > 0) this.lifecycleArchive();
+      return this.writeVersionChange({...row,state:"applying",application:input.application,
+        ...(input.pendingCaptures === undefined ? {} : {pendingCaptures:input.pendingCaptures})});
     });
   }
 
@@ -4253,6 +4286,7 @@ export class AuthorityDatabase implements Disposable {
       }
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
+      const sourcesDirtyBefore = this.#archiveSourcesDirty;
       const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
       this.#transactionDepth += 1;
@@ -4264,6 +4298,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
+        this.#archiveSourcesDirty = sourcesDirtyBefore;
         this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
       } finally {
@@ -4275,8 +4310,18 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = mode;
     this.#authorityDirty = false;
+    this.#archiveSourcesDirty = false;
     let result: Result;
     try {
+      // Older claims have no embedded capture. Fence their owned facts across
+      // this transaction without freezing independent shared accounting.
+      const legacyOwned = new Map<string, string>();
+      for (const raw of this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_extract(record_json,'$.pendingCaptures') IS NULL").all()) {
+        const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+        for (const member of change.members) if (this.authority.runs.get(member.runId) !== undefined) {
+          legacyOwned.set(member.runId, lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)));
+        }
+      }
       result = work();
       if (this.#authorityDirty) {
         const update = this.#database.prepare(`
@@ -4285,6 +4330,35 @@ export class AuthorityDatabase implements Disposable {
           WHERE singleton_id = 1
         `).run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
+      }
+      if (this.#archiveSourcesDirty) {
+        // Fence records owned by cleanup, while retained shared authorities advance.
+        // Frozen captures supply the baseline; admitted older claims may already
+        // have a verified saved report. Uncaptured historical claims retain the
+        // exact-source proof requirement when resumed.
+        const applying = this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying'").all();
+        for (const raw of applying) {
+          const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+          for (const member of change.members) {
+            if (this.authority.runs.get(member.runId) === undefined) {
+              if (this.#readRecord("archive_transfers", member.runId, ArchiveTransferIdentitySchema) === undefined
+                && this.authority.deletedRuns.get(member.runId)?.origin !== "archive") throw new Error("archive-source-applying");
+              continue;
+            }
+            const capture = change.pendingCaptures?.find(value => value.runId === member.runId);
+            const report = capture === undefined
+              ? this.readPendingArchiveReport(member.runId, deriveStableUuid("archive-transfer", `${change.changeId}:${member.runId}`))?.report
+              : ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
+            if (report !== undefined) {
+              const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+              if (source === undefined) throw new Error("archive-source-snapshot-missing");
+              const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+              if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== lifecycleOwnedSourceDigest(frozen)) throw new Error("archive-source-applying");
+            } else if (legacyOwned.has(member.runId) && lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== legacyOwned.get(member.runId)) {
+              throw new Error("archive-source-applying");
+            }
+          }
+        }
       }
       if (this.#authorityDirty) createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
       this.#database.exec("COMMIT");
@@ -4296,6 +4370,7 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
+      this.#archiveSourcesDirty = false;
     }
     const publications = this.#authorityCommitCallbacks.splice(0);
     for (const publish of publications) publish();
@@ -4310,6 +4385,7 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = "read";
     this.#authorityDirty = false;
+    this.#archiveSourcesDirty = false;
     try {
       const result = read();
       this.#database.exec("COMMIT");
@@ -4321,6 +4397,7 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
+      this.#archiveSourcesDirty = false;
     }
   }
 
@@ -4334,6 +4411,9 @@ export class AuthorityDatabase implements Disposable {
       const outcome = operation();
       if (outcome.changes > 0) {
         this.#authorityDirty = true;
+        // These two lifecycle protocols verify source identity themselves and
+        // do not author new source evidence. Mixed transactions still check.
+        if (table !== "archive_transfers" && table !== "version_changes") this.#archiveSourcesDirty = true;
         this.#runSearchCorpusValidation = undefined;
       }
       return outcome.result;
@@ -7142,6 +7222,7 @@ export class AuthorityDatabase implements Disposable {
     const changes = sqliteChanges(result.changes);
     if (changes !== 1) throw new Error(`write intent ${record.writeIntentId} atomic state update affected ${String(changes)} rows`);
     this.#authorityDirty = true;
+    this.#archiveSourcesDirty = true;
   }
 
   #replaceWriteAttempt(record: WriteAttemptRecord): void {
@@ -7152,6 +7233,7 @@ export class AuthorityDatabase implements Disposable {
     const changes = sqliteChanges(result.changes);
     if (changes !== 1) throw new Error(`write attempt ${record.writeAttemptId} atomic state update affected ${String(changes)} rows`);
     this.#authorityDirty = true;
+    this.#archiveSourcesDirty = true;
   }
 
   #assertAtomicCommitMatchesIntent(

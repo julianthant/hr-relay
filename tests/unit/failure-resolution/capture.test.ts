@@ -67,3 +67,26 @@ it("corrupt protected annotation JSON fails by name without echoing private text
       error instanceof Error && error.message === "failure-resolution-annotation-invalid");
   } finally { sql.close(); f.dispose(); }
 });
+
+import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { projectArchiveReport } from "../../../src/infra/sqlite/archive-records.js";
+import { NOW } from "../database-foundation/fixtures.js";
+
+it("withholds protected resolution notes throughout production archive capture while retaining private evidence", () => {
+  const f = resolutionFixture();
+  try {
+    const note = "SYNTHETIC_PRIVATE_FREEFORM_ABC";
+    assert.equal(f.kernel.execute(resolutionCommand({ payload: { action: "resolve", note } })).state, "applied");
+    const snapshot = createRunLifecycleStorage(f.db).capture(f.record.runId);
+    const report = captureArchiveReport({ snapshot, transferId: randomUUID(), capturedAt: NOW, files: [], sections: [] });
+    assert.ok(report.content.sources.some(source => source.json.includes(note)));
+    assert.equal(JSON.stringify(report.content.sections).includes(note), false);
+    assert.equal(JSON.stringify(projectArchiveReport(report)).includes(note), false);
+    assert.equal(f.kernel.execute(resolutionCommand({ target: { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 2 }, payload: { action: "reopen" } })).state, "applied");
+    const reopened = captureArchiveReport({ snapshot: createRunLifecycleStorage(f.db).capture(f.record.runId),
+      transferId: randomUUID(), capturedAt: NOW, files: [], sections: [{ kind: "text", title: "Retained note copy", text: note }] });
+    assert.ok(reopened.content.sources.some(source => source.json.includes(note)));
+    assert.equal(JSON.stringify(projectArchiveReport(reopened)).includes(note), false, "historical command/audit and supplied display copies remain protected after reopen");
+  } finally { f.dispose(); }
+});
