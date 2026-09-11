@@ -10,19 +10,19 @@ retains its original proof and handover requirements. Historical numeric aliases
 
 Phase 2.6 has one finalization task. Earlier scoped releases are not full acceptance; this supervisor
 owns all remaining repairs, full gates, independent review, integration and cleanup. No repair
-handbacks or successor dispatch. Implementation is in progress; current evidence is recorded below. This approval supersedes the earlier
+handbacks or successor dispatch. Implementation is in progress; see the [repaired candidate gate record](#repaired-candidate-gate-record--2026-09-11) and approved amendments below. This approval supersedes the earlier
 one-complete-reviewer and Astra/high supervisor allocation for this assignment only.
 
 ## Assignment and verified inputs
 
 | Binding | Approved value |
 | --- | --- |
-| Supervisor | One operator-opened GPT-6 Astra/medium session, zero implementation workers. Cross-store recovery, combined proof and integration make this consequential work. It is cohesive finalization of integrated implementations, not a new parallel implementation wave. |
+| Supervisor | One operator-opened GPT-6 Astra session, initially medium; operator changed continued supervision to xhigh on 2026-09-11. Zero implementation workers. Cross-store recovery, combined proof and integration make this consequential work. It is cohesive finalization of integrated implementations, not a new parallel implementation wave. |
 | Implementation mode | Create `codex/database-validation` at `/Users/julianhein/Projects/hr-worktree-database-contracts`; never implement in the primary checkout. |
 | Product input | `22bf85d3aa055a658b343127cf88db035164ecaf`, tree `a087ee61e9083ba3455d2faf850027f8a9ad324d`. Every integration below was verified as an ancestor during planning. |
 | Execution base / plan | The exact approved plan commit recorded in [PROMPTS.md](PROMPTS.md#final-session-prompt), a documentation-only descendant of the product input containing this entire brief and the approved contract amendment. Verify with `git show` before creating the implementation checkout. |
 | Complete review base | `0df282e45efab2e5a4768386b5c4d5202a7cfc93`, before R. Review the entire R-through-finalization product delta, not only finalizer repairs. Consume accepted T1 and 2.6.1 evidence and inspect their affected consumers. |
-| Integration | The same supervisor owns local `master` integration at `/Users/julianhein/Projects/hr-automation-rebuild` after R1–R5 PASS and required gates. Recheck target identity, ownership and dirty paths; preserve unrelated work. Material integration changes need affected review and full gates. No push. |
+| Integration | The same supervisor owns local `master` integration at `/Users/julianhein/Projects/hr-automation-rebuild` after R1a–R4b and R5 PASS and required gates. Recheck target identity, ownership and dirty paths; preserve unrelated work. Material integration changes need affected review and full gates. No push. |
 | Planning isolation | `codex/final-plan` at `/Users/julianhein/Projects/hr-worktree-final-plan`, created from the product input for approved documentation only. |
 
 At planning only the primary worktree was registered; proposed task refs/paths were absent. The
@@ -138,7 +138,7 @@ Planning inspected source, contracts and receipts, not runtime success. All rows
    before/after measurements. Commit logical categories with exact paths. Freeze HEAD/tree, review
    base, tested-input hashes, command exits/logs and complete proof map; record awaiting independent
    review with task completion still open.
-6. **F06 — independent review/repair.** Obtain R1–R4 then R5. Reviewers implement/delegate nothing.
+6. **F06 — independent review/repair.** Obtain the approved R1a–R4b scopes then R5. Reviewers implement/delegate nothing.
    Fix findings locally, renew affected proof, full gates and affected scope/neighbors then R5.
    No partial-scope or author verdict is complete PASS.
 7. **F07 — integrate/hand over.** After review/gates PASS, perform approved local master merge after
@@ -745,3 +745,238 @@ renewals; elapsed wall time includes host sleep and does not measure engineering
 
 
 Candidate status: awaiting independent review. F01–F05 proof/gates are recorded above; F06/F07 and phase completion remain open. Review packet binds exact committed HEAD/tree, full base, per-path scope inventory and gate receipts.
+
+
+### Independent review interruption and repair ledger — 2026-09-11
+
+R1, R2 and R3 reviewed candidate `28ab8e2b48c0a6f30b2781b3624dbde475254fa1`
+against complete base `0df282e45efab2e5a4768386b5c4d5202a7cfc93`. Each returned
+**BLOCKED** after unexpected automatic context compaction, with incomplete assigned coverage.
+Their partial coverage is not acceptance. R4 and R5 have not run. Complete replacement scopes
+require the review-contract fit reassessment; no exhausted reviewer may resume from its summary.
+No implementation worker was used. The supervisor is repairing the findings locally.
+
+| Finding | Deciding evidence and current disposition |
+| --- | --- |
+| R1-CUSTODY | Synthetic populated schema 49 with quarantined archive database/files admitted a live-only backup and schema-50 upgrade. Add custody refusal before backup/upgrade acceptance and verify retained file bytes. Repair pending complete gates and independent review. |
+| R2-PAGE | Interrupted archive deletion commits its tombstone before settlement; limit 1 returned no items/no cursor while limit 10 revealed a survivor. Regression observed red, then 14 focused cases passed with pagination/protected-note fixes. Scan excluded rows before forming the visible page. |
+| R2-SOURCE | After interruption following saveReport, both direct attachment insertion and the production annotate-failure command changed source evidence; exact apply retry failed archive-transfer-source-mismatch and remained applying. Durable source-write fence remains open. Terminal rename was correctly refused and is not a finding. |
+| R2-RETRY | Applying-version UI creates a new apply command envelope; durable claim requires the original ID/fingerprint. Exact request recovery across lost responses/reload remains open. R4 overlap. |
+| R3-NOTE | Production capture of a resolved protected run exposes arbitrary free-text notes in public sections/wire although live trust output withholds them. External probe completed with private source bytes retained. Regression observed red; public capture scrubbing repair passes focused cases. Broader proof and review remain open. |
+
+Evidence is retained under `/Users/julianhein/Projects/hr-final-validation-evidence-20260910/`,
+including `R1-missing-custody`, `R2-interrupted-attachment`, `R2-tombstone-pagination`,
+`R2-interrupted-annotation`, `R3-protected-note` harnesses and `R-fixes-red`/`R-fixes-focused`
+gate receipts. The initial repair typecheck/lint failed on a missing ArchiveReport type import;
+that import is corrected and gate renewal remains required. The custody suite initially passed
+27 cases and failed one newly authored error matcher: production correctly emitted the named
+archive-file-unavailable refusal. The matcher now asserts that exact existing contract; no runtime
+fallback or refusal weakening was introduced. Full candidate acceptance remains open.
+
+#### Approved review sizing amendment — 2026-09-11
+
+The operator approved the eight-scope replacement on 2026-09-11. Three native contexts exhausted before
+complete acceptance, so a fresh unchanged restart has no demonstrated fit. The complete mapped
+scopes contain R1 78 production/153 test paths, R2 34/121, R3 60/87 and R4 53/574; R4's test count
+includes generated reference assets. Their full-range additions/deletions are respectively 34,691,
+25,212, 21,176 and 26,219 lines including overlap and historical removals. These are routing/size
+measurements, not evidence that any path was independently accepted.
+
+Replace the four focused assignments with these eight complete bounded assignments,
+then the same fresh R5 integration review. Keep Astra/high, read-only, zero implementation workers,
+maximum three concurrent, the exact full base, complete requirements and every existing gate.
+Each pair collectively retains its original responsibility; shared invariants belong to both
+neighbors and R5. No partial prior verdict carries acceptance.
+
+| Approved ID | Complete responsibility retained from original allocation |
+| --- | --- |
+| R1a | R/T/C authority registry/invariants, terminal/operation/timeline contracts and runtime write callers; P1/P3. |
+| R1b | R/T/C immutable migrations, stopped conversion, complete table/adapter retirement inventory, floor refusal, backup/restore/doctor and historical recovery; P1/P2/P3. |
+| R2a | L/A generic capture, archive storage, transfer, deletion, shared file custody and private/public evidence; P2/P6; overlap R1b and R3b. |
+| R2b | L/A version review/application, durable claims, command-kernel/run-record effects, numbering/membership/lineage and exact replay; P6; overlap R2a and R4b. |
+| R3a | F/S settings activation/claims and retained execution resources, sync/async/internal writers and runtime composition; P4/P5. |
+| R3b | P/D/G providers, diagnostics, imported/generated artifacts and notification continuity, captured evidence/privacy; P4/P5; overlap R2a/R4b. |
+| R4a | Q/V/U summaries, publication/rebuild/query, served Queue/Activity identity/failure states and both unchanged benchmarks; P7/P8. |
+| R4b | U/H client/Archive/version retry, exports/downloads, privacy, UI/a11y and reference dispositions; P8; overlap R2b/R3b/R4a. |
+| R5 | Entire plan/diff/proofs and all eight complete verdicts; independently inspect cross-boundary wiring, order, identity, recovery, privacy and end-to-end acceptance. |
+
+Before dispatch, regenerate the complete path/proof map against the repaired frozen candidate,
+verify every old scope path and requirement has a new owner, and size shared-boundary inspection
+and verdict headroom. Findings R1-CUSTODY, R2-PAGE, R2-SOURCE, R2-RETRY and R3-NOTE remain explicit
+required reconciliation items. If an assignment still lacks demonstrated fit, stop before dispatch;
+never convert incomplete inspection or supervisor repair claims into PASS.
+
+#### Repair verification progress — 2026-09-11
+
+The supervisor implemented all five recorded repairs in the existing worktree. Pending applying
+claims now validate retained member source digests before an authority transaction commits; failed
+annotation/attachment writes roll back with their journal and generation. Verified archived deletion
+remains allowed and exact replay never resurrects its tombstone. Dashboard retries retain an uncertain
+request in memory; after reload the server reconstructs the standard dashboard envelope only when
+its full canonical fingerprint matches the durable claim. Other envelopes remain unavailable to this
+reconstructor and require the original command, rather than guessed optional fields.
+
+`R-custody-renew` passes 28 cases. `R-retry-renew` passes 26 cases. Expanded
+`R-schema-and-proof` passes 61 redaction, recovery, UI and protected-history cases. Both unchanged
+benchmarks pass (`R-repairs-dashboard`, `R-repairs-summaries`): archive freeze remains 12 statements;
+summary selection remains 21 statements/25 returned rows/11 summary rows at both populations,
+heartbeat zero summary writes and relevant update one. `R-final-types`, `R-final-lint` and
+`R-final-build` pass. Build retains the existing bundle-size advisory.
+
+The initial repair coverage run was stopped after four redaction guard failures with one cause:
+the resume-request schema allowed optional free-text reason, although the authenticated reconstruction
+never emits it. The wire now omits that field; the unchanged redaction audit and its omission negative
+controls pass. Failed run `R-repairs-coverage` and its scratch are retained; complete corrected coverage,
+parity, architecture, served/scenario and freshness gates remain required. No repaired candidate is
+independently accepted, committed or merged yet. All primary unrelated file hashes remain unchanged.
+
+A twelve-member application probe exposed quadratic recapture in the first source-fence repair:
+192 captures for 12 members. Source-writing transactions now carry a savepoint-safe dirty flag;
+verified transfer and version-progress protocols retain their own source checks without recapturing
+all remaining members on every progress write. Mixed transactions still run the source fence, as do
+raw operation/attempt updates. The same probe now observes 48 captures; the regression caps this
+12-member application at 60. `R-source-cost-focused` passes 29 recovery/deletion/privacy cases.
+All source-sensitive gates are renewed after this correction; the earlier green gates remain
+historical evidence, not an assertion of acceptance on changed inputs.
+
+### Current repair boundary — 2026-09-11
+
+The task remains incomplete and unmerged. The original candidate at `28ab8e2b48c0a6f30b2781b3624dbde475254fa1`
+has three BLOCKED native reviews; all repairs remain uncommitted in the owned worktree. The source
+fence is an experimental repair, **not an accepted solution**: a new regression shows that it also
+rejects legitimate shared provider accounting updates. Full gate completion is reopened; two coverage
+attempts were deliberately stopped before completion after defects were found. Earlier green gate
+results do not accept the current draft or waive this failure.
+
+Additional R1 custody closure passes `R-custody-complete` (34 cases): a nonempty applying claim can
+already own captured reports before its first transfer, so it requires archive custody too. The
+pre-capture test now interrupts after readPendingReport, outside the committed claim transaction;
+the original claimVersionChange hook rolled the claim back and correctly did not require a pair.
+Backup preflights retained files before publishing a live manifest. Default upgrade selection ignores
+valid live manifests without a published lifecycle pair when pairing is required; explicit selection
+of one refuses `paired-lifecycle-backup-required`. A later standalone live manifest no longer masks
+an intact earlier pair. Missing or corrupt source halves remain refusals; no operator state was used.
+
+**R2-SHARED is a confirmed repair-design blocker.** `R2-shared-usage.mts` demonstrates that the same
+valid shared-quota update succeeds without an applying archive and fails `archive-source-applying`
+with one. `R-shared-authority-red` preserves the regression requiring both independent accounting
+progress and byte-identical archive replay. The captured source contains shared provider usage and
+permanent item-scoped operations/checkpoints as well as run-owned records. Freezing every captured
+source row would constrain other live owners; merely removing that check leaves the existing full
+source-digest replay mismatch. Do not route around this with swallowed failures, altered digests,
+shared-authority rollback, or weaker tests. No runtime deployment or integration is authorized while
+this finding is open.
+
+#### Approved capture-claim amendment — 2026-09-11
+
+Keep the exact reviewed membership/source identities, immutable saved reports, current floor, complete
+obsolete-table inventory and all existing gates. Amend the L/A recovery protocol so the durable apply
+claim retains the complete frozen capture needed for replay, and transfer verifies only the source
+facts it removes while shared authorities remain independently writable. This is a material lifecycle
+contract change explicitly approved by the operator on 2026-09-11.
+
+1. Under the existing authority transaction, validate the review and capture the complete private
+   source, safe display sections and attachment identities for every member. Retain attachment bytes
+   before publishing the claim. Persist recoverable capture payloads with the claim in the existing
+   version_changes authority; do not add a table or restore retired settings/relaunch imports.
+2. Replay publishes those exact captures. It does not recompute reports from changed shared counters,
+   operations, checkpoints or UI state. Keep run-owned mutation fences; shared owners can advance
+   without an unrelated archive causing their commit to fail. Validate the exact records/ownership
+   being removed before cleanup, preserving shared rows and latest accounting.
+3. Retain claim captures until archive publication and reciprocal custody verification make their
+   removal safe. Preserve application command identity, source/report digests and completed membership.
+   Clear only the temporary capture payloads through the reviewed progress protocol; do not leave a
+   duplicate live archive after completion or change historical saved report bytes.
+4. Paired backup/restore must include attachments owned by pending captures even before archive rows
+   are published. Bind both halves and pending ownership; refuse missing/mismatched bytes. Preserve
+   support for existing admitted claims: reuse verified captured reports, or reconstruct only with
+   exact retained-source proof before retirement. Unprovable history must refuse by name and retain
+   recovery assets, never invent original facts.
+5. Add interruption/reopen proofs before/after claim, capture publication, each transfer and cleanup;
+   preserve exact command identity and report bytes. Prove unrelated shared provider usage and a
+   prepared operation's settlement can progress during archive recovery, with no external HR action.
+   Prove changed run-owned evidence still refuses, shared ownership/deletion survives, pending backup
+   restores all bytes, protected notes remain private, and capture work remains bounded.
+6. Recheck the registry/floor/physical inventory and serialized metadata compatibility before edits.
+   Renew all affected full gates/benchmarks and the complete focused/integration reviews. No scope,
+   coverage, worker, timeout, assertion or production-safety waiver accompanies this proposal.
+
+The operator approved this capture-claim amendment and the eight-scope review allocation together. The supervisor remains the sole implementer, reviews remain Astra/high with
+maximum three concurrent, and completion still requires local integration, handover and owned cleanup.
+
+Approval resume verified all fourteen saved dirty-file hashes, the exact handoff hash, task HEAD
+`28ab8e2b48c0a6f30b2781b3624dbde475254fa1`, and all three unrelated primary-file hashes.
+The consumed handoff is preserved as `consumed-review-sizing-handoff.md` in the external evidence
+root; `repair-boundary-state.json` and its patch retain the pre-approval state and gate pointers.
+The shared-authority regression remains red until the approved repair is verified.
+
+### Approved repair implementation — 2026-09-11
+
+The frozen-capture repair replaces the experimental full-source fence. New claims atomically retain
+all report payloads after file retention; replay authenticates and publishes these exact bytes.
+Cleanup and commit fences compare owned source groups while permanent shared accounting,
+operations/attempts/checkpoints, settings, commands/audits and note streams remain independently
+retained. Older claims retain exact-source reconstruction or saved-report recovery with named refusal
+for unprovable capture history. Pending captures clear only through verified published member progress.
+The optional schema-2 payload adds no SQL table or migration; floor 46/schema 50 remain unchanged.
+
+Paired backup now includes pending claim file ownership before archive publication, authenticates
+file membership against both backup databases, and verifies bytes from the pair's file directory.
+Shared archive deletion preserves pending-claim attachments. The storage registry authenticates
+private payloads and public projections omit them. The canonical contract and decision index record
+this operator-approved amendment.
+
+`R-frozen-final-focused` passes 92 cases in nine files: archive capture/recovery/deletion/retirement,
+protected resolution, retained retry ownership and UI exact-request recovery. New proofs include
+claim-only capture, shared accounting, synthetic prepared-operation settlement, pending-file paired
+restore, shared deletion custody, admitted old claims, named unprovable-history refusal, rollback
+before claim commit and replacement/removal refusal. Existing twelve-run capture bound passes.
+`R-frozen-types2` and `R-frozen-lint` pass on their recorded earlier repair inputs; final static/full
+checks remain to be renewed after contract and payload validation additions. No independent review,
+full repair coverage or merge acceptance is claimed yet.
+
+### Repaired candidate gate record — 2026-09-11
+
+Repair implementation commit: `86658084d0867c5a6a71f152f9b912c4cd235278`. All twenty source/test
+paths were committed together because capture, custody, command replay, privacy and their regression
+proofs form one archive recovery change. The operator subsequently requested continuation with
+xhigh supervisor reasoning. Reviews remain explicitly Astra/high, maximum three concurrent;
+implementation remains solely with this supervisor.
+
+Every tracked and untracked input byte was verified identical to the passed full-coverage manifest
+before commitment and again after the interruption. Primary master remains `80d38635cd3455c2e8c7c4525e0470e4f60ce1d8`;
+its unrelated AGENTS.md, CLAUDE.md and repository-work reference hashes remain unchanged.
+
+| Final repaired gate | Receipt and result |
+| --- | --- |
+| Typecheck / lint / production build | `R-final-types`, `R-final-lint`, `R-final-build`: PASS. |
+| Full coverage | `R-final-coverage`: 492 files / 6,257 tests PASS; statements 85.27%, branches 77.55%, functions 89.37%, lines 88.16%; all floors pass. Elapsed 565 seconds, peak three file workers under the approved two-worker adapter. |
+| Suite accounting | `R-final-suite-size`: 395 unit, 80 architecture, 17 scenario files. |
+| Explicit architecture | `R-final-architecture`: 80 files / 848 tests PASS. |
+| Served / concurrency / production static | `R-final-served`: 10 files / 235 tests PASS. |
+| Scenarios | `R-final-scenarios`: 17 files / 135 tests PASS; synthetic offline proof. |
+| Desktop parity | `R-final-parity`: all 274 cases PASS; unchanged reference inputs and membership. |
+| Dashboard benchmark | `R-final-dashboard-benchmark`: PASS with unchanged instrument/population and bounds. |
+| Summary benchmark | `R-final-summary-benchmark`: PASS; indexed query 21 statements / 25 returned rows / 11 summary rows for outside populations 100 and 1,000; heartbeat zero summary writes and update one. |
+| Generated freshness / whitespace | `R-final-manifest`, `R-final-stores`, `R-final-roadmap`, `R-final-diff`: PASS. |
+
+All fifteen gate receipts report exit zero and peak file workers at most four. Coverage ran without
+compiler, linter or benchmark contention. The subsequent required gates ran serially. The complete
+obsolete-table test passes fresh and every supported schema 46–49 with exactly 37 main/two archive
+tables; schema 50 and immutable released migrations remain unchanged by the capture repair.
+
+The eight-scope map retains all 931 old/current source and evidence path responsibilities, including
+rename sides, deleted behavior and the two new capture files. Each original R responsibility has a
+new owner. The largest shared implementation is authority-database.ts: reviewers inspect the complete
+assigned behavior and necessary callers, while its unrelated subprotocols belong to the other named
+scopes. Repeated historical plan/gate records and generated reference rows are not separate behavior.
+The external common brief and eight behavioral briefs identify required proof, overlap, prior
+findings and commit-bound verdict requirements. The fit assessment separates authored changes from
+reference metadata and removes duplicated full-file/history reading; it does not reduce acceptance.
+A scope that cannot complete returns BLOCKED, with no partial acceptance or compacted continuation.
+
+The three original reviewers remain BLOCKED and supply findings only. No replacement review has yet
+been accepted. F06/F07, local master integration, fixture/contract handover acceptance and owned
+cleanup remain open. Runtime gate reuse for the following evidence-only documentation commit is
+bound to unchanged source/test/configuration/dependency/reference bytes; document links, binding,
+existing twins, generated freshness and whitespace are checked separately.

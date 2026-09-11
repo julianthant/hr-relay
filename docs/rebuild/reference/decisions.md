@@ -2439,3 +2439,11 @@ preserving source reports and descendant runs. The [current contract amendment](
 supersedes earlier retention requirements. The existing finalization owner binds migration 50,
 complete physical-table inventory, populated recovery proof, unchanged gates and R1–R5.
 No operator database application is authorized.
+
+### 2026-09-11 — 2.6.9 durable capture claims and review allocation
+
+The operator approved [durable archive capture claims](dashboard-surfaces.md#phase-269-durable-archive-capture-claims--2026-09-11)
+so shared live authorities can advance while immutable archive replay retains its original evidence.
+The [finalization owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-review-sizing-amendment--2026-09-11)
+replaces four exhausted focused scopes with eight complete focused scopes plus fresh integration,
+Astra/high, maximum three concurrent. Existing gates and local merge conditions remain binding.

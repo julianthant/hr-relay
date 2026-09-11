@@ -7266,3 +7266,27 @@ single-database restore with `paired-lifecycle-backup-required` before replaceme
 The operator selects its explicit verified lifecycle pair; both archive reports and retained files
 are restored before the required stopped schema upgrade. An old schema alone does not imply that
 its independent archive half is disposable.
+
+## Phase 2.6.9 durable archive capture claims — 2026-09-11
+
+The operator approved the [capture-claim amendment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-capture-claim-amendment--2026-09-11).
+A version apply validates reviewed membership and freezes complete private sources, safe display
+sections and retained attachment identities inside the claiming authority transaction. Temporary
+`pendingCaptures` reside in the existing `version_changes` record; no table, schema-floor change
+or replacement relaunch authority is introduced. They are private recovery payloads, excluded from
+archive headers and dashboard wires. The schema-2 reader still admits older claims without this
+optional field; readers predating this amendment reject the additional field rather than discard it.
+
+Replay uses the exact authenticated capture. Cleanup compares run-owned evidence and preserves
+independently owned provider accounting, permanent operations/attempts/checkpoints, settings and
+journals. Other owners may advance those retained facts without rewriting a report or losing their
+settlements. Run-owned mutations remain fenced, including older claims across a transaction.
+Temporary captures can be removed only with verified published report/transfer custody and recorded
+member progress; completed changes retain command identity and digests without duplicate reports.
+
+Paired backup includes pending-capture attachment ownership before archive-row publication. Pair
+verification binds required file membership to both saved databases and verifies actual bytes;
+archive deletion retains files owned by another pending capture. Older admitted claims reuse saved
+reports or require exact retained-source proof before capture. Unprovable history refuses
+`archive-claim-source-unprovable` and preserves recovery assets. This amendment authorizes code and
+synthetic proofs only; it does not authorize applying changes to the operator database.
