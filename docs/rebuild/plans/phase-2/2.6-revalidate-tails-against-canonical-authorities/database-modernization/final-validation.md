@@ -22,7 +22,7 @@ one-complete-reviewer and Astra/high supervisor allocation for this assignment o
 | Product input | `22bf85d3aa055a658b343127cf88db035164ecaf`, tree `a087ee61e9083ba3455d2faf850027f8a9ad324d`. Every integration below was verified as an ancestor during planning. |
 | Execution base / plan | The exact approved plan commit recorded in [PROMPTS.md](PROMPTS.md#final-session-prompt), a documentation-only descendant of the product input containing this entire brief and the approved contract amendment. Verify with `git show` before creating the implementation checkout. |
 | Complete review base | `0df282e45efab2e5a4768386b5c4d5202a7cfc93`, before R. Review the entire R-through-finalization product delta, not only finalizer repairs. Consume accepted T1 and 2.6.1 evidence and inspect their affected consumers. |
-| Integration | The same supervisor owns local `master` integration at `/Users/julianhein/Projects/hr-automation-rebuild` after R1a–R4b and R5 PASS and required gates. Recheck target identity, ownership and dirty paths; preserve unrelated work. Material integration changes need affected review and full gates. No push. |
+| Integration | The same supervisor owns local `master` integration at `/Users/julianhein/Projects/hr-automation-rebuild` after the approved complete standalone review and fresh R5 PASS and required gates. Recheck target identity, ownership and dirty paths; preserve unrelated work. Material integration changes need affected review and full gates. No push. |
 | Planning isolation | `codex/final-plan` at `/Users/julianhein/Projects/hr-worktree-final-plan`, created from the product input for approved documentation only. |
 
 At planning only the primary worktree was registered; proposed task refs/paths were absent. The
@@ -1013,13 +1013,14 @@ the correction validates the file schema and supplies a real `.tracker` fixture 
 or runtime isolation contract was weakened. Renewed gates and candidate identity are recorded below
 when complete. F06/F07, review acceptance, local merge, handover and cleanup remain open.
 
-#### Proposed standalone review amendment — awaiting operator approval
+#### Approved standalone review amendment — 2026-09-11
 
-Replace the failed eight native focused assignments with **one fresh complete standalone review**,
+The operator approved the proposed format and two-task creation with “keeo going” in direct response
+to the approval request on 2026-09-11. Replace the failed eight native focused assignments with **one fresh complete standalone review**,
 then retain a **separate fresh R5 integration review**. Both use Astra/high and independent root tasks
 with explicit checkpointed continuation across automatic compaction. This format replaces the eight
-focused PASS requirements only if the operator approves it; no current acceptance is inherited.
-Create the complete review task only after approval. Dispatch R5 only after complete review PASS and
+focused PASS requirements; no current acceptance is inherited.
+Create the complete review task using the existing frozen checkout. Dispatch R5 only after complete review PASS and
 resolution of every required finding. The supervisor remains the sole implementer and finalizer.
 
 The complete reviewer owns the full original base-to-candidate inventory, F01–F07, P1–P8, all approved
@@ -1044,8 +1045,9 @@ rules. Integration/cleanup, the no-push/no-operator-application boundaries and s
 The full review spans hundreds of substantive production/test paths and hundreds of generated assets.
 Checkpointed root review addresses demonstrated context exhaustion without further shrinking ownership
 or dropping checks. R5 also needs checkpointed recovery because its whole-plan integration scope has
-not demonstrated native-context fit. This is a proposed format/dispatch amendment, not permission to
-change any native agent's compaction restriction or to create tasks before operator approval.
+not demonstrated native-context fit. This approved format/dispatch amendment does not change any native agent's compaction restriction.
+The operator authorized the two standalone review tasks; use the saved project directly only as
+their task context, with all repository reads explicitly targeting the existing frozen task checkout.
 
 ### Custody correction gates — 2026-09-11
 
@@ -1102,3 +1104,27 @@ restore boundary and with competing SQLite handles would have exposed them befor
 standalone format proposal addresses demonstrated review capacity without dropping acceptance.
 These are observed lower-bound counts for the recorded rounds, not final task totals or estimated
 savings. Completion remains contingent on independent review, integration and owned cleanup.
+
+
+### Standalone review approval and resume — 2026-09-11
+
+The operator's “keeo going” continues the preceding concrete proposal: create the complete standalone
+Astra/high review and, after complete PASS, a separate fresh Astra/high R5 integration review. Both
+may checkpoint across compaction under the approved amendment above. Review task creation is
+explicitly authorized by that response; code acceptance, local merge and cleanup still require PASS.
+No implementation workers or successor tasks are admitted. The original and eight-scope native
+attempts stay BLOCKED and are not resumed.
+
+Resume verified clean candidate `ab9839223a98e57157f8bd750744b568a2e481c3`, tree
+`260efbd59812e0014f8531add5004740e5d0b276`, every recorded gate input, all eighteen PASS receipts,
+primary master `80d38635cd3455c2e8c7c4525e0470e4f60ce1d8` and the three unchanged unrelated hashes.
+The exact standalone-review handoff hash matched; its contents are preserved externally in
+`consumed-standalone-review-handoff.md` and all surviving actions remain in this owner/current packet.
+The exact primary handoff can be removed after this approval record is committed and checked.
+
+Only review approval/dispatch documentation changes from the gated candidate. Run scoped binding,
+lint, roadmap freshness, link/twin and diff checks; reuse runtime gate evidence by verified identical
+source/test/configuration/dependency/reference inputs. Freeze the resulting approval commit as the
+review checkout HEAD and record the returned task ID externally without moving the candidate during
+review. The reviewer is independent, read-only except its own external checkpoint/verdict, and owns
+complete coverage. Necessary probes return to this supervisor; R5 waits for complete acceptance.
