@@ -1,13 +1,12 @@
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { RunRecordService, type RunDeletionOutcome } from "../../core/run-record-service.js";
 import { ArchiveQuerySchema, type ArchiveQuery } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
-import { deriveCanonicalPerson } from "../../core/run-summary.js";
+import { deriveCanonicalPerson } from "../../domain/run/summary-derivation.js";
 import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
-import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../core/run-lifecycle-storage.js";
+import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../domain/archive/lifecycle-source.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
@@ -302,14 +301,12 @@ import {
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
-  ArchiveRelaunchStorageRecordSchema,
   AUTHORITY_RECORD_SCHEMA_REGISTRY,
   DiagnosticAttachmentStorageRecordSchema,
   VersionBumpApplicationStorageRecordSchema,
   VersionPlanConsumeRequestSchema,
   VersionPlanStorageRecordSchema,
   type ArchivedRunStorageRecord,
-  type ArchiveRelaunchStorageRecord,
   type ArtifactOutboxStorageRecord,
   type ArtifactSinkHeadRecord,
   type DiagnosticAttachmentStorageRecord,
@@ -949,10 +946,6 @@ export type AuthorityRepositories = Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
   }>;
   archivedRuns: ArchivedRunRepository;
-  archiveRelaunches: Readonly<{
-    insert(input: unknown): ImmutableInsertResult<ArchiveRelaunchStorageRecord>;
-    listByArchivedRun(archivedRunId: string): readonly ArchiveRelaunchStorageRecord[];
-  }>;
   writeIntents: WriteIntentRepository;
   writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
@@ -1268,15 +1261,13 @@ function readTextPragma(database: DatabaseSync, name: "journal_mode"): string {
   return value;
 }
 
+function inspectionTableNames(database: DatabaseSync): string[] {
+  return database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all().map(row => TableNameRowSchema.parse(row).name);
+}
+
 function tableNames(database: DatabaseSync): TableName[] {
-  const rows = database.prepare(`
-    SELECT name FROM sqlite_master
-    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-    ORDER BY name
-  `).all();
-  return z.array(z.union([AuthorityTableNameSchema, ProjectionTableNameSchema])).parse(
-    rows.map((row) => TableNameRowSchema.parse(row).name),
-  );
+  return z.array(z.union([AuthorityTableNameSchema, ProjectionTableNameSchema])).parse(inspectionTableNames(database));
 }
 
 function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
@@ -2162,7 +2153,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
-  const names = tableNames(database);
+  const names = inspectionTableNames(database);
   const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
@@ -2191,7 +2182,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: tableClassification(name) })),
+    tables: names.map((name) => ({ name, classification: tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
 }
@@ -2277,7 +2268,7 @@ function inspectAuthorityReadIdentityReadOnly(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
-    const names = tableNames(database);
+    const names = inspectionTableNames(database);
     const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
@@ -2569,7 +2560,7 @@ function inspectSpanRunAuthorityReadOnly(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
-    const names = tableNames(database);
+    const names = inspectionTableNames(database);
     const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
@@ -3094,7 +3085,7 @@ export class AuthorityDatabase implements Disposable {
         synchronous: this.#readIntPragma("synchronous"),
         busyTimeoutMs: this.#readIntPragma("busy_timeout"),
       },
-      tables: names.map((name) => ({ name, classification: tableClassification(name) })),
+      tables: names.map((name) => ({ name, classification: tableClassification(AuthorityTableNameSchema.parse(name)) })),
     });
   }
 
@@ -3103,7 +3094,11 @@ export class AuthorityDatabase implements Disposable {
     const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
     const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: string[]): void => {
       const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
-      if (rows > 0) removed.push({table, rows});
+      if (rows > 0) {
+        const prior = removed.find(entry => entry.table === table);
+        if (prior === undefined) removed.push({ table, rows });
+        else prior.rows += rows;
+      }
     };
           remove("timeline_events", "DELETE FROM timeline_events WHERE run_id = ?", runId);
           // Keep an entire operation group while another retained retry owns or
@@ -3144,13 +3139,20 @@ export class AuthorityDatabase implements Disposable {
                   json_extract(delegation_dependencies.record_json, '$.parentRunId'),
                   json_extract(delegation_dependencies.record_json, '$.childRunId')))`, runId, runId, runId);
           remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
-          // Relaunch lineage belongs to the new run; deleting its source preserves it.
-          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
           if (hasHistoricalArchiveTables(this.#database)) remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
 
     remove("workflow_runs", "DELETE FROM workflow_runs WHERE record_key = ?", runId);
     if (!transfer) remove("archive_transfers", "DELETE FROM archive_transfers WHERE record_key = ?", runId);
     return removed;
+  }
+
+  /** Indexed membership prefilter; callers still verify matching archive owners. */
+  archivedRunIds(): ReadonlySet<string> {
+    return this.withAuthorityReadSnapshot(() => {
+      const table = hasHistoricalArchiveTables(this.#database) ? "archived_runs" : "archive_transfers";
+      return new Set(this.#database.prepare(`SELECT record_key FROM ${table}`).all()
+        .map(row => z.strictObject({ record_key: RunIdSchema }).parse(row).record_key));
+    });
   }
 
   listTransferredRuns() {
@@ -3230,10 +3232,6 @@ export class AuthorityDatabase implements Disposable {
         || stored.ref.mediaType !== file.mediaType) throw new Error("archive-source-file-integrity-mismatch");
       return bytes;
     } finally { closeSync(fd); }
-  }
-
-  deleteLifecycleArchive(input:unknown):RunDeletionOutcome {
-    return new RunRecordService({database:this,clock:this.#clock,ids:{uuid:randomUUID},publishQueued:()=>{throw new Error("archive-delete-cannot-enqueue");}}).deleteArchived(input);
   }
 
   readPendingArchiveReport(runId:string,transferId:string) {
@@ -3387,6 +3385,8 @@ export class AuthorityDatabase implements Disposable {
       };
       collect("workflow_runs","SELECT record_key,record_json FROM workflow_runs WHERE record_key=?",runId);
       collect("run_results","SELECT record_key,record_json FROM run_results WHERE record_key=?",runId);
+      collect("provider_requests","SELECT record_key,record_json FROM provider_requests WHERE run_id=?",runId);
+      collect("provider_usage","SELECT record_key,record_json FROM provider_usage AS usage WHERE EXISTS (         SELECT 1 FROM provider_requests AS request WHERE request.run_id=? AND (           (json_extract(request.record_json,'$.kind')='legacy-capability' AND usage.capability=request.capability)           OR (json_extract(request.record_json,'$.kind')='generic' AND EXISTS (             SELECT 1 FROM json_each(request.record_json,'$.allocations') AS allocation             WHERE json_extract(allocation.value,'$.scopeId')=json_extract(usage.record_json,'$.scope.id')               AND json_extract(allocation.value,'$.meter')=json_extract(usage.record_json,'$.meter')           ))         ))",runId);
       collect("run_receipts","SELECT record_key,record_json FROM run_receipts WHERE run_id=?",runId);
       collect("run_failures","SELECT record_key,json_object('evidence',json(record_json),'resolution',json(resolution_json)) AS record_json FROM run_failures WHERE run_id=?",runId);
       collect("timeline_events","SELECT record_key,record_json FROM timeline_events WHERE run_id=?",runId);
@@ -3396,7 +3396,6 @@ export class AuthorityDatabase implements Disposable {
       collect("run_operations","SELECT record_key,record_json FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?",run.envelope.workflow,run.envelope.itemId);
       collect("run_operation_attempts","SELECT record_key,record_json FROM run_operation_attempts WHERE write_intent_id IN (SELECT record_key FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?)",run.envelope.workflow,run.envelope.itemId);
       collect("settings_snapshots","SELECT record_key,record_json FROM settings_snapshots WHERE record_key=?",run.envelope.configSnapshotId);
-      collect("archive_relaunches","SELECT record_key,record_json FROM archive_relaunches WHERE record_key=? OR archived_run_id=?",runId,runId);
       if (hasHistoricalArchiveTables(this.#database)) {
       collect("archived_runs","SELECT record_key,record_json FROM archived_runs WHERE record_key=?",runId);
       const historical=this.authority.archivedRuns.get(runId);
@@ -3529,16 +3528,32 @@ export class AuthorityDatabase implements Disposable {
     return this.#withReadSnapshot(read);
   }
 
+  #retainedTerminalSnapshot(runId: string) {
+    const transfer = this.transferredRun(runId);
+    if (transfer === undefined) return undefined;
+    const report = this.lifecycleArchive(true).verified(runId, transfer.reportDigest);
+    const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+    if (source === undefined) throw new Error("archive-terminal-source-missing");
+    const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+    if (canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(transfer.run)
+      || snapshot.run.lifecycle.state !== "terminal" || snapshot.run.completion === undefined) {
+      throw new Error("archive-terminal-source-mismatch");
+    }
+    return snapshot;
+  }
+
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
     const request = FailureTerminalizationRequestSchema.parse(input);
-    descriptorRuntimeNodes(descriptor);
     return this.withAuthorityTransaction(() => {
-      const current = this.#readRunRow(request.failure.runId);
+      const live = this.#readRunRow(request.failure.runId);
+      const retained = live === undefined ? this.#retainedTerminalSnapshot(request.failure.runId) : undefined;
+      const current = live ?? retained?.run;
       if (current === undefined) throw new Error(`run ${request.failure.runId} does not exist`);
-      this.#assertFailureMatchesRun(request.failure, current, descriptor);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const existing = this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema);
+      const captured = retained?.records.find(group => group.table === "run_failures")?.rows.find(row => row.key === request.failure.failureId);
+      const existing = retained === undefined ? this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema)
+        : captured === undefined ? undefined : z.object({ evidence: FailureRecordSchema }).parse(JSON.parse(captured.json)).evidence;
       if (existingAuthorization !== undefined || existing !== undefined) {
         if (existingAuthorization === undefined || existing === undefined) {
           throw new Error(`run ${request.failure.runId} has a partial failure terminal settlement`);
@@ -3568,6 +3583,8 @@ export class AuthorityDatabase implements Disposable {
       if (current.lifecycle.state === "terminal") {
         throw new Error(`run ${request.failure.runId} is already terminal without failure ${request.failure.failureId}`);
       }
+      descriptorRuntimeNodes(descriptor);
+      this.#assertFailureMatchesRun(request.failure, current, descriptor);
       this.#assertFailureWasCurrentExecution(request.failure, current);
       this.#assertTerminalClaim(
         current,
@@ -3614,12 +3631,16 @@ export class AuthorityDatabase implements Disposable {
       ? { ...replayInput.authorization, outboxId: undefined } : historical.authorization;
     const request = SuccessTerminalizationRequestSchema.parse({ result: replayInput.result, authorization });
     return this.withAuthorityTransaction(() => {
-      const current = this.#readRunRow(request.result.runId);
+      const live = this.#readRunRow(request.result.runId);
+      const retained = live === undefined ? this.#retainedTerminalSnapshot(request.result.runId) : undefined;
+      const current = live ?? retained?.run;
       if (current === undefined) throw new Error(`run ${request.result.runId} does not exist`);
       this.#assertResultMatchesRun(request.result, current);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const existingResult = this.#readRecord("run_results", request.result.runId, RunResultRecordSchema);
+      const captured = retained?.records.find(group => group.table === "run_results")?.rows.find(row => row.key === request.result.runId);
+      const existingResult = retained === undefined ? this.#readRecord("run_results", request.result.runId, RunResultRecordSchema)
+        : captured === undefined ? undefined : RunResultRecordSchema.parse(JSON.parse(captured.json));
       if (existingAuthorization !== undefined || existingResult !== undefined) {
         if (existingAuthorization === undefined || existingResult === undefined) {
           throw new Error(`run ${request.result.runId} has a partial completion/result settlement`);
@@ -4143,6 +4164,9 @@ export class AuthorityDatabase implements Disposable {
         SET migration_owner = NULL, migration_started_at = NULL, updated_at = ?
         WHERE singleton_id = 1
       `).run(this.#now());
+      // A fresh authority has an exact empty summary baseline in this same transaction.
+      // Existing missing/stale publications still require explicit recovery.
+      if (fromVersion === 0) createRunSummaries(this.#database).refresh(0, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4262,7 +4286,7 @@ export class AuthorityDatabase implements Disposable {
         `).run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
-      if (this.#authorityDirty) createRunSummaries(this.#database).commit(this.getMeta().authorityGeneration, this.#now());
+      if (this.#authorityDirty) createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -5363,31 +5387,6 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM archived_runs ORDER BY created_at DESC, record_key
         `).all().map((row) => this.#verifyArchivedPrivateInput(
           parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))))),
-      }),
-      archiveRelaunches: Object.freeze({
-        insert: (input: unknown) => {
-          const record = ArchiveRelaunchStorageRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("archive_relaunches", () => {
-            const existing = this.#readRecord("archive_relaunches", record.runId, ArchiveRelaunchStorageRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`relaunch provenance for run ${record.runId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const outcome = this.#database.prepare(`
-              INSERT INTO archive_relaunches (record_key, archived_run_id, record_json, created_at)
-              VALUES (?, ?, ?, ?)
-            `).run(record.runId, record.archivedRunId, json, record.relaunchedAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
-          });
-        },
-        listByArchivedRun: (archivedRunId: string) => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM archive_relaunches WHERE archived_run_id = ? ORDER BY created_at DESC, record_key
-        `).all(archivedRunId).map((row) => parseJsonRecord(
-          ArchiveRelaunchStorageRecordSchema, JsonRowSchema.parse(row).record_json,
-        ))),
       }),
       writeIntents: Object.freeze({
         listByBusinessKey: (system: unknown, digest: unknown) => {

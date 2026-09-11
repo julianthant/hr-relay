@@ -1,3 +1,4 @@
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /**
  * Ref guards-and-tests §3.15 / D183 — the redaction surface scan.
@@ -557,10 +558,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function openDatabase(): AuthorityDatabase {
+function openDatabase(historical = false): AuthorityDatabase {
   const root = mkdtempSync(join(tmpdir(), "hrauto-redaction-scan-"));
   roots.push(root);
-  const database = AuthorityDatabase.open(
+  const database = historical ? historicalArchiveAuthority(join(root, "authority.sqlite"), manualClock(new Date(NOW))) : AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
@@ -594,7 +595,7 @@ function seedCanaryArchive() {
     },
   });
   const record = ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
-  const database = openDatabase();
+  const database = openDatabase(true);
   database.withAuthorityTransaction((repositories) => {
     repositories.runs.enqueue({ ...personLookupQueuedRun({ runId: record.runId }), input: record.input });
     repositories.runs.transition({ runId: record.runId, expectedVersion: 1, now: record.archivedAt,

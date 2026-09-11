@@ -317,7 +317,7 @@ describe("dry-run scenario result authority repository", () => {
     assert.throws(
       () => raw.prepare("DELETE FROM dryrun_results WHERE record_key = ?")
         .run(NOT_STARTED_BLOCKED_RESULT.resultId),
-      /dry-run scenario results are never deleted/,
+      /owned evidence is never deleted outside deletion or verified transfer/,
     );
     raw.close();
   });

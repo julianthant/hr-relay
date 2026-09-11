@@ -70,7 +70,7 @@ describe("ledger projector retirement", () => {
     assert.notEqual(deriveLedgerLineDigest(line), deriveLedgerLineDigest(canonicalJsonStringify({ seq: 1, payload: "historical" })));
   });
   it("retains historical dense-sequence refusal before allowing conversion", async () => {
-    const w = historicalWorld({ files: true }); try {
+    const w = historicalWorld({ files: true, sourceVersion: 39 }); try {
       const raw = new DatabaseSync(w.path); try { raw.exec("UPDATE ledger_partitions SET next_seq=5, version=version+1, record_json=json_set(record_json,'$.nextSeq',5,'$.version',2)"); } finally { raw.close(); }
       await assert.rejects(w.backup(), /ledger-partition-sequence-is-dense/u);
     } finally { w.dispose(); }

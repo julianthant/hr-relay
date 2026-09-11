@@ -45,6 +45,7 @@ export interface RuntimeSideContract {
   readonly entrypoint: string;
   readonly commands: Readonly<Record<string, string>>;
   readonly stateRoot: string;
+  readonly archiveDatabaseFile?: string;
   readonly artifactRoot: string;
   readonly backendPort: number;
   readonly frontendPort: number;
@@ -267,6 +268,7 @@ function executableRuntimeBinding(
   }
   const expected = {
     stateRoot: side.stateRoot,
+    ...(side.archiveDatabaseFile === undefined ? {} : { archiveDatabaseFile: side.archiveDatabaseFile }),
     artifactRoot: side.artifactRoot,
     backendPort: side.backendPort,
     frontendPort: side.frontendPort,

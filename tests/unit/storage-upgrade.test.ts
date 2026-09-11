@@ -1,20 +1,25 @@
+import { TimelineEventRecordSchema } from "../../src/events/timeline.js";
+import { storageTree } from "./helpers/storage-recovery-fixture.js";
 import { readAppSettings } from "../../src/infra/sqlite/settings-storage.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
-import { readLatestSettingsUpgrade } from "../../src/infra/compat/settings-database-upgrade.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { readLatestDatabaseUpgrade as readLatestSettingsUpgrade } from "../../src/infra/sqlite/stopped-database-conversion.js";
+import { databaseStateTable, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST, RUN_SESSION } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
 import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
-import { SETTINGS_SCHEMA_HASH as HISTORICAL_HASH, derivePersistedSettingsFingerprint as historicalFingerprint, deriveSettingsPatchFingerprint as historicalPatchFingerprint } from "../../src/infra/compat/pre-floor-settings.js";
+import { EditableSettingsOverrideSchema } from "../../src/domain/config/settings-v29-schema.js";
+const HISTORICAL_HASH = "aa49b924a6acd011954066a5ca78117eb6f7c1f1cee4f08eb3fef3c20d577b80";
+const historicalFingerprint = (value: unknown) => sha256Hex(`hrauto:persisted-settings:v1\0${canonicalJsonStringify(EditableSettingsOverrideSchema.parse(value))}`);
+const historicalPatchFingerprint = (value: unknown) => sha256Hex(`hrauto:settings-patch:v1\0${canonicalJsonStringify(EditableSettingsOverrideSchema.parse(value))}`);
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import fs, { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync, cpSync } from "node:fs";
+import fs, { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,10 +32,8 @@ import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sql
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
 import { createCredentialStore } from "../../src/infra/config/credential-store.js";
-import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
-import { requireSecret } from "../../src/domain/secrets.js";
 import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
-import { readSettings, createCredentialSecretSource } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/server/settings-runtime.js";
 
 const roots: string[] = [];
 const now = "2026-09-06T12:00:00.000Z";
@@ -46,7 +49,7 @@ function fixture(version?: number) {
     const raw = new DatabaseSync(path);
     try {
       for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= version)) for (const statement of migration.statements) raw.exec(statement);
-      raw.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,?,7,?)").run(version, now);
+      raw.prepare(`INSERT INTO ${databaseStateTable(version)}(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,?,7,?)`).run(version, now);
       raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(version)}`);
     } finally { raw.close(); }
   }
@@ -70,9 +73,22 @@ function read(f: ReturnType<typeof fixture>) {
   finally { database.close(); }
 }
 
+/** Exact synthetic migrated output captured before removing the settings importer. */
+function seedRetainedSettings(path: string): void {
+  const { tables } = z.object({ tables: z.record(z.string(), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))) }).parse(
+    JSON.parse(readFileSync(new URL("./fixtures/migrated-settings.json", import.meta.url), "utf8")));
+  const database = new DatabaseSync(path);
+  try {
+    for (const table of ["commands", "command_audits", "app_settings"]) for (const row of tables[table] ?? []) {
+      const columns = Object.keys(row);
+      database.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+    }
+  } finally { database.close(); }
+}
+
 describe("D336 stopped SQLite upgrade", () => {
   it("M2 preserves a stale claimed lifecycle row byte-for-byte without performing recovery", async () => {
-    const f = fixture(29); const seedPath = join(f.root, "seed.db");
+    const f = fixture(46); const seedPath = join(f.root, "seed.db");
     const seed = AuthorityDatabase.open({ path: seedPath, busyTimeoutMs: 500, migrationOwner: "historical-claim-fixture" }, clock);
     try {
       seed.authority.runs.enqueue(QUEUED_RUN);
@@ -83,20 +99,20 @@ describe("D336 stopped SQLite upgrade", () => {
     try {
       const row = source.prepare("SELECT * FROM workflow_runs").get(); assert.ok(row);
       const columns = Object.keys(row);
-      raw.prepare(`INSERT INTO tasks (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
-      prior = raw.prepare("SELECT * FROM tasks").get();
+      raw.prepare(`INSERT INTO workflow_runs (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+      prior = raw.prepare("SELECT * FROM workflow_runs").get();
     } finally { source.close(); raw.close(); rmSync(seedPath); }
     await f.backup(); assert.equal((await f.run()).state, "converted");
     const after = new DatabaseSync(f.path);
     try { assert.deepEqual(after.prepare("SELECT * FROM workflow_runs").get(), prior); } finally { after.close(); }
   });
   it("M13 preserves historical snapshot bytes and reports retained exposure without disclosing its value", async () => {
-    const f = fixture(29);
+    const f = fixture(46);
     const config = { ...CONFIG_SNAPSHOT.config, operator: { timekeeperName: "synthetic-retained-historical-name" } };
     const snapshot = { ...CONFIG_SNAPSHOT, config, fingerprint: sha256Hex(canonicalJsonStringify(config)) };
     const bytes = canonicalJsonStringify(snapshot);
     const raw = new DatabaseSync(f.path);
-    try { raw.prepare("INSERT INTO config_snapshots VALUES (?,?,?)").run(snapshot.configSnapshotId, bytes, snapshot.capturedAt); } finally { raw.close(); }
+    try { raw.prepare("INSERT INTO settings_snapshots VALUES (?,?,?)").run(snapshot.configSnapshotId, bytes, snapshot.capturedAt); } finally { raw.close(); }
     await f.backup();
     const plan = await f.run(true); assert.deepEqual(plan.historicalExposure, ["operator.timekeeperName"]);
     assert.equal(JSON.stringify(plan).includes(config.operator.timekeeperName), false);
@@ -105,8 +121,9 @@ describe("D336 stopped SQLite upgrade", () => {
     try { assert.equal(after.prepare("SELECT record_json FROM settings_snapshots").get()?.record_json, bytes); } finally { after.close(); }
   });
   it("M25 activates the converted ordinary revision at the next real dashboard boot", async () => {
-    const f = fixture(29);
+    const f = fixture(46);
     writeFileSync(f.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=3\n", { mode: 0o600 });
+    seedRetainedSettings(f.path);
     await f.backup(); await f.run();
     const before = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "before-activation" }, clock);
     try { assert.equal(before.authority.runtimeConfig.get(), undefined); assert.equal(readSettings(before.authority).revision, 2); } finally { before.close(); }
@@ -137,7 +154,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run()).state, "converted");
     assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
-  it.each([29, 30, 31, 32, 33, 34, 35, 36, 37, 38])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
+  it.each([46, 47, 48])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
     await assert.rejects(f.run(true), /backup-required/u);
     assert.deepEqual(readFileSync(f.path), before);
@@ -167,32 +184,21 @@ describe("D336 stopped SQLite upgrade", () => {
     await f.backup();
     const before = readFileSync(f.path);
     for (const plan of [true, false]) {
-      await assert.rejects(f.run(plan), new RegExp(`upgrade-pending: finish the interrupted schema-${String(version)}`, "u"));
+      await assert.rejects(f.run(plan), /authority-below-floor.*original compatible release/u);
       assert.deepEqual(readFileSync(f.path), before);
       assert.deepEqual(readFileSync(credentialPath), credentialBytes);
       assert.deepEqual(readFileSync(f.input.environmentFile), environmentBytes);
       assert.equal(existsSync(f.input.processLockRoot), false);
     }
   });
-  it.each([32, 33, 34, 35, 36, 37])("renames a v%s database without reimporting settings or touching independent credentials", async (version) => {
-    const seed = fixture();
-    writeFileSync(seed.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=3\nUCPATH_PASSWORD=synthetic-batch-upgrade\n", { mode: 0o600 });
-    await seed.run();
+  it.each([46, 47, 48])("converts a v%s database without reimporting settings or touching independent credentials", async (version) => {
     const f = fixture(version);
-    const source = new DatabaseSync(seed.path, { readOnly: true });
-    const target = new DatabaseSync(f.path);
-    const tables = ["commands", "command_audits", "settings_current", "runtime_config"];
-    const before = new Map<string, unknown[]>();
-    try {
-      for (const table of tables) {
-        const rows = retainedSettingsRows(source,table); before.set(table, rows);
-        for (const row of rows) {
-          const columns = Object.keys(row).filter((column) => column !== "parent_command_id");
-          target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...columns.map((column) => row[column]));
-        }
-      }
-    } finally { source.close(); target.close(); }
-    cpSync(join(seed.root, "credentials"), join(f.root, "credentials"), { recursive: true });
+    seedRetainedSettings(f.path);
+    const tables = ["commands", "command_audits", "app_settings"];
+    const source = new DatabaseSync(f.path, { readOnly: true });
+    const before = new Map(tables.map(table => [table, source.prepare(`SELECT * FROM ${table}`).all()]));
+    source.close();
+    createCredentialStore({ stateRoot: f.root }).bindUpgrade("a".repeat(64), { ucpathPassword: { set: "synthetic-independent-credential" } });
     const credentialPath = join(f.root, "credentials", "protected.json");
     const credentialBytes = readFileSync(credentialPath);
     // Retired import material must not override current SQLite settings.
@@ -200,9 +206,9 @@ describe("D336 stopped SQLite upgrade", () => {
     await f.backup();
     const plan = await f.run(true);
     assert.deepEqual(plan.importedKeys, []);
-    assert.equal(plan.credentials, "verified");
+    assert.equal(plan.credentials, "unchanged");
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("schema-only-interrupted"); } } }, clock), /schema-only-interrupted/u);
-    assert.equal((await f.run()).credentials, "verified");
+    assert.equal((await f.run()).credentials, "unchanged");
     assert.equal(read(f).settings.settings.concurrency?.defaultWorkers, 3);
     const after = new DatabaseSync(f.path, { readOnly: true });
     try { for (const table of tables) assert.deepEqual(retainedSettingsRows(after,table), before.get(table), table); }
@@ -210,127 +216,37 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     assert.equal((await f.run()).state, "already-upgraded");
   });
-  it("settles credentials separately and resumes after the SQLite commit without editing sources", async () => {
-    const f = fixture(29); const environment = "HRAUTO_DEFAULT_WORKERS=3\nUCPATH_PASSWORD=synthetic-upgrade-password\n";
-    writeFileSync(f.input.environmentFile, environment, { mode: 0o600 });
-    await f.backup();
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("interrupted-after-sqlite-commit"); } } }, clock), /interrupted-after-sqlite-commit/u);
-    assert.equal(read(f).settings.settings.concurrency?.defaultWorkers, 3);
-    assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 1);
-    assert.equal((await f.run()).state, "converted");
-    assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 2);
-    assert.equal(readFileSync(f.input.environmentFile, "utf8"), environment);
-    const dbBytes = readFileSync(f.path);
-    assert.equal(dbBytes.includes(Buffer.from("synthetic-upgrade-password")), false);
-    assert.equal((await f.run()).state, "already-upgraded");
-  });
-  it.each(["beforeCommit", "afterCommit"] as const)("binds private source bytes across a %s interruption before any credential application", async (boundary) => {
-    const f = fixture(29);
-    const original = "UCPATH_PASSWORD=private-upgrade-original\n";
-    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
-    await f.backup();
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { [boundary]: () => { throw new Error("injected-binding-boundary"); } } }, clock), /injected-binding-boundary/u);
-    const store = createCredentialStore({ stateRoot: f.root });
-    assert.equal(store.read().revision, 1);
-    const privatePath = join(f.root, "credentials", "protected.json");
-    const privateBytes = readFileSync(privatePath);
-    const databaseBytes = readFileSync(f.path);
-    assert.equal(databaseBytes.includes(Buffer.from("private-upgrade-original")), false);
-    assert.equal((await f.run(true)).state, "planned");
-    assert.deepEqual(readFileSync(privatePath), privateBytes);
-    assert.deepEqual(readFileSync(f.path), databaseBytes);
-    writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=private-upgrade-changed\n", { mode: 0o600 });
-    await assert.rejects(f.run(true), /credential-import-refused/u);
-    assert.deepEqual(readFileSync(privatePath), privateBytes);
-    assert.deepEqual(readFileSync(f.path), databaseBytes);
-    await assert.rejects(f.run(), /credential-import-refused/u);
-    assert.deepEqual(readFileSync(privatePath), privateBytes);
-    assert.deepEqual(readFileSync(f.path), databaseBytes);
-    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
-    assert.equal((await f.run()).state, "converted");
-    assert.equal(store.read().revision, 2);
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(store)), "private-upgrade-original");
-    assert.equal(readFileSync(f.path).includes(Buffer.from("private-upgrade-original")), false);
-  });
+  // F02 retains successful private-import settlement and its interruption proofs. The
+  // finished release cannot complete those receipts, even when old private bytes survive.
+  it.each(["post-sqlite", "beforeCommit", "afterCommit", "removed protected input", "changed ordinary input", "missing private binding", "rename", "audit"])(
+    "refuses expired private-import recovery at %s without rebinding or settling", async boundary => {
+      const f = fixture(46); await f.backup(); await f.run();
+      const original = "UCPATH_PASSWORD=private-upgrade-original\n";
+      writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
+      const receipt = readLatestSettingsUpgrade(f.path); assert.ok(receipt && "format" in receipt);
+      const upgradeId = "b".repeat(64);
+      const store = createCredentialStore({ stateRoot: f.root });
+      store.bindUpgrade(upgradeId, { ucpathPassword: { set: "private-upgrade-original" } });
+      const privatePath = join(f.root, "credentials", "protected.json");
+      if (boundary === "missing private binding") rmSync(privatePath);
+      if (boundary === "removed protected input") writeFileSync(f.input.environmentFile, "");
+      if (boundary === "changed ordinary input") writeFileSync(f.input.environmentFile, `${original}HRAUTO_DEFAULT_WORKERS=3\n`);
+      const raw = new DatabaseSync(f.path);
+      try {
+        const pending = { ...receipt, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: 29 };
+        raw.prepare("INSERT INTO database_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(pending.recordKey, upgradeId, pending.phase, canonicalJsonStringify(pending), now);
+      } finally { raw.close(); }
+      const before = storageTree(f.root);
+      for (const plan of [true, false]) await assert.rejects(f.run(plan), /upgrade-pending:.*original compatible release/u);
+      assert.deepEqual(storageTree(f.root), before);
+      assert.equal(readFileSync(f.path).includes(Buffer.from("private-upgrade-original")), false);
+      writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=divergent-boundary-value\n");
+      const changed = storageTree(f.root);
+      for (const plan of [true, false]) await assert.rejects(f.run(plan), /upgrade-pending:.*original compatible release/u);
+      assert.deepEqual(storageTree(f.root), changed);
+    });
 
-  it.each([
-    { label: "removed protected input", changed: "" },
-    { label: "changed ordinary input", changed: "UCPATH_PASSWORD=private-upgrade-original\nHRAUTO_DEFAULT_WORKERS=3\n" },
-  ])("refuses $label in a pre-SQL retry during read-only planning", async ({ changed }) => {
-    const f = fixture(29);
-    const original = "UCPATH_PASSWORD=private-upgrade-original\n";
-    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
-    await f.backup();
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("injected-binding-boundary"); } } }, clock), /injected-binding-boundary/u);
-    const privatePath = join(f.root, "credentials", "protected.json");
-    const privateBytes = readFileSync(privatePath);
-    const databaseBytes = readFileSync(f.path);
-    writeFileSync(f.input.environmentFile, changed, { mode: 0o600 });
-    await assert.rejects(f.run(true), /credential-import-refused/u);
-    await assert.rejects(f.run(), /credential-import-refused/u);
-    assert.deepEqual(readFileSync(privatePath), privateBytes);
-    assert.deepEqual(readFileSync(f.path), databaseBytes);
-    assert.equal(readFileSync(f.input.environmentFile, "utf8"), changed);
-    writeFileSync(f.input.environmentFile, original, { mode: 0o600 });
-    assert.equal((await f.run(true)).state, "planned");
-    assert.equal((await f.run()).state, "converted");
-  });
-
-  it("refuses a missing private binding after SQLite commit instead of rebinding current source bytes", async () => {
-    const f = fixture(29);
-    writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=private-binding-required\n", { mode: 0o600 });
-    await f.backup();
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("injected-binding-boundary"); } } }, clock), /injected-binding-boundary/u);
-    const privatePath = join(f.root, "credentials", "protected.json");
-    rmSync(privatePath);
-    const bytes = readFileSync(f.path);
-    await assert.rejects(f.run(true), /credential-import-refused/u);
-    await assert.rejects(f.run(), /credential-import-refused/u);
-    assert.equal(existsSync(privatePath), false);
-    assert.deepEqual(readFileSync(f.path), bytes);
-  });
-
-  it.each(["rename", "audit"] as const)("keeps the committed credential after %s interruption and settles only exact retry", async (boundary) => {
-    const f = fixture(29);
-    const value = "synthetic-upgrade-boundary-secret";
-    const environment = `UCPATH_PASSWORD=${value}\n`;
-    writeFileSync(f.input.environmentFile, environment, { mode: 0o600 });
-    await f.backup();
-    // Retain the original before spying; call below supplies the actual database receiver.
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const transaction = AuthorityDatabase.prototype.withAuthorityTransaction;
-    const hooks = boundary === "rename" ? { afterCredentialRename: () => { throw new Error("injected-after-rename"); } }
-      : { afterCommit: () => {
-        vi.spyOn(AuthorityDatabase.prototype, "withAuthorityTransaction").mockImplementationOnce(function (this: AuthorityDatabase, work) {
-          return transaction.call(this, (repositories) => { work(repositories); throw new Error("injected-audit-failure"); });
-        });
-      } };
-    try {
-      await assert.rejects(upgradeStorage({ ...f.input, hooks }, clock), /credential-(?:commit|audit)-uncertain/u);
-    } finally { vi.restoreAllMocks(); }
-    const store = createCredentialStore({ stateRoot: f.root });
-    assert.equal(store.read().revision, 2);
-    const credentialBytes = readFileSync(join(f.root, "credentials", "protected.json"));
-    const before = read(f).meta.authorityGeneration;
-    writeFileSync(f.input.environmentFile, "UCPATH_PASSWORD=divergent-boundary-value\n", { mode: 0o600 });
-    await assert.rejects(f.run(), /credential-import-refused/u);
-    assert.deepEqual(readFileSync(join(f.root, "credentials", "protected.json")), credentialBytes);
-    assert.equal(read(f).meta.authorityGeneration, before);
-    writeFileSync(f.input.environmentFile, environment, { mode: 0o600 });
-    assert.equal((await f.run()).state, "converted");
-    assert.equal(store.read().revision, 2);
-    assert.deepEqual(readFileSync(join(f.root, "credentials", "protected.json")), credentialBytes);
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(store)), value);
-    const doctor = await doctorAuthorityStorage({ stateRootTrustAnchor: f.root, stateRoot: f.root,
-      authorityPath: f.path, backupDirectory: join(f.root, "backups", "authority"), busyTimeoutMs: 250 }, clock);
-    assert.equal(doctor.protectedSettings.state, "available");
-    assert.equal(JSON.stringify(doctor).includes(value), false);
-    assert.equal(readFileSync(f.path).includes(Buffer.from(value)), false);
-    assert.equal((await f.run()).state, "already-upgraded");
-    assert.equal(readFileSync(f.input.environmentFile, "utf8"), environment);
-  });
-
-  it("removes only tombstoned gate records, preserves settled tallies, and keeps the delete trigger", async () => {
+  it("refuses expired orphan-gate cleanup while preserving both payloads and the original deletion tally", async () => {
     const f = fixture(29);
     const deleted = { runId: GATE_RESULT.runId, workflow: "person-lookup", traceId: "pl-120000-2222", origin: "queue", commandId: randomUUID(),
       deletedAt: now, removed: [{ table: "tasks", rows: 1 }] };
@@ -345,20 +261,17 @@ describe("D336 stopped SQLite upgrade", () => {
       for (const gate of [GATE_RESULT, retained]) raw.prepare("INSERT INTO checkpoint_payloads VALUES (?,?,?)").run(`${gate.runId}:${gate.gateId}`, JSON.stringify(gate), now);
     } finally { raw.close(); }
     await f.backup();
-    assert.equal((await f.run(true)).orphanGateRecordsRemoved, 1);
-    assert.equal((await f.run()).orphanGateRecordsRemoved, 1);
-    const after = new DatabaseSync(f.path);
+    const before = storageTree(f.root);
+    for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-below-floor.*original compatible release/u);
+    assert.deepEqual(storageTree(f.root), before);
+    const retainedSource = new DatabaseSync(f.path, { readOnly: true });
     try {
-      assert.deepEqual(after.prepare("SELECT record_json FROM checkpoint_payloads").all().map((row) => row.record_json), [JSON.stringify(retained)]);
-      assert.deepEqual(DeletedRunRecordSchema.parse(JSON.parse(String(after.prepare("SELECT record_json FROM deleted_runs").get()?.record_json))).removed, deleted.removed);
-      assert.throws(() => after.prepare("UPDATE deleted_runs SET attempt=1").run(), /immutable/u);
-      assert.throws(() => after.prepare("DELETE FROM checkpoint_payloads").run(), /never deleted/u);
-      const journal = after.prepare("SELECT record_json FROM database_upgrades WHERE phase='committed'").get();
-      assert.equal(z.object({ orphanGateRecordsRemoved: z.number() }).parse(JSON.parse(String(journal?.record_json))).orphanGateRecordsRemoved, 1);
-    } finally { after.close(); }
+      assert.equal(retainedSource.prepare("SELECT count(*) AS n FROM checkpoint_payloads").get()?.n, 2);
+      assert.equal(retainedSource.prepare("SELECT record_json FROM deleted_runs").get()?.record_json, tally);
+    } finally { retainedSource.close(); }
   });
 
-  it("preserves an applied empty v29 revision and authenticates its immutable historical journal after conversion", async () => {
+  it("preserves an applied empty v29 revision and its immutable historical journal when conversion is refused", async () => {
     const f = fixture(29); const commandId = randomUUID(); const auditId = randomUUID();
     const request = { family: "settings", type: "apply-settings", commandId, requestedAt: now, requestedBy: "local-operator", source: "settings-surface",
       target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HISTORICAL_HASH, patchFingerprint: historicalPatchFingerprint({}), patch: {} } };
@@ -378,9 +291,9 @@ describe("D336 stopped SQLite upgrade", () => {
       raw.prepare("INSERT INTO settings_current VALUES ('current',?,?,?,?,?,?,?)").run(2, settingsFingerprint, commandId, commandFingerprint, auditId, canonicalJsonStringify({ revision: 2, settingsFingerprint, commandId, commandFingerprint, auditId, committedAt: now }), now);
     } finally { raw.close(); }
     await f.backup();
-    assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).settings.revision, 2);
-    assert.deepEqual(read(f).settings.settings, {});
+    const before = storageTree(f.root);
+    for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-below-floor.*original compatible release/u);
+    assert.deepEqual(storageTree(f.root), before);
     assert.equal(readFileSync(join(f.root, "settings.json"), "utf8"), source);
   });
 
@@ -394,7 +307,7 @@ const RENAMED_TABLES = [
 ] as const;
 
 /** Build historical rows through real repositories, then copy their complete SQL shape. */
-async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37) {
+async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37 | 46 | 47 | 48) {
   const seed = fixture();
   await seed.run();
   const database = AuthorityDatabase.open({ path: seed.path, busyTimeoutMs: 250, migrationOwner: "rename-seed" }, clock);
@@ -446,7 +359,7 @@ async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37) {
       before.set(currentName, rows);
       for (const row of rows) {
         const columns = Object.keys(row);
-        const table = currentName === "settings_snapshots" || version < 35 ? oldName : currentName;
+        const table = (currentName === "settings_snapshots" && version < 43) || version < 35 ? oldName : currentName;
         target.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
       }
     }
@@ -455,7 +368,7 @@ async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37) {
 }
 
 describe("worker/auth/request SQL rename through stopped upgrade", () => {
-  it.each([33, 34, 35, 36, 37] as const)("preserves complete populated v%s rows, grouping, historical backup and current readback", async (version) => {
+  it.each([33, 34, 35, 36, 37, 46, 47, 48] as const)("preserves complete populated v%s rows, grouping, historical backup and current readback", async (version) => {
     const f = await populatedWorkerRenameFixture(version);
     const original = readFileSync(f.path);
     const historical = inspectAuthorityBackupReadOnly(f.path);
@@ -466,6 +379,11 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     const backup = await f.backup();
     assert.equal(backup.state, "verified");
     assert.equal(backup.manifests[0]?.authorityContentFingerprint, historical.authorityContentFingerprint);
+    if (version < 46) {
+      for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-below-floor.*original compatible release/u);
+      assert.deepEqual(readFileSync(f.path), original);
+      return;
+    }
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(readFileSync(f.path), original, "rehearsal must roll back every rename");
     assert.equal((await f.run()).state, "converted");
@@ -486,7 +404,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     assert.deepEqual(readFileSync(f.path), settled);
   });
 
-  it.each([33, 34, 35, 36, 37] as const)("rolls back populated v%s before commit and resumes exactly after commit", async (version) => {
+  it.each([46, 47, 48] as const)("rolls back populated v%s before commit and resumes exactly after commit", async (version) => {
     const f = await populatedWorkerRenameFixture(version);
     await f.backup();
     const before = readFileSync(f.path);
@@ -509,7 +427,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     try { raw.exec(`UPDATE ${table} SET record_json='{}'`); } finally { raw.close(); }
     const before = readFileSync(f.path);
     await assert.rejects(f.backup(), /authority-record-invalid/u);
-    await assert.rejects(f.run(), /authority-record-invalid/u);
+    await assert.rejects(f.run(), /authority-below-floor.*original compatible release/u);
     assert.deepEqual(readFileSync(f.path), before);
   });
 
@@ -551,8 +469,8 @@ function preRenameFingerprint(path: string): string {
 }
 
 
-function timelineImportFixture() {
-  const f = fixture(37);
+function timelineImportFixture(version = 37) {
+  const f = fixture(version);
   const seedPath = join(f.root, "timeline-owner.db");
   const seed = AuthorityDatabase.open({ path: seedPath, busyTimeoutMs: 500, migrationOwner: "timeline-owner-fixture" }, clock);
   seed.authority.runs.enqueue(QUEUED_RUN);
@@ -579,150 +497,82 @@ function timelineImportFixture() {
   return { ...f, sourcePath, bytes, events };
 }
 
-describe("T1 stopped timeline conversion", () => {
-  it("withholds raw source I/O errors at stopped upgrade egress", async () => {
-    const f = timelineImportFixture();
-    await f.backup();
+describe("T1 retained timeline after stopped importer expiry", () => {
+  async function refused(f: ReturnType<typeof timelineImportFixture>) {
+    const before = storageTree(f.root);
+    for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-below-floor.*schemaVersion: 37.*original compatible release/u);
+    assert.deepEqual(storageTree(f.root), before);
+  }
+  it("refuses before source I/O and never exposes its raw error", async () => {
+    const f = timelineImportFixture(); await f.backup();
     const marker = "SYNTHETIC_SECRET_NEVER_REAL_10999999";
-    const probe = vi.spyOn(fs, "readSync").mockImplementation(() => {
-      throw Object.assign(new Error(`/private/${marker}`), { code: marker });
-    });
+    const probe = vi.spyOn(fs, "readSync").mockImplementation(() => { throw new Error(`/private/${marker}`); });
     syncBuiltinESMExports();
     try {
-      await assert.rejects(f.run(), (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.match(error.message, /timeline-source-invalid/u);
-        assert.equal(error.message.includes(marker), false);
-        assert.equal(error.message.includes("/private/"), false);
-        return true;
-      });
+      for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-below-floor.*original compatible release/u);
+      assert.equal(probe.mock.calls.length, 0);
     } finally { probe.mockRestore(); syncBuiltinESMExports(); }
   });
-
-  it.each([false, true])("excludes only a matching historical deletion tombstone (wrong item: %s)", async (wrongItem) => {
-    const f = timelineImportFixture();
-    const envelope = QUEUED_RUN.envelope;
-    const deleted = DeletedRunRecordSchema.parse({
-      runId: envelope.runId, workflow: envelope.workflow, traceId: envelope.traceId,
-      itemId: wrongItem ? "ffffffff-ffff-4fff-8fff-ffffffffffff" : envelope.itemId,
-      attempt: envelope.attempt, origin: "queue", commandId: randomUUID(), deletedAt: now,
-      removed: [{ table: "workflow_runs", rows: 1 }],
-    });
+  it.each([false, true])("retains expired matching/mismatched deletion evidence without importing it (wrong item: %s)", async wrongItem => {
+    const f = timelineImportFixture(); const envelope = QUEUED_RUN.envelope;
+    const deleted = DeletedRunRecordSchema.parse({ runId: envelope.runId, workflow: envelope.workflow, traceId: envelope.traceId,
+      itemId: wrongItem ? "ffffffff-ffff-4fff-8fff-ffffffffffff" : envelope.itemId, attempt: envelope.attempt,
+      origin: "queue", commandId: randomUUID(), deletedAt: now, removed: [{ table: "workflow_runs", rows: 1 }] });
     const raw = new DatabaseSync(f.path);
     try {
       raw.prepare(`INSERT INTO deleted_runs (record_key,workflow,trace_id,origin,command_id,deleted_at,record_json,created_at,item_id,attempt)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(deleted.runId, deleted.workflow, deleted.traceId, deleted.origin,
-        deleted.commandId, deleted.deletedAt, canonicalJsonStringify(deleted), now, deleted.itemId, deleted.attempt);
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(deleted.runId, deleted.workflow, deleted.traceId, deleted.origin, deleted.commandId,
+        deleted.deletedAt, canonicalJsonStringify(deleted), now, deleted.itemId, deleted.attempt);
       raw.prepare("DELETE FROM workflow_runs WHERE record_key=?").run(envelope.runId);
     } finally { raw.close(); }
-    await f.backup();
-    const before = readFileSync(f.path);
-    if (wrongItem) {
-      await assert.rejects(f.run(), /timeline-import-tombstone-mismatch/u);
-      assert.deepEqual(readFileSync(f.path), before);
-    } else {
-      assert.equal((await f.run()).state, "converted");
-      assert.equal(f.events().length, 3);
-      assert.ok(f.events().every((event) => event.scope.kind === "worker"));
-      const receipt = readLatestSettingsUpgrade(f.path);
-      assert.ok(receipt && "timelineImport" in receipt && receipt.timelineImport?.state === "imported");
-      assert.equal(receipt.timelineImport.excludedDeleted, 1);
-      const converted = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "timeline-deletion-read" }, clock);
-      try {
-        assert.equal(converted.authority.runs.get(envelope.runId), undefined);
-        assert.equal(converted.authority.deletedRuns.get(envelope.runId)?.itemId, envelope.itemId);
-      } finally { converted.close(); }
-    }
+    await f.backup(); await refused(f);
   });
-
-  it("binds populated multi-day source bytes to backup and receipt, then resumes once without original files", async () => {
-    const f = timelineImportFixture();
-    await f.backup();
-    const before = readFileSync(f.path);
-    assert.equal((await f.run(true)).state, "planned");
-    assert.deepEqual(readFileSync(f.path), before);
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("timeline-after-commit"); } } }, clock), /timeline-after-commit/);
-    const imported = f.events();
-    assert.equal(imported.length, 4);
-    assert.equal(new Set(imported.map((event) => event.eventId)).size, 4);
-    assert.deepEqual(imported.map((event) => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
-    assert.ok(imported.every((event) => event.source.kind === "span-import"));
-    const pending = readLatestSettingsUpgrade(f.path);
-    assert.ok(pending && "timelineImport" in pending && pending.timelineImport?.state === "imported");
-    assert.equal(pending.timelineImport.imported, 4);
-    assert.equal(readFileSync(join(pending.timelineImport.copyDirectory, "spans", f.sourcePath.split("/").at(-1) ?? "missing"), "utf8"), f.bytes);
-    rmSync(join(f.root, "spans"), { recursive: true });
-    assert.equal((await f.run()).state, "converted");
-    assert.deepEqual(f.events(), imported);
-    const settled = readFileSync(f.path);
-    assert.equal((await f.run()).state, "already-upgraded");
-    assert.deepEqual(readFileSync(f.path), settled);
-  });
-
-  it("replays the selected verified source copy after restoring the old backup with original files absent", async () => {
-    const f = timelineImportFixture();
-    const backup = await f.backup();
-    const manifest = backup.manifests.at(-1); assert.ok(manifest);
-    await f.run();
-    const history = f.events();
-    const receipt = readLatestSettingsUpgrade(f.path);
-    assert.ok(receipt && "timelineImport" in receipt && receipt.timelineImport?.state === "imported");
-    const selected = receipt.timelineImport.copyDirectory;
-    rmSync(join(f.root, "spans"), { recursive: true });
-    copyFileSync(join(f.root, "backups", "authority", manifest.backupFileName), f.path);
-    await assert.rejects(f.run(), /timeline-source-originals-missing/);
-    assert.equal((await upgradeStorage({ ...f.input, timelineSourceDirectory: selected }, clock)).state, "converted");
-    assert.deepEqual(f.events(), history);
-  });
-
-  it("refuses changed source bytes at the last precommit seam and retains old schema and backup", async () => {
-    const f = timelineImportFixture(); await f.backup();
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => {
-      writeFileSync(f.sourcePath, f.bytes + f.bytes);
-    } } }, clock), /timeline-import-source-changed/);
+  it.each(["original", "missing originals", "changed source", "contradictory root", "unexplained owner", "resolvedInstance", "dryRun", "ts"])(
+    "refuses expired timeline source: %s, retaining exact bytes", async kind => {
+      const f = timelineImportFixture();
+      if (kind === "missing originals") rmSync(join(f.root, "spans"), { recursive: true });
+      else if (kind === "changed source") writeFileSync(f.sourcePath, f.bytes + f.bytes);
+      else if (kind === "unexplained owner") writeFileSync(f.sourcePath, f.bytes.replaceAll(QUEUED_RUN.envelope.runId, "ffffffff-ffff-4fff-8fff-ffffffffffff"));
+      else if (kind !== "original") {
+        const lines = f.bytes.trimEnd().split("\n");
+        const change = kind === "contradictory root" ? { parentSpanPath: "contradictory-root" }
+          : kind === "resolvedInstance" ? { resolvedInstance: {} } : kind === "dryRun" ? { dryRun: !QUEUED_RUN.envelope.dryRun } : { ts: "2026-07-30T12:00:00.000Z" };
+        lines[0] = JSON.stringify({ ...JSON.parse(lines[0]) as Record<string, unknown>, ...change });
+        writeFileSync(f.sourcePath, `${lines.join("\n")}\n`);
+      }
+      await f.backup(); await refused(f);
+    });
+  it.each([46, 47, 48])("preserves exact migrated multi-day events through supported v%s conversion and replay", async version => {
+    const f = timelineImportFixture(version);
+    const retained = z.object({ events: z.array(TimelineEventRecordSchema) }).parse(JSON.parse(readFileSync(new URL("./fixtures/migrated-timeline.json", import.meta.url), "utf8"))).events;
     const raw = new DatabaseSync(f.path);
     try {
-      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 37);
-      assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='timeline_events'").get()?.n, 0);
+      for (const record of retained) raw.prepare(`INSERT INTO timeline_events(cursor,record_key,workflow,run_id,worker_id,retention_date,retention_class,record_json,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(record.cursor, record.eventId, record.workflow,
+          record.scope.kind === "run" ? record.scope.runId : null, record.scope.kind === "worker" ? record.scope.workerId : null,
+          record.retentionDate, "ordinary", canonicalJsonStringify(record), record.recordedAt);
     } finally { raw.close(); }
-    writeFileSync(f.sourcePath, f.bytes);
-    assert.equal((await f.run()).state, "converted");
-    assert.equal(f.events().length, 4);
-  });
-
-  it("refuses schema-valid but contradictory root history before conversion", async () => {
-    const f = timelineImportFixture();
-    const lines = f.bytes.trimEnd().split("\n");
-    const queued = JSON.parse(lines[0]) as Record<string, unknown>;
-    lines[0] = JSON.stringify({ ...queued, parentSpanPath: "contradictory-root" });
-    writeFileSync(f.sourcePath, `${lines.join("\n")}\n`);
-    await f.backup();
-    const before = readFileSync(f.path);
-    await assert.rejects(f.run(true), /timeline-import-span-history-invalid/u);
-    await assert.rejects(f.run(), /timeline-import-span-history-invalid/u);
-    assert.deepEqual(readFileSync(f.path), before);
-  });
-
-  it("refuses an unexplained run owner before conversion instead of inventing a run", async () => {
-    const f = timelineImportFixture();
-    writeFileSync(f.sourcePath, f.bytes.replaceAll(QUEUED_RUN.envelope.runId, "ffffffff-ffff-4fff-8fff-ffffffffffff"));
-    await f.backup(); const before = readFileSync(f.path);
-    await assert.rejects(f.run(), /timeline-import-owner-missing/);
-    assert.deepEqual(readFileSync(f.path), before);
-  });
-
-  it.each([
-    { resolvedInstance: {} },
-    { dryRun: !QUEUED_RUN.envelope.dryRun },
-    { ts: "2026-07-30T12:00:00.000Z" },
-  ])("refuses a schema-valid queued root that contradicts its canonical owner: %j", async (change) => {
-    const f = timelineImportFixture();
-    const lines = f.bytes.trimEnd().split("\n");
-    lines[0] = JSON.stringify({ ...JSON.parse(lines[0]) as Record<string, unknown>, ...change });
-    writeFileSync(f.sourcePath, `${lines.join("\n")}\n`);
-    await f.backup();
-    const before = readFileSync(f.path);
-    await assert.rejects(f.run(), /timeline-import-owner-mismatch/u);
-    assert.deepEqual(readFileSync(f.path), before);
+    // These obsolete files deliberately contradict the retained authority. They cannot change it.
+    writeFileSync(f.sourcePath, "malformed expired spans");
+    await f.backup(); const before = storageTree(f.root);
+    assert.equal((await f.run(true)).state, "planned"); assert.deepEqual(storageTree(f.root), before);
+    await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("retained-timeline-after-commit"); } } }, clock), /retained-timeline-after-commit/u);
+    assert.deepEqual(f.events(), retained);
+    rmSync(join(f.root, "spans"), { recursive: true });
+    assert.equal((await f.run()).state, "converted"); assert.deepEqual(f.events(), retained);
+    assert.equal(retained.length, 4); assert.equal(new Set(retained.map(event => event.eventId)).size, 4);
+    assert.deepEqual(retained.map(event => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
+    assert.ok(retained.every(event => event.source.kind === "span-import"));
+    const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "retained-timeline-replay" }, clock);
+    try {
+      const generation = db.getMeta().authorityGeneration;
+      for (const record of retained) {
+        const { cursor: _cursor, ...input } = record;
+        assert.deepEqual(db.authority.timelineEvents.append(input), { state: "existing", record });
+        assert.throws(() => db.authority.timelineEvents.append({ ...input, recordedAt: "2026-09-10T00:00:00.000Z" }), /timeline-event-identity-conflict/u);
+      }
+      assert.equal(db.getMeta().authorityGeneration, generation);
+    } finally { db.close(); }
+    const settled = storageTree(f.root); assert.equal((await f.run()).state, "already-upgraded"); assert.deepEqual(storageTree(f.root), settled);
   });
 });

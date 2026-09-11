@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 46,
+  "generatorBase": "7f77978716319c4329392a19e7a971f18af37362",
+  "proof": "F02-provider-floor",
+  "proofLogSha256": "33093b02f92bfd63b848ac3e3548caf280ddc833c6003d80630cf8cf172c3105",
+  "rows": {
+    "settings_snapshots": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000090",
+        "record_json": "{\"capturedAt\":\"2026-09-09T12:00:00.000Z\",\"capturedBy\":\"local-operator\",\"config\":{\"actor\":{\"id\":\"local-operator\",\"label\":\"Local operator\"},\"annualDates\":{},\"browser\":{\"closeProofMs\":15000,\"headless\":true},\"browserHealth\":{\"maxAutoRefresh\":10,\"maxReopen\":3,\"monitorTickMs\":30000},\"concurrency\":{\"defaultWorkers\":4},\"daemon\":{\"idleMs\":900000,\"idleRepollMs\":30000},\"display\":{\"screenHeight\":1440,\"screenWidth\":2560},\"features\":{\"debugScreenshots\":false,\"duoWebAuthn\":true},\"ocr\":{\"backoffBaseMs\":2000,\"backoffCapMs\":60000,\"disambigConcurrency\":4,\"maxValidationRetries\":1,\"pageConcurrency\":0,\"pageMaxWaitMs\":120000,\"secondOpinionMax\":5,\"suggestConcurrency\":4,\"tier1PatienceMs\":90000},\"paths\":{\"artifactRoot\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.tracker/artifacts\",\"browserProfileRoot\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.auth\",\"downloadsDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/downloads\",\"duoCredential\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.auth/duo-webauthn.json\",\"duoExtensionDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/duo-autopilot\",\"i9CheckTrackerPath\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/reports/i9-check-tracker.xlsx\",\"onboardingDocsDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/onboarding\",\"reportsDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/reports\",\"stateRoot\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.tracker\"},\"performance\":{\"navigationRetries\":10,\"separationTerminationWindowDays\":14},\"providers\":{\"aiAdvisory\":{\"concurrency\":2,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":90000},\"geocodeCensus\":{\"concurrency\":2,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":5000,\"requestsPerMinute\":30,\"timeoutMs\":15000},\"geocodeNominatim\":{\"concurrency\":1,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":1000,\"requestsPerMinute\":1,\"timeoutMs\":15000},\"ocrExtract\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000}},\"timeouts\":{\"duoApprovalCrmSeconds\":60,\"duoApprovalSeconds\":180,\"duoCeremonyLeaseGraceMs\":20000,\"longNavigationMs\":30000,\"navigationMs\":15000,\"retryDelayMs\":5000,\"sessionAcquireMs\":60000,\"taskMs\":180000,\"transactionMs\":300000,\"ukgNavigationMs\":60000},\"urls\":{\"crm\":{\"prod\":{\"entry\":\"https://crm.ucsd.edu/hr\",\"idocsViewer\":\"https://act-idocs.ucsd.edu\",\"onboardingHistory\":\"https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory\",\"onboardingSearch\":\"https://act-crm.my.site.com/hr/ONB_SearchOnboardings\",\"ucPathEntrySheet\":\"https://act-crm.my.site.com/hr/ONB_PPSEntrySheet\"}},\"i9\":{\"prod\":{\"app\":\"https://wwwe.i9complete.com\",\"entry\":\"https://i9complete.ucop.edu\"}},\"kuali\":{\"prod\":{\"entry\":\"https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb\"}},\"newKronos\":{\"prod\":{\"entry\":\"https://ucsd-sso.prd.mykronos.com/wfd/home\"}},\"oldKronos\":{\"prod\":{\"entry\":\"https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/\"}},\"onbase\":{\"prod\":{\"entry\":\"https://ucsd.hylandcloud.com/251ids/NavPanel.aspx\"}},\"servicenow\":{\"prod\":{\"entry\":\"https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf\"}},\"sharepoint\":{\"prod\":{\"entry\":\"https://ucsdcloud.sharepoint.com\"}},\"ucpath\":{\"prod\":{\"jobSummary\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL\",\"login\":\"https://ucpath.ucsd.edu\",\"personProfile\":\"https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL\",\"personalData\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1\",\"smartHr\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y\"}}}},\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"fingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"provenance\":{},\"revision\":1}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "workflow_runs": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"claimGeneration\":1,\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"envelope\":{\"attempt\":1,\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"contractFingerprint\":\"83bf07143063c754be9471694a70b2c43a8f0bad32a7819c73a37a9e3cdd1a2d\",\"descriptorVersion\":1,\"dryRun\":false,\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\",\"itemId\":\"22222222-2222-4222-8222-222222222222\",\"priority\":\"bulk\",\"resolvedInstance\":{\"crm\":\"prod\",\"ucpath\":\"prod\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"shape\":\"single\",\"traceId\":\"pl-170000-2222\",\"workflow\":\"person-lookup\"},\"input\":{\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parsed\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"emplId\":\"10873698\",\"includeCrmDates\":false,\"keepNonHdh\":false}},\"raw\":{\"emplId\":\"10873698\"}},\"lifecycle\":{\"claimedAt\":\"2026-09-09T12:00:00.000Z\",\"currentNodeId\":\"searching\",\"heartbeatAt\":\"2026-09-09T12:00:00.000Z\",\"state\":\"running\",\"workerId\":\"worker-1\"},\"updatedAt\":\"2026-09-09T12:00:00.000Z\",\"version\":4}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "workflow": "person-lookup",
+        "item_id": "22222222-2222-4222-8222-222222222222",
+        "state": "running",
+        "priority": "bulk",
+        "attempt": 1,
+        "not_before": null,
+        "owner_worker_id": "worker-1",
+        "claim_generation": 1,
+        "heartbeat_at": "2026-09-09T12:00:00.000Z",
+        "version": 4,
+        "parent_run_id": null,
+        "run_number": null,
+        "session_id": null
+      }
+    ],
+    "workflow_workers": [],
+    "provider_requests": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000060",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "capability": "ocr.extract",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "config_fingerprint": "5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5",
+        "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "reserved",
+        "reserved_cost_usd_micros": 0,
+        "actual_cost_usd_micros": null,
+        "lease_expires_at": "2026-09-09T12:01:00.000Z",
+        "deadline_at": "2026-09-09T12:00:30.000Z",
+        "version": 1,
+        "record_json": "{\"attribution\":{\"capability\":\"ocr.extract\",\"kind\":\"legacy-capability\"},\"format\":1,\"kind\":\"legacy-capability\",\"origin\":\"pre-tracking\",\"record\":{\"admissionId\":\"00000000-0000-4000-8000-000000000060\",\"budget\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000},\"capability\":\"ocr.extract\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"estimate\":{\"maximumCostUsdMicros\":0},\"execution\":{\"attempt\":1,\"nodeId\":\"searching\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ocr/extract-page\"},\"lifecycle\":{\"deadlineAt\":\"2026-09-09T12:00:30.000Z\",\"leaseExpiresAt\":\"2026-09-09T12:01:00.000Z\",\"reservedAt\":\"2026-09-09T12:00:00.000Z\",\"state\":\"reserved\"},\"requestFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reservation\":{\"maximumCostUsdMicros\":0,\"requestCount\":1},\"updatedAt\":\"2026-09-09T12:00:00.000Z\",\"version\":1},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      },
+      {
+        "record_key": "00000000-0000-4000-8000-000000000061",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "capability": "ocr.extract",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "config_fingerprint": "5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5",
+        "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "denied",
+        "reserved_cost_usd_micros": 0,
+        "actual_cost_usd_micros": null,
+        "lease_expires_at": null,
+        "deadline_at": null,
+        "version": 2,
+        "record_json": "{\"attribution\":{\"capability\":\"ocr.extract\",\"kind\":\"legacy-capability\"},\"format\":1,\"kind\":\"legacy-capability\",\"origin\":\"pre-tracking\",\"record\":{\"admissionId\":\"00000000-0000-4000-8000-000000000061\",\"budget\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000},\"capability\":\"ocr.extract\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"createdAt\":\"2026-09-08T23:59:59.000Z\",\"estimate\":{\"maximumCostUsdMicros\":0},\"execution\":{\"attempt\":1,\"nodeId\":\"searching\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ocr/extract-page\"},\"lifecycle\":{\"deniedAt\":\"2026-09-08T23:59:59.000Z\",\"reason\":{\"code\":\"daily-request-exhausted\",\"message\":\"synthetic historic limit\",\"retryAt\":\"2026-09-09T00:00:00.000Z\"},\"state\":\"denied\"},\"requestFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reservation\":{\"maximumCostUsdMicros\":0,\"requestCount\":1},\"updatedAt\":\"2026-09-09T00:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-08T23:59:59.000Z"
+      },
+      {
+        "record_key": "00000000-0000-4000-8000-000000000062",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "capability": "ocr.extract",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "config_fingerprint": "5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5",
+        "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "settled",
+        "reserved_cost_usd_micros": 0,
+        "actual_cost_usd_micros": 0,
+        "lease_expires_at": null,
+        "deadline_at": null,
+        "version": 2,
+        "record_json": "{\"attribution\":{\"capability\":\"ocr.extract\",\"kind\":\"legacy-capability\"},\"format\":1,\"kind\":\"legacy-capability\",\"origin\":\"pre-tracking\",\"record\":{\"admissionId\":\"00000000-0000-4000-8000-000000000062\",\"budget\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000},\"capability\":\"ocr.extract\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"createdAt\":\"2026-09-08T23:59:59.000Z\",\"estimate\":{\"maximumCostUsdMicros\":0},\"execution\":{\"attempt\":1,\"nodeId\":\"searching\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ocr/extract-page\"},\"lifecycle\":{\"actualUsage\":{\"costUsdMicros\":0,\"requestCount\":1},\"adapterDisposition\":\"produced\",\"evidence\":{\"capturedAt\":\"2026-09-09T00:00:00.000Z\",\"summary\":\"synthetic historical evidence\"},\"settledAt\":\"2026-09-09T00:00:00.000Z\",\"state\":\"settled\"},\"requestFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reservation\":{\"maximumCostUsdMicros\":0,\"requestCount\":1},\"updatedAt\":\"2026-09-09T00:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-08T23:59:59.000Z"
+      },
+      {
+        "record_key": "00000000-0000-4000-8000-000000000063",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "capability": "ocr.extract",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "config_fingerprint": "5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5",
+        "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "interrupted",
+        "reserved_cost_usd_micros": 0,
+        "actual_cost_usd_micros": null,
+        "lease_expires_at": null,
+        "deadline_at": null,
+        "version": 2,
+        "record_json": "{\"attribution\":{\"capability\":\"ocr.extract\",\"kind\":\"legacy-capability\"},\"format\":1,\"kind\":\"legacy-capability\",\"origin\":\"pre-tracking\",\"record\":{\"admissionId\":\"00000000-0000-4000-8000-000000000063\",\"budget\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000},\"capability\":\"ocr.extract\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"createdAt\":\"2026-09-08T23:59:59.000Z\",\"estimate\":{\"maximumCostUsdMicros\":0},\"execution\":{\"attempt\":1,\"nodeId\":\"searching\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ocr/extract-page\"},\"lifecycle\":{\"accounting\":\"full-reservation-retained\",\"code\":\"cost-estimate-breach\",\"interruptedAt\":\"2026-09-09T00:00:00.000Z\",\"message\":\"synthetic unknown\",\"state\":\"interrupted\"},\"requestFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reservation\":{\"maximumCostUsdMicros\":0,\"requestCount\":1},\"updatedAt\":\"2026-09-09T00:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-08T23:59:59.000Z"
+      },
+      {
+        "record_key": "00000000-0000-4000-8000-000000000064",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "capability": "ocr.extract",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "config_fingerprint": "5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5",
+        "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "lease-expired",
+        "reserved_cost_usd_micros": 0,
+        "actual_cost_usd_micros": null,
+        "lease_expires_at": null,
+        "deadline_at": null,
+        "version": 2,
+        "record_json": "{\"attribution\":{\"capability\":\"ocr.extract\",\"kind\":\"legacy-capability\"},\"format\":1,\"kind\":\"legacy-capability\",\"origin\":\"pre-tracking\",\"record\":{\"admissionId\":\"00000000-0000-4000-8000-000000000064\",\"budget\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000},\"capability\":\"ocr.extract\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"createdAt\":\"2026-09-08T23:59:59.000Z\",\"estimate\":{\"maximumCostUsdMicros\":0},\"execution\":{\"attempt\":1,\"nodeId\":\"searching\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ocr/extract-page\"},\"lifecycle\":{\"accounting\":\"full-reservation-retained\",\"expiredAt\":\"2026-09-09T00:00:00.000Z\",\"state\":\"lease-expired\"},\"requestFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reservation\":{\"maximumCostUsdMicros\":0,\"requestCount\":1},\"updatedAt\":\"2026-09-09T00:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-08T23:59:59.000Z"
+      }
+    ],
+    "provider_usage": [
+      {
+        "record_key": "ocr.extract",
+        "capability": "ocr.extract",
+        "minute_window_started_at": "2026-09-09T00:00:00.000Z",
+        "minute_requests": 4,
+        "day_window_started_at": "2026-09-09T00:00:00.000Z",
+        "day_requests": 4,
+        "day_reserved_cost_usd_micros": 0,
+        "active_reservations": 1,
+        "blocked_by_admission_id": "00000000-0000-4000-8000-000000000063",
+        "version": 2,
+        "record_json": "{\"cumulative\":{\"chargedUsdMicros\":0,\"requests\":0},\"format\":1,\"kind\":\"legacy-capability\",\"record\":{\"activeReservations\":1,\"blockedByAdmissionId\":\"00000000-0000-4000-8000-000000000063\",\"capability\":\"ocr.extract\",\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"dayRequests\":4,\"dayReservedCostUsdMicros\":0,\"dayWindowStartedAt\":\"2026-09-09T00:00:00.000Z\",\"minuteRequests\":4,\"minuteWindowStartedAt\":\"2026-09-09T00:00:00.000Z\",\"updatedAt\":\"2026-09-09T12:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ]
+  }
+}

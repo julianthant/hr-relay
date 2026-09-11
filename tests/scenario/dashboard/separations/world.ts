@@ -179,7 +179,7 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
-      listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
+      canonicalPerson: (runId: string) => database.canonicalPerson(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },

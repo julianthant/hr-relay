@@ -3,7 +3,7 @@ import { FailureResolutionSchema } from "../domain/trust/failure-resolution.js";
 import type { CommandApplication } from "./command-application.js";
 import type { FailureResolutionCommand } from "../domain/commands.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
-import { rejectCommandRequest } from "./command-kernel.js";
+import { rejectCommandRequest } from "./command-refusal.js";
 import { lifecycleCommandId } from "./run-record-service.js";
 
 export { failureResolutionCapability } from "../domain/trust/failure-resolution.js";

@@ -1,6 +1,6 @@
-import { VersionBumpApplicationSchema, archivedRunReferenceFingerprint, ArchivedRunRecordSchema, archivedRunContentDigest } from "../../../src/domain/archive/model.js";
-import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
-import { trustArchiveRecord } from "./helpers/trust-authority-fixture.js";
+import {captureArchiveReport,genericArchiveSection} from "../../../src/services/archive/report-capture.js";
+import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
+
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
@@ -21,7 +21,7 @@ import { CaptureListSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
-import { DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
+import { FingerprintSchema, DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { DiagnosticBundleCorruptError, SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
 import {
@@ -178,33 +178,33 @@ describe("DCA3/D292 run capture authority", () => {
       ids: { uuid: () => { throw new Error("unexpected id"); } }, publishQueued: () => {} });
     const run = service.read(uuidOf(1)); assert.equal(run.state, "present");
     if (run.state !== "present") throw new Error("run missing");
-    h.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-    h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({ ...VERSION_BUMP_APPLICATION,
-      archivedRunIds: [uuidOf(1)] }));
     const trust = createReceiptService({ database: h.database, descriptors: [personLookupDescriptor], runReader: h.deps.runReader });
     const failure = buildTrustSection({ ...h.deps, trust }, uuidOf(1), "failure");
     assert.equal(failure.section, "failure");
     if (failure.section !== "failure" || failure.payload.state !== "available") throw new Error("failure evidence missing");
-    const { contentDigest: _digest, ...template } = trustArchiveRecord(run.run);
-    const content = { ...template, failure: { state: "present" as const, value: failure.payload.value } };
-    const archive = ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
-    assert.deepEqual(h.database.authority.archivedRuns.bindingMismatches(archive), []);
-    assert.equal(service.archive({ commandId: uuidOf(81), expectedVersion: run.run.version, archive }).state, "applied");
-    const frozen = canonicalJsonStringify(h.database.authority.archivedRuns.get(uuidOf(1)));
-    await assert.rejects(prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId), SectionUnavailableError);
+    const storage=service.lifecycleStorage();
+    const report=captureArchiveReport({snapshot:storage.capture(uuidOf(1)),transferId:uuidOf(81),capturedAt:h.world.clock.now().toISOString(),
+      sections:[genericArchiveSection("Failure",failure.payload.value)],files:[{digest:FingerprintSchema.parse(ATTACHMENT.digest),byteLength:ATTACHMENT.byteLength,mediaType:ATTACHMENT.mediaType,name:"accessibility-excerpt",artifactIds:[ATTACHMENT.artifactId]}]});
+    for(const file of report.content.files)storage.retainFile(file,BYTES);
+    assert.ok(transferArchiveReport(storage,report,run.run.version));
+    const frozen=canonicalJsonStringify(storage.readReport(uuidOf(1)));
+    await assert.rejects(prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId), TargetNotFoundError);
+    assert.deepEqual(storage.readFile(uuidOf(1),ATTACHMENT.digest).bytes,BYTES);
     h.database.authority.diagnosticBundles.insert(bundleOf(62,
       { kind: "operator-request", requestedBy: "local-operator" }, { runId: uuidOf(2) }));
+    h.database.authority.runs.enqueue({...queued,envelope:{...queued.envelope,runId:uuidOf(3),itemId:uuidOf(6003),traceId:"pl-010101-0003"}});
+    h.database.authority.diagnosticBundles.insert(bundleOf(63,{kind:"operator-request",requestedBy:"local-operator"},{runId:uuidOf(3)}));
     const changedAttachment = { ...ATTACHMENT, digest: HASH_A };
-    const conflicting = bundleOf(61, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [changedAttachment] });
+    const conflicting = bundleOf(62, { kind: "operator-request", requestedBy: "local-operator" }, {runId:uuidOf(2), attachments: [changedAttachment] });
     await assert.rejects(prepareLiveDiagnosticArtifactLease({ ...deps, authority: { ...h.captures.authority,
-      get: (id: string) => id === first.bundleId ? conflicting : h.captures.authority.get(id),
-      findByArtifact: (id: string) => h.captures.authority.findByArtifact(id).map(row => row.bundleId === first.bundleId
+      get: (id: string) => id === conflicting.bundleId ? conflicting : h.captures.authority.get(id),
+      findByArtifact: (id: string) => h.captures.authority.findByArtifact(id).map(row => row.bundleId === conflicting.bundleId
         ? { ...row, attachment: { ...row.attachment, digest: conflicting.attachments[0]?.digest } } : row),
     } }, ATTACHMENT.artifactId), /shared artifact metadata disagrees/);
     const shared = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await shared.lease.dispose();
-    assert.equal(canonicalJsonStringify(h.database.authority.archivedRuns.get(uuidOf(1))), frozen);
+    assert.equal(canonicalJsonStringify(storage.readReport(uuidOf(1))), frozen);
     assert.equal(service.deleteArchived({ commandId: uuidOf(82), runId: uuidOf(1),
-      archiveFingerprint: archivedRunReferenceFingerprint(archive) }).state, "deleted");
+      archiveFingerprint: report.digest }).state, "deleted");
     const retained = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await retained.lease.dispose();
     assert.equal(h.database.authority.diagnosticBundles.get(first.bundleId), undefined);
     await h.artifactReader.verify(refOf(ATTACHMENT));

@@ -673,8 +673,8 @@ export class RunQueueProjection {
     return this.captureQueueSnapshot().surfaces(runIds);
   }
 
-  captureQueueSnapshot(): RunQueueReadSnapshot {
-    const snapshot = this.#canonicalSnapshot();
+  captureQueueSnapshot(selectedRuns?: readonly RunRecord[]): RunQueueReadSnapshot {
+    const snapshot = selectedRuns === undefined ? this.#canonicalSnapshot() : { runs: selectedRuns, byId: new Map(selectedRuns.map(run => [run.envelope.runId, run])), children: canonicalRunChildren(selectedRuns) };
     return Object.freeze({
       runs: snapshot.runs,
       surfaces: (runIds: readonly string[]) => runIds.flatMap((runId) => {

@@ -112,7 +112,7 @@ export function createImportedArtifactRepositories(ports: ImportedArtifactPorts)
     manifests: Object.freeze({
       insert(input: unknown) {
         const manifest = IntakePlanManifestSchema.parse(input); const json = canonicalJsonStringify(manifest);
-        return mutate(() => {
+        return mutate<{ state: "existing" | "inserted"; record: z.output<typeof IntakePlanManifestSchema> }>(() => {
           const old = find("manifest_id", manifest.manifestId);
           if (old?.submittedJson != null) {
             if (canonicalJsonStringify(JSON.parse(old.submittedJson)) !== json) throw new Error(`intake manifest ${manifest.manifestId} already exists with different content`);

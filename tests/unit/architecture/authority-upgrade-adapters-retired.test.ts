@@ -1,3 +1,6 @@
+import { storageRecoveryFixture, credentialTrap, storageTree } from "../helpers/storage-recovery-fixture.js";
+import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { readSettings } from "../../../src/server/settings-runtime.js";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,11 +9,13 @@ import { describe, it } from "vitest";
 import ts from "typescript";
 import { walkFiles } from "./helpers/guard-files.js";
 
-/** Guards §5.2 A0/A1 until their planned Phase-2.6 deletion guard activates. */
+/** D332.9: expired settings imports are absent; supported recovery remains stopped. */
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 const STORAGE_COMPOSE = "src/server/storage/compose.ts";
+const HISTORICAL_RESTORE = "src/server/storage/historical-restore.ts";
 const STORAGE_UPGRADE = "src/server/storage/upgrade.ts";
+const STOPPED_CONVERTER = "src/infra/sqlite/stopped-database-conversion.ts";
 const SECURE_BOOTSTRAP = "scripts/secure-env-bootstrap.ts";
 const CLI = "src/cli.ts";
 
@@ -154,7 +159,7 @@ function adapterReachabilityIssues(
   const issues: string[] = [];
   for (const root of roots) {
     const reach = valueReach(graph, [root], cutEdges);
-    for (const adapter of UPGRADE_ADAPTERS) {
+    for (const adapter of [STOPPED_CONVERTER]) {
       const chain = reach.get(adapter);
       if (chain !== undefined) {
         issues.push(`${root}: ordinary runtime reaches upgrade adapter ${adapter} via ${chain.join(" -> ")}`);
@@ -191,7 +196,7 @@ function storageRegistrationDispatches(source: ts.SourceFile): boolean {
 
 function storageBoundaryIssues(graph: SourceGraph): readonly string[] {
   const issues: string[] = [];
-  const boundaryEdges = graph.edges.filter(({ from, to }) => from === STORAGE_COMPOSE && to === STORAGE_UPGRADE);
+  const boundaryEdges = graph.edges.filter(({ from, to }) => from === STORAGE_COMPOSE && (to === STORAGE_UPGRADE || to === HISTORICAL_RESTORE));
   if (boundaryEdges.length === 0) {
     issues.push(`${STORAGE_COMPOSE}: stopped storage upgrade boundary is missing`);
   }
@@ -207,7 +212,7 @@ function storageBoundaryIssues(graph: SourceGraph): readonly string[] {
   const bootstrapReach = valueReach(graph, [SECURE_BOOTSTRAP], new Set([edgeKey({
     from: STORAGE_COMPOSE,
     to: STORAGE_UPGRADE,
-  })]));
+  }), edgeKey({ from: STORAGE_COMPOSE, to: HISTORICAL_RESTORE })]));
   if (!bootstrapReach.has(CLI) || !bootstrapReach.has(STORAGE_COMPOSE)) {
     issues.push(`${SECURE_BOOTSTRAP}: secure bootstrap must dispatch the CLI storage composer`);
   }
@@ -220,52 +225,34 @@ function storageBoundaryIssues(graph: SourceGraph): readonly string[] {
   return issues;
 }
 
-function auditUpgradeAdapterIsolation(root: string): readonly string[] {
+function auditUpgradeAdapterRetirement(root: string): readonly string[] {
   const graph = buildSourceGraph(root);
   const issues: string[] = [];
-  for (const path of [...ORDINARY_RUNTIME_ROOTS, STORAGE_COMPOSE, STORAGE_UPGRADE, SECURE_BOOTSTRAP, CLI]) {
+  for (const path of [...ORDINARY_RUNTIME_ROOTS, STORAGE_COMPOSE, STORAGE_UPGRADE, STOPPED_CONVERTER, SECURE_BOOTSTRAP, CLI]) {
     if (!graph.sources.has(path)) issues.push(`${path}: required production composition root is missing`);
   }
-  for (const path of UPGRADE_ADAPTERS) {
-    if (!graph.sources.has(path)) issues.push(`${path}: active A0/A1 adapter is missing before Phase 2.6 retirement`);
-  }
-
-  const allowedParents = new Map<string, ReadonlySet<string>>([
-    [UPGRADE_ADAPTERS[0], new Set([STORAGE_UPGRADE, UPGRADE_ADAPTERS[3]])],
-    [UPGRADE_ADAPTERS[1], new Set([UPGRADE_ADAPTERS[0]])],
-    [UPGRADE_ADAPTERS[2], new Set([UPGRADE_ADAPTERS[0]])],
-    [UPGRADE_ADAPTERS[3], new Set([STORAGE_UPGRADE])],
-  ]);
-  for (const adapter of UPGRADE_ADAPTERS) {
-    const incoming = graph.edges.filter(({ to }) => to === adapter);
-    if (incoming.length === 0) issues.push(`${adapter}: adapter has no owning upgrade import`);
-    for (const edge of incoming) {
-      if (allowedParents.get(adapter)?.has(edge.from) !== true) {
-        issues.push(`${edge.from}: imports ${adapter} outside stopped ${STORAGE_UPGRADE}`);
-      }
+  for (const path of UPGRADE_ADAPTERS) if (graph.sources.has(path)) issues.push(`${path}: retired adapter restored`);
+  const retiredNames = new Set(["readUpgradeSources", "readSettingsUpgradeSources", "convertSettingsDatabase", "recoverSettingsSources", "readPrivateMigrationSource", "settleSettingsUpgrade", "inspectTombstoneBackfill", "countOrphanGateRecords"]);
+  for (const [path, source] of graph.sources) visit(source, node => {
+    if (ts.isIdentifier(node) && retiredNames.has(node.text)) issues.push(`${path}: retired import API ${node.text}`);
+    if (ts.isStringLiteralLike(node) && UPGRADE_ADAPTERS.some(adapter => node.text.replace(/\.js$/u, ".ts").endsWith(adapter.slice("src/infra/compat/".length)))) {
+      issues.push(`${path}: retired adapter reference ${node.text}`);
     }
-  }
-
-  const stoppedReach = valueReach(graph, [STORAGE_UPGRADE]);
-  for (const adapter of UPGRADE_ADAPTERS) {
-    if (!stoppedReach.has(adapter)) {
-      issues.push(`${STORAGE_UPGRADE}: stopped upgrade no longer reaches owned adapter ${adapter}`);
-    }
-  }
-
-  const stoppedBoundary = new Set([edgeKey({ from: STORAGE_COMPOSE, to: STORAGE_UPGRADE })]);
+  });
+  if (!valueReach(graph, [STORAGE_UPGRADE]).has(STOPPED_CONVERTER)) issues.push("supported stopped converter is disconnected");
+  const stoppedBoundary = new Set([edgeKey({ from: STORAGE_COMPOSE, to: STORAGE_UPGRADE }), edgeKey({ from: STORAGE_COMPOSE, to: HISTORICAL_RESTORE })]);
   issues.push(...adapterReachabilityIssues(graph, ORDINARY_RUNTIME_ROOTS, stoppedBoundary));
   issues.push(...adapterReachabilityIssues(graph, [SECURE_BOOTSTRAP], stoppedBoundary));
   issues.push(...storageBoundaryIssues(graph));
   return [...new Set(issues)].sort();
 }
 
-describe("authority-upgrade-adapters-isolated", () => {
-  it("keeps A0/A1 reachable only through the stopped storage upgrade command", () => {
-    assert.deepEqual(auditUpgradeAdapterIsolation(REPO_ROOT), []);
+describe("authority-upgrade-adapters-retired", () => {
+  it("removes A0/A1 while preserving the supported stopped recovery boundary", () => {
+    assert.deepEqual(auditUpgradeAdapterRetirement(REPO_ROOT), []);
   });
 
-  it("catches an ordinary composition root reaching A0 through one helper hop", () => {
+  it("catches ordinary composition reaching supported conversion through one helper hop", () => {
     const root = resolve(tmpdir(), `hrauto-upgrade-adapter-guard-${String(process.pid)}-${String(Date.now())}`);
     const write = (path: string, body: string): void => {
       const absolute = resolve(root, path);
@@ -274,8 +261,8 @@ describe("authority-upgrade-adapters-isolated", () => {
     };
     try {
       write("src/server/dashboard/compose.ts", 'import "./helper.js";\n');
-      write("src/server/dashboard/helper.ts", 'import "../../infra/compat/upgrade-sources.js";\n');
-      write("src/infra/compat/upgrade-sources.ts", "export const adapter = true;\n");
+      write("src/server/dashboard/helper.ts", 'import "../../infra/sqlite/stopped-database-conversion.js";\n');
+      write(STOPPED_CONVERTER, "export const adapter = true;\n");
       const graph = buildSourceGraph(root);
       const issues = adapterReachabilityIssues(
         graph,
@@ -284,11 +271,43 @@ describe("authority-upgrade-adapters-isolated", () => {
       ).join("\n");
       assert.match(
         issues,
-        /dashboard\/compose\.ts -> src\/server\/dashboard\/helper\.ts -> src\/infra\/compat\/upgrade-sources\.ts/u,
+        /dashboard\/compose\.ts -> src\/server\/dashboard\/helper\.ts -> src\/infra\/sqlite\/stopped-database-conversion\.ts/u,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it.each(UPGRADE_ADAPTERS)("detects restored module %s and an unresolved import to it", path => {
+    const root = resolve(tmpdir(), `hrauto-retired-guard-${String(process.pid)}-${String(Date.now())}`);
+    try {
+      mkdirSync(dirname(resolve(root, path)), { recursive: true });
+      writeFileSync(resolve(root, path), "export const restored = true;");
+      assert.ok(auditUpgradeAdapterRetirement(root).includes(`${path}: retired adapter restored`));
+      rmSync(resolve(root, path));
+      mkdirSync(resolve(root, "src"), { recursive: true });
+      writeFileSync(resolve(root, "src/probe.ts"), `export * from "./infra/compat/${path.split("/").at(-1)?.replace(/\.ts$/u, ".js") ?? "missing"}";`);
+      assert.ok(auditUpgradeAdapterRetirement(root).some(issue => issue.includes("retired adapter reference")));
+      writeFileSync(resolve(root, "src/probe.ts"), "export function readUpgradeSources() { return {}; }");
+      assert.ok(auditUpgradeAdapterRetirement(root).some(issue => issue.includes("retired import API readUpgradeSources")));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([0, 46, 49])("rejects equivalent relocated settings-import behavior at schema %s", async version => {
+    const f = storageRecoveryFixture(version);
+    try {
+      writeFileSync(f.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=17\nUCPATH_PASSWORD=synthetic-expired-secret\n");
+      writeFileSync(join(f.root, "settings.json"), "corrupt retired settings authority");
+      credentialTrap(f.root);
+      if (version > 0) await f.backup();
+      const before = storageTree(f.root);
+      await f.run(true); assert.deepEqual(storageTree(f.root), before);
+      const result = await f.run(); assert.deepEqual(result.importedKeys, []); assert.equal(result.credentials, "unchanged");
+      const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "retirement-control" }, f.clock);
+      try { assert.deepEqual(readSettings(database.authority).settings, {}); } finally { database.close(); }
+      assert.equal(readFileSync(f.path).includes(Buffer.from("synthetic-expired-secret")), false);
+      for (const [path, digest] of Object.entries(before)) if (!["state.db", "state.db-wal", "state.db-shm"].includes(path)) assert.equal(storageTree(f.root)[path], digest);
+    } finally { f.dispose(); }
   });
 
   it("rejects an eager upgrade edge and a CLI registration that does not dispatch storage", () => {

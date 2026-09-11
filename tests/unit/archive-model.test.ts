@@ -1,4 +1,4 @@
-import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
+import { historicalArchiveAuthority } from "./helpers/historical-archive-authority.js";
 import { VersionChangeStorageSchema } from "../../src/domain/archive/change-record.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
 import { projectArchiveReport, queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
@@ -1125,7 +1125,7 @@ describe("the D80 archive model", () => {
       if (result.state === "rejected") assert.equal(result.code, "policy-refused");
       assert.deepEqual(world.database.authority.runs.listByWorkflow("archive-fixture"), before);
       assert.deepEqual(reportOf(world, archived), record);
-      assert.deepEqual(world.database.authority.archiveRelaunches.listByArchivedRun(archived), []);
+      assert.equal("archiveRelaunches" in world.database.authority, false);
     }
   });
 

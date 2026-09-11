@@ -145,6 +145,7 @@ function seed(
 ): void {
   queuedEventOf(w, {
     seed: 1,
+    enqueuedAt: NOW,
     version: input?.version ?? 4,
     lifecycle: input?.lifecycle ?? PARKED_LIFECYCLE,
   });

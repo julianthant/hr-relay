@@ -1,3 +1,4 @@
+import { FingerprintSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
@@ -61,7 +62,7 @@ it("keeps JSON, CSV and XLSX transaction totals through archive cleanup/restart 
       const ledger = createTransactionHistory(db.authority);
       const descriptors = { resolve: () => undefined };
       return createOperatorProjection({ database: db, stateRoot: f.base.root, clock: f.base.clock, appVersion: "0.1.0",
-        descriptorSetHash: "a".repeat(64), ledger, descriptors,
+        descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger, descriptors,
         reader: { read: reader.read.bind(reader), list: reader.list.bind(reader),
           summaries: { withSnapshot: work => db.withAuthorityReadSnapshot(work), queue: query => queryQueueSummaries(db, query),
             activity: (from, to) => queryActivitySummaries(db, { from, to, generatedAt: NOW }, { ledger, descriptors }) } },
@@ -112,7 +113,7 @@ it("keeps deterministic cursor ties, day/status/workflow/system membership and c
     assert.equal(selected.workflowCounts.find(row => row.workflowId === "person-lookup")?.count, 3);
     assert.equal(selected.queueSurfaces.filter(row => row.status === "queued" && row.workflowId === "person-lookup"
       && row.resolvedInstances.some(instance => instance.system === "ucpath")).length, 3);
-    assert.equal(selected.queueSurfaces.filter(row => row.resolvedInstances.some(instance => instance.system === "unknown-system")).length, 0);
+    assert.equal(selected.queueSurfaces.filter(row => row.resolvedInstances.some(instance => String(instance.system) === "unknown-system")).length, 0);
     let after: { localDay: string; runId: string } | undefined;
     const seen: string[] = [];
     do {

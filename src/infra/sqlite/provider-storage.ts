@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { ProviderRequestStorageSchema, ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../domain/provider-accounting.js";
+import { LegacyProviderRequestSchema, ProviderRequestStorageSchema, ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../domain/provider-accounting.js";
 import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../domain/provider-admission.js";
 export const PROVIDER_REQUEST_DDL = `CREATE TABLE provider_requests (
  record_key TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES workflow_runs(record_key) ON DELETE RESTRICT,
@@ -97,7 +97,7 @@ export function writeProviderUsage(db: DatabaseSync, input: ProviderUsageStorage
  if (changes !== 1) throw new Error("provider-usage-version-conflict");
 }
 export function convertProviderStorage(db: DatabaseSync, now: string): void {
- const tracking = { startedAt: now, coverage: "historical-gaps" as const, evidence: "legacy-reported" as const };
+ const tracking = LegacyProviderRequestSchema.shape.tracking.parse({ startedAt: now, coverage: "historical-gaps", evidence: "legacy-reported" });
  for (const row of db.prepare("SELECT record_json FROM provider_budget_counters ORDER BY record_key").all()) {
   const record = ProviderBudgetCounterSchema.parse(JSON.parse(RowSchema.parse(row).record_json));
   writeProviderUsage(db,{ format: 1,kind: "legacy-capability",record,tracking,cumulative: { requests: 0,chargedUsdMicros: 0 } },null);

@@ -1,0 +1,183 @@
+{
+  "database_state": [
+    {
+      "singleton_id": 1,
+      "schema_version": 46,
+      "authority_generation": 7,
+      "updated_at": "2026-07-31T17:00:00.000Z",
+      "migration_owner": null,
+      "migration_started_at": null
+    }
+  ],
+  "run_operations": [
+    {
+      "record_key": "90000000-0000-4000-8000-000000000001",
+      "idempotency_key_digest": "f4e79d34792128add4a129b2fe137a7364b2f5053aba267829a5c4f5aed44458",
+      "status": "observed-present",
+      "record_json": "{\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000001\",\n  \"workflowId\": \"separation\",\n  \"itemId\": \"33333333-3333-4333-8333-333333333333\",\n  \"taskId\": \"ucpath/terminate-person\",\n  \"system\": \"ucpath\",\n  \"idempotencyKey\": \"synthetic-operation-0\",\n  \"idempotencyKeyDigest\": \"f4e79d34792128add4a129b2fe137a7364b2f5053aba267829a5c4f5aed44458\",\n  \"generation\": 1,\n  \"status\": \"observed-present\",\n  \"observedProof\": {\n    \"schemaHash\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n    \"value\": \"synthetic-receipt\"\n  },\n  \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"version\": 1,\n  \"createdAt\": \"2026-07-31T17:00:00.000Z\",\n  \"updatedAt\": \"2026-07-31T17:00:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "system": "ucpath",
+      "idempotency_key": "synthetic-operation-0"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000002",
+      "idempotency_key_digest": "6132aec4dae2bb7e66ca129124b9d89d243f01b03fc30cd44d5a7439369ee3f6",
+      "status": "attempting",
+      "record_json": "{\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000002\",\n  \"workflowId\": \"separation\",\n  \"itemId\": \"33333333-3333-4333-8333-333333333333\",\n  \"taskId\": \"ucpath/terminate-person\",\n  \"system\": \"ucpath\",\n  \"idempotencyKey\": \"synthetic-operation-1\",\n  \"idempotencyKeyDigest\": \"6132aec4dae2bb7e66ca129124b9d89d243f01b03fc30cd44d5a7439369ee3f6\",\n  \"currentAttemptId\": \"90000000-0000-4000-8000-000000000012\",\n  \"generation\": 2,\n  \"runId\": \"90000000-0000-4000-8000-000000000050\",\n  \"runAttempt\": 3,\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"version\": 1,\n  \"createdAt\": \"2026-07-31T17:00:00.000Z\",\n  \"updatedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"status\": \"attempting\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "system": "ucpath",
+      "idempotency_key": "synthetic-operation-1"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000003",
+      "idempotency_key_digest": "b8f7dd612a856c0dff4cf05da28747f9c1d2a0253307ceb81a2a791fff62de5a",
+      "status": "committed",
+      "record_json": "{\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000003\",\n  \"workflowId\": \"separation\",\n  \"itemId\": \"33333333-3333-4333-8333-333333333333\",\n  \"taskId\": \"ucpath/terminate-person\",\n  \"system\": \"ucpath\",\n  \"idempotencyKey\": \"synthetic-operation-2\",\n  \"idempotencyKeyDigest\": \"b8f7dd612a856c0dff4cf05da28747f9c1d2a0253307ceb81a2a791fff62de5a\",\n  \"currentAttemptId\": \"90000000-0000-4000-8000-000000000013\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"version\": 1,\n  \"createdAt\": \"2026-07-31T17:00:00.000Z\",\n  \"updatedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"status\": \"committed\",\n  \"completionProof\": {\n    \"schemaHash\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n    \"value\": \"synthetic-receipt\"\n  },\n  \"confirmedAt\": \"2026-07-31T17:01:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "system": "ucpath",
+      "idempotency_key": "synthetic-operation-2"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000004",
+      "idempotency_key_digest": "04fd590be15f0562ac1e03869741a8313ad1a1896ae5854f3db6435636da9a19",
+      "status": "retryable",
+      "record_json": "{\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000004\",\n  \"workflowId\": \"separation\",\n  \"itemId\": \"33333333-3333-4333-8333-333333333333\",\n  \"taskId\": \"ucpath/terminate-person\",\n  \"system\": \"ucpath\",\n  \"idempotencyKey\": \"synthetic-operation-3\",\n  \"idempotencyKeyDigest\": \"04fd590be15f0562ac1e03869741a8313ad1a1896ae5854f3db6435636da9a19\",\n  \"currentAttemptId\": \"90000000-0000-4000-8000-000000000014\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"version\": 1,\n  \"createdAt\": \"2026-07-31T17:00:00.000Z\",\n  \"updatedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"status\": \"retryable\",\n  \"settlement\": {\n    \"state\": \"operator-confirmed-absent\",\n    \"writeIntentId\": \"90000000-0000-4000-8000-000000000004\",\n    \"generation\": 1,\n    \"operator\": \"local-operator\",\n    \"confirmedAt\": \"2026-07-31T17:01:00.000Z\",\n    \"evidenceNote\": \"Synthetic confirmed absence\"\n  },\n  \"resolvedAt\": \"2026-07-31T17:01:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "system": "ucpath",
+      "idempotency_key": "synthetic-operation-3"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000005",
+      "idempotency_key_digest": "14458915634925f01c8b7b8d0a318f4c4dd583753c834473aea47b9993acec56",
+      "status": "parked",
+      "record_json": "{\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000005\",\n  \"workflowId\": \"separation\",\n  \"itemId\": \"33333333-3333-4333-8333-333333333333\",\n  \"taskId\": \"ucpath/terminate-person\",\n  \"system\": \"ucpath\",\n  \"idempotencyKey\": \"synthetic-operation-4\",\n  \"idempotencyKeyDigest\": \"14458915634925f01c8b7b8d0a318f4c4dd583753c834473aea47b9993acec56\",\n  \"currentAttemptId\": \"90000000-0000-4000-8000-000000000015\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"version\": 1,\n  \"createdAt\": \"2026-07-31T17:00:00.000Z\",\n  \"updatedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"status\": \"parked\",\n  \"parkedCode\": \"unknown\",\n  \"message\": \"Synthetic unknown submit\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "system": "ucpath",
+      "idempotency_key": "synthetic-operation-4"
+    }
+  ],
+  "workflow_runs": [
+    {
+      "record_key": "22222222-2222-4222-8222-222222222222",
+      "record_json": "{\"envelope\":{\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflow\":\"separation\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"traceId\":\"se-120000-2222\",\"descriptorVersion\":1,\"contractFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolvedInstance\":{\"ucpath\":\"prod\"},\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"configSnapshotId\":\"44444444-4444-4444-8444-444444444444\",\"shape\":\"single\",\"priority\":\"bulk\",\"dryRun\":false,\"attempt\":1,\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\"},\"input\":{\"raw\":{\"emplId\":\"10873698\"},\"parsed\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"emplId\":\"10873698\",\"keepNonHdh\":false,\"includeCrmDates\":false}},\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"lifecycle\":{\"state\":\"terminal\",\"outcome\":\"cancelled\",\"endedAt\":\"2026-07-31T17:00:00.000Z\"},\"claimGeneration\":0,\"version\":1,\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"updatedAt\":\"2026-07-31T17:00:00.000Z\"}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "workflow": "separation",
+      "item_id": "33333333-3333-4333-8333-333333333333",
+      "state": "terminal",
+      "priority": "bulk",
+      "attempt": 1,
+      "not_before": null,
+      "owner_worker_id": null,
+      "claim_generation": 0,
+      "heartbeat_at": null,
+      "version": 1,
+      "parent_run_id": null,
+      "run_number": null,
+      "session_id": null
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000050",
+      "record_json": "{\"envelope\":{\"runId\":\"90000000-0000-4000-8000-000000000050\",\"workflow\":\"separation\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"traceId\":\"se-120000-2222\",\"descriptorVersion\":1,\"contractFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"resolvedInstance\":{\"ucpath\":\"prod\"},\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"configSnapshotId\":\"44444444-4444-4444-8444-444444444444\",\"shape\":\"single\",\"priority\":\"bulk\",\"dryRun\":false,\"attempt\":3,\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\"},\"input\":{\"raw\":{\"emplId\":\"10873698\"},\"parsed\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"emplId\":\"10873698\",\"keepNonHdh\":false,\"includeCrmDates\":false}},\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"lifecycle\":{\"state\":\"terminal\",\"outcome\":\"cancelled\",\"endedAt\":\"2026-07-31T17:00:00.000Z\"},\"claimGeneration\":0,\"version\":1,\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"updatedAt\":\"2026-07-31T17:00:00.000Z\"}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "workflow": "separation",
+      "item_id": "33333333-3333-4333-8333-333333333333",
+      "state": "terminal",
+      "priority": "bulk",
+      "attempt": 3,
+      "not_before": null,
+      "owner_worker_id": null,
+      "claim_generation": 0,
+      "heartbeat_at": null,
+      "version": 1,
+      "parent_run_id": null,
+      "run_number": null,
+      "session_id": null
+    }
+  ],
+  "run_operation_attempts": [
+    {
+      "record_key": "90000000-0000-4000-8000-000000000040",
+      "write_intent_id": "90000000-0000-4000-8000-000000000002",
+      "generation": 1,
+      "record_json": "{\n  \"writeAttemptId\": \"90000000-0000-4000-8000-000000000040\",\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000002\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"outcome\": {\n    \"state\": \"safe-to-retry\",\n    \"settlement\": {\n      \"state\": \"operator-confirmed-absent\",\n      \"writeIntentId\": \"90000000-0000-4000-8000-000000000002\",\n      \"generation\": 1,\n      \"operator\": \"local-operator\",\n      \"confirmedAt\": \"2026-07-31T17:01:00.000Z\",\n      \"evidenceNote\": \"Synthetic confirmed absence\"\n    }\n  },\n  \"recordedAt\": \"2026-07-31T17:00:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000012",
+      "write_intent_id": "90000000-0000-4000-8000-000000000002",
+      "generation": 2,
+      "record_json": "{\n  \"writeAttemptId\": \"90000000-0000-4000-8000-000000000012\",\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000002\",\n  \"generation\": 2,\n  \"runId\": \"90000000-0000-4000-8000-000000000050\",\n  \"runAttempt\": 3,\n  \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"outcome\": {\n    \"state\": \"attempting\"\n  },\n  \"recordedAt\": \"2026-07-31T17:00:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000013",
+      "write_intent_id": "90000000-0000-4000-8000-000000000003",
+      "generation": 1,
+      "record_json": "{\n  \"writeAttemptId\": \"90000000-0000-4000-8000-000000000013\",\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000003\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"outcome\": {\n    \"state\": \"committed\",\n    \"completionProof\": {\n      \"schemaHash\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"value\": \"synthetic-receipt\"\n    },\n    \"confirmedAt\": \"2026-07-31T17:01:00.000Z\"\n  },\n  \"recordedAt\": \"2026-07-31T17:00:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000014",
+      "write_intent_id": "90000000-0000-4000-8000-000000000004",
+      "generation": 1,
+      "record_json": "{\n  \"writeAttemptId\": \"90000000-0000-4000-8000-000000000014\",\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000004\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"outcome\": {\n    \"state\": \"safe-to-retry\",\n    \"settlement\": {\n      \"state\": \"operator-confirmed-absent\",\n      \"writeIntentId\": \"90000000-0000-4000-8000-000000000004\",\n      \"generation\": 1,\n      \"operator\": \"local-operator\",\n      \"confirmedAt\": \"2026-07-31T17:01:00.000Z\",\n      \"evidenceNote\": \"Synthetic confirmed absence\"\n    }\n  },\n  \"recordedAt\": \"2026-07-31T17:00:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    },
+    {
+      "record_key": "90000000-0000-4000-8000-000000000015",
+      "write_intent_id": "90000000-0000-4000-8000-000000000005",
+      "generation": 1,
+      "record_json": "{\n  \"writeAttemptId\": \"90000000-0000-4000-8000-000000000015\",\n  \"writeIntentId\": \"90000000-0000-4000-8000-000000000005\",\n  \"generation\": 1,\n  \"runId\": \"22222222-2222-4222-8222-222222222222\",\n  \"runAttempt\": 1,\n  \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n  \"bindingProof\": {\n    \"kind\": \"subject-match\",\n    \"version\": 1,\n    \"proofId\": \"55555555-5555-4555-8555-555555555555\",\n    \"runId\": \"22222222-2222-4222-8222-222222222222\",\n    \"attempt\": 1,\n    \"leaseId\": \"66666666-6666-4666-8666-666666666666\",\n    \"taskId\": \"ucpath/terminate-person\",\n    \"observationId\": \"ucpath.termination.subject\",\n    \"pageStateId\": \"ucpath.termination-ready\",\n    \"expected\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"observed\": {\n      \"kind\": \"person\",\n      \"identifierKind\": \"eid\",\n      \"bindingDigest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"displaySuffix\": \"1234\"\n    },\n    \"match\": \"match\",\n    \"observedAt\": \"2026-07-31T17:00:00.000Z\",\n    \"afterPrepareSpanPath\": \"termination/prepare\"\n  },\n  \"bindingProofDigest\": \"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\n  \"fencedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"outcome\": {\n    \"state\": \"parked\",\n    \"code\": \"unknown\",\n    \"message\": \"Synthetic unknown submit\"\n  },\n  \"recordedAt\": \"2026-07-31T17:00:00.000Z\"\n}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    }
+  ],
+  "run_checkpoints": [
+    {
+      "record_key": "separation\u000033333333-3333-4333-8333-333333333333\u0000write-90000000-0000-4000-8000-000000000003\u00001\u00001",
+      "workflow": "separation",
+      "item_id": "33333333-3333-4333-8333-333333333333",
+      "node_id": "write-90000000-0000-4000-8000-000000000003",
+      "attempt": 1,
+      "claim_generation": 1,
+      "run_id": "22222222-2222-4222-8222-222222222222",
+      "record_json": "{\"workflowId\":\"separation\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"write-90000000-0000-4000-8000-000000000003\",\"attempt\":1,\"claimGeneration\":1,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"output\":{\"schemaHash\":\"0b0b247cbfe579de8b54f390c47440b3d76ef1fb7ef1b056dc4f947b58c85d38\",\"value\":{\"disposition\":\"committed\",\"proofSource\":\"normal-output\",\"proof\":{\"schemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"value\":\"synthetic-receipt\"},\"output\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"transactionId\":\"T123456\"}},\"confirmedAt\":\"2026-07-31T17:01:00.000Z\"}},\"descriptorVersion\":1,\"contractFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"implFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"provenance\":[],\"writtenAt\":\"2026-07-31T17:01:00.000Z\"}",
+      "created_at": "2026-07-31T17:01:00.000Z"
+    }
+  ],
+  "deleted_runs": [
+    {
+      "record_key": "90000000-0000-4000-8000-000000000070",
+      "workflow": "separation",
+      "trace_id": "se-120000-2222",
+      "origin": "queue",
+      "command_id": "90000000-0000-4000-8000-000000000071",
+      "deleted_at": "2026-07-31T17:00:00.000Z",
+      "record_json": "{\n  \"runId\": \"90000000-0000-4000-8000-000000000070\",\n  \"workflow\": \"separation\",\n  \"traceId\": \"se-120000-2222\",\n  \"itemId\": \"90000000-0000-4000-8000-000000000072\",\n  \"attempt\": 2,\n  \"runNumber\": 7,\n  \"ordinalSource\": \"tombstone\",\n  \"origin\": \"queue\",\n  \"commandId\": \"90000000-0000-4000-8000-000000000071\",\n  \"deletedAt\": \"2026-07-31T17:00:00.000Z\",\n  \"tallyVersion\": 2,\n  \"removed\": [\n    {\n      \"table\": \"durable_outbox\",\n      \"rows\": 2\n    },\n    {\n      \"table\": \"write_attempts\",\n      \"rows\": 2\n    },\n    {\n      \"table\": \"write_intents\",\n      \"rows\": 1\n    }\n  ]\n}",
+      "created_at": "2026-07-31T17:00:00.000Z",
+      "item_id": "90000000-0000-4000-8000-000000000072",
+      "attempt": 2,
+      "run_number": 7,
+      "ordinal_source": "tombstone"
+    }
+  ],
+  "timeline_events": [
+    {
+      "cursor": 1,
+      "record_key": "72f3e06f-c9e7-4184-80da-3c97a98f54da",
+      "workflow": "separation",
+      "run_id": "22222222-2222-4222-8222-222222222222",
+      "worker_id": null,
+      "retention_date": "2026-07-31",
+      "retention_class": "confirmed-operation",
+      "record_json": "{\"eventId\":\"72f3e06f-c9e7-4184-80da-3c97a98f54da\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"payload\":{\"checkpoint\":{\"attempt\":1,\"claimGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"nodeId\":\"write-90000000-0000-4000-8000-000000000003\",\"outputDigest\":\"b17e551bcf69342984bfbd69946de8df7ff54556cc39672fb122ae42ff1fd003\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"workflowId\":\"separation\",\"writtenAt\":\"2026-07-31T17:01:00.000Z\"},\"facts\":{\"attempt\":1,\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"completionKind\":\"receipt\",\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"dryRun\":false,\"externalOccurredAt\":{\"state\":\"absent\"},\"fencedAt\":\"2026-07-31T17:00:00.000Z\",\"idempotencyKey\":\"synthetic-operation-2\",\"idempotencyKeyDigest\":\"b8f7dd612a856c0dff4cf05da28747f9c1d2a0253307ceb81a2a791fff62de5a\",\"instance\":\"prod\",\"intentGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"operator\":\"local-operator\",\"proofSource\":\"normal-output\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"subject\":{\"state\":\"present\",\"value\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"}},\"system\":\"ucpath\",\"traceId\":\"se-120000-2222\",\"workflowId\":\"separation\",\"writeIntentId\":\"90000000-0000-4000-8000-000000000003\"},\"kind\":\"operation-confirmed\",\"proofDigest\":\"fa6273c19e702f0bef91b1dfdb0fc97ccc63474e9f0192bdc99c2b9e9c0f62c1\",\"spanOccurredAt\":\"2026-07-31T17:01:00.000Z\",\"writeAttemptId\":\"90000000-0000-4000-8000-000000000013\"},\"recordedAt\":\"2026-07-31T17:00:00.000Z\",\"retentionDate\":\"2026-07-31\",\"schemaVersion\":1,\"scope\":{\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"},\"source\":{\"kind\":\"native\"},\"workflow\":\"separation\",\"cursor\":1}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    }
+  ],
+  "timeline_operation_sources": [
+    {
+      "record_key": "90000000-0000-4000-8000-000000000003:1",
+      "record_json": "{\"backupSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"file\":null,\"generation\":1,\"ledgerOutbox\":{\"aggregate\":{\"generation\":1,\"kind\":\"write-intent\",\"writeIntentId\":\"90000000-0000-4000-8000-000000000003\"},\"createdAt\":\"2026-07-31T17:01:00.000Z\",\"outboxId\":\"77777777-7777-4777-8777-777777777777\",\"payload\":{\"entry\":{\"attempt\":1,\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"completionKind\":\"receipt\",\"configFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"dryRun\":false,\"externalOccurredAt\":{\"state\":\"absent\"},\"fencedAt\":\"2026-07-31T17:00:00.000Z\",\"idempotencyKey\":\"synthetic-operation-2\",\"idempotencyKeyDigest\":\"b8f7dd612a856c0dff4cf05da28747f9c1d2a0253307ceb81a2a791fff62de5a\",\"instance\":\"prod\",\"intentGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"operator\":\"local-operator\",\"proof\":{\"schemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"value\":\"synthetic-receipt\"},\"proofSource\":\"normal-output\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"subject\":{\"state\":\"present\",\"value\":{\"bindingDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"displaySuffix\":\"1234\",\"identifierKind\":\"eid\",\"kind\":\"person\"}},\"system\":\"ucpath\",\"traceId\":\"se-120000-2222\",\"workflowId\":\"separation\",\"writeIntentId\":\"90000000-0000-4000-8000-000000000003\"},\"kind\":\"ledger-entry\"},\"projection\":{\"state\":\"pending\"}},\"manifestDigest\":\"ce9981384c0453742d91390fb5bb9d4c3d15dc1317d9bd78aca5d2df2b99974e\",\"operationId\":\"90000000-0000-4000-8000-000000000003\",\"partition\":null,\"projection\":null,\"recordKey\":\"90000000-0000-4000-8000-000000000003:1\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"spanOutbox\":{\"aggregate\":{\"generation\":1,\"kind\":\"write-intent\",\"writeIntentId\":\"90000000-0000-4000-8000-000000000003\"},\"createdAt\":\"2026-07-31T17:01:00.000Z\",\"outboxId\":\"88888888-8888-4888-8888-888888888888\",\"payload\":{\"attempt\":1,\"bindingProofDigest\":\"507c6f5d9b15adeeb0daecbebbdc1d5763e25587bf077c04a110eae729782372\",\"idempotencyKey\":\"synthetic-operation-2\",\"idempotencyKeyDigest\":\"b8f7dd612a856c0dff4cf05da28747f9c1d2a0253307ceb81a2a791fff62de5a\",\"intentGeneration\":1,\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"kind\":\"write-committed-span\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"outcome\":{\"confirmedAt\":\"2026-07-31T17:01:00.000Z\",\"disposition\":\"committed\",\"output\":{\"schemaHash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"value\":{\"transactionId\":\"T123456\"}},\"proof\":{\"schemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"value\":\"synthetic-receipt\"},\"proofSource\":\"normal-output\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"system\":\"ucpath\",\"traceId\":\"se-120000-2222\",\"workflowId\":\"separation\",\"writeIntentId\":\"90000000-0000-4000-8000-000000000003\"},\"projection\":{\"projectedAt\":\"2026-07-31T17:01:00.000Z\",\"projectionFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"state\":\"projected\"}},\"version\":1}",
+      "created_at": "2026-07-31T17:00:00.000Z"
+    }
+  ]
+}

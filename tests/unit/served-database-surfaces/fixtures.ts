@@ -1,3 +1,4 @@
+import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { foundationFixture, id, HASH } from "../database-foundation/fixtures.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { createOperatorProjection } from "../../../src/server/dashboard/compose/operator.js";
@@ -17,7 +18,7 @@ export function summaryFixture() {
   };
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), summaries };
   const projection = createOperatorProjection({ database: f.db, stateRoot: f.root, clock: f.clock,
-    appVersion: "0.1.0", descriptorSetHash: HASH, ledger, descriptors, reader: servedReader });
+    appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse(HASH), ledger, descriptors, reader: servedReader });
   f.db.refreshRunSummaries();
   return { ...f, reader, servedReader, projection, summaries, ledger };
 }

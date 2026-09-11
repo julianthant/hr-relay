@@ -18,7 +18,7 @@ import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
-import { buildRerunPlan } from "../../../services/start/rerun.js";
+import { buildRerunPlan, RerunRefusedError } from "../../../services/start/rerun.js";
 import { projectRerunPlanForOperator } from "../../../domain/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../domain/run/start-plan.js";
 import { planStart } from "../../../services/start/plan.js";
@@ -90,8 +90,10 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
           ...(rerunSource === undefined ? {} : {
             retainedInputs: [deps.authority.withAuthorityTransaction((repositories) => {
+              if (repositories.deletedRuns.get(rerunSource.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
+              if (repositories.archivedRuns.isArchived(rerunSource.runId)) throw new RerunRefusedError("invalid-state", "Archived sources cannot be rerun");
               const run = repositories.runs.get(rerunSource.runId);
-              if (run === undefined) throw new Error("Rerun source does not exist");
+              if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
               return run.input.parsed;
             })],
           }),

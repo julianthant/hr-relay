@@ -1,6 +1,5 @@
-import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { CanonicalRelaunchRequestSchema } from "../../../src/infra/sqlite/run-store-contracts.js";
-import { ArchiveRelaunchStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { selectRunRuntime } from "../../../src/core/run-settings.js";
 import { makeWorld } from "../server/helpers/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
@@ -35,7 +34,6 @@ import {
   archivedRunReferenceFingerprint,
   ArchivedRunContentSchema,
   ArchivedRunRecordSchema,
-  CURRENT_ARCHIVE_SCHEMA_GENERATION,
   VersionBumpApplicationSchema,
 } from "../../../src/domain/archive/model.js";
 import {
@@ -120,10 +118,6 @@ function historicalRelaunch(service: RunRecordService, database: AuthorityDataba
     operation: "relaunch", requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0relaunch\0${canonicalJsonStringify(safe)}`),
     fence: { kind: "none" }, recordedAt: NOW });
   database.withAuthorityTransaction(repositories => {
-    repositories.archiveRelaunches.insert(ArchiveRelaunchStorageRecordSchema.parse({ archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
-      runId: run.envelope.runId, archivedRunId: request.archivedRunId,
-      relaunchedIdentity: { workflowId: request.create.workflow, descriptorVersion: request.create.descriptorVersion, contractFingerprint: request.create.contractFingerprint },
-      relaunchedBy: request.relaunchedBy, relaunchedAt: NOW }));
     repositories.lifecycleJournal.insertCommand(command);
     repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: command.commandId, request: command,
       result: { kind: "run", runId: run.envelope.runId, appliedVersion: run.version }, completedAt: NOW });
@@ -1484,18 +1478,8 @@ describe("canonical run-record service", () => {
     if (relaunched.state !== "applied") throw new Error("relaunch refused");
     assert.equal(relaunched.run.envelope.retryOf, undefined);
     assert.equal(relaunched.run.envelope.itemId, source.envelope.itemId);
-    assert.deepEqual(database.authority.archiveRelaunches.listByArchivedRun(source.envelope.runId), [{
-      archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
-      runId: relaunched.run.envelope.runId,
-      archivedRunId: source.envelope.runId,
-      relaunchedIdentity: {
-        workflowId: personLookupDescriptor.id,
-        descriptorVersion: personLookupDescriptor.version,
-        contractFingerprint: personLookupDescriptor.contractFingerprint,
-      },
-      relaunchedBy: "local-operator",
-      relaunchedAt: NOW,
-    }]);
+    assert.equal("archiveRelaunches" in database.authority, false);
+    assert.ok(database.authority.runs.get(relaunched.run.envelope.runId));
 
     const wrongDeleteGeneration = database.getMeta().authorityGeneration;
     assert.deepEqual(service.deleteArchived({
@@ -1516,7 +1500,7 @@ describe("canonical run-record service", () => {
       ...deleteRequest,
       commandId: "81000000-0000-4000-8000-000000000011",
     }), { state: "refused", refusal: { reason: "tombstoned" } });
-    assert.equal(database.authority.archiveRelaunches.listByArchivedRun(source.envelope.runId).length, 1);
+    assert.ok(database.authority.runs.get(relaunched.run.envelope.runId));
 
     const relaunchedTerminal = service.transition({
       commandId: "81000000-0000-4000-8000-000000000009",
@@ -1543,7 +1527,7 @@ describe("canonical run-record service", () => {
     if (!("tombstone" in replayedRelaunch)) throw new Error("relaunch replay lost the deleted target tombstone");
     assert.equal(replayedRelaunch.tombstone.runId, relaunched.run.envelope.runId);
     assert.equal(replayedRelaunch.appliedVersion, relaunched.run.version);
-    assert.deepEqual(database.authority.archiveRelaunches.listByArchivedRun(source.envelope.runId), []);
+    assert.equal("archiveRelaunches" in database.authority, false);
     assert.deepEqual(service.read("81000000-0000-4000-8000-000000000099"), {
       state: "absent",
       runId: "81000000-0000-4000-8000-000000000099",
@@ -1949,6 +1933,7 @@ describe("canonical run-record service", () => {
     }));
     if (sourceResult.state !== "applied") throw new Error("coverage create refused");
     const source = sourceResult.run;
+    assert.deepEqual(measure("withRunTreeSnapshot", 0, () => service.withRunTreeSnapshot([source.envelope.runId], runs => runs.map(run => run.envelope.runId))), [source.envelope.runId]);
     measure("read", 0, () => service.read(source.envelope.runId));
     assert.ok(measure("lifecycleStorage", 0, () => service.lifecycleStorage()));
     measure("list", 0, () => service.list({ disposition: "live", limit: 10 }));

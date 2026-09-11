@@ -233,7 +233,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   /** D179 / ref dashboard-surfaces §10.2 — the archive model's three durable facts. */
   version_bump_applications: VersionBumpApplicationStorageRecordSchema,
   archived_runs: ArchivedRunStorageRecordSchema,
-  archive_relaunches: ArchiveRelaunchStorageRecordSchema,
   /** D267 / ref execution-and-sessions §10 — the per-credential Duo ceremony lease. */
   worker_auth: DuoCeremonyLeaseRecordSchema,
   /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */

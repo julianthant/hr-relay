@@ -1,7 +1,8 @@
+import {archiveCurrentRun} from "../helpers/archive-current-run.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { VersionBumpApplicationSchema, archivedRunReferenceFingerprint } from "../../../src/domain/archive/model.js";
+
 import { buildTrustSection, buildRunGate } from "../../../src/server/dashboard/queries/run-trust.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
@@ -9,11 +10,10 @@ import { createNotificationInbox } from "../../../src/services/notifications/inb
 import { readGateParks } from "../../../src/server/dashboard/compose/trust.js";
 import { explainRunFrom } from "../../../src/server/explain/compose.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
-import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
 import { seedPersonLookupExitRun } from "../../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { uuidOf } from "./helpers/dashboard-harness.js";
-import { trustWorld, trustArchiveRecord, foldTrustGate } from "./helpers/trust-authority-fixture.js";
+import { trustWorld, foldTrustGate } from "./helpers/trust-authority-fixture.js";
 
 const worlds: ReturnType<typeof trustWorld>[] = [];
 function fixture() { const value = trustWorld(); worlds.push(value); return value; }
@@ -79,21 +79,19 @@ describe("2.6.1-1 canonical trust linkage", () => {
     await notifications.publish({ kind: "verified-done", runId: retry.envelope.runId, workflowId: retry.envelope.workflow });
     assert.equal(notifications.list("local-operator").length, 2);
 
-    f.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-    f.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({ ...VERSION_BUMP_APPLICATION,
-      archivedRunIds: [id] }));
-    const archive = trustArchiveRecord(source);
-    assert.equal(f.service.archive({ commandId: uuidOf(14), expectedVersion: source.version, archive }).state, "applied");
-    const frozen = canonicalJsonStringify(f.database.authority.archivedRuns.get(id));
+    const archive=archiveCurrentRun(f.database,source,f.world.clock.now().toISOString(),uuidOf(14));
     assert.throws(() => f.receipts.ensureReceipt(id), SectionUnavailableError);
     assert.throws(() => buildTrustSection(f.deps, id, "receipt"), SectionUnavailableError);
     assert.throws(() => explainRunFrom(f.database, id), SectionUnavailableError);
     await assert.rejects(notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow }), /archived/);
-    assert.equal(canonicalJsonStringify(f.database.authority.archivedRuns.get(id)), frozen);
-    assert.equal(canonicalJsonStringify(f.database.authority.evidenceReceipts.findByRun(id)), sourceReceipt);
+    assert.equal(canonicalJsonStringify(f.service.lifecycleStorage().readReport(id)),canonicalJsonStringify(archive));
+    const captured=JSON.parse(archive.content.sources[0].json) as {records:{table:string;rows:{json:string}[]}[]};
+    assert.equal(canonicalJsonStringify(JSON.parse(captured.records.find(group=>group.table==="run_receipts")!.rows[0].json)),sourceReceipt);
+    assert.equal(captured.records.some(group=>group.table==="notifications"),false, "inbox remains live while the report owns the archived run");
+    assert.equal(f.database.authority.evidenceReceipts.findByRun(id),undefined);
     assert.equal(notifications.list("local-operator").length, 2);
     assert.equal(f.service.deleteArchived({ commandId: uuidOf(15), runId: id,
-      archiveFingerprint: archivedRunReferenceFingerprint(archive) }).state, "deleted");
+      archiveFingerprint: archive.digest }).state, "deleted");
     assert.throws(() => f.receipts.ensureReceipt(id), TargetNotFoundError);
     await assert.rejects(notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow }), /deleted/);
     assert.equal(notifications.list("local-operator").length, 1);

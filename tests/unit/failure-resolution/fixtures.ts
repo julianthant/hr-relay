@@ -1,3 +1,4 @@
+import { RunIdSchema, FailureIdSchema } from "../../../src/domain/ids.js";
 import { randomUUID } from "node:crypto";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
@@ -21,10 +22,10 @@ export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof
     writeResolution: { resolvePresent: unused, resolveAbsent: unused }, ...overrides,
   });
 }
-export function resolutionFixture(runId = failure().runId, failureId = failure().failureId) {
+export function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId) {
   const f = diagnosticFoundation();
   const run = runId === f.run.envelope.runId ? f.run : f.createRun(runId);
-  const record = { ...failure(), runId, failureId, traceId: run.envelope.traceId };
+  const record = { ...failure(), runId: RunIdSchema.parse(runId), failureId: FailureIdSchema.parse(failureId), traceId: run.envelope.traceId };
   terminalizeFixtureFailure(f, run, record);
   return { ...f, record, kernel: resolutionKernel(f.db, f.clock) };
 }
@@ -125,6 +126,6 @@ export function resolutionPeer(path: string) {
       });
       child.once("error", reject);
     });
-    child.send(command); const value = await result; await exited; return value;
+    child.send(FailureResolutionCommandSchema.parse(command)); const value = await result; await exited; return value;
   }, stop: () => { if (child.exitCode === null && child.signalCode === null) child.kill(); } };
 }

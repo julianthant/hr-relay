@@ -5,7 +5,7 @@ import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/stor
 import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport } from "../../domain/archive/report.js";
 import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
-import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../core/run-lifecycle-storage.js";
+import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
 
 type Section = ArchiveReport["content"]["sections"][number];
 type Cell = string | number | boolean | null;

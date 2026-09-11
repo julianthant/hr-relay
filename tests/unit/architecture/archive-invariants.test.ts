@@ -1,4 +1,4 @@
-import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 /**
  * `archive-invariants` — the structural half of D80/D179 (ref dashboard-surfaces §10.2, ref frontend-backend-integration
  * §8 guard #11).
@@ -224,7 +224,6 @@ describe("archive invariants", () => {
           traceId: "pl-170001-3333",
         },
       });
-      repositories.archiveRelaunches.insert(ARCHIVE_RELAUNCH);
       return undefined;
     });
     database.close();
@@ -235,6 +234,7 @@ describe("archive invariants", () => {
     // the way a future repository method or a stray migration would.
     const raw = new DatabaseSync(path);
     try {
+      raw.prepare("INSERT INTO archive_relaunches(record_key,archived_run_id,record_json,created_at) VALUES (?,?,?,?)").run(ARCHIVE_RELAUNCH.runId, ARCHIVE_RELAUNCH.archivedRunId, JSON.stringify(ARCHIVE_RELAUNCH), ARCHIVE_RELAUNCH.relaunchedAt);
       for (const table of ["version_bump_applications", "archived_runs", "archive_relaunches"]) {
         // A trigger only fires on a row that exists, so an empty table would
         // pass this check by doing nothing at all.

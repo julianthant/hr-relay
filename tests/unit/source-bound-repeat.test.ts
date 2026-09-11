@@ -35,7 +35,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter (
   it("keeps protected source proof and key digests out of serialized rerun warnings", async () => {
     const documentHarness = () => { const h = sourceBoundHarness(writeFixtureDocumentDescriptor); disposers.push(h.dispose); return h; };
     const original = documentHarness(); const completedSource = await completed(original);
-    const { sessionId: _sessionId, ...sourceWithoutSession } = completedSource;
+    const { sessionId: _sessionId, completion: _completion, ...sourceWithoutSession } = completedSource;
     const originalIntent = original.database.authority.writeIntents.listByRun(completedSource.envelope.runId)[0];
     assert.ok(originalIntent.status === "committed");
     const proposal = async (documentNumber: string) => {

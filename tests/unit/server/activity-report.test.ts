@@ -1,3 +1,4 @@
+import { RunIdSchema, FingerprintSchema } from "../../../src/domain/ids.js";
 import { deriveCanonicalPerson } from "../../../src/core/run-summary.js";
 import { activityPersonPseudonymResultRecord, CURRENT_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import type { RunResultRecord } from "../../../src/domain/run/result.js";
@@ -313,8 +314,8 @@ describe("the Activity report (D180)", () => {
       queuedEventOf(w,{seed:46,workflow:"separations"});personResult(w,46,"10800001");
       const result=canonicalResults.get(w)?.get(uuidOf(46));if(result===undefined)throw new Error("fixture result missing");
       canonicalResults.get(w)?.set(uuidOf(46),{...result,
-        ...(defect==="foreign"?{runId:uuidOf(99)}:{}),
-        ...(defect==="schema"?{resultSchemaHash:"a".repeat(64)}:{}),
+        ...(defect==="foreign"?{runId:RunIdSchema.parse(uuidOf(99))}:{}),
+        ...(defect==="schema"?{resultSchemaHash:FingerprintSchema.parse("a".repeat(64))}:{}),
         ...(defect==="malformed"?{result:{...result.result,value:{approved:{emplId:"10800001"}}}}:{}),
       });
       if(defect==="foreign")assert.throws(()=>w.projection.buildActivityReportWire(D0,D0),/identity-mismatch/u);

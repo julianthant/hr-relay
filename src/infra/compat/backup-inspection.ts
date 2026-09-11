@@ -1,3 +1,4 @@
+import { ArchiveRelaunchStorageRecordSchema } from "../sqlite/storage-records.js";
 import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
 import { KnowledgeRecordSchema, FixRecordSchema } from "../../domain/trust/knowledge.js";
 import { OpaqueAuthorityRecordSchema } from "../sqlite/storage-records.js";
@@ -35,7 +36,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -358,7 +359,10 @@ function authorityContentFingerprint(database: DatabaseSync, tableNames: Readonl
         SELECT record_key, record_json${name === "run_failures" && schemaVersion >= 45 ? ", resolution_json, resolution_version" : name === "commands" && groupedCommands ? ", parent_command_id" : name === "archived_runs" && schemaVersion >= 40 ? ", transactions_json, transactions_digest" : ""} FROM ${quoteIdentifier(name)} ORDER BY record_key
       `).iterate()) {
         const row = schema.parse(rawRow);
-        if("resolution_json" in row && FailureResolutionSchema.parse(JSON.parse(row.resolution_json)).version!==row.resolution_version)throw new Error("failure-resolution-version-mismatch");
+        if (name === "run_failures" && schemaVersion >= 45) {
+          const resolution = z.object({ resolution_json: z.string(), resolution_version: z.number().int().positive() }).parse(row);
+          if (FailureResolutionSchema.parse(JSON.parse(resolution.resolution_json)).version !== resolution.resolution_version) throw new Error("failure-resolution-version-mismatch");
+        }
         if (rowIndex > 0) hash.update(",");
         hash.update(canonicalJsonStringify(row));
         rowIndex += 1;
@@ -397,6 +401,7 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
 function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number, tables: ReadonlySet<string>): void {
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
+    archive_relaunches: ArchiveRelaunchStorageRecordSchema,
     knowledge_records: KnowledgeRecordSchema, fix_records: FixRecordSchema, ocr_approvals: OpaqueAuthorityRecordSchema,
     operator_xlsx_exports: OperatorXlsxExportEvidenceSchema, artifact_outbox: ArtifactOutboxStorageRecordSchema, artifact_sink_heads: ArtifactSinkHeadRecordSchema,
     provider_admissions: ProviderAdmissionRecordSchema, provider_budget_counters: ProviderBudgetCounterSchema,
@@ -550,6 +555,14 @@ function removeGeneratedReadOnlyCompanions(
   if (!existing.shm && existsSync(shmPath)) rmSync(shmPath);
 }
 
+/** Internal stopped readers preserve pre-existing SQLite companions and remove only their own empty read artifacts. */
+export function withAuthorityDatabaseReadOnly<Result>(path: string, read: (database: DatabaseSync) => Result): Result {
+  const existing = existingSqliteCompanions(path);
+  const database = openReadOnlyDatabase(path, 250);
+  try { return read(database); }
+  finally { database.close(); removeGeneratedReadOnlyCompanions(path, existing); }
+}
+
 export function inspectAuthorityBackupReadOnly(
   pathInput: string,
   expectedSchemaVersion?: number,
@@ -632,5 +645,13 @@ export function openAuthorityBackupSourceReadOnly(
       closed = true;
       removeGeneratedReadOnlyCompanions(path, existingCompanions);
     },
+  });
+}
+
+/** A live-half backup with transfer custody requires its explicitly selected archive pair. */
+export function backupHasArchiveTransferCustody(path: string): boolean {
+  return withAuthorityDatabaseReadOnly(path, database => {
+    if (database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_transfers'").get() === undefined) return false;
+    return database.prepare("SELECT 1 FROM archive_transfers LIMIT 1").get() !== undefined;
   });
 }

@@ -13,7 +13,7 @@ import type { TimelineRepository, HistoricalOperationSource } from "../../events
 import { TimelineEventRecordSchema } from "../../events/timeline.js";
 import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from "../../domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
-import type { LifecycleSourceSnapshot } from "../../core/run-lifecycle-storage.js";
+import type { LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import type { DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import type { WriteIntentRecord } from "../../domain/write-safety.js";

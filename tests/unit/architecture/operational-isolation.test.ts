@@ -58,6 +58,7 @@ function seedValidRuntime(root: string): void {
     `import { ${config.factory} } from "./define-runtime-isolation.js";`,
     `export const ${config.exportName} = ${config.factory}({`,
     `  stateRoot: ${JSON.stringify(side.stateRoot)},`,
+    ...(side.archiveDatabaseFile === undefined ? [] : [`  archiveDatabaseFile: ${JSON.stringify(side.archiveDatabaseFile)},`]),
     `  artifactRoot: ${JSON.stringify(side.artifactRoot)},`,
     `  backendPort: ${String(side.backendPort)},`,
     `  frontendPort: ${String(side.frontendPort)},`,

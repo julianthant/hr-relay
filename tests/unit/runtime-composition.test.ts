@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { runtimeHelp, startRebuildRuntime } from "../../src/core/runtime-composition.js";
@@ -66,6 +65,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   it("binds the exact rebuild-only resources", () => {
     assert.deepEqual(rebuildRuntimeIsolation, {
       stateRoot: ".tracker",
+      archiveDatabaseFile: "archive.sqlite",
       artifactRoot: ".tracker/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
@@ -161,36 +161,15 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     );
   });
 
-  it("advertises and invokes the reviewed activity-person-pseudonyms command", async () => {
+  it("refuses the retired activity-person-pseudonyms command before invoking its composition", async () => {
     const output: string[] = [];
-    const seen: string[][] = [];
-    const previousExitCode = process.exitCode;
-    process.exitCode = undefined;
-    try {
-      assert.match(
-        runtimeHelp(rebuildRuntimeIsolation),
-        /activity-person-pseudonyms backfill \[--run <run-id> \.\.\.\] \[--json\]/u,
-      );
-      assert.match(
-        readFileSync(new URL("../../src/cli.ts", import.meta.url), "utf8"),
-        /registerActivityPersonPseudonymComposer\([\s\S]*composeActivityPersonPseudonymBackfillCommand/u,
-      );
-      await startRebuildRuntime({
-        isolation: rebuildRuntimeIsolation,
-        args: ["activity-person-pseudonyms", "backfill", "--json"],
-        write: (value) => output.push(value),
-        activityPersonPseudonyms: (_isolation, args) => {
-          seen.push([...args]);
-          return { output: "reviewed pseudonym report", exitCode: 1 };
-        },
-      });
-
-      assert.deepEqual(seen, [["backfill", "--json"]]);
-      assert.deepEqual(output, ["reviewed pseudonym report"]);
-      assert.equal(process.exitCode, 1);
-    } finally {
-      process.exitCode = previousExitCode;
-    }
+    assert.doesNotMatch(runtimeHelp(rebuildRuntimeIsolation), /activity-person-pseudonyms backfill/u);
+    await assert.rejects(startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation, args: ["activity-person-pseudonyms", "backfill", "--json"],
+      write: value => output.push(value),
+      activityPersonPseudonyms: () => { throw new Error("retired composer must not run"); },
+    }), /activity-person-pseudonyms-retired/u);
+    assert.deepEqual(output, []);
   });
 
   it("starts the dashboard through the injected 1g-spine composition seam", async () => {

@@ -23,7 +23,7 @@ it("refuses stale HTTP, direct service and direct fan-out relaunch without IDs, 
       archiveFingerprint: HASH, relaunchedBy: "local-operator", create }, personLookupDescriptor), { state: "refused", refusal: { reason: "invalid-state" } });
     const untouched = new Proxy(f.database.authority, { get() { throw new Error("retired-fanout-touched-authority"); } });
     assert.throws(() => fanOutQueuedRuns(untouched, service, message => { throw new Error(message); }, personLookupDescriptor,
-      { relaunch: { archivedRunId: run.envelope.runId, archiveFingerprint: HASH } } as FanOutEnvelope, [], NOW, "retired-test"), /archive relaunch is retired/);
+      { relaunch: { archivedRunId: run.envelope.runId, archiveFingerprint: HASH } } as unknown as FanOutEnvelope, [], NOW, "retired-test"), /archive relaunch is retired/);
     const request = { commandId: id(8801), requestedAt: NOW, requestedBy: "local-operator", source: "archive", family: "version-archive",
       type: "relaunch-archived-run", target: { archivedRunId: run.envelope.runId, archiveFingerprint: HASH } };
     const response = await f.app().request("http://localhost/api/v1/commands", { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify(request) });
@@ -32,7 +32,7 @@ it("refuses stale HTTP, direct service and direct fan-out relaunch without IDs, 
     assert.equal(result.state, "rejected");
     assert.equal(f.database.getMeta().authorityGeneration, before);
     assert.equal(f.database.authority.commands.get(request.commandId), undefined);
-    assert.deepEqual(f.database.authority.archiveRelaunches.listByArchivedRun(run.envelope.runId), []);
+    assert.equal("archiveRelaunches" in f.database.authority, false);
     assert.equal(COMMAND_FAMILY_REGISTRY.some(row => row.actions.some(action => action === "relaunch-archived-run")), false);
   } finally { f.dispose(); }
 });

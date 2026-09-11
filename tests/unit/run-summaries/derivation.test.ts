@@ -1,3 +1,5 @@
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import { RunResultRecordSchema } from "../../../src/domain/run/result.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { deriveRunSummary, deriveCanonicalPerson } from "../../../src/core/run-summary.js";
@@ -10,7 +12,7 @@ it("measures enqueue-to-end duration and keeps unknown warnings explicit", () =>
   assert.equal(row.durationMs,Date.parse(run.lifecycle.state === "terminal" ? run.lifecycle.endedAt : "")-Date.parse(run.envelope.enqueuedAt));
   assert.equal(row.warningCount,null);
   assert.equal(row.person.state,"available");
-  assert.throws(()=>deriveCanonicalPerson(run,{...TERMINAL_SEPARATIONS_RESULT,attempt:2}),/summary-result-identity-mismatch/);
+  assert.throws(()=>deriveCanonicalPerson(run,RunResultRecordSchema.parse({...TERMINAL_SEPARATIONS_RESULT,attempt:2})),/summary-result-identity-mismatch/);
 });
 
 it("keeps heartbeat-only derivation identity stable and notices presentation changes",()=>{
@@ -19,7 +21,7 @@ it("keeps heartbeat-only derivation identity stable and notices presentation cha
     const before=deriveRunSummary(source,1);
     assert.equal(before.durationMs,null);
     if(f.run.lifecycle.state!=="running")throw new Error("fixture-state");
-    const renewed={...f.run,version:f.run.version+1,updatedAt:"2026-09-09T12:00:01.000Z",lifecycle:{...f.run.lifecycle,heartbeatAt:"2026-09-09T12:00:01.000Z"}};
+    const renewed=RunRecordSchema.parse({...f.run,version:f.run.version+1,updatedAt:"2026-09-09T12:00:01.000Z",lifecycle:{...f.run.lifecycle,heartbeatAt:"2026-09-09T12:00:01.000Z"}});
     assert.equal(deriveRunSummary({...source,run:renewed},2).sourceDigest,before.sourceDigest);
     assert.notEqual(deriveRunSummary({...source,run:{...renewed,displayName:"Changed"}},2).sourceDigest,before.sourceDigest);
   }finally{f.dispose();}
@@ -28,7 +30,7 @@ it("keeps heartbeat-only derivation identity stable and notices presentation cha
 it("uses the local enqueue day across a UTC boundary without changing the instant",()=>{
   const f=foundationFixture(),prior=process.env.TZ;
   try{
-    const run={...f.run,envelope:{...f.run.envelope,enqueuedAt:"2026-09-09T00:30:00.000Z"}};
+    const run=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,enqueuedAt:"2026-09-09T00:30:00.000Z"}});
     const source={run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
     process.env.TZ="UTC";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-09");
     process.env.TZ="America/Los_Angeles";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-08");

@@ -30,7 +30,7 @@ function statusOf(row:SummaryRow):RunQueueStatus {
 }
 
 /** Public-safe bounded Queue facts. V owns route composition and action authorization. */
-export function queryQueueSummaries(database:AuthorityDatabase,input:z.infer<typeof QueueSummaryQuerySchema>) {
+export function queryQueueSummaries(database:AuthorityDatabase,input:z.input<typeof QueueSummaryQuerySchema>) {
   const query=QueueSummaryQuerySchema.parse(input);
   return database.withAuthorityReadSnapshot(()=>{
     const workflows=query.workflow === undefined ? database.summaryWorkflows() : [query.workflow];
@@ -53,7 +53,7 @@ export function queryQueueSummaries(database:AuthorityDatabase,input:z.infer<typ
 /** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
 function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:SummaryRow)=>void) {
   for(const workflow of database.summaryWorkflows()) {
-    let after: {localDay:string;runId:string}|undefined;
+    let after: z.output<typeof RunSummaryQuerySchema>["after"];
     do {
       const page=database.queryRunSummaries({workflow,fromDay:from,toDay:to,limit:500,...(after===undefined?{}:{after})});
       page.items.forEach(visit);

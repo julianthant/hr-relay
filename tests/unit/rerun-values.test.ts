@@ -229,8 +229,8 @@ describe("source-bound Rerun value read", () => {
 
   it("retains earlier same-run attempts and chooses the latest execution independently of repository order", async () => {
     const h = harness(); const source = await completed(h); const cp = firstCheckpoint(h, source);
-    // Historical read fixture: this source has since requeued into attempt 2.
-    const run = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, attempt: 2 }, claimGeneration: 2 });
+    // Retained completed attempt 2 still exposes checkpoints from its earlier execution.
+    const run = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, attempt: 2 }, claimGeneration: 2, completion: {...source.completion, claim: {...source.completion?.claim, claimGeneration: 2}} });
     const reader = { read: () => ({ state: "present" as const, disposition: "live" as const, run }) };
     const earlier = readRerunValues({ ...checkpointsDeps(h, [cp]), reader }, request(run)); assert.ok(earlier.state === "available");
     assert.ok(earlier.snapshot.values[0]?.state === "available"); assert.equal(earlier.snapshot.values[0].checkpoint.attempt, 1);

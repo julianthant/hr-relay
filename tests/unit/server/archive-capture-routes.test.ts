@@ -1,4 +1,4 @@
-import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA4: the real HTTP boundary over an immutable test archive repository. */
 import assert from "node:assert/strict";

@@ -33,14 +33,13 @@ function field(value: unknown, path: string): JsonValue {
 export function buildRerunPlan(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
   source: RerunSource, planned: readonly PlannedRun[], acknowledgment?: string, stepOmissions?: StepOmissions): RerunPlan {
   if (repositories.deletedRuns.get(source.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
+  if (repositories.archivedRuns.isArchived(source.runId)) throw new RerunRefusedError("invalid-state", "Archived sources cannot be rerun");
   const run = repositories.runs.get(source.runId);
   if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
   if (run.version !== source.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");
   if (run.envelope.workflow !== descriptor.id || run.envelope.contractFingerprint !== descriptor.contractFingerprint
     || run.envelope.descriptorVersion !== descriptor.version) throw new RerunRefusedError("schema-mismatch", "Rerun source descriptor changed");
   // Use the same authority disposition predicate as RunRecordService.read.
-  // An archived source returns only through digest-bound archive relaunch.
-  if (repositories.archivedRuns.isArchived(source.runId)) throw new RerunRefusedError("invalid-state", "Archived sources require archive relaunch");
   if (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {

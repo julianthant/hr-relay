@@ -1,3 +1,5 @@
+import { RunEnvelopeSchema } from "../../../src/domain/run/envelope.js";
+import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { randomUUID } from "node:crypto";
@@ -36,7 +38,7 @@ export function settingsFixture(isolateBrowser = false) {
     const config = { ...result.config, paths: { ...result.config.paths, browserProfileRoot: join(root, "profiles"),
       downloadsDir: join(root, "downloads"), duoExtensionDir: join(root, "extension") },
       features: { ...result.config.features, duoWebAuthn: false } };
-    return { ...result, config, fingerprint: sha256Hex(canonicalJsonStringify(config)) };
+    return { ...result, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };
   };
   const resolved = resolveSettings({});
   const snapshot = { ...resolved, configSnapshotId: randomUUID(), revision: 1,
@@ -48,7 +50,7 @@ export function settingsFixture(isolateBrowser = false) {
   const settings = createSettingsApplicationExecutor((value) => {
     resolutions += 1; return resolveSettings(value);
   }, createCredentialStore({ stateRoot: root }));
-  const command = (patch: SettingsPatch, expectedRevision = readSettings(database.authority).revision) => ({
+  const command = (patch: SettingsPatch, expectedRevision: number = readSettings(database.authority).revision) => ({
     commandId: randomUUID(), family: "settings", type: "apply-settings", requestedAt: clock.now().toISOString(),
     requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
@@ -66,7 +68,7 @@ export function settingsFixture(isolateBrowser = false) {
     commandId: randomUUID(), code: "pl", matchKey: "settings-proof", workflow: "person-lookup",
     descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
     configFingerprint: snapshot.fingerprint, configSnapshotId: snapshot.configSnapshotId,
-    resolvedInstance: QUEUED_RUN.envelope.resolvedInstance, priority: "bulk", shape: "single", dryRun: true,
+    resolvedInstance: RunEnvelopeSchema.shape.resolvedInstance.parse(QUEUED_RUN.envelope.resolvedInstance), priority: "bulk", shape: "single", dryRun: true,
     input: QUEUED_RUN.input, runtimeConfig: selectRunRuntime(database.authority), ...overrides,
   });
   return { root, path, clock, host, database, snapshot, service, request, command, execute, published,

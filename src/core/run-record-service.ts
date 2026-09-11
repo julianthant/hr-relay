@@ -1,5 +1,5 @@
 import { projectArchiveReport } from "../infra/sqlite/archive-records.js";
-import { createRunLifecycleStorage } from "./run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../infra/sqlite/lifecycle-storage.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "./run-settings.js";
 import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../domain/clock.js";
@@ -165,7 +165,7 @@ export class RunRecordService {
     private readonly hooks?: Readonly<{ afterCreateReservation?: () => void }>,
   ) {}
 
-  lifecycleStorage() { return createRunLifecycleStorage(this.dependencies.database); }
+  lifecycleStorage() { return Object.freeze({ ...createRunLifecycleStorage(this.dependencies.database), deleteArchive: (input: unknown): RunDeletionOutcome => this.deleteArchived(input) }); }
 
   read(input: string): RunExistence {
     const runId = RunIdSchema.parse(input);
@@ -189,6 +189,24 @@ export class RunRecordService {
     });
   }
 
+  /** Selected roots and direct children remain in one authority read transaction. */
+  withRunTreeSnapshot<Result>(runIds: readonly string[], read: (runs: readonly RunRecord[]) => Result): Result {
+    return this.dependencies.database.withAuthorityReadSnapshot(() => {
+      const selected = new Map<string, RunRecord>();
+      for (const input of new Set(runIds)) {
+        const root = this.read(input);
+        if (root.state !== "present" || root.disposition !== "live") throw new Error(`run ${input} has no live canonical row: run-tree-source-unavailable`);
+        selected.set(root.run.envelope.runId, root.run);
+        for (const child of this.dependencies.database.authority.runs.listChildren(root.run.envelope.runId)) {
+          const current = this.read(child.envelope.runId);
+          if (current.state !== "present" || current.disposition !== "live") throw new Error("run-tree-child-unavailable");
+          selected.set(current.run.envelope.runId, current.run);
+        }
+      }
+      return read([...selected.values()]);
+    });
+  }
+
   list(input: z.input<typeof CanonicalListRunsRequestSchema>) {
     const request = CanonicalListRunsRequestSchema.parse(input);
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
@@ -201,8 +219,9 @@ export class RunRecordService {
       }
       const workflows = request.workflow === undefined
         ? database.authority.runs.listWorkflows() : [request.workflow];
+      const archivedIds = database.archivedRunIds();
       const liveRows = workflows.flatMap((workflow) => database.authority.runs.listByWorkflow(workflow))
-        .filter((run) => database.authority.archivedRuns.isArchived(run.envelope.runId)
+        .filter((run) => (archivedIds.has(run.envelope.runId) && database.authority.archivedRuns.isArchived(run.envelope.runId))
           === (request.disposition === "archived"))
         .sort(compareRuns);
       const rows = [...liveRows,...(request.disposition === "archived" ? database.listTransferredRuns()

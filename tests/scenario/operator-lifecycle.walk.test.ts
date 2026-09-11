@@ -1,5 +1,9 @@
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
-import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
+import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
+import { genericArchiveSection } from "../../src/services/archive/report-capture.js";
+import { JsonValueSchema } from "../../src/domain/canonical-json.js";
+import { LifecycleSourceSnapshotSchema } from "../../src/domain/archive/lifecycle-source.js";
+import { projectArchiveReport, queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../src/domain/ids.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
@@ -29,9 +33,8 @@ import { RunRecordService } from "../../src/core/run-record-service.js";
  *  4. the receipt frozen into an archived run is the exact record the receipt
  *     service derived from authority beforehand — and its ABSENCE, when it
  *     could not be derived, is frozen with the reason instead of a hole;
- *  5. a relaunch shares the archived run's ITEM and nothing else: fresh run id,
- *     current descriptor identity, `retryOf` undefined, and the manifest still
- *     names only the runs it originally minted.
+ *  5. the retired relaunch command refuses without creating a descendant,
+ *     changing archive bytes or extending the original intake manifest.
  *
  * ## Two refusals this walk asserts instead of stepping over
  *
@@ -81,12 +84,12 @@ import { createDashboardCommandService } from "../../src/server/dashboard/comman
 import { createIntakeService } from "../../src/server/dashboard/commands/intake-service.js";
 import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../src/server/dashboard/projectors/run-queue-projection.js";
-import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
+
 import { buildRunDetail } from "../../src/server/dashboard/queries/run-detail.js";
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { createIntakeParser } from "../../src/server/intake/intake-parser.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
-import { archiveQueryDeps, archiveSnapshots } from "../fixtures/archive-seams.js";
+import { archiveSnapshots } from "../fixtures/archive-seams.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
   defineIntakeFixtureDescriptor,
@@ -226,7 +229,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
-      listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
+      canonicalPerson: (runId: string) => database.canonicalPerson(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -527,7 +530,7 @@ function assertWalkPhaseReportingComplete(): void {
 /* ── the walk ────────────────────────────────────────────────────────────── */
 
 describe("the operator lifecycle, across slices", () => {
-  it("carries a spreadsheet through fan-out, settlement, archive and relaunch on ONE authority database", async () => {
+  it("carries a spreadsheet through fan-out, settlement, archive and retired-relaunch refusal on ONE authority database", async () => {
     beginWalkPhaseReporting();
     const world = createWorld([INTAKE_V1]);
     const { database } = world;
@@ -664,17 +667,17 @@ describe("the operator lifecycle, across slices", () => {
     assert.equal(blockedPlan.state, "applied");
     const planTarget = blockedPlan.state === "applied" ? blockedPlan.affectedTargets[0] : undefined;
     const versionPlanId = planTarget?.family === "version-archive" ? planTarget.versionPlanId : "";
-    const storedPlan = database.authority.versionPlans.get(versionPlanId);
+    const storedPlan = createRunLifecycleStorage(database).readVersionChange(versionPlanId);
     assert.deepEqual(
-      storedPlan?.plan.blockers.map(({ runId }) => runId),
+      storedPlan?.blockers,
       [blockedRunId],
       "an intake row nobody ran is an archive blocker — a queue fact meeting an archive fact",
     );
     const refusedApply = versionCommand(
       world,
       "apply-version-bump",
-      { versionPlanId, expectedVersion: storedPlan?.version },
-      { planFingerprint: storedPlan?.planFingerprint },
+      { versionPlanId, expectedVersion: 1 },
+      { planFingerprint: storedPlan?.reviewFingerprint },
     );
     assert.equal(refusedApply.state, "rejected");
     assert.equal(refusedApply.state === "rejected" ? refusedApply.code : "", "active-version-blockers");
@@ -689,115 +692,59 @@ describe("the operator lifecycle, across slices", () => {
     }, { targetVersion: "0.2.0", changeFingerprint: HASH_C, changeRecord: WALK_CHANGE_RECORD });
     const reviewedTarget = reviewed.state === "applied" ? reviewed.affectedTargets[0] : undefined;
     const reviewedPlanId = reviewedTarget?.family === "version-archive" ? reviewedTarget.versionPlanId : "";
-    const reviewedRow = database.authority.versionPlans.get(reviewedPlanId);
-    assert.deepEqual(reviewedRow?.plan.blockers, []);
+    const reviewedRow = createRunLifecycleStorage(database).readVersionChange(reviewedPlanId);
+    assert.deepEqual(reviewedRow?.blockers, []);
 
     const lastLiveRow = world.projection.queueSurface(settledRunId);
     const lastLiveDetail = buildRunDetail(world.runDetail, settledRunId);
+    const lastLiveDisplay = archiveSnapshots(world.runDetail).snapshot(settledRunId);
+    assert.deepEqual(lastLiveDisplay.row,lastLiveRow);
+    assert.deepEqual(lastLiveDisplay.detail,lastLiveDetail);
     const applied = versionCommand(
       world,
       "apply-version-bump",
-      { versionPlanId: reviewedPlanId, expectedVersion: reviewedRow?.version },
-      { planFingerprint: reviewedRow?.planFingerprint },
+      { versionPlanId: reviewedPlanId, expectedVersion: 1 },
+      { planFingerprint: reviewedRow?.reviewFingerprint },
     );
     assert.equal(applied.state, "applied", applied.state === "rejected" ? applied.message : "apply refused");
 
-    const archived = database.authority.archivedRuns.get(settledRunId);
+    const storage = createRunLifecycleStorage(database);
+    const archived = storage.readReport(settledRunId);
     if (archived === undefined) throw new Error("the settled run was not archived");
-    assert.deepEqual(
-      JSON.parse(JSON.stringify(archived.row)),
-      JSON.parse(JSON.stringify(lastLiveRow)),
-      "the archived row is the bytes the operator last saw, not a later re-derivation",
-    );
-    assert.deepEqual(
-      JSON.parse(JSON.stringify(archived.detail)),
-      JSON.parse(JSON.stringify(lastLiveDetail)),
-      "and so is the archived detail",
-    );
-    // ⑤'s refusal has a durable consequence: the hole is named, not blank.
-    assert.equal(archived.receipt.state, "absent");
-    assert.match(
-      archived.receipt.state === "absent" ? archived.receipt.reason : "",
-      /settled without a derived evidence receipt/,
-    );
-    assert.deepEqual([...archived.evidence.checkpointNodeIds], ["probe"]);
+    assert.deepEqual(archived.content.sections.find(section=>section.title === "Displayed run"),
+      genericArchiveSection("Displayed run",JsonValueSchema.parse(lastLiveDisplay)),
+      "the saved display freezes exactly the last live row, detail and named unavailable sections");
+    const captured = LifecycleSourceSnapshotSchema.parse(JSON.parse(archived.content.sources[0].json));
+    assert.equal(captured.records.find(group=>group.table === "run_receipts")?.rows.length,0);
+    assert.deepEqual(captured.records.find(group=>group.table === "run_checkpoints")?.rows.map(row=>(JSON.parse(row.json) as {nodeId:string}).nodeId),["probe"]);
     reportWalkPhase("08-archive-freeze", "complete");
 
     /* ⑨ the archived record renders with no live descriptor at all ---------- */
     reportWalkPhase("09-archive-render", "begin");
-    const emptyRegistryDeps = archiveQueryDeps({
-      database,
-      clock: world.clock,
-      appVersion: APP_VERSION,
-      descriptors: [],
-    });
-    const archivedDetail = buildArchivedRunDetail(emptyRegistryDeps, settledRunId);
-    assert.equal(archivedDetail.detail.header.runId, settledRunId);
-    assert.equal(archivedDetail.archivedIdentity.descriptorVersion, 1);
-    assert.equal(archivedDetail.relaunch.state, "unavailable");
-    const index = buildArchiveIndex(archiveQueryDeps({
-      database,
-      clock: world.clock,
-      appVersion: APP_VERSION,
-      descriptors: [{
-        id: String(INTAKE_V2.id),
-        label: INTAKE_V2.label,
-        code: INTAKE_V2.code,
-        version: INTAKE_V2.version,
-        contractFingerprint: INTAKE_V2.contractFingerprint,
-      }],
-    }));
-    assert.deepEqual(
-      index.entries.map(({ runId }) => runId).sort(),
-      [...mintedRunIds].sort(),
-      "the archive index lists exactly the runs the fan-out minted",
-    );
+    world.registry = [];
+    const archivedDetail = projectArchiveReport(storage.readReport(settledRunId));
+    assert.equal(archivedDetail.state,"available");
+    if (archivedDetail.state !== "available") throw new Error("missing report");
+    assert.equal(archivedDetail.runId,settledRunId);
+    assert.equal(archivedDetail.descriptorVersion,"1");
+    const index = queryArchiveReports(storage,{limit:50});
+    assert.deepEqual(index.items.map(item=>item.state === "available" ? item.runId : "missing").sort(),[...mintedRunIds].sort());
     reportWalkPhase("09-archive-render", "complete");
 
-    /* ⑩ relaunch: the same ITEM, and nothing else ---------------------------- */
+    /* ⑩ the retired relaunch door refuses without creating a descendant ----- */
     reportWalkPhase("10-relaunch", "begin");
+    world.registry = [INTAKE_V2];
+    const beforeRelaunch = database.getMeta().authorityGeneration;
     const relaunched = versionCommand(world, "relaunch-archived-run", {
-      archivedRunId: settledRunId,
-      archiveFingerprint: archivedRunReferenceFingerprint(archived),
+      archivedRunId: settledRunId, archiveFingerprint: archivedDetail.archiveFingerprint,
     });
-    assert.equal(relaunched.state, "applied", relaunched.state === "rejected" ? relaunched.message : "refused");
-    const freshTarget = relaunched.state === "applied"
-      ? relaunched.affectedTargets.find((target) => target.family === "run")
-      : undefined;
-    if (freshTarget?.family !== "run") throw new Error("the relaunch reported no run");
-    const fresh = database.authority.runs.get(freshTarget.runId);
-    if (fresh === undefined) throw new Error("the relaunched run is not in authority");
-
-    assert.notEqual(freshTarget.runId, settledRunId, "a relaunch is a new run");
-    assert.equal(fresh.envelope.retryOf, undefined, "a relaunch is NOT a retry");
-    /*
-     * D221 — but it IS another attempt at the same ITEM, and the attempt counter
-     * is the item's. The archived run spent attempt 1, so this one takes 2 and
-     * its executions can never land on a key the archived run's checkpoints own.
-     * (The relaunch is the general case: not every second run of an item is a
-     * `retry` command.)
-     */
-    assert.equal(fresh.envelope.attempt, 2);
-    assert.equal(fresh.lifecycle.state, "queued");
-    assert.equal(fresh.envelope.descriptorVersion, 2, "the fresh run carries the CURRENT identity");
-    assert.equal(fresh.envelope.contractFingerprint, INTAKE_V2.contractFingerprint);
-    assert.equal(
-      fresh.envelope.itemId,
-      archived.row.itemId,
-      "the relaunch is about the same PERSON — the item joins, the run does not",
-    );
-    // The manifest still names exactly the runs it minted: a relaunch shares the
-    // item, so `listByItem` grows, and the manifest must NOT.
-    assert.equal(
-      database.authority.runs.listByItem({
-        workflow: INTAKE_FIXTURE_WORKFLOW_ID,
-        itemId: archived.row.itemId,
-      }).length,
-      2,
-    );
+    assert.equal(relaunched.state,"rejected");
+    assert.equal(relaunched.state === "rejected" ? relaunched.code : "","policy-refused");
+    assert.equal(database.getMeta().authorityGeneration,beforeRelaunch);
+    assert.equal(database.authority.runs.listByWorkflow(INTAKE_FIXTURE_WORKFLOW_ID).length,0);
     const reread = database.authority.intakeManifests.get(manifestId);
-    assert.equal(reread?.validRows.length, 2);
-    assert.deepEqual(database.authority.archivedRuns.get(settledRunId), archived, "the archived run is untouched");
+    assert.equal(reread?.validRows.length,2);
+    assert.deepEqual(storage.readReport(settledRunId),archived,"the immutable report is untouched");
     reportWalkPhase("10-relaunch", "complete");
     assertWalkPhaseReportingComplete();
   });
@@ -872,39 +819,40 @@ describe("the operator lifecycle, across slices", () => {
       `defineWorkflowDescriptor` returned.
       */
     const lastLiveRow = world.projection.queueSurface(runId);
+    const lastLiveDisplay = archiveSnapshots(world.runDetail).snapshot(runId);
+    assert.deepEqual(lastLiveDisplay.row,lastLiveRow);
     const reviewed = versionCommand(world, "plan-version-bump", {
       scope: { kind: "application", applicationVersion: APP_VERSION },
     }, { targetVersion: "0.2.0", changeFingerprint: HASH_C, changeRecord: WALK_CHANGE_RECORD });
     assert.equal(reviewed.state, "applied", reviewed.state === "rejected" ? reviewed.message : "plan refused");
     const target = reviewed.state === "applied" ? reviewed.affectedTargets[0] : undefined;
     const versionPlanId = target?.family === "version-archive" ? target.versionPlanId : "";
-    const stored = database.authority.versionPlans.get(versionPlanId);
+    const stored = createRunLifecycleStorage(database).readVersionChange(versionPlanId);
     const applied = versionCommand(
       world,
       "apply-version-bump",
-      { versionPlanId, expectedVersion: stored?.version },
-      { planFingerprint: stored?.planFingerprint },
+      { versionPlanId, expectedVersion: 1 },
+      { planFingerprint: stored?.reviewFingerprint },
     );
     assert.equal(applied.state, "applied", applied.state === "rejected" ? applied.message : "apply refused");
 
-    const archived = database.authority.archivedRuns.get(runId);
+    const archived = createRunLifecycleStorage(database).readReport(runId);
     if (archived === undefined) throw new Error("the exit run was not archived");
-    assert.deepEqual([...archived.drift], ["app-version-unstamped"]);
-    assert.deepEqual(
-      JSON.parse(JSON.stringify(archived.row)),
-      JSON.parse(JSON.stringify(lastLiveRow)),
-      "the frozen row is the projection's own last bytes",
-    );
-    assert.equal(archived.receipt.state, "present");
-    assert.deepEqual(
-      JSON.parse(JSON.stringify(archived.receipt.state === "present" ? archived.receipt.value : {})),
-      JSON.parse(JSON.stringify(derived.receipt)),
-      "the archive freezes the receipt authority already holds — it never re-derives one later",
-    );
-    assert.deepEqual(
-      [...archived.evidence.checkpointNodeIds],
-      ["active-status", "cross-verify", "searching"],
-      "and the evidence pointers name the run's own checkpoints",
-    );
+    const expectedDisplay = genericArchiveSection("Displayed run",JsonValueSchema.parse(lastLiveDisplay));
+    if (expectedDisplay.kind !== "values") throw new Error("wrong display section");
+    for (const cell of expectedDisplay.values) {
+      if (cell.label === "row.itemId") cell.value = "[protected]-0000-4000-8000-000000000001";
+      if (cell.label === "row.descriptorHash" || cell.label === "row.configFingerprint") cell.value = "[protected digest]";
+    }
+    assert.deepEqual(archived.content.sections.find(section=>section.title === "Displayed run"),expectedDisplay,
+      "the frozen projection changes only the three known protected display cells");
+    const captured = LifecycleSourceSnapshotSchema.parse(JSON.parse(archived.content.sources[0].json));
+    const receiptRows=captured.records.find(group=>group.table === "run_receipts")!.rows;
+    assert.equal(receiptRows.length,1);
+    assert.deepEqual(JSON.parse(receiptRows[0].json),JSON.parse(JSON.stringify(derived.receipt)),
+      "the report retains the exact receipt already derived by authority");
+    assert.deepEqual(captured.records.find(group=>group.table === "run_checkpoints")!.rows.map(row=>(JSON.parse(row.json) as {nodeId:string}).nodeId).sort(),
+      ["active-status","cross-verify","searching"]);
+
   });
 });

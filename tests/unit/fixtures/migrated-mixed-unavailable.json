@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 46,
+  "rows": {
+    "app_settings": [
+      {
+        "record_key": "current",
+        "record_json": "{\"active\":{\"activatedAt\":\"2026-09-09T12:00:00.000Z\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"generation\":1,\"settingsFingerprint\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"settingsRevision\":1},\"format\":1,\"saved\":null}",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "command_id": null,
+        "audit_id": null,
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "archived_runs": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "application_id": "66666666-6666-4666-8666-666666666666",
+        "workflow": "person-lookup",
+        "descriptor_version": 1,
+        "contract_fingerprint": "2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a",
+        "app_version": "0.1.0",
+        "content_digest": "7484a31504b9eafb40095c48aecbb3da19bff1ba3d417f7b2bee543b8209ce89",
+        "record_json": "{\"appVersion\":{\"state\":\"present\",\"value\":\"0.1.0\"},\"applicationId\":\"66666666-6666-4666-8666-666666666666\",\"archiveSchemaGeneration\":1,\"archivedAt\":\"2026-07-31T17:00:00.000Z\",\"archivedBy\":\"local-operator\",\"archivedIdentity\":{\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"workflowId\":\"person-lookup\"},\"contentDigest\":\"7484a31504b9eafb40095c48aecbb3da19bff1ba3d417f7b2bee543b8209ce89\",\"detail\":{\"availableSections\":[\"logs\"],\"context\":{\"attempts\":1,\"dataFacts\":4,\"evidenceFacts\":1},\"gate\":{\"reason\":\"this workflow declares no gate\",\"state\":\"absent\"},\"header\":{\"actorId\":\"local-operator\",\"attempt\":1,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"status\":\"failed\",\"title\":\"EID 10873698\",\"traceId\":\"pl-170000-2222\",\"workflowId\":\"person-lookup\"},\"outcome\":{\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"result\":\"failed\",\"state\":\"terminal\"},\"panelKind\":\"run\",\"rowRevision\":5,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"timeline\":{\"events\":[{\"at\":\"2026-07-31T17:00:00.000Z\",\"label\":\"UCPath person read\",\"notRun\":{\"reason\":\"the step ran\",\"state\":\"absent\"},\"noteId\":\"11111111-1111-4111-8111-111111111111\",\"sequence\":0,\"state\":\"done\"}]}},\"drift\":[\"descriptor-version\",\"contract-fingerprint\"],\"evidence\":{\"artifactIds\":[],\"checkpointNodeIds\":[\"ucpath-person\"],\"ledgerPartitions\":[],\"writeIntentIds\":[]},\"failure\":{\"state\":\"present\",\"value\":{\"attempt\":1,\"causeChain\":[{\"code\":\"CRM_UNAVAILABLE\",\"role\":\"primary\",\"summary\":\"CRM returned an unavailable response\",\"transient\":true}],\"code\":\"CRM_UNAVAILABLE\",\"diagnosticBundle\":{\"reason\":\"synthetic\",\"state\":\"absent\"},\"failureId\":\"66666666-6666-4666-8666-666666666666\",\"fingerprint\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"nodeId\":\"crm-dates\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"remediation\":[{\"kind\":\"retry-when-served\",\"message\":\"Retry after CRM is available\"}],\"runId\":\"22222222-2222-4222-8222-222222222222\",\"sameFingerprintSeen\":1,\"subject\":{\"reason\":\"synthetic\",\"state\":\"absent\"},\"summary\":\"CRM onboarding dates were unavailable\",\"taskId\":\"crm/read-onboarding-dates\",\"traceId\":\"pl-170000-2222\",\"transient\":true,\"workflowId\":\"person-lookup\",\"writeState\":\"not-attempted\"}},\"input\":{\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parsed\":{\"schemaHash\":\"1b0526d0b76cb7ba738ce4f455166c6d9a5a8d0361ee3f8788e06f834f516df6\",\"value\":{\"emplId\":\"10873698\",\"includeCrmDates\":false,\"keepNonHdh\":false}},\"raw\":{\"emplId\":\"10873698\"}},\"receipt\":{\"reason\":\"this run settled before receipts were derived\",\"state\":\"absent\"},\"row\":{\"actions\":[],\"actorId\":\"local-operator\",\"appVersion\":{\"state\":\"present\",\"value\":\"0.1.0\"},\"attempt\":1,\"availableSections\":[\"logs\"],\"configFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"containment\":\"root\",\"descriptorHash\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"displayName\":{\"reason\":\"the operator has not renamed this run\",\"state\":\"absent\"},\"dryRun\":false,\"endedAt\":{\"state\":\"present\",\"value\":\"2026-07-31T17:01:00.000Z\"},\"facts\":{\"reason\":\"this run's evidence receipt records no output fact\",\"state\":\"absent\"},\"gateOpenedAt\":{\"reason\":\"run is done and is not waiting on a gate\",\"state\":\"absent\"},\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"lineage\":{\"state\":\"root\"},\"linkedRuns\":[],\"liveMessage\":{\"reason\":\"an archived run has no live message\",\"state\":\"absent\"},\"panelKind\":\"run\",\"pipeline\":[{\"id\":\"ucpath-person\",\"label\":\"ucpath-person\",\"state\":\"done\"}],\"priority\":\"bulk\",\"resolvedInstances\":[{\"instance\":\"prod\",\"system\":\"ucpath\"}],\"rowRevision\":5,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"runNumber\":{\"reason\":\"historical run had no ordinal\",\"state\":\"absent\"},\"startedAt\":\"2026-07-31T17:00:00.000Z\",\"status\":\"failed\",\"subtitle\":{\"reason\":\"the start plan proposed no subtitle\",\"state\":\"absent\"},\"surfaceKind\":\"single\",\"title\":\"EID 10873698\",\"traceId\":\"pl-170000-2222\",\"updatedAt\":\"2026-07-31T17:00:00.000Z\",\"warnings\":{\"reason\":\"this run's evidence receipt records no warning\",\"state\":\"absent\"},\"workflowId\":\"person-lookup\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"traceId\":\"pl-170000-2222\",\"workflowId\":\"person-lookup\",\"workflowLabel\":{\"state\":\"present\",\"value\":\"Person Lookup\"}}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "transactions_json": "{\"capturedAt\":\"2026-07-31T17:00:00.000Z\",\"contentDigest\":\"7484a31504b9eafb40095c48aecbb3da19bff1ba3d417f7b2bee543b8209ce89\",\"eventIds\":[],\"lines\":[],\"runId\":\"22222222-2222-4222-8222-222222222222\",\"sourceDigests\":[],\"version\":1}",
+        "transactions_digest": "18bdffa5045a9278416a1867284bcbeada9bc0e6e58c9f2a07191c9e461a96ae"
+      }
+    ],
+    "command_audits": [
+      {
+        "record_key": "99000000-0000-4000-8000-000000000001",
+        "command_id": "99000000-0000-4000-8000-000000000001",
+        "record_json": "{\"auditId\":\"99000000-0000-4000-8000-000000000001\",\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"99000000-0000-4000-8000-000000000001\",\"fence\":{\"claimGeneration\":1,\"expectedVersion\":4,\"kind\":\"terminal\",\"workerId\":\"worker-1\"},\"kind\":\"run-lifecycle\",\"operation\":\"terminalize\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"e2ba3c0f5ca4b5470848119f5f9ff73d26eef171fb5549bd5694c76195a949e9\"},\"result\":{\"appliedVersion\":5,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      },
+      {
+        "record_key": "99000000-0000-4000-8000-000000000002",
+        "command_id": "99000000-0000-4000-8000-000000000002",
+        "record_json": "{\"auditId\":\"99000000-0000-4000-8000-000000000002\",\"completedAt\":\"2026-07-31T17:01:00.000Z\",\"kind\":\"run-lifecycle\",\"request\":{\"commandId\":\"99000000-0000-4000-8000-000000000002\",\"fence\":{\"expectedVersion\":5,\"kind\":\"version\"},\"kind\":\"run-lifecycle\",\"operation\":\"archive\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"fc3fdf4cf7108f7f7fb96ad781615cd0995bf0a93401788807ea8ae2f2ca9057\"},\"result\":{\"appliedVersion\":6,\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"}}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "commands": [
+      {
+        "record_key": "99000000-0000-4000-8000-000000000001",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"99000000-0000-4000-8000-000000000001\",\"fence\":{\"claimGeneration\":1,\"expectedVersion\":4,\"kind\":\"terminal\",\"workerId\":\"worker-1\"},\"kind\":\"run-lifecycle\",\"operation\":\"terminalize\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"e2ba3c0f5ca4b5470848119f5f9ff73d26eef171fb5549bd5694c76195a949e9\"}",
+        "created_at": "2026-07-31T17:01:00.000Z",
+        "parent_command_id": null
+      },
+      {
+        "record_key": "99000000-0000-4000-8000-000000000002",
+        "family": "run-lifecycle",
+        "record_json": "{\"commandId\":\"99000000-0000-4000-8000-000000000002\",\"fence\":{\"expectedVersion\":5,\"kind\":\"version\"},\"kind\":\"run-lifecycle\",\"operation\":\"archive\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"requestFingerprint\":\"fc3fdf4cf7108f7f7fb96ad781615cd0995bf0a93401788807ea8ae2f2ca9057\"}",
+        "created_at": "2026-07-31T17:01:00.000Z",
+        "parent_command_id": null
+      }
+    ],
+    "database_state": [
+      {
+        "singleton_id": 1,
+        "schema_version": 46,
+        "authority_generation": 8,
+        "updated_at": "2026-07-31T17:01:00.000Z",
+        "migration_owner": null,
+        "migration_started_at": null
+      }
+    ],
+    "database_upgrades": [
+      {
+        "record_key": "427ad41a-91c5-41cf-875b-09dfbe92cea2",
+        "upgrade_id": "fresh",
+        "phase": "baseline",
+        "record_json": "{\"by\":\"local-operator\",\"fromSchemaVersion\":0,\"phase\":\"baseline\",\"recordKey\":\"427ad41a-91c5-41cf-875b-09dfbe92cea2\",\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"toSchemaVersion\":40,\"upgradeId\":\"fresh\"}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "extracted_artifacts": [
+      {
+        "record_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1#oath",
+        "form_type": "oath",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_page": 1,
+        "page_kind": "oath",
+        "page_fingerprint": "e3e0c262ef724a505c6e312bb84ea9b0b2dc23d614d6268790229f9e3fb0c63d",
+        "source_kind": "operator",
+        "record_json": "{\"formType\":\"oath\",\"source\":{\"kind\":\"operator\",\"actorId\":\"local-operator\"},\"readAt\":\"2026-09-09T12:00:00.000Z\",\"sourceSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sourcePage\":1,\"pageKind\":\"oath\",\"record\":{\"answers\":[{\"state\":\"absent\",\"path\":\"employeeId\",\"reason\":\"blank\"},{\"state\":\"absent\",\"path\":\"employeeSigned\",\"reason\":\"blank\"},{\"state\":\"absent\",\"path\":\"officerSigned\",\"reason\":\"blank\"},{\"state\":\"absent\",\"path\":\"printedName\",\"reason\":\"blank\"},{\"state\":\"absent\",\"path\":\"signatureDate\",\"reason\":\"blank\"}],\"blockingPaths\":[\"employeeSigned\",\"officerSigned\",\"printedName\"],\"answersFingerprint\":\"971569ed72428e1612cc52d8befaa14f0bb9786d3e7f148185e6cd37c4d655cd\"},\"pageFingerprint\":\"e3e0c262ef724a505c6e312bb84ea9b0b2dc23d614d6268790229f9e3fb0c63d\"}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "fix_records": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000071",
+        "status": "verified",
+        "failure_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "record_json": "{\"id\":\"00000000-0000-4000-8000-000000000071\",\"failureFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"status\":\"verified\",\"requestedBy\":\"claude\",\"summary\":\"Historical fix\",\"affected\":[\"ucpath.smart-hr.save-submit\"],\"files\":[\"src/stores/ucpath/driver/smart-hr.ts\"],\"scenarios\":[\"ucpath/submit-before-ready\"],\"verification\":[\"artifact:00000000-0000-4000-8000-000000000051\"],\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"createdAt\":\"2026-09-09T12:00:00.000Z\"}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "generated_artifacts": [
+      {
+        "record_key": "sink:xlsx-retention",
+        "sink_id": "xlsx-retention",
+        "export_id": null,
+        "version": 1,
+        "record_json": "{\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"exportEvidenceFingerprint\":null,\"exportEvidenceJson\":null,\"exportId\":null,\"exportRequest\":null,\"fileId\":\"sink:xlsx-retention\",\"format\":1,\"head\":{\"contentSha256\":\"cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888\",\"generation\":2,\"lastOutboxId\":\"00000000-0000-4000-8000-000000000030\",\"projectedAt\":\"2026-09-09T12:00:00.000Z\",\"sinkId\":\"xlsx-retention\"},\"historyCoverage\":\"historical-gaps\",\"mediaType\":\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\"prepared\":null,\"registration\":null,\"sinkId\":\"xlsx-retention\",\"state\":\"pending\",\"updates\":[{\"record\":{\"artifactId\":\"00000000-0000-4000-8000-000000000070\",\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"keyValues\":[{\"field\":\"subject\",\"value\":\"synthetic\"}],\"outboxId\":\"00000000-0000-4000-8000-000000000030\",\"payload\":{\"schemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"value\":\"retained-30\"},\"projectedAt\":\"2026-09-09T12:00:00.000Z\",\"projectionId\":\"retention-row\",\"sinkId\":\"xlsx-retention\",\"sourceNodeId\":\"searching\",\"sourceRunId\":\"22222222-2222-4222-8222-222222222222\",\"stableKeyFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"state\":\"projected\"},\"sequence\":1},{\"record\":{\"artifactId\":\"00000000-0000-4000-8000-000000000070\",\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"keyValues\":[{\"field\":\"subject\",\"value\":\"synthetic\"}],\"outboxId\":\"00000000-0000-4000-8000-000000000031\",\"payload\":{\"schemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"value\":\"retained-31\"},\"projectionId\":\"retention-row\",\"sinkId\":\"xlsx-retention\",\"sourceNodeId\":\"searching\",\"sourceRunId\":\"22222222-2222-4222-8222-222222222222\",\"stableKeyFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"state\":\"pending\"},\"sequence\":2}],\"version\":1,\"versions\":[{\"artifact\":{\"bytes\":39,\"id\":\"cf7110cb-9b2e-51b7-8bcb-9e92b6680909\",\"mediaType\":\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\"sha256\":\"cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888\"},\"state\":\"verified\"}]}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      },
+      {
+        "record_key": "export:00000000-0000-4000-8000-000000000050",
+        "sink_id": null,
+        "export_id": "00000000-0000-4000-8000-000000000050",
+        "version": 1,
+        "record_json": "{\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"exportEvidenceFingerprint\":\"1258ecc787459ceec8e62f1d7ba77fd897ea10960b3dbebea96907bd6621df18\",\"exportEvidenceJson\":\"{\\n  \\\"exportId\\\": \\\"00000000-0000-4000-8000-000000000050\\\",\\n  \\\"createdAt\\\": \\\"2026-09-09T12:00:00.000Z\\\",\\n  \\\"artifact\\\": {\\n    \\\"id\\\": \\\"00000000-0000-4000-8000-000000000051\\\",\\n    \\\"sha256\\\": \\\"cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888\\\",\\n    \\\"bytes\\\": 39,\\n    \\\"mediaType\\\": \\\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\\\"\\n  },\\n  \\\"workbookVersion\\\": 1,\\n  \\\"selection\\\": {\\n    \\\"kind\\\": \\\"search\\\",\\n    \\\"query\\\": {\\n      \\\"q\\\": \\\"synthetic\\\",\\n      \\\"scope\\\": \\\"workflow\\\",\\n      \\\"facets\\\": {},\\n      \\\"limit\\\": 20\\n    },\\n    \\\"snapshot\\\": {\\n      \\\"generatedAt\\\": \\\"2026-09-09T12:00:00.000Z\\\",\\n      \\\"sourceIdentity\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n      \\\"authorityGeneration\\\": 1,\\n      \\\"order\\\": \\\"match-strength/enqueued-desc/run-id-asc:v1\\\",\\n      \\\"totalMatches\\\": 0\\n    }\\n  },\\n  \\\"workbook\\\": {\\n    \\\"sheetNames\\\": [\\n      \\\"Read Me\\\",\\n      \\\"Runs\\\"\\n    ],\\n    \\\"rowCount\\\": 0\\n  },\\n  \\\"download\\\": {\\n    \\\"filename\\\": \\\"hr-run-search-2026-09-09-g1.xlsx\\\",\\n    \\\"mediaType\\\": \\\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\\\",\\n    \\\"contentDisposition\\\": \\\"attachment; filename=\\\\\\\"hr-run-search-2026-09-09-g1.xlsx\\\\\\\"\\\",\\n    \\\"byteLength\\\": 39,\\n    \\\"sha256\\\": \\\"cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888\\\"\\n  }\\n}\",\"exportId\":\"00000000-0000-4000-8000-000000000050\",\"exportRequest\":null,\"fileId\":\"export:00000000-0000-4000-8000-000000000050\",\"format\":1,\"head\":null,\"historyCoverage\":\"historical-gaps\",\"mediaType\":\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\"prepared\":null,\"registration\":null,\"sinkId\":null,\"state\":\"unavailable\",\"updates\":[],\"version\":1,\"versions\":[{\"reason\":\"missing-bytes\",\"sha256\":\"cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888\",\"state\":\"unavailable\"}]}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "imported_artifacts": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000001",
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "manifest_id": "00000000-0000-4000-8000-000000000011",
+        "workflow": "person-lookup",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "record_json": "{\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"format\":1,\"importId\":\"00000000-0000-4000-8000-000000000001\",\"manifestId\":\"00000000-0000-4000-8000-000000000011\",\"preparationJson\":\"{\\n  \\\"intakeSessionId\\\": \\\"00000000-0000-4000-8000-000000000001\\\",\\n  \\\"actorId\\\": \\\"local-operator\\\",\\n  \\\"workflow\\\": \\\"person-lookup\\\",\\n  \\\"artifact\\\": {\\n    \\\"id\\\": \\\"00000000-0000-4000-8000-000000000090\\\",\\n    \\\"sha256\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n    \\\"bytes\\\": 9,\\n    \\\"mediaType\\\": \\\"text/csv\\\"\\n  },\\n  \\\"sourceName\\\": \\\"synthetic.csv\\\",\\n  \\\"sheet\\\": \\\"default\\\",\\n  \\\"headerRowIndex\\\": null,\\n  \\\"bindings\\\": [],\\n  \\\"constants\\\": [],\\n  \\\"corrections\\\": [],\\n  \\\"exclusions\\\": [],\\n  \\\"state\\\": \\\"enqueued\\\",\\n  \\\"validation\\\": {\\n    \\\"state\\\": \\\"none\\\"\\n  },\\n  \\\"reservedManifestId\\\": \\\"00000000-0000-4000-8000-000000000011\\\",\\n  \\\"version\\\": 1,\\n  \\\"createdAt\\\": \\\"2026-09-09T12:00:00.000Z\\\",\\n  \\\"updatedAt\\\": \\\"2026-09-09T12:00:00.000Z\\\",\\n  \\\"intakeManifestId\\\": \\\"00000000-0000-4000-8000-000000000011\\\"\\n}\",\"sessionId\":\"00000000-0000-4000-8000-000000000001\",\"sourceSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"submittedJson\":\"{\\n  \\\"version\\\": 1,\\n  \\\"workflow\\\": \\\"person-lookup\\\",\\n  \\\"source\\\": {\\n    \\\"artifactId\\\": \\\"00000000-0000-4000-8000-000000000090\\\",\\n    \\\"sha256\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n    \\\"originalName\\\": \\\"synthetic.csv\\\"\\n  },\\n  \\\"manifestId\\\": \\\"00000000-0000-4000-8000-000000000011\\\",\\n  \\\"mappingFingerprint\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n  \\\"mappingSnapshotHash\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n  \\\"intakeProjectionFingerprint\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n  \\\"workflowContractFingerprint\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n  \\\"canonicalInputSchemaHash\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n  \\\"createdAt\\\": \\\"2026-09-09T12:00:00.000Z\\\",\\n  \\\"totals\\\": {\\n    \\\"sourceRows\\\": 1,\\n    \\\"valid\\\": 1,\\n    \\\"rejected\\\": 0,\\n    \\\"rejectionEvents\\\": 0,\\n    \\\"excluded\\\": 0,\\n    \\\"corrected\\\": 0\\n  },\\n  \\\"sourceRowDispositions\\\": [\\n    {\\n      \\\"sourceRow\\\": 1,\\n      \\\"disposition\\\": \\\"valid\\\",\\n      \\\"itemId\\\": \\\"00000000-0000-4000-8000-000000000080\\\",\\n      \\\"currentRejectIds\\\": []\\n    }\\n  ],\\n  \\\"validRows\\\": [\\n    {\\n      \\\"sourceRow\\\": 1,\\n      \\\"itemId\\\": \\\"00000000-0000-4000-8000-000000000080\\\",\\n      \\\"inputHash\\\": \\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\n      \\\"parsedInput\\\": {\\n        \\\"value\\\": \\\"retained\\\"\\n      }\\n    }\\n  ],\\n  \\\"rejectedRows\\\": [],\\n  \\\"corrections\\\": [],\\n  \\\"exclusions\\\": []\\n}\",\"workflow\":\"person-lookup\"}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "knowledge_records": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000070",
+        "status": "active",
+        "record_json": "{\"id\":\"00000000-0000-4000-8000-000000000070\",\"status\":\"active\",\"scope\":{\"system\":\"ucpath\",\"element\":\"ucpath.smart-hr.save-submit\"},\"title\":\"Historical rule\",\"symptom\":\"Synthetic symptom\",\"trigger\":\"Synthetic trigger\",\"rootCause\":\"Synthetic cause\",\"invariant\":\"Preserve evidence\",\"fix\":\"Retain source\",\"regressionScenarios\":[\"ucpath/submit-before-ready\"],\"evidence\":[\"artifact:00000000-0000-4000-8000-000000000051\"],\"verifiedAt\":\"2026-09-09T12:00:00.000Z\"}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "provider_requests": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000060",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "capability": "ocr.extract",
+        "config_snapshot_id": "00000000-0000-4000-8000-000000000090",
+        "config_fingerprint": "5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5",
+        "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "settled",
+        "reserved_cost_usd_micros": 10,
+        "actual_cost_usd_micros": 7,
+        "lease_expires_at": null,
+        "deadline_at": null,
+        "version": 2,
+        "record_json": "{\"attribution\":{\"capability\":\"ocr.extract\",\"kind\":\"legacy-capability\"},\"format\":1,\"kind\":\"legacy-capability\",\"origin\":\"pre-tracking\",\"record\":{\"admissionId\":\"00000000-0000-4000-8000-000000000060\",\"budget\":{\"concurrency\":4,\"costLimitUsdMicros\":0,\"dailyRequestLimit\":250,\"requestsPerMinute\":10,\"timeoutMs\":120000},\"capability\":\"ocr.extract\",\"configFingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"estimate\":{\"maximumCostUsdMicros\":10},\"execution\":{\"attempt\":1,\"nodeId\":\"searching\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"taskId\":\"ocr/extract-page\"},\"lifecycle\":{\"actualUsage\":{\"costUsdMicros\":7,\"requestCount\":1},\"adapterDisposition\":\"produced\",\"evidence\":{\"capturedAt\":\"2026-09-09T12:00:00.000Z\",\"summary\":\"synthetic historical usage\"},\"settledAt\":\"2026-09-09T12:00:00.000Z\",\"state\":\"settled\"},\"requestFingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reservation\":{\"maximumCostUsdMicros\":10,\"requestCount\":1},\"updatedAt\":\"2026-09-09T12:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "provider_usage": [
+      {
+        "record_key": "ocr.extract",
+        "capability": "ocr.extract",
+        "minute_window_started_at": "2026-09-09T12:00:00.000Z",
+        "minute_requests": 1,
+        "day_window_started_at": "2026-09-09T00:00:00.000Z",
+        "day_requests": 1,
+        "day_reserved_cost_usd_micros": 7,
+        "active_reservations": 0,
+        "blocked_by_admission_id": null,
+        "version": 2,
+        "record_json": "{\"cumulative\":{\"chargedUsdMicros\":0,\"requests\":0},\"format\":1,\"kind\":\"legacy-capability\",\"record\":{\"activeReservations\":0,\"capability\":\"ocr.extract\",\"createdAt\":\"2026-09-09T12:00:00.000Z\",\"dayRequests\":1,\"dayReservedCostUsdMicros\":7,\"dayWindowStartedAt\":\"2026-09-09T00:00:00.000Z\",\"minuteRequests\":1,\"minuteWindowStartedAt\":\"2026-09-09T12:00:00.000Z\",\"updatedAt\":\"2026-09-09T12:00:00.000Z\",\"version\":2},\"tracking\":{\"coverage\":\"historical-gaps\",\"evidence\":\"legacy-reported\",\"startedAt\":\"2026-09-09T12:00:00.000Z\"}}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "run_failures": [
+      {
+        "record_key": "66666666-6666-4666-8666-666666666666",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"attempt\":1,\"causeChain\":[{\"code\":\"CRM_UNAVAILABLE\",\"role\":\"primary\",\"summary\":\"CRM returned an unavailable response\",\"transient\":true}],\"code\":\"CRM_UNAVAILABLE\",\"failureId\":\"66666666-6666-4666-8666-666666666666\",\"fingerprint\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"nodeId\":\"crm-dates\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"remediation\":[{\"kind\":\"retry-when-served\",\"message\":\"Retry after CRM is available\"}],\"runId\":\"22222222-2222-4222-8222-222222222222\",\"summary\":\"CRM onboarding dates were unavailable\",\"taskId\":\"crm/read-onboarding-dates\",\"traceId\":\"pl-170000-2222\",\"transient\":true,\"workflowId\":\"person-lookup\",\"writeState\":\"not-attempted\"}",
+        "created_at": "2026-07-31T17:01:00.000Z",
+        "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "resolution_json": "{\"status\":\"unresolved\",\"version\":1}",
+        "resolution_version": 1
+      }
+    ],
+    "settings_snapshots": [
+      {
+        "record_key": "00000000-0000-4000-8000-000000000090",
+        "record_json": "{\"configSnapshotId\":\"00000000-0000-4000-8000-000000000090\",\"revision\":1,\"fingerprint\":\"5ec4fce3ff36513eae57ff5886ab3b8e1e12b998268f6479455fb22b9bdee3b5\",\"capturedAt\":\"2026-09-09T12:00:00.000Z\",\"capturedBy\":\"local-operator\",\"config\":{\"actor\":{\"id\":\"local-operator\",\"label\":\"Local operator\"},\"urls\":{\"kuali\":{\"prod\":{\"entry\":\"https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb\"}},\"newKronos\":{\"prod\":{\"entry\":\"https://ucsd-sso.prd.mykronos.com/wfd/home\"}},\"crm\":{\"prod\":{\"entry\":\"https://crm.ucsd.edu/hr\",\"onboardingSearch\":\"https://act-crm.my.site.com/hr/ONB_SearchOnboardings\",\"ucPathEntrySheet\":\"https://act-crm.my.site.com/hr/ONB_PPSEntrySheet\",\"onboardingHistory\":\"https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory\",\"idocsViewer\":\"https://act-idocs.ucsd.edu\"}},\"onbase\":{\"prod\":{\"entry\":\"https://ucsd.hylandcloud.com/251ids/NavPanel.aspx\"}},\"ucpath\":{\"prod\":{\"login\":\"https://ucpath.ucsd.edu\",\"smartHr\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y\",\"jobSummary\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL\",\"personalData\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1\",\"personProfile\":\"https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL\"}},\"i9\":{\"prod\":{\"entry\":\"https://i9complete.ucop.edu\",\"app\":\"https://wwwe.i9complete.com\"}},\"oldKronos\":{\"prod\":{\"entry\":\"https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/\"}},\"servicenow\":{\"prod\":{\"entry\":\"https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf\"}},\"sharepoint\":{\"prod\":{\"entry\":\"https://ucsdcloud.sharepoint.com\"}}},\"timeouts\":{\"navigationMs\":15000,\"longNavigationMs\":30000,\"ukgNavigationMs\":60000,\"taskMs\":180000,\"sessionAcquireMs\":60000,\"duoCeremonyLeaseGraceMs\":20000,\"transactionMs\":300000,\"duoApprovalSeconds\":180,\"duoApprovalCrmSeconds\":60,\"retryDelayMs\":5000},\"paths\":{\"reportsDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/reports\",\"downloadsDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/downloads\",\"onboardingDocsDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/onboarding\",\"i9CheckTrackerPath\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/data/reports/i9-check-tracker.xlsx\",\"stateRoot\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.tracker\",\"artifactRoot\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.tracker/artifacts\",\"browserProfileRoot\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.auth\",\"duoCredential\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/.auth/duo-webauthn.json\",\"duoExtensionDir\":\"/Users/julianhein/Projects/hr-worktree-database-contracts/duo-autopilot\"},\"annualDates\":{},\"display\":{\"screenWidth\":2560,\"screenHeight\":1440},\"performance\":{\"navigationRetries\":10,\"separationTerminationWindowDays\":14},\"ocr\":{\"secondOpinionMax\":5,\"pageMaxWaitMs\":120000,\"tier1PatienceMs\":90000,\"pageConcurrency\":0,\"disambigConcurrency\":4,\"suggestConcurrency\":4,\"backoffBaseMs\":2000,\"backoffCapMs\":60000,\"maxValidationRetries\":1},\"browserHealth\":{\"monitorTickMs\":30000,\"maxAutoRefresh\":10,\"maxReopen\":3},\"browser\":{\"headless\":true,\"closeProofMs\":15000},\"concurrency\":{\"defaultWorkers\":4},\"daemon\":{\"idleMs\":900000,\"idleRepollMs\":30000},\"features\":{\"debugScreenshots\":false,\"duoWebAuthn\":true},\"providers\":{\"ocrExtract\":{\"timeoutMs\":120000,\"concurrency\":4,\"requestsPerMinute\":10,\"dailyRequestLimit\":250,\"costLimitUsdMicros\":0},\"geocodeCensus\":{\"timeoutMs\":15000,\"concurrency\":2,\"requestsPerMinute\":30,\"dailyRequestLimit\":5000,\"costLimitUsdMicros\":0},\"geocodeNominatim\":{\"timeoutMs\":15000,\"concurrency\":1,\"requestsPerMinute\":1,\"dailyRequestLimit\":1000,\"costLimitUsdMicros\":0},\"aiAdvisory\":{\"timeoutMs\":90000,\"concurrency\":2,\"requestsPerMinute\":10,\"dailyRequestLimit\":250,\"costLimitUsdMicros\":0}}},\"provenance\":{}}",
+        "created_at": "2026-09-09T12:00:00.000Z"
+      }
+    ],
+    "timeline_events": [
+      {
+        "cursor": 1,
+        "record_key": "4137456f-1d5b-4186-8373-98cd7452629b",
+        "workflow": "person-lookup",
+        "run_id": "22222222-2222-4222-8222-222222222222",
+        "worker_id": null,
+        "retention_date": "2026-07-31",
+        "retention_class": "ordinary",
+        "record_json": "{\"eventId\":\"4137456f-1d5b-4186-8373-98cd7452629b\",\"occurredAt\":\"2026-07-31T17:01:00.000Z\",\"payload\":{\"event\":{\"attempt\":1,\"failureId\":\"66666666-6666-4666-8666-666666666666\",\"kind\":\"run\",\"outcome\":\"failed\",\"pid\":14725,\"runId\":\"22222222-2222-4222-8222-222222222222\",\"spanPath\":\"pl-170000-2222\",\"t\":\"span.ended\",\"traceId\":\"pl-170000-2222\",\"ts\":\"2026-07-31T17:01:00.000Z\",\"workflow\":\"person-lookup\"},\"kind\":\"span\"},\"recordedAt\":\"2026-07-31T17:01:00.000Z\",\"retentionDate\":\"2026-07-31\",\"schemaVersion\":1,\"scope\":{\"kind\":\"run\",\"runId\":\"22222222-2222-4222-8222-222222222222\"},\"source\":{\"kind\":\"native\"},\"workflow\":\"person-lookup\",\"cursor\":1}",
+        "created_at": "2026-07-31T17:01:00.000Z"
+      }
+    ],
+    "version_bump_applications": [
+      {
+        "record_key": "66666666-6666-4666-8666-666666666666",
+        "version_plan_id": "77777777-7777-4777-8777-777777777777",
+        "scope_kind": "workflows",
+        "target_version": "0.2.0",
+        "applied_app_version": "0.1.0",
+        "archived_count": 1,
+        "record_json": "{\"applicationId\":\"66666666-6666-4666-8666-666666666666\",\"appliedAppVersion\":\"0.1.0\",\"appliedAt\":\"2026-07-31T17:00:00.000Z\",\"appliedBy\":\"local-operator\",\"appliedIdentities\":[{\"contractFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"descriptorVersion\":2,\"workflowId\":\"person-lookup\"}],\"archiveSchemaGeneration\":1,\"archivedRunIds\":[\"22222222-2222-4222-8222-222222222222\"],\"changeFingerprint\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"scope\":{\"kind\":\"workflows\",\"workflowIds\":[\"person-lookup\"]},\"targetVersion\":\"0.2.0\",\"versionPlanId\":\"77777777-7777-4777-8777-777777777777\"}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      }
+    ],
+    "version_plans": [
+      {
+        "record_key": "77777777-7777-4777-8777-777777777777",
+        "record_json": "{\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"plan\":{\"archiveSchemaGeneration\":1,\"blockers\":[],\"candidates\":[{\"drift\":[\"descriptor-version\",\"contract-fingerprint\"],\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\",\"runId\":\"22222222-2222-4222-8222-222222222222\",\"title\":\"EID 10873698\",\"traceId\":\"pl-170000-2222\",\"workflowId\":\"person-lookup\"}],\"changeFingerprint\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"observedAppVersion\":\"0.1.0\",\"observedIdentities\":[{\"contractFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"descriptorVersion\":2,\"workflowId\":\"person-lookup\"}],\"plannedAt\":\"2026-07-31T17:00:00.000Z\",\"plannedBy\":\"local-operator\",\"scope\":{\"kind\":\"workflows\",\"workflowIds\":[\"person-lookup\"]},\"targetVersion\":\"0.2.0\",\"versionPlanId\":\"77777777-7777-4777-8777-777777777777\"},\"planFingerprint\":\"d6f471538d5fff76e51b8f45c0de390cbabc782b9418a14773ae6d2110661c5d\",\"state\":\"applied\",\"version\":2,\"versionPlanId\":\"77777777-7777-4777-8777-777777777777\",\"appliedAt\":\"2026-07-31T17:00:00.000Z\"}",
+        "created_at": "2026-07-31T17:00:00.000Z"
+      }
+    ],
+    "workflow_runs": [
+      {
+        "record_key": "22222222-2222-4222-8222-222222222222",
+        "record_json": "{\"claimGeneration\":1,\"completion\":{\"authorizedAt\":\"2026-07-31T17:01:00.000Z\",\"claim\":{\"claimGeneration\":1,\"workerId\":\"worker-1\"},\"expectedVersion\":4,\"failureId\":\"66666666-6666-4666-8666-666666666666\",\"historical\":{\"authorizationJson\":\"{\\\"attempt\\\":1,\\\"authorizedAt\\\":\\\"2026-07-31T17:01:00.000Z\\\",\\\"claim\\\":{\\\"claimGeneration\\\":1,\\\"workerId\\\":\\\"worker-1\\\"},\\\"contractFingerprint\\\":\\\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\\\",\\\"descriptorVersion\\\":1,\\\"expectedVersion\\\":4,\\\"failureId\\\":\\\"66666666-6666-4666-8666-666666666666\\\",\\\"kind\\\":\\\"failed\\\",\\\"runId\\\":\\\"22222222-2222-4222-8222-222222222222\\\",\\\"workflowId\\\":\\\"person-lookup\\\"}\",\"schemaVersion\":40},\"kind\":\"failed\",\"schemaVersion\":1},\"createdAt\":\"2026-07-31T17:00:00.000Z\",\"envelope\":{\"attempt\":1,\"configFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"configSnapshotId\":\"44444444-4444-4444-8444-444444444444\",\"contractFingerprint\":\"2c9c21883ec8db2386bdc5fc2e2d541373420b13be092f93f2a62a9e6cf3be6a\",\"descriptorVersion\":1,\"dryRun\":false,\"enqueuedAt\":\"2026-07-31T17:00:00.000Z\",\"itemId\":\"33333333-3333-4333-8333-333333333333\",\"priority\":\"bulk\",\"resolvedInstance\":{\"crm\":\"prod\",\"ucpath\":\"prod\"},\"runId\":\"22222222-2222-4222-8222-222222222222\",\"shape\":\"single\",\"traceId\":\"pl-170000-2222\",\"workflow\":\"person-lookup\"},\"input\":{\"ingressSchemaHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parsed\":{\"schemaHash\":\"1b0526d0b76cb7ba738ce4f455166c6d9a5a8d0361ee3f8788e06f834f516df6\",\"value\":{\"emplId\":\"10873698\",\"includeCrmDates\":false,\"keepNonHdh\":false}},\"raw\":{\"emplId\":\"10873698\"}},\"lifecycle\":{\"endedAt\":\"2026-07-31T17:01:00.000Z\",\"errorSummary\":\"CRM onboarding dates were unavailable\",\"failureId\":\"66666666-6666-4666-8666-666666666666\",\"outcome\":\"failed\",\"state\":\"terminal\"},\"updatedAt\":\"2026-07-31T17:01:00.000Z\",\"version\":6}",
+        "created_at": "2026-07-31T17:00:00.000Z",
+        "workflow": "person-lookup",
+        "item_id": "33333333-3333-4333-8333-333333333333",
+        "state": "terminal",
+        "priority": "bulk",
+        "attempt": 1,
+        "not_before": null,
+        "owner_worker_id": null,
+        "claim_generation": 1,
+        "heartbeat_at": null,
+        "version": 6,
+        "parent_run_id": null,
+        "run_number": null,
+        "session_id": null
+      }
+    ]
+  },
+  "generated": {
+    "format": 1,
+    "backupSha256": "669b5f21a05f6b8a9eb8e3d091d985d7ecd6076dbb71cac99d9f2cfd8194266a",
+    "sourceDatabaseIdentity": "b0d307cf553fdd651386725806653062b695bf959262fd49a68d9a51cb918a00",
+    "authorityGeneration": 8,
+    "files": [
+      {
+        "ref": {
+          "id": "cf7110cb-9b2e-51b7-8bcb-9e92b6680909",
+          "sha256": "cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888",
+          "bytes": 39,
+          "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        },
+        "payloadBase64": "ZXhhY3QgcmV0YWluZWQgc3ludGhldGljIHdvcmtib29rIGJ5dGVz"
+      }
+    ],
+    "sinks": [
+      {
+        "sinkId": "xlsx-retention",
+        "artifact": {
+          "id": "cf7110cb-9b2e-51b7-8bcb-9e92b6680909",
+          "sha256": "cf7110cb9b2e91b73bcb9e92b66809096b3ce8f7434e98e38f6a7c8f6c02e888",
+          "bytes": 39,
+          "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      }
+    ],
+    "unavailableExports": [
+      "00000000-0000-4000-8000-000000000050"
+    ]
+  },
+  "generatorBase": "7f77978716319c4329392a19e7a971f18af37362",
+  "proof": "F03-provider-lineage-repaired (capture mixed supported floor)",
+  "proofLogSha256": "920cc9f343dfd5b83673339b2bbbb92b20e49065f045c8ab5d37a9da27f6c134"
+}

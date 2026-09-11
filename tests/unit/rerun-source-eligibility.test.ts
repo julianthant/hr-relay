@@ -1,7 +1,8 @@
+import {archiveCurrentRun} from "./helpers/archive-current-run.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { requireLifecycleApplied } from "../../src/core/run-record-service.js";
-import { archivedRunContentDigest, ArchivedRunContentSchema, ArchivedRunRecordSchema, VersionBumpApplicationSchema } from "../../src/domain/archive/model.js";
+
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { StartPlanWireSchema } from "../../src/domain/dashboard/start-plan.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
@@ -9,7 +10,6 @@ import { RerunPlanSchema } from "../../src/domain/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../src/domain/run/start-plan.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { RerunRefusedError } from "../../src/services/start/rerun.js";
-import { ARCHIVED_RUN, VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../fixtures/archive-fixtures.js";
 import { sourceBoundHarness } from "./fixtures/source-bound-fixtures.js";
 import { sourceBoundReadDescriptor, sourceBoundReadStores } from "./fixtures/source-bound-read-fixtures.js";
 
@@ -21,71 +21,6 @@ function harness() {
   disposers.push(h.dispose); return h;
 }
 
-function archivedRecord(run: RunRecord) {
-  if (run.lifecycle.state !== "terminal") throw new Error("archive fixture requires a terminal run");
-  const { contentDigest: _digest, ...template } = ARCHIVED_RUN;
-  const status = run.lifecycle.outcome === "interrupted" ? "blocked"
-    : run.lifecycle.outcome === "failed" ? "failed"
-      : run.lifecycle.outcome === "done" ? "done" : "cancelled";
-  const detailOutcome = run.lifecycle.outcome === "interrupted"
-    ? { state: "absent" as const, reason: "run interrupted; ref write-safety recovery will requeue or settle it" }
-    : {
-        state: "terminal" as const,
-        result: run.lifecycle.outcome === "done" ? run.envelope.dryRun ? "partial" as const : "verified-done" as const
-          : run.lifecycle.outcome === "failed" ? "failed" as const : "cancelled" as const,
-        completedAt: run.lifecycle.endedAt,
-        ...(run.lifecycle.outcome === "done" && run.envelope.dryRun ? { rehearsal: true as const } : {}),
-      };
-  const content = ArchivedRunContentSchema.parse({
-    ...template,
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    traceId: run.envelope.traceId,
-    archivedIdentity: {
-      workflowId: run.envelope.workflow,
-      descriptorVersion: run.envelope.descriptorVersion,
-      contractFingerprint: run.envelope.contractFingerprint,
-    },
-    input: run.input,
-    row: {
-      ...template.row,
-      runId: run.envelope.runId,
-      itemId: run.envelope.itemId,
-      workflowId: run.envelope.workflow,
-      traceId: run.envelope.traceId,
-      attempt: run.envelope.attempt,
-      descriptorVersion: run.envelope.descriptorVersion,
-      descriptorHash: run.envelope.contractFingerprint,
-      configFingerprint: run.envelope.configFingerprint,
-      dryRun: run.envelope.dryRun,
-      priority: run.envelope.priority,
-      runNumber: run.runNumber === undefined
-        ? { state: "absent", reason: "historical run had no ordinal" }
-        : { state: "present", value: run.runNumber },
-      rowRevision: run.version,
-      status,
-      endedAt: { state: "present", value: run.lifecycle.endedAt },
-    },
-    detail: {
-      ...template.detail,
-      runId: run.envelope.runId,
-      rowRevision: run.version,
-      header: {
-        ...template.detail.header,
-        runId: run.envelope.runId,
-        traceId: run.envelope.traceId,
-        workflowId: run.envelope.workflow,
-        status,
-        attempt: run.envelope.attempt,
-      },
-      outcome: detailOutcome,
-    },
-  });
-  return ArchivedRunRecordSchema.parse({
-    ...content,
-    contentDigest: archivedRunContentDigest(content),
-  });
-}
 
 async function sourceOf(h: Harness, kind: "archived" | "cancelled" | "discarded" | "superseded") {
   const queued = h.start(h.proposal());
@@ -95,15 +30,10 @@ async function sourceOf(h: Harness, kind: "archived" | "cancelled" | "discarded"
   }));
   assert.equal((await h.execute(queued)).state, "done");
   const terminal = h.fresh(queued);
-  h.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-  h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
-    ...VERSION_BUMP_APPLICATION, archivedRunIds: [terminal.envelope.runId],
-  }));
-  const archived = requireLifecycleApplied(h.lifecycle.archive({
-    commandId: h.ids.uuid(), expectedVersion: terminal.version, archive: archivedRecord(terminal),
-  }));
-  assert.equal(h.lifecycle.read(archived.envelope.runId).state, "present");
-  assert.equal(h.database.authority.archivedRuns.isArchived(archived.envelope.runId), true);
+  archiveCurrentRun(h.database,terminal,h.clock.now().toISOString(),h.ids.uuid());
+  const archived=terminal;
+  assert.equal(h.lifecycle.read(archived.envelope.runId).state,"present");
+  assert.equal(h.database.authority.archivedRuns.isArchived(archived.envelope.runId),true);
   return archived;
 }
 

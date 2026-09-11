@@ -1,10 +1,10 @@
+import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { existsSync, writeFileSync, unlinkSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { archiveFixture, attachFile } from "./fixtures.js";
 import { NOW, id } from "../database-foundation/fixtures.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { projectArchiveReport, queryArchiveReports } from "../../../src/server/dashboard/queries/archive-reports.js";
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";

@@ -271,7 +271,7 @@ function backupManifestPath(fixture: HistoricalFixture, backupFileName: string):
 
 describe("D336 stopped-upgrade admission matrix", () => {
   it("refuses schema-valid journal column corruption during read-only preflight without creating runtime admission", async () => {
-    const f = historicalFixture(29);
+    const f = historicalFixture(46);
     const raw = strictDatabase(f.path);
     try { raw.exec("UPDATE commands SET family='settings'"); } finally { raw.close(); }
     await assert.rejects(backupStoppedAuthority(f.root, CLOCK), /commands-family-column-matches-record/u);
@@ -281,7 +281,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
     assert.deepEqual(readFileSync(f.path), before);
     assert.deepEqual(readdirSync(f.root).sort(), pathsBefore);
   });
-  it.each(ADMITTED_HISTORICAL_VERSIONS)(
+  it.each([46, 47, 48])(
     "requires backup, plans read-only, and converts exact v%s while preserving authority",
     async (version) => {
       const fixture = historicalFixture(version);
@@ -321,7 +321,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
         sourceFiles: [],
         envKeysToRemove: [],
         backupManifest: basename(manifestPath),
-        credentials: "empty",
+        credentials: "unchanged",
         historicalExposure: [],
         orphanGateRecordsRemoved: 0,
         tombstoneBackfill: { fromRoots: 0, fromReconstructedRoots: 0, unknown: 0, missingRunNumber: 0 },
@@ -360,6 +360,21 @@ describe("D336 stopped-upgrade admission matrix", () => {
     },
   );
 
+  it.each(ADMITTED_HISTORICAL_VERSIONS)("retains exact v%s backup inspection while refusing expired conversion", async (version) => {
+    const fixture = historicalFixture(version);
+    const backup = await backupStoppedAuthority(fixture.root, CLOCK);
+    const manifest = backup.manifests[0];
+    assert.ok(manifest !== undefined);
+    assert.equal((await verifyBackupManifestAtPath(backupManifestPath(fixture, manifest.backupFileName))).manifest.schemaVersion, version);
+    const before = readFileSync(fixture.path);
+    const entries = readdirSync(fixture.root).sort();
+    for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...fixture.input, plan }, CLOCK), /authority-below-floor.*floor: 46.*original compatible release/u);
+    assert.deepEqual(readFileSync(fixture.path), before);
+    assert.deepEqual(readdirSync(fixture.root).sort(), entries);
+    assert.equal(readJournalJson(fixture.path, "commands", COMMAND_ID), fixture.commandJson);
+    assert.equal(readJournalJson(fixture.path, "command_audits", AUDIT_ID), fixture.auditJson);
+  });
+
   it.each(REFUSED_GAP_VERSIONS)(
     "refuses exact unsupported gap schema v%s without effects",
     async (version) => {
@@ -368,7 +383,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
       const entries = readdirSync(fixture.root).sort();
       await assert.rejects(
         upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-        new RegExp(`authority schema ${String(version)} is not an admitted backup schema`, "u"),
+        /authority-below-floor.*floor: 46.*original compatible release/u,
       );
       assert.deepEqual(readFileSync(fixture.path), before);
       assert.deepEqual(readdirSync(fixture.root).sort(), entries);
@@ -394,21 +409,21 @@ describe("D336 stopped-upgrade admission matrix", () => {
   });
 
   it("refuses an admitted version whose SQLite schema diverges from released migrations", async () => {
-    const fixture = historicalFixture(31);
+    const fixture = historicalFixture(46);
     const database = strictDatabase(fixture.path);
     database.exec("CREATE TABLE divergent_authority (record_key TEXT PRIMARY KEY) STRICT");
     database.close();
     const before = readFileSync(fixture.path);
     await assert.rejects(
       upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-      /authority schema 31 does not match its immutable migration replay/u,
+      /authority schema 46 does not match its immutable migration replay/u,
     );
     assert.deepEqual(readFileSync(fixture.path), before);
     assert.equal(tableCounts(fixture.path).get("divergent_authority"), 0);
   });
 
   it("refuses an active runtime lock before reading backup admission", async () => {
-    const fixture = historicalFixture(31);
+    const fixture = historicalFixture(46);
     await backupStoppedAuthority(fixture.root, CLOCK);
     const before = readFileSync(fixture.path);
     const server = acquireRuntimeProcessLock({
@@ -423,7 +438,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
       );
       assert.deepEqual(readFileSync(fixture.path), before);
       assert.deepEqual(readMeta(fixture.path), {
-        schema_version: 31,
+        schema_version: 46,
         authority_generation: 7,
       });
     } finally {
@@ -432,14 +447,14 @@ describe("D336 stopped-upgrade admission matrix", () => {
   });
 
   it("refuses stale backup evidence after a valid historical authority write", async () => {
-    const fixture = historicalFixture(31);
+    const fixture = historicalFixture(46);
     await backupStoppedAuthority(fixture.root, CLOCK);
     const database = strictDatabase(fixture.path);
     try {
       database.exec("BEGIN IMMEDIATE");
       insertHistoricalCommand(database, SECOND_COMMAND_ID, SECOND_AUDIT_ID);
       database.prepare(`
-        UPDATE authority_meta
+        UPDATE database_state
         SET authority_generation = authority_generation + 1, updated_at = ?
         WHERE singleton_id = 1
       `).run(LATER);
@@ -457,7 +472,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
     );
     assert.deepEqual(readFileSync(fixture.path), before);
     assert.deepEqual(readMeta(fixture.path), {
-      schema_version: 31,
+      schema_version: 46,
       authority_generation: 8,
     });
     assert.equal(readJournalJson(fixture.path, "commands", SECOND_COMMAND_ID),
@@ -465,7 +480,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
   });
 
   it("rolls back a beforeCommit interruption and admits an exact retry", async () => {
-    const fixture = historicalFixture(31);
+    const fixture = historicalFixture(46);
     const backup = await backupStoppedAuthority(fixture.root, CLOCK);
     const manifest = backup.manifests[0];
     assert.ok(manifest !== undefined);
@@ -482,14 +497,14 @@ describe("D336 stopped-upgrade admission matrix", () => {
     assert.deepEqual(readFileSync(fixture.path), before);
     assert.equal(
       inspectAuthorityBackupReadOnly(fixture.path).schemaVersion,
-      31,
+      46,
     );
     assert.deepEqual(readMeta(fixture.path), {
-      schema_version: 31,
+      schema_version: 46,
       authority_generation: 7,
     });
     assert.equal(existsSync(join(fixture.root, "credentials")), false);
-    assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion, 31);
+    assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion, 46);
 
     const retried = await upgradeStorage(fixture.input, CLOCK);
     assert.equal(retried.state, "converted");

@@ -1,3 +1,4 @@
+import { createRunLifecycleStorage } from "./helpers/lifecycle-storage.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
@@ -7,7 +8,6 @@ import { exportTransactions } from "../../src/server/storage/transaction-export.
 import { describe, it } from "vitest";
 import { historyWorld, historicalWorld, HISTORY_NOW } from "./transaction-history-fixture.js";
 import { fixtureUuid } from "./fixtures/ledger-projection-fixtures.js";
-import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
 

@@ -1,5 +1,5 @@
 import { sha256Hex } from "../../domain/sha256.js";
-import { ActorIdSchema, IsoInstantSchema } from "../../domain/ids.js";
+import { ActorIdSchema, IsoInstantSchema, PositiveIntSchema, FingerprintSchema, OutboxIdSchema } from "../../domain/ids.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
@@ -52,7 +52,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
     if (file.updates.find(u => u.record.state === "pending")?.record.outboxId !== updateId) throw new Error("generated-artifact-out-of-order");
     return file;
   };
-  const PublicationIdentitySchema = z.strictObject({ sinkId: z.string(), updateId: z.uuid(), expectedGeneration: z.number().int().nonnegative() });
+  const PublicationIdentitySchema = z.strictObject({ sinkId: z.string(), updateId: OutboxIdSchema, expectedGeneration: z.number().int().nonnegative() });
   return Object.freeze({ get, list,
     publication: Object.freeze({
       assertAvailable(input: unknown) {
@@ -76,7 +76,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
           if (file.prepared !== null) throw new Error("generated-artifact-prepared-conflict");
           if (request.artifact.mediaType !== file.mediaType) throw new Error("generated-artifact-media-type-conflict");
           const prepared = { updateId: request.updateId, expectedGeneration: request.expectedGeneration, artifact: request.artifact };
-          const next = { ...file, prepared, state: "writing" as const, version: file.version + 1 };
+          const next = { ...file, prepared, state: "writing" as const, version: PositiveIntSchema.parse(file.version + 1) };
           // Reserve the complete settlement before external replacement, including an ack timestamp.
           if (file.versions.length >= 10000 || Buffer.byteLength(encode(next), "utf8") + 2048 > GENERATED_ARTIFACT_METADATA_LIMIT) {
             throw new Error("generated-artifact-metadata-limit");
@@ -89,7 +89,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
         const request = PublicationIdentitySchema.extend({ state: z.enum(["failed", "conflict"]) }).parse(input);
         return mutate(() => {
           const file = publicationFile(request.sinkId, request.updateId, request.expectedGeneration);
-          save(file, { ...file, state: request.state, version: file.version + 1 });
+          save(file, { ...file, state: request.state, version: PositiveIntSchema.parse(file.version + 1) });
           return { result: undefined, changes: 1 };
         });
       },
@@ -98,7 +98,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
       insert(input: unknown) {
         const record = ArtifactOutboxStorageRecordSchema.parse(input);
         if (record.state !== "pending" || record.projectedAt !== undefined) throw new Error("generated-artifact-new-update-must-be-pending");
-        return mutate(() => {
+        return mutate<{ state: "existing" | "inserted"; record: z.output<typeof ArtifactOutboxStorageRecordSchema> }>(() => {
           const existing = locate(record.outboxId);
           const previous = existing?.updates.find((u) => u.record.outboxId === record.outboxId)?.record;
           if (previous !== undefined) {
@@ -116,8 +116,8 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
             insertGeneratedArtifact(database, initial);
           }
           else {
-            const next = { ...old, state: old.prepared === null ? "pending" as const : old.state, version: old.version + 1,
-              updates: [...old.updates, { sequence: old.updates.length + 1, record }] };
+            const next = { ...old, state: old.prepared === null ? "pending" as const : old.state, version: PositiveIntSchema.parse(old.version + 1),
+              updates: [...old.updates, { sequence: PositiveIntSchema.parse(old.updates.length + 1), record }] };
             const pending = next.updates.filter(u => u.record.state === "pending").length;
             if (next.versions.length + pending > 10000 || Buffer.byteLength(encode(next), "utf8") + pending * 2048 > GENERATED_ARTIFACT_METADATA_LIMIT) {
               throw new Error("generated-artifact-metadata-limit");
@@ -131,7 +131,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
       listPending() { return list().flatMap((f) => f.updates.filter((u) => u.record.state === "pending").map((u) => u.record)); },
       markProjected(input: unknown) {
         const request = z.strictObject({ outboxId: z.uuid(), projectedAt: z.iso.datetime({ offset: true }) }).parse(input);
-        return mutate(() => {
+        return mutate<{ state: "already-projected" | "acknowledged"; record: z.output<typeof ArtifactOutboxStorageRecordSchema> }>(() => {
           const old = locate(request.outboxId); const update = old?.updates.find((u) => u.record.outboxId === request.outboxId);
           if (old === undefined || update === undefined) throw new Error("generated-artifact-update-missing");
           if (update.record.state === "projected") return { result: { state: "already-projected" as const, record: update.record }, changes: 0 };
@@ -140,7 +140,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
           const record = ArtifactOutboxStorageRecordSchema.parse({ ...update.record, state: "projected", projectedAt: request.projectedAt });
           const updates = old.updates.map((u) => u === update ? { ...u, record } : u);
           const state = updates.some((u) => u.record.state === "pending") ? "pending" : old.versions.at(-1)?.state === "verified" ? "ready" : "unavailable";
-          save(old, { ...old, state, updates, prepared: null, version: old.version + 1 });
+          save(old, { ...old, state, updates, prepared: null, version: PositiveIntSchema.parse(old.version + 1) });
           return { result: { state: "acknowledged" as const, record }, changes: 1 };
         });
       },
@@ -161,10 +161,10 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
             throw new Error("generated-artifact-prepared-identity-conflict");
           }
           const { expectedGeneration, artifact, ...fields } = request;
-          const head = { ...fields, generation: expectedGeneration + 1 };
+          const head = { ...fields, generation: PositiveIntSchema.parse(expectedGeneration + 1) };
           const versions = [...old.versions, { state: "verified" as const, artifact }];
           if (artifact !== undefined && artifact.sha256 !== request.contentSha256) throw new Error("generated-artifact-head-bytes-conflict");
-          save(old, { ...old, head, versions, version: old.version + 1, state: "writing" });
+          save(old, { ...old, head, versions, version: PositiveIntSchema.parse(old.version + 1), state: "writing" });
           return { result: head, changes: 1 };
         });
       },
@@ -191,12 +191,12 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
       fail(exportId:string,expectedVersion:number){
         return mutate(()=>{const old=get(`export:${OperatorXlsxExportIdSchema.parse(exportId)}`);
           if(old===undefined||old.version!==expectedVersion||old.exportEvidenceJson!==null)throw new Error("generated-export-version-conflict");
-          const next=GeneratedArtifactSchema.parse({...old,state:"failed",version:old.version+1});save(old,next);return {result:next,changes:1};
+          const next=GeneratedArtifactSchema.parse({...old,state:"failed",version:PositiveIntSchema.parse(old.version+1)});save(old,next);return {result:next,changes:1};
         });
       },
       insert(input: unknown) {
         const evidence = OperatorXlsxExportEvidenceSchema.parse(input); const json = canonicalJsonStringify(evidence);
-        return mutate(() => {
+        return mutate<{ state: "existing" | "inserted"; record: z.output<typeof OperatorXlsxExportEvidenceSchema> }>(() => {
           const old = get(`export:${evidence.exportId}`);
           if (old !== undefined && old.exportEvidenceJson === null) {
             if(old.registration===null||old.exportRequest===null||evidence.workbookVersion!==2||old.registration.requestedBy!==evidence.requestedBy||old.exportRequest?.selection.kind!==evidence.selection.kind)throw new Error("generated-export-publication-identity-conflict");
@@ -211,7 +211,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
               || (old.versions[0]?.state === "unavailable" && old.versions[0].sha256 !== evidence.artifact.sha256)) {
               throw new Error("generated-export-publication-identity-conflict");
             }
-            save(old,{...old,state:"ready",exportEvidenceJson:json,exportEvidenceFingerprint:sha256Hex(json),versions:[...old.versions,{state:"verified",artifact:evidence.artifact}],version:old.version+1});
+            save(old,{...old,state:"ready",exportEvidenceJson:json,exportEvidenceFingerprint:FingerprintSchema.parse(sha256Hex(json)),versions:[...old.versions,{state:"verified",artifact:evidence.artifact}],version:PositiveIntSchema.parse(old.version+1)});
             return {result:{state:"inserted" as const,record:evidence},changes:1};
           }
           if (old !== undefined) {

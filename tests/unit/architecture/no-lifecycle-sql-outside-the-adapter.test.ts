@@ -24,9 +24,6 @@ function mutator(declaration: ts.Declaration | undefined): boolean {
     || owner(declaration, "ArchivedRunRepository") && name === "insert"
     || owner(declaration, "DiagnosticBundleRepository") && name === "purge";
 }
-// D332/D336's sole stopped, transactional ordinal backfill; its import closure
-// is independently guarded by authority-upgrade-adapters-isolated.
-const BACKFILL_SQL = "UPDATE deleted_runs SET item_id=?, attempt=?, run_number=NULL, ordinal_source=?, record_json=json_set(record_json,'$.itemId',?,'$.attempt',?,'$.runNumber',NULL,'$.ordinalSource',?) WHERE record_key=? AND item_id IS NULL AND attempt IS NULL AND run_number IS NULL";
 // T/P7 permits only this one-time section enrichment inside the stopped converter.
 const ARCHIVE_SECTION_SQL = "UPDATE archived_runs SET transactions_json=?, transactions_digest=? WHERE record_key=? AND transactions_json IS NULL";
 const COMPLETION_SQL = "UPDATE workflow_runs SET record_json = ? WHERE record_key = ?";
@@ -88,8 +85,7 @@ function audit(fixtures = false): string[] {
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
-        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node)
-        && !(relative === "src/infra/compat/settings-database-upgrade.ts" && ts.isStringLiteralLike(node) && node.text === BACKFILL_SQL)) report("sql");
+        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
         ? checker.getResolvedSignature(node)?.declaration : undefined;
@@ -130,7 +126,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.equal(check("src/infra/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
     assert.equal(check("src/infra/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
   });
-  it("limits lifecycle writes to the service/adapter and exact stopped ordinal backfill", () => { assert.deepEqual(audit(), []); });
+  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); });
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);

@@ -1,3 +1,4 @@
+import { TerminalAuthorizationRecordSchema } from "../../src/domain/run/terminal-authorization.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { completionFromAuthorization } from "../../src/domain/run/completion.js";
 import assert from "node:assert/strict";
@@ -248,7 +249,7 @@ describe("atomic failure terminal authority", () => {
     });
     assert.deepEqual(database.authority.failures.get(UUID_6), record);
     assert.deepEqual(database.authority.failures.listByRun(RUN_ID), [record]);
-    assert.deepEqual(database.authority.runs.get(RUN_ID)?.completion, completionFromAuthorization(request.authorization));
+    assert.deepEqual(database.authority.runs.get(RUN_ID)?.completion, completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(request.authorization)));
     assert.equal(database.terminalizeFailure(personLookupDescriptor, request).state, "replayed");
     assert.throws(
       () => database.terminalizeFailure(personLookupDescriptor, {
@@ -439,7 +440,7 @@ describe("atomic success terminal authority", () => {
     assert.equal(applied.state, "applied");
     assert.deepEqual(applied.run.lifecycle, { state: "terminal", outcome: "done", endedAt: LATER });
     assert.deepEqual(database.authority.runResults.get(RUN_ID), result);
-    assert.deepEqual(database.authority.runs.get(RUN_ID)?.completion, completionFromAuthorization(authorization));
+    assert.deepEqual(database.authority.runs.get(RUN_ID)?.completion, completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(authorization)));
     assert.equal(database.terminalizeSuccess(request).state, "replayed");
     assert.throws(
       () => database.terminalizeSuccess({
@@ -668,7 +669,7 @@ describe("C P2 public settlement write boundaries", () => {
         const request = { kind, commandId: "99000000-0000-4000-8000-000000000011",
           terminal: built === undefined ? { failure: failure(running), authorization: failureAuthorization(running) }
             : { result: built.result, authorization: built.authorization } };
-        const service = new RunRecordService({ database, clock: CLOCK, ids: { uuid: () => UUID_7 } });
+        const service = new RunRecordService({ database, clock: CLOCK, publishQueued: () => { throw new Error("unexpected queue publication"); }, ids: { uuid: () => UUID_7 } });
         const raw = new DatabaseSync(join(roots.at(-1) ?? "", "authority.sqlite"));
         try {
           const before = database.getMeta(); const events = database.authority.timelineEvents.page({});
@@ -687,7 +688,7 @@ describe("C P2 public settlement write boundaries", () => {
           // Discard the acknowledgement and replay through an independently opened connection.
           const reopened = AuthorityDatabase.open({ path: join(roots.at(-1) ?? "", "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "c-replay" }, CLOCK);
           try {
-            const replay = new RunRecordService({ database: reopened, clock: CLOCK, ids: { uuid: () => UUID_7 } });
+            const replay = new RunRecordService({ database: reopened, clock: CLOCK, publishQueued: () => { throw new Error("unexpected queue publication"); }, ids: { uuid: () => UUID_7 } });
             const generation = reopened.getMeta().authorityGeneration;
             assert.equal(replay.terminalize(request, personLookupDescriptor).state, "applied-already");
             assert.deepEqual(reopened.authority.runs.get(RUN_ID), settled);

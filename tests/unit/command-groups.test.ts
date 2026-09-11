@@ -21,7 +21,7 @@ const opened: AuthorityDatabase[] = [];
 const now = "2026-09-08T12:00:00.000Z";
 const clock = manualClock(new Date(now));
 afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(historicalVersion?: 34 | 35 | 36) {
+function fixture(historicalVersion?: 34 | 35 | 36 | 46) {
   const root = mkdtempSync(join(tmpdir(), "command-groups-")); roots.push(root);
   const stateRoot = join(root, ".tracker"); mkdirSync(stateRoot, { mode: 0o700 });
   const path = join(stateRoot, "state.db");
@@ -30,7 +30,7 @@ function fixture(historicalVersion?: 34 | 35 | 36) {
     const raw = new DatabaseSync(path);
     try {
       for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= historicalVersion)) for (const sql of migration.statements) raw.exec(sql);
-      raw.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,?,7,?)").run(historicalVersion, now);
+      raw.prepare(`INSERT INTO ${historicalVersion >= 39 ? "database_state" : "authority_meta"}(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,?,7,?)`).run(historicalVersion, now);
       raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(historicalVersion)}`);
     } finally { raw.close(); }
   }
@@ -67,6 +67,24 @@ function seedHistorical(f: ReturnType<typeof fixture>, count: number, collision?
     }
     return { parent, commands: raw.prepare("SELECT record_key,record_json FROM commands ORDER BY record_key").all(), audits: raw.prepare("SELECT * FROM command_audits ORDER BY record_key").all(), manifests: raw.prepare("SELECT * FROM delegation_manifests").all(), dependencies: raw.prepare("SELECT * FROM dependencies").all() };
   } finally { raw.close(); }
+}
+
+/** Retained supported facts: parent membership and journal bytes are explicit fixture input. */
+function supportedFixture(before: ReturnType<typeof seedHistorical>) {
+  const f = fixture(46), raw = new DatabaseSync(f.path);
+  try {
+    raw.prepare("INSERT INTO commands(record_key,family,record_json,created_at) VALUES (?,?,?,?)").run(before.parent.bulkCommandId,"bulk-parent",JSON.stringify({kind:"bulk-parent",commandId:before.parent.bulkCommandId,acceptance:before.parent}),now);
+    for (const row of before.commands) raw.prepare("INSERT INTO commands(record_key,family,record_json,created_at,parent_command_id) VALUES (?,?,?,?,?)").run(String(row.record_key),"run",String(row.record_json),now,before.parent.bulkCommandId);
+    for (const row of before.audits) raw.prepare("INSERT INTO command_audits VALUES (?,?,?,?)").run(...Object.values(row));
+    for (const row of before.manifests) raw.prepare("INSERT INTO run_delegations VALUES (?,?,?)").run(...Object.values(row));
+    for (const row of before.dependencies) raw.prepare("INSERT INTO delegation_dependencies VALUES (?,?,?,?)").run(...Object.values(row));
+  } finally { raw.close(); }
+  return f;
+}
+async function refuseHistorical(f: ReturnType<typeof fixture>) {
+  const before = readFileSync(f.path);
+  for (const plan of [true,false]) await assert.rejects(upgradeStorage({...f.input,plan},clock),/authority-below-floor.*original compatible release/u);
+  assert.deepEqual(readFileSync(f.path),before);
 }
 
 describe("command groups", () => {
@@ -134,7 +152,7 @@ describe("command groups", () => {
     assert.equal(credentials.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: saved.parent.bulkCommandId, commandFingerprint: "b".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-historical-credential" } }, updatedAt: now })).state, "applied");
     await backupStoppedAuthority(historical.stateRoot, clock);
     const before = readFileSync(historical.path);
-    await assert.rejects(upgradeStorage(historical.input, clock), /parent identity collision/);
+    await assert.rejects(upgradeStorage(historical.input, clock), /authority-below-floor.*original compatible release/u);
     assert.deepEqual(readFileSync(historical.path), before);
   });
 
@@ -169,10 +187,12 @@ describe("command groups", () => {
     assert.throws(() => inspectAuthorityBackupReadOnly(f.path), /command-group child linkage mismatch/);
   });
 
-  it.each(([34, 35, 36] as const).flatMap((version) => [0, 1, 2].map((count) => ({ version, count }))))("converts $count schema-$version children, preserves exact journal/delegation bytes, rehearses read-only and settles once", async ({ version, count }) => {
-    const f = fixture(version); const before = seedHistorical(f, count);
-    const oldInspection = inspectAuthorityBackupReadOnly(f.path);
+  it.each(([34, 35, 36] as const).flatMap((version) => [0, 1, 2].map((count) => ({ version, count }))))("refuses expired schema-$version, preserves $count retained children through supported recovery, rehearses read-only and settles once", async ({ version, count }) => {
+    const historical = fixture(version); const before = seedHistorical(historical, count);
+    const oldInspection = inspectAuthorityBackupReadOnly(historical.path);
     assert.equal(oldInspection.schemaVersion, version);
+    await refuseHistorical(historical);
+    const f = supportedFixture(before);
     await backupStoppedAuthority(f.stateRoot, clock);
     const bytes = readFileSync(f.path);
     assert.equal((await upgradeStorage({ ...f.input, plan: true }, clock)).state, "planned");
@@ -205,19 +225,21 @@ describe("command groups", () => {
   it.each(([34, 35, 36] as const).flatMap((version) => (["parent", "child"] as const).map((collision) => ({ version, collision }))))("refuses schema-$version $collision identity collisions before any conversion effects", async ({ version, collision }) => {
     const f = fixture(version); seedHistorical(f, 1, collision); await backupStoppedAuthority(f.stateRoot, clock);
     const before = readFileSync(f.path);
-    await assert.rejects(upgradeStorage({ ...f.input, plan: true }, clock), /command-group migration/);
-    await assert.rejects(upgradeStorage(f.input, clock), /command-group migration/);
+    await assert.rejects(upgradeStorage({ ...f.input, plan: true }, clock), /authority-below-floor.*original compatible release/u);
+    await assert.rejects(upgradeStorage(f.input, clock), /authority-below-floor.*original compatible release/u);
     assert.deepEqual(readFileSync(f.path), before);
   });
 
-  it.each([34, 35, 36] as const)("rolls back populated schema-%s conversion before commit and resumes after commit without duplicate parents", async (version) => {
-    const f = fixture(version); seedHistorical(f, 1); await backupStoppedAuthority(f.stateRoot, clock);
+  it.each([34, 35, 36] as const)("refuses expired schema-%s then rolls back/resumes populated supported conversion without duplicate parents", async (version) => {
+    const historical = fixture(version), saved = seedHistorical(historical, 1);
+    await refuseHistorical(historical);
+    const f = supportedFixture(saved); await backupStoppedAuthority(f.stateRoot, clock);
     const before = readFileSync(f.path);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("before-conversion-commit"); } } }, clock), /before-conversion-commit/);
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("after-conversion-commit"); } } }, clock), /after-conversion-commit/);
     const inspection = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(inspection.schemaVersion, 40);
+    assert.equal(inspection.schemaVersion, 50);
     assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
     const raw = new DatabaseSync(f.path); try { assert.equal(raw.prepare("SELECT count(*) AS count FROM commands WHERE family='bulk-parent'").get()?.count, 1); } finally { raw.close(); }
   });
