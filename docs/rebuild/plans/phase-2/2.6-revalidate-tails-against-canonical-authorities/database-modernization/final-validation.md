@@ -10,7 +10,7 @@ retains its original proof and handover requirements. Historical numeric aliases
 
 Phase 2.6 has one finalization task. Earlier scoped releases are not full acceptance; this supervisor
 owns all remaining repairs, full gates, independent review, integration and cleanup. No repair
-handbacks or successor dispatch. Implementation is in progress; see the [repaired candidate gate record](#repaired-candidate-gate-record--2026-09-11) and approved amendments below. This approval supersedes the earlier
+handbacks or successor dispatch. Implementation is in progress; see the [current custody correction gates and review boundary](#custody-correction-gates--2026-09-11) and approved amendments below. This approval supersedes the earlier
 one-complete-reviewer and Astra/high supervisor allocation for this assignment only.
 
 ## Assignment and verified inputs
@@ -980,3 +980,125 @@ been accepted. F06/F07, local master integration, fixture/contract handover acce
 cleanup remain open. Runtime gate reuse for the following evidence-only documentation commit is
 bound to unchanged source/test/configuration/dependency/reference bytes; document links, binding,
 existing twins, generated freshness and whitespace are checked separately.
+
+### Second review interruption and custody corrections — 2026-09-11
+
+Continuation uses the operator-requested Astra/xhigh supervisor. No implementation workers were
+used. The frozen repaired candidate was `41067ea4721dcdd14c4a135654df0b7ebac036da`, tree
+`6985e255d1f270f86746f57f5273d2721c6c3ce5`, against complete review base
+`0df282e45efab2e5a4768386b5c4d5202a7cfc93`. Fresh native Astra/high R1a, R1b and R2a all exhausted
+before complete coverage and returned **BLOCKED**. Their final identity checks were clean; no
+partial inspection grants acceptance. They are closed to substantive continuation. Remaining five
+focused scopes and R5 were not dispatched. Exact inspected/uncovered boundaries and probe evidence
+are in external `review-blocked-eight.md`; the original three blocked reviews/findings remain in
+`review-blocked-verdicts.md`. Six native review attempts have now failed fit across two allocations.
+
+The narrower briefs removed duplicated historical reading and partitioned large shared modules, but
+actual review still exhausted on runtime callers/tests, recovery and cross-boundary reconciliation.
+The eight-scope fit assessment is disproved by those outcomes. An unchanged fresh retry, a missed-tail
+review or combining partial verdicts is not admitted. The supervisor continues authorized repairs and
+gates while complete independent acceptance remains open.
+
+| Finding | Frozen-candidate counterexample and correction |
+| --- | --- |
+| R1b-RESTORE-BYTES | Changing a pending-only pair attachment after live restore returned success, removed the recovery marker and left a different SHA. Final paired settlement now verifies every copied manifest attachment, including pending captures without archive rows. Mutation before copying and after file replacement must refuse, retain the boot-blocking marker, then recover through the exact corrected pair. |
+| R1b-RESTORE-CUSTODY | Selecting a schema-50 live manifest with a pending claim while archive.sqlite was quarantined returned restored/exit 0 with the archive still absent. Current single-half admission now inspects selected backup custody before quarantine/replacement. Published transfers and pending claims refuse by `paired-lifecycle-backup-required`; valid paired controls restore both stores/files and retain exact replay. |
+| R2a-CUSTODY-RACE | A second connection settled deletion while the first held an uncommitted capture claim. It saw no pending owner, removed shared bytes and left a committed applying claim with `archive-file-unavailable`. Settlement now holds the main authority write transaction through ownership inspection and archive unlinking, serializing with claim acquisition. A two-connection test proves lock refusal before deletion, successful settlement after claim commit, shared byte retention and exact apply continuation. |
+
+All three are implementation defects within already approved P2/P6 custody requirements; no new
+lifecycle identity, scope or operator write is introduced. `R-custody-red` records all five newly
+added regression cases failing before repairs. The first repaired focused run passed 150 cases across
+10 files. Its typecheck exposed an unbranded manifest digest and an invalid synthetic isolation layout;
+the correction validates the file schema and supplies a real `.tracker` fixture layout. No assertion
+or runtime isolation contract was weakened. Renewed gates and candidate identity are recorded below
+when complete. F06/F07, review acceptance, local merge, handover and cleanup remain open.
+
+#### Proposed standalone review amendment — awaiting operator approval
+
+Replace the failed eight native focused assignments with **one fresh complete standalone review**,
+then retain a **separate fresh R5 integration review**. Both use Astra/high and independent root tasks
+with explicit checkpointed continuation across automatic compaction. This format replaces the eight
+focused PASS requirements only if the operator approves it; no current acceptance is inherited.
+Create the complete review task only after approval. Dispatch R5 only after complete review PASS and
+resolution of every required finding. The supervisor remains the sole implementer and finalizer.
+
+The complete reviewer owns the full original base-to-candidate inventory, F01–F07, P1–P8, all approved
+amendments, prior findings, removed behavior, generated/reference dispositions, exact gate inputs,
+prerequisites and target-master differences. The existing eight-scope map remains a coverage index,
+not eight separate acceptance claims. Read the primary code/contracts before reconciling prior
+findings. R5 independently checks complete coverage and cross-boundary wiring, ordering, transaction
+and recovery custody, identity/privacy, production composition and integration; it must not merely
+summarize the complete review. Neither reviewer may delegate, edit candidate files, run mutating tests,
+access operator/legacy state, perform HR writes or merge. Necessary validation returns to this
+supervisor on the frozen candidate.
+
+Each root review may write only its own external evidence checkpoint: exact base/head/tree and clean
+checkout identity; per-path/proof inspected/uninspected states with primary evidence; open findings,
+prior-finding dispositions and next checks. Before and after compaction, reverify branch/head/tree/
+dirty state and reconcile the checkpoint against Git; reopen uncertain or changed evidence. Summaries
+alone cannot establish acceptance. A final PASS requires the entire assigned scope, no unresolved
+required finding, all mandatory proof and a final identity check. BLOCKED stays open. Repairs are made
+here, gated and committed, then independently reviewed under the existing affected-scope/fresh-review
+rules. Integration/cleanup, the no-push/no-operator-application boundaries and stop-after-2.6.9 remain.
+
+The full review spans hundreds of substantive production/test paths and hundreds of generated assets.
+Checkpointed root review addresses demonstrated context exhaustion without further shrinking ownership
+or dropping checks. R5 also needs checkpointed recovery because its whole-plan integration scope has
+not demonstrated native-context fit. This is a proposed format/dispatch amendment, not permission to
+change any native agent's compaction restriction or to create tasks before operator approval.
+
+### Custody correction gates — 2026-09-11
+
+Current implementation commit: `75ad924396fcdba9a6d24932d6d58cc9c1191090`. Six source/test paths comprise the
+three custody corrections and regression fixtures. Every required gate passed on the same source,
+test, configuration, dependency and reference bytes before commitment. Gate receipts record the
+starting HEAD `41067ea4721dcdd14c4a135654df0b7ebac036da` plus the full dirty-candidate per-file input
+manifest; `R-custody-gate-summary.json` verifies correspondence to the committed correction. Combined
+input-manifest SHA-256: `0005cdf48c036e54bc3f9fdd2846f62047e205f1044d76f2a3a2de7f6ba86ac5`.
+
+| Required gate | Current result / external receipt |
+| --- | --- |
+| Typecheck / lint | `R-custody-typecheck-ready`, `R-custody-lint-ready`: PASS. Earlier failed typechecks retain the branded-digest, invalid isolation and shared-fixture return-shape diagnoses; the final fixture uses real rebuild isolation without changing existing helper return requirements. |
+| Full coverage | `R-custody-coverage`: **493 files / 6,262 tests PASS**; statements 85.28%, branches 77.56%, functions 89.37%, lines 88.16%; configured floors PASS. Duration 550.54 seconds, peak two file workers; no compiler/linter/benchmark contention. |
+| Suite accounting | `R-custody-suite-size`: 396 unit, 80 architecture, 17 scenario files. |
+| Explicit architecture | `R-custody-architecture`: 80 files / 848 tests PASS. |
+| Served / concurrency / static production | `R-custody-served`: 10 files / 235 tests PASS. |
+| Scenarios | `R-custody-scenarios`: 17 files / 135 tests PASS; isolated synthetic proof. |
+| Desktop parity / build | `R-custody-parity`: **274 PASS**, unchanged references and membership; `R-custody-build`: PASS. |
+| Dashboard / summary benchmarks | `R-custody-dashboard-benchmark`, `R-custody-summary-benchmark`: PASS under unchanged instruments, populations and bounds. Summary indexed query remains 21 statements / 25 returned rows / 11 summary rows at outside populations 100 and 1,000; heartbeat zero summary writes, update one. |
+| Generated freshness / whitespace | `R-custody-manifest`, `R-custody-stores`, `R-custody-roadmap`, `R-custody-diff`: PASS. |
+
+All fifteen receipts are exit zero; every observed worker peak is at most four. The resource-only
+adapter remains the approved import of the actual Vitest configuration, changing only root/project
+maxWorkers; the runtime equality assertion and `two-worker-config-proof.json` were renewed. The
+full gate sequence verified candidate input hashes before each downstream gate. Focused evidence:
+`R-custody-red` has five intended failures; `R-custody-focused-final` has 150 PASS; after the last
+fixture typing correction `R-custody-neighbors-ready` has 50 PASS and full coverage covers all cases.
+
+Handover preparation is verified, with release still pending: `R-custody-handover-assets.json` records
+six byte-identical original source/copy/backup assets and sixteen current migrated fixture hashes.
+`R-custody-table-handover.json` enumerates 37 current main and two archive tables, plus all 51 obsolete
+or renamed main names whose absence is asserted on fresh and supported 46–49 conversions. Floor 46,
+schema 50, immutable migrations 1–49, named below-floor refusal and paired recovery stay intact.
+`R-custody-prerequisites.json` rechecks all 21 recorded integration ancestors, including U/H and L
+retirement, and the V/U/H release receipts. This does not dispatch or release any 3.1 work.
+
+Current F06/F07 boundary: **implementation and required gates PASS; independent acceptance OPEN**.
+All six native review attempts remain BLOCKED, with no carry-forward acceptance. The proposed complete
+standalone review plus separate fresh R5 is awaiting operator approval; no new review task was created.
+No merge or cleanup acceptance is claimed. Primary master remains
+`80d38635cd3455c2e8c7c4525e0470e4f60ce1d8`, with all three unrelated file hashes unchanged in
+`R-custody-primary-preservation.json`. Candidate/evidence identity, gate-input reuse, final link/twin/
+binding/lint checks and the read-only integration preview are frozen in the external current packet.
+Only this evidence recording changes after the full gates; runtime checks are reused by verified
+unchanged inputs, not described as rerun on a later recording SHA.
+
+Provisional delivery assessment: the two native review allocations caused six observed context-limit
+interruptions and no scoped PASS; their fit claims failed in actual caller/proof inspection. The
+original capture/replay/privacy correction and this three-finding custody correction are two review-
+driven implementation repair rounds; mandatory gate renewal is separate from review resizing. This
+round's three defects violated existing custody requirements. Earlier negative proof at the final
+restore boundary and with competing SQLite handles would have exposed them before review. The
+standalone format proposal addresses demonstrated review capacity without dropping acceptance.
+These are observed lower-bound counts for the recorded rounds, not final task totals or estimated
+savings. Completion remains contingent on independent review, integration and owned cleanup.
