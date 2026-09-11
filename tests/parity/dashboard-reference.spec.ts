@@ -1,3 +1,4 @@
+import { SavedVersionIndexWireSchema } from "../../src/domain/dashboard/archive.js";
 /**
  * The ref frontend-backend-integration §7.1 reference set.
  *
@@ -48,6 +49,7 @@ import {
   FIXTURE_ACTIVITY_RANGE,
   FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
   FIXTURE_ARCHIVED_RUN_ID,
+  FIXTURE_SAVED_VERSIONS,
 } from "./helpers/fixture-archive.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
@@ -1185,6 +1187,13 @@ test.describe("version bump", () => {
   for (const theme of PARITY_THEMES) {
     test(`archive-version-bump @ ${theme.name}`, async ({ page }) => {
       const errors = failOnPageErrors(page);
+      const blocker="00000000-0000-4000-8000-000000000099";
+      const blocked=SavedVersionIndexWireSchema.parse({...FIXTURE_SAVED_VERSIONS,changes:[{
+        changeId:"00000000-0000-4000-8000-000000000098",state:"planned",targetVersion:"0.2.0",
+        change:{kind:"major",what:"Synthetic blocked version change",why:"A current run must finish before this reviewed archive transfer",commit:{state:"absent",reason:"Synthetic review"}},
+        reviewFingerprint:"a".repeat(64),scope:{kind:"workflows",workflowIds:["person-lookup"]},memberRunIds:[],blockerRunIds:[blocker],completedRunIds:[],
+      }]});
+      await page.route("**/api/v1/archive/versions",route=>route.fulfill({json:blocked}));
       await page.setViewportSize({ width: 1440, height: 900 });
       await installTheme(page, theme satisfies ParityTheme);
       await gotoAppState(page, server.baseUrl, {
@@ -1195,14 +1204,14 @@ test.describe("version bump", () => {
       await dismissWorkflowWindow(page);
       await assertThemeApplied(page, theme satisfies ParityTheme);
 
-      // The registry must actually be on screen before the trigger is pressed:
-      // a `Bump…` click against a still-loading table would either miss or
-      // photograph a dialog over a skeleton.
-      await expect(page.getByRole("table", { name: "Workflow version registry" })).toBeVisible();
-      await page.getByRole("button", { name: "Bump…" }).first().click();
-      await expect(page.getByRole("dialog")).toBeVisible();
-      await page.waitForTimeout(250);
-      expect(errors, "page errors while opening the version-bump dialog").toEqual([]);
+      await expect(page.getByRole("region",{name:"Versions and saved changes"})).toBeVisible();
+      await expect(page.getByRole("heading",{name:"Review a version change"})).toBeVisible();
+      await expect(page.getByRole("combobox",{name:"Change kind"})).toHaveValue("major");
+      await expect(page.getByRole("textbox",{name:"What changed"})).toHaveAttribute("maxlength","200");
+      await expect(page.getByRole("textbox",{name:"Why",exact:true})).toHaveAttribute("maxlength","1000");
+      await expect(page.getByRole("button",{name:"Apply reviewed change"})).toBeDisabled();
+      await expect(page.getByText(`Blocked by: ${blocker}`)).toBeVisible();
+      expect(errors,"page errors while opening the served version review").toEqual([]);
 
       await captureParityPair(page, REFERENCES, {
         stateId: "archive-version-bump",

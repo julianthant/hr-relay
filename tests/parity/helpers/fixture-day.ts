@@ -995,6 +995,11 @@ function failureDetail(runId: string, failureId: string, seed: number) {
   return {
     runId,
     failureId,
+    // D's current unresolved annotation; the seeded adapter derives the same control shape.
+    resolution: {
+      capability: { state: "available" },
+      capture: { runId, failureId, resolution: { status: "unresolved", version: 1 } },
+    },
     traceId: traceOf(seed),
     attempt: 1,
     workflowId: "person-lookup",

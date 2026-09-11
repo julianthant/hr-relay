@@ -54,7 +54,7 @@
       - text: Captured through (UTC)
       - textbox "Captured through (UTC)"
       - button "Clear filters"
-    - table:
+    - table "Saved reports":
       - rowgroup:
         - row "Report Outcome Completed":
           - columnheader "Report"
@@ -95,7 +95,7 @@
         - definition: Not recorded
       - region "Retained work":
         - heading "Retained work" [level=3]
-        - table:
+        - table "Retained work":
           - rowgroup:
             - row "Step Result":
               - columnheader "Step"

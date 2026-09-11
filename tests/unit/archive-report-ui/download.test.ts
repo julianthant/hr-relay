@@ -22,6 +22,7 @@ it.each([
   const host = document.createElement("div"); const root = createRoot(host);
   try { await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveReport, { report: H_REPORT }) })));
     expect(host.querySelector("a")?.getAttribute("href") ?? null).toBe(allowed ? url : null);
+    expect(host.querySelector("a")?.getAttribute("download") ?? null).toBe(allowed ? H_REPORT.files[0].name : null);
     if (!allowed) expect(host.querySelector('[role="alert"], [role="status"]')).not.toBeNull();
   } finally { await act(async () => root.unmount()); }
 });

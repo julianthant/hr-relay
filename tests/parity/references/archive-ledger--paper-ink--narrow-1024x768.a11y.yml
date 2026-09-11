@@ -1,7 +1,7 @@
 # archive-ledger--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: 6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -22,58 +22,53 @@
   - button "Switch to Graphite Warm"
   - button "Settings"
 - main:
-  - region "Archive":
-    - button "Back to the dashboard"
-    - text: Archive read-only
-    - group "Archive view":
-      - button "Archived runs" [pressed]
-      - button "Versions & bumps"
-    - heading "Archived runs" [level=2]
-    - text: 1 of 1
-    - button "Retention"
-    - group "Find an archived run":
-      - searchbox "Search archived runs by title, trace id or workflow"
-      - combobox "Workflow":
-        - option "Every workflow" [selected]
-        - option "Person Lookup"
-      - combobox "Final status":
-        - option "Any outcome" [selected]
-        - option "Done"
-      - combobox "Instance":
-        - option "Any instance" [selected]
-        - option "Production only"
-        - option "Touched a test instance"
-    - table "Archived runs":
+  - button "Back"
+  - text: Archive
+  - button "Saved reports" [pressed]
+  - button "Versions & bumps"
+  - button "Refresh"
+  - region "Saved reports":
+    - heading "Saved reports" [level=2]
+    - form "Filter saved reports":
+      - text: Workflow
+      - textbox "Workflow"
+      - text: Title
+      - textbox "Title"
+      - text: Version
+      - textbox "Version"
+      - text: Outcome
+      - combobox "Outcome":
+        - option "All outcomes" [selected]
+        - option "done"
+        - option "failed"
+        - option "cancelled"
+        - option "discarded"
+        - option "interrupted"
+        - option "superseded"
+      - text: Completed from (UTC)
+      - textbox "Completed from (UTC)"
+      - text: Completed through (UTC)
+      - textbox "Completed through (UTC)"
+      - text: Captured from (UTC)
+      - textbox "Captured from (UTC)"
+      - text: Captured through (UTC)
+      - textbox "Captured through (UTC)"
+      - button "Clear filters"
+    - table "Saved reports":
       - rowgroup:
-        - row "Outcome Name Trace When Ran for":
-          - columnheader "Outcome":
-            - button "Outcome"
-          - columnheader "Name":
-            - button "Name"
-          - columnheader "Trace":
-            - button "Trace"
-          - columnheader "When":
-            - button "When"
-          - columnheader "Ran for":
-            - button "Ran for"
+        - row "Report Outcome Completed":
+          - columnheader "Report"
+          - columnheader "Outcome"
+          - columnheader "Completed"
       - rowgroup:
-        - row "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major pl v2 → 0.1.0 aa11bb22 3:00 AM 1 About this bump — pl v2 → 0.1.0":
-          - cell "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major":
-            - button "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major" [expanded]
-          - cell "pl v2 → 0.1.0"
-          - cell "aa11bb22"
-          - cell "3:00 AM"
-          - cell "1 About this bump — pl v2 → 0.1.0":
-            - text: "1"
-            - button "About this bump — pl v2 → 0.1.0"
-        - row "Done EID 10873698 · pl v1 pl-090400-aa11 2:21 AM 17m 0s":
+        - row "Synthetic saved lookup retired-synthetic-workflow · v1 Done 2026-08-03T09:21:00.000Z":
+          - cell "Synthetic saved lookup retired-synthetic-workflow · v1":
+            - button "Synthetic saved lookup"
+            - paragraph: retired-synthetic-workflow · v1
           - cell "Done"
-          - cell "EID 10873698 · pl v1":
-            - button "EID 10873698 · pl v1"
-          - cell "pl-090400-aa11"
-          - cell "2:21 AM"
-          - cell "17m 0s"
-    - text: Nothing selected Pick an archived run on the left to see its stored snapshot.
+          - cell "2026-08-03T09:21:00.000Z"
+  - region "Selected saved report":
+    - paragraph: Select a saved report.
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

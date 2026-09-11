@@ -1,10 +1,11 @@
+import { startFailureResolutionServer } from "../../parity/helpers/fixture-failure-resolution.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "vitest";
-import { ArchiveIndexWireSchema, ArchivedCaptureResourceWireSchema, ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveReportWireSchema, ArchiveIndexWireSchema, ArchivedCaptureResourceWireSchema, ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { archivedRunContentDigest, ArchivedRunRecordSchema } from "../../../src/domain/archive/model.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
 import { FIXTURE_ARCHIVED_RUN, FIXTURE_ARCHIVE_INDEX, FIXTURE_ARCHIVED_RUN_ID } from "../../parity/helpers/fixture-archive.js";
@@ -227,4 +228,45 @@ describe("the archive-evidence fixture", () => {
     assert.equal(FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.dimensions?.width, 1440);
     assert.equal(FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.dimensions?.height, 900);
   });
+});
+
+it("routes current native report files to the API and never to static fallback",async()=>{
+  const distDir=mkdtempSync(join(tmpdir(),"saved-archive-http-"));
+  const runId=FIXTURE_ARCHIVE_EVIDENCE_RUN.runId,digest=FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.digest;
+  const path=`/artifacts/v1/archive/${runId}/files/${digest}`;
+  try {
+    writeStaticProbe(distDir,path.slice(1),"must-not-serve-static");
+    const server=await startFixtureServer({distDir,bundle:{proof:"unverified",reason:"native file dispatcher regression"},
+      savedArchiveFileResponse:(requestedRun,requestedDigest)=>requestedRun===runId&&requestedDigest===digest
+        ?new Response(new Uint8Array(FIXTURE_ARCHIVE_EVIDENCE_BYTES).buffer,{headers:{"content-type":"image/png"}})
+        :new Response("unknown retained member",{status:404})});
+    try {
+      const response=await fetch(`${server.baseUrl}${path}`);assert.equal(response.status,200);
+      assert.deepEqual(new Uint8Array(await response.arrayBuffer()),FIXTURE_ARCHIVE_EVIDENCE_BYTES);
+      assert.equal((await fetch(`${server.baseUrl}/artifacts/v1/archive/${runId}/files/${"0".repeat(64)}`)).status,404);
+      assert.ok(server.artifactExchanges().some(row=>row.pathname===path&&row.status===200));
+    }finally{await server.close();}
+  }finally{rmSync(distDir,{recursive:true,force:true});}
+});
+
+
+it("serves the frozen redacted resolution through the current saved-report HTTP route", async () => {
+  const root = mkdtempSync(join(tmpdir(), "resolution-report-http-"));
+  const server = await startFailureResolutionServer({ distDir: root,
+    bundle: { proof: "unverified", reason: "HTTP regression without browser rendering" } });
+  try {
+    assert.equal((await server.externalAction("resolve", "SYNTHETIC_PRIVATE_NOTE")).state, "applied");
+    const archivedId = server.captureArchive();
+    const route = `${server.baseUrl}/api/v1/archive/reports/${archivedId}`;
+    const response = await fetch(route);
+    assert.equal(response.status, 200);
+    const bytes = await response.text();
+    const report = SavedArchiveReportWireSchema.parse(JSON.parse(bytes));
+    assert.equal(report.runId, archivedId);
+    assert.equal(bytes.includes("SYNTHETIC_PRIVATE_NOTE"), false);
+    assert.equal(bytes.includes("Protected resolution note withheld."), true);
+    assert.equal((await server.externalAction("reopen")).state, "applied");
+    assert.equal(await (await fetch(route)).text(), bytes);
+    assert.equal(server.reads(), 0);
+  } finally { await server.close(); rmSync(root, { recursive: true, force: true }); }
 });

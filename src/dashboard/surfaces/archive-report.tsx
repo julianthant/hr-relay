@@ -15,7 +15,7 @@ export function SavedArchiveReport({ report }: { report: SavedArchiveReportWire 
       <h3 className={dsText.ui}>{section.title}</h3>
       {section.kind === "unavailable" ? <p>{section.reason}</p> : section.kind === "text" ? <pre className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</pre>
         : section.kind === "values" ? <dl>{section.values.map((cell, n) => <div key={n} className="grid grid-cols-2 gap-[var(--ds-space-base)] border-b py-[var(--ds-space-tight)]"><dt className="break-words">{cell.label}</dt><dd className="break-words">{savedCell(cell.value)}</dd></div>)}</dl>
-          : <div className="overflow-auto"><Table aria-label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}>{savedCell(cell)}</TD>)}</TR>)}</TBody></Table></div>}
+          : <div className="overflow-auto"><Table label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}>{savedCell(cell)}</TD>)}</TR>)}</TBody></Table></div>}
     </section>)}
     {report.versionChange !== undefined && <section aria-label="Recorded version change"><h3 className={dsText.ui}>{report.versionChange.change.what}</h3>
       <p>{report.versionChange.change.why}</p><p>Reviewed {report.versionChange.reviewedAt} · Started {report.versionChange.startedAt}</p><p>Scope: {report.versionChange.scope.kind === "application" ? `Application ${report.versionChange.scope.applicationVersion}` : report.versionChange.scope.workflowIds.join(", ")}</p><p>{report.versionChange.change.kind} · target {report.versionChange.targetVersion} · applied by {report.versionChange.appliedBy}</p>
@@ -33,7 +33,7 @@ function SavedAttachment({ runId, digest, name }: { runId: string; digest: strin
   if (resource.state === "loading") return <p role="status">Checking {name}…</p>;
   if (resource.state === "error") return <p role="alert">{name}: {resource.message}</p>;
   const file = resource.value;
-  return file.state === "available" ? <ButtonLink href={file.downloadUrl} icon={<Download />}>{name}</ButtonLink>
+  return file.state === "available" ? <ButtonLink href={file.downloadUrl} download={name} icon={<Download />}>{name}</ButtonLink>
     : <p role="status">{name}: {file.state === "missing" ? file.reason : file.message}</p>;
 }
 function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: string; nonce: number; onChanged: () => void; onArchive: () => void }) {
@@ -42,13 +42,20 @@ function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: stri
   const resource = useSavedResource(read, nonce);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const execute = (request: unknown) => {
+  const [appliedChanges,setAppliedChanges]=useState<ReadonlySet<string>>(new Set());
+  const pending=useRef(false);
+  const execute = (request: unknown, changeId?:string) => {
+    if(pending.current)return;
+    pending.current=true;
     setBusy(true);
     void client.executeCommand(request).then(result => {
       const settled = settleCommandResult(result);
       setMessage(settled.kind === "applied" ? "Version change saved. The list is refreshing." : settled.problem);
-      if (settled.kind === "applied") onChanged();
-    }, (error: unknown) => setMessage(error instanceof Error ? error.message : "Version command failed.")).finally(() => setBusy(false));
+      if (settled.kind === "applied") {
+        if(changeId!==undefined)setAppliedChanges(prior=>new Set([...prior,changeId]));
+        onChanged();
+      }
+    }, (error: unknown) => setMessage(error instanceof Error ? error.message : "Version command failed.")).finally(() => {pending.current=false;setBusy(false);});
   };
   return <Panel aria-label="Versions and saved changes"><PanelBody className={`${dsText.body} space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]`}>
     {resource.state === "loading" ? <p role="status">Loading versions…</p> : resource.state === "error" ? <p role="alert">{resource.message}</p>
@@ -57,7 +64,7 @@ function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: stri
         {resource.value.changes.map(change => <section key={change.changeId} className="border-b py-[var(--ds-space-cozy)]">
           <h3>{change.change.what}</h3><p>{change.change.why}</p><p>{change.state} · target {change.targetVersion} · {change.memberRunIds.length} reviewed runs · {change.completedRunIds.length} archived</p>
           {change.blockerRunIds.length > 0 && <p role="status">Blocked by: {change.blockerRunIds.join(", ")}</p>}
-          {(change.state === "planned" || change.state === "applying") && <Button disabled={busy || change.blockerRunIds.length > 0} onClick={() => execute({ ...savedCommandEnvelope(actorId), type: "apply-version-bump", target: { versionPlanId: change.changeId, expectedVersion: 1 }, payload: { planFingerprint: change.reviewFingerprint } })}>Apply reviewed change</Button>}
+          {(change.state === "planned" || change.state === "applying") && !appliedChanges.has(change.changeId) && <Button disabled={busy || change.blockerRunIds.length > 0} onClick={() => execute({ ...savedCommandEnvelope(actorId), type: "apply-version-bump", target: { versionPlanId: change.changeId, expectedVersion: 1 }, payload: { planFingerprint: change.reviewFingerprint } },change.changeId)}>Apply reviewed change</Button>}
         </section>)}</>}
     {message && <div role="status"><pre className="whitespace-pre-wrap break-words">{message}</pre><Button onClick={onArchive}>Open the archive</Button></div>}
   </PanelBody></Panel>;
@@ -99,7 +106,7 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
   const detail = useSavedResource(detailRead, nonce);
   return <div className="flex min-h-0 flex-1 flex-col">
     <PageHeader title="Archive" icon={<Archive />} back={<Button icon={<ArrowLeft />} onClick={onClose}>Back</Button>} actions={<><Button aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button><Button aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button><Button icon={<RefreshCw />} onClick={refresh}>Refresh</Button></>} />
-    {view === "versions" ? <SavedVersions actorId={actorId} nonce={nonce} onChanged={refresh} onArchive={() => onView("runs")} />
+    {view === "versions" ? <SavedVersions actorId={actorId} nonce={nonce} onChanged={refresh} onArchive={() => {setQuery({limit:50});onSelection("");onView("runs");}} />
       : <div className="grid min-h-0 flex-1 grid-cols-2 gap-[var(--ds-space-base)] overflow-auto p-[var(--ds-space-base)]">
         <Panel aria-label="Saved reports"><PanelHeader title="Saved reports" headingLevel={2} /><PanelBody className={`${dsText.body} min-w-0 space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]`}>
           <form aria-label="Filter saved reports" className="grid grid-cols-2 gap-[var(--ds-space-base)]" onSubmit={event => event.preventDefault()}>
@@ -120,7 +127,7 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
 }
 function SavedReportList({ index, selection, onSelection, onNext }: { index: SavedArchiveIndexWire; selection: string; onSelection: (id: string) => void; onNext: () => void }) {
   if (index.items.length === 0) return <p>No saved reports match this query.</p>;
-  return <><Table aria-label="Saved reports"><THead><TR><TH>Report</TH><TH>Outcome</TH><TH>Completed</TH></TR></THead><TBody>{index.items.map(report => <TR key={report.runId}><TD><Button aria-pressed={selection === report.runId} onClick={() => onSelection(report.runId)}>{report.title}</Button><p>{report.workflow} · v{report.descriptorVersion}</p></TD><TD>{report.outcome === "done" || report.outcome === "failed" || report.outcome === "cancelled" ? <StatusPill status={dsStatusOf(report.outcome)} /> : report.outcome}</TD><TD>{report.completedAt}</TD></TR>)}</TBody></Table>{index.next !== null && <Button onClick={onNext}>Next reports</Button>}</>;
+  return <><Table label="Saved reports"><THead><TR><TH>Report</TH><TH>Outcome</TH><TH>Completed</TH></TR></THead><TBody>{index.items.map(report => <TR key={report.runId}><TD><Button aria-pressed={selection === report.runId} onClick={() => onSelection(report.runId)}>{report.title}</Button><p>{report.workflow} · v{report.descriptorVersion}</p></TD><TD>{report.outcome === "done" || report.outcome === "failed" || report.outcome === "cancelled" ? <StatusPill status={dsStatusOf(report.outcome)} /> : report.outcome}</TD><TD>{report.completedAt}</TD></TR>)}</TBody></Table>{index.next !== null && <Button onClick={onNext}>Next reports</Button>}</>;
 }
 
 function SavedArchiveDeletion({ report, actorId, onDeleted }: { report: SavedArchiveReportWire; actorId: string; onDeleted: (runId: string) => void }) {
@@ -137,8 +144,8 @@ function SavedArchiveDeletion({ report, actorId, onDeleted }: { report: SavedArc
     request.current ??= { ...savedCommandEnvelope(actorId), type: "delete-archived-run", target: { archivedRunId: report.runId, archiveFingerprint: report.archiveFingerprint } };
     void client.executeCommand(request.current).then(result => {
       const settled = settleCommandResult(result);
-      if (settled.kind === "applied") onDeleted(report.runId); else if (active.current) setProblem(settled.problem);
+      if (settled.kind === "applied") onDeleted(report.runId); else if (active.current) setProblem(settled.reason === "rejected" ? `That command was refused (code ${settled.code}). ${settled.message} Nothing was changed.` : settled.problem);
     }, (error: unknown) => { if (active.current) setProblem(error instanceof Error ? error.message : "Deletion failed."); }).finally(() => { pending.current = false; if (active.current) setBusy(false); });
   };
-  return <section aria-label="Delete saved report">{confirming ? <><p>Delete this saved report and its exclusively owned retained files? This cannot be undone.</p><Button disabled={busy} onClick={remove}>Confirm deletion</Button><Button disabled={busy} onClick={() => setConfirming(false)}>Keep report</Button></> : <Button onClick={() => setConfirming(true)}>Delete saved report</Button>}{problem && <p role="alert">{problem}</p>}</section>;
+  return <section aria-label="Delete saved report">{confirming ? <><p>Delete this saved report and its exclusively owned retained files? This cannot be undone.</p><p>Deleting this report also deletes its retained transaction evidence. If no other run owns its permanent idempotency keys, those keys are released; a later run could submit the same write again.</p><Button disabled={busy} onClick={remove}>Confirm deletion</Button><Button disabled={busy} onClick={() => setConfirming(false)}>Keep report</Button></> : <Button onClick={() => setConfirming(true)}>Delete saved report</Button>}{problem && <p role="alert">{problem}</p>}</section>;
 }

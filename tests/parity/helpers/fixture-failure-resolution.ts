@@ -2,10 +2,10 @@
 import { createServer, request as proxyRequest } from "node:http";
 import { resolutionApp, resolutionFixture, resolutionPeer, resolutionCommand, resolutionReadDeps } from "../../unit/failure-resolution/fixtures.js";
 import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
-import { ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { startFixtureServer } from "./fixture-bff.js";
 import { FIXTURE_IDS } from "./fixture-day.js";
-import { FIXTURE_ARCHIVED_RUN } from "./fixture-archive.js";
+import { FIXTURE_ARCHIVED_RUN, FIXTURE_SAVED_REPORT } from "./fixture-archive.js";
 import type { ParityBundleProof } from "./bundle.js";
 
 export async function startFailureResolutionServer(input: { distDir: string; bundle: ParityBundleProof }) {
@@ -42,7 +42,7 @@ export async function startFailureResolutionServer(input: { distDir: string; bun
       })().catch(error => { res.writeHead(500); res.end(String(error)); });
       return;
     }
-    if (path === `/api/v1/archive/${FIXTURE_ARCHIVED_RUN.runId}` && archived !== undefined) {
+    if (path === `/api/v1/archive/reports/${FIXTURE_ARCHIVED_RUN.runId}` && archived !== undefined) {
       res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(archived)); return;
     }
     const proxy = proxyRequest(`${base.baseUrl}${req.url}`, { method: req.method, headers: req.headers }, upstream => {
@@ -71,10 +71,19 @@ export async function startFailureResolutionServer(input: { distDir: string; bun
       if (section.section !== "failure" || section.payload.state !== "available") throw new Error("missing failure capture");
       const value = section.payload.value;
       // Presentation-only saved snapshot fixture; archive conversion is L/A/H's proof.
-      archived = ArchivedRunDetailWireSchema.parse({ ...FIXTURE_ARCHIVED_RUN, failure: { state: "present", value: {
-        ...value, runId: FIXTURE_ARCHIVED_RUN.runId,
-        resolution: value.resolution === undefined ? undefined : { ...value.resolution, capture: { ...value.resolution.capture, runId: FIXTURE_ARCHIVED_RUN.runId } },
-      } } });
+      if (value.resolution === undefined) throw new Error("missing resolution capture");
+      const resolution = value.resolution.capture.resolution;
+      archived = SavedArchiveReportWireSchema.parse({ ...FIXTURE_SAVED_REPORT, sections: [
+        { kind: "values", title: "Problem follow-up", values: [
+          { label: "Status", value: resolution.status },
+          { label: "Version", value: resolution.version },
+          ...(resolution.status === "resolved" ? [
+            { label: "Resolved by", value: resolution.by },
+            { label: "Resolved at", value: resolution.at },
+            ...(resolution.note === undefined ? [] : [{ label: "Note", value: resolution.note }]),
+          ] : []),
+        ] },
+      ] });
       return FIXTURE_ARCHIVED_RUN.runId;
     },
     close: async () => {

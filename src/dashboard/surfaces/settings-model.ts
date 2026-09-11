@@ -410,10 +410,11 @@ export function useEditableSettings(input: Readonly<{
     } catch (error) {
       if (!(error instanceof z.ZodError)) throw error;
       const invalidPaths = new Set(error.issues.map((issue) => issue.path.join(".")));
-      const validationErrors: DraftErrors = {};
-      for (const leaf of editor.document.sections.flatMap((section) => section.leaves)) {
-        if (invalidPaths.has(leaf.path)) validationErrors[leaf.path] = "Enter a valid value.";
-      }
+      const validationErrors: DraftErrors = Object.fromEntries(
+        editor.document.sections.flatMap((section) => section.leaves)
+          .filter((leaf) => invalidPaths.has(leaf.path))
+          .map((leaf) => [leaf.path, "Enter a valid value."]),
+      );
       setErrors(validationErrors);
       setSave({ state: "refused", message: "Check the highlighted settings values." });
       return;

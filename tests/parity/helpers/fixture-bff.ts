@@ -132,6 +132,7 @@ export function createFixtureBff(
     profile?: FixtureDashboardProfile;
     dayWire?: DashboardDayWire;
     archiveScenario?: "evidence";
+    savedArchiveFileResponse?: (runId: string, digest: string) => Response | Promise<Response>;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";
   }> = {},
@@ -281,6 +282,9 @@ export function createFixtureBff(
     }
     return c.json(archivedRun as unknown);
   });
+  app.get("/artifacts/v1/archive/:runId/files/:digest", async c => input.savedArchiveFileResponse === undefined
+    ? c.json(wireError("ARCHIVE_FILE_UNKNOWN", "No native fixture file was registered"),404)
+    : await input.savedArchiveFileResponse(c.req.param("runId"),c.req.param("digest")));
   app.get("/artifacts/v1/archive/:runId/:artifactId", (c) => {
     const { runId, artifactId } = c.req.param();
     if (!archiveEvidence || runId !== archivedRun.runId || artifactId !== FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId) {
@@ -465,6 +469,7 @@ export async function startFixtureServer(
     profile?: FixtureDashboardProfile;
     dayWire?: DashboardDayWire;
     archiveScenario?: "evidence";
+    savedArchiveFileResponse?: (runId: string, digest: string) => Response | Promise<Response>;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";
   }>,
@@ -476,6 +481,7 @@ export async function startFixtureServer(
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
   const dayWire = input.dayWire ?? (input.runCaptureScenario === "evidence" ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
   const { app } = createFixtureBff({ profile, dayWire,
+    ...(input.savedArchiveFileResponse === undefined ? {} : { savedArchiveFileResponse: input.savedArchiveFileResponse }),
     ...(input.archiveScenario === undefined ? {} : { archiveScenario: input.archiveScenario }),
     ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
     ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
@@ -494,7 +500,7 @@ export async function startFixtureServer(
       // route independent; generic UUID descendants and extensionless invalid
       // lookups reach the app's 404. Named static files (archive-help.html,
       // archive-notes/readme.json) remain outside this generic identity lane.
-      const archiveCapture = /^\/artifacts\/v1\/archive\/[^/]+\/[^/]+$/u.test(url.pathname);
+      const archiveCapture = /^\/artifacts\/v1\/archive\/[^/]+\/(?:files\/)?[^/]+$/u.test(url.pathname);
       const genericCapture = /^\/artifacts\/v1\/(?!archive(?:\/|$))[^/.]+(?:\/[^/.]+)*$/u.test(url.pathname)
         || /^\/artifacts\/v1\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[/.]|$)/iu.test(url.pathname);
       if (url.pathname.startsWith("/api/") || archiveCapture || genericCapture) {

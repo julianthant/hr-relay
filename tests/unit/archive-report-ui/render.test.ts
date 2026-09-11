@@ -10,7 +10,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let dispose: (() => Promise<void>) | undefined;
 afterEach(async () => { await dispose?.(); document.body.replaceChildren(); });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function mount(overrides: Record<string, unknown> = {}, selection = H_REPORT.runId) {
+async function mount(overrides: Record<string, unknown> = {}, selection: string = H_REPORT.runId) {
   const calls = { savedArchiveIndex: vi.fn(async () => ({ items: [H_REPORT], next: null })), savedArchiveReport: vi.fn(async () => H_REPORT), savedArchiveFile: vi.fn(async () => ({ runId: H_REPORT.runId, digest: H_REPORT.files[0].digest, resource: { state: "missing", reason: "Missing bytes" } })), executeCommand: vi.fn(), ...overrides };
   const client = new Proxy(calls, { get(target, key) { if (!(key in target)) throw new Error(`Forbidden live read ${String(key)}`); return Reflect.get(target, key) as unknown; } }) as unknown as DashboardClient;
   function Harness() { const [selected, select] = useState(selection); return createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveWorkspace, { selection: selected, view: "runs", actorId: "synthetic", onSelection: select, onView: () => undefined, onClose: () => undefined }) }); }

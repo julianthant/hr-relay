@@ -98,6 +98,8 @@ for (const pair of ROLE_PAIRS) {
       ...(seededRunId === undefined ? {} : { run: seededRunId, section: "logs" }),
     });
     const seededTree = await readA11yTree(page);
+    await test.info().attach("fixture-tree", { body: fixtureTree, contentType: "text/plain" });
+    await test.info().attach("seeded-tree", { body: seededTree, contentType: "text/plain" });
 
     // Both adapters must have rendered something substantial — an empty tree
     // on either side would make the comparison vacuously pass.
