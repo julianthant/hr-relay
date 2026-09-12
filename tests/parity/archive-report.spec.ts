@@ -1,3 +1,4 @@
+import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 /** H's isolated saved-document browser proof; never uses live database state. */
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
@@ -11,16 +12,17 @@ const second = { ...H_REPORT, runId: "00000000-0000-4000-8000-000000000083", tit
 const digest = H_REPORT.files[0].digest;
 const download = `/artifacts/v1/archive/${H_REPORT.runId}/files/${digest}`;
 test.beforeAll(async () => {
-  const distDir = process.env.ARCHIVE_H_DIST;
-  if (!distDir) throw new Error("ARCHIVE_H_DIST must identify H's independently stamped candidate bundle");
-  server = await startFixtureServer({ distDir, bundle: { proof: "working-tree" } });
+  ensureParityBundle();
+  server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" },
+    savedArchiveFileResponse:(runId,requestedDigest)=>runId===H_REPORT.runId&&requestedDigest===digest
+      ?new Response("synthetic receipt",{headers:{"content-type":"text/plain","content-disposition":'attachment; filename="synthetic.txt"'}})
+      :new Response("unknown fixture member",{status:404}) });
 });
 test.afterAll(async () => { await server?.close(); });
 async function routes(page: Page) {
   await page.route("**/api/v1/archive/reports?*", route => route.fulfill({ json: { items: [H_REPORT, second], next: null } }));
   await page.route("**/api/v1/archive/reports/*", route => route.fulfill({ json: route.request().url().endsWith(second.runId) ? second : H_REPORT }));
   await page.route("**/api/v1/archive/reports/*/files/*", route => route.fulfill({ json: { runId: H_REPORT.runId, digest, resource: { state: "available", downloadUrl: download } } }));
-  await page.route(`**${download}`, route => route.fulfill({ body: "synthetic receipt", headers: { "content-type": "text/plain", "content-disposition": 'attachment; filename="synthetic.txt"' } }));
 }
 for (const viewport of [{ width: 1024, height: 720 }, { width: 1440, height: 900 }]) for (const theme of PARITY_THEMES) {
   test(`saved report ${viewport.width} ${theme.attribute}`, async ({ page }) => {

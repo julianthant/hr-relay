@@ -512,7 +512,7 @@ describe("dry-run scenario production composition boundary", () => {
       /dry-run evidence collection ran before start/);
   });
 
-  it("refuses journaled Settings newer than activation without rewriting an admitted run", async () => {
+  it("activates changed Settings while refusing a duplicate start without rewriting the admitted run", async () => {
     const fixture = admissionFixture();
     fixture.apply({ browser: { headless: false } });
     const { active } = fixture.activate();
@@ -523,10 +523,11 @@ describe("dry-run scenario production composition boundary", () => {
     const before = startEffects(fixture.path);
     const bytes = fixture.file.read();
     const current = fixture.database.authority.settingsCurrent.get();
-    await assert.rejects(fixture.runtime.start(fixture.request), /settings revision 3 .*not dashboard-active; restart activation is required/);
+    await assert.rejects(fixture.runtime.start(fixture.request), /planned 0 and refused 1; exactly one planned run is required/);
     assert.deepEqual(startEffects(fixture.path), before);
     assert.deepEqual(fixture.database.authority.runs.get(admitted.runId), run);
-    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.notDeepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.equal(fixture.database.authority.runtimeConfig.get()?.settingsRevision, fixture.database.authority.settingsCurrent.get()?.revision);
     assert.deepEqual(fixture.database.authority.settingsCurrent.get(), current);
     assert.deepEqual(fixture.file.read(), bytes);
     await assert.rejects(fixture.runtime.collectEvidence(admitted.runId), /dry-run evidence collection ran before start/);
@@ -556,7 +557,7 @@ describe("dry-run scenario production composition boundary", () => {
   it("refuses gate resolution with lost config identity after a subsequent start admission failure", async () => {
     const env: NodeJS.ProcessEnv = {};
     const fixture = admissionFixture(env);
-    const record = fixture.apply({ concurrency: { defaultWorkers: 3 } });
+    fixture.apply({ concurrency: { defaultWorkers: 3 } });
     const { active, snapshot } = fixture.activate();
     const { sessions } = composedSessions(fixture.clock);
     const runtime = createProductionDryRunScenarioRuntime({
@@ -585,29 +586,24 @@ describe("dry-run scenario production composition boundary", () => {
     assert.equal(comparison?.runId, started.runId);
     const gateResults = fixture.database.authority.gateResults.listByRun(started.runId);
     assert.deepEqual(gateResults, []);
-    const before = startEffects(fixture.path);
     const settingsBefore = fixture.file.read();
     const durableCurrent = fixture.database.authority.settingsCurrent.get();
 
-    // A newer Settings revision makes only this process's next start inadmissible.
-    // The parked run's active generation and retained snapshot remain valid for
-    // its old gate.
+    // Saving Settings immediately activates a new generation. The duplicate start
+    // refuses, while the parked run retains its original snapshot.
     fixture.apply({ concurrency: { defaultWorkers: 4 } });
-    await assert.rejects(runtime.start(fixture.request), /not dashboard-active; restart activation is required/);
+    const before = startEffects(fixture.path);
+    await assert.rejects(runtime.start(fixture.request), /planned 0 and refused 1; exactly one planned run is required/);
     const afterFailedStart = startEffects(fixture.path);
     assert.deepEqual(
       afterFailedStart.filter(({ table }) => table !== "commands" && table !== "command_audits"),
       before.filter(({ table }) => table !== "commands" && table !== "command_audits"),
     );
     assert.notDeepEqual(fixture.database.authority.settingsCurrent.get(), durableCurrent);
-    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.notDeepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.equal(fixture.database.authority.runtimeConfig.get()?.settingsRevision, fixture.database.authority.settingsCurrent.get()?.revision);
     assert.deepEqual(fixture.database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
     assert.notDeepEqual(fixture.file.read(), settingsBefore);
-    fixture.database.withAuthorityTransaction((repositories) => repositories.runtimeConfig.requireActive({
-      settingsRevision: record.revision,
-      settingsFingerprint: record.settingsFingerprint,
-      configFingerprint: active.configFingerprint,
-    }));
     await assert.rejects(runtime.collectEvidence(started.runId), /dry-run evidence collection ran before start/);
     await assert.rejects(runtime.resolveGate({
       manifest: TEST_MANIFEST, scenarioCase: fixture.request.scenarioCase, runId: started.runId,
@@ -620,7 +616,8 @@ describe("dry-run scenario production composition boundary", () => {
     ), comparison);
     assert.deepEqual(startEffects(fixture.path), afterFailedStart);
     assert.notDeepEqual(fixture.database.authority.settingsCurrent.get(), durableCurrent);
-    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.notDeepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.equal(fixture.database.authority.runtimeConfig.get()?.settingsRevision, fixture.database.authority.settingsCurrent.get()?.revision);
     assert.notDeepEqual(fixture.file.read(), settingsBefore);
   });
 
@@ -648,15 +645,17 @@ describe("dry-run scenario production composition boundary", () => {
     fixture.apply({ browser: { headless: false } });
     const current = fixture.apply({ concurrency: { defaultWorkers: 3 } });
     const { active, snapshot } = fixture.activate();
-    const before = startEffects(fixture.path).filter(({ table }) => table !== "commands" && table !== "command_audits");
+    let afterSave: ReturnType<typeof startEffects> | undefined;
     let replacement: ReturnType<typeof fixture.apply> | undefined;
-    afterRead = () => { replacement = fixture.apply({ concurrency: { defaultWorkers: 4 } }); };
+    afterRead = () => { replacement = fixture.apply({ concurrency: { defaultWorkers: 4 } }); afterSave = startEffects(fixture.path); };
     await assert.rejects(fixture.runtime.start(fixture.request), /settings changed after worker boot; restart activation is required/);
     assert.equal(current.revision, 3); assert.equal(replacement?.revision, 4);
     assert.deepEqual(fixture.file.read(), replacement);
-    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.notDeepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.equal(fixture.database.authority.runtimeConfig.get()?.settingsRevision, fixture.database.authority.settingsCurrent.get()?.revision);
     assert.deepEqual(fixture.database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
-    assert.deepEqual(startEffects(fixture.path).filter(({ table }) => table !== "commands" && table !== "command_audits"), before);
+    assert.ok(afterSave);
+    assert.deepEqual(startEffects(fixture.path), afterSave);
     assert.equal(existsSync(join(fixture.root, ".tracker", "settings")), false);
   });
 
@@ -672,7 +671,7 @@ describe("dry-run scenario production composition boundary", () => {
       afterSettingsRead = () => {
         raw.prepare("DELETE FROM settings_snapshots WHERE record_key = ?").run(active.configSnapshotId);
       };
-      await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 1 does not bind exact snapshot/);
+      await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 2 does not bind exact snapshot/);
       before = startEffects(fixture.path);
       assert.ok(before !== undefined, "the real start admission refused the missing snapshot");
       assert.deepEqual(startEffects(fixture.path), before);

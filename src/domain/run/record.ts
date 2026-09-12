@@ -353,7 +353,7 @@ export const RunRecordSchema = HistoricalRunRecordV40Schema.safeExtend({
     return;
   }
   if (completion === undefined) return;
-  if (run.version < completion.expectedVersion + 1 || run.claimGeneration !== completion.claim.claimGeneration
+  if (run.version < completion.expectedVersion + 1 || Number(run.claimGeneration) !== Number(completion.claim.claimGeneration)
     || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== completion.kind
     || run.lifecycle.endedAt !== completion.authorizedAt
     || (run.version === completion.expectedVersion + 1 && run.updatedAt !== completion.authorizedAt)

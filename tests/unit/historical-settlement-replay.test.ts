@@ -1,3 +1,4 @@
+import {restoreRetainedFixture} from "./helpers/retained-database-fixture.js";
 import { ActorIdSchema } from "../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -40,6 +41,11 @@ it("replays an actual released settlement after conversion without rewriting its
   };
   try {
     const before = journal(); assert.equal(before.length, 3);
+    const original=readFileSync(path);
+    await assert.rejects(upgradeStorage({stateRoot:root,processLockRoot:join(root,"locks"),environmentFile:join(root,".env"),plan:false},clock),/authority-below-floor/u);
+    assert.deepEqual(readFileSync(path),original);
+    restoreRetainedFixture(path,new URL("./fixtures/migrated-settlement.json",import.meta.url));
+    assert.deepEqual(journal(),before);
     await backupStoppedAuthority(root, clock);
     assert.equal((await upgradeStorage({ stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false }, clock)).state, "converted");
     assert.deepEqual(journal(), before);

@@ -1,3 +1,4 @@
+import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../src/domain/provider-accounting.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { foundationFixture, NOW, id } from "../database-foundation/fixtures.js";
@@ -13,7 +14,8 @@ it("captures every source group as generic typed values or explicit absence, wit
     f.db.authority.runs.transition({ runId: f.run.envelope.runId, expectedVersion: f.run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW }, now: NOW });
     const snapshot = createRunLifecycleStorage(f.db).capture(f.run.envelope.runId);
     const report = captureArchiveReport({ snapshot, transferId: id(9301), capturedAt: NOW, files: [], sections: [] });
-    assert.equal(snapshot.records.length, 23);
+    assert.equal(snapshot.records.length, 24);
+    assert.equal(snapshot.records.some(group => group.table === "archive_relaunches"), false);
     for (const group of snapshot.records) assert.equal(report.content.sections.find(section => section.title === group.table)?.kind, group.rows.length ? "values" : "unavailable");
     assert.notEqual(report.digest, report.content.sourceDigest);
     assert.throws(() => ArchiveReportSchema.parse({ ...report, content: { ...report.content, sources: [{ ...report.content.sources[0], json: '{}' }] } }), /digest-mismatch/u);
@@ -59,5 +61,20 @@ it("public display identity does not encode a changed protected value or its der
     assert.notEqual(first.digest, second.digest);
     assert.notEqual(first.content.sourceDigest, second.content.sourceDigest);
     assert.deepEqual(projectArchiveReport(first), projectArchiveReport(second));
+  } finally { f.dispose(); }
+});
+
+
+import { generic } from "../provider-accounting/fixtures.js";
+it("captures generic provider requests and their allocated usage without unrelated shared accounting", () => {
+  const f = foundationFixture();
+  try {
+    const { request, usage } = generic(f);
+    f.db.authority.providerAccounting.transaction(store => { store.writeRequest(request, null); store.writeUsage(usage, null); store.writeUsage({ ...usage, usageId: "unrelated-usage", scope: { ...usage.scope, id: "unrelated.scope" } }, null); });
+    const snapshot = createRunLifecycleStorage(f.db).capture(f.run.envelope.runId);
+    const requests = snapshot.records.find(group => group.table === "provider_requests");
+    const usages = snapshot.records.find(group => group.table === "provider_usage");
+    assert.deepEqual(requests?.rows.map(row => ProviderRequestStorageSchema.parse(JSON.parse(row.json))), [request]);
+    assert.deepEqual(usages?.rows.map(row => ProviderUsageStorageSchema.parse(JSON.parse(row.json))), [usage]);
   } finally { f.dispose(); }
 });

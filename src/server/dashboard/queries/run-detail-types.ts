@@ -158,7 +158,7 @@ export interface RunDetailDescriptorView {
   }>;
 }
 
-export type CanonicalRunReader = Pick<RunRecordService, "read" | "list">;
+export type CanonicalRunReader = Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
 
 export interface RunDetailQueryDeps {
   /** Sole lifecycle read port; separate from the complete Context/Rerun backing bundle. */

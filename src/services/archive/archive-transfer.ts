@@ -1,4 +1,4 @@
-import type { createRunLifecycleStorage } from "../../core/run-lifecycle-storage.js";
+import type { createRunLifecycleStorage } from "../../infra/sqlite/lifecycle-storage.js";
 import type { ArchiveReport } from "../../domain/archive/report.js";
 
 /** Resumable A baseline: every cross-store boundary is durable and replay-bound. */
@@ -11,7 +11,7 @@ export function transferArchiveReport(storage: ReturnType<typeof createRunLifecy
   return storage.readReport(report.content.runId);
 }
 
-import { lifecycleSourceDigest } from "../../core/run-lifecycle-storage.js";
+import { lifecycleSourceDigest } from "../../domain/archive/lifecycle-source.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { deriveStableUuid } from "../../domain/identifiers.js";

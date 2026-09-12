@@ -1,15 +1,13 @@
 /**
- * The Archive's compact warning chip is visible production UI, so its name is
- * proved through the built React bundle rather than by inspecting JSX. The
- * warning row is supplied only to this test: the stored archive references
- * remain reserved for Track F's one deliberate final re-freeze.
+ * H stores warnings as frozen generic report sections and filters terminal outcomes.
+ * Preserve warning-count accessibility, exact rows and route-history proof on that surface.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { ArchiveIndexWireSchema } from "../../src/domain/dashboard/archive.js";
+import { SavedArchiveReportWireSchema } from "../../src/domain/dashboard/archive.js";
 import { gotoAppState, routeUrl } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { FIXTURE_ARCHIVE_INDEX } from "./helpers/fixture-archive.js";
+import { FIXTURE_SAVED_REPORT } from "./helpers/fixture-archive.js";
 import { FIXTURE_DAY } from "./helpers/fixture-day.js";
 import { FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
 
@@ -25,7 +23,7 @@ async function expectExactSearch(page: Page, search: string): Promise<void> {
 
 async function expectVersionRegistry(page: Page, search: string): Promise<void> {
   await expectExactSearch(page, search);
-  await expect(page.getByRole("table", { name: "Workflow version registry" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Versions and saved changes" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Versions & bumps" }))
     .toHaveAttribute("aria-pressed", "true");
 }
@@ -47,43 +45,32 @@ for (const warning of [
   { count: 3, accessibleName: "3 warnings" },
 ] as const) {
   test(`archive warning count names ${warning.accessibleName}`, async ({ page }) => {
-    const entry = FIXTURE_ARCHIVE_INDEX.entries[0];
-    if (entry === undefined) throw new Error("the archive accessibility fixture has no archived row");
-    const warningIndex = ArchiveIndexWireSchema.parse({
-      ...FIXTURE_ARCHIVE_INDEX,
-      entries: [{
-        ...entry,
-        warnings: { state: "present", count: warning.count, first: FIRST_WARNING },
-      }],
-    });
-    await page.route("**/api/v1/archive", async (route) => {
-      await route.fulfill({ json: warningIndex });
-    });
+    const report = SavedArchiveReportWireSchema.parse({ ...FIXTURE_SAVED_REPORT,
+      sections: [{kind:"table",title:warning.accessibleName,columns:["Warning"],
+        rows:Array.from({length:warning.count},(_,index)=>[`${FIRST_WARNING} — ${String(index+1)}`])}] });
+    await page.route(`**/api/v1/archive/reports/${report.runId}`, route=>route.fulfill({json:report}));
+    await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:report.runId});
+    const warnings=page.getByRole("region",{name:warning.accessibleName,exact:true});
+    await expect(warnings).toBeVisible();
+    await expect(warnings).toContainText(FIRST_WARNING);
+    await expect(warnings.getByRole("row")).toHaveCount(warning.count+1);
 
-    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
-
-    await expect(page.getByTitle(FIRST_WARNING)).toHaveAccessibleName(warning.accessibleName);
   });
 }
 
-test("archive status filter distinguishes done from done with warnings", async ({ page }) => {
-  const entry = FIXTURE_ARCHIVE_INDEX.entries[0];
-  if (entry === undefined) throw new Error("the archive accessibility fixture has no archived row");
-  const statusIndex = ArchiveIndexWireSchema.parse({
-    ...FIXTURE_ARCHIVE_INDEX,
-    entries: [
-      entry,
-      { ...entry, runId: PARTIAL_RUN_ID, status: "partial" },
-    ],
+test("archive outcome filter uses terminal outcomes and retains warning facts in the report", async ({page})=>{
+  const failed=SavedArchiveReportWireSchema.parse({...FIXTURE_SAVED_REPORT,runId:PARTIAL_RUN_ID,outcome:"failed"});
+  const requests:string[]=[];
+  await page.route("**/api/v1/archive/reports?*",route=>{
+    const outcome=new URL(route.request().url()).searchParams.get("outcome");requests.push(outcome??"");
+    return route.fulfill({json:{items:outcome==="failed"?[failed]:[FIXTURE_SAVED_REPORT,failed],next:null}});
   });
-  await page.route("**/api/v1/archive", async (route) => {
-    await route.fulfill({ json: statusIndex });
-  });
-
-  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
-
-  await expect(page.getByRole("combobox", { name: "Final status" }).getByRole("option"))
-    .toHaveText(["Any outcome", "Done", "Done with warnings"]);
+  await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
+  const filter=page.getByRole("combobox",{name:"Outcome",exact:true});
+  await expect(filter.getByRole("option")).toHaveText(["All outcomes","done","failed","cancelled","discarded","interrupted","superseded"]);
+  await filter.selectOption("failed");
+  await expect.poll(()=>requests.at(-1)).toBe("failed");
+  await expect(page.getByRole("table",{name:"Saved reports"}).getByRole("row")).toHaveCount(2);
 });
 
 test("Explorer's Version registry door restores the route-owned view through links and history", async ({ page }) => {

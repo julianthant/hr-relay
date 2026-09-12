@@ -1,21 +1,24 @@
+import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { FingerprintSchema, RunIdSchema } from "../../../src/domain/ids.js";
+import { ArchiveFileReferenceSchema } from "../../../src/domain/archive/report.js";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 
-export function archiveFixture() {
-  const base = foundationFixture();
+export function archiveFixture(options: Parameters<typeof foundationFixture>[0] = {}) {
+  const base = foundationFixture(options);
   let database = base.db;
   let sequence = 9500;
   let fail: string | undefined;
   let failCount = 1;
-  const descriptor = { ...personLookupDescriptor, version: 2, contractFingerprint: HASH };
+  const descriptor = { ...personLookupDescriptor, version: 2, contractFingerprint: FingerprintSchema.parse(HASH) };
   const create = () => {
     const settle = database.settleArchivedDeletion.bind(database);
     database.settleArchivedDeletion = runId => {
@@ -23,7 +26,7 @@ export function archiveFixture() {
       settle(runId);
     };
     const lifecycle = new RunRecordService({ database, clock: base.clock, ids: { uuid: () => id(++sequence) }, publishQueued: () => {} });
-    const storage = createRunLifecycleStorage(database);
+    const storage = lifecycle.lifecycleStorage();
     lifecycle.lifecycleStorage = () => new Proxy({ ...storage }, { get(target, property) {
       const value: unknown = Reflect.get(target, property);
       if (typeof value !== "function") return value;
@@ -48,7 +51,7 @@ export function archiveFixture() {
       archiveSnapshots: { snapshot: runId => {
         const source = ARCHIVED_RUN_WITH_SECTIONS;
         assert.ok(source.sections);
-        return { row: { ...source.row, runId }, detail: { ...source.detail, header: { ...source.detail.header, runId } }, failure: source.failure, sections: source.sections };
+        return { row: QueueSurfaceWireSchema.parse({ ...source.row, session: {state:"absent",reason:"Historical archive fixture predates run batches"}, runId: RunIdSchema.parse(runId) }), detail: { ...source.detail, header: { ...source.detail.header, runId: RunIdSchema.parse(runId) } }, failure: source.failure, sections: source.sections };
       }, snapshotBatch(runIds) { return new Map(runIds.map(runId => [runId, this.snapshot(runId)])); } },
     };
     return createCommandKernel(deps);
@@ -79,9 +82,8 @@ export function archiveFixture() {
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { sha256Hex } from "../../../src/domain/sha256.js";
 export function attachFile(database: AuthorityDatabase, root: string, runId: string, n: number, bytes = Buffer.from("synthetic shared evidence")) {
-  const file = { digest: sha256Hex(bytes), byteLength: bytes.length, mediaType: "text/yaml" as const, name: "accessibility-excerpt", artifactIds: [id(n)] };
+  const file = ArchiveFileReferenceSchema.parse({ digest: createHash("sha256").update(bytes).digest("hex"), byteLength: bytes.length, mediaType: "text/yaml", name: "accessibility-excerpt", artifactIds: [id(n)] });
   mkdirSync(join(root, "artifacts"), { recursive: true });
   writeFileSync(join(root, "artifacts", `${file.digest}.artifact`), JSON.stringify({ ref: { id: id(n), sha256: file.digest, bytes: bytes.length, mediaType: file.mediaType }, payloadBase64: bytes.toString("base64") }));
   database.authority.diagnosticBundles.insert({ bundleId: id(n + 1), runId, origin: { kind: "operator-request", requestedBy: "local-operator" }, createdAt: NOW,

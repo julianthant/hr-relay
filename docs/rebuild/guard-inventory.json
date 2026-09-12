@@ -402,7 +402,7 @@
       "file": "tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/dashboard-surfaces.md",
-      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover workflow_runs, its historical tasks name, and workflow_workers. The worker-name integration negative control failed before adding the renamed worker table to the SQL matcher. The operation integration retains the complete AST/file scan and final selected-overload resolution, using normalized callable declarations only to skip unrelated call resolution. Negative controls include renamed-property, indexed, overloaded, optional, generic and union aliases, plus an allowed safe selected overload; each audit owns its own compiler and type cache. T/P7 admits only the exact guarded transaction-section UPDATE inside freezeConvertedArchiveTransactions in the stopped timeline converter. Full integration coverage exposed this missing exception; controls reject a different owner/function, removal of the NULL guard, and original archive-body mutation. Original archive JSON/digest and immutable-trigger proofs remain required. L combination verification also admits only the exact UPDATE in convertRunCompletions in completion-conversion.ts; the validated stopped conversion remains isolated by authority-upgrade-adapters-isolated. A positive control and wrong-path, wrong-function and changed-SQL negative controls bind this exception.",
+      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover workflow_runs, its historical tasks name, and workflow_workers. The worker-name integration negative control failed before adding the renamed worker table to the SQL matcher. The operation integration retains the complete AST/file scan and final selected-overload resolution, using normalized callable declarations only to skip unrelated call resolution. Negative controls include renamed-property, indexed, overloaded, optional, generic and union aliases, plus an allowed safe selected overload; each audit owns its own compiler and type cache. T/P7 admits only the exact guarded transaction-section UPDATE inside freezeConvertedArchiveTransactions in the stopped timeline converter. Full integration coverage exposed this missing exception; controls reject a different owner/function, removal of the NULL guard, and original archive-body mutation. Original archive JSON/digest and immutable-trigger proofs remain required. L combination verification also admits only the exact UPDATE in convertRunCompletions in completion-conversion.ts; the validated stopped conversion remains isolated by authority-upgrade-adapters-isolated. A positive control and wrong-path, wrong-function and changed-SQL negative controls bind this exception. D332.9 / 2.6.9 removes the obsolete stopped ordinal backfill exception with its deleted adapter; authority-upgrade-adapters-retired now guards the supported recovery boundary. All other lifecycle SQL/alias/callable and exact archive/completion conversion controls remain.",
       "replacementRequired": true,
       "activationMilestone": "phase-1.6-task-4"
     },
@@ -774,19 +774,19 @@
     {
       "name": "authority-upgrade-adapters-isolated",
       "file": "tests/unit/architecture/authority-upgrade-adapters-isolated.test.ts",
-      "status": "active",
+      "status": "retired",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D336 A0/A1 are reachable only through stopped storage upgrade. AST import closure, a one-hop runtime reach, eager upgrade import and broken CLI registration provide positive and negative evidence. Permanent strict historical backup readers remain admitted.",
-      "replacementRequired": true
+      "invariant": "RETIRED by approved D332.9 separation in 2.6.9. Four obsolete settings adapters are absent. WHERE THE INVARIANT WENT: authority-upgrade-adapters-retired preserves the stopped supported-converter/CLI boundary and adds module/reference/API absence plus actual legacy-input non-adoption. Original F02 recovery proofs and final supported/refusal mapping are recorded in database-modernization/final-validation.md.",
+      "replacementRequired": true,
+      "retiredBy": "D332"
     },
     {
       "name": "authority-upgrade-adapters-retired",
       "file": "tests/unit/architecture/authority-upgrade-adapters-retired.test.ts",
-      "status": "planned",
+      "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Phase 2.6 Task 2 deletes src/infra/compat/{upgrade-sources,pre-floor-settings,settings-source-recovery,settings-database-upgrade}.ts and their storage upgrade entry. Absence and rejected legacy upgrade inputs are required; permanent strict historical backup readers and immutable journal schemas remain.",
-      "replacementRequired": true,
-      "activationMilestone": "2.6"
+      "invariant": "D332.9 / 2.6.9 deletes four obsolete settings adapters, preserving supported stopped database/archive recovery. AST module/reference/API canaries and actual fresh/supported/current legacy-input non-adoption controls detect restoration or relocation. Named below-floor upgrade/offline/historical restore refusal precedes replacement and credentials; successful supported 46\u201349 recovery is the positive control. Deciding evidence: F02 retained original recovery proofs and the final-validation.md assertion map; authority-upgrade-adapters-retired, storage-upgrade family and supported restore drill. Permanent strict historical backup readers and immutable journal/settings schemas remain.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {

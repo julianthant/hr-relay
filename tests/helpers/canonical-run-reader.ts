@@ -7,13 +7,13 @@ import type { RunRecord } from "../../src/domain/run/record.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { CanonicalListRunsRequestSchema } from "../../src/infra/sqlite/run-store-contracts.js";
 
-export type CanonicalRunReader = Pick<RunRecordService, "read" | "list">;
+export type CanonicalRunReader = Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
 
 /** Real service over the caller's isolated database; read fixtures cannot publish or mint IDs. */
 export function sqliteRunReader(database: AuthorityDatabase, clock: Clock): CanonicalRunReader {
   const forbidden = (): never => { throw new Error("read-only run fixture attempted a mutation capability"); };
   const service = new RunRecordService({ database, clock, ids: { uuid: forbidden }, publishQueued: forbidden });
-  return Object.freeze({ read: service.read.bind(service), list: service.list.bind(service) });
+  return Object.freeze({ read: service.read.bind(service), list: service.list.bind(service), withRunTreeSnapshot: service.withRunTreeSnapshot.bind(service) });
 }
 
 export interface InMemoryRunReaderState {
@@ -39,6 +39,15 @@ export function inMemoryRunReaderFake(state: InMemoryRunReaderState): CanonicalR
   };
   return Object.freeze({
     read,
+    withRunTreeSnapshot(runIds, work) {
+      const selected = new Set(runIds);
+      const rows = [...state.records.values()].filter(run => selected.has(run.envelope.runId) || (run.envelope.parent !== undefined && selected.has(run.envelope.parent.runId)));
+      for (const id of new Set([...runIds, ...rows.map(run => run.envelope.runId)])) {
+        const result = read(id);
+        if (result.state !== "present" || result.disposition !== "live") throw new Error("run-tree-source-unavailable");
+      }
+      return work(rows);
+    },
     list(input) {
       const request = CanonicalListRunsRequestSchema.parse(input);
       const { cursor } = request;

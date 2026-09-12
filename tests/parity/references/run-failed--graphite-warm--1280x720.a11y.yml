@@ -1,7 +1,7 @@
 # run-failed--graphite-warm--1280x720
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: 6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -268,13 +268,19 @@
           - text: What this run left behind
           - paragraph: This run wrote nothing — no write was attempted.
         - region "What is safe to retry": What is safe to retry remediation Operator Confirm which EID is correct at the source before re-running; nothing was written.
+        - region "Problem follow-up":
+          - text: Problem follow-up
+          - status: Unresolved
+          - text: Resolution note (optional) 0/1000
+          - textbox "Resolution note (optional)"
+          - button "Mark resolved"
         - button "Show the diagnostic record"
         - text: AI advisory
         - button "Explain this failure" [disabled]
         - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written"
       - 'listitem "9:36 AM: error note: Run failed at cross-verify; nothing was written"': 9:36 AM Run failed at cross-verify; nothing was written
     - searchbox "Search logs"
-    - text: 6bf54d32
+    - text: 71b1674f
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

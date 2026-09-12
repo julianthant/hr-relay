@@ -1,4 +1,4 @@
-import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
@@ -35,9 +35,10 @@ function fixture(historical=false) {
   const database = historical ? historicalArchiveAuthority(join(root,"authority.sqlite"),clock) : AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
   cleanups.push(() => database.close());
   const realReader = sqliteRunReader(database, clock);
-  let listCalls = 0;
+  let listCalls = 0, treeCalls = 0;
   const reader: typeof realReader = {
     read: (id) => realReader.read(id),
+    withRunTreeSnapshot: (ids, work) => { treeCalls += 1; return realReader.withRunTreeSnapshot(ids, work); },
     list: (input) => { listCalls += 1; return realReader.list(input); },
   };
   const world = makeWorld({ reader });
@@ -53,7 +54,7 @@ function fixture(historical=false) {
   };
   const detail = (runId: string) => buildRunDetail(detailDeps, runId);
   return { database, reader, world, service, detail, detailDeps, clock,
-    listCalls: () => listCalls, resetListCalls: () => { listCalls = 0; },
+    listCalls: () => listCalls, treeCalls: () => treeCalls, resetListCalls: () => { listCalls = 0; treeCalls = 0; },
   };
 }
 
@@ -351,7 +352,8 @@ it.each([
   assert.equal(value("sections.people.value.members.0.runId"), child.envelope.runId);
   assert.equal(value("sections.people.value.members.0.parentRunId"), parent.envelope.runId);
   assert.equal(value("sections.people.value.members.0.status"), "cancelled");
-  assert.equal(f.listCalls(), 1, "archive batch enumeration must not grow with candidate count");
+  assert.equal(f.listCalls(), 0, "archive capture must not enumerate whole history");
+  assert.equal(f.treeCalls(), 1, "archive batch shares one canonical selected-tree snapshot");
 });
 
 it("does not enumerate authority for an empty archive batch and refuses absent candidates", () => {

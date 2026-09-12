@@ -1,3 +1,6 @@
+import { storageRecoveryFixture, storageTree, credentialTrap } from "../helpers/storage-recovery-fixture.js";
+import { backupStoppedAuthority } from "../../../src/server/storage/upgrade.js";
+import { FingerprintSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { writeFileSync } from "node:fs";
@@ -14,7 +17,7 @@ describe("L archive report/file interruption", () => {
     let archive = new ArchiveDatabase(path);
     try {
       const bytes = Buffer.from("synthetic retained attachment");
-      const file = { digest:createHash("sha256").update(bytes).digest("hex"), byteLength:bytes.length, name:"evidence.txt",mediaType:"text/plain" };
+      const file = { digest:FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex")), byteLength:bytes.length, name:"evidence.txt",mediaType:"text/plain" };
       const report = sealArchiveReport({ schemaVersion:1,runId:f.run.envelope.runId,transferId:id(801),workflow:"person-lookup",
         itemId:f.run.envelope.itemId,attempt:1,runNumber:1,title:"Synthetic run",descriptorVersion:"1",outcome:"failed",
         completedAt:NOW,capturedAt:NOW,sourceDigest:HASH,sources:[],sections:[],files:[file] });
@@ -50,7 +53,7 @@ describe("L paired recovery",()=>{
     try{
       terminalizeFixtureFailure(f,f.run,failure());
       const storage=createRunLifecycleStorage(f.db),snapshot=storage.capture(f.run.envelope.runId);
-      const bytes=Buffer.from([0,255,128,4]),file={digest:createHash("sha256").update(bytes).digest("hex"),byteLength:bytes.length,name:"capture.bin",mediaType:"application/octet-stream"};
+      const bytes=Buffer.from([0,255,128,4]),file={digest:FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex")),byteLength:bytes.length,name:"capture.bin",mediaType:"application/octet-stream"};
       const report=captureArchiveReport({snapshot,transferId:id(820),capturedAt:NOW,sections:[],files:[file]});
       storage.retainFile(file,bytes);transferArchiveReport(storage,report,snapshot.run.version);storage.refreshSummaries();
       const review={changeId:id(826),actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
@@ -113,7 +116,7 @@ it("resumes file deletion after unlink and keeps a file referenced by another ar
     const second=f.createRun(id(860));
     terminalizeFixtureFailure(f,second,{...failure(),failureId:id(861),runId:second.envelope.runId,traceId:second.envelope.traceId});
     const storage=createRunLifecycleStorage(f.db);
-    const file=(text:string)=>{const bytes=Buffer.from(text);return {bytes,ref:{digest:createHash("sha256").update(bytes).digest("hex"),byteLength:bytes.length,name:"evidence.txt",mediaType:"text/plain"}};};
+    const file=(text:string)=>{const bytes=Buffer.from(text);return {bytes,ref:{digest:FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex")),byteLength:bytes.length,name:"evidence.txt",mediaType:"text/plain"}};};
     const shared=file("shared retained bytes"),exclusive=file("first report only");
     storage.retainFile(shared.ref,shared.bytes);storage.retainFile(exclusive.ref,exclusive.bytes);
     const reports=[f.run.envelope.runId,second.envelope.runId].map((runId,index)=>{
@@ -133,3 +136,25 @@ it("resumes file deletion after unlink and keeps a file referenced by another ar
 });
 
 import { versionChangeReviewFingerprint } from "../../../src/domain/archive/change-record.js";
+
+it("refuses a verified below-floor lifecycle pair before admission, marker or replacement", async () => {
+  const f = storageRecoveryFixture(29);
+  try {
+    const archive = new ArchiveDatabase(join(f.root, "archive.sqlite")); archive.close();
+    credentialTrap(f.root);
+    const backup = await backupStoppedAuthority(f.root, f.clock);
+    assert.ok("pairedManifestPath" in backup && typeof backup.pairedManifestPath === "string");
+    assert.equal((await verifyLifecyclePair(backup.pairedManifestPath)).live.manifest.schemaVersion, 29);
+    const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
+    const proofs = new RecoveryStopProofStore({ processLockRoot: f.input.processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
+    proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot: f.input.processLockRoot, sourceDatabaseIdentity: identity }, f.clock));
+    const proof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity: identity });
+    const before = storageTree(f.root);
+    await assert.rejects(restoreLifecyclePair({ authorityPath: f.path, suspectDirectory: join(f.root, "suspects"), busyTimeoutMs: 250,
+      processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000 },
+      { manifestPath: backup.pairedManifestPath, stoppedSystemProof: proof }, async () => { throw new Error("unexpected projection rebuild"); }, f.clock),
+      /authority-below-floor.*schemaVersion: 29.*floor: 46.*original compatible release/u);
+    assert.deepEqual(storageTree(f.root), before);
+    assert.equal(existsSync(join(f.root, ".lifecycle-restore.json")), false);
+  } finally { f.dispose(); }
+});

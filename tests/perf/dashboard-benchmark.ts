@@ -612,7 +612,6 @@ export function runDashboardBenchmark(): void {
       },
       measurements: measure(fixture, iterations),
     });
-    assertDashboardPerformanceStructuralBounds(structuralCounters(report.measurements));
 
     const summary = [
       "",
@@ -641,6 +640,7 @@ export function runDashboardBenchmark(): void {
     } else {
       process.stdout.write(`\n${JSON.stringify(report, null, 2)}\n`);
     }
+    assertDashboardPerformanceStructuralBounds(structuralCounters(report.measurements));
   } finally {
     fixture.close();
   }

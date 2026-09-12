@@ -19,7 +19,7 @@ import type { AnyWorkflowDescriptor } from "../../../../src/base/workflow.js";
 import { localDatePart, manualClock, type TestClock } from "../../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { NotificationRecordSchema } from "../../../../src/domain/notifications.js";
-import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
+import { RunLifecycleSchema, RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
 import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/domain/run/worker.js";
 import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/domain/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
@@ -254,6 +254,7 @@ export function makeWorld(input?: Readonly<{
   // the underlying canonical reader retains its own frozen implementation.
   const runReader: CanonicalRunReader = {
     read: (runId) => canonical.read(runId),
+    withRunTreeSnapshot: (ids, work) => canonical.withRunTreeSnapshot(ids, work),
     list: (query) => canonical.list(query),
   };
   const scheduledRebuilds: (() => void)[] = [];
@@ -375,6 +376,15 @@ export function workerLeaseOf(input: Readonly<{
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
   const enqueuedAt = input.enqueuedAt ?? AT.toISOString();
+  const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state: "queued"});
+  const settled = lifecycle.state === "terminal" && (lifecycle.outcome === "done" || lifecycle.outcome === "failed");
+  const version = settled ? Math.max(2, input.version ?? 1) : input.version ?? 1;
+  const claimGeneration = settled ? Math.max(1, input.claimGeneration ?? 0) : input.claimGeneration ?? 0;
+  const completion = settled && lifecycle.state === "terminal" ? {
+    schemaVersion: 1, kind: lifecycle.outcome, expectedVersion: version - 1,
+    claim: {workerId: "dashboard-fixture-worker", claimGeneration}, authorizedAt: lifecycle.endedAt,
+    ...(lifecycle.outcome === "done" ? {resultDigest: HASH_A} : lifecycle.outcome === "failed" ? {failureId: lifecycle.failureId} : {}),
+  } : undefined;
   return RunRecordSchema.parse({
     envelope: {
       runId: uuidOf(input.seed),
@@ -401,14 +411,15 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       enqueuedAt,
     },
     input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
-    lifecycle: input.lifecycle ?? { state: "queued" },
-    claimGeneration: input.claimGeneration ?? 0,
+    lifecycle,
+    claimGeneration,
+    ...(completion === undefined ? {} : {completion}),
     ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
     ...(input.runNumber === undefined ? {} : { runNumber: input.runNumber }),
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-    version: input.version ?? 1,
+    version,
     createdAt: enqueuedAt,
-    updatedAt: enqueuedAt,
+    updatedAt: settled && lifecycle.state === "terminal" ? lifecycle.endedAt : enqueuedAt,
   });
 }
 

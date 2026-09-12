@@ -823,7 +823,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     explorerEdits,
   });
 
-  const commands = createDashboardCommandService({ kernel, projection });
+  const commands = createDashboardCommandService({ kernel, projection, versionChanges: lifecycle.lifecycleStorage() });
 
   const startPlans = createStartPlanService({
     protectedSecrets,

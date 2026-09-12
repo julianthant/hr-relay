@@ -10,8 +10,6 @@ import { gitVisibleFiles, REPO_ROOT } from "./architecture/helpers/guard-files.j
 const PRIVATE_SQLITE_ADAPTERS = [
   "src/infra/compat/archive-upgrade-journal.ts",
   "src/infra/compat/backup-inspection.ts",
-  "src/infra/compat/settings-database-upgrade.ts",
-  "src/infra/compat/upgrade-sources.ts",
   "src/infra/sqlite/archive-compatibility.ts",
   "src/infra/sqlite/archive-database.ts",
   "src/infra/sqlite/authority-database.ts",
@@ -28,6 +26,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/infra/sqlite/run-summaries.ts",
   "src/infra/sqlite/settings-activation.ts",
   "src/infra/sqlite/settings-storage.ts",
+  "src/infra/sqlite/stopped-database-conversion.ts",
   "src/infra/sqlite/timeline-conversion.ts",
   "src/infra/sqlite/timeline-repository.ts"
 ];

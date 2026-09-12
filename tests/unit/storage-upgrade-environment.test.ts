@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../src/domain/config/catalog.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { credentialTrap, storageTree } from "./helpers/storage-recovery-fixture.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
 import { upgradeStorage } from "../../src/server/storage/upgrade.js";
@@ -40,57 +40,35 @@ function fixture(body: string) {
   const environmentFile = join(root, ".env"); writeFileSync(environmentFile, body, { mode: 0o600 });
   return { root, environmentFile, input: { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile, plan: false } };
 }
-describe("D336 total migration environment admission", () => {
-  it("imports every declared input, names every cleanup key, and excludes retired/provider values", async () => {
+describe("D332.9 expired environment import", () => {
+  it("covers every former input while fresh authority and credentials remain independent", async () => {
     assert.deepEqual([...Object.keys(bindings), ...Object.keys(RETIRED_TEST_TARGET_ENV)].sort(), [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS]);
     const retired = { I9_USER_ID: "synthetic-retired-id", I9_PASSWORD: "synthetic-retired-password", TELEGRAM_BOT_TOKEN: "synthetic-retired-token", TELEGRAM_CHAT_ID: "synthetic-retired-chat" };
     const body = Object.entries({ ...bindings, ...retired, GEMINI_API_KEY: "synthetic-provider-never-imported" }).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
-    const f = fixture(body); const before = readdirSync(f.root);
+    const f = fixture(body); credentialTrap(f.root); const before = storageTree(f.root);
     const plan = await upgradeStorage({ ...f.input, plan: true }, clock);
-    assert.deepEqual(plan.envKeysToRemove, [...Object.keys(bindings), ...Object.keys(retired)].sort());
-    assert.equal(plan.importedKeys.length, 42); assert.deepEqual(readdirSync(f.root), before);
-    const applied = await upgradeStorage(f.input, clock); assert.deepEqual(applied.importedKeys, plan.importedKeys);
-    const database = AuthorityDatabase.open({ path: join(f.root, "state.db"), busyTimeoutMs: 500, migrationOwner: "all-env-proof" }, clock);
-    try {
-      assert.deepEqual(readSettings(database.authority).settings, {
-        urls: { kuali: { test: { entry: bindings.HRAUTO_KUALI_TEST_URL } }, newKronos: { test: { entry: bindings.HRAUTO_NEW_KRONOS_TEST_URL } },
-          crm: { test: { entry: bindings.HRAUTO_CRM_TEST_URL } }, onbase: { test: { entry: bindings.HRAUTO_ONBASE_TEST_URL } },
-          ucpath: { test: { smartHr: bindings.HRAUTO_UCPATH_TEST_URL } }, i9: { test: { entry: bindings.HRAUTO_I9_TEST_URL } },
-          oldKronos: { test: { entry: bindings.HRAUTO_OLD_KRONOS_TEST_URL } }, servicenow: { test: { entry: bindings.HRAUTO_SERVICENOW_TEST_URL } }, sharepoint: { test: { entry: bindings.HRAUTO_SHAREPOINT_TEST_URL } } },
-        timeouts: { ukgNavigationMs: 7000 }, annualDates: { FY2027: { jobEndDate: "06/30/2027", kronosDefaultEndDate: "06/30/2027", kronosDefaultStartDate: "07/01/2026" } },
-        performance: { navigationRetries: 7, separationTerminationWindowDays: 7 }, ocr: { secondOpinionMax: 7, pageMaxWaitMs: 7000, tier1PatienceMs: 7000,
-          pageConcurrency: 7, disambigConcurrency: 7, suggestConcurrency: 7, backoffBaseMs: 7000, backoffCapMs: 7000, maxValidationRetries: 7 },
-        browserHealth: { monitorTickMs: 7000, maxAutoRefresh: 7, maxReopen: 7 }, concurrency: { defaultWorkers: 7 }, daemon: { idleMs: 7000, idleRepollMs: 7000 },
-        features: { debugScreenshots: true, duoWebAuthn: false }, providers: { gemini: { models: ["fixture-model"] }, groq: { models: ["fixture-model"] }, mistral: { models: ["fixture-model"] }, openRouter: { models: ["fixture-model"] }, sambanova: { models: ["fixture-model"] } },
-      });
-    } finally { database.close(); }
-    const credentials = createCredentialStore({ stateRoot: f.root }).read(); assert.equal(credentials.revision, 2);
-    assert.deepEqual(Object.fromEntries(Object.entries(credentials.entries).map(([key, entry]) => [key, entry?.value])), {
-      ucpathUserId: bindings.UCPATH_USER_ID, ucpathPassword: bindings.UCPATH_PASSWORD, timekeeperName: bindings.TIMEKEEPER_NAME,
-      sharepointOnboardingRosterUrl: bindings.ONBOARDING_ROSTER_URL, activityPersonPseudonym: { keyHex: bindings.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY, keyGeneration: bindings.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION },
-    });
+    assert.deepEqual(plan.envKeysToRemove, []); assert.deepEqual(plan.importedKeys, []);
+    assert.deepEqual(storageTree(f.root), before);
+    const applied = await upgradeStorage(f.input, clock);
+    assert.deepEqual(applied.importedKeys, []); assert.equal(applied.credentials, "unchanged");
+    const database = AuthorityDatabase.open({ path: join(f.root, "state.db"), busyTimeoutMs: 500, migrationOwner: "expired-env-proof" }, clock);
+    try { assert.deepEqual(readSettings(database.authority).settings, {}); } finally { database.close(); }
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);
-    for (const value of Object.values(retired)) assert.equal(JSON.stringify(credentials).includes(value), false);
-    for (const value of [...Object.values(retired), bindings.UCPATH_PASSWORD, bindings.UCPATH_USER_ID, "synthetic-provider-never-imported"]) assert.equal(readFileSync(join(f.root, "state.db")).includes(Buffer.from(value)), false);
+    for (const value of [...Object.values(retired), bindings.UCPATH_PASSWORD, bindings.UCPATH_USER_ID, "synthetic-provider-never-imported"])
+      assert.equal(readFileSync(join(f.root, "state.db")).includes(Buffer.from(value)), false);
+    const settled = storageTree(f.root); assert.equal((await upgradeStorage(f.input, clock)).state, "already-upgraded");
+    assert.deepEqual(storageTree(f.root), settled);
   });
-  it.each(Object.entries(RETIRED_TEST_TARGET_ENV))("refuses the retired test-target env key %s by name before creating authority (D341)", async (key, value) => {
-    const body = Object.entries({ ...bindings, [key]: value }).map(([name, entry]) => `${name}=${entry}`).join("\n") + "\n";
-    const f = fixture(body); const before = readdirSync(f.root);
-    for (const input of [{ ...f.input, plan: true }, f.input]) {
-      await assert.rejects(upgradeStorage(input, clock), (error: unknown) => {
-        const diagnostic = String(error);
-        assert.match(diagnostic, new RegExp(`retired-test-target-env \\{ key: ${key} \\}`, "u"));
-        assert.match(diagnostic, /config\/test-data\.local\.json \(D341\)/u);
-        assert.equal(diagnostic.includes(value), false);
-        return true;
-      });
-    }
-    assert.deepEqual(readdirSync(f.root), before); assert.equal(readFileSync(f.environmentFile, "utf8"), body);
+  it.each(Object.entries(RETIRED_TEST_TARGET_ENV))("does not read or adopt expired test-target key %s", async (key, value) => {
+    const body = `${key}=${value}\n`; const f = fixture(body); credentialTrap(f.root);
+    const report = await upgradeStorage(f.input, clock);
+    assert.deepEqual(report.importedKeys, []); assert.equal(JSON.stringify(report).includes(value), false);
+    assert.equal(readFileSync(f.environmentFile, "utf8"), body);
+    assert.equal(readFileSync(join(f.root,"state.db")).includes(Buffer.from(value)), false);
   });
-  it.each(["UNREGISTERED_SETTING=1", "I9_USER_ID_EXTRA=synthetic-private", "TELEGRAM_TOKEN=synthetic-private", "I9_USER_ID=one\nI9_USER_ID=two", "TELEGRAM_BOT_TOKEN=\"unterminated", "HRAUTO_DEFAULT_WORKERS=abc", "HRAUTO_KUALI_TEST_URL=not-a-url", "HRAUTO_DEFAULT_WORKERS=2\nHRAUTO_DEFAULT_WORKERS=3", "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY=" + "ab".repeat(32)])("refuses invalid migration input before creating authority (case %#)", async (body) => {
-    const f = fixture(body); const before = readdirSync(f.root);
-    await assert.rejects(upgradeStorage({ ...f.input, plan: true }, clock));
-    await assert.rejects(upgradeStorage(f.input, clock));
-    assert.deepEqual(readdirSync(f.root), before); assert.equal(readFileSync(f.environmentFile, "utf8"), body);
+  it.each(["UNREGISTERED_SETTING=1", "I9_USER_ID_EXTRA=synthetic-private", "TELEGRAM_TOKEN=synthetic-private", "I9_USER_ID=one\nI9_USER_ID=two", "TELEGRAM_BOT_TOKEN=\"unterminated", "HRAUTO_DEFAULT_WORKERS=abc", "HRAUTO_KUALI_TEST_URL=not-a-url"])("does not parse expired environment bytes: %s", async body => {
+    const f=fixture(body);credentialTrap(f.root);const before=storageTree(f.root);
+    assert.equal((await upgradeStorage({...f.input,plan:true},clock)).state,"planned");assert.deepEqual(storageTree(f.root),before);
+    const result=await upgradeStorage(f.input,clock);assert.deepEqual(result.importedKeys,[]);assert.equal(readFileSync(f.environmentFile,"utf8"),body);
   });
 });

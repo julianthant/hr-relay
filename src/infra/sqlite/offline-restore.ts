@@ -1,3 +1,4 @@
+import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -243,6 +244,7 @@ export class OfflineAuthorityRestoreService {
     }
 
     const verified = await verifyBackupManifestAtPath(request.manifestPath, sourceDatabaseIdentity);
+  requireSupportedRecoverySchema(verified.manifest.schemaVersion);
     const restoreAdmission = this.#admissionFactory({
       processLockRoot: this.#processLockRoot,
       pid: process.pid,

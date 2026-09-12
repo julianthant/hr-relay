@@ -1,3 +1,4 @@
+import { PositiveIntSchema, ConfigSnapshotIdSchema } from "../../../src/domain/ids.js";
 import { resolutionKernel, resolutionCommand } from "../failure-resolution/fixtures.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
@@ -56,10 +57,10 @@ const flows={
  },
  async S(f:Fixture){
   f.db.authority.runtimeConfig.activate({settingsRevision:1,settingsFingerprint:HASH,configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,activatedAt:NOW});
-  const token=selectRunRuntime(f.db.authority);assert.ok(runRuntimeMatches(f.db.authority,token));assert.equal(runRuntimeMatches(f.db.authority,{...token,generation:token.generation+1}),false);
+  const token=selectRunRuntime(f.db.authority);assert.ok(runRuntimeMatches(f.db.authority,token));assert.equal(runRuntimeMatches(f.db.authority,{...token,generation:PositiveIntSchema.parse(token.generation+1)}),false);
   assert.deepEqual(selectNewRunIdentity(f.db.authority,f.run.envelope),f.run.envelope);
   const writer=artifacts(f);await writer.ready;
-  const factory=createRunResourcesFactory({authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>undefined},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
+  const factory=createRunResourcesFactory({authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
   const resources=factory.forRun(f.run);assert.equal(resources.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);assert.equal(resources.sessionAcquireMs,f.snapshot.config.timeouts.sessionAcquireMs);assert.equal(resources.defaultBrowserMode,f.snapshot.config.browser.headless?"headless":"headed");assert.equal(resources.providers?.accounting,f.db.authority.providerAccounting);
   assert.equal(factory.forRun(f.run),resources);
  },
@@ -72,14 +73,14 @@ describe("F actual four-way baseline independence",()=>{
  it("selects actual resources from each retained snapshot and preserves the first run after a newer selection",async()=>{
   const f=foundationFixture();try{
    const writer=artifacts(f);await writer.ready;
-   const factory=createRunResourcesFactory({authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>undefined},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
+   const factory=createRunResourcesFactory({authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
    const first=factory.forRun(f.run);
-   const config=ConfigSchema.parse({...f.snapshot.config,timeouts:{...f.snapshot.config.timeouts,taskMs:f.snapshot.config.timeouts.taskMs+1000,sessionAcquireMs:f.snapshot.config.timeouts.sessionAcquireMs+1000},browser:{...f.snapshot.config.browser,headless:!f.snapshot.config.browser.headless}});
-   const snapshot={...f.snapshot,configSnapshotId:id(91),config,fingerprint:sha256Hex(canonicalJsonStringify(config))};f.db.authority.configSnapshots.insert(snapshot);
+   const config=ConfigSchema.parse({...f.snapshot.config,timeouts:{...f.snapshot.config.timeouts,taskMs:f.snapshot.config.timeouts.taskMs+1000,sessionAcquireMs:1000+PositiveIntSchema.parse(f.snapshot.config.timeouts.sessionAcquireMs)},browser:{...f.snapshot.config.browser,headless:!f.snapshot.config.browser.headless}});
+   const snapshot={...f.snapshot,configSnapshotId:ConfigSnapshotIdSchema.parse(id(91)),config,fingerprint:FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config)))};f.db.authority.configSnapshots.insert(snapshot);
    const next=factory.forRun({...f.run,envelope:{...f.run.envelope,configSnapshotId:snapshot.configSnapshotId,configFingerprint:snapshot.fingerprint}});
    assert.equal(next.taskDeadlineMs,config.timeouts.taskMs);assert.equal(next.sessionAcquireMs,config.timeouts.sessionAcquireMs);assert.notEqual(next.defaultBrowserMode,first.defaultBrowserMode);assert.notEqual(next.sessionFactory,first.sessionFactory);
    assert.equal(factory.forRun(f.run),first);assert.equal(first.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);
-   assert.throws(()=>factory.forRun({...f.run,envelope:{...f.run.envelope,configFingerprint:HASH}}),/snapshot-mismatch/u);
+   assert.throws(()=>factory.forRun({...f.run,envelope:{...f.run.envelope,configFingerprint:FingerprintSchema.parse(HASH)}}),/snapshot-mismatch/u);
   }finally{f.dispose();}
  });
  it("freezes four distinct existing source sets with no cross-owner mutable imports",()=>{

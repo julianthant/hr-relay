@@ -1,3 +1,6 @@
+import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
+import { storageTree } from "./helpers/storage-recovery-fixture.js";
+import { restoreHistoricalStorage } from "../../src/server/storage/historical-restore.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
@@ -147,7 +150,7 @@ function createHistoricalAuthority(path: string, schemaVersion: number): void {
       for (const statement of migration.statements) database.exec(statement);
     }
     database.prepare(`
-      INSERT INTO authority_meta
+      INSERT INTO ${databaseStateTable(schemaVersion)}
         (singleton_id, schema_version, authority_generation, updated_at,
          migration_owner, migration_started_at)
       VALUES (1, ?, 7, ?, NULL, NULL)
@@ -391,7 +394,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     });
   });
 
-  it.each([29, 30, 31, 32, 33, 34, 35, 36, 37])("restores exact v%s SQLite bytes without projection rebuild or credential changes", async (version) => {
+  it.each([29, 30, 31, 32, 33, 34, 35, 36, 37, 46, 47, 48])("enforces the restore floor for exact v%s without credential changes", async (version) => {
     const paths = drillPaths();
     const credentialPath = join(paths.stateRoot, "credentials", "protected.json");
     const credentialOutcome = createCredentialStore({ stateRoot: paths.stateRoot }).apply(
@@ -460,6 +463,20 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       throw new Error("historical restore must not invoke the current projection builder");
     }, CLOCK);
 
+    if (version < 46) {
+      const before = storageTree(paths.stateRoot);
+      const refused = /authority-below-floor.*floor: 46.*original compatible release/u;
+      await assert.rejects(restore.restore({ manifestPath, stoppedSystemProof }), refused);
+      assert.deepEqual(storageTree(paths.stateRoot), before, "offline refusal precedes replacement and admission");
+      await assert.rejects(restoreHistoricalStorage({ authorityPath: paths.authorityPath,
+        suspectDirectory: join(paths.stateRoot, "suspects"), busyTimeoutMs: 100,
+        processLockRoot: paths.processLockRoot, stoppedProofMaxAgeMs: 60_000 },
+        { manifestPath, stoppedSystemProof }, join(paths.stateRoot, ".env"), CLOCK), refused);
+      assert.deepEqual(storageTree(paths.stateRoot), before, "historical refusal precedes marker and quarantine");
+      assert.equal(projectionRebuildCalls, 0);
+      assert.deepEqual(readFileSync(credentialPath), credentialBytes);
+      return;
+    }
     const report = await restore.restore({ manifestPath, stoppedSystemProof });
 
     assert.equal(report.schemaVersion, version);
@@ -467,7 +484,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(projectionRebuildCalls, 0);
     assert.equal(readFileSync(credentialPath).equals(credentialBytes), true);
     assert.equal(inspectAuthorityBackupReadOnly(paths.authorityPath, version).schemaVersion, version);
-    if (version >= 33) {
+    if (version >= 46) {
       assert.equal((await upgradeStorage({ stateRoot: paths.stateRoot, processLockRoot: paths.processLockRoot,
         environmentFile: join(paths.stateRoot, ".env"), plan: false }, CLOCK)).state, "converted");
       const upgraded = open(paths);

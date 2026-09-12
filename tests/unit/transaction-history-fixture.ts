@@ -1,7 +1,8 @@
+import { z } from "zod";
 import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -36,8 +37,8 @@ export function historyWorld() {
   };
 }
 
-/** Real released v39 DDL with populated exact historical bytes, not a fake repository. */
-export function historicalWorld(options: { files?: boolean; confirmation?: boolean; archive?: boolean } = {}) {
+/** Released v39 source plus pinned migrated schema-46 facts; explicit sourceVersion keeps expiry cases below the floor. */
+export function historicalWorld(options: { files?: boolean; confirmation?: boolean; archive?: boolean; sourceVersion?: 39 | 46; missingFile?: boolean } = {}) {
   const world = historyWorld();
   const fixtures = [world.commit(101, { confirmedAt: "2026-07-31T17:30:00.000Z" }),
     world.commit(102, { confirmedAt: "2026-08-01T17:30:00.000Z", instance: "test" })];
@@ -88,6 +89,22 @@ export function historicalWorld(options: { files?: boolean; confirmation?: boole
       }
     }
   } finally { source.close(); target.close(); world.dispose(); }
+  if (options.sourceVersion !== 39) {
+    const label = options.confirmation ? "confirmation" : options.missingFile ? "missing-file" : `${options.files ? "files" : "no-files"}${options.archive ? "-archive" : ""}`;
+    const pinned = z.object({ rows: z.record(z.string().regex(/^[a-z_]+$/u), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))) }).parse(
+      JSON.parse(readFileSync(new URL(`./fixtures/migrated-history-${label}.json`, import.meta.url), "utf8")));
+    copyFileSync(path, join(root, "retired-source.sqlite")); rmSync(path);
+    const retained = new DatabaseSync(path); retained.exec("PRAGMA foreign_keys=OFF");
+    try {
+      for (const migration of SQLITE_MIGRATIONS.filter(m => m.version <= 46)) for (const sql of migration.statements) retained.exec(sql);
+      for (const [table, rows] of Object.entries(pinned.rows)) for (const row of rows) {
+        const columns = Object.keys(row);
+        retained.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+      }
+      retained.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=46`);
+      assert.deepEqual(retained.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { retained.close(); }
+  }
   const input = { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false };
   return { root, path, fixtures, lines, input, backup: () => backupStoppedAuthority(root, historyClock),
     upgrade: () => upgradeStorage(input, historyClock),

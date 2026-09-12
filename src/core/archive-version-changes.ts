@@ -1,20 +1,39 @@
-import { archivedRunReferenceFingerprint } from "../../domain/archive/model.js";
-import type { createRunLifecycleStorage } from "../../core/run-lifecycle-storage.js";
-import { lifecycleSourceDigest } from "../../core/run-lifecycle-storage.js";
-import type { CommandKernelDependencies, ArchiveCommandTools } from "../../core/command-kernel.js";
-import type { CommandApplication } from "../../core/command-application.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
-import { CommandIdentityConflictError, type CommandRequest, type CommandResult } from "../../domain/commands.js";
-import { JsonValueSchema, canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { sha256Hex } from "../../domain/sha256.js";
-import { deriveStableUuid, lifecycleCommandId } from "../../domain/identifiers.js";
-import { runTarget } from "../../core/run-fan-out.js";
-import { assessVersionBump, resolveBumpEffect, describeBlocker } from "./archive-service.js";
-import { VersionChangeSchema, versionChangeReviewFingerprint, archiveVersionChange, type VersionChange } from "../../domain/archive/change-record.js";
-import { captureArchiveReport, genericArchiveSection } from "./report-capture.js";
-import { transferArchiveReport } from "./archive-transfer.js";
-import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/storage-records.js";
-import { projectArchiveReport } from "../../infra/sqlite/archive-records.js";
+import { PositiveIntSchema, NonNegativeIntSchema, RunIdSchema } from "../domain/ids.js";
+import { parsePendingCapture } from "../domain/archive/pending-capture.js";
+import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
+import type { createRunLifecycleStorage } from "../infra/sqlite/lifecycle-storage.js";
+import { lifecycleSourceDigest } from "../infra/sqlite/lifecycle-storage.js";
+import type { Clock } from "../domain/clock.js";
+import type { IdFactory } from "../domain/identifiers.js";
+import type { AnyWorkflowDescriptor } from "../base/workflow.js";
+import type { RunRecordService } from "./run-record-service.js";
+import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
+import type { TargetReference, VersionChange as RunVersionChange } from "./run-fan-out.js";
+interface ArchiveCommandDependencies {
+  authority: { withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result };
+  lifecycle: Pick<RunRecordService, "lifecycleStorage">;
+  clock: Clock;
+  ids: IdFactory;
+  appVersion: string;
+  descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
+  archiveSnapshots: ArchiveSnapshotSource;
+}
+export interface ArchiveCommandTools {
+  applied(request: CommandRequest, targets: readonly TargetReference[], changes: readonly RunVersionChange[]): CommandApplication;
+}
+import type { CommandApplication } from "./command-application.js";
+import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
+import { CommandIdentityConflictError, VersionScopeSchema, type CommandRequest, type CommandResult } from "../domain/commands.js";
+import { JsonValueSchema, canonicalJsonStringify } from "../domain/canonical-json.js";
+import { sha256Hex } from "../domain/sha256.js";
+import { deriveStableUuid, lifecycleCommandId } from "../domain/identifiers.js";
+import { runTarget } from "./run-fan-out.js";
+import { assessVersionBump, resolveBumpEffect, describeBlocker } from "../services/archive/archive-service.js";
+import { VersionChangeSchema, versionChangeReviewFingerprint, archiveVersionChange, type VersionChange } from "../domain/archive/change-record.js";
+import { captureArchiveReport, genericArchiveSection } from "../services/archive/report-capture.js";
+import { transferArchiveReport } from "../services/archive/archive-transfer.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../infra/sqlite/storage-records.js";
+import { projectArchiveReport } from "../infra/sqlite/archive-records.js";
 
 class ArchivePolicyRefusal extends Error {
   constructor(readonly result: Extract<CommandResult, { state: "rejected" | "conflict" }>) { super(result.message); }
@@ -31,13 +50,13 @@ export function createVersionChanges(storage: Storage) {
 function refuse(request: Request, code: Extract<CommandResult, { state: "rejected" }>["code"], message: string): never {
   throw new ArchivePolicyRefusal({ state: "rejected", commandId: request.commandId, code, message });
 }
-function assess(deps: CommandKernelDependencies, repos: AuthorityRepositories, scope: VersionChange["scope"]) {
+function assess(deps: ArchiveCommandDependencies, repos: AuthorityRepositories, scope: VersionChange["scope"]) {
   return assessVersionBump({ repositories: repos, appVersion: deps.appVersion, currentIdentity: workflowId => {
     const descriptor = deps.descriptors.resolve(workflowId);
-    return descriptor === undefined ? undefined : { workflowId: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint };
-  } }, scope);
+    return descriptor === undefined ? undefined : { workflowId: descriptor.id, descriptorVersion: PositiveIntSchema.parse(descriptor.version), contractFingerprint: descriptor.contractFingerprint };
+  } }, VersionScopeSchema.parse(scope));
 }
-function review(deps: CommandKernelDependencies, repos: AuthorityRepositories, input: Pick<VersionChange, "changeId" | "actorId" | "reviewedAt" | "scope" | "targetVersion" | "change" | "supersedes">): VersionChange {
+function review(deps: ArchiveCommandDependencies, repos: AuthorityRepositories, input: Pick<VersionChange, "changeId" | "actorId" | "reviewedAt" | "scope" | "targetVersion" | "change" | "supersedes">): VersionChange {
   const assessment = assess(deps, repos, input.scope);
   const effect = resolveBumpEffect(input.change.kind, assessment);
   const storage = deps.lifecycle.lifecycleStorage();
@@ -53,14 +72,14 @@ function review(deps: CommandKernelDependencies, repos: AuthorityRepositories, i
 function requiredChange(storage: Storage, request: Apply) {
   const row = storage.readVersionChange(request.target.versionPlanId);
   if (row === undefined) refuse(request, "target-not-found", "Version change is unavailable; create a new review.");
-  if (request.target.expectedVersion !== 1) throw new ArchivePolicyRefusal({ state: "conflict", commandId: request.commandId, currentVersion: 1, message: "Version review revision differs." });
+  if (request.target.expectedVersion !== 1) throw new ArchivePolicyRefusal({ state: "conflict", commandId: request.commandId, currentVersion: NonNegativeIntSchema.parse(1), message: "Version review revision differs." });
   if (row.reviewFingerprint !== request.payload.planFingerprint) refuse(request, "schema-mismatch", "Version review fingerprint differs.");
   if (row.state === "superseded") refuse(request, "replan-required", `Review replaced by ${row.supersededBy}; confirm that review explicitly.`);
   return row;
 }
 
 /** Kernel alone writes the final command journal/audit; cross-store work precedes it. */
-export function executeArchiveCommand(deps: CommandKernelDependencies, repos: AuthorityRepositories,
+export function executeArchiveCommand(deps: ArchiveCommandDependencies, repos: AuthorityRepositories,
   request: Request, now: string, tools: ArchiveCommandTools): CommandApplication {
   const storage = deps.lifecycle.lifecycleStorage();
   switch (request.type) {
@@ -92,7 +111,7 @@ export function executeArchiveCommand(deps: CommandKernelDependencies, repos: Au
   }
 }
 
-function prepareApply(deps: CommandKernelDependencies, request: Apply): CommandResult | undefined {
+function prepareApply(deps: ArchiveCommandDependencies, request: Apply): CommandResult | undefined {
   const storage = deps.lifecycle.lifecycleStorage();
   return deps.authority.withAuthorityTransaction(repos => {
     repos.commands.assertIdentity(request);
@@ -121,29 +140,23 @@ function prepareApply(deps: CommandKernelDependencies, request: Apply): CommandR
         message: `Reviewed membership changed. Review-required: confirm replacement ${replacement.changeId}.` };
     }
     if (row.blockers.length > 0) refuse(request, "active-version-blockers", `Prior-version blockers: ${assess(deps, repos, row.scope).blockers.map(describeBlocker).join("; ")}`);
-    storage.claimVersionChange({ changeId: row.changeId, reviewFingerprint: row.reviewFingerprint,
+    const claimed = VersionChangeSchema.parse({ ...row, state: "applying",
       application: { commandId: request.commandId, actorId: request.requestedBy, startedAt: request.requestedAt,
         appVersion: deps.appVersion, targets: row.targets, requestFingerprint } });
+    const displays = deps.archiveSnapshots.snapshotBatch(row.members.map(member => member.runId));
+    const pendingCaptures = row.members.map(member => {
+      const report = captureMember(storage, claimed, member, displays.get(member.runId));
+      return { runId: member.runId, reportJson: canonicalJsonStringify(report) };
+    });
+    storage.claimVersionChange({ changeId: row.changeId, reviewFingerprint: row.reviewFingerprint,
+      application: claimed.application!, pendingCaptures });
     return undefined;
   });
 }
 
-/** Every report is captured before the first cleanup; replay uses those exact bytes. */
-function applyTransfer(deps: CommandKernelDependencies, request: Apply) {
-  const storage = deps.lifecycle.lifecycleStorage();
-  const row = requiredChange(storage, request);
-  if (row.state === "applied") return;
-  if (row.application === undefined) throw new Error("archive-claim-missing");
-  const reports = deps.authority.withAuthorityTransaction(() => {
-    const pending = row.members.map(member => ({ member, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`) }));
-    const missing = pending.filter(({ member, transferId }) => storage.readPendingReport(member.runId, transferId) === undefined);
-    const displays = deps.archiveSnapshots.snapshotBatch(missing.map(({ member }) => member.runId));
-    return pending.map(({ member, transferId }) => {
-      const saved = storage.readPendingReport(member.runId, transferId);
-      if (saved !== undefined) return saved.report;
+function captureMember(storage: Storage, row: VersionChange, member: VersionChange["members"][number], display: unknown) {
       const snapshot = storage.capture(member.runId);
-      if (lifecycleSourceDigest(snapshot) !== member.sourceDigest || snapshot.run.version !== member.version) throw new Error("archive-reviewed-source-changed");
-      const display = displays.get(member.runId);
+      if (lifecycleSourceDigest(snapshot) !== member.sourceDigest || snapshot.run.version !== member.version) throw new Error("archive-claim-source-unprovable");
       if (display === undefined) throw new Error("archive-display-capture-missing");
       const files = (snapshot.records.find(group => group.table === "diagnostic_files")?.rows ?? []).map(record => {
         const { attachment } = DiagnosticAttachmentStorageRecordSchema.parse(JSON.parse(record.json));
@@ -152,9 +165,32 @@ function applyTransfer(deps: CommandKernelDependencies, request: Apply) {
       });
       const unique = [...new Map(files.map(file => [file.digest, file])).values()];
       for (const file of unique) storage.retainFile(file, storage.readSourceFile(file));
-      const report = captureArchiveReport({ snapshot, transferId, capturedAt: row.application!.startedAt,
+      const report = captureArchiveReport({ snapshot, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`), capturedAt: row.application!.startedAt,
         versionChange: archiveVersionChange(row), files: unique,
         sections: [genericArchiveSection("Displayed run", JsonValueSchema.parse(display))] });
+      return report;
+}
+
+/** Every report is frozen in the claim before the first cleanup; replay uses those exact bytes. */
+function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
+  const storage = deps.lifecycle.lifecycleStorage();
+  const row = requiredChange(storage, request);
+  if (row.state === "applied") return;
+  if (row.application === undefined) throw new Error("archive-claim-missing");
+  const reports = deps.authority.withAuthorityTransaction(() => {
+    const pending = row.members.map(member => ({ member, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`) }));
+    const missing = pending.filter(({ member, transferId }) => row.pendingCaptures === undefined && storage.readPendingReport(member.runId, transferId) === undefined);
+    const displays = deps.archiveSnapshots.snapshotBatch(missing.map(({ member }) => member.runId));
+    return pending.map(({ member, transferId }) => {
+      const saved = storage.readPendingReport(member.runId, transferId);
+      const frozen = row.pendingCaptures?.find(capture => capture.runId === member.runId);
+      if (saved !== undefined) {
+        if (frozen !== undefined && parsePendingCapture(row, frozen).digest !== saved.report.digest) throw new Error("archive-claim-capture-conflict");
+        return saved.report;
+      }
+      const report = frozen === undefined
+        ? captureMember(storage, row, member, displays.get(member.runId))
+        : parsePendingCapture(row, frozen);
       storage.saveReport(report); storage.verifyReport(member.runId, report.digest);
       return report;
     });
@@ -163,7 +199,7 @@ function applyTransfer(deps: CommandKernelDependencies, request: Apply) {
   const depth = (runId: string, seen = new Set<string>()): number => {
     if (seen.has(runId)) throw new Error("archive-parent-cycle");
     seen.add(runId);
-    const report = byId.get(runId);
+    const report = byId.get(RunIdSchema.parse(runId));
     if (report === undefined) return 0;
     const source = report.content.sources.find(value => value.kind === "authority-snapshot");
     if (source === undefined) throw new Error("archive-source-snapshot-missing");
@@ -177,14 +213,15 @@ function applyTransfer(deps: CommandKernelDependencies, request: Apply) {
     transferArchiveReport(storage, report, member.version);
     const current = storage.readVersionChange(row.changeId);
     if (current === undefined) throw new Error("archive-change-missing");
-    storage.writeVersionChange({ ...current, completedRunIds: [...new Set([...current.completedRunIds, member.runId])].sort() });
+    storage.writeVersionChange({ ...current, ...(current.pendingCaptures === undefined ? {} : { pendingCaptures: current.pendingCaptures.filter(capture => capture.runId !== member.runId) }), completedRunIds: [...new Set([...current.completedRunIds, member.runId])].sort() });
   }
   const current = storage.readVersionChange(row.changeId);
   if (current?.application === undefined) throw new Error("archive-change-missing");
-  storage.writeVersionChange({ ...current, state: "applied", application: { ...current.application, completedAt: deps.clock.now().toISOString() } });
+  const { pendingCaptures, ...completed } = current; void pendingCaptures;
+  storage.writeVersionChange({ ...completed, state: "applied", application: { ...current.application, completedAt: deps.clock.now().toISOString() } });
 }
 
-export function runArchiveCommand(request: Request, deps: CommandKernelDependencies, executeAtomic: () => CommandResult) {
+export function runArchiveCommand(request: Request, deps: ArchiveCommandDependencies, executeAtomic: () => CommandResult) {
   try {
     // Even retired or absent targets must not bypass global command identity.
     const journaled = deps.authority.withAuthorityTransaction(repos => {

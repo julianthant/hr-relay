@@ -1,3 +1,4 @@
+import {restoreRetainedFixture} from "./helpers/retained-database-fixture.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -130,10 +131,13 @@ describe("seven database table renames", () => {
     } finally { readOnly.close(); }
     assert.deepEqual(readFileSync(f.path), original);
     assert.throws(() => open(f.path), /upgrade-required/u);
+    await assert.rejects(f.upgrade(),/authority-below-floor/u);
+    assert.deepEqual(readFileSync(f.path),original);
+    restoreRetainedFixture(f.path,new URL("./fixtures/migrated-database-renames.json",import.meta.url));
     await f.backup(); await f.upgrade();
     const db = open(f.path);
     try {
-      assert.equal(db.getMeta().schemaVersion, 40);
+      assert.equal(db.getMeta().schemaVersion, 50);
       assert.equal(db.getMeta().authorityGeneration, 9); // committed + settled upgrade journal writes
       assert.deepEqual(db.authority.diagnosticBundles.get(UUID_5), diagnostic);
       assert.equal(db.authority.diagnosticBundles.listAttachments(UUID_5).length, 1);
@@ -207,8 +211,10 @@ describe("seven database table renames", () => {
 
   it("rolls back a populated stopped conversion, settles once after commit, and preserves backup sources", async () => {
     const f = fixture();
+    await assert.rejects(f.upgrade(),/authority-below-floor/u);
+    restoreRetainedFixture(f.path,new URL("./fixtures/migrated-database-renames.json",import.meta.url));
     const before = inspectAuthorityBackupReadOnly(f.path);
-    const journal = rows(f.path, "authority_upgrades");
+    const journal = rows(f.path, "database_upgrades");
     const tallies = rows(f.path, "deleted_runs");
     const backup = await f.backup();
     assert.equal(backup.state, "verified");
@@ -218,9 +224,9 @@ describe("seven database table renames", () => {
     assert.equal(manifest.authorityContentFingerprint, before.authorityContentFingerprint);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("rename-before-commit"); } } }, clock), /rename-before-commit/u);
     assert.equal(inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint, before.authorityContentFingerprint);
-    assert.deepEqual(rows(f.path, "authority_upgrades"), journal);
+    assert.deepEqual(rows(f.path, "database_upgrades"), journal);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 40);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 50);
     assert.equal((await f.upgrade()).state, "converted");
     const settled = rows(f.path, "database_upgrades");
     assert.equal(settled.length, journal.length + 2);

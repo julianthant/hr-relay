@@ -1,7 +1,7 @@
 # run-group--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-group
-# descriptorHash: 6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -268,7 +268,7 @@
       - 'listitem "9:10 AM: info note: Fan-out planned 13 member lookups"': 9:10 AM Fan-out planned 13 member lookups
       - 'listitem "9:13 AM: warning note: 2 members failed cross-verification"': 9:13 AM 2 members failed cross-verification
     - searchbox "Search logs"
-    - text: 6bf54d32
+    - text: 71b1674f
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

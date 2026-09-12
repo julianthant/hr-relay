@@ -1,3 +1,4 @@
+import { WorkerIdSchema } from "../../../src/domain/ids.js";
 import * as geminiOcr from "../../../src/infra/providers/gemini-ocr-extract.js";
 import { runWorkerLoop } from "../../../src/core/worker-loop.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
@@ -70,7 +71,7 @@ it("actual browser launch and execution resources use each run's retained displa
   assert.equal(first.providers?.accounting, second.providers?.accounting);
   assert.equal(second.providers?.accounting, f.database.authority.providerAccounting);
   const launch = vi.spyOn(chromium, "launchPersistentContext").mockRejectedValue(new Error("synthetic launch boundary"));
-  const open = (run: typeof old) => factory.forRun(run).sessionFactory.open({ workerId: "settings-worker", workflowId: "person-lookup",
+  const open = (run: typeof old) => factory.forRun(run).sessionFactory.open({ workerId: WorkerIdSchema.parse("settings-worker"), workflowId: WorkflowIdSchema.parse("person-lookup"),
     system: "ucpath", instance: "prod", configFingerprint: run.envelope.configFingerprint, acceptDownloads: false, exclusive: false,
     signal: new AbortController().signal, duoCeremony: { withCeremony: () => { throw new Error("no authentication in launch proof"); } } });
   await assert.rejects(open(old), /synthetic launch boundary/u);
@@ -88,8 +89,10 @@ it("pause/requeue then resume keeps the same run configuration and rejects the f
   const claim = requireLifecycleApplied(f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup", workerId: "owner",
     runtimeConfig: selectRunRuntime(f.database.authority) }));
   const fence = { workerId: "owner", claimGeneration: claim.claimGeneration };
-  const paused = requireLifecycleApplied(f.service.requeue({ commandId: randomUUID(), runId: claim.envelope.runId,
-    expectedVersion: claim.version, cause: "recovery", claim: fence }));
+  const recovery = f.service.requeue({ commandId: randomUUID(), runId: claim.envelope.runId,
+    expectedVersion: claim.version, cause: "recovery", claim: fence });
+  assert.ok(recovery.state === "applied" || recovery.state === "applied-already");
+  const paused = requireLifecycleApplied(recovery);
   f.save({ "timeouts.taskMs": { set: 90_000 } });
   const resumed = requireLifecycleApplied(f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup", workerId: "new-owner",
     runtimeConfig: selectRunRuntime(f.database.authority) }));

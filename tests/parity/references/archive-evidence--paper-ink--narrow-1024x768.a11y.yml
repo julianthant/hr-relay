@@ -1,48 +1,104 @@
 # archive-evidence--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: archive-evidence-verified
-# descriptorHash: 6bf54d3207b1e5558b3e6a41fd5a6c2bb838622f8f287790587edb6e615fe05e
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
 
-- dialog "screenshot at ucpath-person":
-  - banner:
-    - heading "screenshot at ucpath-person" [level=2]
-    - paragraph: Archived capture 1 of 1 on pl-170002-9999.
-    - button "Close"
-  - paragraph: This archive keeps the capture's POINTER facts frozen. The separate byte check is only for this exact archived id, digest, size and media type.
-  - figure "Archived capture preview":
-    - img "Archived screenshot captured 10:00 AM"
-    - text: Verified retained bytes for this frozen archived capture.
-  - text: What this capture was
-  - term: Kind
-  - definition: screenshot
-  - term: Media type
-  - definition: image/png
-  - term: Size
-  - definition: 3 KB (3281 bytes)
-  - term: Pixel size
-  - definition: 1440 × 900
-  - term: Step
-  - definition: ucpath-person
-  - term: System
-  - definition: ucpath
-  - term: Why it was captured
-  - definition: operator-request
-  - term: Sensitivity
-  - definition: redacted
-  - term: Digest
-  - definition: f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847
-  - term: Artifact
-  - definition: aa11bb22-000a-4000-8000-aa11bb22000a
-  - term: Bundle
-  - definition: aa11bb22-000b-4000-8000-aa11bb22000b
-  - text: Declared retention Ordinary — declared for purge after Wed, Sep 2. Whether the bytes are still there is not something this record can see.
-  - contentinfo:
-    - text: Captured 10:00 AM · bundle aa11bb22
-    - button "Previous capture" [disabled]
-    - button "Next capture" [disabled]
-    - link "Download":
-      - /url: /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a
-    - button "Close"
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive" [pressed]
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings"
+- main:
+  - button "Back"
+  - text: Archive
+  - button "Saved reports" [pressed]
+  - button "Versions & bumps"
+  - button "Refresh"
+  - region "Saved reports":
+    - heading "Saved reports" [level=2]
+    - form "Filter saved reports":
+      - text: Workflow
+      - textbox "Workflow"
+      - text: Title
+      - textbox "Title"
+      - text: Version
+      - textbox "Version"
+      - text: Outcome
+      - combobox "Outcome":
+        - option "All outcomes" [selected]
+        - option "done"
+        - option "failed"
+        - option "cancelled"
+        - option "discarded"
+        - option "interrupted"
+        - option "superseded"
+      - text: Completed from (UTC)
+      - textbox "Completed from (UTC)"
+      - text: Completed through (UTC)
+      - textbox "Completed through (UTC)"
+      - text: Captured from (UTC)
+      - textbox "Captured from (UTC)"
+      - text: Captured through (UTC)
+      - textbox "Captured through (UTC)"
+      - button "Clear filters"
+    - table "Saved reports":
+      - rowgroup:
+        - row "Report Outcome Completed":
+          - columnheader "Report"
+          - columnheader "Outcome"
+          - columnheader "Completed"
+      - rowgroup:
+        - row "Synthetic retained capture retired-synthetic-workflow · v1 Done 2026-08-03T09:21:00.000Z":
+          - cell "Synthetic retained capture retired-synthetic-workflow · v1":
+            - button "Synthetic retained capture" [pressed]
+            - paragraph: retired-synthetic-workflow · v1
+          - cell "Done"
+          - cell "2026-08-03T09:21:00.000Z"
+  - region "Selected saved report":
+    - article "Saved archive report":
+      - heading "Synthetic retained capture" [level=2]
+      - paragraph: retired-synthetic-workflow · version 1
+      - paragraph: "Outcome: done"
+      - paragraph: Report 99999999-0009-4000-8000-999900000009
+      - paragraph: Completed 2026-08-03T09:21:00.000Z · Captured 2026-08-03T09:25:00.000Z
+      - paragraph: Saved record · read-only
+      - region "Frozen capture facts":
+        - heading "Frozen capture facts" [level=3]
+        - term: Digest
+        - definition: f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847
+        - term: Artifact
+        - definition: aa11bb22-000a-4000-8000-aa11bb22000a
+        - term: Bundle
+        - definition: aa11bb22-000b-4000-8000-aa11bb22000b
+        - term: Media type
+        - definition: image/png
+        - term: Bytes
+        - definition: "3281"
+        - term: Dimensions
+        - definition: 1440 × 900
+        - term: Declared retention
+        - definition: 2026-09-02T09:11:00.000Z
+      - region "Retained attachments":
+        - heading "Retained attachments" [level=3]
+        - link "Synthetic screenshot.png":
+          - /url: /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/files/f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847
+    - region "Delete saved report":
+      - button "Delete saved report"
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live

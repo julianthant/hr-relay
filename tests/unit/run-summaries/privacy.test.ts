@@ -1,3 +1,4 @@
+import { RunResultRecordSchema } from "../../../src/domain/run/result.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { deriveCanonicalPerson } from "../../../src/core/run-summary.js";
@@ -7,7 +8,7 @@ import { queryQueueSummaries,queryActivitySummaries } from "../../../src/server/
 
 it("refuses each canonical identity mismatch with a sanitized error",()=>{
   for(const patch of [{attempt:2},{workflowId:"other"},{configSnapshotId:"00000000-0000-4000-8000-000000009999"},{contractFingerprint:TERMINAL_SEPARATIONS_RESULT.contractFingerprint==="b".repeat(64)?"c".repeat(64):"b".repeat(64)},{descriptorVersion:99},{configFingerprint:TERMINAL_SEPARATIONS_RESULT.configFingerprint==="b".repeat(64)?"c".repeat(64):"b".repeat(64)}]) {
-    assert.throws(()=>deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,{...TERMINAL_SEPARATIONS_RESULT,...patch}),error=>error instanceof Error && error.message==="summary-result-identity-mismatch");
+    assert.throws(()=>deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,RunResultRecordSchema.parse({...TERMINAL_SEPARATIONS_RESULT,...patch})),error=>error instanceof Error && error.message==="summary-result-identity-mismatch");
   }
   assert.equal(deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,null).state,"unavailable");
 });

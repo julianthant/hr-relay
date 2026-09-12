@@ -1,3 +1,5 @@
+import { storageTree } from "./helpers/storage-recovery-fixture.js";
+import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../src/core/run-lifecycle-storage.js";
 import { convertImportedArtifacts } from "../../src/infra/sqlite/imported-artifacts.js";
 import { convertProviderStorage } from "../../src/infra/sqlite/provider-storage.js";
 import { convertAppSettings } from "../../src/infra/sqlite/settings-storage.js";
@@ -54,6 +56,11 @@ function fixture(kind: "success" | "failure", schemaVersion: 39 | 40 = 40) {
       delete sourceRow.transactions_json;
       delete sourceRow.transactions_digest;
     }
+    // Captured application exists; reconstruct its consumed plan state explicitly.
+    if (table === "version_plans") {
+      const record = z.object({ createdAt: z.string() }).passthrough().parse(JSON.parse(String(sourceRow.record_json)));
+      sourceRow.record_json = JSON.stringify({ ...record, state: "applied", version: 2, appliedAt: record.createdAt });
+    }
     if (table === "database_state") sourceRow.schema_version = schemaVersion;
     const names = Object.keys(sourceRow);
     raw.prepare(`INSERT INTO ${table} (${names.join(",")}) VALUES (${names.map(() => "?").join(",")})`).run(...Object.values(sourceRow));
@@ -61,6 +68,30 @@ function fixture(kind: "success" | "failure", schemaVersion: 39 | 40 = 40) {
   raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(schemaVersion)}`); raw.close();
   const input = { stateRoot, processLockRoot: join(stateRoot, "locks"), environmentFile: join(stateRoot, ".env"), plan: false };
   return { saved, path, root, stateRoot, input };
+}
+function loadSupportedCompletion(f: ReturnType<typeof fixture>, kind: "success" | "failure") {
+  const retained = z.object({ schemaVersion: z.literal(46), rows: FixtureSchema.shape.rows }).parse(
+    JSON.parse(readFileSync(new URL(`./fixtures/migrated-completion-${kind}.json`, import.meta.url), "utf8")));
+  copyFileSync(f.path, join(f.stateRoot, "retired-source.sqlite"));
+  rmSync(f.path);
+  const raw = new DatabaseSync(f.path); raw.exec("PRAGMA foreign_keys=OFF");
+  try {
+    for (const migration of SQLITE_MIGRATIONS.filter(m => m.version <= 46)) for (const sql of migration.statements) raw.exec(sql);
+    for (const [table, rows] of Object.entries(retained.rows)) for (const row of rows) {
+      const columns = Object.keys(row);
+      raw.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+    }
+    raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=46`);
+    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(), []);
+  } finally { raw.close(); }
+}
+
+function retainedArchive(database: AuthorityDatabase, runId: string) {
+  const report = createRunLifecycleStorage(database).readReport(runId); assert.ok(report);
+  const source = report.content.sources.find(value => value.kind === "authority-snapshot"); assert.ok(source);
+  const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+  const row = snapshot.records.find(group => group.table === "archived_runs")?.rows.find(row => row.key === runId); assert.ok(row);
+  return ArchivedRunRecordSchema.parse(JSON.parse(row.json));
 }
 function open(path: string) {
   return AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "completion-proof" }, clock);
@@ -85,11 +116,16 @@ function conversion(path: string) {
 
 describe("C P2/P3/P4 historical completion conversion", () => {
   for (const [kind, schemaVersion] of [["success", 39], ["failure", 39], ["success", 40], ["failure", 40]] as const) {
-    it(`${kind} ${String(schemaVersion)} → 41: stopped backup, conversion, lost acknowledgement replay, archive identity, restore and no-write repeat`, async () => {
+    it(`${kind} ${String(schemaVersion)} → retained 46: expiry, supported conversion, lost acknowledgement replay, archive identity, restore and no-write repeat`, async () => {
       const f = fixture(kind, schemaVersion);
       assert.throws(() => open(f.path), /upgrade-required/u);
       const historical = inspectAuthorityBackupReadOnly(f.path);
       assert.equal(historical.schemaVersion, schemaVersion);
+      await backupStoppedAuthority(f.stateRoot, clock);
+      const expired = storageTree(f.stateRoot);
+      for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), /authority-below-floor.*original compatible release/u);
+      assert.deepEqual(storageTree(f.stateRoot), expired);
+      loadSupportedCompletion(f, kind);
       const backup = await backupStoppedAuthority(f.stateRoot, clock);
       const manifest = backup.manifests[0]; assert.ok(manifest);
       const backupPath = join(f.stateRoot, "backups", "authority", manifest.backupFileName);
@@ -103,12 +139,13 @@ describe("C P2/P3/P4 historical completion conversion", () => {
       assert.deepEqual(readFileSync(f.path), settled);
       const database = open(f.path);
       try {
-        const service = new RunRecordService({ database, clock, ids: { uuid: () => "99000000-0000-4000-8000-000000000099" } });
+        const service = new RunRecordService({ database, clock, publishQueued: () => { throw new Error("unexpected queue publication"); }, ids: { uuid: () => "99000000-0000-4000-8000-000000000099" } });
         const id = f.saved.request.terminal.authorization.runId;
-        const run = database.authority.runs.get(id); assert.ok(run?.completion);
+        const run = database.transferredRun(id)?.run; assert.ok(run?.completion);
+        assert.equal(database.authority.runs.get(id), undefined);
         assert.equal(run.version, 6); assert.equal(run.completion.expectedVersion, 4);
-        assert.deepEqual(database.authority.archivedRuns.get(id), f.saved.archive);
-        assert.equal(archivedRunReferenceFingerprint(database.authority.archivedRuns.get(id)), archivedRunReferenceFingerprint(f.saved.archive));
+        assert.deepEqual(retainedArchive(database,id), f.saved.archive);
+        assert.equal(archivedRunReferenceFingerprint(retainedArchive(database,id)), archivedRunReferenceFingerprint(f.saved.archive));
         const generation = database.getMeta().authorityGeneration;
         assert.equal(service.terminalize(f.saved.request, personLookupDescriptor).state, "applied-already");
         assert.equal(kind === "success" ? database.terminalizeSuccess(f.saved.request.terminal).state
@@ -125,7 +162,7 @@ describe("C P2/P3/P4 historical completion conversion", () => {
         for (const mutation of mutations) {
           const divergent = { ...f.saved.request, terminal: { ...f.saved.request.terminal,
             authorization: { ...f.saved.request.terminal.authorization, ...mutation } } };
-          if (kind === "failure" && "failureId" in mutation) {
+          if (kind === "failure" && "failureId" in mutation && "failure" in divergent.terminal) {
             divergent.terminal.failure = { ...z.record(z.string(), z.unknown()).parse(f.saved.request.terminal.failure), failureId: mutation.failureId };
           }
           assert.deepEqual(service.terminalize(divergent, personLookupDescriptor), { state: "refused", refusal: { reason: "replay-divergent" } });
@@ -141,7 +178,7 @@ describe("C P2/P3/P4 historical completion conversion", () => {
         try {
           assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(), []);
           assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name IN ('failures','run_terminal_authorizations','run_terminal_outbox')").get()?.n, 0);
-          for (const table of ["commands", "command_audits", "archived_runs"]) {
+          for (const table of ["commands", "command_audits"]) {
             const before = f.saved.rows[table]; assert.ok(before);
             const after = raw.prepare(`SELECT record_json FROM ${table} ORDER BY record_key`).all().map((row) => row.record_json);
             assert.deepEqual(after, before.toSorted((a, b) => String(a.record_key).localeCompare(String(b.record_key))).map((row) => row.record_json));
@@ -157,15 +194,16 @@ describe("C P2/P3/P4 historical completion conversion", () => {
         processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000,
       }, async () => { throw new Error("historical completion restore cannot rebuild current projections"); }, clock);
       const restored = await restore.restore({ manifestPath: `${backupPath}.manifest.json`, stoppedSystemProof });
-      assert.equal(restored.schemaVersion, schemaVersion);
+      assert.equal(restored.schemaVersion, 46);
       assert.equal(restored.projectionRebuilt, false);
       assert.deepEqual(readFileSync(f.path), readFileSync(backupPath));
-      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, schemaVersion);
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 46);
+      rmSync(join(f.stateRoot,"archive.sqlite")); rmSync(join(f.stateRoot,"archive-files"),{recursive:true,force:true});
       assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
       const reopened = open(f.path);
       try {
-        assert.deepEqual(reopened.authority.archivedRuns.get(f.saved.request.terminal.authorization.runId), f.saved.archive);
-        assert.equal(new RunRecordService({ database: reopened, clock, ids: { uuid: () => "99000000-0000-4000-8000-000000000099" } })
+        assert.deepEqual(retainedArchive(reopened,f.saved.request.terminal.authorization.runId), f.saved.archive);
+        assert.equal(new RunRecordService({ database: reopened, clock, publishQueued: () => { throw new Error("unexpected queue publication"); }, ids: { uuid: () => "99000000-0000-4000-8000-000000000099" } })
           .terminalize(f.saved.request, personLookupDescriptor).state, "applied-already");
       } finally { reopened.close(); }
     });

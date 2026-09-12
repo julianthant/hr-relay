@@ -43,8 +43,10 @@ export function historicalFixture() {
     db.authority.versionPlans.consume({versionPlanId:VERSION_PLAN_ROW.versionPlanId,expectedVersion:1,planFingerprint:VERSION_PLAN_ROW.planFingerprint,now:NOW});
     db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
     db.authority.archivedRuns.insert(ARCHIVED_RUN);
-    db.authority.archiveRelaunches.insert(ARCHIVE_RELAUNCH);
+
   });
+  const lineage = new DatabaseSync(f.path);
+  try { lineage.prepare("INSERT INTO archive_relaunches(record_key,archived_run_id,record_json,created_at) VALUES (?,?,?,?)").run(ARCHIVE_RELAUNCH.runId, ARCHIVE_RELAUNCH.archivedRunId, JSON.stringify(ARCHIVE_RELAUNCH), ARCHIVE_RELAUNCH.relaunchedAt); } finally { lineage.close(); }
   return result;
 }
 export function withHistoricalAuthority<T>(f: Pick<ReturnType<typeof foundationFixture>,"path"|"clock">,work:(database:AuthorityDatabase)=>T):T {

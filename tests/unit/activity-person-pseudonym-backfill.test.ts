@@ -1,6 +1,9 @@
+import { RunIdSchema } from "../../src/domain/ids.js";
+import { ActivityPersonPseudonymKeyGenerationSchema } from "../../src/domain/trust/activity-person-pseudonym.js";
+import {deriveCanonicalPerson} from "../../src/domain/run/summary-derivation.js";
+import {CURRENT_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN} from "./fixtures/activity-person-pseudonym-fixtures.js";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -10,12 +13,10 @@ import { defineRuntimeIsolation } from "../../src/config/define-runtime-isolatio
 import { deriveRunResultDigest, deriveTerminalDependencyDigest, RunResultRecordSchema } from "../../src/domain/run/result.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { createActivityPersonPseudonymBackfillService } from "../../src/server/activity-person-pseudonym-backfill/service.js";
 import { composeActivityPersonPseudonymBackfillCommand } from "../../src/server/activity-person-pseudonym-backfill/compose.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
 import { SeparationsResultSchema } from "../../src/workflows/separations/workflow.js";
 import {
   COMPOSITION_ACTION_ID,
@@ -35,7 +36,6 @@ import {
 } from "../helpers/separations-composition-fixtures.js";
 import {
   activityPersonPseudonymResultRecord,
-  seedSeparationsRunAuthority,
   seedTerminalSeparationsResult,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
 import { separationsDescriptor } from "../helpers/registered-workflows.js";
@@ -218,177 +218,7 @@ describe("reviewed activity person pseudonym backfill", () => {
     assert.equal(reviewed, 0);
   });
 
-  it("uses only the strict non-archived current Separations corpus", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-current-corpus-"));
-    const path = join(root, "authority.sqlite");
-    const database = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-current-corpus-test" },
-      manualClock(new Date(COMPOSITION_NOW)),
-    );
-    try {
-      seedTerminalSeparationsResult(database, path);
-      const raw = new DatabaseSync(path, { enableForeignKeyConstraints: false });
-      try {
-        raw.prepare(`
-          INSERT INTO archived_runs
-            (record_key, application_id, workflow, descriptor_version, contract_fingerprint,
-             app_version, content_digest, record_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          TERMINAL_RUN.envelope.runId,
-          "88888888-8888-4888-8888-888888888888",
-          "separations",
-          TERMINAL_RUN.envelope.descriptorVersion,
-          TERMINAL_RUN.envelope.contractFingerprint,
-          null,
-          "a".repeat(64),
-          "{}",
-          COMPOSITION_NOW,
-        );
-      } finally {
-        raw.close();
-      }
-      let reviewed = 0;
-      const service = createActivityPersonPseudonymBackfillService({
-        authority: database.authority,
-        writeCapability: {
-          keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
-          reviewAndInsert: () => {
-            reviewed += 1;
-            return [];
-          },
-        },
-      });
-
-      const report = service.backfill({ scope: "current-separations" });
-
-      assert.deepEqual(report, {
-        scope: "current-separations",
-        keyGeneration: "activity-person-g1",
-        outcomes: [],
-        counts: { examined: 0, inserted: 0, existing: 0, unavailable: 0 },
-      });
-      assert.equal(reviewed, 0);
-    } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rolls back every new row when the batch key differs from durable generation authority", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-batch-rollback-"));
-    const path = join(root, "authority.sqlite");
-    const database = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-batch-rollback-test" },
-      manualClock(new Date(COMPOSITION_NOW)),
-    );
-    const secondRun = RunRecordSchema.parse({
-      ...TERMINAL_RUN,
-      envelope: {
-        ...TERMINAL_RUN.envelope,
-        runId: "33333333-3333-4333-8333-333333333333",
-        itemId: "44444444-4444-4444-8444-444444444444",
-        traceId: "sp-100001-3333",
-      },
-    });
-    try {
-      seedTerminalSeparationsResult(database, path);
-      seedTerminalSeparationsResult(
-        database,
-        path,
-        secondRun,
-        activityPersonPseudonymResultRecord(secondRun),
-      );
-      database.createActivityPersonPseudonymBackfillWriteCapability(TEST_PSEUDONYM_DOMAIN)
-        .reviewAndInsert([secondRun.envelope.runId]);
-      const existing = database.authority.activityPersonPseudonyms.get(
-        secondRun.envelope.runId,
-        TEST_PSEUDONYM_DOMAIN.keyGeneration,
-      );
-      const generationBefore = database.getMeta().authorityGeneration;
-      const divergentDomain = createActivityPersonPseudonymDomain({
-        keyGeneration: "activity-person-g1",
-        keyHex: "ff".repeat(32),
-      });
-      const service = createActivityPersonPseudonymBackfillService({
-        authority: database.authority,
-        writeCapability: database.createActivityPersonPseudonymBackfillWriteCapability(
-          divergentDomain,
-        ),
-      });
-
-      assert.throws(
-        () => service.backfill({
-          scope: "selected-runs",
-          runIds: [TERMINAL_RUN.envelope.runId, secondRun.envelope.runId],
-        }),
-        /generation activity-person-g1 is already bound to different key material/u,
-      );
-      assert.equal(database.authority.activityPersonPseudonyms.get(
-        TERMINAL_RUN.envelope.runId,
-        divergentDomain.keyGeneration,
-      ), undefined);
-      assert.deepEqual(database.authority.activityPersonPseudonyms.get(
-        secondRun.envelope.runId,
-        divergentDomain.keyGeneration,
-      ), existing);
-      assert.equal(database.getMeta().authorityGeneration, generationBefore);
-    } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("persists a multi-run generation through one bounded authority transaction", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-bounded-batch-"));
-    const path = join(root, "authority.sqlite");
-    const database = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-bounded-batch-test" },
-      manualClock(new Date(COMPOSITION_NOW)),
-    );
-    const secondRun = RunRecordSchema.parse({
-      ...TERMINAL_RUN,
-      envelope: {
-        ...TERMINAL_RUN.envelope,
-        runId: "33333333-3333-4333-8333-333333333333",
-        itemId: "44444444-4444-4444-8444-444444444444",
-        traceId: "sp-100001-3333",
-      },
-    });
-    try {
-      seedTerminalSeparationsResult(database, path);
-      seedTerminalSeparationsResult(
-        database,
-        path,
-        secondRun,
-        activityPersonPseudonymResultRecord(secondRun),
-      );
-      const generationBefore = database.getMeta().authorityGeneration;
-      const service = createActivityPersonPseudonymBackfillService({
-        authority: database.authority,
-        writeCapability: database.createActivityPersonPseudonymBackfillWriteCapability(
-          TEST_PSEUDONYM_DOMAIN,
-        ),
-      });
-
-      const report = service.backfill({
-        scope: "selected-runs",
-        runIds: [TERMINAL_RUN.envelope.runId, secondRun.envelope.runId],
-      });
-
-      assert.deepEqual(report.outcomes.map(({ state }) => state), ["inserted", "inserted"]);
-      assert.equal(database.getMeta().authorityGeneration, generationBefore + 1);
-      assert.equal(database.authority.activityPersonPseudonyms.listByRuns([
-        TERMINAL_RUN.envelope.runId,
-        secondRun.envelope.runId,
-      ]).length, 2);
-    } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("returns named unavailable evidence and writes nothing for every unreviewed binding shape", () => {
+  it("preserves the complete unavailable binding matrix at the canonical-result reader",()=>{
     const queued = RunRecordSchema.parse(compositionQueuedRun());
     const failed = RunRecordSchema.parse({
       ...TERMINAL_RUN,
@@ -437,213 +267,47 @@ describe("reviewed activity person pseudonym backfill", () => {
       { name: "ambiguous binding", run: TERMINAL_RUN, result: ambiguousSubject, reason: "canonical-subject-ambiguous" },
     ] as const;
 
-    for (const fixture of cases) {
-      const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-refusal-"));
-      const path = join(root, "authority.sqlite");
-      const database = AuthorityDatabase.open(
-        { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-refusal-test" },
-        manualClock(new Date(COMPOSITION_NOW)),
-      );
-      try {
-        if (fixture.run !== undefined) {
-          if (fixture.run.lifecycle.state === "queued") {
-            database.authority.runs.enqueue(fixture.run);
-          } else {
-            seedSeparationsRunAuthority(database, path, fixture.run, fixture.result);
-          }
-        }
-        const outcomes = database.createActivityPersonPseudonymBackfillWriteCapability(
-          TEST_PSEUDONYM_DOMAIN,
-        ).reviewAndInsert([TERMINAL_RUN.envelope.runId]);
-
-        assert.deepEqual(outcomes, [{
-          runId: TERMINAL_RUN.envelope.runId,
-          state: "unavailable",
-          reason: fixture.reason,
-        }], fixture.name);
-        assert.deepEqual(
-          database.authority.activityPersonPseudonyms.listByRun(TERMINAL_RUN.envelope.runId),
-          [],
-          fixture.name,
-        );
-      } finally {
-        database.close();
-        rmSync(root, { recursive: true, force: true });
-      }
+    for(const fixture of cases) {
+      if(fixture.run===undefined)continue; // Missing IDs are proved through the real database below.
+      if(fixture.reason==="run-result-identity-mismatch")assert.throws(()=>deriveCanonicalPerson(fixture.run,fixture.result??null),/summary-result-identity-mismatch/u);
+      else assert.deepEqual(deriveCanonicalPerson(fixture.run,fixture.result??null),{state:"unavailable",reason:"canonical-result-unavailable"},fixture.name);
     }
   });
-
-  it("persists only the approved-subject HMAC evidence and returns no identifier or key material", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-backfill-"));
-    const path = join(root, "authority.sqlite");
-    const database = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-backfill-test" },
-      manualClock(new Date(COMPOSITION_NOW)),
-    );
-    try {
-      const performedFinalization = SEPARATIONS_RESULT.finalization;
-      if (!("proof" in performedFinalization)) throw new Error("fixture finalization must be the performed arm");
-      const alternateSourceResult = resultWith({
-        ...SEPARATIONS_RESULT,
-        termination: { ...SEPARATIONS_RESULT.termination, emplId: "10800001" },
-        finalization: {
-          ...performedFinalization,
-          proof: { ...performedFinalization.proof, observedEid: "10800002" },
-        },
-      });
-      seedTerminalSeparationsResult(database, path, TERMINAL_RUN, alternateSourceResult);
-      const writeCapability = database.createActivityPersonPseudonymBackfillWriteCapability(
-        TEST_PSEUDONYM_DOMAIN,
-      );
-      const service = createActivityPersonPseudonymBackfillService({
-        authority: database.authority,
-        writeCapability,
-      });
-
-      const report = service.backfill({ scope: "current-separations" });
-      const stored = database.authority.activityPersonPseudonyms.get(
-        TERMINAL_RUN.envelope.runId,
-        "activity-person-g1",
-      );
-
-      assert.equal(stored?.pseudonym, "9e816075dee5a4a267b40f1505c09762a63eb2909aa42789a72790d6916e5d8a");
-      assert.notEqual(
-        stored?.pseudonym,
-        createHash("sha256").update(COMPOSITION_EID).digest("hex"),
-        "an unkeyed identifier digest is not pseudonym evidence",
-      );
-      const publicOutput = JSON.stringify(report);
-      const directIdentifiers = [COMPOSITION_EID, "10800001", "10800002"];
-      const forbiddenValues = [
-        ...directIdentifiers,
-        ...directIdentifiers.map((identifier) => JSON.stringify(identifier.slice(-4))),
-        ...directIdentifiers.map((identifier) => createHash("sha256").update(identifier).digest("hex")),
-        KEY_HEX,
-      ];
-      for (const secretValue of forbiddenValues) {
-        assert.equal(publicOutput.includes(secretValue), false);
-      }
-    } finally {
-      database.close();
-    }
-
-    const raw = new DatabaseSync(path, { readOnly: true });
-    try {
-      const columns = raw.prepare("PRAGMA table_info(activity_person_pseudonyms)").all()
-        .map((column) => {
-          if (typeof column !== "object" || column === null) {
-            throw new Error("pseudonym table_info row is not an object");
-          }
-          const name = Reflect.get(column, "name");
-          if (typeof name !== "string") throw new Error("pseudonym table_info row has no name");
-          return name;
-        });
-      const rows = raw.prepare("SELECT * FROM activity_person_pseudonyms").all();
-      const generationColumns = raw.prepare(
-        "PRAGMA table_info(activity_person_pseudonym_generations)",
-      ).all().map((column) => {
-        if (typeof column !== "object" || column === null) {
-          throw new Error("pseudonym generation table_info row is not an object");
-        }
-        const name = Reflect.get(column, "name");
-        if (typeof name !== "string") {
-          throw new Error("pseudonym generation table_info row has no name");
-        }
-        return name;
-      });
-      const generationRows = raw.prepare(
-        "SELECT * FROM activity_person_pseudonym_generations",
-      ).all();
-      assert.deepEqual(columns, [
-        "record_key",
-        "run_id",
-        "workflow",
-        "key_generation",
-        "pseudonym",
-        "derivation",
-        "record_json",
-        "created_at",
-      ]);
-      assert.deepEqual(generationColumns, [
-        "record_key",
-        "key_generation",
-        "key_commitment",
-        "derivation",
-        "record_json",
-        "created_at",
-      ]);
-      assert.equal(generationRows.length, 1);
-      const persisted = JSON.stringify({ evidence: rows, generations: generationRows });
-      const directIdentifiers = [COMPOSITION_EID, "10800001", "10800002"];
-      const forbiddenValues = [
-        ...directIdentifiers,
-        ...directIdentifiers.map((identifier) => JSON.stringify(identifier.slice(-4))),
-        ...directIdentifiers.map((identifier) => createHash("sha256").update(identifier).digest("hex")),
-        KEY_HEX,
-      ];
-      for (const secretValue of forbiddenValues) {
-        assert.equal(persisted.includes(secretValue), false);
-      }
-    } finally {
-      raw.close();
-      rmSync(root, { recursive: true, force: true });
-    }
+  it("returns unavailable for an absent canonical run without minting identity rows",()=>{
+    const root=mkdtempSync(join(tmpdir(),"canonical-person-")),path=join(root,"state.db");
+    const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"canonical-person"},manualClock(new Date(COMPOSITION_NOW)));
+    try {const before=db.getMeta();assert.deepEqual(db.canonicalPerson(TERMINAL_RUN.envelope.runId),{state:"unavailable",reason:"canonical-live-run-unavailable"});assert.deepEqual(db.getMeta(),before);}
+    finally{db.close();rmSync(root,{recursive:true,force:true});}
   });
-
-  it("composes one explicit selected-run backfill command against the isolated authority", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-command-"));
-    const stateRoot = ".tracker";
-    const path = join(root, stateRoot, "state.db");
-    const isolation = defineRuntimeIsolation({
-      stateRoot,
-      artifactRoot: ".tracker/artifacts",
-      backendPort: 3938,
-      frontendPort: 5174,
-      processLockRoot: ".tracker/locks",
-      browserProfileRoot: ".auth",
-      browserSessionNamespace: "hrauto-rebuild",
-    });
-    mkdirSync(join(root, stateRoot), { recursive: true });
-    const database = AuthorityDatabase.open(
-      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-command-test" },
-      manualClock(new Date(COMPOSITION_NOW)),
-    );
-    const protectedStore = createCredentialStore({ stateRoot: join(root, stateRoot) });
-    journalProtectedSettings(database, protectedStore, {
-      activityPersonPseudonym: { set: { keyHex: KEY_HEX, keyGeneration: "activity-person-g1" } },
-    }, COMPOSITION_NOW);
-    database.close();
+  it("reads the exact approved subject repeatedly without a generation key or write",()=>{
+    const root=mkdtempSync(join(tmpdir(),"canonical-person-")),path=join(root,"state.db");
+    const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"canonical-person"},manualClock(new Date(COMPOSITION_NOW)));
     try {
-      const productionComposition = readFileSync(
-        new URL("../../src/server/activity-person-pseudonym-backfill/compose.ts", import.meta.url),
-        "utf8",
-      );
-      assert.doesNotMatch(productionComposition, /pseudonyms\?:/u);
-      assert.match(
-        productionComposition,
-        /createActivityPersonPseudonymBackfillWriteCapability\(\s*requireActivityPersonPseudonymDomain\(createCredentialSecretSource\(protectedAuthority\)\)/u,
-      );
-      const outcome = composeActivityPersonPseudonymBackfillCommand({
-        isolation,
-        args: ["backfill", "--run", TERMINAL_RUN.envelope.runId, "--json"],
-        repoRoot: root,
-        clock: manualClock(new Date(COMPOSITION_NOW)),
-      });
-
-      assert.equal(outcome.exitCode, 1);
-      assert.deepEqual(JSON.parse(outcome.output), {
-        scope: "selected-runs",
-        keyGeneration: "activity-person-g1",
-        outcomes: [{
-          runId: TERMINAL_RUN.envelope.runId,
-          state: "unavailable",
-          reason: "run-not-found",
-        }],
-        counts: { examined: 1, inserted: 0, existing: 0, unavailable: 1 },
-      });
-      assert.equal(outcome.output.includes(KEY_HEX), false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+      seedTerminalSeparationsResult(db,path);const before=db.getMeta();
+      for(let n=0;n<3;n++)assert.deepEqual(db.canonicalPerson(TERMINAL_SEPARATIONS_RUN.envelope.runId),{state:"available",identity:CURRENT_SEPARATIONS_RESULT.approved.emplId});
+      assert.deepEqual(db.getMeta(),before);
+      const raw=new DatabaseSync(path,{readOnly:true});try {assert.deepEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'activity_person_pseudonym%'").all(),[]);}finally{raw.close();}
+    }finally{db.close();rmSync(root,{recursive:true,force:true});}
+  });
+  it("uses approved identity even when later transaction and finalization identities differ",()=>{
+    const base=CURRENT_SEPARATIONS_RESULT;
+    const finalization=base.finalization;if(!("proof" in finalization))throw new Error("performed finalization required");
+    const result=activityPersonPseudonymResultRecord(TERMINAL_SEPARATIONS_RUN,{...base,termination:{...base.termination,emplId:"10800001"},finalization:{...finalization,proof:{...finalization.proof,observedEid:"10800002"}}});
+    assert.deepEqual(deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,result),{state:"available",identity:base.approved.emplId});
+  });
+  it("refuses retired command composition without creating state or credential files",()=>{
+    const root=mkdtempSync(join(tmpdir(),"retired-backfill-cli-"));
+    try {
+      const isolation=defineRuntimeIsolation({stateRoot:".tracker",artifactRoot:".tracker/artifacts",archiveDatabaseFile:"archive.sqlite",backendPort:3938,frontendPort:5174,processLockRoot:".tracker/locks",browserProfileRoot:".auth",browserSessionNamespace:"hrauto-rebuild"});
+      const result=composeActivityPersonPseudonymBackfillCommand({isolation,args:["backfill","--run",TERMINAL_RUN.envelope.runId,"--json"],repoRoot:root});
+      assert.deepEqual(result,{exitCode:1,output:"activity-person-pseudonyms retired; Activity uses validated canonical results"});
+      assert.deepEqual(readdirSync(root),[]);
+    }finally{rmSync(root,{recursive:true,force:true});}
+  });
+  it("rejects foreign or incomplete batch replies before presenting plausible success",()=>{
+    for(const replies of [[],[{runId:RunIdSchema.parse("99999999-9999-4999-8999-999999999999"),state:"inserted" as const,keyGeneration:ActivityPersonPseudonymKeyGenerationSchema.parse("activity-person-g1")}]]) {
+      const service=createActivityPersonPseudonymBackfillService({authority:{runs:{get:()=>TERMINAL_RUN,listCurrentByWorkflow:()=>[TERMINAL_RUN]}},writeCapability:{keyGeneration:ActivityPersonPseudonymKeyGenerationSchema.parse("activity-person-g1"),reviewAndInsert:()=>replies}});
+      assert.throws(()=>service.backfill({scope:"current-separations"}),/batch returned/u);
     }
   });
 });

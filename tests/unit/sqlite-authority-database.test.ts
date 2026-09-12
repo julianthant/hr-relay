@@ -1,3 +1,7 @@
+import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
+import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
+import { versionChangeReviewFingerprint } from "../../src/domain/archive/change-record.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 import { historicalWorld } from "./transaction-history-fixture.js";
 import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
@@ -75,8 +79,6 @@ import {
 } from "../fixtures/archive-fixtures.js";
 import {
   ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
-  seedTerminalSeparationsResult,
-  TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
 import { compositionQueuedRun } from "../helpers/separations-composition-fixtures.js";
 import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migration.js";
@@ -438,7 +440,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -967,8 +969,8 @@ describe("native SQLite authority schema", () => {
     const upgraded = new DatabaseSync(path, { enableForeignKeyConstraints: true });
     try {
       assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
-      const foreignKeys = upgraded.prepare("PRAGMA foreign_key_list(archive_relaunches)").all() as Array<{ from: string; table: string }>;
-      assert.deepEqual(foreignKeys.map(({ from, table }) => ({ from, table })), [{ from: "record_key", table: "workflow_runs" }]);
+      assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='archive_relaunches'").get(), undefined);
+      assert.ok(upgraded.prepare("SELECT record_key FROM workflow_runs WHERE record_key=?").get(relaunched.envelope.runId));
       const tombstone = (run: typeof source) => upgraded.prepare(`
         INSERT INTO deleted_runs
           (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
@@ -979,17 +981,11 @@ describe("native SQLite authority schema", () => {
         run.envelope.itemId, run.envelope.attempt, null,
       );
       tombstone(source);
-      upgraded.prepare("DELETE FROM archived_runs WHERE record_key = ?").run(source.envelope.runId);
-      assert.equal(Reflect.get(upgraded.prepare(
-        "SELECT count(*) AS count FROM archive_relaunches WHERE archived_run_id = ?",
-      ).get(source.envelope.runId) ?? {}, "count"), 1);
-      assert.throws(
-        () => upgraded.prepare("DELETE FROM archive_relaunches WHERE record_key = ?").run(relaunched.envelope.runId),
-        /outside its new run D308 tombstone/u,
-      );
+      assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='archived_runs'").get(), undefined);
+      upgraded.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(source.envelope.runId);
+      assert.ok(upgraded.prepare("SELECT record_key FROM workflow_runs WHERE record_key=?").get(relaunched.envelope.runId));
       tombstone(relaunched);
-      assert.equal(upgraded.prepare("DELETE FROM archive_relaunches WHERE record_key = ?")
-        .run(relaunched.envelope.runId).changes, 1);
+      assert.equal(upgraded.prepare("DELETE FROM workflow_runs WHERE record_key=?").run(relaunched.envelope.runId).changes, 1);
     } finally {
       upgraded.close();
     }
@@ -1929,38 +1925,8 @@ describe("authority generation accounting", () => {
       table: "generated_artifacts",
       mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
     },
-    {
-      table: "activity_person_pseudonyms",
-      prepare: (db) => {
-        const path = databasePaths.get(db);
-        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
-        seedTerminalSeparationsResult(db, path);
-      },
-      mutate: (db) => {
-        const domain = createActivityPersonPseudonymDomain({
-          keyGeneration: "activity-person-g1",
-          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
-        });
-        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
-          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
-      },
-    },
-    {
-      table: "activity_person_pseudonym_generations",
-      prepare: (db) => {
-        const path = databasePaths.get(db);
-        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
-        seedTerminalSeparationsResult(db, path);
-      },
-      mutate: (db) => {
-        const domain = createActivityPersonPseudonymDomain({
-          keyGeneration: "activity-person-g1",
-          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
-        });
-        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
-          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
-      },
-    },
+    { table: "run_summaries", prepare: db => { prepareRunning(db); }, mutate: db => { db.refreshRunSummaries(); } },
+    { table: "summary_publication", mutate: db => { db.refreshRunSummaries(); } },
     { table: "imported_artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "extracted_artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
     { table: "provider_usage", prepare: prepareProviderRunning, mutate: reserveProvider },
@@ -2024,35 +1990,23 @@ describe("authority generation accounting", () => {
         });
       },
     },
-    { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
-    // D179: the archive's three durable facts. Each needs the row it references
-    // to exist first — the FKs are `ON DELETE RESTRICT` on purpose, so an
-    // archived run can never outlive the run row it describes.
-    {
-      table: "version_bump_applications",
-      prepare: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); },
-      mutate: (db) => { db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION); },
-    },
-    {
-      table: "archived_runs",
-      prepare: (db) => {
-        db.authority.runs.enqueue(QUEUED_RUN);
-        db.authority.versionPlans.insert(VERSION_PLAN_ROW);
-        db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
-      },
-      mutate: (db) => { db.authority.archivedRuns.insert(ARCHIVED_RUN); },
-    },
-    {
-      table: "archive_relaunches",
-      prepare: (db) => {
-        db.authority.runs.enqueue(QUEUED_RUN);
-        db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: ARCHIVE_RELAUNCH.runId, itemId: RELAUNCH_ITEM_ID, traceId: "pl-170001-3333" } });
-        db.authority.versionPlans.insert(VERSION_PLAN_ROW);
-        db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
-        db.authority.archivedRuns.insert(ARCHIVED_RUN);
-      },
-      mutate: (db) => { db.authority.archiveRelaunches.insert(ARCHIVE_RELAUNCH); },
-    },
+    { table: "version_changes", mutate: db => {
+      const review = {changeId:UUID_7,actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
+        change:{kind:"minor" as const,what:"Synthetic",why:"Generation proof",commit:{state:"absent" as const,reason:"test"}},
+        scope:{kind:"application" as const,applicationVersion:"1.0.0"},targetVersion:"1.1.0",targets:[],members:[],membershipDigest:sha256Hex("[]")};
+      db.writeVersionChange({...review,schemaVersion:2,reviewFingerprint:versionChangeReviewFingerprint(review),state:"planned",completedRunIds:[]});
+    } },
+    { table: "archive_transfers", prepare: db => {
+      const run=prepareRunning(db);
+      const terminal=db.authority.runs.transition({runId:RUN_ID,expectedVersion:run.version,claim:{workerId:WORKER_ID,claimGeneration:1},lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW},now:NOW});
+      assert.equal(terminal.state,"applied");
+      const storage=createRunLifecycleStorage(db), snapshot=storage.capture(RUN_ID);
+      const report=captureArchiveReport({snapshot,transferId:UUID_7,capturedAt:NOW,files:[],sections:[]});
+      storage.saveReport(report);storage.verifyReport(RUN_ID,report.digest);
+    }, mutate: db => {
+      const storage=createRunLifecycleStorage(db), report=storage.readPendingReport(RUN_ID,UUID_7);assert.ok(report);
+      db.transferLifecycleSources({runId:RUN_ID,digest:report.report.digest,expectedVersion:storage.capture(RUN_ID).run.version});
+    } },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
     { table: "run_checkpoints", prepare: (db) => {
       db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
@@ -2069,6 +2023,16 @@ describe("authority generation accounting", () => {
     { table: "run_operations", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
     { table: "run_operation_attempts", prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT); }, mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
   ];
+
+  it("refuses retired pseudonym and archive writers without advancing generation", () => {
+    const db=openDatabase(), before=db.getMeta().authorityGeneration;
+    const domain=createActivityPersonPseudonymDomain({keyGeneration:"activity-person-g1",keyHex:ACTIVITY_PERSON_PSEUDONYM_KEY_HEX});
+    assert.throws(()=>db.createActivityPersonPseudonymBackfillWriteCapability(domain),/activity-person-pseudonyms-retired/u);
+    assert.throws(()=>db.authority.versionPlans.insert(VERSION_PLAN_ROW),/historical-archive-writer-retired/u);
+    assert.throws(()=>db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION),/historical-archive-writer-retired/u);
+    assert.throws(()=>db.authority.archivedRuns.insert(ARCHIVED_RUN),/historical-archive-writer-retired/u);
+    assert.equal(db.getMeta().authorityGeneration,before);
+  });
 
   it("accounts intake preparation in its single imported authority row", () => {
     const db=openDatabase();const before=db.getMeta().authorityGeneration;

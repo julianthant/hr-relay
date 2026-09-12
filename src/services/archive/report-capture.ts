@@ -5,7 +5,7 @@ import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/stor
 import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport } from "../../domain/archive/report.js";
 import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
-import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../core/run-lifecycle-storage.js";
+import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
 
 type Section = ArchiveReport["content"]["sections"][number];
 type Cell = string | number | boolean | null;
@@ -65,9 +65,22 @@ export function captureArchiveReport(input: Readonly<{
       return typeof secret === "string" && secret.length > 0 ? [secret] : [];
     });
   });
+  // Free-form resolution notes are protected independently of input values.
+  // Collect them before projection so command/audit copies and supplied sections
+  // cannot reintroduce text withheld from the live operator view.
+  const protectedNotes = new Set<string>();
+  const collectNotes = (value: JsonValue): void => {
+    if (value === null || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "note" && typeof child === "string" && child.length > 0) protectedNotes.add(child);
+      else collectNotes(child);
+    }
+  };
+  if (hasProtectedTransactionInput(run)) collectNotes(JsonValueSchema.parse(original));
   const scrub = (value: JsonValue): JsonValue => {
     if (typeof value === "string") {
       let text = value;
+      for (const note of protectedNotes) text = text.replaceAll(note, "Protected resolution note withheld.");
       for (const secret of secrets) text = text.replaceAll(secret, "[protected]").replaceAll(sha256Hex(secret), "[protected digest]");
       return secrets.length > 0 ? text.replace(/[a-f0-9]{64}/giu, "[protected digest]") : text;
     }

@@ -1,3 +1,5 @@
+import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspection.js";
+import { requireSupportedRecoverySchema } from "../../infra/sqlite/recovery-admission.js";
 import { existsSync, lstatSync, readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync, openSync, closeSync, fsyncSync, constants } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -21,6 +23,8 @@ export async function restoreHistoricalStorage(optionsInput:z.input<typeof Offli
   const options=OfflineRestoreOptionsSchema.parse(optionsInput),request=OfflineRestoreRequestSchema.parse(requestInput);
   const root=dirname(options.authorityPath),identity=AuthorityDatabase.sourceDatabaseIdentity(options.authorityPath);
   const verified=await verifyBackupManifestAtPath(request.manifestPath,identity);
+  requireSupportedRecoverySchema(verified.manifest.schemaVersion);
+  if (backupHasArchiveTransferCustody(verified.backupPath)) throw new Error("paired-lifecycle-backup-required");
   if(verified.manifest.schemaVersion>=CURRENT_AUTHORITY_SCHEMA_VERSION)throw new Error("historical-restore-requires-old-backup");
   const marker=join(root,".archive-restore.json"),binding=canonicalJsonStringify({sourceIdentity:identity,backupSha256:verified.manifest.sha256});
   const admission=acquireRuntimeRestoreAdmission({processLockRoot:options.processLockRoot,pid:process.pid},clock);

@@ -5,7 +5,7 @@ import { QueueStatusSchema } from "../../domain/dashboard/projection.js";
 import { RunRecordSchema, RunStateSchema } from "../../domain/run/record.js";
 import { RunSummarySchema, SummaryPublicationSchema, RunSummarySourceSchema, SummaryQuerySchema } from "../../domain/run/summary.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { deriveRunSummary, runSummaryDigest } from "../../core/run-summary.js";
+import { deriveRunSummary, runSummaryDigest } from "../../domain/run/summary-derivation.js";
 
 export const RUN_SUMMARIES_DDL = `CREATE TABLE run_summaries (
  record_key TEXT PRIMARY KEY, workflow TEXT NOT NULL, local_day TEXT NOT NULL, state TEXT NOT NULL,
@@ -109,7 +109,7 @@ export function createRunSummaries(database: DatabaseSync) {
       database.exec("DELETE FROM run_summaries");write(runs,sourceGeneration,now);return publish(sourceGeneration,now);
     },
     /** Shared transaction hook. Q can refine maintenance inside this owned adapter. */
-    commit(sourceGeneration:number,now:string) {
+    publishChanges(sourceGeneration:number,now:string) {
       const current = publication();
       if(current.state === "published") {
         // Only this transaction's next revision, or an explicit rebuild in it, may publish.

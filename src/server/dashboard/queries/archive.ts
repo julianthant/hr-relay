@@ -1,7 +1,9 @@
+import { authenticatedVersionApplyRequest, publicVersionReviewFingerprint } from "../commands/version-review-binding.js";
+import type { VersionChange } from "../../../domain/archive/change-record.js";
 import { SavedArchiveFileWireSchema } from "../../../domain/dashboard/archive.js";
 import { FingerprintSchema } from "../../../domain/ids.js";
 import { SavedVersionIndexWireSchema } from "../../../domain/dashboard/archive.js";
-import type { createRunLifecycleStorage } from "../../../core/run-lifecycle-storage.js";
+import type { createRunLifecycleStorage } from "../../../infra/sqlite/lifecycle-storage.js";
 import { readArchiveReport, queryArchiveReports } from "./archive-reports.js";
 import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, type SavedArchiveQuery } from "../../../domain/dashboard/archive.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
@@ -638,12 +640,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
           ledgerLines: record.evidence.ledgerPartitions.length,
         },
       }),
-      relaunches: repositories.archiveRelaunches.listByArchivedRun(record.runId).map((relaunch) => ({
-        runId: relaunch.runId,
-        relaunchedIdentity: relaunch.relaunchedIdentity,
-        relaunchedBy: relaunch.relaunchedBy,
-        relaunchedAt: relaunch.relaunchedAt,
-      })),
+      relaunches: [],
       relaunch: current === undefined
         ? {
           state: "unavailable",
@@ -671,7 +668,18 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
 export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSnapshotSource {
   const snapshotBatch = (runIds: readonly string[]): ReadonlyMap<string, ArchiveRunSnapshot> => {
     if (runIds.length === 0) return new Map();
-    const captured = deps.projection.captureQueueSnapshot();
+    if (deps.runReader === undefined) throw new Error("canonical run reader is required");
+    const reader = deps.runReader;
+    return reader.withRunTreeSnapshot(runIds, runs => {
+    const byId = new Map(runs.map(run => [String(run.envelope.runId), run]));
+    const capturedDeps: RunDetailQueryDeps = { ...deps, runReader: { list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader),
+      read(runId) {
+        const run = byId.get(runId);
+        if (run === undefined) throw new Error("archive-capture-run-outside-snapshot");
+        return { state: "present", disposition: "live", run };
+      },
+    } };
+    const captured = deps.projection.captureQueueSnapshot(runs);
     const children = canonicalRunChildren(captured.runs);
     const memberIds = new Map(runIds.map((runId) => [runId,
       (children.get(runId) ?? []).filter((run) => run.envelope.shape === "operation-member")
@@ -688,25 +696,26 @@ export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSn
           + "because an archived row that could not be built now can never be built later",
         );
       }
-      const section = buildRunSection(deps, runId, "failure");
+      const section = buildRunSection(capturedDeps, runId, "failure");
       if (section.section !== "failure") {
         throw new Error(`the failure section of run ${runId} came back as ${section.section}`);
       }
       const { payload } = section;
       const snapshot: ArchiveRunSnapshot = {
         row,
-        detail: buildRunDetail(deps, runId),
+        detail: buildRunDetail(capturedDeps, runId),
         failure: payload.state === "available"
           ? { state: "present", value: payload.value }
           // `missing`, `purged` and `error` all carry their own reason, and the
           // archive keeps whichever one the live surface would have shown
           // rather than flattening three different facts into one absence.
           : { state: "absent", reason: payload.state === "error" ? payload.message : payload.reason },
-        sections: freezeProjectionSections(deps, runId, memberIds.get(runId) ?? [], surfaces),
+        sections: freezeProjectionSections(capturedDeps, runId, memberIds.get(runId) ?? [], surfaces),
       };
       snapshots.set(runId, Object.freeze(snapshot));
     }
     return snapshots;
+    });
   };
   return Object.freeze({
     snapshotBatch,
@@ -989,8 +998,9 @@ export function savedArchiveVersions(deps: ArchiveQueryDeps) {
     changes: current.map(row => {
       if (!("reviewFingerprint" in row)) throw new Error("version-change-current-contract-invalid");
       return { changeId: row.changeId, state: row.state, targetVersion: row.targetVersion, change: row.change,
-        reviewFingerprint: row.reviewFingerprint, scope: row.scope, memberRunIds: row.members.map(member => member.runId),
-        blockerRunIds: row.blockers, completedRunIds: row.completedRunIds };
+        reviewFingerprint: publicVersionReviewFingerprint(row), scope: row.scope, memberRunIds: row.members.map(member => member.runId),
+        blockerRunIds: row.blockers, completedRunIds: row.completedRunIds,
+        ...(versionApplyResumeRequest(row) === undefined ? {} : { resumeRequest: versionApplyResumeRequest(row) }) };
     }), historicalChanges: retained.length - current.length });
 }
 
@@ -1004,4 +1014,13 @@ export async function savedFileResource(deps: ArchiveQueryDeps, runId: string, d
     return SavedArchiveFileWireSchema.parse({ runId, digest, resource: error.code === "ARCHIVED_CAPTURE_BYTES_MISSING"
       ? { state: "missing", reason: error.message } : { state: "error", message: error.message } });
   }
+}
+
+/** Recover the dashboard's exact envelope only when the durable claim authenticates it.
+ * Other command producers retain their own original request; never invent its optional fields.
+ */
+export function versionApplyResumeRequest(row: VersionChange) {
+  if (row.state !== "applying") return undefined;
+  const request = authenticatedVersionApplyRequest(row);
+  return request === undefined ? undefined : { ...request, payload: { planFingerprint: publicVersionReviewFingerprint(row) } };
 }

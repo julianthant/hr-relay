@@ -1,9 +1,10 @@
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
+import { localDatePart } from "../domain/clock.js";
 import { FailureResolutionSchema } from "../domain/trust/failure-resolution.js";
 import type { CommandApplication } from "./command-application.js";
 import type { FailureResolutionCommand } from "../domain/commands.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
-import { rejectCommandRequest } from "./command-kernel.js";
+import { rejectCommandRequest } from "./command-refusal.js";
 import { lifecycleCommandId } from "./run-record-service.js";
 
 export { failureResolutionCapability } from "../domain/trust/failure-resolution.js";
@@ -44,7 +45,7 @@ export function executeFailureResolution(
     schemaVersion: 1,
     eventId: lifecycleCommandId("failure-resolution", { commandId: request.commandId }),
     workflow: run.envelope.workflow, scope: { kind: "run", runId },
-    occurredAt: now, recordedAt: now, retentionDate: now.slice(0, 10), source: { kind: "native" },
+    occurredAt: now, recordedAt: now, retentionDate: localDatePart(new Date(now)), source: { kind: "native" },
     payload: { kind: "failure-resolution", runId, workflow: run.envelope.workflow, failureId,
       commandId: request.commandId, actorId: request.requestedBy, action: request.payload.action,
       annotationVersion: resolution.version, at: now },

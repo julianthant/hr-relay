@@ -1,3 +1,4 @@
+import { deriveRunResultDigest } from "../../src/domain/run/result.js";
 import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D210 — a previewed run through the REAL pipeline, end to end, with nothing
@@ -283,6 +284,9 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
 
     const terminal = {
       ...run,
+      version: run.version + 1,
+      completion: { schemaVersion: 1, kind: "done", expectedVersion: run.version,
+        claim, authorizedAt: built.record.createdAt, resultDigest: deriveRunResultDigest(built.record) },
       lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt },
     };
     const { receipt } = deriveRunEvidenceReceipt({
@@ -354,6 +358,9 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
 
     const terminal = {
       ...run,
+      version: run.version + 1,
+      completion: { schemaVersion: 1, kind: "done", expectedVersion: run.version,
+        claim, authorizedAt: built.record.createdAt, resultDigest: deriveRunResultDigest(built.record) },
       lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt },
     };
     const { receipt } = deriveRunEvidenceReceipt({
@@ -533,7 +540,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.throws(
       () => buildRunPreviewResult(
         writeFixtureDescriptor,
-        { ...terminalRun(h.database), lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
+        { ...terminalRun(h.database), completion: undefined, lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
           claimedAt: WRITE_FIXTURE_NOW, heartbeatAt: WRITE_FIXTURE_NOW } },
         {
           kind: "transaction-dry-run-preview",

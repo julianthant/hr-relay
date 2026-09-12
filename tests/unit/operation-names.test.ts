@@ -13,7 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
 import { NOW, WRITE_INTENT_ATTEMPTING } from "../fixtures/phase1c-contract-fixtures.js";
 import { createOperationRenameSource, operationFixtureId, OPERATION_TABLE_RENAMES } from "./helpers/operation-names-fixture.js";
@@ -87,8 +87,31 @@ function rows(path: string, table: string) {
   try { return db.prepare(`SELECT * FROM ${table} ORDER BY record_key`).all(); }
   finally { db.close(); }
 }
+function supportedFixture() {
+  const f = fixture();
+  rmSync(f.path);
+  const facts = z.record(z.string().regex(/^[a-z_]+$/u), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))).parse(
+    JSON.parse(readFileSync(new URL("./fixtures/migrated-operations.json", import.meta.url), "utf8")));
+  const raw = new DatabaseSync(f.path);
+  try {
+    raw.exec("PRAGMA foreign_keys=OFF");
+    for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= 46)) for (const sql of migration.statements) raw.exec(sql);
+    // Restore a frozen database image, including tombstones whose owners are already deleted.
+    const triggers = z.array(z.object({name:z.string().regex(/^[a-z_]+$/u),sql:z.string()})).parse(raw.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger'").all());
+    for (const trigger of triggers) raw.exec(`DROP TRIGGER ${trigger.name}`);
+    for (const [table, records] of Object.entries(facts)) for (const row of records) {
+      const columns = Object.keys(row);
+      raw.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+    }
+    for (const trigger of triggers) raw.exec(trigger.sql);
+    raw.exec(`PRAGMA user_version=46; PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
+    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(), []);
+  } finally { raw.close(); }
+  assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 46);
+  return f;
+}
 async function currentFixture() {
-  const f = fixture(); await f.backup(); await f.run(); return f;
+  const f = supportedFixture(); await f.backup(); await f.run(); return f;
 }
 function open(path: string) {
   return AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "operation-names-test" }, clock);
@@ -137,10 +160,14 @@ describe("operation table names", () => {
   });
 
   it.each([33, 34, 35, 36])("preserves populated v%s rows, old receipts and pending counts through stopped conversion", async (version) => {
-    const f = fixture(version);
-    const prior = OPERATION_TABLE_RENAMES.map(([old, current]) => rows(f.path, version < 36 ? old : current));
+    const historicalFixture = fixture(version);
+    const originalBytes = readFileSync(historicalFixture.path);
+    await assert.rejects(historicalFixture.run(), /authority-below-floor/u);
+    assert.deepEqual(readFileSync(historicalFixture.path), originalBytes);
+    const f = supportedFixture();
+    const prior = OPERATION_TABLE_RENAMES.map(([old, current]) => rows(historicalFixture.path, version < 36 ? old : current));
     const receipts = rows(f.path, "deleted_runs");
-    const historical = inspectAuthorityBackupReadOnly(f.path);
+    const historical = inspectAuthorityBackupReadOnly(historicalFixture.path);
     assert.equal(historical.counts.unresolvedWriteIntents, 3);
     assert.equal(historical.counts.durableOutbox, 1);
     const bytes = readFileSync(f.path);
@@ -152,7 +179,8 @@ describe("operation table names", () => {
     assert.deepEqual(rows(f.path, "deleted_runs"), receipts);
     const after = inspectAuthorityBackupReadOnly(f.path);
     assert.equal(after.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    const { durableOutbox: historicalPending, ...currentCounts } = historical.counts;
+    const { durableOutbox: historicalPending, runTerminalOutbox: historicalTerminal, ...currentCounts } = historical.counts;
+    assert.equal(historicalTerminal, 0);
     assert.equal(historicalPending, 1);
     assert.deepEqual(after.counts, currentCounts);
     assert.equal(after.tables.some(({ name }) => OPERATION_TABLE_RENAMES.some(([old]) => old === name)), false);
@@ -170,15 +198,17 @@ describe("operation table names", () => {
   });
 
   it.each(["beforeCommit", "afterCommit"] as const)("recovers populated conversion interrupted at %s", async (boundary) => {
-    const f = fixture();
-    const prior = OPERATION_TABLE_RENAMES.map(([old]) => rows(f.path, old));
+    const historical = fixture();
+    const prior = OPERATION_TABLE_RENAMES.map(([old]) => rows(historical.path, old));
+    const f = supportedFixture();
+    const retained = currentOperationRows(f.path);
     await f.backup();
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { [boundary]: () => { throw new Error("injected-operation-rename"); } } }, clock), /injected-operation-rename/u);
     const version = new DatabaseSync(f.path, { readOnly: true });
-    try { assert.equal(version.prepare("PRAGMA user_version").get()?.user_version, boundary === "beforeCommit" ? 34 : CURRENT_AUTHORITY_SCHEMA_VERSION); }
+    try { assert.equal(version.prepare("PRAGMA user_version").get()?.user_version, boundary === "beforeCommit" ? 46 : CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { version.close(); }
     if (boundary === "beforeCommit") {
-      for (const [index, [old]] of OPERATION_TABLE_RENAMES.entries()) assert.deepEqual(rows(f.path, old), prior[index]);
+      assert.deepEqual(currentOperationRows(f.path), retained);
     }
     assert.equal((await f.run()).state, "converted");
     assertConvertedRows(f.path, prior);

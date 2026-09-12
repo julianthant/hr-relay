@@ -10,10 +10,10 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let dispose: (() => Promise<void>) | undefined;
 afterEach(async () => { await dispose?.(); document.body.replaceChildren(); });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function mount(overrides: Record<string, unknown> = {}, selection = H_REPORT.runId) {
+async function mount(overrides: Record<string, unknown> = {}, selection: string = H_REPORT.runId, view: "runs" | "versions" = "runs") {
   const calls = { savedArchiveIndex: vi.fn(async () => ({ items: [H_REPORT], next: null })), savedArchiveReport: vi.fn(async () => H_REPORT), savedArchiveFile: vi.fn(async () => ({ runId: H_REPORT.runId, digest: H_REPORT.files[0].digest, resource: { state: "missing", reason: "Missing bytes" } })), executeCommand: vi.fn(), ...overrides };
   const client = new Proxy(calls, { get(target, key) { if (!(key in target)) throw new Error(`Forbidden live read ${String(key)}`); return Reflect.get(target, key) as unknown; } }) as unknown as DashboardClient;
-  function Harness() { const [selected, select] = useState(selection); return createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveWorkspace, { selection: selected, view: "runs", actorId: "synthetic", onSelection: select, onView: () => undefined, onClose: () => undefined }) }); }
+  function Harness() { const [selected, select] = useState(selection); return createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveWorkspace, { selection: selected, view, actorId: "synthetic", onSelection: select, onView: () => undefined, onClose: () => undefined }) }); }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   dispose = async () => { await act(async () => root.unmount()); };
   await act(async () => root.render(createElement(Harness)));
@@ -60,4 +60,33 @@ it("late deletion settlement cannot clear a replacement selection", async () => 
   await mount({ savedArchiveIndex: index, savedArchiveReport: async (id: string) => id === H_REPORT.runId ? H_REPORT : second, executeCommand: () => result.promise });
   await click("Delete saved report"); await click("Confirm deletion"); await click("Second report"); await act(async () => result.resolve({ state: "applied" }));
   expect(document.querySelector("article")!.textContent).toContain("Second report"); expect(document.body.textContent).not.toContain("Confirm deletion"); expect(index).toHaveBeenCalledTimes(2);
+});
+
+const reviewedChange = { changeId: "00000000-0000-4000-8000-000000009500", state: "planned", targetVersion: "2.0.0",
+  change: { kind: "major", what: "Synthetic review", why: "Recovery proof" }, reviewFingerprint: "a".repeat(64),
+  memberRunIds: [], completedRunIds: [], blockerRunIds: [] };
+const versionWire = (change: Record<string, unknown>) => ({ appVersion: "0.1.0", workflows: [], changes: [change], historicalChanges: 0 });
+it("reuses the exact apply envelope after a lost response", async () => {
+  const execute = vi.fn().mockRejectedValueOnce(new Error("Connection lost")).mockResolvedValueOnce({ state: "applied" });
+  await mount({ savedArchiveVersions: async () => versionWire(reviewedChange), executeCommand: execute }, "", "versions");
+  await click("Apply reviewed change");
+  expect(document.body.textContent).toContain("Connection lost");
+  await click("Apply reviewed change");
+  expect(execute.mock.calls[1][0]).toEqual(execute.mock.calls[0][0]);
+});
+it("uses the served authenticated apply envelope after reload", async () => {
+  const resumeRequest = { commandId: "00000000-0000-4000-8000-000000009501", requestedAt: "2026-09-10T00:00:00.000Z",
+    requestedBy: "synthetic", source: "archive", family: "version-archive", type: "apply-version-bump",
+    target: { versionPlanId: reviewedChange.changeId, expectedVersion: 1 }, payload: { planFingerprint: reviewedChange.reviewFingerprint } };
+  const execute = vi.fn().mockResolvedValue({ state: "applied" });
+  await mount({ savedArchiveVersions: async () => versionWire({ ...reviewedChange, state: "applying", resumeRequest }), executeCommand: execute }, "", "versions");
+  await click("Apply reviewed change");
+  expect(execute).toHaveBeenCalledWith(resumeRequest);
+});
+it("refuses to invent an envelope for an unrecoverable applying claim", async () => {
+  const execute = vi.fn();
+  await mount({ savedArchiveVersions: async () => versionWire({ ...reviewedChange, state: "applying" }), executeCommand: execute }, "", "versions");
+  await click("Apply reviewed change");
+  expect(execute).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain("Original apply request unavailable");
 });

@@ -14,9 +14,6 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/
 // D341: D331 sources belong to the LEGACY protected family; the fixture writes what the pinned reader accepts.
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, RETIRED_TEST_TARGET_PROTECTED_NAMES, legacyMarkProtectedSettingsPatch, legacyProtectedSettingsReadback } from "../../src/domain/config/protected-settings-legacy.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
 import { createSettingsFileAuthority, createProtectedSettingsFileAuthority } from "../fixtures/d331-settings-file.js";
 
@@ -71,7 +68,7 @@ function fixture(target: Target, committed: boolean, protectedEntries: Record<st
 }
 
 describe("D341 retired test-target entries in D331 sources", () => {
-  it.each([...RETIRED_TEST_TARGET_PROTECTED_NAMES])("refuses %s by name before any value is copied, changing nothing", async (name) => {
+  it.each([...RETIRED_TEST_TARGET_PROTECTED_NAMES])("refuses the expired source containing %s before any value is read, changing nothing", async (name) => {
     const value = name === "personLookupCanaryEid" ? "10000001" : "4000001";
     const f = fixture("protected", true, { ucpathPassword: { set: "synthetic-d331-private-value" }, [name]: { set: value } });
     const before = f.snapshot(); const databaseBytes = readFileSync(f.path);
@@ -88,8 +85,7 @@ describe("D341 retired test-target entries in D331 sources", () => {
     for (const plan of [true, false]) {
       await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        assert.match(message, new RegExp(`retired-test-target \\{ key: ${name} \\}`, "u"));
-        assert.match(message, /config\/test-data\.local\.json \(D341\)/u);
+        assert.match(message, /authority-below-floor.*schemaVersion: 30.*floor: 46.*original compatible release/u);
         assert.equal(message.includes(value), false, "the refusal names the key, never the value");
         return true;
       });
@@ -102,28 +98,24 @@ describe("D341 retired test-target entries in D331 sources", () => {
 
 describe("D331 interrupted sources through stopped upgrade", () => {
   for (const target of ["ordinary", "protected"] as const) {
-    it.each([false, true])(`${target}: selects only authenticated prior/committed bytes (committed=%s)`, async (committed) => {
+    it.each([false, true])(`${target}: preserves expired prior/committed bytes (committed=%s)`, async (committed) => {
       const f = fixture(target, committed); const before = f.snapshot();
       await backupStoppedAuthority(f.root, clock);
-      const plan = await upgradeStorage({ ...f.input, plan: true }, clock);
-      assert.equal(plan.state, "planned");
-      assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
+      const bytes = readFileSync(f.path);
+      for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), /authority-below-floor.*schemaVersion: 30.*original compatible release/u);
       assert.deepEqual(f.snapshot(), before);
-      const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "d331-proof" }, clock);
-      try {
-        assert.equal(readSettings(database.authority).settings.concurrency?.defaultWorkers, target === "ordinary" && committed ? 3 : undefined);
-        assert.equal(createCredentialStore({ stateRoot: f.root }).read().entries.ucpathPassword?.value, target === "protected" && committed ? "synthetic-d331-private-value" : undefined);
-      } finally { database.close(); }
+      assert.deepEqual(readFileSync(f.path), bytes);
+      assert.equal(readdirSync(f.root).includes("credentials"), false);
     });
-    it(`${target}: accepts exact rollback evidence without altering old source bytes`, async () => {
+    it(`${target}: refuses expired conversion with exact rollback evidence without altering old source bytes`, async () => {
       const f = fixture(target, false);
       const prepare = z.record(z.string(), z.unknown()).parse(JSON.parse(f.prepared.toString("utf8")));
       const { prepareId: _prepareId, ...body } = prepare;
       writeFileSync(join(f.directory, "rollback.json"), canonicalJsonStringify({ ...body, rollbackId: randomUUID() }), { mode: 0o600 });
       const before = f.snapshot(); await backupStoppedAuthority(f.root, clock);
-      assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
+      for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), /authority-below-floor.*schemaVersion: 30.*original compatible release/u);
       assert.deepEqual(f.snapshot(), before);
-      assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 1);
+      assert.equal(readdirSync(f.root).includes("credentials"), false);
     });
     it.each(["changed", "missing"])(`${target}: refuses committed %s bytes without conversion`, async (corruption) => {
       const f = fixture(target, true);
@@ -131,9 +123,9 @@ describe("D331 interrupted sources through stopped upgrade", () => {
       else writeFileSync(f.targetPath, `${readFileSync(f.targetPath, "utf8")} `, { mode: 0o600 });
       const before = f.snapshot(); const databaseBytes = readFileSync(f.path);
       await backupStoppedAuthority(f.root, clock);
-      await assert.rejects(upgradeStorage(f.input, clock), /settings-recovery-(?:bytes-divergent|committed-bytes-missing)/u);
+      for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), /authority-below-floor.*schemaVersion: 30.*original compatible release/u);
       assert.deepEqual(f.snapshot(), before); assert.deepEqual(readFileSync(f.path), databaseBytes);
-      assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 1);
+      assert.equal(readdirSync(f.root).includes("credentials"), false);
     });
   }
 });

@@ -1,3 +1,4 @@
+import { CommandRefusal } from "./command-refusal.js";
 import type { CommandApplication } from "./command-application.js";
 export type { CommandApplication } from "./command-application.js";
 import { executeFailureResolution, failureResolutionCapability } from "./failure-resolution.js";
@@ -47,7 +48,7 @@ import {
   type VersionChange,
 } from "./run-fan-out.js";
 import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
-import { executeArchiveCommand, runArchiveCommand } from "../services/archive/version-changes.js";
+import { executeArchiveCommand, runArchiveCommand } from "./archive-version-changes.js";
 import { buildRerunPlan, RerunRefusedError } from "../services/start/rerun.js";
 import type { ArtifactRef } from "../domain/artifacts.js";
 import type { Clock } from "../domain/clock.js";
@@ -59,7 +60,6 @@ import {
   deriveSettingsCommandFingerprint,
   markSettingsCommand,
   type CommandAuditRecord,
-  type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
 } from "../domain/commands.js";
@@ -476,19 +476,6 @@ export interface CommandKernel {
  * every partial arm effect rolls back — while the caller still receives the
  * exact typed result instead of an exception.
  */
-class CommandRefusal extends Error {
-  readonly result: CommandResult;
-
-  constructor(result: unknown) {
-    const parsed = CommandResultSchema.parse(result);
-    if (parsed.state !== "conflict" && parsed.state !== "rejected" && parsed.state !== "confirmation-required") {
-      throw new Error("a command refusal cannot carry an applied result");
-    }
-    super(`command ${parsed.commandId} ${parsed.state}: ${parsed.message}`);
-    this.name = "CommandRefusal";
-    this.result = parsed;
-  }
-}
 
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -521,13 +508,7 @@ function reject(request: CommandRequest, code: string, message: string): never {
  * enum, and the executor stays free to `throw` for the things that are genuinely
  * inconsistent storage rather than a bad answer.
  */
-export function rejectCommandRequest(
-  request: CommandRequest,
-  code: z.infer<typeof CommandRejectionCodeSchema>,
-  message: string,
-): never {
-  reject(request, code, message);
-}
+export { rejectCommandRequest } from "./command-refusal.js";
 
 function conflict(request: CommandRequest, currentVersion: number, message: string): never {
   throw new CommandRefusal({ state: "conflict", commandId: request.commandId, currentVersion, message });
@@ -2542,19 +2523,11 @@ function workerPoolSerializationKey(request: WorkerBrowserCommand): string {
 }
 
 
-export type ArchiveCommandTools = {
-  reject: typeof reject;
-  conflict: typeof conflict;
-  applied: typeof applied;
-  requireRun: typeof requireRun;
-  deleteTreeOrder: typeof deleteTreeOrder;
-  lifecycleRun: typeof lifecycleRun;
-  lifecycleRefusal: typeof lifecycleRefusal;
-};
+export type { ArchiveCommandTools } from "./archive-version-changes.js";
 function executeVersionArchive(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
   request: Extract<CommandRequest, {family:"version-archive"}>, now: string): CommandApplication {
   return executeArchiveCommand(dependencies, repositories, request, now,
-    {reject, conflict, applied, requireRun, deleteTreeOrder, lifecycleRun, lifecycleRefusal});
+    {applied});
 }
 
 function executeSettings(

@@ -104,7 +104,7 @@ function serviceFor() {
     },
     recordFix(candidate:unknown){
       const result=auditFixAdmission({candidate,existingFixes:fixRows(),knowledge:knowledgeRows()});
-      if(result.state==="admit")history.prepare("INSERT INTO fix_records VALUES(?,?,?,?,?)").run(result.record.id,result.record.status,result.record.failureFingerprint,JSON.stringify(result.record),NOW);
+      if(result.state==="admit")history.prepare("INSERT INTO fix_records VALUES(?,?,?,?,?)").run(result.record.id,result.record.status,result.record.failureFingerprint ?? null,JSON.stringify(result.record),NOW);
       return result;
     },
     activeKnowledge:()=>activeKnowledgeView(knowledgeRows()),

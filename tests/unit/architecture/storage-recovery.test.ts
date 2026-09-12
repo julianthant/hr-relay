@@ -1,4 +1,4 @@
-import { historicalArchiveAuthority } from "../../helpers/historical-archive-authority.js";
+import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { completionFromAuthorization } from "../../../src/domain/run/completion.js";
 import { databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
@@ -2968,11 +2968,11 @@ describe("offline exact-backup restore", () => {
     assert.deepEqual(restored.authority.runResults.get(seeded.result.runId), seeded.result);
     assert.deepEqual(
       restored.authority.runs.get(seeded.failure.runId)?.completion,
-      completionFromAuthorization(seeded.failureAuthorization),
+      completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(seeded.failureAuthorization)),
     );
     assert.deepEqual(
       restored.authority.runs.get(seeded.result.runId)?.completion,
-      completionFromAuthorization(seeded.successAuthorization),
+      completionFromAuthorization(TerminalAuthorizationRecordSchema.parse(seeded.successAuthorization)),
     );
   });
 
@@ -3745,14 +3745,13 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/infra/compat/archive-upgrade-journal.ts",
       "src/infra/sqlite/archive-compatibility.ts",
       "src/infra/compat/backup-inspection.ts",
-      "src/infra/compat/upgrade-sources.ts",
       adapterPath,
       "src/infra/sqlite/backup-service.ts",
       "src/infra/sqlite/archive-database.ts",
       "src/infra/sqlite/run-evidence-ownership.ts",
       "src/infra/sqlite/run-summaries.ts",
     "src/infra/sqlite/completion-conversion.ts",
-      "src/infra/compat/settings-database-upgrade.ts",
+      "src/infra/sqlite/stopped-database-conversion.ts",
       "src/infra/sqlite/timeline-conversion.ts",
       "src/infra/sqlite/timeline-repository.ts",
       "src/infra/sqlite/failure-resolution.ts",

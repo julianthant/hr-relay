@@ -358,7 +358,7 @@ describe("run claim store", () => {
           configFingerprint: first.configFingerprint,
         },
       }),
-      /runtime config generation 1 is no longer dashboard-active/u,
+      /dashboard runtime settings are stale; restart activation is required/u,
     );
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });

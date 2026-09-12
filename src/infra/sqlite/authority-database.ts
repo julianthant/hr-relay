@@ -1,13 +1,13 @@
+import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { RunRecordService, type RunDeletionOutcome } from "../../core/run-record-service.js";
-import { ArchiveQuerySchema, type ArchiveQuery } from "../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveQuerySchema, type ArchiveQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
-import { deriveCanonicalPerson } from "../../core/run-summary.js";
+import { deriveCanonicalPerson } from "../../domain/run/summary-derivation.js";
 import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
-import { lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../core/run-lifecycle-storage.js";
+import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../domain/archive/lifecycle-source.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
@@ -16,7 +16,7 @@ import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { SqliteProviderAccounting, finalizeProviderRun } from "./provider-accounting.js";
+import { SqliteProviderAccounting, finalizeProviderRun, inspectGenericProviderAccounting } from "./provider-accounting.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { completionFromAuthorization } from "../../domain/run/completion.js";
 import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../domain/run/completion-history.js";
@@ -302,14 +302,12 @@ import {
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
-  ArchiveRelaunchStorageRecordSchema,
   AUTHORITY_RECORD_SCHEMA_REGISTRY,
   DiagnosticAttachmentStorageRecordSchema,
   VersionBumpApplicationStorageRecordSchema,
   VersionPlanConsumeRequestSchema,
   VersionPlanStorageRecordSchema,
   type ArchivedRunStorageRecord,
-  type ArchiveRelaunchStorageRecord,
   type ArtifactOutboxStorageRecord,
   type ArtifactSinkHeadRecord,
   type DiagnosticAttachmentStorageRecord,
@@ -949,10 +947,6 @@ export type AuthorityRepositories = Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
   }>;
   archivedRuns: ArchivedRunRepository;
-  archiveRelaunches: Readonly<{
-    insert(input: unknown): ImmutableInsertResult<ArchiveRelaunchStorageRecord>;
-    listByArchivedRun(archivedRunId: string): readonly ArchiveRelaunchStorageRecord[];
-  }>;
   writeIntents: WriteIntentRepository;
   writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
@@ -1268,15 +1262,13 @@ function readTextPragma(database: DatabaseSync, name: "journal_mode"): string {
   return value;
 }
 
+function inspectionTableNames(database: DatabaseSync): string[] {
+  return database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all().map(row => TableNameRowSchema.parse(row).name);
+}
+
 function tableNames(database: DatabaseSync): TableName[] {
-  const rows = database.prepare(`
-    SELECT name FROM sqlite_master
-    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-    ORDER BY name
-  `).all();
-  return z.array(z.union([AuthorityTableNameSchema, ProjectionTableNameSchema])).parse(
-    rows.map((row) => TableNameRowSchema.parse(row).name),
-  );
+  return z.array(z.union([AuthorityTableNameSchema, ProjectionTableNameSchema])).parse(inspectionTableNames(database));
 }
 
 function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
@@ -1550,6 +1542,7 @@ const INVARIANT_QUERIES = Object.freeze([
 ] as const);
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
+  inspectGenericProviderAccounting(database);
   const violations = INVARIANT_QUERIES.flatMap(({ name, sql }) => {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
@@ -1837,6 +1830,7 @@ const historicalInvariantQueries = new Map<number, readonly { name: string; sql:
  * Compile against an empty immutable replay, never against operator state; only
  * absent future tables/columns can omit a query. Runtime current checks are unchanged. */
 export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, version: number): void {
+  if (version >= 43) inspectGenericProviderAccounting(database);
   let queries = historicalInvariantQueries.get(version);
   if (queries === undefined) {
     const reference = new DatabaseSync(":memory:");
@@ -2162,7 +2156,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
-  const names = tableNames(database);
+  const names = inspectionTableNames(database);
   const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
@@ -2191,7 +2185,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: tableClassification(name) })),
+    tables: names.map((name) => ({ name, classification: tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
 }
@@ -2277,7 +2271,7 @@ function inspectAuthorityReadIdentityReadOnly(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
-    const names = tableNames(database);
+    const names = inspectionTableNames(database);
     const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
@@ -2569,7 +2563,7 @@ function inspectSpanRunAuthorityReadOnly(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
-    const names = tableNames(database);
+    const names = inspectionTableNames(database);
     const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
@@ -2839,6 +2833,7 @@ export class AuthorityDatabase implements Disposable {
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
+  #archiveSourcesDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
   #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
@@ -3094,7 +3089,7 @@ export class AuthorityDatabase implements Disposable {
         synchronous: this.#readIntPragma("synchronous"),
         busyTimeoutMs: this.#readIntPragma("busy_timeout"),
       },
-      tables: names.map((name) => ({ name, classification: tableClassification(name) })),
+      tables: names.map((name) => ({ name, classification: tableClassification(AuthorityTableNameSchema.parse(name)) })),
     });
   }
 
@@ -3103,7 +3098,11 @@ export class AuthorityDatabase implements Disposable {
     const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
     const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: string[]): void => {
       const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
-      if (rows > 0) removed.push({table, rows});
+      if (rows > 0) {
+        const prior = removed.find(entry => entry.table === table);
+        if (prior === undefined) removed.push({ table, rows });
+        else prior.rows += rows;
+      }
     };
           remove("timeline_events", "DELETE FROM timeline_events WHERE run_id = ?", runId);
           // Keep an entire operation group while another retained retry owns or
@@ -3144,13 +3143,20 @@ export class AuthorityDatabase implements Disposable {
                   json_extract(delegation_dependencies.record_json, '$.parentRunId'),
                   json_extract(delegation_dependencies.record_json, '$.childRunId')))`, runId, runId, runId);
           remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
-          // Relaunch lineage belongs to the new run; deleting its source preserves it.
-          remove("archive_relaunches", "DELETE FROM archive_relaunches WHERE record_key = ?", runId);
           if (hasHistoricalArchiveTables(this.#database)) remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
 
     remove("workflow_runs", "DELETE FROM workflow_runs WHERE record_key = ?", runId);
     if (!transfer) remove("archive_transfers", "DELETE FROM archive_transfers WHERE record_key = ?", runId);
     return removed;
+  }
+
+  /** Indexed membership prefilter; callers still verify matching archive owners. */
+  archivedRunIds(): ReadonlySet<string> {
+    return this.withAuthorityReadSnapshot(() => {
+      const table = hasHistoricalArchiveTables(this.#database) ? "archived_runs" : "archive_transfers";
+      return new Set(this.#database.prepare(`SELECT record_key FROM ${table}`).all()
+        .map(row => z.strictObject({ record_key: RunIdSchema }).parse(row).record_key));
+    });
   }
 
   listTransferredRuns() {
@@ -3188,8 +3194,11 @@ export class AuthorityDatabase implements Disposable {
       const run = snapshot.run;
       if (run.lifecycle.state !== "terminal" || run.version !== input.expectedVersion) throw new Error("archive-transfer-source-fence");
       if (this.authority.runs.listChildren(input.runId).length !== 0) throw new Error("archive-transfer-children-retained");
-      if (report.content.sourceDigest !== lifecycleSourceDigest(snapshot)
-        || report.content.sources.find(source => source.kind === "authority-snapshot")?.json !== canonicalJsonStringify(snapshot)
+      const source = report.content.sources.find(source => source.kind === "authority-snapshot");
+      if (source === undefined) throw new Error("archive-source-snapshot-missing");
+      const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+      if (report.content.sourceDigest !== lifecycleSourceDigest(frozen)
+        || lifecycleOwnedSourceDigest(frozen) !== lifecycleOwnedSourceDigest(snapshot)
         || report.content.workflow !== run.envelope.workflow || report.content.itemId !== run.envelope.itemId
         || report.content.attempt !== run.envelope.attempt || report.content.runNumber !== (run.runNumber ?? null)) throw new Error("archive-transfer-source-mismatch");
       for (const row of snapshot.records.find(group=>group.table === "diagnostic_files")?.rows ?? []) {
@@ -3232,10 +3241,6 @@ export class AuthorityDatabase implements Disposable {
     } finally { closeSync(fd); }
   }
 
-  deleteLifecycleArchive(input:unknown):RunDeletionOutcome {
-    return new RunRecordService({database:this,clock:this.#clock,ids:{uuid:randomUUID},publishQueued:()=>{throw new Error("archive-delete-cannot-enqueue");}}).deleteArchived(input);
-  }
-
   readPendingArchiveReport(runId:string,transferId:string) {
     if(this.authority.deletedRuns.get(runId)!==undefined)throw new Error("archive-report-deleted");
     if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) {
@@ -3265,24 +3270,46 @@ export class AuthorityDatabase implements Disposable {
     return this.withAuthorityReadSnapshot(()=>{
       const path=join(dirname(this.#path),"archive.sqlite");
       if(!existsSync(path)){if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");return {items:[],next:null};}
-      const page=this.lifecycleArchive(true).query(query);
-      const items=page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined);
+      // A live tombstone can precede archive settlement. Fill the visible page
+      // across those excluded rows, including one lookahead for its cursor.
+      const archive=this.lifecycleArchive(true);
+      const visible: ArchiveReport[]=[];
+      let after=query.after;
+      while(visible.length<=query.limit) {
+        const page=archive.query({...query, ...(after===undefined?{}:{after})});
+        visible.push(...page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined));
+        if(page.next===null)break;
+        after=page.next;
+      }
+      const items=visible.slice(0,query.limit);
       for(const report of items) { const owner=this.savedReportOwner(report.content.runId); if(owner.state!=="archived" || owner.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch"); }
-      return {...page,items};
+      const last=items.at(-1);
+      return {items,next:visible.length>query.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
     });
   }
 
   settleArchivedDeletion(runId: string) {
-    const receipt = this.authority.deletedRuns.get(runId);
-    if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
-    const archive = this.lifecycleArchive(true);
-    const report = archive.read(runId);
-    if (report !== undefined) archive.beginDelete(receipt,report.digest);
-    archive.settleDelete(runId);
+    // Claim acquisition retains files while holding the authority write lock.
+    // Hold that same lock through owner inspection and unlinking so another
+    // connection cannot commit a new capture whose verified bytes we removed.
+    return this.withAuthorityTransaction(() => {
+      const receipt = this.authority.deletedRuns.get(runId);
+      if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
+      const archive = this.lifecycleArchive(true);
+      const report = archive.read(runId);
+      if (report !== undefined) archive.beginDelete(receipt,report.digest);
+      const pendingDigests = new Set(this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+        const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+        return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
+      }));
+      archive.settleDelete(runId, undefined, pendingDigests);
+    });
   }
 
   readVersionChange(changeId: string) {
-    return this.#readRecord("version_changes", changeId, VersionChangeSchema);
+    const row = this.#readRecord("version_changes", changeId, VersionChangeSchema);
+    if (row !== undefined) for (const capture of row.pendingCaptures ?? []) parsePendingCapture(row, capture);
+    return row;
   }
 
   writeVersionChange(input: VersionChange) {
@@ -3306,6 +3333,14 @@ export class AuthorityDatabase implements Disposable {
           if((change.scope.kind==="workflows" && !change.scope.workflowIds.includes(snapshot.run.envelope.workflow)) || snapshot.run.version!==member.version || lifecycleSourceDigest(snapshot)!==member.sourceDigest)throw new Error("version-change-source-stale");
         }
       }
+      for (const capture of change.pendingCaptures ?? []) {
+        const report = parsePendingCapture(change, capture);
+        const old = previous?.pendingCaptures?.find(value => value.runId === capture.runId);
+        if (previous?.state === "applying" && old?.reportJson !== capture.reportJson) throw new Error("version-change-capture-conflict");
+        if (old === undefined) for (const file of report.content.files) this.lifecycleArchive(true).readFile(file);
+      }
+      if (previous?.pendingCaptures !== undefined && change.pendingCaptures === undefined
+        && change.state !== "applied") throw new Error("version-change-capture-conflict");
       if(change.application!==undefined && previous?.application===undefined) {
         const application=change.application;
         const existing=this.#database.prepare("SELECT record_json FROM commands WHERE record_key=?").get(application.commandId);
@@ -3332,7 +3367,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>}) {
+  claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>;pendingCaptures?:VersionChange["pendingCaptures"]}) {
     return this.withAuthorityTransaction(()=>{
       const row=this.readVersionChange(input.changeId);
       if(row===undefined||row.reviewFingerprint!==input.reviewFingerprint)throw new Error("version-change-review-required");
@@ -3342,7 +3377,10 @@ export class AuthorityDatabase implements Disposable {
         if(canonicalJsonStringify(application)!==canonicalJsonStringify(input.application))throw new Error("version-change-claim-conflict");
         return row;
       }
-      return this.writeVersionChange({...row,state:"applying",application:input.application});
+      // Establish archive custody even for a capture with no attachments or published rows.
+      if (row.members.length > 0) this.lifecycleArchive();
+      return this.writeVersionChange({...row,state:"applying",application:input.application,
+        ...(input.pendingCaptures === undefined ? {} : {pendingCaptures:input.pendingCaptures})});
     });
   }
 
@@ -3387,6 +3425,8 @@ export class AuthorityDatabase implements Disposable {
       };
       collect("workflow_runs","SELECT record_key,record_json FROM workflow_runs WHERE record_key=?",runId);
       collect("run_results","SELECT record_key,record_json FROM run_results WHERE record_key=?",runId);
+      collect("provider_requests","SELECT record_key,record_json FROM provider_requests WHERE run_id=?",runId);
+      collect("provider_usage","SELECT record_key,record_json FROM provider_usage AS usage WHERE EXISTS (         SELECT 1 FROM provider_requests AS request WHERE request.run_id=? AND (           (json_extract(request.record_json,'$.kind')='legacy-capability' AND usage.capability=request.capability)           OR (json_extract(request.record_json,'$.kind')='generic' AND EXISTS (             SELECT 1 FROM json_each(request.record_json,'$.allocations') AS allocation             WHERE json_extract(allocation.value,'$.scopeId')=json_extract(usage.record_json,'$.scope.id')               AND json_extract(allocation.value,'$.meter')=json_extract(usage.record_json,'$.meter')           ))         ))",runId);
       collect("run_receipts","SELECT record_key,record_json FROM run_receipts WHERE run_id=?",runId);
       collect("run_failures","SELECT record_key,json_object('evidence',json(record_json),'resolution',json(resolution_json)) AS record_json FROM run_failures WHERE run_id=?",runId);
       collect("timeline_events","SELECT record_key,record_json FROM timeline_events WHERE run_id=?",runId);
@@ -3396,7 +3436,6 @@ export class AuthorityDatabase implements Disposable {
       collect("run_operations","SELECT record_key,record_json FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?",run.envelope.workflow,run.envelope.itemId);
       collect("run_operation_attempts","SELECT record_key,record_json FROM run_operation_attempts WHERE write_intent_id IN (SELECT record_key FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?)",run.envelope.workflow,run.envelope.itemId);
       collect("settings_snapshots","SELECT record_key,record_json FROM settings_snapshots WHERE record_key=?",run.envelope.configSnapshotId);
-      collect("archive_relaunches","SELECT record_key,record_json FROM archive_relaunches WHERE record_key=? OR archived_run_id=?",runId,runId);
       if (hasHistoricalArchiveTables(this.#database)) {
       collect("archived_runs","SELECT record_key,record_json FROM archived_runs WHERE record_key=?",runId);
       const historical=this.authority.archivedRuns.get(runId);
@@ -3529,16 +3568,32 @@ export class AuthorityDatabase implements Disposable {
     return this.#withReadSnapshot(read);
   }
 
+  #retainedTerminalSnapshot(runId: string) {
+    const transfer = this.transferredRun(runId);
+    if (transfer === undefined) return undefined;
+    const report = this.lifecycleArchive(true).verified(runId, transfer.reportDigest);
+    const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+    if (source === undefined) throw new Error("archive-terminal-source-missing");
+    const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+    if (canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(transfer.run)
+      || snapshot.run.lifecycle.state !== "terminal" || snapshot.run.completion === undefined) {
+      throw new Error("archive-terminal-source-mismatch");
+    }
+    return snapshot;
+  }
+
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
     const request = FailureTerminalizationRequestSchema.parse(input);
-    descriptorRuntimeNodes(descriptor);
     return this.withAuthorityTransaction(() => {
-      const current = this.#readRunRow(request.failure.runId);
+      const live = this.#readRunRow(request.failure.runId);
+      const retained = live === undefined ? this.#retainedTerminalSnapshot(request.failure.runId) : undefined;
+      const current = live ?? retained?.run;
       if (current === undefined) throw new Error(`run ${request.failure.runId} does not exist`);
-      this.#assertFailureMatchesRun(request.failure, current, descriptor);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const existing = this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema);
+      const captured = retained?.records.find(group => group.table === "run_failures")?.rows.find(row => row.key === request.failure.failureId);
+      const existing = retained === undefined ? this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema)
+        : captured === undefined ? undefined : z.object({ evidence: FailureRecordSchema }).parse(JSON.parse(captured.json)).evidence;
       if (existingAuthorization !== undefined || existing !== undefined) {
         if (existingAuthorization === undefined || existing === undefined) {
           throw new Error(`run ${request.failure.runId} has a partial failure terminal settlement`);
@@ -3568,6 +3623,8 @@ export class AuthorityDatabase implements Disposable {
       if (current.lifecycle.state === "terminal") {
         throw new Error(`run ${request.failure.runId} is already terminal without failure ${request.failure.failureId}`);
       }
+      descriptorRuntimeNodes(descriptor);
+      this.#assertFailureMatchesRun(request.failure, current, descriptor);
       this.#assertFailureWasCurrentExecution(request.failure, current);
       this.#assertTerminalClaim(
         current,
@@ -3614,12 +3671,16 @@ export class AuthorityDatabase implements Disposable {
       ? { ...replayInput.authorization, outboxId: undefined } : historical.authorization;
     const request = SuccessTerminalizationRequestSchema.parse({ result: replayInput.result, authorization });
     return this.withAuthorityTransaction(() => {
-      const current = this.#readRunRow(request.result.runId);
+      const live = this.#readRunRow(request.result.runId);
+      const retained = live === undefined ? this.#retainedTerminalSnapshot(request.result.runId) : undefined;
+      const current = live ?? retained?.run;
       if (current === undefined) throw new Error(`run ${request.result.runId} does not exist`);
       this.#assertResultMatchesRun(request.result, current);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const existingResult = this.#readRecord("run_results", request.result.runId, RunResultRecordSchema);
+      const captured = retained?.records.find(group => group.table === "run_results")?.rows.find(row => row.key === request.result.runId);
+      const existingResult = retained === undefined ? this.#readRecord("run_results", request.result.runId, RunResultRecordSchema)
+        : captured === undefined ? undefined : RunResultRecordSchema.parse(JSON.parse(captured.json));
       if (existingAuthorization !== undefined || existingResult !== undefined) {
         if (existingAuthorization === undefined || existingResult === undefined) {
           throw new Error(`run ${request.result.runId} has a partial completion/result settlement`);
@@ -4143,6 +4204,9 @@ export class AuthorityDatabase implements Disposable {
         SET migration_owner = NULL, migration_started_at = NULL, updated_at = ?
         WHERE singleton_id = 1
       `).run(this.#now());
+      // A fresh authority has an exact empty summary baseline in this same transaction.
+      // Existing missing/stale publications still require explicit recovery.
+      if (fromVersion === 0) createRunSummaries(this.#database).refresh(0, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4229,6 +4293,7 @@ export class AuthorityDatabase implements Disposable {
       }
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
+      const sourcesDirtyBefore = this.#archiveSourcesDirty;
       const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
       this.#transactionDepth += 1;
@@ -4240,6 +4305,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
+        this.#archiveSourcesDirty = sourcesDirtyBefore;
         this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
       } finally {
@@ -4251,8 +4317,18 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = mode;
     this.#authorityDirty = false;
+    this.#archiveSourcesDirty = false;
     let result: Result;
     try {
+      // Older claims have no embedded capture. Fence their owned facts across
+      // this transaction without freezing independent shared accounting.
+      const legacyOwned = new Map<string, string>();
+      for (const raw of this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_extract(record_json,'$.pendingCaptures') IS NULL").all()) {
+        const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+        for (const member of change.members) if (this.authority.runs.get(member.runId) !== undefined) {
+          legacyOwned.set(member.runId, lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)));
+        }
+      }
       result = work();
       if (this.#authorityDirty) {
         const update = this.#database.prepare(`
@@ -4262,7 +4338,36 @@ export class AuthorityDatabase implements Disposable {
         `).run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
-      if (this.#authorityDirty) createRunSummaries(this.#database).commit(this.getMeta().authorityGeneration, this.#now());
+      if (this.#archiveSourcesDirty) {
+        // Fence records owned by cleanup, while retained shared authorities advance.
+        // Frozen captures supply the baseline; admitted older claims may already
+        // have a verified saved report. Uncaptured historical claims retain the
+        // exact-source proof requirement when resumed.
+        const applying = this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying'").all();
+        for (const raw of applying) {
+          const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+          for (const member of change.members) {
+            if (this.authority.runs.get(member.runId) === undefined) {
+              if (this.#readRecord("archive_transfers", member.runId, ArchiveTransferIdentitySchema) === undefined
+                && this.authority.deletedRuns.get(member.runId)?.origin !== "archive") throw new Error("archive-source-applying");
+              continue;
+            }
+            const capture = change.pendingCaptures?.find(value => value.runId === member.runId);
+            const report = capture === undefined
+              ? this.readPendingArchiveReport(member.runId, deriveStableUuid("archive-transfer", `${change.changeId}:${member.runId}`))?.report
+              : ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
+            if (report !== undefined) {
+              const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+              if (source === undefined) throw new Error("archive-source-snapshot-missing");
+              const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+              if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== lifecycleOwnedSourceDigest(frozen)) throw new Error("archive-source-applying");
+            } else if (legacyOwned.has(member.runId) && lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== legacyOwned.get(member.runId)) {
+              throw new Error("archive-source-applying");
+            }
+          }
+        }
+      }
+      if (this.#authorityDirty) createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4272,6 +4377,7 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
+      this.#archiveSourcesDirty = false;
     }
     const publications = this.#authorityCommitCallbacks.splice(0);
     for (const publish of publications) publish();
@@ -4286,6 +4392,7 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = "read";
     this.#authorityDirty = false;
+    this.#archiveSourcesDirty = false;
     try {
       const result = read();
       this.#database.exec("COMMIT");
@@ -4297,6 +4404,7 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
+      this.#archiveSourcesDirty = false;
     }
   }
 
@@ -4310,6 +4418,9 @@ export class AuthorityDatabase implements Disposable {
       const outcome = operation();
       if (outcome.changes > 0) {
         this.#authorityDirty = true;
+        // These two lifecycle protocols verify source identity themselves and
+        // do not author new source evidence. Mixed transactions still check.
+        if (table !== "archive_transfers" && table !== "version_changes") this.#archiveSourcesDirty = true;
         this.#runSearchCorpusValidation = undefined;
       }
       return outcome.result;
@@ -4811,7 +4922,7 @@ export class AuthorityDatabase implements Disposable {
         const identity = this.transferredRun(run.envelope.runId);
         if (identity === undefined) throw new Error("transaction-history-transfer-missing");
         // Verified custody is sufficient after cleanup, even before publication replay.
-        const report = this.lifecycleArchive(true).verified(run.envelope.runId, identity.reportDigest);
+        const report = this.lifecycleArchive(true).verifiedReport(run.envelope.runId, identity.reportDigest);
         const source = report.content.sources.find(value => value.kind === "authority-snapshot");
         if (source === undefined) throw new Error("transaction-history-archive-source-missing");
         const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
@@ -5363,31 +5474,6 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM archived_runs ORDER BY created_at DESC, record_key
         `).all().map((row) => this.#verifyArchivedPrivateInput(
           parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))))),
-      }),
-      archiveRelaunches: Object.freeze({
-        insert: (input: unknown) => {
-          const record = ArchiveRelaunchStorageRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("archive_relaunches", () => {
-            const existing = this.#readRecord("archive_relaunches", record.runId, ArchiveRelaunchStorageRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`relaunch provenance for run ${record.runId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const outcome = this.#database.prepare(`
-              INSERT INTO archive_relaunches (record_key, archived_run_id, record_json, created_at)
-              VALUES (?, ?, ?, ?)
-            `).run(record.runId, record.archivedRunId, json, record.relaunchedAt);
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
-          });
-        },
-        listByArchivedRun: (archivedRunId: string) => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM archive_relaunches WHERE archived_run_id = ? ORDER BY created_at DESC, record_key
-        `).all(archivedRunId).map((row) => parseJsonRecord(
-          ArchiveRelaunchStorageRecordSchema, JsonRowSchema.parse(row).record_json,
-        ))),
       }),
       writeIntents: Object.freeze({
         listByBusinessKey: (system: unknown, digest: unknown) => {
@@ -7143,6 +7229,7 @@ export class AuthorityDatabase implements Disposable {
     const changes = sqliteChanges(result.changes);
     if (changes !== 1) throw new Error(`write intent ${record.writeIntentId} atomic state update affected ${String(changes)} rows`);
     this.#authorityDirty = true;
+    this.#archiveSourcesDirty = true;
   }
 
   #replaceWriteAttempt(record: WriteAttemptRecord): void {
@@ -7153,6 +7240,7 @@ export class AuthorityDatabase implements Disposable {
     const changes = sqliteChanges(result.changes);
     if (changes !== 1) throw new Error(`write attempt ${record.writeAttemptId} atomic state update affected ${String(changes)} rows`);
     this.#authorityDirty = true;
+    this.#archiveSourcesDirty = true;
   }
 
   #assertAtomicCommitMatchesIntent(

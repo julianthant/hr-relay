@@ -1,17 +1,18 @@
+import {archiveCurrentRun} from "../helpers/archive-current-run.js";
+import {genericArchiveSection} from "../../../src/services/archive/report-capture.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { ArchivedRunRecordSchema, VersionBumpApplicationSchema, archivedRunContentDigest, archivedRunReferenceFingerprint } from "../../../src/domain/archive/model.js";
+
 import { FailureTriageOutcomeSchema } from "../../../src/domain/trust/advisory.js";
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../../../src/server/dashboard/queries/advisory.js";
 import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
-import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { VALID_TRIAGE_ADVICE } from "../fixtures/advisory-fixtures.js";
 import { uuidOf } from "./helpers/dashboard-harness.js";
-import { trustWorld, trustArchiveRecord } from "./helpers/trust-authority-fixture.js";
+import { trustWorld} from "./helpers/trust-authority-fixture.js";
 
 const worlds: ReturnType<typeof trustWorld>[] = [];
 afterEach(() => { for (const world of worlds.splice(0).reverse()) world.dispose(); });
@@ -28,18 +29,10 @@ function fixture() {
     authority: { getFailureForRun: id => f.database.authority.failures.listByRun(id).at(-1) },
     advise: async (subject, evidence) => { calls++; assert.deepEqual(subject, run); assert.deepEqual(evidence, failure); return outcome; } };
   const archive = () => {
-    f.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-    f.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({ ...VERSION_BUMP_APPLICATION,
-      archivedRunIds: [run.envelope.runId] }));
     const detail = buildTrustSection(f.deps, run.envelope.runId, "failure");
     assert.equal(detail.section, "failure");
     if (detail.section !== "failure" || detail.payload.state !== "available") throw new Error("failure evidence missing");
-    const { contentDigest: _digest, ...template } = trustArchiveRecord(run);
-    const content = { ...template, failure: { state: "present" as const, value: detail.payload.value } };
-    const frozen = ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
-    assert.deepEqual(f.database.authority.archivedRuns.bindingMismatches(frozen), []);
-    assert.equal(f.service.archive({ commandId: uuidOf(73), expectedVersion: run.version, archive: frozen }).state, "applied");
-    return frozen;
+    return archiveCurrentRun(f.database,run,now,uuidOf(74),[genericArchiveSection("Failure",detail.payload.value)]);
   };
   return { ...f, run, failure, outcome, deps, archive, calls: () => calls };
 }
@@ -59,11 +52,11 @@ describe("canonical failure advisory admission", () => {
   it("refuses absent, archived and tombstoned runs before calling the provider", async () => {
     const f = fixture(); const id = f.run.envelope.runId;
     await assert.rejects(buildRunAdvisory(f.deps, uuidOf(999)), TargetNotFoundError);
-    const archive = f.archive(); const frozen = canonicalJsonStringify(f.database.authority.archivedRuns.get(id));
+    const archive = f.archive(); const frozen = canonicalJsonStringify(f.service.lifecycleStorage().readReport(id));
     await assert.rejects(buildRunAdvisory(f.deps, id), SectionUnavailableError);
-    assert.equal(canonicalJsonStringify(f.database.authority.archivedRuns.get(id)), frozen);
+    assert.equal(canonicalJsonStringify(f.service.lifecycleStorage().readReport(id)), frozen);
     assert.equal(f.service.deleteArchived({ commandId: uuidOf(74), runId: id,
-      archiveFingerprint: archivedRunReferenceFingerprint(archive) }).state, "deleted");
+      archiveFingerprint: archive.digest }).state, "deleted");
     await assert.rejects(buildRunAdvisory(f.deps, id), TargetNotFoundError);
     assert.equal(f.calls(), 0); assert.equal(f.database.authority.failures.get(f.failure.failureId), undefined);
   });
@@ -87,7 +80,7 @@ describe("canonical failure advisory admission", () => {
     await assert.rejects(buildRunAdvisory({ ...f.deps, advise: async () => {
       calls++; const archive = f.archive();
       if (action === "delete") assert.equal(f.service.deleteArchived({ commandId: uuidOf(74), runId: id,
-        archiveFingerprint: archivedRunReferenceFingerprint(archive) }).state, "deleted");
+        archiveFingerprint: archive.digest }).state, "deleted");
       return f.outcome;
     } }, id), action === "archive" ? SectionUnavailableError : TargetNotFoundError);
     assert.equal(calls, 1);

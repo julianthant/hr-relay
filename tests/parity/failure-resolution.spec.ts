@@ -8,7 +8,8 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { FIXTURE_DAY, FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-day.js";
 
 for (const theme of PARITY_THEMES) test(`failure-resolution desktop ${theme.name}`, { annotation: [{ type: "required-a11y-evidence", description: `failure-resolution-${theme.name}.a11y.yml` }] }, async ({ page }) => {
-  const server = await startFailureResolutionServer({ distDir: PARITY_DIST_DIR, bundle: ensureParityBundle() });
+  ensureParityBundle();
+  const server = await startFailureResolutionServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await page.setViewportSize({ width: 1024, height: 720 }); await installTheme(page, theme);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: server.runId, section: "logs" });

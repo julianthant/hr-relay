@@ -1,3 +1,4 @@
+import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -566,7 +567,7 @@ describe("G explicit export lifecycle", () => {
       await assert.rejects(service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest("changed-token")), /registration-divergent/u);
       const altered = searchPage();
       const result = altered.results[0]; assert.ok(result);
-      const changed = fakeSearchExportService(h, { first: { ...altered, results: [{ ...result, runNumber: { state: "present", value: 99 } }] } });
+      const changed = fakeSearchExportService(h, { first: { ...altered, results: [{ ...result, runNumber: { state: "present", value: PositiveIntSchema.parse(99) } }] } });
       await assert.rejects(changed.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()), /content-divergent/u);
       assert.deepEqual(h.database.authority.operatorXlsxExports.get(EXPORT_ID), first.evidence);
       assert.equal(h.database.getMeta().authorityGeneration, generation);

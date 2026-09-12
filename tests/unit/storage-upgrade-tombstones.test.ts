@@ -1,5 +1,6 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -49,53 +50,54 @@ function fixture(kind: "root" | "reconstructed" | "missing" | "duplicate" | "mis
   return { root, path, span, deleted, input };
 }
 
-describe("D332 tombstone evidence conversion", () => {
-  it.each(["root", "reconstructed", "missing"] as const)("recovers only evidenced ordinals from %s and preserves trigger/tally/evidence", async (kind) => {
-    const f = fixture(kind);
-    const spanBytes = kind === "missing" ? undefined : readFileSync(f.span);
-    await backupStoppedAuthority(f.root, clock);
-    const before = readFileSync(f.path);
-    const plan = await upgradeStorage({ ...f.input, plan: true }, clock);
-    assert.deepEqual(readFileSync(f.path), before);
-    const expected = { fromRoots: kind === "root" ? 1 : 0, fromReconstructedRoots: kind === "reconstructed" ? 1 : 0, unknown: kind === "missing" ? 1 : 0, missingRunNumber: 1 };
-    assert.deepEqual(plan.tombstoneBackfill, expected);
-    assert.deepEqual((await upgradeStorage(f.input, clock)).tombstoneBackfill, expected);
-    const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "tombstone-proof" }, clock);
+const preserved = z.object({cases:z.array(z.object({sourceKind:z.enum(["root","reconstructed","missing"]),tombstone:DeletedRunRecordSchema}))})
+  .parse(JSON.parse(readFileSync(new URL("./fixtures/migrated-tombstones.json",import.meta.url),"utf8")));
+
+describe("D332 retained tombstone evidence after importer retirement", () => {
+  it.each(["root", "reconstructed", "missing"] as const)("preserves migrated %s ordinals, trigger protections and doctor evidence", async kind => {
+    const f=fixture(kind), source=readFileSync(f.path), span=kind==="missing"?undefined:readFileSync(f.span);
+    for(const plan of [true,false])await assert.rejects(upgradeStorage({...f.input,plan},clock),/authority-below-floor/u);
+    assert.deepEqual(readFileSync(f.path),source);
+    const retained=preserved.cases.find(row=>row.sourceKind===kind);assert.ok(retained);
+    renameSync(f.path,join(f.root,"retired-source.sqlite"));
+    AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"retained-tombstone-fixture"},clock).close();
+    const seed=new DatabaseSync(f.path);
     try {
-      const tombstone = DeletedRunRecordSchema.parse(database.authority.deletedRuns.get(f.deleted.runId));
-      assert.deepEqual(tombstone.removed, f.deleted.removed);
-      assert.equal(tombstone.tallyVersion, 1);
-      assert.equal(tombstone.runNumber, null);
-      assert.equal(tombstone.attempt, kind === "missing" ? null : 7);
-      assert.equal(tombstone.itemId, kind === "missing" ? null : QUEUED_RUN.envelope.itemId);
-      assert.equal(tombstone.ordinalSource, kind === "missing" ? "unknown" : "span-root-backfill");
-      assert.equal(database.authority.runs.nextItemAttempt({ workflow: f.deleted.workflow, itemId: QUEUED_RUN.envelope.itemId }), kind === "missing" ? 1 : 8);
-      assert.equal(database.authority.runs.nextWorkflowRunNumber(f.deleted.workflow), 1);
-    } finally { database.close(); }
-    const raw = new DatabaseSync(f.path);
+      const trigger=z.object({sql:z.string()}).parse(seed.prepare("SELECT sql FROM sqlite_master WHERE name='deleted_runs_require_live_run_insert'").get()).sql;
+      seed.exec("BEGIN; DROP TRIGGER deleted_runs_require_live_run_insert");
+      const t=retained.tombstone;
+      seed.prepare("INSERT INTO deleted_runs(record_key,workflow,trace_id,origin,command_id,deleted_at,record_json,created_at,item_id,attempt,run_number,ordinal_source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(t.runId,t.workflow,t.traceId,t.origin,t.commandId,t.deletedAt,JSON.stringify(t),t.deletedAt,t.itemId,t.attempt,t.runNumber,t.ordinalSource);
+      seed.exec(trigger);seed.exec("COMMIT");
+    } finally {seed.close();}
+    const database=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"retained-tombstone-proof"},clock);
     try {
-      for (const assignment of ["item_id='changed'", "attempt=8", "run_number=99", "ordinal_source='tombstone'", "workflow='changed'"]) {
-        assert.throws(() => raw.exec(`UPDATE deleted_runs SET ${assignment}`), /immutable/u);
-      }
-    } finally { raw.close(); }
-    if (spanBytes !== undefined) assert.deepEqual(readFileSync(f.span), spanBytes);
-    const doctor = await doctorAuthorityStorage({ stateRootTrustAnchor: f.root, stateRoot: f.root, authorityPath: f.path, backupDirectory: join(f.root, "backups", "authority"), busyTimeoutMs: 500 }, clock);
-    assert.deepEqual(doctor.tombstoneOrdinals, { state: "available", findings: [{ code: "tombstone-ordinal-unknown", runId: f.deleted.runId, missingFields: kind === "missing" ? ["itemId", "attempt", "runNumber"] : ["runNumber"] }] });
-    const settledBytes = readFileSync(f.path);
-    assert.deepEqual((await upgradeStorage(f.input, clock)).tombstoneBackfill, expected);
-    assert.deepEqual(readFileSync(f.path), settledBytes);
+      const tombstone=DeletedRunRecordSchema.parse(database.authority.deletedRuns.get(f.deleted.runId));
+      assert.deepEqual(tombstone,retained.tombstone);assert.deepEqual(tombstone.removed,f.deleted.removed);
+      assert.equal(tombstone.tallyVersion,1);assert.equal(tombstone.runNumber,null);
+      assert.equal(tombstone.attempt,kind==="missing"?null:7);assert.equal(tombstone.itemId,kind==="missing"?null:QUEUED_RUN.envelope.itemId);
+      assert.equal(tombstone.ordinalSource,kind==="missing"?"unknown":"span-root-backfill");
+      assert.equal(database.authority.runs.nextItemAttempt({workflow:f.deleted.workflow,itemId:QUEUED_RUN.envelope.itemId}),kind==="missing"?1:8);
+      assert.equal(database.authority.runs.nextWorkflowRunNumber(f.deleted.workflow),1);
+    } finally {database.close();}
+    const raw=new DatabaseSync(f.path);
+    try {for(const assignment of ["item_id='changed'","attempt=8","run_number=99","ordinal_source='tombstone'","workflow='changed'"])
+      assert.throws(()=>raw.exec(`UPDATE deleted_runs SET ${assignment}`),/immutable/u);
+    }finally{raw.close();}
+    if(span!==undefined)assert.deepEqual(readFileSync(f.span),span);
+    const doctor=await doctorAuthorityStorage({stateRootTrustAnchor:f.root,stateRoot:f.root,authorityPath:f.path,backupDirectory:join(f.root,"backups","authority"),busyTimeoutMs:500},clock);
+    assert.deepEqual(doctor.tombstoneOrdinals,{state:"available",findings:[{code:"tombstone-ordinal-unknown",runId:f.deleted.runId,missingFields:kind==="missing"?["itemId","attempt","runNumber"]:["runNumber"]}]});
+    const settled=readFileSync(f.path);assert.equal((await upgradeStorage(f.input,clock)).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),settled);
+    assert.deepEqual(readFileSync(join(f.root,"retired-source.sqlite")),source);
   });
-  it.each(["duplicate", "mismatch"] as const)("refuses %s evidence before any conversion or source mutation", async (kind) => {
-    const f = fixture(kind); await backupStoppedAuthority(f.root, clock);
-    const before = readFileSync(f.path); const span = readFileSync(f.span);
-    for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...f.input, plan }, clock), /malformed-evidence/u);
-    assert.deepEqual(readFileSync(f.path), before); assert.deepEqual(readFileSync(f.span), span);
+  it.each(["duplicate","mismatch"] as const)("refuses expired %s evidence before parsing or mutating it",async kind=>{
+    const f=fixture(kind);await backupStoppedAuthority(f.root,clock);const before=readFileSync(f.path),span=readFileSync(f.span);
+    for(const plan of [true,false])await assert.rejects(upgradeStorage({...f.input,plan},clock),/authority-below-floor/u);
+    assert.deepEqual(readFileSync(f.path),before);assert.deepEqual(readFileSync(f.span),span);
   });
-  it("rolls back backfill and restores the released trigger when failure occurs before COMMIT", async () => {
-    const f = fixture("root"); await backupStoppedAuthority(f.root, clock);
-    const before = readFileSync(f.path);
-    await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("injected-backfill-rollback"); } } }, clock), /injected-backfill-rollback/u);
-    assert.deepEqual(readFileSync(f.path), before);
-    assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
+  it("never invokes retired backfill hooks below the floor",async()=>{
+    const f=fixture("root");await backupStoppedAuthority(f.root,clock);const before=readFileSync(f.path);let invoked=false;
+    await assert.rejects(upgradeStorage({...f.input,hooks:{beforeCommit:()=>{invoked=true;throw new Error("expired hook reached");}}},clock),/authority-below-floor/u);
+    assert.equal(invoked,false);assert.deepEqual(readFileSync(f.path),before);
   });
 });

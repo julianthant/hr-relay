@@ -60,9 +60,6 @@ const HISTORICAL_SETTINGS_FILE_READERS = new Set([
   "src/infra/compat/d331-protected-journal.ts",
   "src/infra/compat/d331-settings-current.ts",
   "src/infra/compat/d331-settings-root.ts",
-  "src/infra/compat/pre-floor-settings.ts",
-  "src/infra/compat/settings-source-recovery.ts",
-  "src/infra/compat/upgrade-sources.ts",
   "src/infra/sqlite/backup-service.ts",
 ]);
 
@@ -316,7 +313,7 @@ describe("sqlite-settings-authority", () => {
   });
 
   it("pins v32 values in settings_current and removes the protected singleton", () => {
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 47);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 50);
     assert.equal(SQLITE_MIGRATIONS.at(-1)?.version, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const v32 = SQLITE_MIGRATIONS.find(({ version }) => version === 32);
     assert.ok(v32 !== undefined);

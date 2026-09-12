@@ -232,7 +232,7 @@ describe("cli storage backup (D322)", () => {
       JSON.parse(doctor.output)).spanAuthority.state, "reconciled");
   });
 
-  it("admits only the four approved cleanup-only names through plan/apply without importing values", async () => {
+  it("ignores all four retired cleanup-only names through plan/apply without importing or removing values", async () => {
     const p = paths();
     const retired = ["I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"];
     const values = retired.map((_, index) => `synthetic-retired-private-${String(index)}`);
@@ -242,9 +242,9 @@ describe("cli storage backup (D322)", () => {
     const before = readdirSync(p.repoRoot);
     const plan = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
     assert.equal(plan.exitCode, 0, plan.output);
-    const planned = z.object({ importedKeys: z.array(z.string()), envKeysToRemove: z.array(z.string()), credentials: z.literal("empty") }).parse(JSON.parse(plan.output));
+    const planned = z.object({ importedKeys: z.array(z.string()), envKeysToRemove: z.array(z.string()), credentials: z.literal("unchanged") }).parse(JSON.parse(plan.output));
     assert.deepEqual(planned.importedKeys, []);
-    assert.deepEqual(planned.envKeysToRemove, [...retired].sort());
+    assert.deepEqual(planned.envKeysToRemove, []);
     assert.deepEqual(readdirSync(p.repoRoot), before);
     const applied = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--json"], CLOCK, p.repoRoot);
     assert.equal(applied.exitCode, 0, applied.output);
@@ -276,12 +276,12 @@ describe("cli storage backup (D322)", () => {
     writeFileSync(environmentFile, source, { mode: 0o600 });
     assert.equal(readFileSync(environmentFile, "utf8"), source);
   });
-  it("reports a migration value refusal by catalog key without echoing its value", async () => {
+  it("ignores invalid retired migration values without reading or echoing them", async () => {
     const p = paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
     writeFileSync(join(p.repoRoot, ".env"), source, { mode: 0o600 });
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
-    assert.equal(result.exitCode, 1);
-    assert.deepEqual(JSON.parse(result.output), { state: "refused-or-incomplete", code: "invalid-value", key: "concurrency.defaultWorkers" });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(z.object({state:z.literal("planned"),importedKeys:z.array(z.string()),credentials:z.literal("unchanged")}).parse(JSON.parse(result.output)),{state:"planned",importedKeys:[],credentials:"unchanged"});
     assert.equal(result.output.includes("synthetic-invalid-private-input"), false); assert.equal(existsSync(p.stateRoot), false);
     assert.equal(readFileSync(join(p.repoRoot, ".env"), "utf8"), source);
   });

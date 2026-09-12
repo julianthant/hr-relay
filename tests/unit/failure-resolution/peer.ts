@@ -12,5 +12,5 @@ process.once("message", input => {
   try {
     const result = resolutionKernel(database, clock).execute(FailureResolutionCommandSchema.parse(input));
     process.send?.({ state: "result", result });
-  } finally { database.close(); process.disconnect(); }
+  } finally { database.close(); process.disconnect?.(); }
 });

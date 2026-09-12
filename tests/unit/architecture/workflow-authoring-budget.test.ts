@@ -568,11 +568,13 @@ const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] 
   { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "separations", reason: DRY_RUN_TARGET_REASON },
   { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
   { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/server/dashboard/projectors/run-queue-projection.ts", workflowId: "separations",
+    reason: "D288/Q — retained projection callers use the same current-Separations-only canonical identity corpus as indexed Activity." },
   {
-    file: "src/server/dashboard/projectors/run-queue-projection.ts",
+    file: "src/server/dashboard/queries/run-summaries.ts",
     workflowId: "separations",
     reason:
-      "D288 — the Activity person-pseudonym fold is current-Separations-only BY DECISION: its evidence is minted "
+      "D288/Q — the Activity distinct-person fold is current-Separations-only BY DECISION: its validated identity is derived "
       + "from a done Separations run's terminal result, so a foreign workflow's evidence row is counted foreign.",
   },
   {

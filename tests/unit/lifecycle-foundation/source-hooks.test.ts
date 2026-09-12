@@ -8,6 +8,9 @@ describe("L summary publication and transaction hooks", () => {
   it("distinguishes absent publication, refreshes new runs atomically and rolls failed mutations back", () => {
     const fixture = foundationFixture();
     try {
+      assert.equal(fixture.db.readRunSummaries().length,1,"fresh publication follows the initial run atomically");
+      const raw=new DatabaseSync(fixture.path);
+      try { raw.exec("DELETE FROM summary_publication"); } finally {raw.close();}
       assert.throws(() => fixture.db.readRunSummaries(), /generation-unavailable/u);
       const publication = fixture.db.refreshRunSummaries();
       assert.equal(publication.rowCount, 1);
@@ -32,7 +35,10 @@ describe("L summary publication and transaction hooks", () => {
       terminalizeFixtureFailure(f,f.run,record);
       f.db.refreshRunSummaries();
       const before = f.db.captureLifecycleSource(record.runId);
-      assert.equal(before.records.length,23);
+      assert.equal(before.records.length,24);
+      assert.equal(before.records.some(group=>group.table === "archive_relaunches"),false);
+      assert.ok(before.records.some(group => group.table === "provider_requests"));
+      assert.ok(before.records.some(group => group.table === "provider_usage"));
       f.db.authority.failureResolution.update({ runId:record.runId,failureId:record.failureId,expectedVersion:1,
         resolution:{status:"resolved",version:2,by:"local-operator",at:NOW} });
       const after = f.db.captureLifecycleSource(record.runId);

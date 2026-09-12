@@ -135,7 +135,7 @@ describe("confirmed database transaction history", () => {
     } finally { db.close(); }
   });
   it.each(["torn", "divergent", "orphan"] as const)("refuses %s ledger evidence without retiring history", async (fault) => {
-    const w = historicalWorld({ files: true }); cleanup.push(() => w.dispose());
+    const w = historicalWorld({ files: true, sourceVersion: 39 }); cleanup.push(() => w.dispose());
     const line = w.lines[0];
     if (fault === "torn") writeFileSync(line.path, line.text.slice(0, -1));
     else {
@@ -145,13 +145,13 @@ describe("confirmed database transaction history", () => {
       writeFileSync(line.path, `${canonicalJsonStringify(value)}\n`);
     }
     await w.backup(); const before = readFileSync(w.path);
-    await assert.rejects(w.upgrade(), /timeline-source-invalid|operation-history-/u);
+    await assert.rejects(w.upgrade(), /authority-below-floor.*original compatible release/u);
     assert.deepEqual(readFileSync(w.path), before);
   });
   it("rolls back changed source bytes at precommit and resumes only the committed copied source", async () => {
     const w = historicalWorld({ files: true }); cleanup.push(() => w.dispose()); await w.backup();
     await assert.rejects(upgradeStorage({ ...w.input, hooks: { beforeCommit: () => writeFileSync(w.lines[0].path, `${w.lines[0].text}\n`) } }, historyClock), /timeline-source-/u);
-    const raw = new DatabaseSync(w.path, { readOnly: true }); try { assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 39); } finally { raw.close(); }
+    const raw = new DatabaseSync(w.path, { readOnly: true }); try { assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 46); } finally { raw.close(); }
     writeFileSync(w.lines[0].path, w.lines[0].text);
     await assert.rejects(upgradeStorage({ ...w.input, hooks: { afterCommit: () => { throw new Error("injected-settlement-interruption"); } } }, historyClock), /injected-settlement-interruption/u);
     for (const line of w.lines) rmSync(line.path);

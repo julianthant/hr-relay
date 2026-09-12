@@ -1,3 +1,6 @@
+import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
+import {captureArchiveReport} from "../../../src/services/archive/report-capture.js";
+import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
 import { RunIdSchema } from "../../../src/domain/ids.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
@@ -48,11 +51,6 @@ import {
   type PreflightDeadlineScheduler,
 } from "../../../src/domain/preflight.js";
 import {
-  archivedRunContentDigest,
-  ArchivedRunContentSchema,
-  VersionBumpApplicationSchema,
-  VersionBumpPlanSchema,
-  versionBumpPlanFingerprint,
 } from "../../../src/domain/archive/model.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
@@ -117,8 +115,6 @@ import {
 } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import {
   ARCHIVED_RUN,
-  VERSION_BUMP_APPLICATION,
-  VERSION_PLAN_ROW,
 } from "../../fixtures/archive-fixtures.js";
 import { HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
@@ -303,7 +299,7 @@ function harness(options: {
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
-      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
+      canonicalPerson: (runId: string) => database.canonicalPerson(runId),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -638,14 +634,9 @@ function persistCurrentSeparationsEvidence(
   generation: string,
   runs: readonly RunRecord[],
 ): void {
-  const capability = h.database.createActivityPersonPseudonymBackfillWriteCapability(
-    createActivityPersonPseudonymDomain({
-      keyGeneration: generation,
-      keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
-    }),
-  );
-  const outcomes = capability.reviewAndInsert(runs.map((run) => run.envelope.runId));
-  assert.deepEqual(outcomes.map((outcome) => outcome.state), runs.map(() => "inserted"));
+  assert.throws(()=>h.database.createActivityPersonPseudonymBackfillWriteCapability(
+    createActivityPersonPseudonymDomain({keyGeneration:generation,keyHex:ACTIVITY_PERSON_PSEUDONYM_KEY_HEX})),/activity-person-pseudonyms-retired/u);
+  for(const run of runs)assert.equal(h.database.canonicalPerson(run.envelope.runId).state,"available");
 }
 
 function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): void {
@@ -678,74 +669,9 @@ function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): 
 }
 
 function archiveCurrentSeparationsRun(h: Harness, run: RunRecord): void {
-  const plan = VersionBumpPlanSchema.parse({
-    ...VERSION_PLAN_ROW.plan,
-    scope: { kind: "workflows", workflowIds: [run.envelope.workflow] },
-    observedIdentities: [{
-      workflowId: run.envelope.workflow,
-      descriptorVersion: run.envelope.descriptorVersion,
-      contractFingerprint: run.envelope.contractFingerprint,
-    }],
-    candidates: [{
-      runId: run.envelope.runId,
-      traceId: run.envelope.traceId,
-      workflowId: run.envelope.workflow,
-      title: "Archived Separations proof",
-      enqueuedAt: run.envelope.enqueuedAt,
-      drift: ["descriptor-version"],
-    }],
-  });
-  h.database.authority.versionPlans.insert({
-    ...VERSION_PLAN_ROW,
-    plan,
-    planFingerprint: versionBumpPlanFingerprint(plan),
-  });
-  h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
-    ...VERSION_BUMP_APPLICATION,
-    scope: plan.scope,
-    appliedIdentities: plan.observedIdentities,
-    archivedRunIds: [run.envelope.runId],
-  }));
-  const { contentDigest: _ignoredContentDigest, ...template } = ARCHIVED_RUN;
-  const content = ArchivedRunContentSchema.parse({
-    ...template,
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    workflowLabel: { state: "present", value: "Separations" },
-    traceId: run.envelope.traceId,
-    archivedIdentity: {
-      workflowId: run.envelope.workflow,
-      descriptorVersion: run.envelope.descriptorVersion,
-      contractFingerprint: run.envelope.contractFingerprint,
-    },
-    row: {
-      ...template.row,
-      runId: run.envelope.runId,
-      itemId: run.envelope.itemId,
-      workflowId: run.envelope.workflow,
-      traceId: run.envelope.traceId,
-      descriptorVersion: run.envelope.descriptorVersion,
-      descriptorHash: run.envelope.contractFingerprint,
-      configFingerprint: run.envelope.configFingerprint,
-      dryRun: run.envelope.dryRun,
-      priority: run.envelope.priority,
-    },
-    detail: {
-      ...template.detail,
-      runId: run.envelope.runId,
-      header: {
-        ...template.detail.header,
-        runId: run.envelope.runId,
-        traceId: run.envelope.traceId,
-        workflowId: run.envelope.workflow,
-      },
-    },
-    input: run.input,
-  });
-  h.database.authority.archivedRuns.insert({
-    ...content,
-    contentDigest: archivedRunContentDigest(content),
-  });
+  const storage=createRunLifecycleStorage(h.database);
+  const report=captureArchiveReport({snapshot:storage.capture(run.envelope.runId),transferId:uuidOf(9990),capturedAt:h.clock.now().toISOString(),sections:[],files:[]});
+  assert.ok(transferArchiveReport(storage,report,run.version));
 }
 
 async function activityPeople(h: Harness): Promise<unknown> {
@@ -889,7 +815,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const missing = currentSeparationsRun({ seed: 321, shape: "single" });
 
     seedCurrentSeparationsRun(h, evidenced);
-    seedCurrentSeparationsRun(h, missing);
+    seedSeparationsRunAuthority(h.database,join(h.stateRoot,"state.db"),missing,undefined);
     persistCurrentSeparationsEvidence(h, "activity-person-g1", [evidenced]);
     projectCurrentSeparationsRuns(h, [evidenced, missing]);
 
@@ -897,11 +823,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       state: "absent",
       evidenceRows: 1,
       unavailableRows: 1,
-      reason: "1 of 2 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+      reason: "1 of 2 current Separations run/member rows lack validated canonical identity; distinct people is unavailable",
     });
   });
 
-  it("marks the People axis unavailable when current Separations evidence spans generations", async () => {
+  it("serves canonical People across refused historical pseudonym generations", async () => {
     const h = harness();
     const first = currentSeparationsRun({ seed: 330, shape: "single" });
     const second = currentSeparationsRun({ seed: 331, shape: "single" });
@@ -913,10 +839,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     projectCurrentSeparationsRuns(h, [first, second]);
 
     assert.deepEqual(await activityPeople(h), {
-      state: "absent",
+      state: "present",
       evidenceRows: 2,
-      unavailableRows: 0,
-      reason: "current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable",
+      distinct: 2,
     });
   });
 
@@ -932,8 +857,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     seedCurrentSeparationsRun(h, current, "10800000");
     seedCurrentSeparationsRun(h, archived, "10800001");
     persistCurrentSeparationsEvidence(h, "activity-person-g1", [current, archived]);
-    archiveCurrentSeparationsRun(h, archived);
     projectCurrentSeparationsRuns(h, [current, archived]);
+    archiveCurrentSeparationsRun(h, archived);
 
     assert.deepEqual(await activityPeople(h), {
       state: "present",

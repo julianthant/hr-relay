@@ -1,3 +1,4 @@
+import { RunIdSchema, FingerprintSchema } from "../../../src/domain/ids.js";
 // @vitest-environment jsdom
 /**
  * D308's ARCHIVE DELETE, PRESSED.
@@ -26,17 +27,16 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { ArchiveWorkspace } from "../../../src/dashboard/surfaces/archive.js";
 import { archivedDeleteConfirm, type ArchiveView } from "../../../src/dashboard/surfaces/archive-model.js";
 import {
-  ArchiveIndexWireSchema,
-  ArchivedRunDetailWireSchema,
-  type ArchiveIndexWire,
-  type ArchivedRunDetailWire,
+  SavedArchiveIndexWireSchema,
+  SavedArchiveReportWireSchema,
+  type SavedArchiveIndexWire,
+  type SavedArchiveReportWire,
 } from "../../../src/domain/dashboard/archive.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
-import {
-  FIXTURE_ARCHIVED_RUN,
-  FIXTURE_ARCHIVED_RUN_ID,
-  FIXTURE_ARCHIVE_INDEX,
-} from "../../parity/helpers/fixture-archive.js";
+import {H_REPORT} from "../../parity/helpers/fixture-archive-report.js";
+const FIXTURE_ARCHIVED_RUN=H_REPORT;
+const FIXTURE_ARCHIVED_RUN_ID=H_REPORT.runId;
+const FIXTURE_ARCHIVE_INDEX=SavedArchiveIndexWireSchema.parse({items:[H_REPORT],next:null});
 
 /* ── the two browser APIs jsdom does not implement, stubbed for MEASUREMENT
       only: nothing here asserts a position. ───────────────────────────────── */
@@ -70,7 +70,6 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const ACTOR_ID = "local-operator";
 const COMMAND_ID = "aa11bb22-0308-4000-8000-aa11bb220308";
-const WRITE_INTENT_ID = "aa11bb22-0309-4000-8000-aa11bb220309";
 
 /** The archived record's own digest — what the delete has to cite back. */
 const SERVED_DIGEST = FIXTURE_ARCHIVED_RUN.archiveFingerprint;
@@ -98,15 +97,15 @@ const MISMATCH: CommandResult = CommandResultSchema.parse({
 });
 
 /** The ledger after the delete lands: the record this case removed is gone. */
-const INDEX_AFTER_DELETE: ArchiveIndexWire = ArchiveIndexWireSchema.parse({
+const INDEX_AFTER_DELETE: SavedArchiveIndexWire = SavedArchiveIndexWireSchema.parse({
   ...FIXTURE_ARCHIVE_INDEX,
-  entries: FIXTURE_ARCHIVE_INDEX.entries.filter((entry) => entry.runId !== FIXTURE_ARCHIVED_RUN_ID),
+  items: FIXTURE_ARCHIVE_INDEX.items.filter((entry) => entry.runId !== FIXTURE_ARCHIVED_RUN_ID),
 });
 
 /** The same record, having filed one real write — the case the confirm warns about. */
-const RUN_THAT_FILED: ArchivedRunDetailWire = ArchivedRunDetailWireSchema.parse({
+const RUN_THAT_FILED: SavedArchiveReportWire = SavedArchiveReportWireSchema.parse({
   ...FIXTURE_ARCHIVED_RUN,
-  evidence: { ...FIXTURE_ARCHIVED_RUN.evidence, writeIntentIds: [WRITE_INTENT_ID] },
+  sections: [...FIXTURE_ARCHIVED_RUN.sections,{kind:"text",title:"Retained transaction",text:"A transaction was recorded."}],
 });
 
 function stubClient(served: Partial<DashboardClient>): DashboardClient {
@@ -174,9 +173,9 @@ interface MountedArchive {
 }
 
 async function mountArchive(options: {
-  readonly detail?: ArchivedRunDetailWire;
+  readonly detail?: SavedArchiveReportWire;
   readonly result?: CommandResult;
-  readonly indexes?: readonly ArchiveIndexWire[];
+  readonly indexes?: readonly SavedArchiveIndexWire[];
 }): Promise<MountedArchive> {
   const detail = options.detail ?? FIXTURE_ARCHIVED_RUN;
   const queue = [...(options.indexes ?? [FIXTURE_ARCHIVE_INDEX, INDEX_AFTER_DELETE])];
@@ -184,7 +183,7 @@ async function mountArchive(options: {
   let indexReads = 0;
 
   const client = stubClient({
-    archiveIndex: async (): Promise<ArchiveIndexWire> => {
+    savedArchiveIndex: async (): Promise<SavedArchiveIndexWire> => {
       const next = queue.shift();
       if (next === undefined) {
         throw new Error(`the Archive read its index ${String(indexReads + 1)} times; this case serves fewer`);
@@ -192,10 +191,11 @@ async function mountArchive(options: {
       indexReads += 1;
       return next;
     },
-    archivedRun: async (runId: string): Promise<ArchivedRunDetailWire> => {
+    savedArchiveReport: async (runId: string): Promise<SavedArchiveReportWire> => {
       if (runId !== detail.runId) throw new Error(`the Archive asked for archived run ${runId}, which this case does not serve`);
       return detail;
     },
+    savedArchiveFile: async (runId,digest) => ({runId:RunIdSchema.parse(runId),digest:FingerprintSchema.parse(digest),resource:{state:"missing",reason:"No file bytes in this UI fixture"}}),
     executeCommand: async (request: unknown): Promise<CommandResult> => {
       commands.push(request);
       return options.result ?? APPLIED;
@@ -259,12 +259,12 @@ describe("D308 — the archived run's delete door", () => {
     // Mutation: wiring the footer's `onDelete` straight to `deleteArchivedRun`.
     const archive = await mountArchive({});
 
-    await archive.press("Delete…");
+    await archive.press("Delete saved report");
 
     assert.deepEqual(archive.commands, []);
-    assert.equal(archive.text().includes("Delete this archived run"), true, "the confirm did not open");
+    assert.equal(archive.text().includes("Delete this saved report"), true, "the confirm did not open");
     assert.equal(
-      archive.text().includes("This is final; there is no undo."),
+      archive.text().includes("This cannot be undone."),
       true,
       "the confirm opened without the sentence that makes it a decision",
     );
@@ -273,20 +273,20 @@ describe("D308 — the archived run's delete door", () => {
   it("cancelling the confirm sends nothing and leaves the record selected", async () => {
     const archive = await mountArchive({});
 
-    await archive.press("Delete…");
-    await archive.press("Cancel");
+    await archive.press("Delete saved report");
+    await archive.press("Keep report");
 
     assert.deepEqual(archive.commands, []);
-    assert.equal(archive.text().includes("Delete this archived run"), false, "the confirm stayed open");
-    assert.equal(archive.text().includes(FIXTURE_ARCHIVED_RUN.detail.header.title), true);
+    assert.equal(archive.text().includes("Delete this saved report"), false, "the confirm stayed open");
+    assert.equal(archive.text().includes(FIXTURE_ARCHIVED_RUN.title), true);
   });
 
   it("composes `delete-archived-run` citing the digest the page was served", async () => {
     // Mutation: citing `detail.runId` twice, or any digest but the served one.
     const archive = await mountArchive({});
 
-    await archive.press("Delete…");
-    await archive.press("Delete");
+    await archive.press("Delete saved report");
+    await archive.press("Confirm deletion");
 
     assert.equal(archive.commands.length, 1);
     const sent = archive.commands[0];
@@ -303,7 +303,7 @@ describe("D308 — the archived run's delete door", () => {
     });
     // The digest is the RECORD's, not a constant this test and the surface
     // could both be wrong about.
-    assert.equal(SERVED_DIGEST, FIXTURE_ARCHIVE_INDEX.entries[0]?.archiveFingerprint);
+    assert.equal(SERVED_DIGEST, FIXTURE_ARCHIVE_INDEX.items[0]?.archiveFingerprint);
   });
 
   it("returns to the ledger on `applied`, and the ledger no longer lists the run", async () => {
@@ -311,17 +311,17 @@ describe("D308 — the archived run's delete door", () => {
     // "That archived run could not be read" for a run that was deleted on purpose.
     const archive = await mountArchive({});
 
-    await archive.press("Delete…");
-    await archive.press("Delete");
+    await archive.press("Delete saved report");
+    await archive.press("Confirm deletion");
 
     assert.equal(archive.indexReads(), 2, "the applied delete did not re-read the ledger");
     assert.equal(
-      archive.text().includes("Nothing selected"),
+      archive.text().includes("Select a saved report."),
       true,
       "the surface stayed on the record it had just deleted",
     );
     assert.equal(
-      archive.text().includes(FIXTURE_ARCHIVED_RUN.detail.header.title),
+      archive.text().includes(FIXTURE_ARCHIVED_RUN.title),
       false,
       "the re-read ledger still lists the deleted run",
     );
@@ -331,8 +331,8 @@ describe("D308 — the archived run's delete door", () => {
     // Mutation: treating any settled result as applied.
     const archive = await mountArchive({ result: MISMATCH });
 
-    await archive.press("Delete…");
-    await archive.press("Delete");
+    await archive.press("Delete saved report");
+    await archive.press("Confirm deletion");
 
     const text = archive.text();
     assert.equal(text.includes("That command was refused"), true, text);
@@ -341,16 +341,16 @@ describe("D308 — the archived run's delete door", () => {
     assert.equal(text.includes("Nothing was changed."), true);
     // A refusal is not a landing: the ledger is not re-read and the record stays.
     assert.equal(archive.indexReads(), 1);
-    assert.equal(text.includes(FIXTURE_ARCHIVED_RUN.detail.header.title), true);
+    assert.equal(text.includes(FIXTURE_ARCHIVED_RUN.title), true);
   });
 
   it("warns, before the press, that a run which filed keeps its key only until now", async () => {
     const archive = await mountArchive({ detail: RUN_THAT_FILED });
 
-    await archive.press("Delete…");
+    await archive.press("Delete saved report");
 
     const text = archive.text();
-    assert.equal(text.includes("This run filed 1 record in a real system"), true, text);
-    assert.equal(text.includes("1 write intent"), true, text);
+    assert.equal(text.includes("permanent idempotency keys"), true, text);
+    assert.equal(text.includes("could submit the same write again"), true, text);
   });
 });

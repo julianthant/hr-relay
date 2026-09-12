@@ -27,7 +27,7 @@ describe("retired projector completeness and recovery", () => {
     } finally { db.close(); }
   });
   it("retains exact assignments when an append crashed before its file existed", async () => {
-    const w = historicalWorld({ files: true }); cleanup.push(() => w.dispose()); for (const line of w.lines) rmSync(line.path);
+    const w = historicalWorld({ files: true, missingFile: true }); cleanup.push(() => w.dispose()); for (const line of w.lines) rmSync(line.path);
     await w.backup(); await w.upgrade(); const db = w.open(); try {
       const sources = db.authority.historicalOperationSources.list();
       assert.equal(sources.length, 2); assert.ok(sources.every((source) => source.projection?.seq === 0 && source.file === null));
@@ -43,16 +43,16 @@ describe("retired projector completeness and recovery", () => {
     } finally { reader.close(); }
   });
   it.each(["torn", "rewritten", "gap", "duplicate"] as const)("refuses %s historical lines without repair or retirement", async (fault) => {
-    const w = historicalWorld({ files: true }); cleanup.push(() => w.dispose()); const line = w.lines[0];
+    const w = historicalWorld({ files: true, sourceVersion: 39 }); cleanup.push(() => w.dispose()); const line = w.lines[0];
     const value = JSON.parse(line.text) as { seq: number; payload: { operator: string } };
     if (fault === "gap") value.seq = 4;
     if (fault === "rewritten") value.payload.operator = "changed-actor";
     const text = fault === "torn" ? line.text.slice(0, -1) : fault === "duplicate" ? line.text.repeat(2) : `${JSON.stringify(value)}\n`;
     writeFileSync(line.path, text); await w.backup(); const before = readFileSync(w.path);
-    await assert.rejects(w.upgrade(), /timeline-source-|operation-history-/u); assert.deepEqual(readFileSync(w.path), before); assert.equal(readFileSync(line.path, "utf8"), text);
+    await assert.rejects(w.upgrade(), /authority-below-floor/u); assert.deepEqual(readFileSync(w.path), before); assert.equal(readFileSync(line.path, "utf8"), text);
   });
   it("never invents transactions from an unrecorded line after database restore", async () => {
-    const w = historicalWorld({ files: true }); cleanup.push(() => w.dispose());
+    const w = historicalWorld({ files: true, sourceVersion: 39 }); cleanup.push(() => w.dispose());
     const raw = new DatabaseSync(w.path); try {
       // A real restore can put the database behind files. Remove all owned rows in a fixture-only DDL bypass.
       const triggers = raw.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name IN ('ledger_projections','operation_outbox','ledger_partitions')").all();
@@ -60,6 +60,6 @@ describe("retired projector completeness and recovery", () => {
       raw.exec("DELETE FROM ledger_projections; DELETE FROM operation_outbox; DELETE FROM ledger_partitions");
       for (const trigger of triggers) raw.exec(String(trigger.sql));
     } finally { raw.close(); }
-    await w.backup(); await assert.rejects(w.upgrade(), /operation-history-orphan-file/u);
+    await w.backup(); await assert.rejects(w.upgrade(), /authority-below-floor/u);
   });
 });

@@ -5,6 +5,8 @@ export interface ProviderAccountingStorage {
  getRequest(requestId:string):ProviderRequestStorage|undefined;
  getUsage(usageId:string):ProviderUsageStorage|undefined;
  listUsage():readonly ProviderUsageStorage[];
+ /** Original windows still needed by reserved requests, including zero bounds. */
+ reservedWindowIds(scopeId:string,meter:string):readonly string[];
  writeRequest(record:ProviderRequestStorage,expectedVersion:number|null):void;
  writeUsage(record:ProviderUsageStorage,expectedVersion:number|null):void;
 }

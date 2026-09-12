@@ -16,7 +16,7 @@ for (const step of ["captured", "verified", "cleaned", "published"] as const) it
     const transactions = bundle.source.archives[0].source.records.find(group => group.table === "archive_transactions");
     assert.ok(transactions?.rows.length);
     assert.ok(transactions.rows[0].json.includes("ucpath"), "populated immutable transaction supplement survives inspection");
-    assert.ok(bundle.source.archives[0].source.records.find(group => group.table === "archive_relaunches")?.rows.length);
+    assert.equal(bundle.source.archives[0].source.records.find(group => String(group.table) === "archive_relaunches"), undefined);
     assert.throws(() => withHistoricalAuthority(f, database => convertHistoricalArchives(createRunLifecycleStorage(database), bundle, NOW, (_runId, at) => { if (at === step) throw new Error("conversion-interrupted"); })), /conversion-interrupted/u);
     withHistoricalAuthority(f, database => {
     const storage = createRunLifecycleStorage(database);
@@ -29,7 +29,7 @@ for (const step of ["captured", "verified", "cleaned", "published"] as const) it
     assert.deepEqual(storage.readFile(f.run.envelope.runId, f.file.file.digest).bytes, f.file.bytes);
     assert.equal(database.authority.runs.get(f.run.envelope.runId), undefined);
     assert.equal(database.authority.deletedRuns.get(f.run.envelope.runId), undefined);
-    assert.deepEqual(database.authority.archiveRelaunches.listByArchivedRun(f.run.envelope.runId), [ARCHIVE_RELAUNCH]);
+    assert.ok(database.authority.runs.get(ARCHIVE_RELAUNCH.runId));
     assert.ok(result.dispositions.some(value => value.includes("L")));
     });
   } finally { f.dispose(); }

@@ -1,3 +1,6 @@
+import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
+import { storageTree } from "../helpers/storage-recovery-fixture.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
@@ -11,9 +14,9 @@ describe("P provider accounting integrity",()=>{
    const r=f.db.authority.providerAdmissions.reserve(legacyRequest(f));assert.equal(r.state,"reserved");
    if(active===0)f.db.authority.providerAdmissions.interrupt({admissionId:id(60),expectedVersion:1,code:"aborted",message:"synthetic",now:NOW});
    const g=generic(f);f.db.authority.providerAccounting.transaction(s=>{s.writeRequest(g.request,null);s.writeUsage(g.usage,null);});
-   assert.doesNotThrow(()=>inspectHistoricalAuthorityInvariants(raw,47));
+   assert.doesNotThrow(()=>inspectHistoricalAuthorityInvariants(raw,49));
    raw.exec("UPDATE provider_usage SET active_reservations=active_reservations+1,record_json=json_set(record_json,'$.record.activeReservations',active_reservations+1) WHERE capability='ocr.extract'");
-   assert.throws(()=>inspectHistoricalAuthorityInvariants(raw,47),/provider-active-reservations-match/u);
+   assert.throws(()=>inspectHistoricalAuthorityInvariants(raw,49),/provider-active-reservations-match/u);
   }finally{raw.close();f.dispose();}
  });
  for(const version of [42,43] as const)it(`validates populated schema${version} backup and rejects a corrupt reservation count`,()=>{
@@ -92,9 +95,9 @@ describe("P generic provider policy",()=>{
  });
  it("separately detects corrupt generic reservations without blaming unrelated legacy capabilities",()=>{
   const f=foundationFixture();const raw=new DatabaseSync(f.path);try{
-   const p=createGenericProviderAccounting(f.db.authority.providerAccounting);p.reserve(admission(f));f.db.authority.providerAdmissions.reserve(legacyRequest(f,60,"geocode.census"));inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,47);
+   const p=createGenericProviderAccounting(f.db.authority.providerAccounting);p.reserve(admission(f));f.db.authority.providerAdmissions.reserve(legacyRequest(f,60,"geocode.census"));inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,49);
    raw.exec("UPDATE provider_usage SET record_json=json_set(record_json,'$.windows[0].reserved',2) WHERE json_extract(record_json,'$.kind')='generic'");
-   assert.throws(()=>inspectGenericProviderAccounting(raw),/generic-reservation-mismatch/u);assert.doesNotThrow(()=>inspectHistoricalAuthorityInvariants(raw,47));
+   assert.throws(()=>inspectGenericProviderAccounting(raw),/generic-reservation-mismatch/u);assert.throws(()=>inspectHistoricalAuthorityInvariants(raw,49),/generic-reservation-mismatch/u);
   }finally{raw.close();f.dispose();}
  });
  it("finalizes deletion conservatively, rolls both halves back on faults, and refuses late callbacks after tombstone",()=>{
@@ -108,14 +111,14 @@ describe("P generic provider policy",()=>{
    raw.exec("DROP TRIGGER injected");f.db.authority.runs.delete(deletion);
    const u=p.read()[0];assert.deepEqual(u.cumulative,{kind:"unknown",retainedUpperBound:2});assert.equal(u.windows[0]?.reserved,0);assert.equal(u.windows[0]?.retainedUnknown,1);assert.deepEqual(u.tracking,before[0]?.tracking);
    assert.equal(raw.prepare("SELECT count(*) n FROM provider_requests").get()?.n,0);assert.equal(raw.prepare("SELECT count(*) n FROM deleted_runs").get()?.n,1);
-   assert.throws(()=>p.finish(done(101)),/request-missing/u);assert.throws(()=>p.reserve(admission(f,102)),/execution-missing/u);assert.deepEqual(p.read()[0],u);inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,47);
+   assert.throws(()=>p.finish(done(101)),/request-missing/u);assert.throws(()=>p.reserve(admission(f,102)),/execution-missing/u);assert.deepEqual(p.read()[0],u);inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,49);
   }finally{raw.close();f.dispose();}
  });
 });
 
 import { fork } from "node:child_process";
 import { z } from "zod";
-import { readFileSync,copyFileSync } from "node:fs";
+import { readFileSync,copyFileSync,rmSync } from "node:fs";
 import { join } from "node:path";
 import { backupStoppedAuthority,upgradeStorage } from "../../../src/server/storage/upgrade.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
@@ -161,6 +164,17 @@ describe("P concurrency and historical conversion",()=>{
    f.raw.prepare("UPDATE provider_budget_counters SET blocked_by_admission_id=?,minute_window_started_at=?,day_window_started_at=?,minute_requests=4,day_requests=4,record_json=?").run(id(63),midnight,midnight,JSON.stringify(blocked));
    const retained=f.raw.prepare("SELECT record_key,record_json FROM provider_admissions ORDER BY record_key").all();assert.equal(retained.length,5);
    assert.equal(inspectAuthorityBackupReadOnly(f.historicalPath).schemaVersion,42);
+   await backupStoppedAuthority(f.input.stateRoot,f.clock);
+   const expired=storageTree(f.input.stateRoot);
+   for(const plan of [true,false])await assert.rejects(upgradeStorage({...f.input,plan},f.clock),/authority-below-floor.*original compatible release/u);
+   assert.deepEqual(storageTree(f.input.stateRoot),expired);
+   const pinned=z.object({rows:z.record(z.string().regex(/^[a-z_]+$/u),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))}).parse(JSON.parse(readFileSync(new URL("../fixtures/migrated-provider.json",import.meta.url),"utf8")));
+   f.raw.close();copyFileSync(f.historicalPath,join(f.input.stateRoot,"retired-source.sqlite"));rmSync(f.historicalPath);f.reopenRaw();
+   for(const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=46))for(const sql of migration.statements)f.raw.exec(sql);
+   for(const [table,rows]of Object.entries(pinned.rows))for(const row of rows){const columns=Object.keys(row);f.raw.prepare(`INSERT INTO ${table}(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...Object.values(row));}
+   f.raw.prepare("INSERT INTO database_state(singleton_id,schema_version,authority_generation,updated_at) VALUES(1,46,7,?)").run(NOW);
+   f.raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)};PRAGMA user_version=46`);
+   assert.equal(inspectAuthorityBackupReadOnly(f.historicalPath).schemaVersion,46);
    const source=readFileSync(f.historicalPath);const backup=await backupStoppedAuthority(f.input.stateRoot,f.clock);const manifest=backup.manifests[0];assert.ok(manifest);const path=join(f.input.stateRoot,"backups","authority",manifest.backupFileName);const backupBytes=readFileSync(path);
    await assert.rejects(upgradeStorage({...f.input,hooks:{beforeCommit:()=>{throw new Error("provider-before-commit");}}},f.clock),/provider-before-commit/u);assert.deepEqual(readFileSync(f.historicalPath),source);
    await assert.rejects(upgradeStorage({...f.input,hooks:{afterCommit:()=>{throw new Error("provider-after-commit");}}},f.clock),/provider-after-commit/u);
@@ -173,30 +187,33 @@ describe("P concurrency and historical conversion",()=>{
     db.authority.providerAdmissions.settle({admissionId:id(60),expectedVersion:1,actualUsage:{requestCount:1,costUsdMicros:0},adapterDisposition:"produced",evidence:{summary:"late pre-tracking result",capturedAt:NOW},now:NOW});
     const after=readProviderUsage(f.raw,"ocr.extract");assert.equal(after?.kind,"legacy-capability");if(after?.kind!=="legacy-capability")throw new Error("history absent");assert.deepEqual(after.cumulative,{requests:0,chargedUsdMicros:0});assert.equal(after.record.activeReservations,0);
    }finally{db.close();}
-   assert.deepEqual(readFileSync(path),backupBytes);assert.equal(inspectAuthorityBackupReadOnly(path).schemaVersion,42);
-   f.raw.close();copyFileSync(path,f.historicalPath);f.reopenRaw();assert.equal((await upgradeStorage(f.input,f.clock)).state,"converted");
+   assert.deepEqual(readFileSync(path),backupBytes);assert.equal(inspectAuthorityBackupReadOnly(path).schemaVersion,46);
+   f.raw.close();copyFileSync(path,f.historicalPath);rmSync(join(f.input.stateRoot,"archive.sqlite"),{force:true});rmSync(join(f.input.stateRoot,"archive-files"),{recursive:true,force:true});f.reopenRaw();assert.equal((await upgradeStorage(f.input,f.clock)).state,"converted");
    for(const row of retained){const r=readProviderRequest(f.raw,String(row.record_key));assert.equal(r?.kind,"legacy-capability");if(r?.kind!=="legacy-capability")throw new Error("restored history absent");assert.deepEqual(r.record,JSON.parse(String(row.record_json)));}
   }finally{f.dispose();}
  });
 });
 
-import { ARCHIVED_RUN,VERSION_PLAN_ROW,VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
-import { ArchivedRunContentSchema,ArchivedRunRecordSchema,archivedRunContentDigest } from "../../../src/domain/archive/model.js";
+import { LifecycleSourceSnapshotSchema } from "../../../src/core/run-lifecycle-storage.js";
+import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 it("captures an archive without adding usage; archive deletion accounts pending uncertainty exactly once",()=>{
  const f=foundationFixture();const raw=new DatabaseSync(f.path);try{
   const p=createGenericProviderAccounting(f.db.authority.providerAccounting);p.reserve(admission(f));p.finish(done());p.reserve(admission(f,101));
   const terminal=f.db.authority.runs.transition({runId:f.run.envelope.runId,expectedVersion:f.run.version,claim:{workerId:"worker-1",claimGeneration:1},lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW},now:NOW});assert.equal(terminal.state,"applied");if(terminal.state!=="applied")throw new Error("terminal fixture refused");
   const before=p.read();const captured=f.db.authority.providerAccounting.getRequest(id(100));assert.ok(captured);assert.deepEqual(p.read(),before);
-  const {contentDigest:_oldDigest,...content}=ARCHIVED_RUN;
-  const snapshot={...content,archivedAt:NOW,archivedIdentity:{...content.archivedIdentity,contractFingerprint:f.run.envelope.contractFingerprint},input:f.run.input,
-   row:{...content.row,status:"cancelled",configFingerprint:f.snapshot.fingerprint,rowRevision:terminal.run.version,endedAt:{state:"present",value:NOW}},
-   detail:{...content.detail,rowRevision:terminal.run.version,header:{...content.detail.header,status:"cancelled"},outcome:{state:"terminal",result:"cancelled",completedAt:NOW}}};
-  const archive=ArchivedRunRecordSchema.parse({...snapshot,contentDigest:archivedRunContentDigest(ArchivedRunContentSchema.parse(snapshot))});
-  f.db.authority.versionPlans.insert(VERSION_PLAN_ROW);f.db.authority.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);f.db.authority.archivedRuns.insert(archive);
-  assert.ok(f.db.authority.archivedRuns.get(archive.runId));assert.deepEqual(p.read(),before);assert.deepEqual(f.db.authority.providerAccounting.getRequest(id(100)),captured);
-  f.db.authority.runs.delete({runId:f.run.envelope.runId,origin:"archive",commandId:id(201),now:NOW});
+  const storage = createRunLifecycleStorage(f.db), snapshot = storage.capture(f.run.envelope.runId);
+  const report = captureArchiveReport({snapshot,transferId:id(200),capturedAt:NOW,files:[],sections:[]});
+  assert.deepEqual(p.read(),before);
+  const source=report.content.sources.find(value=>value.kind==="authority-snapshot");assert.ok(source);
+  const retained=LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json)).records.find(group=>group.table==="provider_requests");
+  assert.deepEqual(retained?.rows.map(row=>readProviderRequest(raw,row.key)),[captured,f.db.authority.providerAccounting.getRequest(id(101))]);
+  transferArchiveReport(storage,report,terminal.run.version);
+  const afterTransfer=p.read();
+  assert.equal(storage.deleteArchive({runId:f.run.envelope.runId,commandId:id(201),archiveFingerprint:report.digest}).state,"deleted");
+  assert.deepEqual(p.read(),afterTransfer);
   assert.deepEqual(p.read()[0].cumulative,{kind:"unknown",retainedUpperBound:2});assert.equal(raw.prepare("SELECT count(*) n FROM provider_requests").get()?.n,0);
-  assert.throws(()=>p.finish(done(101)),/request-missing/u);inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,47);
+  assert.throws(()=>p.finish(done(101)),/request-missing/u);inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,49);
  }finally{raw.close();f.dispose();}
 });
 

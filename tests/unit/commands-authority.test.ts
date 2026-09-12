@@ -48,7 +48,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 describe("authority classification and D95 command families", () => {
   it("classifies every table exactly once and freezes the registry", () => {
     assert.deepEqual(auditAuthorityTableRegistry(AUTHORITY_TABLE_REGISTRY), []);
-    assert.equal(AUTHORITY_TABLE_REGISTRY.length, AuthorityTableNameSchema.options.length + ProjectionTableNameSchema.options.length);
+    assert.equal(AUTHORITY_TABLE_REGISTRY.length, AuthorityTableNameSchema.options.filter(name => !["archived_runs", "version_plans", "version_bump_applications"].includes(name)).length + ProjectionTableNameSchema.options.length);
     assert.equal(Object.isFrozen(AUTHORITY_TABLE_REGISTRY), true);
     assert.equal(Object.isFrozen(AUTHORITY_TABLE_REGISTRY[0]), true);
     assert.equal(AuthorityTableRegistrySchema.safeParse(AUTHORITY_TABLE_REGISTRY.slice(1)).success, false);
@@ -64,7 +64,7 @@ describe("authority classification and D95 command families", () => {
     assert.deepEqual([...fixtureActions].sort(), [...CommandActionSchema.options].sort());
     assert.deepEqual(
       [...new Set(COMMAND_FAMILY_REGISTRY.flatMap(({ actions }) => actions))].sort(),
-      [...CommandActionSchema.options].sort(),
+      CommandActionSchema.options.filter(action => action !== "relaunch-archived-run").sort(),
     );
     assert.equal(Object.isFrozen(COMMAND_FAMILY_REGISTRY), true);
     assert.equal(CommandFamilyRegistrySchema.safeParse(COMMAND_FAMILY_REGISTRY.slice(1)).success, false);

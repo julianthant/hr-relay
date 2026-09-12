@@ -1,10 +1,10 @@
+import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { existsSync, writeFileSync, unlinkSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { archiveFixture, attachFile } from "./fixtures.js";
 import { NOW, id } from "../database-foundation/fixtures.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { projectArchiveReport, queryArchiveReports } from "../../../src/server/dashboard/queries/archive-reports.js";
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
@@ -224,5 +224,29 @@ it("refuses forged canonical operator bindings and references before deletion", 
     assert.ok(storage.readReport(view.runId));
     assert.equal(storage.deleteArchive(request).state, "deleted");
     assert.equal(f.kernel.execute(operatorRequest).state, "applied");
+  } finally { f.dispose(); }
+});
+
+it("pages past an unsettled deletion tombstone to surviving reports", () => {
+  const f = archiveFixture();
+  try {
+    f.terminal();
+    const second = f.base.createRun(id(99910));
+    f.database.authority.runs.transition({ runId: second.envelope.runId, expectedVersion: second.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW }, now: NOW });
+    assert.equal(f.kernel.execute(f.applyRequest(f.plan())).state, "applied");
+    const storage = createRunLifecycleStorage(f.database);
+    const before = queryArchiveReports(storage, { limit: 10 });
+    assert.equal(before.items.length, 2);
+    const first = before.items[0]; assert.ok(first?.state === "available");
+    f.failAfter("settlement");
+    assert.throws(() => f.kernel.execute({ commandId: id(99999), requestedBy: "local-operator", requestedAt: NOW,
+      family: "version-archive", source: "archive", type: "delete-archived-run",
+      target: { archivedRunId: first.runId, archiveFingerprint: first.archiveFingerprint } }), /injected-settlement/u);
+    const page = queryArchiveReports(storage, { limit: 1 });
+    assert.deepEqual(page.items, [before.items[1]]);
+    assert.ok(page.next);
+    assert.deepEqual(queryArchiveReports(storage, { limit: 1, after: page.next }).items, []);
+    assert.equal(storage.listReports({ workflow: "person-lookup", limit: 1 }).next, null);
   } finally { f.dispose(); }
 });

@@ -1,5 +1,6 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
@@ -16,8 +17,10 @@ import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 export const NOW="2026-09-09T12:00:00.000Z";
 export const HASH="a".repeat(64);
 export const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
-export function foundationFixture(){
- const root=mkdtempSync(join(tmpdir(),"foundation-baseline-"));const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
+export function foundationFixture(options:{repositoryLayout?:boolean}={}){
+ const repoRoot=mkdtempSync(join(tmpdir(),"foundation-baseline-"));
+ const root=options.repositoryLayout===true?join(repoRoot,".tracker"):repoRoot;mkdirSync(root,{recursive:true});
+ const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
@@ -31,12 +34,13 @@ export function foundationFixture(){
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+ return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();rmSync(repoRoot,{recursive:true,force:true});}};
 }
 export function failure(){return FailureRecordSchema.parse({failureId:id(80),fingerprint:HASH,runId:RUN_ID,traceId:QUEUED_RUN.envelope.traceId,attempt:1,workflowId:"person-lookup",code:"FIXTURE_FAILURE",summary:"Synthetic failure",transient:false,writeState:"unknown",action:{operation:"commit"},causeChain:[{code:"FIXTURE_FAILURE",summary:"Synthetic failure",role:"primary",transient:false}],remediation:[{kind:"no-safe-action",message:"Do not retry an unknown submit"}],occurredAt:NOW});}
 export function update(n=1){return ArtifactOutboxStorageRecordSchema.parse({outboxId:id(n),artifactId:id(70),projectionId:"retention-row",stableKeyFingerprint:HASH,keyValues:[{field:"subject",value:"synthetic"}],sinkId:"xlsx-retention",sourceRunId:RUN_ID,sourceNodeId:"searching",state:"pending",payload:{schemaHash:HASH,value:`retained-${n}`},createdAt:NOW});}
 
-export function terminalizeFixtureFailure(f:ReturnType<typeof foundationFixture>,run:ReturnType<typeof foundationFixture>["run"],record:ReturnType<typeof failure>){
+export function terminalizeFixtureFailure(f:ReturnType<typeof foundationFixture>,run:ReturnType<typeof foundationFixture>["run"],recordInput:z.input<typeof FailureRecordSchema>){
+ const record=FailureRecordSchema.parse(recordInput);
  if(run.lifecycle.state!=="running")throw new Error("fixture is not running");
  return f.db.terminalizeFailure(personLookupDescriptor,{failure:record,authorization:{kind:"failed",runId:run.envelope.runId,workflowId:run.envelope.workflow,attempt:run.envelope.attempt,descriptorVersion:run.envelope.descriptorVersion,contractFingerprint:run.envelope.contractFingerprint,expectedVersion:run.version,claim:{workerId:run.lifecycle.workerId,claimGeneration:run.claimGeneration},authorizedAt:NOW,failureId:record.failureId}});
 }

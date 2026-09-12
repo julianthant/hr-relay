@@ -1,3 +1,4 @@
+import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { VersionChangeStorageSchema } from "../../domain/archive/change-record.js";
 import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
 import { RunSummarySchema, SummaryPublicationSchema } from "../../domain/run/summary.js";
@@ -185,7 +186,12 @@ export const HistoricalVersionChangeSchema = z.strictObject({
 }).refine(row => row.changeId === row.plan.versionPlanId
   && (row.plan.state === "applied") === (row.application !== null)
   && (row.application === null || row.application.versionPlanId === row.changeId), "historical-version-change-identity-mismatch");
-export const RetainedVersionChangeSchema = z.union([VersionChangeStorageSchema, HistoricalVersionChangeSchema]);
+export const RetainedVersionChangeSchema = z.union([VersionChangeStorageSchema, HistoricalVersionChangeSchema]).superRefine((row, context) => {
+  if ("schemaVersion" in row && row.schemaVersion === 2) {
+    try { for (const capture of row.pendingCaptures ?? []) parsePendingCapture(row, capture); }
+    catch { context.addIssue({code:"custom",message:"version-change-capture-invalid"}); }
+  }
+});
 
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
 
@@ -233,7 +239,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   /** D179 / ref dashboard-surfaces §10.2 — the archive model's three durable facts. */
   version_bump_applications: VersionBumpApplicationStorageRecordSchema,
   archived_runs: ArchivedRunStorageRecordSchema,
-  archive_relaunches: ArchiveRelaunchStorageRecordSchema,
   /** D267 / ref execution-and-sessions §10 — the per-credential Duo ceremony lease. */
   worker_auth: DuoCeremonyLeaseRecordSchema,
   /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */

@@ -1683,15 +1683,12 @@ paragraph).
 
 ### 5.2 D332 compatibility adapters and their deletion tests (0.3 Task 3, 2026-09-04)
 
-**Task 1.6.6 implementation binding (D336).** The active
-`sqlite-settings-authority` guard replaces the ordinary authority pathname oracle: SQLite is the
-only runtime ordinary authority. The active `authority-upgrade-adapters-isolated` guard checks
-transitive imports and the dynamic storage dispatch boundary. Its A0 paths are
-`src/infra/compat/upgrade-sources.ts`, `pre-floor-settings.ts` and
-`settings-database-upgrade.ts`; A1 is `src/infra/compat/settings-source-recovery.ts`.
-Only `src/server/storage/upgrade.ts` may enter this migration graph. Current Phase 2.6 Task 9 deletes these
-four adapters and activates `authority-upgrade-adapters-retired`; its test file remains absent
-until that deletion. A2/A3 retain their existing assignments.
+**Task 1.6.6 implementation binding (D336), retired by 2.6.9.** SQLite remains the only
+runtime ordinary settings authority; `sqlite-settings-authority` stays active. The four A0/A1
+settings adapters are removed. `authority-upgrade-adapters-retired` replaces the retired isolation
+guard, preserving the dynamic stopped dispatch and checking module/import/API absence plus actual
+legacy-input non-adoption. Supported conversion belongs to `src/infra/sqlite/stopped-database-conversion.ts`
+through `src/server/storage/upgrade.ts`. A2/A3 retain their existing assignments.
 
 #### Phase 2.6.9 retirement proof amendment — 2026-09-10
 

@@ -12,7 +12,6 @@ import {
 } from "../../../src/domain/config/schema.js";
 import { ProtectedValueSchemas } from "../../../src/domain/config/protected-settings.js";
 import {
-  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
@@ -113,7 +112,6 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
     { declaration: "providerBudget", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
     { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
-    { declaration: "requireActivityPersonPseudonymDomain", keys: [ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.name] },
     { declaration: "optionalSecretFamily", keys: SECRET_FAMILY_SPECS.map(({ name }) => name) },
     { declaration: "providerModelChain", keys: SECRET_FAMILY_SPECS.map(({ modelsConfigKey }) => `providers.${modelsConfigKey}.models`) },
     { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },

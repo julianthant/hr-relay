@@ -180,7 +180,7 @@ function surface(): Surface {
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
-      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
+      canonicalPerson: (runId: string) => database.canonicalPerson(runId),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },

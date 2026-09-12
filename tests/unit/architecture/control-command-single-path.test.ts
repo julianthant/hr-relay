@@ -293,7 +293,6 @@ describe("control-command-single-path", () => {
       ["src/server/settings-runtime.ts", 1],
       ["src/infra/compat/d331-protected-journal.ts", 1],
       ["src/infra/sqlite/backup-service.ts", 0],
-      ["src/infra/compat/upgrade-sources.ts", 0],
     ]);
     const violations: string[] = [];
     let kernelDefinitions = 0;

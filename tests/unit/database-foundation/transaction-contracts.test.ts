@@ -1,3 +1,4 @@
+import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
@@ -20,7 +21,7 @@ describe("F shared transactional storage contracts",()=>{
    assert.throws(()=>accounting.transaction(a=>{a.writeRequest(request,null);a.writeUsage(usage,null);throw new Error("scope-write-fault");}),/scope-write-fault/u);
    assert.equal(accounting.getRequest(request.requestId),undefined);assert.equal(accounting.getUsage(usage.usageId),undefined);assert.equal(f.db.getMeta().authorityGeneration,generation);
    accounting.transaction(a=>{a.writeRequest(request,null);a.writeUsage(usage,null);});assert.deepEqual(accounting.getRequest(request.requestId),request);assert.deepEqual(accounting.getUsage(usage.usageId),usage);
-   const other=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"second-connection"});try{assert.deepEqual(other.authority.providerAccounting.getRequest(request.requestId),request);assert.throws(()=>other.authority.providerAccounting.writeRequest({...request,version:2,attribution:{kind:"unattributed",reason:"not-supplied"}},1),/identity is immutable/u);}finally{other.close();}
+   const other=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"second-connection"});try{assert.deepEqual(other.authority.providerAccounting.getRequest(request.requestId),request);assert.throws(()=>other.authority.providerAccounting.writeRequest({...request,version:PositiveIntSchema.parse(2),attribution:{kind:"unattributed",reason:"not-supplied"}},1),/identity is immutable/u);}finally{other.close();}
    const settled=GenericProviderRequestSchema.parse({...request,state:"interrupted",leaseExpiresAt:null,deadlineAt:null,usage:[{meter:"requests",quantity:{kind:"unknown",retainedUpperBound:1}}],reason:"transport outcome unknown",version:2});accounting.writeRequest(settled,1);assert.throws(()=>accounting.writeRequest(settled,1),/version-conflict/u);assert.deepEqual(accounting.getRequest(request.requestId),settled);
    const raw=new DatabaseSync(f.path);try{assert.throws(()=>raw.exec("INSERT OR REPLACE INTO provider_requests SELECT * FROM provider_requests"),/insert conflicts/u);assert.throws(()=>raw.exec("INSERT OR REPLACE INTO provider_usage SELECT * FROM provider_usage"),/insert conflicts/u);assert.throws(()=>raw.prepare("DELETE FROM provider_usage WHERE record_key=?").run(usage.usageId),/never deleted/u);assert.throws(()=>raw.prepare("UPDATE provider_requests SET run_id=? WHERE record_key=?").run(id(99),request.requestId),/immutable/u);}finally{raw.close();}
   }finally{f.dispose();}

@@ -333,6 +333,7 @@ export class SqliteProviderAccounting {
       getRequest:(id:string)=>readProviderRequest(this.ports.database,id),
       getUsage:(id:string)=>readProviderUsage(this.ports.database,id),
       listUsage:()=>this.ports.database.prepare("SELECT record_json FROM provider_usage ORDER BY record_key").all().map(row=>ProviderUsageStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))),
+      reservedWindowIds:(scopeId,meter)=>reservedWindowIds(this.ports.database,scopeId,meter),
       writeRequest:(record:ProviderRequestStorage,expectedVersion:number|null)=>this.ports.mutate("provider_requests",()=>{
         if(record.kind==="generic"){
           const run=this.ports.readRun(record.execution.runId);
@@ -566,6 +567,7 @@ export function finalizeProviderRun(database: DatabaseSync, legacy: ProviderAdmi
       const storage:ProviderAccountingStorage={
         transaction:work=>work(storage),getRequest:id=>readProviderRequest(database,id),getUsage:id=>readProviderUsage(database,id),
         listUsage:()=>database.prepare("SELECT record_json FROM provider_usage ORDER BY record_key").all().map(row=>ProviderUsageStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))),
+        reservedWindowIds:(scopeId,meter)=>reservedWindowIds(database,scopeId,meter),
         writeRequest:(record,version)=>writeProviderRequest(database,record,version),writeUsage:(record,version)=>writeProviderUsage(database,record,version),
       };
       createGenericProviderAccounting(storage).finish({requestId:stored.requestId,expectedVersion:stored.version,now,
@@ -625,6 +627,14 @@ export function providerWindowRemaining(window:Window):{kind:"known";value:numbe
   const settled=amount(window.settled);
   if(settled===null)return {kind:"unknown",reason:"usage-not-bounded"};
   return {kind:"known",value:window.limit.value-addAmount(addAmount(settled,window.retainedUnknown),window.reserved)};
+}
+
+function reservedWindowIds(database:DatabaseSync,scopeId:string,meter:string):readonly string[] {
+  return database.prepare(`SELECT DISTINCT json_extract(a.value,'$.windowId') AS id
+    FROM provider_requests AS r, json_each(r.record_json,'$.allocations') AS a
+    WHERE r.state='reserved' AND json_extract(r.record_json,'$.kind')='generic'
+      AND json_extract(a.value,'$.scopeId')=? AND json_extract(a.value,'$.meter')=?`)
+    .all(scopeId,meter).map(row=>z.strictObject({id:z.string()}).parse(row).id);
 }
 
 export function createGenericProviderAccounting(storage:ProviderAccountingStorage) {
@@ -703,7 +713,11 @@ export function createGenericProviderAccounting(storage:ProviderAccountingStorag
             tracking:{startedAt:req.now,coverage:"complete-since-start",evidence:"caller-supplied"},cumulative:{kind:"measured",value:0},windows:[],version:1,createdAt:req.now,updatedAt:req.now}):checkedUsage(stored);
           if(!same(u.scope,b.scope)||u.meter!==b.meter)throw new Error("provider-scope-identity-conflict");
           if(Date.parse(req.now)<Date.parse(u.updatedAt))throw new Error("provider-time-backwards");
-          const windows=[...u.windows];
+          const held=new Set(s.reservedWindowIds(b.scope.id,b.meter));
+          // Only finalized, expired history may leave the bounded aggregate.
+          // Requests keep their immutable allocations for exact replay; active
+          // allocations retain original windows even when their bound is zero.
+          const windows=u.windows.filter(w=>w.endsAt===null||Date.parse(w.endsAt)>Date.parse(req.now)||w.reserved!==0||held.has(w.id));
           for(const policy of b.windows){
             const index=windows.findIndex(w=>w.id===policy.id);const oldWindow=windows[index];
             if(oldWindow!==undefined&&!same({id:oldWindow.id,startsAt:oldWindow.startsAt,endsAt:oldWindow.endsAt,limit:oldWindow.limit},policy))throw new Error("provider-window-policy-conflict");
@@ -747,7 +761,13 @@ export function inspectGenericProviderAccounting(database:DatabaseSync):void {
     for(const a of r.allocations){
       const u=usages.find(v=>v.scope.id===a.scopeId&&v.meter===a.meter);
       const w=u?.windows.find(v=>v.id===a.windowId);
-      if(w===undefined||w.startsAt!==a.windowStartedAt||w.endsAt!==a.windowEndsAt)throw new Error("provider-generic-allocation-mismatch");
+      if(w===undefined||w.startsAt!==a.windowStartedAt||w.endsAt!==a.windowEndsAt){
+        // A finalized expired period may have been compacted even when its
+        // label now names a later period. Active/original periods still match
+        // the complete immutable allocation, including both boundaries.
+        if(u!==undefined&&r.state!=="reserved"&&a.windowEndsAt!==null&&Date.parse(a.windowEndsAt)<=Date.parse(u.updatedAt))continue;
+        throw new Error("provider-generic-allocation-mismatch");
+      }
       if(r.state==="reserved"){
         const key=canonicalJsonStringify([a.scopeId,a.meter,a.windowId]);expected.set(key,addAmount(expected.get(key)??0,a.upperBound));
       }
