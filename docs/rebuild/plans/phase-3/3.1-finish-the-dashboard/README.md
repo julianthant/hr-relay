@@ -107,6 +107,15 @@ Phase 2.6 still closes before dashboard implementation. Optional inventory can p
 draft; baseline 3.1.8 freezes acceptance against the final 2.6 handoff. Final acceptance executes that
 matrix unchanged. Workflow-specific work and frozen-candidate proof remain in 3.2/3.3.
 
+**3.1.8 planning admission — 2026-09-12.** Phase 2.6 is now accepted and locally integrated.
+The operator approved [B01–B06](task-8-re-baseline-dashboard-truth-and-acceptance.md#approved-execution-brief--2026-09-12)
+to inventory current dashboard behavior, reconcile these existing task descriptions with the
+schema-50/Settings/summary/archive handover, and freeze remaining ownership and acceptance.
+In particular, current Archive/relaunch and general Settings/restart wording below is not authority
+to restore retired behavior. The baseline task corrects those requirements before downstream
+implementation admission. Existing task IDs and admitted finalizer identities remain unchanged;
+approval of 3.1.8 does not launch or complete another task.
+
 ### Current task identities
 
 | Current task | Outcome and owner | Stable execution node |

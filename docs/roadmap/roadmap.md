@@ -1616,7 +1616,7 @@ log:
 
 #### 8 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
 status: planned
-date: D344 · former 3.1.8 · independent worktree after named prerequisites
+date: 2026-09-12 · approved B01–B06 baseline after accepted 2.6.9; implementation unstarted
 doc: 3.1/task-8-re-baseline-dashboard-truth-and-acceptance §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
 
 builds:
@@ -1630,6 +1630,7 @@ log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.8.1; former 3.1.8; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial prerequisite in `phase-3-1-dashboard-c21194e18-r08-truth-reset`; it must merge before any implementation wave and freeze the file/artifact ownership that makes peers independent · left: execute after 2.6 closes
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.8; standalone prerequisite or individual task; acceptance and historical execution anchor retained
+- 2026-09-12 | operator-approved phase plan | B01–B06 reconciles existing 3.1 scope with accepted schema-50, Settings, summaries and saved archives; inventories production controls and freezes remaining owner/proof acceptance. One Astra/medium supervisor, no implementation workers, one independent Astra/high review; documentation/proof only, scoped D191 checks and approved local integration/cleanup. Existing task/finalizer identities remain. Implementation and downstream task admission are unstarted.
 
 
 needs:
