@@ -27,6 +27,7 @@ import { archiveFixture } from "../archive-transfer/fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 /** Real HTTP composition with deliberately absent current workflow/detail providers. */
 export function savedHttpFixture() {
   const f = archiveFixture();
@@ -36,7 +37,8 @@ export function savedHttpFixture() {
     protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: () => { throw new Error("unexpected-bulk-command"); } },
     intake: { prepare: async () => {} },
-    commands: { submit: (request: unknown) => f.kernel.execute(request) },
+    commands: createDashboardCommandService({ kernel: f.kernel, versionChanges: createRunLifecycleStorage(f.database),
+      projection: { ingestFromTimeline() { throw new Error("archive-command-ingested-timeline"); }, refreshRun() { throw new Error("archive-command-refreshed-run"); } } }),
     archive: { storage: createRunLifecycleStorage(f.database),
       reader: new RunRecordService({ database: f.database, clock: f.base.clock,
         ids: { uuid: () => { throw new Error("read-allocated-id"); } }, publishQueued: () => { throw new Error("read-published-run"); } }),

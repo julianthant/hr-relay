@@ -81,6 +81,7 @@ import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.j
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
 import { createDashboardCommandService } from "../../src/server/dashboard/commands/command-service.js";
+import { publicVersionReviewFingerprint } from "../../src/server/dashboard/commands/version-review-binding.js";
 import { createIntakeService } from "../../src/server/dashboard/commands/intake-service.js";
 import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../src/server/dashboard/projectors/run-queue-projection.js";
@@ -298,7 +299,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       reopenBrowser: () => { throw new Error("this walk runs no browser"); },
     },
   });
-  const commands = createDashboardCommandService({ kernel, projection });
+  const commands = createDashboardCommandService({ kernel, projection, versionChanges: createRunLifecycleStorage(database) });
   const intake = createIntakeService({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
@@ -668,6 +669,7 @@ describe("the operator lifecycle, across slices", () => {
     const planTarget = blockedPlan.state === "applied" ? blockedPlan.affectedTargets[0] : undefined;
     const versionPlanId = planTarget?.family === "version-archive" ? planTarget.versionPlanId : "";
     const storedPlan = createRunLifecycleStorage(database).readVersionChange(versionPlanId);
+    assert.ok(storedPlan);
     assert.deepEqual(
       storedPlan?.blockers,
       [blockedRunId],
@@ -677,7 +679,7 @@ describe("the operator lifecycle, across slices", () => {
       world,
       "apply-version-bump",
       { versionPlanId, expectedVersion: 1 },
-      { planFingerprint: storedPlan?.reviewFingerprint },
+      { planFingerprint: publicVersionReviewFingerprint(storedPlan) },
     );
     assert.equal(refusedApply.state, "rejected");
     assert.equal(refusedApply.state === "rejected" ? refusedApply.code : "", "active-version-blockers");
@@ -693,6 +695,7 @@ describe("the operator lifecycle, across slices", () => {
     const reviewedTarget = reviewed.state === "applied" ? reviewed.affectedTargets[0] : undefined;
     const reviewedPlanId = reviewedTarget?.family === "version-archive" ? reviewedTarget.versionPlanId : "";
     const reviewedRow = createRunLifecycleStorage(database).readVersionChange(reviewedPlanId);
+    assert.ok(reviewedRow);
     assert.deepEqual(reviewedRow?.blockers, []);
 
     const lastLiveRow = world.projection.queueSurface(settledRunId);
@@ -704,7 +707,7 @@ describe("the operator lifecycle, across slices", () => {
       world,
       "apply-version-bump",
       { versionPlanId: reviewedPlanId, expectedVersion: 1 },
-      { planFingerprint: reviewedRow?.reviewFingerprint },
+      { planFingerprint: publicVersionReviewFingerprint(reviewedRow) },
     );
     assert.equal(applied.state, "applied", applied.state === "rejected" ? applied.message : "apply refused");
 
@@ -828,11 +831,12 @@ describe("the operator lifecycle, across slices", () => {
     const target = reviewed.state === "applied" ? reviewed.affectedTargets[0] : undefined;
     const versionPlanId = target?.family === "version-archive" ? target.versionPlanId : "";
     const stored = createRunLifecycleStorage(database).readVersionChange(versionPlanId);
+    assert.ok(stored);
     const applied = versionCommand(
       world,
       "apply-version-bump",
       { versionPlanId, expectedVersion: 1 },
-      { planFingerprint: stored?.reviewFingerprint },
+      { planFingerprint: publicVersionReviewFingerprint(stored) },
     );
     assert.equal(applied.state, "applied", applied.state === "rejected" ? applied.message : "apply refused");
 

@@ -1629,7 +1629,7 @@ export class RunQueueProjection {
           const authority = readLive(summary.runId);
           const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)));
           if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
-          surfaces.push(QueueSurfaceWireSchema.parse({ ...surface, title: hasProtectedTransactionInput(authority) ? surface.title : summary.title }));
+          surfaces.push(surface);
         }
         after = page.next ?? undefined;
       } while (after !== undefined);

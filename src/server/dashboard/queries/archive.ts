@@ -1,5 +1,4 @@
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
+import { authenticatedVersionApplyRequest, publicVersionReviewFingerprint } from "../commands/version-review-binding.js";
 import type { VersionChange } from "../../../domain/archive/change-record.js";
 import { SavedArchiveFileWireSchema } from "../../../domain/dashboard/archive.js";
 import { FingerprintSchema } from "../../../domain/ids.js";
@@ -999,7 +998,7 @@ export function savedArchiveVersions(deps: ArchiveQueryDeps) {
     changes: current.map(row => {
       if (!("reviewFingerprint" in row)) throw new Error("version-change-current-contract-invalid");
       return { changeId: row.changeId, state: row.state, targetVersion: row.targetVersion, change: row.change,
-        reviewFingerprint: row.reviewFingerprint, scope: row.scope, memberRunIds: row.members.map(member => member.runId),
+        reviewFingerprint: publicVersionReviewFingerprint(row), scope: row.scope, memberRunIds: row.members.map(member => member.runId),
         blockerRunIds: row.blockers, completedRunIds: row.completedRunIds,
         ...(versionApplyResumeRequest(row) === undefined ? {} : { resumeRequest: versionApplyResumeRequest(row) }) };
     }), historicalChanges: retained.length - current.length });
@@ -1021,10 +1020,7 @@ export async function savedFileResource(deps: ArchiveQueryDeps, runId: string, d
  * Other command producers retain their own original request; never invent its optional fields.
  */
 export function versionApplyResumeRequest(row: VersionChange) {
-  const application = row.application;
-  if (row.state !== "applying" || application === undefined) return undefined;
-  const request = { commandId: application.commandId, requestedAt: application.startedAt, requestedBy: application.actorId,
-    source: "archive" as const, family: "version-archive" as const, type: "apply-version-bump" as const,
-    target: { versionPlanId: row.changeId, expectedVersion: 1 }, payload: { planFingerprint: row.reviewFingerprint } };
-  return sha256Hex(canonicalJsonStringify(request)) === application.requestFingerprint ? request : undefined;
+  if (row.state !== "applying") return undefined;
+  const request = authenticatedVersionApplyRequest(row);
+  return request === undefined ? undefined : { ...request, payload: { planFingerprint: publicVersionReviewFingerprint(row) } };
 }

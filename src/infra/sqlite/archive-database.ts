@@ -228,7 +228,7 @@ export class ArchiveDatabase {
   settleDelete(runId:string,afterFile?:(digest:string)=>void,pendingDigests:ReadonlySet<string> = new Set()):void{
     const deletion=this.deletion(runId);if(deletion===undefined)throw new Error("archive-deletion-missing");if(deletion.state==="deleted")return;
     this.#database.exec("BEGIN IMMEDIATE");try{
-      const retained=this.files();
+      const retained=this.fileReferences();
       for(const file of deletion.files){if(pendingDigests.has(file.digest)||retained.some(other=>other.digest===file.digest))continue;const path=join(this.fileRoot(),file.digest);if(existsSync(path)){this.readFile(file);unlinkSync(path);syncPath(this.fileRoot());}afterFile?.(file.digest);}
       this.#database.prepare("UPDATE archive_deletions SET state='deleted' WHERE run_id=? AND state='deleting'").run(runId);this.#database.exec("COMMIT");
     }catch(error){this.#database.exec("ROLLBACK");throw error;}

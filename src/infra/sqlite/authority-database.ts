@@ -16,7 +16,7 @@ import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { SqliteProviderAccounting, finalizeProviderRun } from "./provider-accounting.js";
+import { SqliteProviderAccounting, finalizeProviderRun, inspectGenericProviderAccounting } from "./provider-accounting.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { completionFromAuthorization } from "../../domain/run/completion.js";
 import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../domain/run/completion-history.js";
@@ -1542,6 +1542,7 @@ const INVARIANT_QUERIES = Object.freeze([
 ] as const);
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
+  inspectGenericProviderAccounting(database);
   const violations = INVARIANT_QUERIES.flatMap(({ name, sql }) => {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
@@ -1829,6 +1830,7 @@ const historicalInvariantQueries = new Map<number, readonly { name: string; sql:
  * Compile against an empty immutable replay, never against operator state; only
  * absent future tables/columns can omit a query. Runtime current checks are unchanged. */
 export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, version: number): void {
+  if (version >= 43) inspectGenericProviderAccounting(database);
   let queries = historicalInvariantQueries.get(version);
   if (queries === undefined) {
     const reference = new DatabaseSync(":memory:");
@@ -4920,7 +4922,7 @@ export class AuthorityDatabase implements Disposable {
         const identity = this.transferredRun(run.envelope.runId);
         if (identity === undefined) throw new Error("transaction-history-transfer-missing");
         // Verified custody is sufficient after cleanup, even before publication replay.
-        const report = this.lifecycleArchive(true).verified(run.envelope.runId, identity.reportDigest);
+        const report = this.lifecycleArchive(true).verifiedReport(run.envelope.runId, identity.reportDigest);
         const source = report.content.sources.find(value => value.kind === "authority-snapshot");
         if (source === undefined) throw new Error("transaction-history-archive-source-missing");
         const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));

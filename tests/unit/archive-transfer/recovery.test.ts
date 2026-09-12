@@ -173,6 +173,7 @@ it("fences production annotations during an applying transfer and preserves exac
 });
 
 import { versionApplyResumeRequest } from "../../../src/server/dashboard/queries/archive.js";
+import { bindVersionApplyRequest } from "../../../src/server/dashboard/commands/version-review-binding.js";
 it("authenticates exact dashboard apply recovery from the durable claim after reopening", () => {
   const f = archiveFixture();
   try {
@@ -181,10 +182,13 @@ it("authenticates exact dashboard apply recovery from the durable claim after re
     assert.throws(() => f.kernel.execute(request), /injected-saveReport/u);
     f.reopen();
     const applying = f.database.readVersionChange(row.changeId); assert.ok(applying?.application);
-    assert.deepEqual(versionApplyResumeRequest(applying), request);
     assert.equal(versionApplyResumeRequest({ ...applying, application: { ...applying.application, startedAt: "2026-09-11T00:00:00.000Z" } }), undefined);
     const resumed = versionApplyResumeRequest(applying); assert.ok(resumed);
-    assert.equal(f.kernel.execute(resumed).state, "applied");
+    const parsed = CommandRequestSchema.parse(resumed);
+    if (parsed.type !== "apply-version-bump") throw new Error("wrong-resume-command");
+    const bound = bindVersionApplyRequest(applying, parsed);
+    assert.deepEqual(bound, request);
+    assert.equal(f.kernel.execute(bound).state, "applied");
   } finally { f.dispose(); }
 });
 

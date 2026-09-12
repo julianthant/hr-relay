@@ -1,4 +1,6 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../domain/command-groups.js";
+import { bindVersionApplyRequest } from "./version-review-binding.js";
+import type { VersionChange } from "../../../domain/archive/change-record.js";
 /**
  * The dashboard command service: the kernel is the ONE command path (D113);
  * this wrapper adds exactly what ref dashboard-surfaces assigns to 1g around it —
@@ -40,7 +42,8 @@ import { errorText } from "../support.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
-  readonly projection: RunQueueProjection;
+  readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
+  readonly versionChanges?: { readVersionChange(changeId: string): VersionChange | undefined };
 }
 
 export interface DashboardCommandService {
@@ -86,6 +89,16 @@ const SPANLESS_RUN_TYPES = new Set([
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   function executeOne(input: unknown, parentCommandId?: string): CommandResult {
+      const parsed = CommandRequestSchema.safeParse(input);
+      if (parsed.success && parsed.data.family === "version-archive" && parsed.data.type === "apply-version-bump") {
+        if (deps.versionChanges === undefined) throw new Error("version-review-binding-unavailable");
+        const row = deps.versionChanges.readVersionChange(parsed.data.target.versionPlanId);
+        if (row !== undefined) {
+          const bound = bindVersionApplyRequest(row, parsed.data);
+          if (bound === undefined) return { state: "rejected", commandId: parsed.data.commandId, code: "schema-mismatch", message: "Version review binding differs." };
+          input = bound;
+        }
+      }
       const result = deps.kernel.execute(input, parentCommandId);
       if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse

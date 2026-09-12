@@ -97,7 +97,7 @@ describe("P generic provider policy",()=>{
   const f=foundationFixture();const raw=new DatabaseSync(f.path);try{
    const p=createGenericProviderAccounting(f.db.authority.providerAccounting);p.reserve(admission(f));f.db.authority.providerAdmissions.reserve(legacyRequest(f,60,"geocode.census"));inspectGenericProviderAccounting(raw);inspectHistoricalAuthorityInvariants(raw,49);
    raw.exec("UPDATE provider_usage SET record_json=json_set(record_json,'$.windows[0].reserved',2) WHERE json_extract(record_json,'$.kind')='generic'");
-   assert.throws(()=>inspectGenericProviderAccounting(raw),/generic-reservation-mismatch/u);assert.doesNotThrow(()=>inspectHistoricalAuthorityInvariants(raw,49));
+   assert.throws(()=>inspectGenericProviderAccounting(raw),/generic-reservation-mismatch/u);assert.throws(()=>inspectHistoricalAuthorityInvariants(raw,49),/generic-reservation-mismatch/u);
   }finally{raw.close();f.dispose();}
  });
  it("finalizes deletion conservatively, rolls both halves back on faults, and refuses late callbacks after tombstone",()=>{
