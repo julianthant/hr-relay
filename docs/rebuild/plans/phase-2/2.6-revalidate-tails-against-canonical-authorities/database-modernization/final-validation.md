@@ -1128,3 +1128,138 @@ source/test/configuration/dependency/reference inputs. Freeze the resulting appr
 review checkout HEAD and record the returned task ID externally without moving the candidate during
 review. The reviewer is independent, read-only except its own external checkpoint/verdict, and owns
 complete coverage. Necessary probes return to this supervisor; R5 waits for complete acceptance.
+
+
+### Complete review correction round — 2026-09-12
+
+The approved standalone Astra/high review task `01a09281-2058-7090-b2d6-60ddcf26c41a`
+finished **CHANGES REQUIRED** on clean `929d90d3a571d3f7192300276c0c7f908031760a`, tree
+`f25f21e06ddb32d5a37c12c3d09c2b836bce255c`. Its external
+`standalone-complete-review-verdict.md` has SHA-256
+`3b9a73753cf1f5e5459cd63dd3a49c8edc823864eb848de5d50c9c08c7a688b7`.
+All 930 changed paths (932 ledger entries including two rename aliases), all 15 task/proof entries,
+21 recorded gates, prerequisite ancestry, original recovery assets and eight previous repairs were
+independently reconciled. This is complete review coverage with six required P2 corrections, not
+acceptance. The supervisor verified the verdict and candidate identities before reopening edits.
+
+| Finding | Required repair and renewed proof |
+| --- | --- |
+| SR-01 | Serve a value-free version review binding while retaining private source integrity, immutable stored review/application identity, changed-membership review and exact command replay. Prove planned/applying served responses under protected-only rotation and authenticated resume. |
+| SR-02 | Preserve canonical subject title and separate operator displayName in summary-backed day rows. Use a real descriptor/checkpoint/rename and refuse whole-history fallback on the served path; retain privacy and benchmark bounds. |
+| SR-03 | Permit continuing quota-window rollover beyond 10,000 finalized expired windows. Preserve cumulative/tracking history, original allocations needed for late settlement and exact replay; prove boundary, deletion and reopen. |
+| SR-04 | Admit generic provider relational invariants at ordinary open, no-migrate doctor, backup and recovery boundaries. Schema-valid counter corruption must refuse before another reservation; retain intact and legacy controls. |
+| SR-05 | Read authenticated archived transaction sources independently of unrelated diagnostic bytes. Prove transaction and Activity results in included/excluded ranges with missing attachments, exact recovery and unchanged source identity. |
+| SR-06 | Settle archive deletion from authenticated retained reference membership rather than every unrelated file's bytes. Preserve shared/pending custody under the existing authority lock, exact replay and verification of present removed bytes. The finding concerns an unrelated missing file; target-file refusal alone was not adjudicated defective. |
+
+Every finding has an isolated actual-boundary probe, controls and current-input receipts in
+`standalone-review-probe-followup.json` in the external evidence root. All repairs remain within the
+approved proof requirements. The sole supervisor implements them here; no implementation workers.
+Run focused regression/neighbor tests and lint, then renew all F05/D191 gates and both unchanged
+benchmark instruments with the approved worker limits. Reconcile corrected commit/tree/input
+identities for independent review, then obtain fresh R5. Reuse the existing standalone reviewer only
+where its approved continuation policy permits unchanged architecture/contracts/lifecycle identity;
+material changes require a fresh independent assignment under the existing policy. F06/F07,
+acceptance, local master merge, final handover and cleanup remain open. No operator database
+application, HR write, push, UNKNOWN retry or successor dispatch is introduced.
+
+#### Correction implementation and proof — 2026-09-12
+
+The six repairs are implemented; acceptance remains open until renewed gates and independent review.
+The source/report privacy boundary now serves a domain-separated binding of the immutable proposal
+ID. The dashboard command service translates it to the existing private fingerprint before the
+kernel's unchanged identity checks and journal. Stored reviews, membership/source digests,
+application claims, schema generations and accepted command envelopes are not rewritten. A changed
+source still creates a new proposal requiring explicit confirmation. Resume reconstructs only a
+dashboard/archive envelope authenticated by the durable request digest. This also fixes the actual
+BFF interruption path: ingress stamps current provenance, while the service recovers the accepted
+timestamp/source only when the complete bound intent matches the existing claim. Divergent optional
+intent remains refused; absent identity does not synthesize a resume request.
+
+Generic accounting now compacts expired finalized windows within admission's transaction. A narrow
+read-only storage query retains original windows referenced by reserved requests, including zero-bound
+allocations; cumulative/tracking facts and immutable request allocations survive. Shared current
+validation and historical validation from schema 43 include generic relational integrity. The old
+unit assertion that historical validation accepted corrupt generic reservations was corrected to
+require its named refusal: that expectation contradicted SR-04 and the admitted integrity contract.
+No limit, coverage floor, membership, isolation or timeout was relaxed.
+
+Queue day rows retain their already composed canonical subject title and separate operator label.
+Archived transaction reads authenticate report/source/transfer facts without reading unrelated
+diagnostic bytes. Deletion computes retained ownership from authenticated file references while
+holding the existing authority/custody lock and still verifies actual present bytes removed.
+
+| Evidence in external root | Observed result |
+| --- | --- |
+| `R-complete-first-red`, `R-complete-delete-red` | Intended SR-02/SR-05/SR-06 failures reproduced; deletion intact and missing-target controls pass. The initial delete import setup failure is retained separately from its corrected red run. |
+| `R-complete-provider-admission-red-valid` | All six intact boundaries pass; twelve counter/window corruption cases fail their required admission refusal. Historical controls construct actual 46–49 schemas. |
+| `R-complete-provider-rollover-red` | Four rollover/active-allocation regressions fail before compaction. |
+| `R-complete-version-privacy-red` | Actual HTTP planned response changes under protected-only rotation; private integrity and safe-report controls hold. |
+| `R-complete-neighbors` | 21 files / 308 tests pass: all six repairs plus provider legacy/races, archive transfer/recovery/custody/deletion, served surfaces, BFF, canonical reads and archive press behavior. |
+
+The HTTP proofs preserve public planned/applying responses under protected-only rotation; both
+dashboard and retained archive claims resume after reopen/time advance and replay without changing
+stored command identity. Wrong bindings and divergent intent refuse without generation changes;
+changed private source requires a replacement review. Rollover proofs cover 9,999/10,000 expired
+windows, deletion/reopen, zero/nonzero active bounds, late settlement and exact replay after pruning.
+Full candidate gates and benchmarks are being renewed against the corrected frozen inputs.
+
+The first renewed coverage run (`R-complete-coverage`) completed all 499 files / 6,293 tests:
+6,291 passed and two lifecycle-walk cases failed because their separate dashboard command fixture
+omitted the new read-only binding dependency and still submitted private fingerprints. The walk now
+uses the same lifecycle storage and public binding as production, retaining its blocker refusal,
+byte-exact frozen display/receipt and retired-relaunch assertions. This is an incomplete fixture
+port exposed by full coverage, not permission to remove the scenarios or weaken the outcomes.
+The failed run and its exact inputs remain evidence; the final candidate renews coverage and every
+required subsequent gate after the fixture correction.
+
+`R-complete-candidate-*` subsequently passed all required gates: 499 files / 6,293 tests,
+274 parity cases, both benchmarks and all freshness checks. Before review, an additional supervisor
+probe (`R-complete-window-label-probe`) found a gap within SR-03: after finalized-window compaction,
+reusing its label for a later period admitted a request but the integrity checker confused the
+retained old allocation with the new period. `R-complete-window-label-red` reproduces this for
+zero/nonzero original bounds while all four earlier rollover controls pass. The checker now treats
+an allocation's label and period boundaries together; only a finalized, expired original period
+may be absent after compaction. Active allocations and still-current finalized periods retain named
+corruption refusal. The regression also checks active-label conflict, no-effect replay, cumulative
+totals, corruption of a current finalized period, exact restoration and real authority reopen.
+This correction adds no schema or identity migration. The passing intermediate gate set remains
+evidence, but required final gates are renewed after this additional SR-03 repair.
+
+#### Final correction gate evidence and renewed review boundary — 2026-09-12
+
+Implementation `ee5a64c0d103394ae74426aa0d08677eebdeed7f` fixes SR-01–SR-06 in 19 source/test
+paths. All 15 `R-complete-accepted-*` receipts exit zero and match the same 2,413-file input
+manifest SHA-256 `c2590ae25f0fc678027ebaf91d07ca1085b8125a62b8534f463c5b5d09819fe8`.
+The receipt prefix is a gate label, not independent acceptance. The commands ran before the source
+commit; per-file hashes establish the committed implementation's exact tested bytes. Only this
+evidence Markdown changes afterward; recording gates verify its binding and unchanged runtime inputs.
+
+| Required gate | Final result |
+| --- | --- |
+| Typecheck / lint | PASS. |
+| Full coverage / suite size | 499 files / 6,295 tests PASS; 579.48 seconds. Statements 85.34%, branches 77.63%, functions 89.56%, lines 88.22%; configured floors PASS. 402 unit / 80 architecture / 17 scenario files. |
+| Architecture | 80 files / 848 tests PASS. |
+| Served/concurrency proof | 10 files / 235 tests PASS. |
+| Scenarios | 17 files / 135 tests PASS. |
+| Desktop parity | 274 cases PASS, unchanged references. |
+| Production build / manifest / stores / roadmap / diff | PASS. |
+| Dashboard benchmark | Unchanged seed/instrument: day 1,135 statements, median 178.71 ms / p95 186.34 ms; archive 12 statements, median 38.59 ms / p95 41.93 ms; member control 16 versus 16 statements. |
+| Summary benchmark | 21 statements / 25 returned rows / 11 summary rows at both 100 and 1,000 outside rows. Heartbeat writes zero summaries; presentation update writes one. SQLite rows visited remain unavailable. |
+
+Coverage used the approved adapter importing the real config and changing only maxWorkers to two;
+configuration equality proof is renewed. Observed coverage peak two, other file-worker gates at
+most four. No compiler/linter/benchmark contention during coverage. Original six recovery assets
+and 16 migrated fixtures remain hash-identical; 21 prerequisite ancestors were reverified in
+`R-complete-handover-assets.json` / `R-complete-prerequisites.json`. The primary checkout remains
+`80d38635cd3455c2e8c7c4525e0470e4f60ce1d8` with the same three unrelated dirty files/hashes.
+
+Renewed review selection: reuse the independent standalone complete reviewer under the approved
+bounded-correction rule. It has only reviewed, never coauthored these repairs. Existing requirements,
+schema/migration versions, lifecycle states, stored private review/application identities and exact
+accepted command records remain unchanged. Reopen all six deciding boundaries, their callers,
+neighbors and added production transport/rollover proof; verify unchanged complete coverage from
+the prior pinned verdict instead of recycling acceptance. The narrow accounting read and public
+binding implement the already required accounting/privacy contracts. If the reviewer identifies
+material changed scope or identity semantics, acceptance remains open under the fresh-review rule.
+Fresh separate R5 remains required after complete repaired-candidate PASS. No review is dispatched
+against moving files. F06/F07 and final integration/handover/cleanup are still unfinished.
