@@ -10,7 +10,7 @@ retains its original proof and handover requirements. Historical numeric aliases
 
 Phase 2.6 has one finalization task. Earlier scoped releases are not full acceptance; this supervisor
 owns all remaining repairs, full gates, independent review, integration and cleanup. No repair
-handbacks or successor dispatch. Implementation is in progress; see the [current custody correction gates and review boundary](#custody-correction-gates--2026-09-11) and approved amendments below. This approval supersedes the earlier
+handbacks or successor dispatch. **F01–F07 complete on 2026-09-12**; see [final acceptance and handover](#final-acceptance-and-handover--2026-09-12) for the exact reviewed candidate, local integration, gates and cleanup. Dated intermediate boundaries below remain historical evidence. This approval supersedes the earlier
 one-complete-reviewer and Astra/high supervisor allocation for this assignment only.
 
 ## Assignment and verified inputs
@@ -138,7 +138,7 @@ Planning inspected source, contracts and receipts, not runtime success. All rows
    before/after measurements. Commit logical categories with exact paths. Freeze HEAD/tree, review
    base, tested-input hashes, command exits/logs and complete proof map; record awaiting independent
    review with task completion still open.
-6. **F06 — independent review/repair.** Obtain the approved R1a–R4b scopes then R5. Reviewers implement/delegate nothing.
+6. **F06 — independent review/repair.** Obtain the approved complete standalone review then independent R5 under the standalone amendment below. Reviewers implement/delegate nothing.
    Fix findings locally, renew affected proof, full gates and affected scope/neighbors then R5.
    No partial-scope or author verdict is complete PASS.
 7. **F07 — integrate/hand over.** After review/gates PASS, perform approved local master merge after
@@ -1339,3 +1339,153 @@ boundary regressions remain preserved as pre-fix evidence, with their passing UT
 This correction does not change original recovery assets, migrated fixtures, prerequisite commits,
 released migration statements, parity references or benchmark instruments. Acceptance remains open
 until exact-candidate renewed complete and R5 verdicts; integration and F07 cleanup are unperformed.
+
+## Final acceptance and handover — 2026-09-12
+
+**F01–F07 and P1–P8 are accepted.** The sole supervisor implemented the approved scope, repaired all
+required findings, obtained both independent exact-candidate PASS verdicts, merged locally into
+`master`, verified integration and removed the owned resources. Zero implementation workers were
+used. The original execution base remains `7f77978716319c4329392a19e7a971f18af37362`; complete
+review begins at `0df282e45efab2e5a4768386b5c4d5202a7cfc93`. This current release supersedes
+intermediate pending/unstarted statements in dated records; their failures and approvals remain evidence.
+
+| Acceptance | Verified identity / evidence |
+| --- | --- |
+| Corrected implementation | `d4c599edece5bd53a61fa13f85708ab6bfb0935a`; six preceding SR fixes are in `ee5a64c0d103394ae74426aa0d08677eebdeed7f`. |
+| Frozen candidate | `7a0ae2f89525e13d23a07c2ea9c0c53f4f3c7c1c`, tree `c3f015cbe54aeaa7cfed48a80d4afe0551827998`. Both reviewers verified all 938 path entries and fifteen F/P rows. |
+| Complete standalone PASS | Astra/high task `01a09281-2058-7090-b2d6-60ddcf26c41a`; `standalone-complete-r5-correction-verdict.md`, SHA-256 `9eec3eda8fd47a8e8a5445b6a07987a473cb61ce0c82d953014b6ac60ec904a9`. |
+| Independent R5 PASS | Astra/high task `01a09781-df52-77e1-afff-65928f75909c`; `standalone-integration-r5-correction-verdict.md`, SHA-256 `3d385ff55b003d1137a663284661321483ee4533723f2881ca143b898f94e0fd`. |
+| Local integration | `81bd3e3841005edc57b7d4820d41e529f73e88ac` from target `80d38635cd3455c2e8c7c4525e0470e4f60ce1d8` plus the frozen candidate; actual tree `edad4a5ac406d92f87380265cb8b12e429f56e30` exactly equals the independently inspected preview. No conflicts or product changes. |
+| Prerequisites | All 21 named ancestors through U/H, including A populated conversion, archived-history repair and L retirement, reverified before and after integration. `R5-prerequisites.json`, `F07-integration-inputs.json`. |
+| Integration checks | `F07-integration-binding` (24 tests), `F07-integration-lint`, `F07-integration-roadmap`, local links, nine instruction pairs/chain caps and diff check PASS. |
+| Cleanup | `F07-cleanup.json`: exact worktree registration/path and `codex/database-validation` ref absent; 118 owned inactive scratch roots removed, six already absent, zero retained scratch. Both exact completed review tasks archived; calling supervisor retained. |
+
+All receipts and immutable review/proof assets remain in
+`/Users/julianhein/Projects/hr-final-validation-evidence-20260910/`. The original six F02 databases/
+backups and all 16 migrated fixtures were rehashed again at integration. The final coverage, build
+and parity outputs (882 files) were copied and independently hash-compared before checkout removal;
+`retained-final-validation-output-manifest.json` binds the preserved copy. No original proof adapter
+is reintroduced or rerun. The table-retirement handoff was consumed only after recording every
+requirement here and is absent. No operator database application/access, credential access, second
+controlled HR write, UNKNOWN retry, push or successor dispatch occurred.
+
+### Final gates and reuse
+
+All fifteen `R5-correction-*` required gates passed against the exact 2,414-file manifest digest
+`02dfd6036b894e399b542efd95582ec8c7f8c996e1dc88ee3687c36a9126d5c2`; three `R5-recording-*`
+checks passed after the evidence append. The precommit HEAD in runtime receipts is historical:
+per-file hashes establish the corrected tested implementation. `R5-recording-reuse.json` verifies
+that only the owner evidence append differs. Both reviewers independently checked these inputs,
+actual outputs, membership and worker records; neither claimed to rerun the gates.
+
+| Required gate / measurement | Final observed result |
+| --- | --- |
+| Typecheck / lint / coverage | PASS; 500 files / 6,299 tests, 591.80 seconds. Statements 85.34%, branches 77.63%, functions 89.56%, lines 88.22%; configured floors unchanged. |
+| Membership / architecture / served / scenarios | Exact 403 unit, 80 architecture, 17 scenario files; standalone architecture 848, served 235 and scenario 135 tests PASS. |
+| Desktop parity / production build | 274 cases PASS with unchanged references; build PASS with the existing advisory large-chunk warning. |
+| Manifest / store catalog / roadmap / diff | All PASS; suite-size accounting remains informational. |
+| Dashboard benchmark | Unchanged population: 1,240 selected runs, 360 outside runs, 108 members and 20,800 notes. Day 1,135 statements, median 175.81 ms, p95 186.85 ms; archive 12 statements, median 37.64 ms, p95 40.90 ms; member and single-row controls 16/16 statements. |
+| Summary benchmark | Outside populations 100/1,000 each produce 21 indexed statements, 25 returned rows, 11 summary rows; heartbeat writes zero summaries, update writes one. SQLite rows visited unavailable; archive full-day duration is extrapolated. |
+
+Coverage used the proved adapter importing the actual configuration and changing only root/project
+`maxWorkers`; observed peak two, other gates at most four. No task compiler/linter/benchmark interval
+overlapped coverage. Assertions, reference membership, isolation, timeouts and floors were preserved.
+
+Integration reuse is explicit in `F07-integration-inputs.json`: 2,408 inputs are identical; six
+classified differences are the owner evidence append, target-only historical accounting metadata and
+launch documentation, plus the three preserved unrelated instruction/reference edits. No runtime,
+test, configuration, dependency or substantive contract input changed. The historical accounting
+additions have no runtime/test consumer. Applicable binding/lint/roadmap and instruction/link checks
+were rerun. Completion recording changes only these status/evidence documents and generated roadmap;
+`F07-completion-inputs.json` and `F07-recording-*` bind its scoped checks. Runtime gates are reused,
+not reported as newly run on the merge or recording SHA.
+
+The primary's unrelated `AGENTS.md` / `CLAUDE.md` edits retain SHA-256
+`5bf0075111ce893b3f63c606fa8fcc5bb9acea5cedf842095219b07f72306682`; the unrelated repository
+operating reference retains `f3c6abfe13a916bd9e0372656b231d89f0bfbc8be9cf138e1a417c7b51073b32`.
+They were neither staged nor discarded.
+
+### F07 fixture and contract handover
+
+| Fixture class | Reproducible source and deciding proof | Handover contract |
+| --- | --- | --- |
+| Fresh/current | `tests/unit/database-table-retirement.test.ts`, `tests/unit/storage-upgrade.test.ts` | Schema 50, minimum admitted floor 46; exactly 37 main and two archive tables. All 51 obsolete/renamed main names are absent, including `archive_relaunches`. |
+| Supported 46–49 | `tests/unit/storage-supported-conversion.test.ts`, `tests/unit/database-table-retirement.test.ts`, `tests/unit/archive-transfer/historical-fixtures.ts`, `historical-conversion.test.ts`, `retirement.test.ts` | Explicit stopped conversion preserves canonical facts and archive numbering, shared files and non-relaunch lineage. Migration bytes 1–49 remain immutable; retired relaunch relationships are discarded under the approved amendment. |
+| Original fresh/v29 proof | `F02-preserved-identities.json` and six assets in `R5-handover-assets.json`, the retained external evidence root | Original migration and migrated-copy/backup recovery executed before adapter retirement. Preserve these bytes and their logged assertions. The removed adapters are not runnable final-gate dependencies. |
+| Inspected migrated facts | The 16 `tests/unit/fixtures/migrated-*.json` files listed and hashed in `R5-handover-assets.json` | Completion success/failure, renames, history confirmation/files/missing-file/no-files, mixed available/unavailable artifacts, operations, providers, settings, settlement, timeline and tombstones retain canonical values and exact historical identities. |
+| Refused below floor | `tests/unit/storage-upgrade-sources.test.ts`, `storage-upgrade-admission.test.ts`, `storage-upgrade-d331.test.ts`, `storage-restore-drill.test.ts` | Named `authority-below-floor` with floor 46 and original-compatible-release remedy precedes source replacement, conversion and credential effects. Old settings/environment/sidecar inputs cannot become current authority. |
+| Paired recovery and custody | `tests/unit/archive-transfer/recovery.test.ts`, `custody-recovery.test.ts`, `retirement.test.ts`, `tests/unit/storage-restore-drill.test.ts` | Capture/report/transfer manifests authenticate both databases and retained files. Pending/published custody prevents a single-half restore; missing/corrupt required bytes retain the recovery marker. Exact corrected pair replay succeeds. |
+| Current refusal and display | `tests/unit/provider-accounting/admission-integrity.test.ts`, `window-retention.test.ts`, `tests/unit/settings-activation/`, `tests/unit/server/settings-runtime-reader.test.ts`, `tests/unit/config-host-display.test.ts` | Generic reservations and retained allocations reconcile on admission/reopen. Settings save selects a complete new snapshot; existing runs retain theirs. Clearing a display override returns to the host default without rewriting retained execution. |
+
+The current stable Settings/Setup consumer contract is `docs/rebuild/reference/clock-config-secrets.md`
+§D331.10 on §D331.5's served bootstrap/readback wire, with the later settings activation amendments
+at their owning reference. The UI consumes redacted served catalog facts. It must preserve the
+observed host display separately from the active ordinary override; the observation is process-derived,
+never persisted. Existing editor projection/default and override behavior lives in
+`src/server/dashboard/queries/settings-editor.ts`; the accepted source badge remains `Saved` in
+`src/dashboard/surfaces/settings.tsx`. Atomic selection, rollback, historical snapshots and host-default
+recovery are covered by the current Settings tests above. This handover does not claim that the
+remaining catalog-driven editor is implemented: P40/A8 Settings expansion and deliberate parity
+refreeze remain Phase 3.1 Task 9-2. No redesign or successor dispatch is included.
+
+
+The complete physical inventory is `R-custody-table-handover.json`, verified by
+`tests/unit/database-table-retirement.test.ts` across fresh and supported 46–49 conversion fixtures:
+**37 current main tables, two archive tables, all 51 obsolete or renamed main names absent**, including
+`archive_relaunches`. The current schema is 50; the supported floor remains 46. Released migration
+bytes 1–49 are immutable. Supported stopped database/archive recovery remains available; obsolete
+settings imports remain absent, and below-floor inputs receive the named refusal and compatible-release
+remedy. No hidden operator conversion is part of this acceptance.
+
+**Required-defect ledger: zero open.** The earlier eight custody/projection/privacy/replay fixes,
+all six SR-01–SR-06 corrections and R5-01 are independently accepted on the frozen candidate.
+The reused-quota-window-label edge is included in SR-03. The earlier nonblocking retention
+observation is superseded by R5's demonstrated local-day pruning defect and its accepted repair.
+Withdrawn terminal-rename/completed-member-deletion concerns remain withdrawn with their deciding
+evidence in the review checkpoints. Native BLOCKED verdicts supply findings, never partial acceptance.
+No required implementation defect is handed to 3.1. Remaining P40/A8 editor expansion and deliberate
+Settings refreeze are already owned by 3.1 Task 9-2 and are outside this completed assignment.
+
+### Delivery assessment
+
+The approved F01–F07 assignment remained one consequential finalization with a sole supervisor and
+zero implementation workers. The operator's 2026-09-10 `archive_relaunches` removal was new operator
+scope: its handoff requirements were recorded in the owning plan before removal of the handoff,
+and schema 50/table-inventory proof was added while floor 46 and released migrations 1–49 remained.
+The recovery separation was already ratified in the initial approved brief; the observed repair
+rounds do not make that approved requirement a new request.
+
+At least four review-driven repair candidates are evidenced: the initial capture/replay/privacy
+round; the later three custody findings; the complete standalone review's six P2 findings; and fresh R5's local-day retention correction.
+The reviewed defects were implementation gaps against existing admission, privacy, accounting,
+summary and archive-custody requirements. The first round's material durable-capture amendment and
+review allocation changes remain recorded at their original owner; they must not be relabeled as
+an unrelated user feature. The six-findings round also exposed an incomplete scenario fixture port
+in full coverage and, after an intermediate all-green cycle, a reused-quota-window-label integrity
+gap. Both were repaired without weakening assertions, membership, timeouts or configured floors.
+
+The four-scope allocation and subsequent eight-scope resize produced six native context-limit
+interruptions and no accepted native scope. This was a review-sizing/feasibility omission, evidenced
+by the actual caller/proof scope exceeding the admitted fit assessments. The operator-approved
+complete standalone review with checkpointed continuation, followed by fresh R5, replaced those
+acceptance allocations without dropping coverage. The complete review inspected the full initial
+inventory, then its bounded correction review reinspected all 20 changed paths and verified the
+other 917 current entries unchanged. Native partial verdicts were never combined into acceptance.
+Two review launch attempts later failed with account usage-limit errors; a changed account
+availability check permitted continuation. This was an external execution interruption, not a code
+failure or review finding. No reset credit was consumed.
+
+Earlier end-to-end proof at the public HTTP/private-journal boundary, post-replacement paired-file
+settlement, independent-handle capture/deletion race, full archived resource availability, and
+quota-window exhaustion/reuse would have exposed the respective defects before review. Reviewing
+coherent caller and recovery closures during sizing would have challenged the native fit claims.
+These are concrete prevention opportunities; the record does not measure their potential time
+savings. Mandatory full gate renewals after behavior changes are required validation, distinct from
+the avoidable intermediate repeats caused by the fixture and additional rollover discoveries.
+Reported counts are observed lower bounds from the retained rounds; no unsupported total effort,
+waiting-time split or overall quality score is inferred. Independent verdicts and required gates
+remain the acceptance authority.
+
+R5-01 demonstrated a gap in applying the existing local-append-day contract to the diagnostic writer: its UTC-derived day diverged from ordinary timeline events. A real command/emitter/prune boundary probe, followed by Los Angeles/Tokyo regressions and UTC/midday controls, exposed and repaired both over-retention and premature-retention-date assignment. Exact replay, no resurrection, annotation persistence and real admission/reopen controls remain. The earlier complete reviewer recorded this as a nonblocking static observation; R5 established the material retention behavior using the primary contract and executable proof. This correction is a separate integration-review repair round, with its own mandatory gate/review renewal.
+
+The final bounded renewals each reconciled 938 entries: three changed paths inspected and 935 unchanged entries verified. Both standalone reviews are PASS; integration, handover and owned cleanup are complete. Stop after 2.6.9. Phase 3.1 remains unstarted and operator-launched.

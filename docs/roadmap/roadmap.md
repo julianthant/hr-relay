@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-08
-head: 6e0d05183
+asOf: 2026-09-12
+head: 81bd3e384
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
@@ -11,8 +11,8 @@ footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadm
 
 tiles:
 - Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
-- Active | Phase 2.6 | shared-reader prerequisite before three independent consumer tasks
-- Next | Phase 3.1 | standalone prerequisites with decimal parallel children; operator chooses launches and merges
+- Complete | Phase 2.6 | final candidate independently accepted, integrated locally and cleaned up
+- Next | Phase 3.1 · unstarted | stable contracts and fixtures released; operator chooses launches and merges
 - Decisions | D1–D344 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D344 uses decimal prerequisite tasks and independent parallel children · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | D329 holds every write behind 3.2's independent candidate audit and 3.3's exact-candidate admission. Historical 4589 remains inspection-only; the bounded authorization must name the candidate, fingerprints, disposable targets, disposition, and sequence, and expires on drift, failure, or UNKNOWN
@@ -621,10 +621,10 @@ log:
 
 ## Phase 2 · Prove writes and build the platform tails {#phase-2}
 phase: Phase 2
-status: planned
-when: 08-04 → 08-09 historical · reopened after 1.6 at 2.6
+status: done
+when: historical proof retained · 2.6 closed 2026-09-12
 size: XL
-chip: 2.1–2.5 evidenced · 2.6 waits for 1.6
+chip: 2.1–2.6 evidenced · closed 2026-09-12
 doc: 2 §Phase summary · ref:write-safety §3.4
 open: yes
 
@@ -634,6 +634,7 @@ needs:
 - p1f-close
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | Phase 2.6 final acceptance closes the reopened Phase 2 boundary; historical D135 retained without another write. Exact evidence and limits: final-validation.md.
 - 2026-09-03 | D326/D327 authority reset | 2.1–2.5 keep their evidence; 2.6 waits for 1.6 and owns downstream migration plus regression proof, not another authority redesign
 - 2026-08-21 | docs-cohesion 02 | doc 02 rewritten as-built — the phase reads DONE-with-named-residuals: nine mechanisms with no production caller or delivery path, each attributed to the node that owns the fix, plus four test-lane gaps owned by `{#test-tiers}`; the 23 `_phase: 2_` rounds in `reference/decisions.md` all indexed
 
@@ -900,24 +901,25 @@ builds:
 - [x] DOCS retain every residual without mislabeling historical delivery incomplete
 
 ### 2.6 · Revalidate tails against canonical authorities {#p2-authority-revalidation}
-status: planned
-date: after 1.6
+status: done
+date: 2026-09-12
 size: L
 doc: 2.6 §2.6 · Revalidate tails against canonical authorities · ref:operator-trust · ref:data-intake-and-edit-data · ref:frontend-backend-integration · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5 · ref:clock-config-secrets §3 · ref:guards-and-tests §5.2
 
 > Revalidate downstream consumers after 1.6, then complete the explicitly approved database modernization tasks 2.6.2–7 before the final migration/recovery proof. The 2026-09-09 scoped amendment admits that named redesign only; unrelated contract redesign still returns to its owning authority.
 
 builds:
-- [ ] BOTH every Phase 2 downstream read model, join, and operator service reads run/settings state only through the 1.6 authorities
-- [ ] PROOF notification, archive, Activity, Explorer, intake, Edit Data, receipts, captures, doctor, and preflight keep their behavior and evidence
-- [ ] PROOF delete stale adapters and demonstrate that no displaced lifecycle/configuration source can affect a response
-- [ ] DOCS hand reopened 3.1 stable contracts, representative fixtures, and exact acceptance gates
+- [x] BOTH every Phase 2 downstream read model, join, and operator service reads run/settings state only through the 1.6 authorities
+- [x] PROOF notification, archive, Activity, Explorer, intake, Edit Data, receipts, captures, doctor, and preflight keep their behavior and evidence
+- [x] PROOF delete stale adapters and demonstrate that no displaced lifecycle/configuration source can affect a response
+- [x] DOCS hand reopened 3.1 stable contracts, representative fixtures, and exact acceptance gates
 
 needs:
 - p1f-close
 - p2-2j
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | All development releases through U/H and L retirement accepted by 2.6.9; full gates, independent complete/R5 PASS, local integration and owned cleanup verified. Exact evidence and limits: final-validation.md.
 - 2026-09-08 | D344 prerequisite planning | visible prerequisite gates and smaller dashboard groups; operator coordinates launches/merges; existing in-flight 2.6 briefs and all acceptance remain binding
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330/D331/D332 as landed — `ref:dashboard-surfaces` §9.2 and §2.5, `ref:clock-config-secrets` §3, `ref:guards-and-tests` §5.2 (no redesign) · left: a proposed contract change returns to a newly numbered 0.3 task
 - 2026-09-04 | 2.6 parallelism ruling | wave 1 is `1-1` trust/evidence ∥ `1-2` intake/data ∥ `1-3` operator read models, each from the same verified 1.6-close base in a dedicated worktree; serial Task 2 converges the migration/recovery proof and Task 3 closes · left: coordinator ledger binds exact paths, gates and peer integration order before dispatch
@@ -1117,19 +1119,20 @@ log:
 - 2026-09-09 | P scoped development release | implementation 594490f8e; local integration 4818223c9; 215 selected unit and 183 architecture cases plus lint/freshness PASS. Exact combined-input verification and owned cleanup at P owner; L consumes the release, full gates/review remain 2.6.9
 
 ##### 2 · Add diagnostic failure resolution {#p2db-diagnostics}
-status: planned
+status: done
 doc: 2.6 §Task 6.2 · Add diagnostic failure resolution
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BOTH add explicit live failure resolution with actor/time, commands, audit and usable diagnostic controls
-- [ ] PROOF preserve failure evidence, concurrency, protected data and read-only archive capture boundaries
+- [x] BOTH add explicit live failure resolution with actor/time, commands, audit and usable diagnostic controls
+- [x] PROOF preserve failure evidence, concurrency, protected data and read-only archive capture boundaries
 
 needs:
 - p2db-domain-foundation
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | D integration 7443100f7 plus final resolution/retention corrections accepted. Exact evidence and limits: final-validation.md.
 - 2026-09-09 | database roadmap expansion | 2.6.5.2; assignment D; visible dependency card only; no implementation or launch readiness claimed
 - 2026-09-09 | D01–D05 plan approved | repaired F prerequisite 51e4c087a; strict resolution history/live-context/test ownership amendments; one supervisor, focused checks, local merge and owned cleanup. Full gates/review remain 2.6.9; implementation unstarted
 
@@ -1192,35 +1195,37 @@ log:
 - 2026-09-09 | L shared-boundary repair | Implementation a1d0c4a5; 266 unit tests, 139 architecture tests and lint PASS. A/Q share the repaired release and original ownership. A conversion precedes an explicit L retirement follow-up; combined completion remains blocked on that proof. Full gates/review remain 2.6.9.
 
 ##### 1 · Transfer runs into independent archive reports {#p2db-archive-transfer}
-status: planned
+status: done
 doc: 2.6 §Task 7.1 · Transfer runs into independent archive reports
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BOTH implement version_changes and verified archive.sqlite/archive_records transfer, historical conversion and deletion/recovery
-- [ ] PROOF preserve report facts and files across crashes; remove relaunch backend and live rows only after verified capture
+- [x] BOTH implement version_changes and verified archive.sqlite/archive_records transfer, historical conversion and deletion/recovery
+- [x] PROOF preserve report facts and files across crashes; remove relaunch backend and live rows only after verified capture
 
 needs:
 - p2db-lifecycle-foundation
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | A integration 7e20edc07, populated conversion proof and L retirement 4591b263e incorporated and accepted. Exact evidence and limits: final-validation.md.
 - 2026-09-09 | database roadmap expansion | 2.6.6.1; assignment A; visible dependency card only; no implementation or launch readiness claimed
 
 ##### 2 · Build shared run summaries for Queue and Activity {#p2db-run-summaries}
-status: planned
+status: done
 doc: 2.6 §Task 7.2 · Build shared run summaries for Queue and Activity
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BE derive and incrementally maintain indexed run_summaries with stable rebuild/catch-up and validated aggregate identity counts
-- [ ] PROOF prove freshness, grouping, archive/delete transitions, correct filters and bounded reads without sibling code
+- [x] BE derive and incrementally maintain indexed run_summaries with stable rebuild/catch-up and validated aggregate identity counts
+- [x] PROOF prove freshness, grouping, archive/delete transitions, correct filters and bounded reads without sibling code
 
 needs:
 - p2db-lifecycle-foundation
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | Q integration cb3675770 and final indexed reader corrections accepted; both unchanged benchmarks PASS. Exact evidence and limits: final-validation.md.
 - 2026-09-09 | database roadmap expansion | 2.6.6.2; assignment Q; visible dependency card only; no implementation or launch readiness claimed
 
 
@@ -1244,39 +1249,41 @@ log:
 - 2026-09-09 | database roadmap expansion | 2.6.7; assignment V; visible dependency card only; no implementation or launch readiness claimed
 
 ##### 1 · Connect Queue and Activity to shared summaries {#p2db-activity-views}
-status: planned
+status: done
 doc: 2.6 §Task 8.1 · Connect Queue and Activity to shared summaries
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BOTH use served summary queries for Queue/Activity and existing exports while keeping transaction metrics distinct
-- [ ] PROOF verify UI behavior, protected counts and measured query/latency/write overhead on isolated fixtures
+- [x] BOTH use served summary queries for Queue/Activity and existing exports while keeping transaction metrics distinct
+- [x] PROOF verify UI behavior, protected counts and measured query/latency/write overhead on isolated fixtures
 
 needs:
 - p2db-served-interfaces
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | U integration 1e2981f2e incorporated; served/UI proof and 274 desktop parity cases accepted. Exact evidence and limits: final-validation.md.
 - 2026-09-09 | database roadmap expansion | 2.6.7.1; assignment U; visible dependency card only; no implementation or launch readiness claimed
 
 ##### 2 · Render saved archive reports without legacy workflows {#p2db-archive-viewer}
-status: planned
+status: done
 doc: 2.6 §Task 8.2 · Render saved archive reports without legacy workflows
 
 > Independent peer after the named working prerequisite release. Focused tests/lint and fixes here; heavy gates and independent review in 2.6.9.
 
 builds:
-- [ ] BOTH render generic archive list/detail/filter/download from saved reports and remove archive relaunch UI
-- [ ] PROOF show version-mismatched historical reports without live schemas; verify missing evidence, authorization and deletion
+- [x] BOTH render generic archive list/detail/filter/download from saved reports and remove archive relaunch UI
+- [x] PROOF show version-mismatched historical reports without live schemas; verify missing evidence, authorization and deletion
 
 needs:
 - p2db-served-interfaces
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | H integration f8ae34329 incorporated; frozen reports, retained files, deletion and retired relaunch accepted. Exact evidence and limits: final-validation.md.
 - 2026-09-09 | database roadmap expansion | 2.6.7.2; assignment H; visible dependency card only; no implementation or launch readiness claimed
 
 #### 9 · Finalization {#p2f-proof}
-status: planned
+status: done
 doc: 2.6 §Task 9 · Finalization · ref:operator-trust §1 · ref:guards-and-tests · ref:dashboard-surfaces §2.5 · ref:guards-and-tests §5.2
 
 > D336: consume Task 1.6.6's SQLite-settings restore and revised adapter/proof mapping; the old paired-file rollback and settings-pathname target are superseded.
@@ -1284,12 +1291,12 @@ doc: 2.6 §Task 9 · Finalization · ref:operator-trust §1 · ref:guards-and-te
 > D341: consume shared fixtures and private-test source identities; recovery uses reproducible synthetic fresh/v29 copies, never the removed operator database/backup. Existing adapter-retirement ownership remains.
 
 builds:
-- [ ] PROOF incorporate A populated conversion proof and the approved L-owned table/reader retirement follow-up before combined completion
-- [ ] PROOF combine database development candidates, run required heavy gates, fix remaining defects here and obtain fresh complete independent review
-- [ ] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
-- [ ] PROOF cite historical D135 and perform no second controlled write
-- [ ] PROOF retire obsolete settings imports with named below-floor refusal while preserving supported stopped database/archive recovery; displaced sources cannot affect a response
-- [ ] DOCS finish stable-contract fixture handover to 3.1 and owned cleanup within this final task
+- [x] PROOF incorporate A populated conversion proof and the approved L-owned table/reader retirement follow-up before combined completion
+- [x] PROOF combine database development candidates, run required heavy gates, fix remaining defects here and obtain fresh complete independent review
+- [x] PROOF run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation gates
+- [x] PROOF cite historical D135 and perform no second controlled write
+- [x] PROOF retire obsolete settings imports with named below-floor refusal while preserving supported stopped database/archive recovery; displaced sources cannot affect a response
+- [x] DOCS finish stable-contract fixture handover to 3.1 and owned cleanup within this final task
 
 needs:
 - p2db-served-interfaces
@@ -1300,6 +1307,7 @@ needs:
 - p2f-operator
 
 log:
+- 2026-09-12 | 2.6.9 final acceptance | F01–F07 complete: candidate 7a0ae2f89, complete standalone and R5 PASS, 6,299 tests / 274 parity, 37 main / two archive / 51 obsolete-name absence inventory, original recovery preserved, local merge 81bd3e384, fixture/contract handover and owned cleanup verified. No operator application, second controlled write, push or successor dispatch. Exact evidence and limits: final-validation.md.
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.4 with M17/M22 over a migrated copy and §D332.7 item 6 (no redesign) · left: A0/A1 deleted and their two inventory entries flipped to `active` in that commit
 - 2026-09-10 | F01–F07 plan approved | integrated prerequisites through 22bf85d3a; recovery separation ratified; one Astra/medium supervisor, four focused Astra/high reviews plus integration review; full gates, local merge, handover and cleanup required. Implementation unstarted; exact brief and verified prompt at final-validation.md/PROMPTS.md
 
@@ -1319,7 +1327,7 @@ phase: Phase 3
 status: planned
 when: historical work retained · reopened 3.1 after 2.6
 size: XL
-chip: 3.1 reopened · waits for 2.6
+chip: 3.1 unstarted · 2.6 handover available
 doc: 3 §Phase summary · 3.2 §Phase 3 chronology
 open: yes
 

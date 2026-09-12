@@ -172,7 +172,9 @@ when producing its prompt:
 
 ## Final session prompt
 
-**READY — approved plan committed and integrated locally.** Substantive plan and exact execution
+**COMPLETED — 2026-09-12; do not relaunch.** The [final acceptance and handover](final-validation.md#final-acceptance-and-handover--2026-09-12) records both PASS verdicts, local integration `81bd3e384` and owned cleanup. The launch receipt and prompt below are historical provenance.
+
+**Original READY receipt — 2026-09-10.** Substantive plan and exact execution
 base: `7f77978716319c4329392a19e7a971f18af37362`, tree
 `9e2768a476a05b17b664f7b555bb5f9430b581b3`. Product inputs remain those at
 `22bf85d3aa055a658b343127cf88db035164ecaf`; the plan changes documentation/generated roadmap only.
@@ -183,8 +185,8 @@ sentence inside the plan commit is superseded by this verified receipt, not an u
 
 Planning checks passed: 24 roadmap-binding tests, lint, roadmap generation/freshness, changed links,
 instruction twins/chain cap and diff checks. Logs and committed input verification are in
-`/Users/julianhein/Projects/hr-final-plan-evidence-20260910/`. The implementation branch/path remain
-absent and available; recheck before creation. Finalizer gates/reviews/product work are unstarted.
+`/Users/julianhein/Projects/hr-final-plan-evidence-20260910/`. At that planning boundary the implementation branch/path were absent and available, and finalizer
+gates/reviews/product work were unstarted. That historical state is superseded by completion above.
 This receipt changes no implementation or review scope; it adds the verified launch binding.
 
 ```text

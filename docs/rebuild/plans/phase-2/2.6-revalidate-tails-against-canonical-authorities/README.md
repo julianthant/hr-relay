@@ -1,5 +1,7 @@
 # Phase 2.6 · Revalidate tails against canonical authorities
 
+**Current release — 2026-09-12:** Phase 2.6 and Task 9 are complete. [Final acceptance and handover](database-modernization/final-validation.md#final-acceptance-and-handover--2026-09-12) records both independent PASS verdicts, 6,299 tests, 274 parity cases, local integration `81bd3e384` and verified owned cleanup. Older admission/release statements below are dated snapshots; no 3.1 task is launched.
+
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
 **2026-09-09 approved scope and rename-first amendment.** The
@@ -16,7 +18,7 @@ handoffs below are historical aliases resolved through the combined identity map
 **D-specific execution amendment:** [2.6.6.2 D01–D05](database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
 is approved on repaired F and includes local master merge and owned cleanup after focused PASS.
 Its three exact ownership amendments are in that single owner. Full gates and independent review
-remain Task 9; D implementation is unstarted.
+are accepted by Task 9; D integration `7443100f7` is an ancestor of the final release.
 
 **Phase 2.6 trial only:** implementation tasks run focused tests, lint and affected freshness.
 Full gates and independent review run at Task 9, with required reruns after fixes. Other phases and
@@ -220,7 +222,7 @@ for exact identities, local integration and cleanup; final phase acceptance rema
 <!-- roadmap: p2db-archive-transfer -->
 
 Assignment **A**, display **2.6.7.1**. Single scope/proof owner: [approved A01–A06 plan](database-modernization/decisions.md#approved-a-execution-brief--2026-09-09).
-Approved for a focused development release with local merge and owned cleanup; implementation remains unstarted.
+A integration `7e20edc07` and its populated conversion proof are incorporated; Task 9 accepts the complete release.
 A supplies populated conversion proof before L’s explicit retirement follow-up; full acceptance stays at 2.6.9.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
@@ -230,7 +232,7 @@ this card does not assign duplicate implementation or bypass C0 admission.
 
 Assignment **Q**, display **2.6.7.2**. Single scope/proof owner: [approved Q01–Q06 plan](database-modernization/decisions.md#approved-q-execution-brief--2026-09-09).
 The operator approved narrow shared summary ownership and local merge/cleanup after focused PASS;
-full gates and independent review remain 2.6.9. Implementation is not yet released.
+Q integration `cb3675770` is incorporated and full gates/independent review are accepted by 2.6.9.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 Q consumes the common repaired L binding with A; its prior shared-file expansion and READY prompt are superseded.
@@ -255,7 +257,7 @@ The operator approved U01–U06, including focused proof, local `master` integra
 worktree/ref cleanup after PASS; [the resolved prompt](database-modernization/PROMPTS.md#approved-u-supervisor-prompt--2026-09-10)
 pins plan `25ec4b5ed0f6bca575db8d9f204268b1dd840ff4` and V release
 `ea83e77d378d2b8c000c425205f44887c65a9a94`. H remains an independent same-base peer.
-Full gates and complete independent review remain only at 2.6.9; U implementation is unstarted.
+U integration `1e2981f2e` is incorporated and full gates/independent review are accepted by 2.6.9.
 Follow the [combined release and final-validation rules](database-modernization/README.md);
 this card does not assign duplicate implementation or bypass C0 admission.
 
@@ -269,7 +271,7 @@ this card does not assign duplicate implementation or bypass C0 admission.
 
 ### Task 9 · Finalization
 
-- [ ] Incorporate A populated conversion proof and the explicit L-owned retirement follow-up in
+- [x] Incorporate A populated conversion proof and the explicit L-owned retirement follow-up in
   database-modernization/prerequisites.md before claiming combined completion.
 
 Consume the database development releases under the [final validation plan](database-modernization/final-validation.md).
@@ -284,7 +286,7 @@ The operator-approved [recovery separation](../../../reference/dashboard-surface
 retains supported stopped database conversion and historical archive recovery under an explicit owner;
 do not delete those L consumers with the expired settings adapters. The complete
 [F01–F07 brief](database-modernization/final-validation.md#approved-execution-brief--2026-09-10)
-owns implementation, four focused reviews plus integration review, gates and local merge/cleanup.
+owns implementation, the amended complete standalone review plus independent R5, gates and local merge/cleanup.
 Activate
 `authority-upgrade-adapters-retired` with module-absence and named legacy-input refusal tests.
 `sqlite-settings-authority` remains active; `authority-upgrade-adapters-isolated` retires when its
@@ -303,9 +305,9 @@ These historical readers never reintroduce runtime settings-file authority.
 > evidence readability, redaction and unknown-write refusal; no second live write is authorized.
 
 
-- [ ] Run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation
+- [x] Run migrated-copy restore, scenario, concurrency, redaction, and direct-authority reconciliation
   gates; cite D135 rather than performing a second controlled write.
-- [ ] Prove displaced sources cannot alter a response.
+- [x] Prove displaced sources cannot alter a response.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes §D332.4's restore-and-rollback admission
 > with §D332.11 M17 (`restore-rollback-pairs-with-evidence`) and M22
@@ -321,8 +323,8 @@ These historical readers never reintroduce runtime settings-file authority.
 
 #### Handover and cleanup within Task 9
 
-- [ ] Verify Task 9 accepted full/generated/production-route gates and independent review; reuse unchanged evidence instead of rerunning full gates for handover.
-- [ ] Hand 3.1 stable contracts, representative fixtures, and an unresolved-defect ledger.
+- [x] Verify Task 9 accepted full/generated/production-route gates and independent review; reuse unchanged evidence instead of rerunning full gates for handover.
+- [x] Hand 3.1 stable contracts, representative fixtures, and an unresolved-defect ledger.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | hands 3.1 `ref clock-config-secrets` §D331.10 (the
 > Settings/Setup edit contract), the served observed/active `display` pair (§D331.10's `derived-host`

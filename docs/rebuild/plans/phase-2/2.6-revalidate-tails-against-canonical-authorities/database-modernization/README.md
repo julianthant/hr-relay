@@ -1,3 +1,5 @@
+**Final accepted release — 2026-09-12:** [2.6.9 F01–F07 acceptance and handover](final-validation.md#final-acceptance-and-handover--2026-09-12) closes this combined plan. Candidate `7a0ae2f89` received complete and R5 PASS, merged locally as `81bd3e384`, passed integration checks, and completed owned cleanup. All prerequisite releases through U/H and L retirement are verified ancestors. Dated admission, launch and development-only statements below preserve history; they are not current launch instructions. Phase 3.1 remains unstarted.
+
 > **A/Q shared repair released:** use the common repaired L binding in [PROMPTS.md](PROMPTS.md#common-repaired-l-release--a-and-q). A conversion precedes the explicit L retirement follow-up; combined completion requires that follow-up. Q shared-file expansion is superseded. Neither peer is launched here.
 
 # Phase 2.6 · Database modernization
