@@ -1263,3 +1263,79 @@ binding implement the already required accounting/privacy contracts. If the revi
 material changed scope or identity semantics, acceptance remains open under the fresh-review rule.
 Fresh separate R5 remains required after complete repaired-candidate PASS. No review is dispatched
 against moving files. F06/F07 and final integration/handover/cleanup are still unfinished.
+
+
+### Fresh R5 and local-day retention correction — 2026-09-12
+
+The complete standalone correction review passed clean candidate
+`e2c8b81b8609a5c3d40cc59e63fda7857da61eca`, tree
+`547c3c3a5518aab8b7e30757820c5f3942eecc40`. Its verdict
+`standalone-complete-repair-verdict.md` has SHA-256
+`949eca89757c82f513230049318929c71359130262f46007a57594d6eed417db`.
+It independently accepted SR-01–SR-06, inspected all 20 changed paths, verified the other 917
+current entries unchanged, and reconciled all earlier findings, proof and gate evidence.
+
+The separately approved fresh Astra/high R5 task `01a09781-df52-77e1-afff-65928f75909c`
+completed **CHANGES REQUIRED** on that same candidate. Its complete verdict
+`standalone-integration-review-verdict.md` has SHA-256
+`1183d085bf69515e8f9a0b08aefbfb680bba6edd1cf2f71b27d26dd6b7380311`;
+checkpoint SHA-256 is `1a0aa7059961157b5949e3794b318f8e804ccba6d212af2e16276e9b1e013c5b`.
+All 937 paths and 15 F/P proof rows have final dispositions. The only required finding is
+**R5-01 (P2)**: failure-resolution events derived retentionDate from the UTC date while the
+shared timeline and ordinary emitter require the local append day. This is a P3/P5 integration
+implementation defect under the existing timeline P4 and diagnostics ordinary-retention contracts.
+It is not a new requirement or a defect that may be handed off as accepted to 3.1.
+
+The supervisor's requested frozen-candidate probe used the real resolution kernel, native timeline
+emitter, repository pruning, exact replay, read-only invariant admission and independent database
+reopen. At `2026-09-10T02:00:00Z` in Los Angeles, the ordinary event had September 9 retention and
+pruned before September 10 while the resolution had September 10 retention and survived. UTC and
+Los Angeles midday controls pruned both. Exact replay changed no captured authority and did not
+resurrect pruned events. Script/receipts/logs/input hashes and scoped lint PASS are retained in
+`R5-retention-probe-evidence.json`; R5 independently verified them before adjudicating the finding.
+
+After the complete verdict, the sole supervisor added a subprocess-isolated regression using
+Los Angeles and Tokyo UTC/local boundaries plus UTC and midday controls. `R5-retention-red` has
+two intended local-day failures and two passing controls. The production writer now derives the
+local day from the unchanged kernel-provided instant with the shared clock helper. Annotation,
+command/audit/event transaction, timestamps, stored existing events and exact replay identity are
+unchanged. The regression also exercises pruning, no-effect replay, no resurrection, durable
+annotation, real admission and separate reopen. No released migration, schema or retention policy
+changes. Focused neighbors and every required final gate/benchmark are renewed after this repair.
+
+Renewed review will use the same independent complete and R5 standalone tasks for this bounded
+correction, under their approved checkpointed continuation rule. Neither coauthored the repair.
+Reopen the deciding diagnostic/timeline production paths, their callers and retention/replay proof;
+verify unchanged complete coverage and exact new candidate inputs. R5 follows the renewed complete
+acceptance. No material contract, architecture or lifecycle-identity change is introduced. F06/F07,
+actual master integration, final handover/status recording and owned cleanup remain open.
+
+
+#### R5-01 final gate evidence — 2026-09-12
+
+Implementation `d4c599edece5bd53a61fa13f85708ab6bfb0935a` contains the two-path retention
+correction and regression. All fifteen `R5-correction-*` final receipts are exit zero and bind the
+same 2,414-file manifest, SHA-256
+`02dfd6036b894e399b542efd95582ec8c7f8c996e1dc88ee3687c36a9126d5c2`.
+The runner started at the preceding candidate HEAD with the corrected dirty bytes; per-file hashes
+prove their exact correspondence to this implementation commit. Only this evidence owner changes
+afterward, with recording checks and input-reuse proof required before the new review candidate.
+
+| Gate | Observed result |
+| --- | --- |
+| Typecheck / lint | PASS. |
+| Full coverage / suite accounting | 500 files / 6,299 tests PASS in 591.80 seconds; 403 unit, 80 architecture and 17 scenario files. Statements 85.34%, branches 77.63%, functions 89.56%, lines 88.22%; configured floors unchanged and passing. |
+| Architecture / served-concurrency / scenarios | 80 files / 848 tests; 10 files / 235 tests; 17 files / 135 tests PASS. |
+| Desktop parity / production build | 274 cases PASS with unchanged references; build PASS. |
+| Dashboard benchmark | Same 1,240 selected/360 outside rows, 108-member operation and 20,800-note seed. Day: 1,135 statements, median 175.81 ms / p95 186.85 ms. Archive: 12 statements, median 37.64 ms / p95 40.90 ms. Member control remains 16 versus 16 statements. |
+| Summary benchmark | Indexed reads remain 21 statements / 25 returned rows / 11 summary rows at outside populations 100 and 1,000. Heartbeat writes zero summaries; presentation update writes one. Instruments/bounds unchanged; SQLite rows visited remain unavailable. |
+| Manifest / store catalog / roadmap / diff | PASS. |
+
+Observed coverage peak is two file workers under the approved adapter; other file-worker peaks are
+at most four. The imported real configuration still differs only in root/project maxWorkers, and
+coverage ran after this task's compiler and lint had exited. `R5-retention-green` also records all
+47 tests passing across five deciding/neighbor files. The original R5 probe and two failing
+boundary regressions remain preserved as pre-fix evidence, with their passing UTC/midday controls.
+This correction does not change original recovery assets, migrated fixtures, prerequisite commits,
+released migration statements, parity references or benchmark instruments. Acceptance remains open
+until exact-candidate renewed complete and R5 verdicts; integration and F07 cleanup are unperformed.
