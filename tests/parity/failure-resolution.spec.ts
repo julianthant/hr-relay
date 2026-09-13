@@ -1,11 +1,11 @@
+import { expect,test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
-import { startFailureResolutionServer } from "./helpers/fixture-failure-resolution.js";
-import { ensureParityBundle, PARITY_DIST_DIR, PARITY_REPO_ROOT } from "./helpers/bundle.js";
-import { captureParityPair, installTheme, assertThemeApplied, PARITY_THEMES } from "./helpers/capture.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { FIXTURE_DAY, FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-day.js";
+import { ensureParityBundle,PARITY_DIST_DIR,PARITY_REPO_ROOT } from "./helpers/bundle.js";
+import { assertThemeApplied,captureParityPair,installTheme,PARITY_THEMES } from "./helpers/capture.js";
+import { startFailureResolutionServer } from "./helpers/fixture-failure-resolution.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 
 for (const theme of PARITY_THEMES) test(`failure-resolution desktop ${theme.name}`, { annotation: [{ type: "required-a11y-evidence", description: `failure-resolution-${theme.name}.a11y.yml` }] }, async ({ page }) => {
   ensureParityBundle();

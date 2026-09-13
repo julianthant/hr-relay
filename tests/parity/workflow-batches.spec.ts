@@ -1,10 +1,11 @@
-import { installTheme, assertThemeApplied, PARITY_THEMES } from "./helpers/capture.js";
-import { expect, test } from "@playwright/test";
+import { expect,test } from "@playwright/test";
 import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { gotoAppState } from "./helpers/app-driver.js";
+import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { assertThemeApplied,installTheme,PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
-import { FIXTURE_DAY, FIXTURE_DAY_WIRE, uuidOf } from "./helpers/fixture-day.js";
+import { FIXTURE_DAY,uuidOf } from "./helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 
 for (const theme of ["light", "dark"] as const) {
   test(`workflow batches: grouped and separate, ${theme}`, async ({ page }, testInfo) => {

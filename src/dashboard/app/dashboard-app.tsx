@@ -1,147 +1,100 @@
-import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
-import type { QueueBatch } from "../surfaces/queue-model.js";
-/**
- * The composition root of the rebuild dashboard (ref frontend-backend-integration §2).
- *
- * This is the ONLY file that knows the whole screen. Every surface below it
- * takes props and returns markup; every server read goes through the one typed
- * client. The app holds exactly two kinds of state — the route (day, open run,
- * open section, start dialog) and client UI state (selection, filter, panel
- * mode, theme) — and it derives NO authority: counts, statuses, containment and
- * actions are read from the served projection, never recomputed here.
- *
- * `data-parity-ready` flips to "true" once bootstrap and the day have both
- * resolved. It is a statement about the app's own readiness, not a test hook:
- * the parity lane waits on it so a capture can never catch a half-painted
- * shell, and a human reading the DOM can tell the same thing.
- */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
-import {
-  SettingsSectionPrimitiveSchema,
-  type FrontendBootstrapWire,
-} from "../../domain/dashboard/bootstrap.js";
-import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
 import { PanelRight } from "lucide-react";
-import { EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
+import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
+import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../domain/absence.js";
+import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
+import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import {
+SettingsSectionPrimitiveSchema,
+type FrontendBootstrapWire,
+} from "../../domain/dashboard/bootstrap.js";
+import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
+import { EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { useBootstrap } from "../state/use-bootstrap.js";
 import { useServedNow } from "../state/served-clock.js";
+import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import { useRunDetail } from "../state/use-run-detail.js";
-import { IntakeWorkspace } from "../surfaces/intake.js";
-import { ActivityReport } from "../surfaces/activity.js";
-import { SavedArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-report.js";
-import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { WorkflowExplorer } from "../surfaces/explorer.js";
-import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
-import { LogPanel } from "../surfaces/log-panel.js";
-import { useRunCaptures } from "../surfaces/run-captures-model.js";
-import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
-import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewState } from "../surfaces/queue.js";
 import {
-  attentionRunIds,
-  queueRowTitle,
-  toggleCheckedByYou,
-  visibleRunIds,
-  type QueueSortKey,
-  type QueueSurfaceWire,
+commandResultFeedEntry,
+toastAppliedCommandResult,
+type CommandResultFeedEntry,
+} from "../surfaces/actions-model.js";
+import {
+CommandResultFeed,
+ConfirmCommandDialog,
+type ActionTarget,
+type PendingCommand,
+} from "../surfaces/actions.js";
+import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
+import { serverLocalDay,type DayCountWire } from "../surfaces/date-navigation-model.js";
+import { fmtClock } from "../surfaces/format.js";
+import { defaultTabFor,tabsFor,type PanelTab } from "../surfaces/log-panel-model.js";
+import { LogPanel } from "../surfaces/log-panel.js";
+import { type NotificationRowWire } from "../surfaces/notification-bell-model.js";
+import type { QueueBatch } from "../surfaces/queue-model.js";
+import {
+attentionRunIds,
+queueRowTitle,
+toggleCheckedByYou,
+visibleRunIds,
+type QueueSortKey,
+type QueueSurfaceWire,
 } from "../surfaces/queue-model.js";
 import {
-  CommandResultFeed,
-  ConfirmCommandDialog,
-  type ActionTarget,
-  type PendingCommand,
-} from "../surfaces/actions.js";
-import {
-  commandResultFeedEntry,
-  toastAppliedCommandResult,
-  type CommandResultFeedEntry,
-} from "../surfaces/actions-model.js";
-import { fmtClock } from "../surfaces/format.js";
-import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
-import {
-  composeCommandRequest,
-  composePlanWorkerCountCommand,
-  composeSpawnWorkerCommand,
-  composeStopWorkerCommand,
-  type CommandAction,
-} from "./command-dispatch.js";
-import { commandFailureToast, settleCommandResult, type CommandSettlement } from "./command-result.js";
-import { useGlobalKeys } from "./global-keys.js";
-import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
-import {
-  ConfirmBulkCommandDialog,
-  QueueToolbar,
-  type PendingBulkCommand,
+ConfirmBulkCommandDialog,
+QueueToolbar,
+type PendingBulkCommand,
 } from "../surfaces/queue-toolbar.js";
-import {
-  bulkSubjectsOf,
-  bulkUnavailableIds,
-  composeBulkRunCommand,
-  planBulkVerbs,
-  type BulkBatchOutcome,
-  type BulkVerbPlan,
-} from "./bulk-dispatch.js";
-import { RunStartButton, RunStartSurfaces, type RunStartWorkflow } from "../surfaces/run-start.js";
+import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue.js";
+import { useRunCaptures } from "../surfaces/run-captures-model.js";
+import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js";
 import { START_DOOR_ABSENCE } from "../surfaces/run-start-model.js";
+import { RunStartButton,RunStartSurfaces,type RunStartWorkflow } from "../surfaces/run-start.js";
+import { type WorkerCardWire } from "../surfaces/session-panel-model.js";
+import { SessionPanel } from "../surfaces/session-panel.js";
 import {
-  SessionPanel,
-  StatusFilters,
-  WorkflowPanelToggle,
-  WorkflowSidebar,
-  WorkflowWindow,
-} from "../surfaces/shell.js";
-import {
-  activeCount,
-  activeStatusWords,
-  parseWorkflows,
-  useWorkflowPanelMode,
-  workflowStatusCounts,
-  type StatusBucket,
-  type WorkerCardWire,
-} from "../surfaces/shell-model.js";
-import { SettingsPage, StorageBanner } from "../surfaces/settings.js";
-import {
-  DASHBOARD_MAIN_REGION_ID,
-  SETTINGS_GEAR_ID,
-  settingsCloseFocusTargetId,
+DASHBOARD_MAIN_REGION_ID
 } from "../surfaces/settings-model.js";
-import { TopBar, type NavControls } from "../surfaces/top-bar.js";
+import { activeCount,activeStatusWords,parseWorkflows,useWorkflowPanelMode,workflowStatusCounts,type StatusBucket } from "../surfaces/shell-model.js";
+import { StatusFilters,WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
+import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
+import { StorageBanner } from "../surfaces/storage-settings.js";
+import { type ShellView } from "../surfaces/top-bar-model.js";
+import { TopBar } from "../surfaces/top-bar.js";
 import {
-  serverLocalDay,
-  type DayCountWire,
-  type NotificationRowWire,
-  type ShellView,
-} from "../surfaces/top-bar-model.js";
-import { usePanelSections } from "./use-panel-sections.js";
+bulkSubjectsOf,
+bulkUnavailableIds,
+composeBulkRunCommand,
+planBulkVerbs,
+type BulkBatchOutcome,
+type BulkVerbPlan,
+} from "./bulk-dispatch.js";
 import {
-  canGoBack,
-  canGoForward,
-  currentPlace,
-  goBack,
-  goForward,
-  initNavHistory,
-  navDestinationLabel,
-  pushPlace,
-  type NavHistory,
-} from "./nav-history.js";
+composeCommandRequest,
+composePlanWorkerCountCommand,
+composeSpawnWorkerCommand,
+composeStopWorkerCommand,
+type CommandAction,
+} from "./command-dispatch.js";
+import { commandFailureToast,settleCommandResult,type CommandSettlement } from "./command-result.js";
 import {
-  activeTakeover,
-  shellViewOf,
-  parseRoute,
-  routeForCrossDateSearchResult,
-  routeAdvancesHistory,
-  routeToSearch,
-  type AppRouteState,
-} from "./url-state.js";
-import {
-  RUN_START_DOOR_ID,
-  restoreDashboardTakeoverFocus,
-  type DashboardTakeoverCloseFocusTargetId,
+RUN_START_DOOR_ID
 } from "./dashboard-app-model.js";
+import { DashboardTakeovers } from "./dashboard-takeovers.js";
+import { useGlobalKeys } from "./global-keys.js";
+import { useDashboardNavigation } from "./navigation-model.js";
+import type { NativeRouteHistory,PopstateRouteHandler } from "./route-history-model.js";
+import { useRoute } from "./route-history-model.js";
+import { useTakeoverCloseFocus } from "./takeover-focus-model.js";
+import {
+activeTakeover,
+routeForCrossDateSearchResult,
+shellViewOf,
+type AppRouteState
+} from "./url-state.js";
+import { usePanelSections } from "./use-panel-sections.js";
+
 
 /**
  * THE ROW'S OWN CONTROLS, off the row (ref frontend-backend-integration §8.5).
@@ -171,107 +124,25 @@ import {
  * renders happen. `dashboard-memo-prop-stability` refuses the literal form.
  */
 const NO_SURFACES: readonly QueueSurfaceWire[] = Object.freeze([]);
+
 const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
+
 const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
+
 const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
 
-type SettingsExitGuard = (proceed: () => void) => void;
+
+
+
 
 function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDescriptorWire[] {
   return surface?.actions ?? NO_ACTION_DESCRIPTORS;
 }
 
+
 /** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
 const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
 
-/** The route, kept in the URL so every screen is addressable. */
-interface RouteHistoryTarget {
-  readonly route: AppRouteState;
-  readonly cursor: number;
-}
-type PopstateRouteHandler = (target: RouteHistoryTarget) => void;
-interface NativeRouteHistory {
-  accept(target: RouteHistoryTarget): void;
-  restore(target: RouteHistoryTarget, afterRestore: () => void): void;
-  replay(target: RouteHistoryTarget): void;
-}
-const ROUTE_CURSOR_KEY = "hrDashboardRouteCursor";
-
-function cursorOf(state: unknown): number | undefined {
-  if (typeof state !== "object" || state === null) return undefined;
-  const cursor: unknown = Reflect.get(state, ROUTE_CURSOR_KEY);
-  return typeof cursor === "number" && Number.isInteger(cursor) && cursor >= 0 ? cursor : undefined;
-}
-
-function useRoute(
-  onPopstateRef: { readonly current: PopstateRouteHandler | undefined },
-): [AppRouteState, (next: AppRouteState) => void, NativeRouteHistory] {
-  const [route, setRouteState] = useState<AppRouteState>(() => parseRoute(window.location.search));
-  const cursor = useRef(cursorOf(window.history.state) ?? 0);
-  const pendingPop = useRef<
-    | { readonly cursor: number; readonly kind: "restore"; readonly afterRestore: () => void }
-    | { readonly cursor: number; readonly kind: "accept"; readonly route: AppRouteState }
-    | undefined
-  >(undefined);
-
-  useEffect(() => {
-    if (cursorOf(window.history.state) === undefined) {
-      window.history.replaceState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", window.location.href);
-    }
-  }, []);
-
-  useEffect(() => {
-    const onPop = (): void => {
-      const next = parseRoute(window.location.search);
-      const nextCursor = cursorOf(window.history.state);
-      if (nextCursor === undefined) throw new Error("dashboard history entry has no route cursor");
-      const pending = pendingPop.current;
-      if (pending !== undefined && pending.cursor === nextCursor) {
-        pendingPop.current = undefined;
-        cursor.current = nextCursor;
-        if (pending.kind === "restore") pending.afterRestore();
-        else setRouteState(pending.route);
-        return;
-      }
-      const handler = onPopstateRef.current;
-      if (handler === undefined) {
-        setRouteState(next);
-        return;
-      }
-      handler({ route: next, cursor: nextCursor });
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [onPopstateRef]);
-
-  const setRoute = useCallback((next: AppRouteState) => {
-    // Re-pressing the door already open (the gear, the active nav entry, the
-    // Storage door) must not push a second, identical history entry — that
-    // makes the browser's own Back button appear inert (unit F4b finding 2).
-    if (routeAdvancesHistory(next, window.location.search)) {
-      cursor.current += 1;
-      window.history.pushState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
-    }
-    setRouteState(next);
-  }, []);
-
-  const nativeHistory = useMemo<NativeRouteHistory>(() => ({
-    accept: (target) => { cursor.current = target.cursor; setRouteState(target.route); },
-    restore: (target, afterRestore) => {
-      const delta = cursor.current - target.cursor;
-      if (delta === 0) { afterRestore(); return; }
-      pendingPop.current = { cursor: cursor.current, kind: "restore", afterRestore };
-      window.history.go(delta);
-    },
-    replay: (target) => {
-      const delta = target.cursor - cursor.current;
-      if (delta === 0) { cursor.current = target.cursor; setRouteState(target.route); return; }
-      pendingPop.current = { cursor: target.cursor, kind: "accept", route: target.route };
-      window.history.go(delta);
-    },
-  }), []);
-  return [route, setRoute, nativeHistory];
-}
 
 export function DashboardApp() {
   const bootstrap = useBootstrap();
@@ -359,6 +230,7 @@ export function DashboardApp() {
   );
 }
 
+
 /**
  * Boot is the one place a hard failure has nowhere else to go: without the boot
  * document there is no vocabulary to render a dashboard with, so it says so in
@@ -389,6 +261,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
     </main>
   );
 }
+
 
 interface LoadedAppProps {
   boot: FrontendBootstrapWire;
@@ -422,6 +295,7 @@ interface LoadedAppProps {
   checkedIds: ReadonlySet<string>;
   onCheckedIds: (next: ReadonlySet<string>) => void;
 }
+
 
 function LoadedApp({
   boot,
@@ -1215,103 +1089,10 @@ function LoadedApp({
     every Back would immediately re-push the place it just left and the history
     would be two entries long forever.
   */
-  const [navHistory, setNavHistory] = useState<NavHistory>(() =>
-    initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
-  );
-  const applyingNav = useRef(false);
-  const settingsExitGuard = useRef<SettingsExitGuard | undefined>(undefined);
-  const onSettingsExitGuardChange = useCallback((guard: SettingsExitGuard | undefined): void => {
-    settingsExitGuard.current = guard;
-  }, []);
-  const leaveSettings = useCallback((proceed: () => void): void => {
-    if (route.settings === undefined) {
-      proceed();
-      return;
-    }
-    const guard = settingsExitGuard.current;
-    if (guard === undefined) throw new Error("Settings exit was requested before its draft guard mounted");
-    guard(proceed);
-  }, [route.settings]);
-
-  // Browser Back/Forward changes the address before it emits `popstate`. A
-  // dirty Settings page first returns to its stable cursor, without replacing
-  // the browser's target entry, then lets the same page-owned guard either
-  // keep it or atomically replay that target.
-  onPopstateRef.current = (target: RouteHistoryTarget): void => {
-    if (route.settings === undefined) {
-      nativeHistory.accept(target);
-      return;
-    }
-    nativeHistory.restore(target, () => leaveSettings(() => nativeHistory.replay(target)));
-  };
-
-  useEffect(() => {
-    if (applyingNav.current) {
-      applyingNav.current = false;
-      return;
-    }
-    setNavHistory((prev) =>
-      pushPlace(prev, { day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
-  }, [day, activeWorkflowId, route.run, tab]);
-
-  const travel = useCallback(
-    (direction: "back" | "forward"): void => {
-      const next = direction === "back" ? goBack(navHistory) : goForward(navHistory);
-      const place = currentPlace(next);
-      if (next === navHistory || place === undefined) return;
-      leaveSettings(() => {
-        applyingNav.current = true;
-        setNavHistory(next);
-        setActiveWorkflowId(place.workflow);
-        // A tab the panel no longer offers resolves to `undefined`, which is the
-        // run's own default — never a forced section the detail cannot render.
-        onTab(PANEL_TABS.find((candidate) => candidate === place.tab));
-        // Every takeover clears, exactly as the switcher does: a place is a spot
-        // in the QUEUE, and restoring one under an Archive overlay would move the
-        // panel behind a screen the operator cannot see it through. The day moves
-        // with the run for the same reason the demo's does — a place restored
-        // into the wrong partition lands on an empty queue and reads as a broken
-        // button.
-        setRoute({
-          ...route,
-          intake: undefined,
-          archive: undefined,
-          archiveView: undefined,
-          activity: undefined,
-          explore: undefined,
-          catalog: undefined,
-          catalogView: undefined,
-          settings: undefined,
-          day: place.day,
-          run: place.runId ?? undefined,
-          section: place.tab ?? undefined,
-        });
-      });
-    },
-    [navHistory, route, setRoute, onTab, leaveSettings],
-  );
-
-  /** what each control will actually do, named on its face rather than guessed at */
-  const nameRun = useCallback(
-    (runId: string): string | undefined =>
-      dayWire?.queueSurfaces.find((surface) => String(surface.runId) === runId)?.title,
-    [dayWire],
-  );
-
-  const navBackTo = navDestinationLabel(navHistory, "back", nameRun, workflowLabelOf);
-  const navForwardTo = navDestinationLabel(navHistory, "forward", nameRun, workflowLabelOf);
-  /** The bar's history controls, as ONE object per change rather than per render (D4). */
-  const nav = useMemo(
-    (): NavControls => ({
-      canBack: canGoBack(navHistory),
-      canForward: canGoForward(navHistory),
-      ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
-      ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
-      onBack: () => travel("back"),
-      onForward: () => travel("forward"),
-    }),
-    [navHistory, navBackTo, navForwardTo, travel],
-  );
+  const { nav, leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
+    route, setRoute, day, activeWorkflowId, setActiveWorkflowId, tab, onTab, dayWire,
+    workflowLabelOf, onPopstateRef, nativeHistory,
+  });
 
   /**
    * THE `memo` BOUNDARY'S PROPS (D4).
@@ -1384,26 +1165,7 @@ function LoadedApp({
   const takeover = activeTakeover(route);
 
   const shellView = shellViewOf(takeover);
-  const pendingTakeoverCloseFocusId = useRef<DashboardTakeoverCloseFocusTargetId | undefined>(undefined);
-
-  /* Intake replaces the toolbar that opened it, so its door
-     exists only AFTER the close route commits. Keep its stable id across that
-     unmount/remount boundary, then restore focus (or the main-region fallback)
-     once React has mounted the queue again. */
-  useEffect(() => {
-    const targetId = pendingTakeoverCloseFocusId.current;
-    if (targetId === undefined) return;
-    restoreDashboardTakeoverFocus(document, targetId, DASHBOARD_MAIN_REGION_ID);
-    pendingTakeoverCloseFocusId.current = undefined;
-  }, [takeover]);
-
-  const closeTakeoverTo = useCallback((
-    targetId: DashboardTakeoverCloseFocusTargetId,
-    next: AppRouteState,
-  ): void => {
-    pendingTakeoverCloseFocusId.current = targetId;
-    setRoute(next);
-  }, [setRoute]);
+  const closeTakeoverTo = useTakeoverCloseFocus(takeover, setRoute);
 
   /**
    * Switching views CLEARS the other three keys rather than layering one over
@@ -1547,143 +1309,11 @@ function LoadedApp({
             they are in a different task — a half-visible queue behind a
             takeover is the modal it deliberately is not.
           */}
-          {takeover === "settings" ? (
-            /*
-              Settings REPLACES the queue (D272 item 1 / D274 item 5). It was a
-              dialog, which gave the one page an operator opens most often no
-              place in history and no back path — and the demo's own container
-              is a page for exactly that reason.
-
-              NO WRAPPER (UF-SET-1/4/5). All four demo-covered takeovers mount
-              their own `TakeoverFrame`, whose JSDoc owns the why — geometry,
-              arrival and focus, decided once. The demo's switch
-              (`1ec1d870 RebuildDemo.tsx:656-678`) hands its pages straight to
-              the shell column with nothing between them and it.
-            */
-            <SettingsPage
-              storage={boot.storage}
-              sections={settingsSections}
-              workflowLabels={workflowLabels}
-              section={route.settings ?? ""}
-              catalogQuery={route.catalog ?? ""}
-              catalogView={route.catalogView ?? DEFAULT_CATALOG_VIEW}
-              onCatalogQuery={(next) => setRoute({ ...route, catalog: next })}
-              onCatalogView={(next) => setRoute({ ...route, catalogView: next })}
-              actorId={boot.actor.id}
-              descriptorFingerprint={boot.descriptorHash}
-              preflight={boot.preflight ?? []}
-              onSection={(next) => setRoute({ ...route, settings: next })}
-              onExitGuardChange={onSettingsExitGuardChange}
-              onClose={() => {
-                // The takeover unmounts its OWN focused `Back to the
-                // dashboard` button on close — restore focus to the door it
-                // was opened from (or the main region behind it) before that
-                // happens, matching the Radix `Dialog` behavior this page
-                // replaced (unit F4b finding 1). Called before `setRoute` so
-                // it runs while the gear is still the DOM's most-recently-
-                // rendered state, though the gear itself never unmounts —
-                // `TopBar` renders it regardless of which takeover is open.
-                const gearMounted = document.getElementById(SETTINGS_GEAR_ID) !== null;
-                document.getElementById(settingsCloseFocusTargetId(gearMounted))?.focus();
-                // The catalog keys are subordinate to `settings` (D295), so
-                // they leave with it rather than lingering in a URL whose page
-                // is closed. `routeToSearch` would drop them anyway; clearing
-                // them here keeps the route object and the address agreeing.
-                setRoute({ ...route, settings: undefined, catalog: undefined, catalogView: undefined });
-              }}
-            />
-          ) : takeover === "intake" && route.intake !== undefined ? (
-            /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`
-               as every other window-replacing view. No shell gutter may sit
-               between that frame and this column. */
-            <IntakeWorkspace
-              workflowLabel={workflowLabelOf(activeWorkflowId)}
-              actorId={boot.actor.id}
-              supportsDryRun={
-                startWorkflow?.inputRun.state === "present"
-                && startWorkflow.inputRun.surface.supportsDryRun === true
-              }
-              /* D298 — always a real id, NARROWED rather than defaulted.
-                 `activeTakeover` selects this arm off `route.intake` itself,
-                 so the redundant check above is the type's proof and not a
-                 fallback: the sentinel that stood for "opened, no session
-                 yet" retired with the upload page, because the Run Modal now
-                 uploads BEFORE it routes here. */
-              sessionId={route.intake}
-              onClose={() => closeTakeoverTo(
-                RUN_START_DOOR_ID,
-                { ...route, intake: undefined },
-              )}
-              onEnqueued={() => setRoute({ ...route, intake: undefined })}
-            />
-          ) : takeover === "archive" ? (
-            /*
-              The Archive replaces the queue whole. It is the opposite view of
-              the same world — what has LEFT the live surfaces — so showing it
-              beside a live queue would invite exactly the comparison D80 says
-              is not available: an archived run and a current one ran different
-              code.
-
-              NO WRAPPER — see the Settings arm above (UF-AR-3).
-            */
-            <ArchiveWorkspace
-              selection={route.archive ?? ARCHIVE_INDEX}
-              view={route.archiveView ?? "runs"}
-              actorId={boot.actor.id}
-              onSelection={(next) => setRoute({ ...route, archive: next })}
-              onView={(next) => setRoute({ ...route, archiveView: next })}
-              onClose={() => setRoute({ ...route, archive: undefined, archiveView: undefined })}
-            />
-          ) : takeover === "activity" ? (
-            /*
-              No `onClose`: the report carries no back button (the demo's own
-              rule — the product switcher above it holds the Activity entry
-              that got you here, so a second door would be a duplicate). It
-              does carry the actor and the app version, because a report
-              leaves the operator's screen and its footer says who made it.
-
-              NO WRAPPER — see the Settings arm above (UF-AC-2).
-            */
-            <ActivityReport
-              range={route.activity ?? ""}
-              today={today}
-              actorId={boot.actor.id}
-              appVersion={boot.appVersion}
-              /*
-                The report's Who column resolves a sampled run id against the
-                rows the shell ALREADY holds — no second fetch, so the report
-                and the queue cannot name the same run two ways. These are
-                the day's rows and the report spans a range, so a sampled run
-                from another day is simply not here and names itself by id.
-              */
-              queueRows={dayWire?.queueSurfaces ?? []}
-              onRange={(next) => setRoute({ ...route, activity: next })}
-            />
-          ) : takeover === "explore" ? (
-            /*
-              The explorer takes over for the same reason intake does: it is a
-              different task, and a half-visible queue behind a reference view
-              is the modal this deliberately is not. It carries no session, so
-              closing it simply drops the key.
-
-              NO WRAPPER — see the Settings arm above (UF-EX-2).
-            */
-            <WorkflowExplorer
-              workflowId={route.explore ?? activeWorkflowId}
-              onWorkflow={(next) => setRoute({ ...route, explore: next })}
-              onVersionRegistry={() => setRoute({
-                ...route,
-                intake: undefined,
-                archive: ARCHIVE_INDEX,
-                archiveView: "versions",
-                activity: undefined,
-                explore: undefined,
-                catalog: undefined,
-                catalogView: undefined,
-              })}
-              onClose={() => setRoute({ ...route, explore: undefined })}
-            />
-          ) : (
+          <DashboardTakeovers takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+            settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
+            workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
+            today={today} queueRows={dayWire?.queueSurfaces ?? []} closeTakeoverTo={closeTakeoverTo}
+            onSettingsExitGuardChange={onSettingsExitGuardChange}>
           <>
           {/*
             ONE COMPOSED ACTION BAR (ref dashboard-surfaces §Shell, D18). It was two bands: a
@@ -1885,7 +1515,7 @@ function LoadedApp({
             )}
           </div>
           </>
-          )}
+          </DashboardTakeovers>
           </div>
         </div>
       </main>

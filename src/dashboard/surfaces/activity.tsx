@@ -1,3 +1,4 @@
+import { observeAsyncResource } from "../state/async-resource.js";
 /**
  * Ported from legacy hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e,
  * `src/dashboard/components/dev/rebuild-demo/DemoActivityReport.tsx` and
@@ -62,63 +63,63 @@
  * and a sampled run those rows do not cover announces itself by id rather than
  * by a name this surface would have to invent.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChartNoAxesColumn, Download, Info, TriangleAlert } from "lucide-react";
-import { cn } from "../lib/utils.js";
+import { ChartNoAxesColumn,Download,Info,TriangleAlert } from "lucide-react";
+import { useCallback,useEffect,useMemo,useState,type ReactNode } from "react";
 import {
-  BulletList,
-  Button,
-  Card,
-  CardBase,
-  CardBody,
-  Field,
-  IconButton,
-  Input,
-  MetaLine,
-  PageHeader,
-  Panel,
-  PanelBody,
-  PanelFooter,
-  PanelHeader,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Refusal,
-  SectionLabel,
-  Skeleton,
-  StatusPill,
-  TakeoverFrame,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Well,
-  dsIcon,
-  dsText,
-} from "../ds/ui.js";
-import {
-  activityErrorRatePercent,
-  activityReportCaveats,
-  activityStatusRuns,
-  type ActivityReportWire,
+activityErrorRatePercent,
+activityReportCaveats,
+activityStatusRuns,
+type ActivityReportWire,
 } from "../../domain/dashboard/activity.js";
 import { DashboardClientError } from "../client/errors.js";
-import { useDashboardClient } from "../state/client-context.js";
-import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { dsStatusOf, statusText, type QueueStatus } from "./status-model.js";
-import { fmtClock, plural } from "./format.js";
 import {
-  activityPeopleMeta,
-  activityPeopleEvidenceItems,
-  activityPeopleNote,
-  activityRangeLabel,
-  activityRangeValue,
-  parseActivityRange,
-  resolveActivityWho,
-  type QueueRowIdentity,
+BulletList,
+Button,
+Card,
+CardBase,
+CardBody,
+dsIcon,
+dsText,
+Field,
+IconButton,
+Input,
+MetaLine,
+PageHeader,
+Panel,
+PanelBody,
+PanelFooter,
+PanelHeader,
+Popover,
+PopoverContent,
+PopoverTrigger,
+Refusal,
+SectionLabel,
+Skeleton,
+StatusPill,
+Table,
+TakeoverFrame,
+TBody,
+TD,
+TH,
+THead,
+TR,
+Well,
+} from "../ds/ui.js";
+import { cn } from "../lib/utils.js";
+import { useActivityClient as useDashboardClient } from "../state/activity-client.js";
+import { failed,LOADING,type AsyncResource } from "../state/async-resource.js";
+import {
+activityPeopleEvidenceItems,
+activityPeopleMeta,
+activityPeopleNote,
+activityRangeLabel,
+activityRangeValue,
+parseActivityRange,
+resolveActivityWho,
+type QueueRowIdentity,
 } from "./activity-model.js";
+import { fmtClock,plural } from "./format.js";
+import { dsStatusOf,statusText,type QueueStatus } from "./status-model.js";
 
 /* the range vocabulary lives in `activity-model.ts` — see the note there */
 
@@ -1023,19 +1024,10 @@ export function ActivityReport({
     : response.range === requestRange ? response.resource : LOADING;
 
   useEffect(() => {
-    let live = true;
     if (resolved.refusal !== undefined) return;
     const setResource = (next: AsyncResource<ActivityReportWire>): void => { setResponse({ range: requestRange, resource: next }); };
     setResource(LOADING);
-    client.activityReport(resolved.from, resolved.to).then(
-      (value) => { if (live) setResource(loaded(value)); },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) { setResource(failed(error)); return; }
-        throw error;
-      },
-    );
-    return () => { live = false; };
+    return observeAsyncResource(() => client.activityReport(resolved.from, resolved.to), setResource);
   }, [client, requestRange, resolved.from, resolved.to, resolved.refusal]);
 
   const spanLabel = resolved.refusal === undefined ? activityRangeLabel(resolved.from, resolved.to) : "Invalid report span";

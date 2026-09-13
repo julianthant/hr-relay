@@ -10,11 +10,11 @@
  * or reference: the requirement is a geometric safety invariant, not a new
  * visual state.
  */
-import { expect, test } from "@playwright/test";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
+import { expect,test } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { FIXTURE_DAY } from "./helpers/fixture-day.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 const VIEWPORTS = [
   { width: 1440, height: 900 },

@@ -1,10 +1,11 @@
 /** D340: desktop control density and hit ownership, measured in the built browser. */
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect,test,type Locator,type Page } from "@playwright/test";
 import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { FIXTURE_DAY, FIXTURE_DAY_WIRE } from "./helpers/fixture-day.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 
 /** What `IconButton size="md"` and `Button` paint: `--ds-h-md`, the density a mouse gets. */
 const CONTROL_PAINT = 28;

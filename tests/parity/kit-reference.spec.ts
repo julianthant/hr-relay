@@ -24,13 +24,13 @@
  * the lane would be photographing a theme the page never selected. The
  * capture therefore asserts the page's OWN stamped theme and records it.
  */
-import { expect, test } from "@playwright/test";
-import { resolve } from "node:path";
+import { expect,test } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { resolve } from "node:path";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { captureParityPair } from "./helpers/capture.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-day.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
 

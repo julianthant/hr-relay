@@ -1,15 +1,16 @@
 /** D292's actual Receipt consumer over the opt-in real HTTP capture fixture. */
+import { expect,test,type Locator,type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { expect, test, type Locator, type Page } from "@playwright/test";
 import { RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { assertThemeApplied, installTheme } from "./helpers/capture.js";
-import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { assertThemeApplied,installTheme } from "./helpers/capture.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import {
-  FIXTURE_RUN_CAPTURE_SECTIONS,
-  RUN_CAPTURE_FIXTURE_IDS,
+FIXTURE_RUN_CAPTURE_SECTIONS,
+RUN_CAPTURE_FIXTURE_IDS,
 } from "./helpers/fixture-run-captures.js";
 
 const EXPECTED_FULL_RECEIPT_ID = "00000000-0000-4000-8000-00000000c201";

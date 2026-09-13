@@ -1,3 +1,4 @@
+import { observeAsyncResource } from "../state/async-resource.js";
 /**
  * Ported from legacy hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e,
  * src/dashboard/components/dev/rebuild-demo/DemoArchive.tsx (+
@@ -84,154 +85,154 @@
  * sentence is what this surface shows. A button disabled by a client-side
  * count would be the client claiming to know what only that transaction can.
  */
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { z } from "zod";
 import {
-  Archive as ArchiveIcon,
-  ArrowLeft,
-  BadgeCheck,
-  Camera,
-  ChevronDown,
-  Download,
-  ChevronRight,
-  CircleAlert,
-  FileClock,
-  FlaskConical,
-  Info,
-  Lock,
-  ShieldAlert,
-  Trash2,
-  TriangleAlert,
+Archive as ArchiveIcon,
+ArrowLeft,
+BadgeCheck,
+Camera,
+ChevronDown,
+ChevronRight,
+CircleAlert,
+Download,
+FileClock,
+FlaskConical,
+Info,
+Lock,
+ShieldAlert,
+Trash2,
+TriangleAlert,
 } from "lucide-react";
-import { cn } from "../lib/utils.js";
-import {
-  Badge,
-  Banner,
-  ButtonLink,
-  BulletList,
-  Button,
-  Card,
-  CardBody,
-  Chip,
-  ChipRow,
-  CountBadge,
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DS_STATUS_ORDER,
-  EmptyState,
-  Field,
-  IconButton,
-  Input,
-  MetaLine,
-  PageHeader,
-  Panel,
-  PanelBody,
-  PanelFooter,
-  PanelHeader,
-  PanelToolbar,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  RadioGroup,
-  Refusal,
-  SearchInput,
-  SectionLabel,
-  Select,
-  Skeleton,
-  StatusPill,
-  Tab,
-  TabList,
-  TabPanel,
-  TakeoverFrame,
-  Table,
-  Tabs,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Textarea,
-  TimelineSteps,
-  Well,
-  type DsSortDirection,
-  type DsStep,
-  dsFocus,
-  dsIcon,
-  dsMotion,
-  dsRadius,
-  dsText,
-  useDsEnterTransition,
-  useToasts,
-} from "../ds/ui.js";
-import { systemClock } from "../../domain/clock.js";
-import type {
-  ArchiveEntryWire,
-  ArchiveIndexWire,
-  ArchiveSweepWire,
-  ArchivedCaptureResourceWire,
-  ArchivedRunDetailWire,
-  VersionBumpPlanWire,
-  WorkflowVersionStateWire,
-} from "../../domain/dashboard/archive.js";
-import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
-import { timelineEventDuration, type NoteWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
+import { Fragment,useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
+import { z } from "zod";
 import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
-import type { ArchivedCaptureTile, ArchivedRunAttempt, ArchivedRunSections } from "../../domain/archive/sections.js";
-import type { CommandResult, VersionScope } from "../../domain/commands.js";
-import { DashboardClientError } from "../client/errors.js";
-import { useDashboardClient } from "../state/client-context.js";
-import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural, shortHash } from "./format.js";
-import { testInstanceSystems } from "./test-instance-hazard.js";
-import { dsStatusOf } from "./status-model.js";
-import {
-  FailureDetailBody,
-  FailureRecordHead,
-  ReceiptEvidenceBody,
-  type FailureDetailWire,
-} from "./trust.js";
-import {
-  ARCHIVE_INDEX,
-  ARCHIVED_CAPTURE_ORIGIN_TONE,
-  ARCHIVED_CAPTURE_VIEWER_NOTE,
-  BUMP_KIND_LABEL,
-  BUMP_KIND_NOTE,
-  type ArchiveView,
-  type BumpRecordComposition,
-  archiveBumpKind,
-  archivedCaptureFacts,
-  useArchivedCaptureResource,
-  useArchivedCaptureImage,
-  type ArchivedCaptureResourceLoad,
-  blockerResolution,
-  bumpResolutionColumnHead,
-  bumpScopeLabel,
-  composeBumpChangeRecord,
-  parkedWriteBlockers,
-  resolveBumpKindEffect,
-  archivePriorityTone,
-  archiveStatusLabel,
-  archiveSweepFacts,
-  archiveSweepName,
-  archiveSweepVersionRange,
-  archiveWarningChip,
-  archiveWorkflowCodes,
-  archivedNotRunNote,
-  archivedOmittedStepsNote,
-  archivedDeleteConfirm,
-  archivedRelaunchHeadline,
-  archivedRunHeading,
-  archivedRunTouchedTest,
-  blockerStatusOf,
-  flattenArchiveTable,
-  useArchiveViewport,
-  windowArchiveTable,
-} from "./archive-model.js";
-import type { ArchiveSection } from "./archive-model.js";
+import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
+import { EVENT_STREAM_RETENTION_DAYS,type ArchiveRetentionWire } from "../../domain/archive/retention.js";
+import type { ArchivedCaptureTile,ArchivedRunAttempt,ArchivedRunSections } from "../../domain/archive/sections.js";
+import { systemClock } from "../../domain/clock.js";
+import type { CommandResult,VersionScope } from "../../domain/commands.js";
+import type {
+ArchivedCaptureResourceWire,
+ArchivedRunDetailWire,
+ArchiveEntryWire,
+ArchiveIndexWire,
+ArchiveSweepWire,
+VersionBumpPlanWire,
+WorkflowVersionStateWire,
+} from "../../domain/dashboard/archive.js";
+import { timelineEventDuration,type NoteWireSchema } from "../../domain/dashboard/run-detail.js";
 import { settleCommandResult } from "../app/command-result.js";
+import { DashboardClientError } from "../client/errors.js";
+import {
+Badge,
+Banner,
+BulletList,
+Button,
+ButtonLink,
+Card,
+CardBody,
+Chip,
+ChipRow,
+CountBadge,
+Dialog,
+DialogBody,
+DialogContent,
+DialogFooter,
+DS_STATUS_ORDER,
+dsFocus,
+dsIcon,
+dsMotion,
+dsRadius,
+dsText,
+EmptyState,
+Field,
+IconButton,
+Input,
+MetaLine,
+PageHeader,
+Panel,
+PanelBody,
+PanelFooter,
+PanelHeader,
+PanelToolbar,
+Popover,
+PopoverContent,
+PopoverTrigger,
+RadioGroup,
+Refusal,
+SearchInput,
+SectionLabel,
+Select,
+Skeleton,
+StatusPill,
+Tab,
+Table,
+TabList,
+TabPanel,
+Tabs,
+TakeoverFrame,
+TBody,
+TD,
+Textarea,
+TH,
+THead,
+TimelineSteps,
+TR,
+useDsEnterTransition,
+useToasts,
+Well,
+type DsSortDirection,
+type DsStep,
+} from "../ds/ui.js";
+import { cn } from "../lib/utils.js";
+import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
+import { LOADING,type AsyncResource } from "../state/async-resource.js";
+import type { ArchiveSection } from "./archive-model.js";
+import {
+ARCHIVE_INDEX,
+archiveBumpKind,
+ARCHIVED_CAPTURE_ORIGIN_TONE,
+ARCHIVED_CAPTURE_VIEWER_NOTE,
+archivedCaptureFacts,
+archivedDeleteConfirm,
+archivedNotRunNote,
+archivedOmittedStepsNote,
+archivedRelaunchHeadline,
+archivedRunHeading,
+archivedRunTouchedTest,
+archivePriorityTone,
+archiveStatusLabel,
+archiveSweepFacts,
+archiveSweepName,
+archiveSweepVersionRange,
+archiveWarningChip,
+archiveWorkflowCodes,
+blockerResolution,
+blockerStatusOf,
+BUMP_KIND_LABEL,
+BUMP_KIND_NOTE,
+bumpResolutionColumnHead,
+bumpScopeLabel,
+composeBumpChangeRecord,
+flattenArchiveTable,
+parkedWriteBlockers,
+resolveBumpKindEffect,
+useArchivedCaptureImage,
+useArchivedCaptureResource,
+useArchiveViewport,
+windowArchiveTable,
+type ArchivedCaptureResourceLoad,
+type ArchiveView,
+type BumpRecordComposition,
+} from "./archive-model.js";
+import { elapsedSecondsBetween,fmtClock,fmtElapsed,fmtInstantDay,plural,shortHash } from "./format.js";
+import { dsStatusOf } from "./status-model.js";
+import { testInstanceSystems } from "./test-instance-hazard.js";
+import {
+FailureDetailBody,
+FailureRecordHead,
+ReceiptEvidenceBody,
+type FailureDetailWire,
+} from "./trust.js";
 
 const SOURCE_SURFACE = "archive";
 
@@ -3611,43 +3612,16 @@ export function LegacyArchiveWorkspace({
   );
 
   useEffect(() => {
-    let live = true;
-    /*
-      An index ALREADY on screen keeps its last wire while the next read is in
-      flight — the same rule `useRunDetail` settled for run detail (unit
-      F10e). A re-read is triggered by an APPLIED command, so blanking to a
-      skeleton unmounts the surface that issued it: `VersionsView` lost the
-      dispatch record VB43's banner is composed from, and the banner and its
-      door were unreachable by a click for as long as they existed. There is
-      one archive index, so there is no identity to compare — the first read
-      still loads, because a skeleton and a stale answer are different claims
-      and only one of them is honest before anything has been read.
-    */
+    // A refresh keeps the loaded index mounted, including its command feedback.
+    // The first load and a failed refresh retain their distinct resource arms.
     setIndex((current) => (current.state === "loaded" ? current : LOADING));
-    client.archiveIndex().then(
-      (value) => { if (live) setIndex(loaded(value)); },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) { setIndex(failed(error)); return; }
-        throw error;
-      },
-    );
-    return () => { live = false; };
+    return observeAsyncResource(() => client.archiveIndex(), setIndex);
   }, [client, nonce]);
 
   useEffect(() => {
     if (selection === ARCHIVE_INDEX) return undefined;
-    let live = true;
     setDetail(LOADING);
-    client.archivedRun(selection).then(
-      (value) => { if (live) setDetail(loaded(value)); },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) { setDetail(failed(error)); return; }
-        throw error;
-      },
-    );
-    return () => { live = false; };
+    return observeAsyncResource(() => client.archivedRun(selection), setDetail);
   }, [client, selection, nonce]);
 
   const onCommand = useCallback(

@@ -1,17 +1,20 @@
 /** H replaces the specialized archive lightbox with generic frozen facts and native files.
  * Keep the two reference identities and eleven browser cases; prove exact bytes,
  * stationary facts, keyboard/desktop access and refusal without a legacy reader. */
-import { expect, test, type Locator, type Page, type Download } from "@playwright/test";
+import { expect,test,type Download,type Locator,type Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { SavedArchiveReportWireSchema } from "../../src/domain/dashboard/archive.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { assertThemeApplied, captureParityPair, installTheme } from "./helpers/capture.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-day.js";
+import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { assertThemeApplied,captureParityPair,installTheme } from "./helpers/capture.js";
+import {
+FIXTURE_ARCHIVE_EVIDENCE_CAPTURE as CAPTURE,
+FIXTURE_ARCHIVE_EVIDENCE_BYTES,
+FIXTURE_ARCHIVE_EVIDENCE_RUN
+} from "./helpers/fixture-archive-evidence.js";
 import { FIXTURE_SAVED_REPORT } from "./helpers/fixture-archive.js";
-import { FIXTURE_ARCHIVE_EVIDENCE_BYTES, FIXTURE_ARCHIVE_EVIDENCE_CAPTURE as CAPTURE,
-  FIXTURE_ARCHIVE_EVIDENCE_RUN } from "./helpers/fixture-archive-evidence.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 const REFERENCES=resolve(import.meta.dirname,"references");
 const RUN_ID=FIXTURE_ARCHIVE_EVIDENCE_RUN.runId;
 const RESOURCE_PATH=`/api/v1/archive/reports/${RUN_ID}/files/${CAPTURE.digest}`;

@@ -1,3 +1,4 @@
+import { observeAsyncResource } from "../state/async-resource.js";
 /**
  * The graph-inspection Workflow Explorer with DCC5's closed presentation editor
  * (ref operator-trust §5.2–§5.4; ref dashboard-surfaces §13).
@@ -48,124 +49,123 @@
  * the graph into a workflow builder or offers a value the authority did not
  * serve as editable.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
 import {
-  ArrowDownToLine,
-  ArrowLeft,
-  ArrowUpFromLine,
-  Eye,
-  FileCode2,
-  Info,
-  Lock,
-  Pencil,
-  ScanEye,
-  ShieldAlert,
-  SquareArrowOutUpRight,
-  Workflow,
+ArrowDownToLine,
+ArrowLeft,
+ArrowUpFromLine,
+Eye,
+FileCode2,
+Info,
+Lock,
+Pencil,
+ScanEye,
+ShieldAlert,
+SquareArrowOutUpRight,
+Workflow,
 } from "lucide-react";
+import type { ReactElement,ReactNode } from "react";
+import { useEffect,useMemo,useRef,useState } from "react";
+import { systemClock } from "../../domain/clock.js";
 import type {
-  ExplorerContractFieldWire,
-  ExplorerEditValidationResult,
-  ExplorerNodeWire,
-  ExplorerProseWire,
-  ExplorerTaskWire,
-  ExplorerWorkflowWire,
-  SourceLinkWire,
-  WorkflowExplorerWire,
+ExplorerContractFieldWire,
+ExplorerEditValidationResult,
+ExplorerNodeWire,
+ExplorerProseWire,
+ExplorerTaskWire,
+ExplorerWorkflowWire,
+SourceLinkWire,
+WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
+import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
+import { settleCommandResult } from "../app/command-result.js";
 import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  EmptyState,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogContent,
-  Field,
-  Input,
-  IconButton,
-  MetaLine,
-  PageHeader,
-  Panel,
-  PanelBody,
-  PanelHeader,
-  PanelToolbar,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  SectionLabel,
-  Spinner,
-  Select,
-  Textarea,
-  TakeoverFrame,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Table,
-  dsClip,
-  dsFocus,
-  dsIcon,
-  dsMotion,
-  dsRadius,
-  dsText,
+Badge,
+Banner,
+Button,
+Card,
+Chip,
+Dialog,
+DialogBody,
+DialogContent,
+DialogFooter,
+dsClip,
+dsFocus,
+dsIcon,
+dsMotion,
+dsRadius,
+dsText,
+EmptyState,
+Field,
+IconButton,
+Input,
+MetaLine,
+PageHeader,
+Panel,
+PanelBody,
+PanelHeader,
+PanelToolbar,
+Popover,
+PopoverContent,
+PopoverTrigger,
+SectionLabel,
+Select,
+Spinner,
+Table,
+TakeoverFrame,
+TBody,
+TD,
+Textarea,
+TH,
+THead,
+TR,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
-import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { DashboardClientError } from "../client/index.js";
-import { settleCommandResult } from "../app/command-result.js";
-import { useDashboardClient } from "../state/client-context.js";
+import { loaded,LOADING,type AsyncResource } from "../state/async-resource.js";
+import { useExplorerClient as useDashboardClient } from "../state/explorer-client.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
-import { systemClock } from "../../domain/clock.js";
 import {
-  groupWorkflowsByCategory,
-  workflowHarnessOfName,
-  type WorkflowGroupEntry,
-  type WorkflowGroupingFacts,
-} from "./workflow-category.js";
-import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
+acceptsExplorerEditValidationTicket,
+conditionalEdgesFrom,
+contractFieldGroups,
+correctableMarkFor,
+correctableMarks,
+dependsOnEdgeExists,
+dryRunBoundaryNodeId,
+dryRunPosture,
+explorerEditProblemTitle,
+explorerGraphTotals,
+explorerPresentationChange,
+explorerPresentationDraft,
+explorerPresentationFieldLabel,
+explorerPresentationFieldShortLabel,
+explorerPresentationValue,
+fieldKindLine,
+fmtFreshness,
+groupScenariosByPrefix,
+makeExplorerEditValidationTicket,
+matchesExplorerAppliedReadback,
+matchesExplorerApplyAcknowledgement,
+matchesExplorerCommandResultId,
+matchesExplorerValidationDraft,
+nodeBindings,
+nodeLabelBeside,
+scenarioSourceCell,
+unplaceableEditableFields,
+writeSystems,
+type ContractFieldGroup,
+type ContractGroupRecorded,
+type DryRunPosture,
+type ExplorerEditProblem,
+type ExplorerEditValidationTicket,
+type ExplorerPresentationField,
+} from "./explorer-model.js";
 import { plural } from "./format.js";
 import {
-  type ContractFieldGroup,
-  type ContractGroupRecorded,
-  type DryRunPosture,
-  type ExplorerEditProblem,
-  type ExplorerEditValidationTicket,
-  type ExplorerPresentationField,
-  acceptsExplorerEditValidationTicket,
-  conditionalEdgesFrom,
-  correctableMarkFor,
-  correctableMarks,
-  dependsOnEdgeExists,
-  dryRunBoundaryNodeId,
-  dryRunPosture,
-  explorerPresentationChange,
-  explorerPresentationDraft,
-  explorerPresentationFieldLabel,
-  explorerPresentationFieldShortLabel,
-  explorerPresentationValue,
-  explorerEditProblemTitle,
-  explorerGraphTotals,
-  fieldKindLine,
-  contractFieldGroups,
-  fmtFreshness,
-  makeExplorerEditValidationTicket,
-  matchesExplorerAppliedReadback,
-  matchesExplorerApplyAcknowledgement,
-  matchesExplorerCommandResultId,
-  matchesExplorerValidationDraft,
-  nodeBindings,
-  groupScenariosByPrefix,
-  nodeLabelBeside,
-  scenarioSourceCell,
-  unplaceableEditableFields,
-  writeSystems,
-} from "./explorer-model.js";
+groupWorkflowsByCategory,
+workflowHarnessOfName,
+type WorkflowGroupEntry,
+type WorkflowGroupingFacts,
+} from "./workflow-category.js";
 
 /* ── the node vocabulary ─────────────────────────────────────────────────── */
 
@@ -2141,24 +2141,8 @@ export function WorkflowExplorer({
   const editTrigger = useRef<HTMLButtonElement | undefined>(undefined);
 
   useEffect(() => {
-    let live = true;
     setResource(LOADING);
-    client.workflowExplorer().then(
-      (value) => {
-        if (live) setResource(loaded(value));
-      },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) {
-          setResource(failed(error));
-          return;
-        }
-        throw error;
-      },
-    );
-    return () => {
-      live = false;
-    };
+    return observeAsyncResource(() => client.workflowExplorer(), setResource);
   }, [client]);
 
   const wire = resource.state === "loaded" ? resource.value : undefined;

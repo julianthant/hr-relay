@@ -3,22 +3,22 @@
  * keyboard entry into its result list, and the visual/a11y references for the
  * persistent shell surface.
  */
-import { expect, test } from "@playwright/test";
+import { expect,test } from "@playwright/test";
 import { resolve } from "node:path";
 import { CrossDateSearchPageSchema } from "../../src/domain/dashboard/search.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-day.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import {
-  PARITY_THEMES,
-  PARITY_VIEWPORTS,
-  assertThemeApplied,
-  captureParityPair,
-  installTheme,
-  type ParityTheme,
-} from "./helpers/capture.js";
-import { assertShellGeometry } from "./helpers/geometry.js";
 import { gotoAppState } from "./helpers/app-driver.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import {
+PARITY_THEMES,
+PARITY_VIEWPORTS,
+assertThemeApplied,
+captureParityPair,
+installTheme,
+type ParityTheme,
+} from "./helpers/capture.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
+import { assertShellGeometry } from "./helpers/geometry.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
 const SEARCH_PAGE = CrossDateSearchPageSchema.parse({

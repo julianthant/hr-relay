@@ -1,9 +1,9 @@
 /** D340: desktop control density and hit ownership, measured in the built browser. */
-import { expect, test, type Page } from "@playwright/test";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
+import { expect,test,type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { FIXTURE_DAY } from "./helpers/fixture-day.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 
 /** The dense desktop pitch the same token holds at `pointer: fine`, and the toggle's own paint. */

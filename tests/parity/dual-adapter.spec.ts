@@ -14,13 +14,15 @@
  * what encodes "the queue rendered a group row with a member well" rather than
  * "the queue rendered these particular words".
  */
-import { expect, test } from "@playwright/test";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { startSeededServer, SEEDED_DAY, type SeededServer } from "./helpers/seeded-bff.js";
-import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
+import { expect,test } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { readA11yTree } from "./helpers/capture.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
+import { startSeededServer,type SeededServer } from "./helpers/seeded-bff.js";
+import { SEEDED_DAY } from "./helpers/seeded-identity.js";
 
 let fixture: FixtureServer;
 let seeded: SeededServer;
