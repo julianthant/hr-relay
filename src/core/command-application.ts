@@ -16,5 +16,4 @@ export interface CommandApplication {
     commandFingerprint: string;
     settings: z.infer<typeof EditableSettingsOverrideSchema>;
   }>;
-  readonly finalizeAfterCommit?: () => void;
 }

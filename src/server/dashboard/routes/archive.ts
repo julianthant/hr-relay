@@ -1,14 +1,4 @@
 import { SavedArchiveQuerySchema } from "../../../domain/dashboard/archive.js";
-import { z } from "zod";
-
-
-import { buildStorageDoctor } from "../queries/storage.js";
-import { buildSettingsFacts } from "../queries/settings.js";
-import { buildSettingsEditor } from "../queries/settings-editor.js";
-import { readRunDetail } from "../queries/run-detail.js";
-
-
-
 
 import {
   savedFileResource, savedArchiveVersions, savedArchiveIndex, savedArchiveDetail, savedCaptureResource, prepareSavedCaptureLease,
@@ -17,29 +7,31 @@ import {
   buildArchivedRunDetail,
   prepareArchivedCaptureLease,
 } from "../queries/archive.js";
-import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import { SectionUnavailableError } from "../../failures.js";
 
-
 import { verifiedByteResponse } from "./verified-byte-response.js";
-import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
-const DayQuerySchema = z.iso.date();
 
-export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps): void {
-  // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
-  app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
+import { isLoopbackHost } from "./loopback.js";
+import { wireError } from "./failure-status.js";
 
-  /**
-   * D274 item 6 — System hosts + Workflow capabilities, read-only.
-   *
-   * GET-only by construction, and that remains the ruling: DCC3's separate
-   * resolver-owned Settings editor does not make host/capability facts mutable.
-   * Item 6's rejected option C was coupling these reads to the write family.
-   */
-  app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
+import type { DashboardApp } from "./api-types.js";
+import type { ArchiveRouteDeps } from "./archive-types.js";
 
-  // DCC3: values, provenance and editability are server-owned; this route has no mutation arm.
-  app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
+export function registerArchiveRoutes(app: DashboardApp, deps: ArchiveRouteDeps): void {
+  // Saved documents and bytes share the same loopback admission before any authority read.
+  for (const path of ["/api/v1/archive", "/api/v1/archive/*", "/artifacts/v1/archive/*"]) {
+    app.use(path, async (c, next) => {
+      if (deps.archive.storage !== undefined) {
+        c.header("cache-control", "no-store");
+        const host = c.req.header("host");
+        const origin = c.req.header("origin");
+        if (!isLoopbackHost(host) || (origin !== undefined && origin !== `http://${host}`)) {
+          return c.json(wireError("ARCHIVE_INGRESS_FORBIDDEN", "Saved archive reads require a loopback Host and matching Origin when supplied", false), 403);
+        }
+      }
+      return next();
+    });
+  }
 
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
   app.get("/api/v1/archive/reports/:runId/files/:digest", async c => c.json(await savedFileResource(deps.archive, c.req.param("runId"), c.req.param("digest"), c.req.raw.signal)));
@@ -57,7 +49,6 @@ export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps
   });
   app.get("/api/v1/archive/reports/:runId", (c) => c.json(savedArchiveDetail(deps.archive, c.req.param("runId"))));
   app.get("/api/v1/archive", (c) => c.json(deps.archive.storage === undefined ? buildArchiveIndex(deps.archive) : savedArchiveIndex(deps.archive, { limit: 50 })));
-
 
   app.get("/api/v1/archive/:runId/captures/:artifactId/resource", async (c) => {
     c.header("cache-control", "no-store");
@@ -99,45 +90,4 @@ export function registerOperatorRoutes(app: DashboardApp, deps: DashboardAppDeps
     });
   });
 
-  app.get("/api/v1/reports/activity", (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      // A missing range is NOT "today" or "this month": an aggregate over a
-      // window the caller never named is a number nobody asked for.
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
-    return c.json(deps.projection.buildActivityReportWire(from, to));
-  });
-
-  /**
-   * The same report as a file (D240). It refuses a missing bound in the SAME
-   * words as the JSON route above — an export is the one copy that gets mailed
-   * on, so a window it defaulted silently would travel further than a page that
-   * did. The artifact carries its own caveats; see `activity-export.ts`.
-   */
-  app.get("/api/v1/reports/activity.csv", (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
-    const report = deps.projection.buildActivityReportWire(from, to);
-    return new Response(activityReportCsv(report), {
-      status: 200,
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${activityReportCsvFileName(report)}"`,
-        "cache-control": "no-store",
-      },
-    });
-  });
-
-  app.get("/api/v1/dashboard", (c) => {
-    const day = DayQuerySchema.parse(c.req.query("day"));
-    return c.json(deps.projection.buildDashboardDayWire(day));
-  });
-
-  app.get("/api/v1/runs/:runId", async (c) =>
-    c.json(await readRunDetail(deps.runDetail, c.req.param("runId"), c.req.raw.signal)));
 }

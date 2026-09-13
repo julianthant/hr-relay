@@ -58,7 +58,7 @@ export interface BootstrapQueryDeps {
   readonly modules: readonly BootstrapModuleView[];
   readonly descriptorSetHash: Fingerprint;
   readonly settingsSchemaHash: Fingerprint;
-  readonly projection: RunQueueProjection;
+  readonly projection: Pick<RunQueueProjection, "generation">;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
   /**

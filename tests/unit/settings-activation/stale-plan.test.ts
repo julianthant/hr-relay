@@ -16,7 +16,7 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
     const kernel = createCommandKernel({ lifecycle: f.service, appVersion: "0.1.0", archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
       configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, descriptors,
-      explorerEdits: { reconcilePending: () => {}, apply: () => { throw new Error("unused explorer"); } },
+      explorerEdits: { apply: () => { throw new Error("unused explorer"); } },
       writeResolution: { resolvePresent: () => { throw new Error("unused write"); }, resolveAbsent: () => { throw new Error("unused write"); } },
       workerRuntime: { planWorkerCount: () => ({ state: "accepted", workerIds: ["settings-worker"] }),
         spawnWorker: () => ({ state: "accepted" }), refreshBrowser: () => ({ state: "accepted" }), reopenBrowser: () => ({ state: "accepted" }) },

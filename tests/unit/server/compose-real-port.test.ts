@@ -11,7 +11,6 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import {
-  closeSync,
   copyFileSync,
   existsSync,
   fsyncSync,
@@ -19,10 +18,8 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
@@ -56,10 +53,7 @@ import {
 } from "../../../src/domain/dashboard/explorer.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
-import {
-  createExplorerOverrideStore,
-  explorerEditCommandFingerprint,
-} from "../../../src/server/dashboard/commands/explorer-override-store.js";
+import { explorerEditCommandFingerprint } from "../../../src/domain/dashboard/explorer-override.js";
 import {
   composeDashboardRuntime as composeProductionDashboardRuntime,
   productionWorkerLaunch,
@@ -190,7 +184,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function pendingExplorer(landed = true) {
+function committedExplorer() {
   const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-explorer-"));
   copyRuntimePackageFixture(repoRoot);
   cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -223,28 +217,11 @@ function pendingExplorer(landed = true) {
     commandFingerprint: explorerEditCommandFingerprint(request),
     presentation: { label: "Recovered people search" },
   });
-  if (landed) {
-    createExplorerOverrideStore(path).replace(request, override);
-  } else {
-    const store = createExplorerOverrideStore(path, {
-      writeExclusive: (target, text) => writeFileSync(target, text, { encoding: "utf8", mode: 0o600, flag: "wx" }),
-      syncPath: (target) => {
-        const handle = openSync(target, "r");
-        try { fsyncSync(handle); } finally { closeSync(handle); }
-      },
-      atomicReplace: (from, to) => {
-        if (to === path) throw new Error("injected crash before override rename");
-        renameSync(from, to);
-      },
-      remove: unlinkSync,
-    });
-    assert.throws(() => store.replace(request, override), /injected crash before override rename/u);
-    assert.equal(existsSync(path), false);
-  }
-  return { repoRoot, path, request };
+  mkdirSync(dirname(path), { recursive: true });
+  return { repoRoot, path, request, override };
 }
 
-function explorerAudit(request: ReturnType<typeof pendingExplorer>["request"]) {
+function explorerAudit(request: ReturnType<typeof committedExplorer>["request"]) {
   const target = { family: "explorer", workflowId: request.target.workflowId, revision: 1 } as const;
   return CommandAuditRecordSchema.parse({
     auditId: "99999999-9999-4999-8999-999999999999",
@@ -257,7 +234,7 @@ function explorerAudit(request: ReturnType<typeof pendingExplorer>["request"]) {
 }
 
 function journalExplorer(
-  fixture: ReturnType<typeof pendingExplorer>,
+  fixture: ReturnType<typeof committedExplorer>,
   request = fixture.request,
   audit: ReturnType<typeof explorerAudit> | null = explorerAudit(fixture.request),
 ): void {
@@ -269,6 +246,7 @@ function journalExplorer(
   try {
     database.withAuthorityTransaction((repositories) => {
       repositories.commands.insert(request);
+      repositories.explorerOverrides.replace(request, fixture.override);
       if (audit !== null) repositories.commandAudits.insert(audit);
     });
   } finally {
@@ -313,7 +291,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeOlderBuild({
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), /authority schema 50 is newer than supported 29/u);
+        }), /authority schema 51 is newer than supported 29/u);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -336,12 +314,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 50);
+    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 51);
   });
 
   it.each([
     { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 46 \}/u },
-    { version: 51, refusal: /authority schema 51 is newer than supported 50/u },
+    { version: 52, refusal: /authority schema 52 is newer than supported 51/u },
   ])("releases its acquired server process record when authority v$version refuses open", async ({
     version,
     refusal,
@@ -515,240 +493,92 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(card?.browsers, []);
   }, 20_000);
 
-  it.each(["GET", "validate"] as const)("serves Explorer with one recovery admission and one document read per %s request", async (operation) => {
-    const fixture = pendingExplorer();
-    journalExplorer(fixture);
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)),
-    });
+  it.each(["GET", "validate"] as const)("serves one SQLite snapshot and no historical file reads per Explorer %s request", async operation => {
+    const fixture = committedExplorer(); journalExplorer(fixture);
+    for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "inert historical bytes");
+    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
-      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-      let directorySyncs = 0;
-      vi.mocked(fsyncSync).mockImplementation((handle) => {
-        if (actual.fstatSync(handle).isDirectory()) directorySyncs += 1;
-        actual.fsyncSync(handle);
-      });
       const sql = vi.spyOn(DatabaseSync.prototype, "exec");
       vi.mocked(readFileSync).mockClear();
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-
       for (const requestCount of [1, 2]) {
         if (operation === "GET") {
-          const explorer = await client.workflowExplorer();
-          assert.deepEqual(explorer.workflows.map(({ id }) => id), DESCRIPTORS.map(({ id }) => id));
-          const workflow = explorer.workflows.find(({ id }) => id === fixture.request.target.workflowId);
-          assert.equal(workflow?.label, "Recovered people search");
-          assert.equal(workflow?.edit.overrideRevision, 1);
+          const workflow = (await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId);
+          assert.equal(workflow?.label, "Recovered people search"); assert.equal(workflow?.edit.overrideRevision, 1);
         } else {
-          const validation = await client.validateExplorerEdit({
-            draftVersion: 1, workflowId: fixture.request.target.workflowId,
-            baseDescriptorVersion: fixture.request.target.expectedVersion,
-            baseContractFingerprint: fixture.request.target.contractFingerprint,
-            baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }],
-          });
+          const validation = await client.validateExplorerEdit({ draftVersion: 1, workflowId: fixture.request.target.workflowId,
+            baseDescriptorVersion: fixture.request.target.expectedVersion, baseContractFingerprint: fixture.request.target.contractFingerprint,
+            baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }] });
           assert.equal(validation.state, "ready-to-apply");
-          if (validation.state !== "ready-to-apply") assert.fail("expected presentation validation");
-          assert.equal(validation.override.revision, 2);
+          if (validation.state === "ready-to-apply") assert.equal(validation.override.revision, 2);
         }
-        assert.deepEqual({
-          writeAdmissions: sql.mock.calls.filter(([statement]) => statement === "BEGIN IMMEDIATE").length,
-          directorySyncs,
-          documentReads: vi.mocked(readFileSync).mock.calls.filter(([path]) => path === fixture.path).length,
-        }, { writeAdmissions: requestCount, directorySyncs: requestCount, documentReads: requestCount });
+        assert.equal(sql.mock.calls.filter(([statement]) => statement === "BEGIN IMMEDIATE").length, 0);
+        assert.equal(sql.mock.calls.filter(([statement]) => statement === "BEGIN").length, requestCount);
+        assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => String(path).startsWith(fixture.path)).length, 0);
       }
-    } finally {
-      await runtime.stop();
-    }
+    } finally { await runtime.stop(); }
   }, 20_000);
 
-  it.each(["GET", "validate"] as const)("keeps the admitted %s view when a new claim lands after admission, then re-admits on the next request", async (operation) => {
-    const fixture = pendingExplorer();
-    journalExplorer(fixture);
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)),
-    });
+  it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
+    const fixture = committedExplorer(); journalExplorer(fixture);
+    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
-      const request = ExplorerEditApplyRequestSchema.parse({
-        ...fixture.request,
-        commandId: "24242424-2424-4242-8242-242424242424",
-        target: { ...fixture.request.target, expectedOverrideRevision: 1 },
-        payload: { changes: [{ kind: "workflow-label", value: "New directory search" }] },
-      });
-      const override = ExplorerWorkflowOverrideSchema.parse({
-        overrideVersion: 1, workflowId: request.target.workflowId,
-        descriptorVersion: request.target.expectedVersion,
-        contractFingerprint: request.target.contractFingerprint,
-        revision: 2, appliedCommandId: request.commandId,
-        commandFingerprint: explorerEditCommandFingerprint(request),
-        presentation: { label: "New directory search" },
-      });
-      // Run real SQLite first, then land real new file/claim bytes exactly when
-      // the read's authority transaction releases its writer exclusion.
-      const execute: unknown = Object.getOwnPropertyDescriptor(DatabaseSync.prototype, "exec")?.value;
-      assert.ok(typeof execute === "function");
-      let crossed = false;
-      vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
-        Reflect.apply(execute, this, [sql]);
-        if (sql === "COMMIT" && !crossed) {
-          crossed = true;
-          createExplorerOverrideStore(fixture.path).replace(request, override);
+      const request = ExplorerEditApplyRequestSchema.parse({ ...fixture.request, commandId: "24242424-2424-4242-8242-242424242424",
+        target: { ...fixture.request.target, expectedOverrideRevision: 1 }, payload: { changes: [{ kind: "workflow-label", value: "New directory search" }] } });
+      const override = ExplorerWorkflowOverrideSchema.parse({ ...fixture.override, revision: 2, appliedCommandId: request.commandId,
+        commandFingerprint: explorerEditCommandFingerprint(request), presentation: { label: "New directory search" } });
+      const audit = CommandAuditRecordSchema.parse({ ...explorerAudit(request), auditId: "88888888-8888-4888-8888-888888888888",
+        result: { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "explorer", workflowId: request.target.workflowId, revision: 2 }] },
+        versionChanges: [{ target: { family: "explorer", workflowId: request.target.workflowId, revision: 2 }, before: 1, after: 2 }] });
+      const writer = AuthorityDatabase.open({ path: join(fixture.repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "concurrent-explorer" });
+      try {
+        const execute: unknown = Object.getOwnPropertyDescriptor(DatabaseSync.prototype, "exec")?.value;
+        assert.equal(typeof execute, "function");
+        let crossed = false;
+        vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
+          if (typeof execute !== "function") throw new Error("SQLite exec is unavailable");
+          Reflect.apply(execute, this, [sql]);
+          if (sql === "COMMIT" && !crossed) {
+            crossed = true;
+            writer.withAuthorityTransaction(repositories => { repositories.commands.insert(request); repositories.explorerOverrides.replace(request, override); repositories.commandAudits.insert(audit); });
+          }
+        });
+        const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+        const draft = { draftVersion: 1, workflowId: request.target.workflowId, baseDescriptorVersion: request.target.expectedVersion,
+          baseContractFingerprint: request.target.contractFingerprint, baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed search" }] };
+        if (operation === "GET") {
+          assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === request.target.workflowId)?.label, "Recovered people search");
+          assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === request.target.workflowId)?.label, "New directory search");
+        } else {
+          assert.equal((await client.validateExplorerEdit(draft)).state, "ready-to-apply");
+          assert.equal((await client.validateExplorerEdit(draft)).state, "conflict");
         }
-      });
-      const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
-      const client = createDashboardClient({ baseUrl });
-      const draft = {
-        draftVersion: 1, workflowId: request.target.workflowId,
-        baseDescriptorVersion: request.target.expectedVersion,
-        baseContractFingerprint: request.target.contractFingerprint,
-        baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }],
-      };
-
-      if (operation === "GET") {
-        const explorer = await client.workflowExplorer();
-        assert.deepEqual(explorer.workflows.map(({ id }) => id), DESCRIPTORS.map(({ id }) => id));
-        const workflow = explorer.workflows.find(({ id }) => id === request.target.workflowId);
-        assert.equal(workflow?.label, "Recovered people search");
-        assert.equal(workflow?.edit.overrideRevision, 1);
-      } else {
-        const validation = await client.validateExplorerEdit(draft);
-        assert.equal(validation.state, "ready-to-apply");
-        if (validation.state !== "ready-to-apply") assert.fail("expected admitted revision-one validation");
-        assert.equal(validation.override.revision, 2);
-        assert.deepEqual(validation.semanticDiff, [{
-          path: "presentation.label", before: "Recovered people search", after: "Reviewed directory search",
-        }]);
-      }
-      assert.equal(crossed, true);
-      assert.equal(existsSync(`${fixture.path}.claim`), true);
-      if (operation === "GET") {
-        await assert.rejects(() => client.workflowExplorer(), /has uncommitted command 24242424/u);
-      } else {
-        await assert.rejects(() => client.validateExplorerEdit(draft), /has uncommitted command 24242424/u);
-      }
-
-      const replay = await fetch(`${baseUrl}/api/v1/commands`, {
-        method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request),
-      });
-      assert.equal(replay.status, 200, await replay.clone().text());
-      assert.equal(CommandResultSchema.parse(await replay.json()).state, "applied");
-      if (operation === "GET") {
-        const workflow = (await client.workflowExplorer()).workflows.find(({ id }) => id === request.target.workflowId);
-        assert.equal(workflow?.label, "New directory search");
-        assert.equal(workflow?.edit.overrideRevision, 2);
-      } else {
-        const validation = await client.validateExplorerEdit(draft);
-        assert.equal(validation.state, "conflict");
-        if (validation.state !== "conflict") assert.fail("expected current revision conflict");
-        assert.equal(validation.conflict, "override-revision");
-        assert.equal(validation.currentOverrideRevision, 2);
-      }
-      assert.equal(existsSync(`${fixture.path}.claim`), false);
-    } finally {
-      await runtime.stop();
-    }
+        assert.equal(crossed, true);
+      } finally { writer.close(); }
+    } finally { await runtime.stop(); }
   }, 20_000);
 
-  it.each([true, false])("blocks unjournaled Explorer reads after restart while preserving exact command replay (landed=%s)", async (landed) => {
-    const { repoRoot, path, request } = pendingExplorer(landed);
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation, env: {}, repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(request.requestedAt)),
-    });
-    try {
+  it("applies and replays the complete Explorer command after a real runtime restart", async () => {
+    const fixture = committedExplorer();
+    let runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(fixture.request.requestedAt)) });
+    const send = (request: unknown) => {
       const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
-      const blocked = await fetch(`${baseUrl}/api/v1/explorer`);
-      assert.equal(blocked.status, 500);
-      assert.match(await blocked.text(), /has uncommitted command 13131313-1313-4313-8313-131313131313/u);
-      assert.equal(existsSync(`${path}.claim`), true);
-      const validation = await fetch(`${baseUrl}/api/v1/explorer/validate`, {
-        method: "POST", headers: { "content-type": "application/json", origin: baseUrl },
-        body: JSON.stringify({
-          draftVersion: 1, workflowId: request.target.workflowId,
-          baseDescriptorVersion: request.target.expectedVersion,
-          baseContractFingerprint: request.target.contractFingerprint,
-          baseOverrideRevision: 0, changes: request.payload.changes,
-        }),
-      });
-      assert.equal(validation.status, 500);
-      assert.match(await validation.text(), /has uncommitted command/u);
-
-      const foreign = await fetch(`${baseUrl}/api/v1/commands`, {
-        method: "POST", headers: { "content-type": "application/json", origin: baseUrl },
-        body: JSON.stringify({ ...request, reason: "Not the reviewed envelope" }),
-      });
-      assert.equal(foreign.status, 500);
-      assert.equal(existsSync(`${path}.claim`), true);
-      const stillBlocked = await fetch(`${baseUrl}/api/v1/explorer`);
-      assert.equal(stillBlocked.status, 500);
-
-      const replay = await fetch(`${baseUrl}/api/v1/commands`, {
-        method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request),
-      });
-      assert.equal(replay.status, 200, await replay.clone().text());
-      assert.equal(CommandResultSchema.parse(await replay.json()).state, "applied");
-      const client = createDashboardClient({ baseUrl });
-      const workflow = (await client.workflowExplorer()).workflows.find(({ id }) => id === request.target.workflowId);
-      assert.equal(workflow?.label, "Recovered people search");
-      assert.equal(workflow?.edit.overrideRevision, 1);
-      assert.equal(existsSync(`${path}.claim`), false);
-    } finally {
-      await runtime.stop();
-    }
-  }, 20_000);
-
-  it("reconciles exact journal, audit and next bytes before startup admits Explorer", async () => {
-    const fixture = pendingExplorer();
-    journalExplorer(fixture);
-    const bytes = readFileSync(fixture.path, "utf8");
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)),
-    });
+      return fetch(`${baseUrl}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request) });
+    };
     try {
-      // Assert before GET: lazy reconciliation on a later command is too late.
-      assert.equal(existsSync(`${fixture.path}.claim`), false);
-      assert.equal(readFileSync(fixture.path, "utf8"), bytes);
+      const first = await send(fixture.request); assert.equal(first.status, 200); assert.equal(CommandResultSchema.parse(await first.json()).state, "applied");
+      await runtime.stop();
+      for (const suffix of ["", ".claim"]) writeFileSync(`${fixture.path}${suffix}`, "retired malformed file");
+      runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+        clock: manualClock(new Date(fixture.request.requestedAt)) });
+      const replay = await send(fixture.request); assert.equal(replay.status, 200); assert.equal(CommandResultSchema.parse(await replay.json()).state, "already-applied");
+      const divergent = await send({ ...fixture.request, reason: "Changed envelope" }); assert.equal(divergent.status, 500);
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-      const workflow = (await client.workflowExplorer()).workflows.find(({ id }) => id === fixture.request.target.workflowId);
-      assert.equal(workflow?.label, "Recovered people search");
-      assert.equal(workflow?.edit.overrideRevision, 1);
-    } finally {
-      await runtime.stop();
-    }
-  }, 20_000);
-
-  it.each([
-    "partial-journal", "divergent-journal", "divergent-audit", "foreign-result",
-    "wrong-revision", "missing-next-bytes", "damaged-next-bytes",
-  ] as const)("refuses startup and retains the claim for %s", async (scenario) => {
-    const fixture = pendingExplorer();
-    const request = scenario === "divergent-journal"
-      ? ExplorerEditApplyRequestSchema.parse({ ...fixture.request, reason: "Different journal envelope" })
-      : fixture.request;
-    const exactAudit = explorerAudit(fixture.request);
-    const audit = CommandAuditRecordSchema.parse({
-      ...exactAudit,
-      request: scenario === "divergent-audit"
-        ? { ...fixture.request, reason: "Different audit envelope" } : exactAudit.request,
-      result: scenario === "foreign-result"
-        ? { ...exactAudit.result, commandId: "22222222-2222-4222-8222-222222222222" } : exactAudit.result,
-      versionChanges: scenario === "wrong-revision"
-        ? exactAudit.versionChanges.map((change) => ({ ...change, before: 4 })) : exactAudit.versionChanges,
-    });
-    // Explicit null means no audit; avoid a default argument replacing absence.
-    journalExplorer(fixture, request, scenario === "partial-journal" ? null : audit);
-    if (scenario === "missing-next-bytes") unlinkSync(fixture.path);
-    if (scenario === "damaged-next-bytes") writeFileSync(fixture.path, "{damaged", "utf8");
-    await assert.rejects(async () => {
-      const runtime = await composeDashboardRuntime({
-        isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-        clock: manualClock(new Date(fixture.request.requestedAt)),
-      });
-      await runtime.stop();
-    }, /partial journal outcome|complete command envelope|pending override transition|exact next bytes|matches neither/u);
-    assert.equal(existsSync(`${fixture.path}.claim`), true);
+      assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId)?.label, "Recovered people search");
+    } finally { await runtime.stop(); }
   }, 20_000);
 
   it("ignores retired malformed file authority and serves the SQLite baseline", async () => {

@@ -1,3 +1,4 @@
+import { ExplorerOverrideImportReceiptSchema } from "./dashboard/explorer-override.js";
 import { z } from "zod";
 import { deepFreeze } from "./immutability.js";
 import { RunRecordSchema, RunStateSchema } from "./run/record.js";
@@ -16,6 +17,7 @@ import {
 export const AuthorityTableNameSchema = z.enum([
   "run_summaries", "summary_publication", "archive_transfers", "version_changes",
   "database_state",
+  "explorer_overrides",
   "workflow_runs",
   "run_failures",
   "run_results",
@@ -147,7 +149,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50)]),
+  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50), z.literal(51)]),
 });
 
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -191,7 +193,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   tombstoneBackfill: TombstoneBackfillCountsSchema,
   upgradeId: FingerprintSchema,
   phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50)]),
+  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50), z.literal(51)]),
   backupManifest: z.string().min(1),
   ordinaryRevision: PositiveIntSchema,
   ordinaryFingerprint: FingerprintSchema,
@@ -201,6 +203,7 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   credentialWriteId: z.uuid(),
   importedKeys: z.array(z.string().min(1)),
   envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
+  explorerImport: ExplorerOverrideImportReceiptSchema.optional(),
   generatedImport: z.strictObject({manifestDigest: FingerprintSchema, copyDirectory: z.string().min(1), backupSha256: FingerprintSchema}).optional(),
   timelineImport: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("fresh"), imported: z.literal(0), excludedDeleted: z.literal(0) }),
@@ -209,6 +212,9 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
       imported: NonNegativeIntSchema, excludedDeleted: NonNegativeIntSchema }),
   ]).optional(),
 }).superRefine((record, context) => {
+  if ((record.toSchemaVersion >= 51) !== (record.explorerImport !== undefined)) {
+    context.addIssue({ code: "custom", message: "Explorer import receipt must match its upgrade version" });
+  }
   if ((record.toSchemaVersion >= 38) !== (record.timelineImport !== undefined)) {
     context.addIssue({ code: "custom", message: "timeline import evidence must match its upgrade version" });
   }

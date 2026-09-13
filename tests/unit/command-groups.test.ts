@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { deriveBulkChildCommand } from "../../src/domain/command-groups.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -239,7 +240,7 @@ describe("command groups", () => {
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("after-conversion-commit"); } } }, clock), /after-conversion-commit/);
     const inspection = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(inspection.schemaVersion, 50);
+    assert.equal(inspection.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal((await upgradeStorage(f.input, clock)).state, "converted");
     const raw = new DatabaseSync(f.path); try { assert.equal(raw.prepare("SELECT count(*) AS count FROM commands WHERE family='bulk-parent'").get()?.count, 1); } finally { raw.close(); }
   });

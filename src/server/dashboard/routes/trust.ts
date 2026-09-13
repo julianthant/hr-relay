@@ -1,4 +1,4 @@
-
+import type { TrustRouteDeps } from "./trust-types.js";
 
 import { readRunSection } from "../queries/run-detail.js";
 import {
@@ -10,14 +10,12 @@ import {
   IndexedArtifactBytesMissingError,
 } from "../queries/artifact-bytes.js";
 
-
 import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../failures.js";
 
-
 import { verifiedByteResponse } from "./verified-byte-response.js";
-import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
+import type { DashboardApp } from "./api-types.js";
 
-export function registerTrustRoutes(app: DashboardApp, deps: DashboardAppDeps): void {
+export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): void {
   // Failure responses are private evidence too. Install after the capture Host
   // gate so a phone request still receives the byte-identical unrouted refusal.
   app.use("/api/v1/diagnostic-bundles/*", async (c, next) => {

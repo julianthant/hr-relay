@@ -1,3 +1,4 @@
+import { ExplorerOverrideImportReceiptSchema, ExplorerOverrideImportSourceSchema } from "../../../src/domain/dashboard/explorer-override.js";
 import { RunCompletionSchema, completionFromAuthorization } from "../../../src/domain/run/completion.js";
 import { currentAtomicWriteFixture } from "../helpers/timeline-write-fixture.js";
 import { CredentialStoreApplyOutcomeSchema } from "../../../src/domain/config/credential-store.js";
@@ -875,6 +876,16 @@ interface BoundaryCatalogEntry {
 }
 
 const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
+  { name: "ExplorerOverrideImportSource", schema: ExplorerOverrideImportSourceSchema, fixtures: [
+    { state: "absent" }, { state: "present", sha256: HASH_A, byteLength: 123, document: { documentVersion: 1, workflows: [{
+      overrideVersion: 1, workflowId: "person-lookup", descriptorVersion: 1, contractFingerprint: HASH_B,
+      revision: 1, appliedCommandId: UUID_1, commandFingerprint: HASH_A, presentation: { label: "People search" },
+    }] } },
+  ] },
+  { name: "ExplorerOverrideImportReceipt", schema: ExplorerOverrideImportReceiptSchema, fixtures: [
+    { format: 1, sourceDatabaseIdentity: HASH_A, backupSha256: "fresh", source: { state: "absent" } },
+    { format: 1, sourceDatabaseIdentity: HASH_A, backupSha256: HASH_B, source: { state: "present", sha256: HASH_A, byteLength: 2, document: { documentVersion: 1, workflows: [] } } },
+  ] },
   { name: "AuthorityTableSpec", schema: TableSpecSchema, fixtures: AUTHORITY_TABLE_REGISTRY },
   { name: "AuthorityTableRegistry", schema: AuthorityTableRegistrySchema, fixtures: [AUTHORITY_TABLE_REGISTRY] },
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
@@ -1489,6 +1500,9 @@ function pathText(path: readonly Segment[]): string {
 }
 
 const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
+  // In-process transaction/reader methods, not wire data. Their values and receipts are strict schemas.
+  "src/domain/dashboard/explorer-override.ts:ExplorerOverrideReader",
+  "src/domain/dashboard/explorer-override.ts:ExplorerOverrideRepository",
   // In-process credential authority port: methods consume and return schema-derived data.
   "src/domain/config/credential-store.ts:CredentialStore",
   "src/core/runtime-composition.ts:RebuildRuntimeStart",

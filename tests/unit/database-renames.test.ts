@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import {restoreRetainedFixture} from "./helpers/retained-database-fixture.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -137,7 +138,7 @@ describe("seven database table renames", () => {
     await f.backup(); await f.upgrade();
     const db = open(f.path);
     try {
-      assert.equal(db.getMeta().schemaVersion, 50);
+      assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(db.getMeta().authorityGeneration, 9); // committed + settled upgrade journal writes
       assert.deepEqual(db.authority.diagnosticBundles.get(UUID_5), diagnostic);
       assert.equal(db.authority.diagnosticBundles.listAttachments(UUID_5).length, 1);
@@ -226,7 +227,7 @@ describe("seven database table renames", () => {
     assert.equal(inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint, before.authorityContentFingerprint);
     assert.deepEqual(rows(f.path, "database_upgrades"), journal);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 50);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal((await f.upgrade()).state, "converted");
     const settled = rows(f.path, "database_upgrades");
     assert.equal(settled.length, journal.length + 2);

@@ -1963,11 +1963,9 @@ changes. [3.1.9.4](../plans/phase-3/3.1-finish-the-dashboard/task-9-4-finish-wor
 retains editor work over the accepted prerequisite. This replaces the earlier Task 9-4 conversion
 allocation; no sibling shares its migration or root-composition writer. Import existing valid overrides
 once, refuse conflicting/malformed sources, and prove old files cannot influence appearance after
-conversion. The implementation-specific
-file/SQLite crash protocol below records the current implementation; D337 supersedes it as the target.
-No runtime code or active test is removed by this decision. Keeping the current split avoids conversion
-work but preserves unnecessary coordination for simple preferences; putting the override in SQLite
-keeps the user feature with one authoritative commit.
+conversion. The 3.1.9 A candidate appends migration 51 without changing released migrations 1–50
+or recovery floor 46. Its conversion and focused evidence are recorded in the approved task owner;
+operator integration and B's completion remain separate release steps.
 
 
 <!-- roadmap: def-explorer-edit -->
@@ -2017,45 +2015,28 @@ outside the strict union.
 
 Apply uses the sole typed command-kernel path. Its durable replay identity is the complete strict
 envelope: command id, requested-at/by, source, reason, exact descriptor/override bases and changes.
-The durable override and prepared claim bind that envelope's fingerprint across the file/SQLite crash
-window. One exclusive claim records exact prior/next documents, serializes revision compare/replace,
-and remains blocking after file apply until the journal/audit transaction returns committed. A failed
-audit leaves only byte-exact replay eligible; an intervening command cannot advance. After process loss
-or an ambiguous commit return, restart reconciliation releases the claim only when the exact envelope,
-live next bytes and applied journal outcome agree. Rename throws still reconcile exact staged/live
-bytes, directory fsync and schema/readback remain mandatory, and any unproved transition stays
-`state-uncertain`. Operator labels reject credential- and regulated-value-shaped text before persistence.
+The command kernel passes its transaction-owned Explorer repository into the executor. Override
+values, next revision, immutable command and applied audit settle in the same SQLite transaction;
+audit failure rolls all four back. The repository enforces revision compare/replace and strict
+readback, and commit validates exact command/audit identity, targets, version changes and the empty
+dependency-effect vector. Exact replay reads the existing successful journal outcome; a divergent
+envelope refuses. Operator labels reject credential- and regulated-value-shaped text before persistence.
 
-The recovered audit's `affectedDependencyIds` must be exactly empty: these presentation-only edits
-have no dependency effects. A nonempty vector refuses recovery by audit id and field name, leaving
-the prepared claim and override bytes unchanged. Read admission and ordinary command recovery use
-the same command-kernel journal reader; neither owns an alternate interpretation of the outcome.
+Stopped storage upgrade alone reads the released `explorer-overrides.json` source. It refuses pending
+`.claim`, `.pending` or `.claim.pending` files and requires recovery with the original compatible
+release. Valid source documents must exactly match the presentation history reconstructed from
+successful command/audit records, including inherited values and every workflow. Missing records,
+revision gaps, divergent fingerprints and malformed/aliased sources refuse before conversion effects.
+The append-only upgrade receipt binds the source document and byte digest, database identity and
+verified backup digest. Source file identity is rechecked at admission and immediately before commit.
+Pre-commit failure rolls back schema/import/journal together; post-commit retry consumes the SQLite
+receipt, including when old files have changed. Current-schema runtime reads, edits and restarts never
+consult obsolete files. Backups and restores preserve overrides with command/audit authority in SQLite.
 
-The BFF performs that reconciliation before HTTP admission, not on the first later edit. Partial
-journal/audit evidence or divergent envelope/result/revision/bytes refuses startup. A prepared claim
-with no journal or audit is still uncommitted: Explorer GET and validation fail loud, while the sole
-command route stays available to replay that exact envelope from either prior or next bytes. No
-read/release treats unproven absence as success, and no automatic rollback or new command may replace that
-replay. Recovery and exact replay repeat the directory durability barrier before acknowledging
-applied or releasing a journaled claim. If fsync and close both fail, or cleanup fails behind a
-primary operation, errors retain the primary cause first and name each failed cleanup path.
-
-Prepared-claim validation re-derives the complete next document from its exact previous document
-and closed command changes. Requested presentation values, retained presentation fields and all
-untouched workflows must agree; metadata and matching live bytes alone are insufficient. This
-binds the evidence the existing claim carries, not cryptographic authenticity against rewriting
-every local evidence file. Claim release requires directory fsync followed by an absence readback.
-Cold recovery with no claim repeats that same proof before admission, so unlink followed by failed
-fsync cannot become successful recovery merely by reopening the store. An appearing claim remains
-blocking and untouched; this recovery adds no marker, restoration write or persisted format.
-
-Each Explorer GET or validation request performs one recovery admission, then captures the complete
-recursively frozen override view before releasing that same authority transaction. All workflow rows
-and validation's revision/presentation basis consume that one request-local view. A subsequent
-request reconciles and captures current authority again; neither per-workflow recovery/fsync and
-file rereads nor a cross-request cached view may substitute for that admission. A claim arriving
-after capture cannot change the admitted response, but the next request must observe and reconcile
-or refuse it through the existing rules above.
+Each Explorer GET or validation request captures one recursively frozen override view under an
+authority read snapshot. Every workflow row and validation's revision/presentation basis uses that
+view. A later request captures current authority again; a concurrent commit cannot change an already
+captured response, and no cross-request cached view or per-workflow file read can substitute for it.
 
 **Historical DCC4 schema is not active edit authority.** The original immutable SQLite v19
 review/outbox DDL, table classification, stored-record validation and released digest remain intact.
@@ -2066,7 +2047,7 @@ lineages require a separately reviewed integration disposition; no drop/rewrite/
 database conversion follows from this protocol reconciliation.
 
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
-existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
+strict versioned SQLite override in the command transaction and can hot-apply.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
 **reviewed code-change brief** and
 cannot apply the edit itself. Anything the closed editable set cannot express produces a

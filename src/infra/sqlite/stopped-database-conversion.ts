@@ -1,3 +1,5 @@
+import { assertExplorerOverrideSourceUnchanged, importExplorerOverrides, type ExplorerOverrideSourceSnapshot } from "./explorer-override-conversion.js";
+import { AuthorityDatabase } from "./authority-database.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { convertHistoricalArchives } from "../../services/archive/archive-transfer.js";
@@ -94,6 +96,7 @@ function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
 
 export function convertStoppedDatabase(args: Readonly<{
   verifyOnly?: boolean; archiveRecordedAt?: string; timelineSources?: TimelineSourceSnapshot; timelineCopyDirectory?: string;
+  explorerSource: ExplorerOverrideSourceSnapshot;
   input: ConversionInput; path: string; existed: boolean; from: number;
   inspection: BackupCopyInspection | undefined; backupEvidence: Awaited<ReturnType<typeof verifyBackupManifestAtPath>> | undefined;
   historicalExposure: readonly "operator.timekeeperName"[];
@@ -106,7 +109,8 @@ export function convertStoppedDatabase(args: Readonly<{
       const now = args.archiveRecordedAt ?? clock.now().toISOString();
       const timelineIdentity = existed ? args.timelineSources?.digest : "fresh";
       if (timelineIdentity === undefined) throw new Error("timeline-import-source-evidence-required");
-      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, settings: derivePersistedSettingsFingerprint(sources.settings) }));
+      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, explorer: args.explorerSource.source, settings: derivePersistedSettingsFingerprint(sources.settings) }));
+      assertExplorerOverrideSourceUnchanged(input.stateRoot, args.explorerSource);
       if (!existed && args.verifyOnly !== true) { const fd = openSync(path, "wx", 0o600); closeSync(fd); }
       const createdIdentity = !existed && args.verifyOnly !== true ? lstatSync(path) : undefined;
       let database: DatabaseSync | undefined;
@@ -184,9 +188,12 @@ export function convertStoppedDatabase(args: Readonly<{
           database.prepare("UPDATE database_state SET schema_version=? WHERE singleton_id=1").run(migration.version);
           database.exec(`PRAGMA user_version=${String(migration.version)}`);
         }
+        assertExplorerOverrideSourceUnchanged(input.stateRoot, args.explorerSource);
+        importExplorerOverrides(database, args.explorerSource);
         const revision = sources.revision;
         pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
           by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport,
+          explorerImport: { format: 1, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path), backupSha256: backupEvidence?.manifest.sha256 ?? "fresh", source: args.explorerSource.source },
           backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
           ordinaryFingerprint: derivePersistedSettingsFingerprint(sources.settings), sourceFiles: [], historicalExposure: args.historicalExposure, orphanGateRecordsRemoved: 0, tombstoneBackfill: { fromRoots: 0, fromReconstructedRoots: 0, unknown: 0, missingRunNumber: 0 },
           credentialCommandId: randomUUID(), credentialWriteId: randomUUID(), importedKeys: [], envKeysToRemove: [] });
@@ -196,6 +203,7 @@ export function convertStoppedDatabase(args: Readonly<{
         inspectConvertedAuthority(database);
         if (args.verifyOnly !== true) {
           input.hooks?.beforeCommit?.();
+          assertExplorerOverrideSourceUnchanged(input.stateRoot, args.explorerSource);
           if (existed && backupEvidence !== undefined) {
             const finalSources = timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
             if (finalSources.digest !== args.timelineSources?.digest) throw new Error("timeline-import-source-changed");
