@@ -402,7 +402,7 @@ operation summary; the local `ownership.json` also records exact import edges.
 
 | Owner | Production binding and working interface | Fixture/spec entry and reference ownership |
 | --- | --- | --- |
-| 3.1.9.1 Shell | `TopBar`, `WorkflowSidebar`, `WorkflowWindow`, `WorkflowPanelToggle`, `StatusFilters`; `NavHistoryControls`, `useRoute`, `useDashboardNavigation`, `useTakeoverCloseFocus`; existing `url-state.ts`, `nav-history.ts`, global keys and shell models. `createShellQueries` supplies real bootstrap/search. `subscribeDay` remains the shared bounded transport. Date, notification, preflight, session and Settings bodies are separate imports. | `fixture-bootstrap.ts`, `fixture-shell-routes.ts`, `reference-shell-scenes.ts`, `dashboard-reference.spec.ts`; existing shell/toolbar/kit specs. Exact `queue-day`, `ds-kit`, `ds-kit-cancelling` reference families. Shared route/takeover registration is reserved; the shell may change its dedicated navigation modules. |
+| 3.1.9.1 Shell | `TopBar`, `WorkflowSidebar`, `WorkflowWindow`, `WorkflowPanelToggle`, `StatusFilters`; `NavHistoryControls`, `useRoute`, `useDashboardNavigation`, `useTakeoverCloseFocus`; existing `url-state.ts`, `nav-history.ts`, global keys and shell models. `createShellQueries` supplies real bootstrap/search. `subscribeDay` remains the shared bounded transport. Date, notification, preflight, session and Settings bodies are separate imports. | `fixture-bootstrap.ts`, `fixture-shell-routes.ts`, `reference-shell-scenes.ts`, `dashboard-reference.spec.ts`; existing shell/toolbar/kit specs. Exact `queue-day`, `ds-kit`, `ds-kit-cancelling` reference families. The shell may change its dedicated navigation modules and the bounded app-file seams in the [approved shell amendment](#shell-child-ownership-amendment--2026-09-13); other shared registration remains reserved. |
 | 3.1.9.2 Settings | `SettingsPage`, `SettingsGear`, navigation model; `EditableSettingsSection`, `useEditableSettings`, `FactsPane`, `useSettingsFacts`, `SystemHostsSection`, `CapabilitiesSection`, `KeyboardSection`. `useSettingsClient` exposes Settings queries, atomic `applySettings`, and shared strict command execution for existing protected-setting operations; real ordinary/protected executors and read-presence remain A's accepted backend. | `fixture-settings.ts`, `fixture-settings-routes.ts`, `reference-settings-scenes.ts`, `reference-settings.spec.ts`, existing `settings-activation.spec.ts`; `settings`, `settings-activation-saved`, `settings-activation-reset`. Full catalog editor/P40/A8 changes require this child's own approved proof; none was made by B. |
 | 3.1.9.3 Storage | `StorageBanner`, `StorageSection`, storage presentation model and `useStorageClient`/`createStorageQueries.storageDoctor`. The section consumes the existing editor and preflight props without owning their drafts or executors. A's real doctor and trust-anchor binding are unchanged. | `fixture-storage.ts`, `fixture-storage-routes.ts`, `reference-storage.spec.ts`; `storage-queue`, `storage-settings`, `storage-doctor-degraded`. No schema/recovery redesign or automatic backup is admitted. |
 | 3.1.9.4 Explorer/Catalog | Existing `explorer*.ts*`, `ui-catalog*.ts*`, `row-catalog*.ts*`; `useExplorerClient`, `createExplorerQueries` for graph, validation and catalog, plus existing strict command apply/replay/refusal. A's transaction-owned SQLite repository is immutable prerequisite authority. | Existing `fixture-explorer.ts`, new `fixture-explorer-routes.ts`, `reference-explorer-scenes.ts`, `reference-explorer.spec.ts`; `explorer-graph`, `explorer-transaction`, `catalog-search`. The Settings-hosted catalog slot is already registered. |
@@ -412,14 +412,16 @@ operation summary; the local `ownership.json` also records exact import edges.
 | Later owners | 3.1.10: `DateNav` and date model. 3.1.11: `SessionPanel` and session model. 3.1.11.1: `PreflightPopover`, `PreflightControl`, `useSettingsPreflight`, preflight query/client ports. 3.1.11.2: start commands and start fixture/spec family. 3.1.12: Activity queries/CSV, export command, Activity fixture/spec family; A's Activity summary source remains separate from Queue. 3.1.13: Queue query, queue fixture/spec. 3.1.14: detail queries and detail/diagnostic fixtures/specs. | Existing `start-run*`/`separations-start-*`, `activity-report*`/`cross-date-search`, `run-*`/`diagnostic-bundle-gallery`/`failure-resolution-*` references retain their corresponding later owner. Mixed failure-resolution proof and combined scene membership remain finalizer-owned. These extractions add no new session control, Run or detail feature. |
 
 `SettingsPage` owns the Settings host and draft lifetime; its Storage, preflight and Catalog
-component contracts are existing inputs. Children can implement their surface without editing
+component contracts are existing inputs. Except for 3.1.9.1's bounded shell amendment below,
+children implement their surface without editing
 `dashboard-app.tsx`, `dashboard-takeovers.tsx`, the query/command aggregate, a sibling's module or
 the shared command union. Dedicated wire files retain A's matching owner. All surface client
 hooks return the exact provider object; the per-surface types introduce no fresh wrapper per
 render. Compatibility exports in the old shell, top-bar, Settings model and client modules point
 to the implementations; production consumers import the dedicated owners.
 
-Reserved shared inputs are the app/root takeover registration, provider/transport/subscription,
+Subject only to the bounded shell amendment below, reserved shared inputs are the app/root takeover
+registration, provider/transport/subscription,
 `query-parse.ts`, `shared-commands.ts`, `async-resource.ts`, A's root BFF/command/schema/kernel
 registration, `fixture-day.ts`, fixture identity/profile/error helpers, `fixture-bff.ts`, seeded
 HTTP custody/identity/lifecycle/service composition, `reference-harness.ts`, `reference-scenes.ts`,
@@ -537,6 +539,29 @@ reference names, metadata or accepted outcomes.
 | shared | `tests/unit/dashboard/surface-fixture-boundaries.test.ts` | Spec registration or local test; no public declaration |
 
 </details>
+
+#### Shell child ownership amendment — 2026-09-13
+
+During `/phase-plan 3.1.9.1`, the operator chose A to permit the narrowly required shell changes
+in `src/dashboard/app/dashboard-app.tsx` and `src/dashboard/app/dashboard-takeovers.tsx`, then
+approved the [complete child execution brief](task-9-1-finish-the-shell-navigation-and-accessibility-baseline.md#approved-execution-brief--2026-09-13).
+This prospective allocation supersedes the earlier root-file reservation only for that child's
+route/tab/run selection, navigation callbacks, focus, shell containment and shell empty/error
+rendering. Discovery found that local tab state currently outranks URL selection and unsupported
+sections default silently; the reserved app still owns those consumer decisions. The amendment
+makes A01/A02 implementable without reopening or misreporting B's accepted extraction evidence.
+
+3.1.9.1 is the sole child writer for these bounded app-file seams. Preserve existing registration,
+sibling component contracts and Settings draft authority, providers, command/backend wiring and
+all other reserved inputs. The six sibling write sets and prerequisite edges stay unchanged, and
+the finalizer may combine the candidates in either order. A new interface or sibling-body change
+requires another amendment. No sibling or implementation session is launched by this planning record.
+
+The child preserves established geometry and reference bytes except deliberate `queue-day`
+PNG/a11y/provenance updates for corrected shell empty-state copy, with exact attribution. This
+exception does not authorize kit or cross-owner refreezes, changed default fixture facts, or
+shared scene membership edits. The child's own focused proof and the existing 3.1.9.8/3.1.19
+cadence remain required. B's original reference/membership and integration receipts remain history.
 
 #### Independent gate resources and combination obligations
 

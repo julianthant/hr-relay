@@ -18,9 +18,9 @@ import {
 type AppRouteState
 } from "./url-state.js";
 export type SettingsExitGuard = (proceed: () => void) => void;
-const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
+
 export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId, setActiveWorkflowId,
- tab, onTab, dayWire, workflowLabelOf, onPopstateRef, nativeHistory }: {
+ tab, dayWire, workflowLabelOf, onPopstateRef, nativeHistory }: {
  route: AppRouteState; setRoute: (next: AppRouteState) => void; day: string;
  activeWorkflowId: string; setActiveWorkflowId: (id: string) => void;
  tab: PanelTab | undefined; onTab: (tab: PanelTab | undefined) => void;
@@ -31,6 +31,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
     initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
   );
   const applyingNav = useRef(false);
+  const observedInitialPlace = useRef(false);
   const settingsExitGuard = useRef<SettingsExitGuard | undefined>(undefined);
   const onSettingsExitGuardChange = useCallback((guard: SettingsExitGuard | undefined): void => {
     settingsExitGuard.current = guard;
@@ -50,7 +51,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
   // the browser's target entry, then lets the same page-owned guard either
   // keep it or atomically replay that target.
   onPopstateRef.current = (target: RouteHistoryTarget): void => {
-    if (route.settings === undefined) {
+    if (route.settings === undefined || target.route.settings !== undefined) {
       nativeHistory.accept(target);
       return;
     }
@@ -58,13 +59,19 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
   };
 
   useEffect(() => {
+    if (!observedInitialPlace.current) {
+      if (dayWire === undefined) return;
+      observedInitialPlace.current = true;
+      setNavHistory(initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
+      return;
+    }
     if (applyingNav.current) {
       applyingNav.current = false;
       return;
     }
     setNavHistory((prev) =>
       pushPlace(prev, { day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
-  }, [day, activeWorkflowId, route.run, tab]);
+  }, [day, activeWorkflowId, route.run, tab, dayWire]);
 
   const travel = useCallback(
     (direction: "back" | "forward"): void => {
@@ -75,9 +82,8 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
         applyingNav.current = true;
         setNavHistory(next);
         setActiveWorkflowId(place.workflow);
-        // A tab the panel no longer offers resolves to `undefined`, which is the
-        // run's own default — never a forced section the detail cannot render.
-        onTab(PANEL_TABS.find((candidate) => candidate === place.tab));
+        // Preserve the requested section; the selection boundary names a section
+        // the restored run cannot offer instead of silently opening another tab.
         // Every takeover clears, exactly as the switcher does: a place is a spot
         // in the QUEUE, and restoring one under an Archive overlay would move the
         // panel behind a screen the operator cannot see it through. The day moves
@@ -100,7 +106,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
         });
       });
     },
-    [navHistory, route, setRoute, onTab, leaveSettings, setActiveWorkflowId],
+    [navHistory, route, setRoute, leaveSettings, setActiveWorkflowId],
   );
 
   /** what each control will actually do, named on its face rather than guessed at */
