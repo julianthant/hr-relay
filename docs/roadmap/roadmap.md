@@ -1347,7 +1347,7 @@ log:
 
 ### 3.1 · Shared dashboard {#dash-defaults}
 status: planned
-chip: Tasks 1–7 evidenced · standalone prerequisites · independent parallel children
+chip: Focused tasks · full gates at finalization · no independent review
 size: XL
 doc: 3.1 §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
@@ -1385,6 +1385,7 @@ needs:
 - p2f-proof
 
 log:
+- 2026-09-13 | operator execution-cadence amendment | remaining 3.1 tasks and prerequisites use focused tests/scoped lint/affected checks; full gates stay at 3.1.23/24/25 and final 3.1.19 acceptance; no independent review step; Codex subagents Astra/ultra; scope, task IDs and dependency edges unchanged
 - 2026-09-08 | D344 prerequisite planning | visible prerequisite gates and smaller dashboard groups; operator coordinates launches/merges; existing in-flight 2.6 briefs and all acceptance remain binding
 - 2026-09-04 | D328 parallel task identities | remaining 3.1 work is Task 8, parallel waves 9–13 with numeric members, then serial Tasks 14–18. A label such as `3.1.9-1` is one supervisor task in wave 9; exact branches/worktrees remain bound in doc 03a · left: 2.6 closure, then Task 8
 - 2026-09-03 | 3.1 parallel execution plan | coordination `C21194e18` makes `master` integration-only for Tasks 8–32, fixes five dependency-gated parallel waves under the four-worktree limit, and names every task worktree/branch in doc 03a · left: 2.6 closure, then Task 8's ownership matrix before wave 1 dispatch
@@ -1646,7 +1647,7 @@ doc: 3.1/prerequisite-boundary-foundation §Establish independent dashboard boun
 
 builds:
 - [ ] BOTH isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
-- [ ] PROOF verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass required candidate review and integration gates
+- [ ] PROOF verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
 - [ ] DOCS publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
 
 needs:
@@ -1955,7 +1956,7 @@ doc: 3.1/prerequisite-detail-foundation §Establish independent run-detail secti
 
 builds:
 - [ ] BOTH separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
-- [ ] PROOF preserve the existing live detail path and section behavior, pass required gates and independent review, then integrate the common base
+- [ ] PROOF preserve the existing live detail path and section behavior, pass focused checks, then integrate the common base
 - [ ] DOCS freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
 
 needs:
@@ -2289,15 +2290,15 @@ log:
 #### 23 · Finalize dashboard surfaces {#dash-surfaces-finalizer}
 status: planned
 size: M
-date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+date: D344 · 2026-09-09 · sequential finalizer after passing focused worker checks
 doc: 3.1/parallel-finalizers §Task 23 · Finalize dashboard surfaces · ref:guards-and-tests §3.14
 
-> Combine reviewed workers 3.1.9.1–3.1.9.7; run full gates and deferred acceptance checks, fix failures, obtain independent review of the corrected result and complete accepted integration and cleanup.
+> Combine worker candidates with passing focused checks: 3.1.9.1–3.1.9.7; run full gates and deferred acceptance checks, fix failures, pass the required gates on the final corrected tree and complete accepted integration and cleanup; no independent review step.
 
 builds:
 - [ ] BOTH resolve combined defects and generated-output drift within the approved group
 - [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS reviewed SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+- [ ] DOCS candidate SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
 
 needs:
 - dash-shell
@@ -2311,15 +2312,15 @@ needs:
 #### 24 · Finalize run operations {#dash-operations-finalizer}
 status: planned
 size: M
-date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+date: D344 · 2026-09-09 · sequential finalizer after passing focused worker checks
 doc: 3.1/parallel-finalizers §Task 24 · Finalize run operations · ref:guards-and-tests §3.14
 
-> Combine reviewed workers 3.1.11.1–3.1.11.2; run full gates and deferred acceptance checks, fix failures, obtain independent review of the corrected result and complete accepted integration and cleanup.
+> Combine worker candidates with passing focused checks: 3.1.11.1–3.1.11.2; run full gates and deferred acceptance checks, fix failures, pass the required gates on the final corrected tree and complete accepted integration and cleanup; no independent review step.
 
 builds:
 - [ ] BOTH resolve combined defects and generated-output drift within the approved group
 - [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS reviewed SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+- [ ] DOCS candidate SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
 
 needs:
 - dash-setup
@@ -2328,15 +2329,15 @@ needs:
 #### 25 · Finalize run detail {#dash-detail-finalizer}
 status: planned
 size: M
-date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
+date: D344 · 2026-09-09 · sequential finalizer after passing focused worker checks
 doc: 3.1/parallel-finalizers §Task 25 · Finalize run detail · ref:guards-and-tests §3.14
 
-> Combine reviewed workers 3.1.14.1–3.1.14.5; run full gates and deferred acceptance checks, fix failures, obtain independent review of the corrected result and complete accepted integration and cleanup.
+> Combine worker candidates with passing focused checks: 3.1.14.1–3.1.14.5; run full gates and deferred acceptance checks, fix failures, pass the required gates on the final corrected tree and complete accepted integration and cleanup; no independent review step.
 
 builds:
 - [ ] BOTH resolve combined defects and generated-output drift within the approved group
 - [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS reviewed SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+- [ ] DOCS candidate SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
 
 needs:
 - dash-run-detail
@@ -3625,7 +3626,36 @@ New admitted subphases receive their own folder. This reorganizes storage only:
 node IDs, phase order, task scope, recorded status, admission rules and evidence remain unchanged.
 Frozen and commit-pinned citations resolve through the index's earlier-path table.
 
+### Phase 3.1 execution cadence and Codex subagents (operator amendment, 2026-09-13)
+
+All Codex subagents use `gpt-6-astra` with `ultra` reasoning, including supporting workers,
+researchers, analysts and reviewers when review is assigned. Native role names retain their duties,
+context limits and read/write restrictions; they no longer choose Sol/Terra model tiers. This
+supersedes older Codex subagent model/effort selections in plans, repository and personal guidance.
+The operator still chooses the parent planning/supervisor session; Claude model choices are unchanged.
+
+For **all remaining Phase 3.1 work**, the operator removes the independent-review step and moves
+broad gates to finalization. The [phase execution cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
+owns the exact task/finalizer map. Prerequisites, standalone tasks and parallel workers complete
+assigned behavior with meaningful focused tests, scoped lint and affected quick/generated checks;
+no full suite or separate reviewer is required at each step or candidate commit. Fix focused
+failures before release, record actual results and defer each broad proof to its named owner.
+Prerequisites may release children after their integrated focused acceptance. Worker development
+completion is distinct from finalizer acceptance; roadmap completion still records assigned
+integration and cleanup. Existing finalizer dependency edges remain binding.
+
+Group finalizers 3.1.23/24/25 combine their inputs, repair group defects, then run typecheck, lint,
+full coverage and all applicable deferred gates on the final corrected tree. Final audit 3.1.19
+executes the whole frozen A01–A42/D01–D05 matrix and final production/live acceptance; its existing
+remediation ownership remains unchanged. None of these stages requires independent review.
+Preserve product outcomes, test membership/assertions/floors, isolation, timeouts and live-write
+boundaries. This supersedes conflicting D191/D344 and skill review/gate cadence for Phase 3.1 only;
+it does not reopen completed evidence, remove independent freezes in other phases, authorize push,
+launch a successor or change operator integration permission.
+
 ### Plan, implement, review (operator amendment, 2026-09-04)
+
+For remaining Phase 3.1 work, the 2026-09-13 exception above replaces this section’s review and gate cadence. All Codex subagent model selections below are superseded by Astra/ultra.
 
 The operator opens planning and supervisor sessions for an exact roadmap task. Codex uses GPT-5.6
 Sol (high) to plan and GPT-6 Astra (high) to supervise; Claude uses Opus 5 (high) and Fable 5.1 (high).
@@ -3822,6 +3852,8 @@ authorized supporting workers follow current native role policy.
 
 ### D344 — Operator-coordinated prerequisite groups (2026-09-08)
 
+For remaining Phase 3.1 work, apply the [2026-09-13 cadence](#phase-31-execution-cadence-and-codex-subagents-operator-amendment-2026-09-13): focused prerequisites/tasks, full gates at finalization, no independent review.
+
 The operator approves smaller, overlapping dashboard subphases and completed prerequisite tasks.
 This changes scheduling and plan organization, not product requirements or acceptance floors.
 Phase 3 uses decimal task identities: `3.P.N` names an actual standalone task or prerequisite;
@@ -3900,6 +3932,8 @@ this roadmap amendment does not declare leaf briefs launch-ready or dispatch any
 <a id="parallel-finalizer-cadence"></a>
 
 #### 2026-09-09 amendment — prerequisite, parallel workers, finalizer
+
+**Phase 3.1 exception:** the 2026-09-13 execution-cadence amendment above removes independent review, uses focused prerequisite/standalone checks and assigns broad gates to the named finalizers. The general rules below continue to govern other phases.
 
 For Phase 3 and future parallel work, every group has three explicit stages. This amendment
 supersedes D344's earlier per-candidate gate/completion wording and any rule that lets a downstream

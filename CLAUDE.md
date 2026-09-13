@@ -12,11 +12,14 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 - Phase/task implementation uses a dedicated branch, never `master`. Sequential work can use an
   exclusively available checkout; parallel tasks each need a branch and worktree. Shared, dirty or
   integration-only checkouts require a worktree even for sequential work. Preserve stricter phase
-  isolation rules; bind branch/base/path and merge conditions before edits, then review and gate integration.
+  isolation rules; bind branch/base/path and merge conditions before edits, then follow the assigned review/gate cadence.
 - Keep existing `AGENTS.md` / `CLAUDE.md` pairs byte-identical. Write one shared text; update both.
   Change instructions when their rules change, not after every feature edit. Put requested lessons
   in the module's linked ledger. Use `/docs` for broader documentation cleanup; `/docs audit` is read-only.
-- Default implementation candidates and finalizers require typecheck, lint and full coverage (D191).
+- Phase 3.1 uses focused task/prerequisite checks, full gates only at named finalization boundaries,
+  and no independent review step: see the [approved cadence](docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13).
+  This overrides conflicting module/personal review and per-candidate gate instructions for 3.1.
+  Elsewhere, default implementation candidates and finalizers require typecheck, lint and full coverage (D191).
   Phase 3 and future parallel workers run focused tests, scoped lint and quick checks; the named
   finalizer combines candidates, runs full gates and fixes failures before group completion.
   Documentation-only commits use D191's scoped checks and verified reuse;
@@ -106,7 +109,7 @@ Skip a down system and continue with the rest. Use rebuild drivers; consult lega
   Production: `npm run web:build` then `npm run dashboard:prod`.
 - Live case: `npm run cli -- dry-run-scenario <workflow> --subject <label>`.
 - Visual/a11y: `npm run test:parity`; D340 uses desktop-only cases from 1.6.6 onward. Do not
-  restore mobile/coarse-pointer variants; preserve desktop resizing, zoom and accessibility. Follow dashboard cadence. Refreeze only deliberately with review.
+  restore mobile/coarse-pointer variants; preserve desktop resizing, zoom and accessibility. Follow dashboard cadence. Refreeze only deliberately with attribution and required validation/review under the phase cadence.
 - Descriptor import-closure edits: `npm run build:manifest` / `npm run build:manifest:check`.
   Store catalog: `npm run stores:catalog` / `npm run stores:catalog:check`.
   Roadmap: `npm run roadmap` / `npm run roadmap:check`. Never hand-edit generated output.
@@ -117,18 +120,23 @@ when their full explanation is not repeated in this entry point.
 
 ## Roadmap task sessions
 
-The operator opens `/phase-plan` → `/supervise`: Sol 5.6 → Astra on Codex; Opus 5 → Fable 5.1 on
-Claude. Use medium effort for Astra and high effort for all other models. `/supervise` dispatches a fresh read-only `/review` subagent (Codex
-`sup_review`, Sol; Claude `sup-review`, Opus, both high), then fixes and finalizes in the same
-session. Separate review sessions remain an explicit operator option. Read roadmap §Governance's
+The operator opens `/phase-plan` → `/supervise`: Astra high for Codex planning; Astra low or medium
+for Codex supervision as classified by `/phase-plan`; Opus 5 → Fable 5.1 high on Claude. Reviews use
+Astra ultra on Codex and Opus high on Claude. Every Codex subagent uses `gpt-6-astra` / `ultra`;
+role names retain responsibilities and restrictions, not model tiers. Outside the Phase 3.1 exception,
+`/supervise` dispatches a fresh read-only `/review` subagent (Codex
+`sup_review`; Claude `sup-review`), then fixes and finalizes in the same
+session. Phase 3.1 omits this independent-review step, including at finalization, and uses its
+linked focused/finalization cadence. Separate review sessions elsewhere remain an explicit operator option. Read roadmap §Governance's
 **Plan, implement, review** amendment for stage boundaries, plan approval, commit-bound review and
-finalization. The supervisor records the candidate as awaiting independent review and marks the
-phase/roadmap task complete only after accepted review, required integration gates and cleanup.
+finalization. Where review is required, record the candidate as awaiting independent review. Mark the
+phase/roadmap task complete only after its assigned checks, integration and cleanup, plus accepted
+review where the phase requires it. Never claim deferred broad gates as passed.
 Use the exact assigned task including parallel suffixes; no required agent coordinator or next-task dispatch.
 D344 (roadmap Governance) requires prerequisite → independent workers → finalizer for Phase 3 and
 future parallel groups, with independent worktrees. Agents may coordinate to resolve blockers, overlap or
 duplicate work within approved boundaries; plan changes return to the operator. No automatic dispatch
-or merge. The operator chooses integration; completion requires review, gates and cleanup. Phase 3
+or merge. The operator chooses integration; completion follows the phase’s review/gate cadence and cleanup. Phase 3
 uses `3.P.N` for standalone prerequisites/tasks and `3.P.N.1`, `3.P.N.2`, etc. for independent parallel
 children unlocked by the completed parent; downstream consumers wait for the named finalizer.
 New parallel plans make the task node the prerequisite, independent numbered children the workers,

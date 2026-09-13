@@ -322,8 +322,12 @@ canary from `.env`, expose its value, silently substitute another target, or inf
 
 For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
 supersedes automatic integration and required coordinator orchestration below. The operator launches tasks
-from accepted prerequisites and assigns the group finalizer. Workers return independently reviewed
-candidates after focused checks; the finalizer owns full gates, fixes and accepted integration.
+from accepted prerequisites and assigns the group finalizer. For Phase 3.1, the
+[2026-09-13 cadence](../../../docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
+requires focused task/prerequisite checks, full gates at finalization and no independent review.
+It supersedes conflicting review/gate instructions in this reference and personal skills. Elsewhere,
+workers return independently reviewed candidates after focused checks; the finalizer owns full gates,
+fixes and accepted integration.
 Targeted peer coordination is permitted when necessary to resolve blockers, overlap or
 duplicate effort within approved boundaries. Plan changes return to the operator; no taking shared
 files, automatic merging or launching other tasks. Existing
@@ -332,17 +336,18 @@ includes unrelated work; an additional lane requires explicit capacity approval.
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
 The operator opens planning and supervisor sessions. Skills use the exact phase task and approved
-plan commit. The supervisor dispatches a fresh read-only analyst using /review with no implementation
+plan commit. Where independent review is required, the supervisor dispatches a fresh read-only reviewer using /review with no implementation
 history, waits for its verdict, fixes/re-reviews and finalizes in the same session. Completion remains
-open until independent review, required gates, integration and cleanup pass.
+open until the assigned gates, integration and cleanup pass, plus independent review where required.
 
 Before authorized worker dispatch, read the active platform's
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
-`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Codex uses native `sup_scout`,
-`sup_analyst`, `sup_terra` and `sup_sol`; Claude uses `sup-scout`, `sup-analyst`, `sup-sonnet` and
-`sup-opus`. Sol/Opus owns substantive supporting work; Terra/Sonnet execution is exact mechanical
-work only. The Astra/Fable supervisor retains the hardest seam and consequential judgment.
-Validate native role definitions before dispatch; never substitute generic roles or model overrides.
+`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Every Codex subagent, including
+`sup_scout`, `sup_analyst`, `sup_terra`, `sup_sol` and `sup_review`, uses `gpt-6-astra` with `ultra`
+reasoning. Native names retain their duties, context limits and read/write restrictions; this
+operator choice supersedes older Sol/Terra model tiers. Codex planning uses Astra high and parent
+supervision uses Astra low or medium as classified by `/phase-plan`; the operator chooses sessions.
+Claude role/model choices are unchanged. Validate saved native role definitions before dispatch.
 
 Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve

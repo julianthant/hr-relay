@@ -81,38 +81,77 @@ identity is an actual standalone task or prerequisite; its decimal children are 
 assignments unlocked after that parent is complete. Historical task filenames and headings remain
 citation aliases. The map below is authoritative for current assignments.
 
+### Execution cadence — operator amendment, 2026-09-13
+
+For all remaining Phase 3.1 work, complete the assigned behavior with focused verification and
+move broad validation to the named finalization sections. **There is no independent review step**
+for prerequisites, workers, standalone tasks, corrections, group finalizers or final acceptance.
+This explicitly supersedes older review and per-candidate full-gate requirements in D191, D344,
+root/module instructions, personal skills and these plans for Phase 3.1. Completed 3.1.8 evidence
+remains historical. Other phases retain their review rules. All Codex subagents use
+`gpt-6-astra` with `ultra` reasoning; role names describe duties, not different model tiers.
+
+| Work | Required before task handoff | Broad validation owner |
+| --- | --- | --- |
+| 3.1.9 and surface children 3.1.9.1–3.1.9.7 | Meaningful affected tests, scoped lint and affected generated/static checks; shared prerequisite behavior must work before children start | 3.1.23 |
+| 3.1.11 and children 3.1.11.1–3.1.11.2 | Same focused checks, including actual session/control and independent launch interfaces | 3.1.24 |
+| 3.1.14 and children 3.1.14.1–3.1.14.5 | Same focused checks, including actual shared detail/subscription interfaces | 3.1.25 |
+| Standalone 3.1.10, 3.1.12, 3.1.13 and 3.1.15–3.1.18 | Same focused checks and the specific behavior/proof the task builds | 3.1.19 |
+| Optional 3.1.20–3.1.22, only if selected | Applicable focused checks; the selected brief names its final acceptance boundary | Never an added prerequisite for mandatory 3.1 release |
+
+The focused brief names real test paths and commands: `npm run test -- <exact test paths>`,
+`npx eslint <affected code/test paths> --max-warnings 0`, and affected generation/freshness or
+other quick checks. Documentation-only work uses documentation checks and `git diff --check`.
+Run the checks that establish the changed behavior, fix failures immediately, and record the
+candidate SHA, commands/results and deferred proof owner in the existing task record. Do not
+repeat full typecheck, whole-repository lint, coverage, architecture, broad parity, production
+smoke or the entire acceptance matrix at each step, candidate commit or handoff. Do not add a
+separate review ceremony. A task whose purpose is a targeted browser, performance or live proof
+still supplies that proof; finalization owns broad combined execution, not unfinished implementation.
+
+At 3.1.23, 3.1.24 and 3.1.25, combine the completed group, fix integration defects, then run
+`npm run typecheck`, `npm run lint` and `npm run test:coverage`, plus applicable generated,
+desktop parity, build/production, performance and deferred acceptance checks. Run coverage
+without this task's compiler/linter contention. Corrections use focused iteration, followed by
+the required full gates on the final corrected code tree. Reuse unchanged valid evidence under
+D191; a commit or documentation recording alone does not trigger duplicate full runs.
+3.1.19 executes all A01–A42 and D01–D05 plus the final full/production/live acceptance gates;
+it retains its audit-only boundary and routes failures to the existing implementation owners,
+whose corrections use this same focused cadence. No independent reviewer is required there.
+
 ### Parallel execution and worktree contract
 
 Read [roadmap D344](../../../../roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
-for scheduling, ownership, operator integration and in-flight exceptions. The operator launches tasks
-and chooses merges. Agents return independently reviewed candidates. Targeted peer coordination is allowed when
-necessary to resolve blockers, overlap or duplicate work under D344; no automatic dispatch or merging. Completion still requires integration, gates and cleanup.
+for ownership, operator integration and isolation; the execution cadence above controls Phase 3.1
+gates and review. The operator launches tasks and chooses merges. Targeted peer coordination is
+allowed to resolve blockers, overlap or duplicate work; no automatic dispatch or merging.
 
-| Complete and merge this prerequisite | Independent workers: focused tests and quick checks | Finalizer: full gates and fixes |
+| Complete and merge this prerequisite | Independent workers: focused checks | Finalizer: full gates and fixes |
 | --- | --- | --- |
 | 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive | [3.1.23 · Finalize dashboard surfaces](parallel-finalizers.md#task-23--finalize-dashboard-surfaces) |
 | 3.1.11 · Sessions (after accepted 3.1.23) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun | [3.1.24 · Finalize run operations](parallel-finalizers.md#task-24--finalize-run-operations) |
 | 3.1.14 · Detail foundation (after accepted 3.1.24 and Queue) | 3.1.14.1–3.1.14.5: Timeline, Context/Data, Logs, Receipts, Gates | [3.1.25 · Finalize run detail](parallel-finalizers.md#task-25--finalize-run-detail) |
 
-A parent closes on its own acceptance, before its children. Every child explicitly requires its
-parent; no child requires a sibling. Workers can enter the finalizer in either order after focused
-checks and independent review. They remain pending finalizer acceptance, not complete. Consumers
-of their output now require that group's finalizer: Date/Activity/Sessions require 3.1.23;
-Queue/Runtime/Detail foundation require 3.1.24; integrated detail consumers require 3.1.25.
-Tasks unrelated to a group's output do not gain a new dependency. Integrated proofs 3.1.16–3.1.19
-retain all required inputs; audit-only 3.1.19 still fixes nothing. Optional 3.1.20–3.1.22 never gate release.
+A prerequisite closes on its own integrated focused release before its children. A worker finishes
+its implementation session after focused checks pass and its committed candidate/evidence are
+ready for finalizer intake. Record that development work as finished; finalizer acceptance and
+integration remain separate, visible obligations. Worker roadmap completion follows assigned
+integration and cleanup, without an independent-review prerequisite. The group and its downstream
+release stay open until the named finalizer passes. No task may claim deferred gates passed.
 
-Before launch, focused plans identify exact paths, prerequisite commit, branch/worktree, shared
-contract and generated-output ownership, isolated tests/resources and either-order merge evidence.
-Bind the finalizer branch/base/target, quick worker commands and every deferred broad proof before
-launch. Full coverage, broad parity and combination repairs belong to the finalizer under D191;
-focused failures must be fixed by the worker. Parents complete shared changes before workers start.
-Sessions also proves Setup and
-Run/Rerun can consume its accepted interface independently. Peers clarify unexpected overlap; changes to the approved plan return to the operator.
-The four-auxiliary-worktree ceiling includes unrelated work: seven ready tasks are selectable work,
-not permission to run seven simultaneous worktrees. Stopped workers may release clean worktrees
-after preserving reviewed commits and evidence under D344; retain candidate branches for finalizer
-intake and reserve its worktree slot. No roadmap label makes an unfinished brief ready.
+Every child requires its parent; no child requires a sibling. Workers can enter the finalizer in
+either order. Date/Activity/Sessions require 3.1.23; Queue/Runtime/Detail foundation require 3.1.24;
+integrated detail consumers require 3.1.25. Integrated proofs 3.1.16–3.1.19 retain their required
+inputs; optional 3.1.20–3.1.22 never gate release. Existing task IDs and dependency edges are unchanged.
+
+Before launch, bind exact paths, prerequisite commit, branch/worktree, shared contract and generated
+ownership, isolated tests/resources, focused commands, finalizer target/merge permission and every
+deferred broad proof. Prerequisites finish shared changes before workers start; peers do not build
+against promised APIs. Preserve either-order integration evidence and the four-auxiliary-worktree
+ceiling. Stopped workers may release clean worktrees after preserving commits and focused evidence;
+retain candidate branches for finalizer intake and reserve its worktree slot. No roadmap label makes
+an unfinished brief ready. Preserve meaningful assertions, coverage floors, test membership,
+timeouts, isolation, required product outcomes and live-write/cutover boundaries.
 
 Phase 2.6 still closes before dashboard implementation. Optional inventory can prepare a read-only
 draft; baseline 3.1.8 freezes acceptance against the final 2.6 handoff. Final acceptance executes that
@@ -394,7 +433,7 @@ platform_` in the ledger. They are listed here only because no phase owns them.
 ## Exit criteria
 
 Current release requires every A01–A42 and D01–D05 outcome in the frozen 3.1.8 acceptance matrix,
-all required task/finalizer reviews and gates, current production/live authority comparisons and
+all required focused task checks and full finalization gates, current production/live authority comparisons and
 owned cleanup. Historical criteria below preserve dated evidence; they do not close reopened 3.1
 work. Only 3.1.19 releases the shared dashboard to 3.2, and optional generic surfaces follow D339.
 

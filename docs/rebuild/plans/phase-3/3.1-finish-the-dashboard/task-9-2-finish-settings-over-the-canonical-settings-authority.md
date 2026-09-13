@@ -3,6 +3,7 @@
 
 **Current assignment: 3.1.9.2.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
 Historical filenames and headings remain citation aliases, not another assignment.
 
 
@@ -37,7 +38,7 @@ be reviewed again; exact accepted replay retains its original identity. Preserve
 controls and process-owned configuration where they still apply. The current editor serves eight
 leaves, and Reset only discards that leaf's draft. Complete the full served catalog and explicit
 persisted-clear operation, independent protected settings and observed-host versus saved-display
-readback. Preserve the accepted `Saved` badge; P40/A8 expansion and deliberate reviewed refreeze
+readback. Preserve the accepted `Saved` badge; P40/A8 expansion and deliberate attributed refreeze
 remain this task's work, using the current scene list rather than assuming eleven old copies survive.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and

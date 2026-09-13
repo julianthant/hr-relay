@@ -20,9 +20,14 @@ Each subphase owns its existing tasks, evidence and exit criteria. Phase 3.3 con
 D344 uses actual prerequisite tasks with independent decimal children: `3.P.N` completes before
 `3.P.N.1`, `3.P.N.2`, etc. launch in separate worktrees. See the [3.1 task map](3.1-finish-the-dashboard/README.md#current-task-identities)
 and 3.2 plan. Each group then goes to its named sequential finalizer: workers run focused tests,
-scoped lint and quick checks; the finalizer combines reviewed commits, runs full gates and fixes
+scoped lint and quick checks; the finalizer combines candidates, runs full gates and fixes
 failures before downstream work or group completion. See
 [D344's cadence](../../../roadmap/roadmap.md#parallel-finalizer-cadence) and
 [D191](../../reference/guards-and-tests.md#d191--the-recommendation-is-adopted-testcoverage-becomes-the-per-commit-gate-operator-decision-2026-08-12).
 Sequential tasks keep separate numbers; the operator chooses launches and integration. Existing
 3.1/3.2 audit-only acceptance and the immutable 3.3 boundary remain separate from repair work.
+
+For remaining 3.1 work, the [2026-09-13 execution cadence](3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
+also gives prerequisites and standalone tasks focused checks and removes independent review at
+every stage, including finalization. Other subphases retain their review requirements. All Codex
+subagents use Astra/ultra under the current native role policy.

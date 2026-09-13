@@ -3,6 +3,7 @@
 
 **Current assignment: 3.1.21.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
 
 Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract) and
 [current task identities](README.md#current-task-identities) before a focused assignment.
@@ -14,7 +15,7 @@ Candidate splits only: shared navigation before date work, configuration/status 
 
 This is roadmap scope, not a launch-ready execution brief. Before implementation, the operator
 approves exact paths, base, branch/worktree, proof commands and resource ownership through
-`/phase-plan`. Preserve D191, independent review, vertical-slice acceptance and all source safety
+`/phase-plan`. Use the Phase 3.1 D191 exception above; preserve vertical-slice acceptance and all source safety
 contracts. Work independently by default; coordinate with relevant peers when necessary under D344. No
 automatic sibling dispatch or merge.
 

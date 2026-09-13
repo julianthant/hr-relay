@@ -3,6 +3,7 @@
 
 **Current assignment: 3.1.13.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
 Historical filenames and headings remain citation aliases, not another assignment.
 
 
@@ -21,7 +22,7 @@ order remains canonical even when the UI offers an explicit display sort.
 The historical R01 `skipped`-enum defect is superseded: current run-span handling explicitly refuses
 `skipped`, which is a task outcome. The declared remove/tombstone patch operations still have no
 named producer in the inspected server source; prove their required delete/transfer convergence or
-an explicitly reviewed equivalent current protocol. Do not drop the outcome just to delete an
+an explicitly verified equivalent current protocol. Do not drop the outcome just to delete an
 unused enum arm. Terminal deletion retains insert-only disposition and explicit released-key copy.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and

@@ -1,5 +1,12 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-13 Phase 3.1 cadence and Codex subagents:** all Codex subagents use Astra/ultra.
+Remaining 3.1 work uses focused task/prerequisite checks, full gates at its named finalizers and
+final acceptance, and no independent review step. Product scope and dependency edges remain unchanged.
+Owners: [roadmap governance](../../roadmap/roadmap.md#phase-31-execution-cadence-and-codex-subagents-operator-amendment-2026-09-13),
+[D191 exception](guards-and-tests.md#phase-3-1-focused-finalization),
+[3.1 execution cadence](../plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13).
+
 **2026-09-09 S scoped release and coordination amendment:** 2.6.6.4 retains its production allocation, adds two bounded settings test amendments/isolated desktop proof, and includes local merge/owned cleanup after focused PASS. Full gates/review stay 2.6.9; updated parallel coordination defaults to independent work/no messages except necessary owner action. Owners: [S01–S06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-s-execution-brief--2026-09-09), [D191](guards-and-tests.md#314-testing-standard-d85--what-replaces-the-e2e-ritual), [roadmap governance](../../roadmap/roadmap.md#combined-database-workflow-amendment-2026-09-09).
 
 **2026-09-09 table decisions:** retain/rename maintenance state and recovery; retain backups and

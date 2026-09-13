@@ -3,6 +3,7 @@
 
 **Current assignment: 3.1.11.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
+Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
 Historical filenames and headings remain citation aliases, not another assignment.
 
 
