@@ -537,11 +537,11 @@ points to the unchanged installed primary node_modules; no package/lock/config f
 
 | Fresh inventory observation | Evidence and precise limit |
 | --- | --- |
-| Fixture shell → Settings → Archive saved report → Versions | `browser-fixture-{shell,settings,archive,report,versions}.txt`; Settings/Archive PNGs. Navigation, eight leaves, generic frozen report, attachment link and version form visible. No save/version/delete command sent. |
+| Fixture shell → Settings → Archive saved report → Versions | `browser-fixture-{shell,settings,archive,report,versions}.txt`; Settings/Archive PNGs. Navigation, the General section’s single Operator label field, a generic frozen report, its explicit missing-attachment notice and the version form were visible. The eight editable leaves are a source-inventory finding; they were not all browser-inspected, and no available attachment link/download was observed. No save/version/delete command sent. |
 | Ordinary Run, Explorer, Activity and Storage/doctor | `browser-fixture-{run,explorer,activity,storage,doctor}.txt`; current production React bundle against schema fixtures. Only the read-only fixture doctor button invoked. No upload or final submit performed. |
 | Seeded running/failure/gate detail at 1024×768 | `browser-seeded-{detail,failure,gate}.txt`, `seeded-detail-1024.png`. Real seeded projection/commands stack; visible notes and Resume from checkpoints; explicit absence of diagnostic capture authority. No gate/resolution command sent. |
 | Below-floor geometry | `browser-below-floor-geometry.txt`, `seeded-below-floor.png`: 900×600 viewport, 1024×720 document. This is resize evidence, not 125%/200% browser zoom or full keyboard proof. |
-| Console | Fixture and seeded navigation reported only a missing favicon 404. This adapter/static asset observation is not a product-runtime acceptance failure; 3.1.15 owns production asset completeness. No application exception was observed in these snapshots. |
+| Console | The snapshots retain a console error count without its message. The session attributed it to a favicon 404, but no retained console log corroborates that cause; console health and absence of application exceptions are unproven. 3.1.15/3.1.19 retain production asset and console verification. |
 
 Fresh inventory does not claim broad parity, accessibility certification, full T2/T3/T4 journeys or
 production startup. Those remain A/D rows. Old 2.6 typecheck/coverage/parity/measurement results are
@@ -570,6 +570,9 @@ proposed obligation to current work or an explicit superseding decision.
 | `supersede-active` planner/kernel mismatch | A23 retains exact affected-generation preview and result/atomic enqueue proof under 3.1.11.2. Present kernel support does not excuse an incomplete planner or misleading control. |
 | Declared gate `subscribes` with no executor consumer | A35 retains this missing behavior. 3.1.14 must publish the shared resolver/dispatch boundary before 3.1.14.5 proves non-operator gate evidence, terminal/external settlement and replay. No fake human answer or silent permanent park is acceptance. |
 | Archive relaunch, archived_runs and archive_relaunches | Superseded by C0 and accepted 2.6.9 retirement; A15–A18 prove saved reports/version changes/export/deletion and absence of execution doors. |
+| Track B per-archived-run storage delta | The old per-archived-run table-delta shape is superseded by accepted 2.6 saved reports and capture-file custody. Preserve measured current archive/report/file storage cost at 3.1.17 (A39), with archive retention/deletion semantics from 3.1.9.7 (A15/A18) and accepted recovery custody (A42). Historical measurements are not a fresh current-journey PASS. |
+| Historical worker-pool spawn refusal | The historical claim that spawn always refuses is superseded by the current composed worker supervisor traced in I22. Preserve N-worker planning/spawn/stop plus every current A22 operation and its missing interaction/effect/refusal proof at 3.1.11; do not mark the whole worker journey accepted from backend presence. |
+| Historical two-separations parallel dry-run proof | Retain the dated two-separations dry-run evidence as historical only. A22/A40 retain production worker isolation, parallel-session truth and zero-write dry-run correlation: 3.1.18 provides the harness and 3.1.19 executes dashboard acceptance. Workflow-specific candidate/live acceptance remains with 3.2/3.3; no fresh parallel live proof is claimed by 3.1.8. |
 | Settings-file/restart/old import and lone-authority restore language | Current C0 settings activation, D336 independent credentials and F07 schema/floor/custody apply (A03–A07/A42). No automatic restart for ordinary new-run activation; authenticated database/archive/file recovery remains. |
 | Generic advanced restore/migrate/repair UI | D339 deferral only; A06/A42 retain health, core recovery, explicit instructions and negative proof. |
 | Mobile/touch/Capture Mode and former narrow portrait tests | D340 desktop replacement D01–D05; D294 retirement. No restoration of phone UI or coarse-pointer tests; safety/attachment/keyboard cases remain. |
@@ -588,7 +591,7 @@ subclauses are superseded by C0/D294/D334 respectively. No historical unchecked 
 | 2 · Major/minor version behavior | A17: Retain reviewed membership and distinct major/minor effects under current C0 version changes. |
 | 3 · Design-system specimen | A02/A10: D274 completed specimen remains evidence; preserve its required parity scene. |
 | 4 · Row/panel vocabulary surface | A10/A26: Retain catalog vocabulary and queue row explanations under current wire/display contracts. |
-| 5 · Settings container | A03: Retain ratified Settings dialog/section presentation. |
+| 5 · Settings container | A03: Retain the ratified full-page Settings takeover with section navigation, Help → Keyboard and the dirty-draft navigation guard (D272.1/D274.5); the historical dialog alternative was rejected. |
 | 6 · Keyboard help reachability | A02/A10: Retain reachable help and keyboard legend. |
 | 7 · System-host and capability sections | A04/A07: Retain truthful host facts and descriptor-derived readiness/capability display. |
 | 8 · Phone Capture | A41: D294 retires the feature; prove absence, not a revived phone surface. |
@@ -638,6 +641,8 @@ subclauses are superseded by C0/D294/D334 respectively. No historical unchecked 
 | 52 · Standing-surface additional states | A08/A13/A14/A15/A16/A17: Retain applicable Archive/Explorer/Intake/version accessibility/provenance states; retired Archive People/relaunch bodies follow C0/D339. |
 
 All current task/roadmap checklists retain their complete remaining scope, mapped by stable execution
-node in `obligation-census-r2.json`. It records each original unchecked/proposed line, source/line and
+node in `obligation-census-r3.json`. Its 224 rows cover the independently enumerated complete original
+unchecked/proposed checkbox set, including roadmap nodes without an existing disposition-map entry.
+It records each original body, source/line and
 assigned I rows or historical disposition. Duplicate history and repeated active checklist wording
 are not counted as new product requirements. Leaf launch still requires a complete approved brief.

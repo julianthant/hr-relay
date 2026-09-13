@@ -263,7 +263,7 @@ availability before issuing READY; the supervisor still executes B01–B06 in it
 
 ## Current execution record — 2026-09-12
 
-**B01–B05 complete; B06 awaiting independent review.** This records a documentation/proof candidate,
+**B01–B05 complete; B06 awaiting R2 repair acceptance.** This records a documentation/proof candidate,
 not implementation or acceptance of the remaining dashboard features. The operator amended review
 effort from Astra/high to **Astra/ultra** and explicitly requested changing the native `sup_review`
 role. Its local TOML and matching policy check now specify ultra; this host configuration amendment
@@ -274,10 +274,10 @@ One supervisor performed the work; no implementation workers were used.
 | --- | --- |
 | B01 · Baseline | Approved plan/base `e182022edfa0cd05a46a74358cd3296bcade6e79`; dedicated `codex/dashboard-baseline` checkout at `/Users/julianhein/Projects/hr-worktree-dashboard-baseline`, created only after availability checks. Accepted 2.6 implementation `d4c599edece5bd53a61fa13f85708ab6bfb0935a`, candidate `7a0ae2f89525e13d23a07c2ea9c0c53f4f3c7c1c` and product integration `81bd3e3841005edc57b7d4820d41e529f73e88ac` are bound in `B01-identities.json`; six retained evidence files and all 22 referenced custody/fixture assets were rehashed. |
 | B02 · Inventory | [I01–I42](task-8-dashboard-inventory.md), production route/dispatch traces, and representative fixture/seeded browser observations. `source-census.json` binds 199 source files, 877 JSX declarations, 2,449 field declarations and 65 route registrations to exact hashes/lines and inventory IDs. Mechanical counts support completeness; they do not prove behavior. Missing producers, interactions and proof remain explicitly owned. |
-| B03 · Reconciliation | Current task descriptions, overview and roadmap consume the accepted Archive, Settings, summary, storage, Run/Rerun, intake and diagnostic contracts. `obligation-census-r2.json` maps all 221 original unchecked/proposed obligations, including historical Task 4's numbered audit, to current requirements or explicit dispositions. Historical Tasks 1–7 and released evidence remain intact. |
+| B03 · Reconciliation | Current task descriptions, overview and roadmap consume the accepted Archive, Settings, summary, storage, Run/Rerun, intake and diagnostic contracts. `obligation-census-r3.json` maps all 224 original unchecked/proposed checkbox obligations; `historical-task4-r3.json` separately maps all 52 numbered Task 4 subjects to current requirements or explicit dispositions. Historical Tasks 1–7 and released evidence remain intact. |
 | B04 · Ownership | The [shared-boundary and leaf ownership map](task-8-acceptance-matrix.md#shared-ownership-and-admission-boundaries) assigns existing shared files and required operations to 3.1.9/3.1.11/3.1.14 before children. Extractions are unimplemented prerequisites, not available APIs. Existing IDs, dependency edges and 3.1.23/24/25 finalizers are unchanged. |
 | B05 · Acceptance | [A01–A42 and D01–D05](task-8-acceptance-matrix.md) freeze required outcomes, forbidden results, source authority, owner, existing/missing proof, desktop/browser/live need and release. Every inventory row has one acceptance row. 3.1.19 must execute the full matrix unchanged unless explicitly amended. |
-| B06 · Review/release | Candidate is recorded as awaiting R1 complete independent review. Commit/evidence identities are retained in `candidate-freeze.json` when frozen. Review findings, integration, integrated document checks and final checkout/ref cleanup remain open. No future task is marked complete or dispatched. |
+| B06 · Review/release | R2 completed independent review at `001ee0d31da9215badcaf0fc3d1c644bd4381b85` with three required documentation/evidence corrections. The repaired candidate awaits its bounded independent recheck. `candidate-freeze-r3.json` binds the repair commit, evidence and renewed gates. Integration and cleanup remain open. No future task is marked complete or dispatched. |
 
 Evidence root: `/Users/julianhein/Projects/hr-dashboard-baseline-evidence-20260912/`.
 `evidence-manifest.json` hashes the retained source census, obligation map, browser artifacts,
@@ -299,7 +299,7 @@ are closed (`browser-closed.json`). No operator database, credentials or externa
 | Roadmap binding | `candidate-corrected-binding`: 24 tests PASS. The initial run had one failure because the new historical heading removed the required current `Exit criteria` heading; the documentation was corrected and all 24 passed, with no test edits. |
 | Lint | `candidate-corrected-lint`: PASS, exit 0. |
 | Roadmap generation/freshness | `candidate-corrected-roadmap` and `candidate-corrected-roadmap-check`: PASS, exit 0. |
-| Document audit | Links/fragments, nine instruction pairs and chains below 32,768 bytes, all 42 I/A rows, 199 source hashes, 221 historical dispositions, unchanged dependency graph and allowed changed paths pass. `audit.py` retains the exact recipe; the final `candidate-final-*` recording renews checks after this append. |
+| Document audit | Links/fragments, nine instruction pairs and chains below 32,768 bytes, all 42 I/A rows, 199 source hashes and the then-reported 221 historical dispositions, unchanged dependency graph and allowed changed paths pass. `audit.py` retains the exact recipe; the final `candidate-final-*` recording renews checks after this append. |
 | Whitespace | `candidate-corrected-diff`: PASS. |
 | Reused product gates | `gate-reuse.json` compares every accepted 2.6 input with this candidate. Unchanged source/tests/fixtures/dependencies/runtime/reference images support reuse of typecheck, full coverage, architecture, parity, build and performance receipts. Historical documentation/generated output and previously classified legacy accounting metadata are separated from those code inputs. These are inspected historical results, not rerun gates or newly proven dashboard journeys. |
 
@@ -331,7 +331,7 @@ dispatch; integration is still blocked on a valid complete independent PASS.
 | --- | --- |
 | R1-F01 · Worker operations | I22/A22 and 3.1.11 now name plan/spawn/pause/resume/stop/refresh/reopen separately. Missing pause/resume UI and missing refresh/reopen cross-process channel are explicit F-class gaps. Existing ownership/refusal tests are credited only for their actual scope; real effect/refusal/uncertainty proof remains required for every operation. |
 | R1-F02 · Historical mappings | Replaced grouped mappings with all 52 exact numbered subjects and their applicable A rows. Item20 binds shell/toast/theme; item23 binds the Run plan. `historical-task4-r2.json` retains every original line/text beside its disposition. |
-| Historical census correctness | The initial 227-line census accidentally treated an inline later-phase link as a node heading and included six 3.5 lines. `obligation-census-r2.json` uses heading identities inside the exact 3.1 section, keeps full checkbox bodies, and has 221 unique obligations. This corrects the count and preserves all actual 3.1 requirements. |
+| Historical census correctness | The initial 227-line census accidentally treated an inline later-phase link as a node heading and included six 3.5 lines. `obligation-census-r2.json` uses heading identities inside the exact 3.1 section, keeps full checkbox bodies, and has 221 unique obligations. R2 subsequently found three omitted 3.1 roadmap obligations; the complete 224-row R3 census supersedes this intermediate accounting claim. |
 | Remaining authority/disposition concerns | Removed the universal command-kernel claim; direct intake upload uses its own service transaction. Distinguished open-session upload retry from independently retained import origins. Explicitly retained the missing supersede-active preview and non-operator gate subscription consumer with their shared/leaf owners; retired ledger writer/outbox obligations now point to accepted current history/export/health contracts. |
 
 The original freeze/evidence manifest remains immutable. Repairs use `rows-r2.json`,
@@ -372,3 +372,25 @@ applicable document gates, verified local master integration including the plann
 owned cleanup. Bounded repair rechecks may stay with independent R2 under this arrangement while
 scope/contracts remain unchanged; material scope or lifecycle changes require renewed complete
 review. The original supervisor owns repairs, integration and cleanup and stops after 3.1.8.
+
+### Complete R2 review and bounded repair — 2026-09-12
+
+R2, standalone task `01a098c0-c5b2-7a10-8bad-5fbe4ad5a303` on GPT-6 Astra/ultra, completed
+the entire assignment at frozen `001ee0d31da9215badcaf0fc3d1c644bd4381b85` and returned
+**CHANGES REQUIRED**. Its retained `standalone-review/verdict.md` and `coverage.json` account for
+all 35 changed paths, 42 I/A pairs, five desktop cases, 52 historical numbered subjects and the
+complete 224-checkbox original scope. There are no unreviewed assigned boundaries. Both R1
+findings are independently confirmed repaired; no R1 acceptance was inherited.
+
+| Finding | Bounded supervisor repair; R2 recheck remains required |
+| --- | --- |
+| R2-F01 · P2 Settings container | The exact historical item 5 now preserves D272.1/D274.5’s full-page takeover, section navigation and Help → Keyboard. `historical-task4-r3.json` and the Markdown disposition agree. |
+| R2-F02 · P2 incomplete checkbox census | `obligation-census-r3.json` includes original roadmap lines 1417, 1566 and 1570 with current A15/A18/A22/A39/A40/A42 owners and explicit historical-proof limits. `original-obligations.py` derives all 224 original bodies from the approved Git tree without a node allowlist; `audit-r3.py` compares exact membership and complete text rather than trusting a hardcoded count. Historical R2 artifacts remain unchanged. |
+| R2-F03 · P3 browser observation overclaim | The browser table now records the one visible Operator label field and missing-attachment notice. Eight editable leaves remain a source finding; the table claims no inspection of every field or available attachment download. Retained snapshots/images are unchanged. |
+
+These corrections clarify existing ratified requirements and evidence; they introduce no new
+product behavior, ownership or lifecycle contract. The approved standalone arrangement allows
+independent R2 to reopen all affected rows and neighbors, verify unchanged complete coverage and
+issue a new commit-bound verdict. The supervisor renews all document gates with `gates-r3.py`,
+freezes the repaired identity and evidence in `candidate-freeze-r3.json`, and retains the original
+R2 verdict before any repair recheck. No product/test/configuration or reference image changes.
