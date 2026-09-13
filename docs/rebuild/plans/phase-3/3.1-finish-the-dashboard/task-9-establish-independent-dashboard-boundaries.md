@@ -233,12 +233,12 @@ state; ordinary A-to-B transfer uses the committed task record.
 
 | Session | Candidate / accepted integration | Focused evidence | Remaining |
 | --- | --- | --- | --- |
-| A | Implementation candidate `1bdc41406a7725d900a2bfa48af4ff48a23dc432` on `codex/3.1.9-boundary-data`; accepted integration **pending operator direction** | PASS: 40 suites / 768 tests; final production-boundary recheck 6 suites / 218 tests; final fixture/record recheck 2 suites / 92 tests; scoped compiler, 80-path lint, build, generation/freshness and document checks. See the receipt below. | Operator-directed integration, accepted SHA for B, owned cleanup; B remains blocked |
-| B | Waiting on A's accepted integration | None from implementation | B1–B3, focused tests/parity, candidate checks, operator-directed integration, owned cleanup |
+| A | Implementation `1bdc41406a7725d900a2bfa48af4ff48a23dc432`; recorded candidate `98c8f32ec9d1745bd3b7bf0dae5450b23ce800e8`; accepted local integration `c990662e91604cfd38baa53e12bfb6e7c60610eb` | PASS: 40 suites / 768 tests; final production-boundary recheck 6 suites / 218 tests; final fixture/record recheck 2 suites / 92 tests; scoped compiler, 80-path lint, build, generation/freshness and document checks. Integration tree equals the checked candidate. | A complete; owned cleanup verified; B may start under operator direction |
+| B | Accepted prerequisite base `c990662e91604cfd38baa53e12bfb6e7c60610eb`; not started | A prerequisite evidence accepted; no B implementation evidence | Operator-launched B1–B3, focused tests/parity, candidate checks, operator-directed integration, owned cleanup |
 
 ### A implementation and backend ownership — 2026-09-13
 
-A1–A3 are implemented in the assigned worktree. The override row now belongs to SQLite migration
+A1–A3 were implemented in the assigned worktree and are accepted on local `master`. The override row now belongs to SQLite migration
 51, and the command kernel verifies the executor's readback against the same transaction repository
 before recording success. Commit validates the applied audit; injected audit failure and fabricated
 executor success both roll back. Stopped conversion admits schemas 46–50, proves the complete
@@ -303,7 +303,7 @@ assigned broader acceptance obligations. Full repository gates remain 3.1.19.
 Implementation candidate: `1bdc41406a7725d900a2bfa48af4ff48a23dc432`; approved base:
 `367a2a51848153a63b1c4219bea2b66d07a93671`. This evidence update changes only the owning task record;
 the implementation, contract, test, dependency and configuration inputs remain those of that commit.
-The candidate keeps 3.1.9 open for B and subsequent directed integration/cleanup.
+The accepted A integration keeps 3.1.9 open for B and B's subsequent directed integration/cleanup.
 
 Evidence root: `/Users/julianhein/Projects/hr-boundary-data-evidence-20260913/run-103137/`.
 
@@ -324,9 +324,36 @@ iteration logs remain evidence of repaired defects and are not acceptance result
 review, whole-repository lint/coverage, broad parity, operator-state conversion or live external-system
 acceptance is claimed. Full repository gates remain 3.1.19; B retains its assigned UI/parity proofs.
 
-A's accepted integration SHA is **pending operator direction**. B must not use the implementation
-candidate as a substituted accepted base. The owned branch/worktree remain retained until verified
-integration and cleanup; master and all dependent task statuses remain unchanged.
+### A accepted integration and cleanup — 2026-09-13
+
+A's accepted integration SHA for B is **`c990662e91604cfd38baa53e12bfb6e7c60610eb`**.
+The operator's `ok` authorized the explicit candidate-merge request. Local `master` accepted recorded
+candidate `98c8f32ec9d1745bd3b7bf0dae5450b23ce800e8` with a conflict-free `--no-ff` merge from
+approved base `367a2a51848153a63b1c4219bea2b66d07a93671`. Both merge parents are retained, and
+merge tree `9230577392d5f33dd5e003b209211914d3900f46` exactly equals the checked candidate tree.
+Pre-integration verification matched all 2,460 recorded non-owner file hashes and all 32 evidence
+hashes. The focused results above are reused on those identical inputs; no broad gate is claimed.
+`integration-merge.log` and `integration-accepted.json` record the operation and equality proof.
+
+Owned cleanup is complete: the worktree registration and physical path
+`/Users/julianhein/Projects/hr-worktree-boundary-data` are absent, and
+`codex/3.1.9-boundary-data` was deleted with `git branch -d` after ancestry verification.
+Only the owned dashboard build and dependency symlink accompanied ordinary `git worktree remove`;
+shared dependencies remain intact. The six failed-iteration scratch roots listed in
+`integration-preparation.json` were removed only after matching their exact owner receipts and
+verifying absent process groups. `cleanup-pre-removal.json` preserves the build-file hashes;
+`cleanup-complete.json` records removal and retained evidence. The calling task remains visible;
+there is no separately assigned task to archive.
+
+This closure changes only the owning task record. Roadmap generation/freshness, document
+links/fragments, unchanged parent checkboxes, instruction twins and whitespace were checked;
+`closure-checks.json` and `closure-audit.json` contain exact results. No production, test,
+dependency, configuration or generated bytes changed after accepted integration.
+
+B must verify the named accepted SHA and approved-plan ancestry before creating its assigned
+branch/worktree. This later evidence-only closure does not replace B's named implementation base.
+A is complete. B, all seven surface children and the overall 3.1.9 checklist remain unstarted/open;
+no task was launched and nothing was pushed. Full repository gates remain at 3.1.19.
 
 ### A delivery assessment
 
