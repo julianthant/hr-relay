@@ -1955,11 +1955,15 @@ conflict refusal, hot readback and the source-authored workflow boundary. Do not
 independently authoritative JSON override file, prepared file claim or file/SQLite recovery protocol.
 A user-requested restore of a prior appearance is an ordinary revisioned update, not a filesystem rollback.
 
-Phase 3.1 Task 9-4 owns conversion of existing overrides and removal of the old mechanism, including
-its reader/writer cutover, proof mapping and guard-inventory changes. Before its parallel wave starts,
-its focused plan must reserve the SQLite migration and shared command/composition changes or extract
-an evidenced serial prerequisite. Import existing valid overrides once, refuse conflicting/malformed
-sources, and prove old files cannot influence appearance after conversion. The implementation-specific
+**Ownership amendment — operator-approved, 2026-09-13.**
+[Phase 3.1.9](../plans/phase-3/3.1-finish-the-dashboard/task-9-establish-independent-dashboard-boundaries.md#approved-execution-brief--2026-09-13)
+owns the complete conversion of existing overrides and removal of the old mechanism: SQLite migration,
+atomic command/audit binding, reader/writer cutover, conversion/recovery proof and guard-inventory
+changes. [3.1.9.4](../plans/phase-3/3.1-finish-the-dashboard/task-9-4-finish-workflow-explorer-and-catalog-editing.md)
+retains editor work over the accepted prerequisite. This replaces the earlier Task 9-4 conversion
+allocation; no sibling shares its migration or root-composition writer. Import existing valid overrides
+once, refuse conflicting/malformed sources, and prove old files cannot influence appearance after
+conversion. The implementation-specific
 file/SQLite crash protocol below records the current implementation; D337 supersedes it as the target.
 No runtime code or active test is removed by this decision. Keeping the current split avoids conversion
 work but preserves unnecessary coordination for simple preferences; putting the override in SQLite

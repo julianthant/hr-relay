@@ -1643,12 +1643,14 @@ needs:
 #### 9 · Establish independent dashboard boundaries {#dash-boundary-foundation}
 status: planned
 date: D344 · operator-coordinated prerequisites
-doc: 3.1/task-9-establish-independent-dashboard-boundaries §Task 3.1.9 · Establish independent dashboard boundaries
+doc: 3.1/task-9-establish-independent-dashboard-boundaries §Task 3.1.9 · Establish independent dashboard boundaries · ref:operator-trust §5.4
 
 > Complete the shared changes discovered by the acceptance inventory before independent surface writers start. Preserve existing behavior and real production consumers; no mock-only foundation.
 
 builds:
 - [ ] BOTH isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
+- [ ] BE D337: complete SQLite override conversion, atomic command/audit binding and shared wiring; preserve existing values and retire runtime file authority and prepared-claim recovery
+- [ ] PROOF verify fresh/supported conversion, rollback, restart/replay, source refusal and backup/restore preservation; old override files cannot influence converted appearance
 - [ ] PROOF verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
 - [ ] DOCS publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
 
@@ -1658,6 +1660,7 @@ needs:
 log:
 - 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9; standalone prerequisite or individual task; acceptance and historical execution anchor retained
+- 2026-09-13 | focused plan approved | two sequential Astra ultra sessions A (authority/backend), then B (UI/fixtures/release); complete D337 storage conversion belongs here; focused checks and no independent review; product work unstarted
 
 
 ##### 1 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
@@ -1736,8 +1739,8 @@ doc: 3.1/task-9-4-finish-workflow-explorer-and-catalog-editing §Task 3.1.9.4 ·
 
 builds:
 - [ ] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
-- [ ] BE D337: put label/icon/category overrides, revision and command/audit in one SQLite transaction; preserve existing values and remove file authority and prepared-claim recovery
-- [ ] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases, exact replay, conversion and rejection of old override sources; bind shared DDL/composition ownership before the wave
+- [ ] BOTH consume 3.1.9's accepted D337 SQLite authority through isolated editor/service ports; preserve label/icon/category editing, conflicts and hot readback
+- [ ] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases and exact replay through the accepted prerequisite; conversion/recovery and shared DDL/composition proof belong to 3.1.9
 
 needs:
 - dash-truth-reset
@@ -1748,6 +1751,7 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 Explorer/catalog seam in `phase-3-1-dashboard-c21194e18-r25-explorer`, parallel with Tasks 9, 11 and 13 · left: Task 8 ownership freeze
 - 2026-09-06 | D337 approved simplification | same appearance editing, one SQLite commit instead of file/database coordination; implementation remains Task 9-4
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9.4; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
+- 2026-09-13 | operator allocation | complete storage conversion/shared wiring moves to 3.1.9; this child retains editor work over its accepted authority; product outcomes and dependencies unchanged
 
 
 ##### 5 · Finish notifications and delivery behavior {#dash-notifications}

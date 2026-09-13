@@ -103,12 +103,12 @@ Mutation routes use the loopback ingress guard and their registered canonical se
 
 | Inventory | Current evidence |
 | --- | --- |
-| Owner / class | 3.1.9.4 / **F** |
+| Owner / class | 3.1.9.4 editor / **F**; 3.1.9 owns complete persistence conversion and shared wiring (operator allocation, 2026-09-13) |
 | Controls and fields | Label/icon/category edit, validation, preview/diff, apply/readback; source-change briefs for structural policy. |
 | Source / authority trace | [src/server/dashboard/commands/explorer-edit-service.ts](../../../../../src/server/dashboard/commands/explorer-edit-service.ts); [src/server/dashboard/commands/explorer-override-store.ts](../../../../../src/server/dashboard/commands/explorer-override-store.ts); [src/dashboard/surfaces/explorer-model.ts](../../../../../src/dashboard/surfaces/explorer-model.ts) |
 | Actual behavior and limit | Closed presentation editor exists. explorer-override-store.ts still uses a file-backed prepared-claim/finalize protocol; the approved D337 single-SQLite transaction remains missing. |
 | Existing proof inputs | [tests/parity/dashboard-reference.spec.ts](../../../../../tests/parity/dashboard-reference.spec.ts) |
-| Remaining acceptance | [A09](task-8-acceptance-matrix.md#a09) — No stale/cyclic/schema/selector/graph hot-apply or lost override after restart. Owner must trace current persistence before proposing a migration. |
+| Remaining acceptance | [A09](task-8-acceptance-matrix.md#a09) — No stale/cyclic/schema/selector/graph hot-apply or lost override after restart. 3.1.9 owns the approved persistence/conversion/recovery work; 3.1.9.4 consumes its accepted authority. |
 
 ### I10 · Inspect UI catalog and help
 

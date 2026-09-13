@@ -8,9 +8,13 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] D337: store label/icon/category overrides and their command/audit in one SQLite transaction;
-  migrate existing overrides and remove the file/SQLite prepared-claim protocol. Preserve editing,
-  validation, conflicts, preview/diff and readback. Bind schema/shared-file ownership before the wave.
+- [ ] Consume the accepted D337 SQLite authority from [3.1.9](task-9-establish-independent-dashboard-boundaries.md#approved-execution-brief--2026-09-13). Preserve label/icon/category editing, validation, conflicts, preview/diff, exact replay and hot readback through its isolated service ports.
+
+**Operator allocation — 2026-09-13.** The complete persistence conversion, migration, command/audit
+transaction, reader/writer cutover, old-protocol retirement and conversion/recovery proof belong to
+3.1.9. This child owns the editor and its surface/service acceptance over that accepted authority;
+it does not reopen shared SQLite, kernel or composition ownership. Historical Task 9-4 conversion
+references describe the earlier allocation.
 
 - [ ] Complete graph/catalog authority and validated overlay preview/diff/version/hot-apply/rollback;
   prove invalid, cyclic, stale, manifest-drift, reload, and clean-context authoring cases.
