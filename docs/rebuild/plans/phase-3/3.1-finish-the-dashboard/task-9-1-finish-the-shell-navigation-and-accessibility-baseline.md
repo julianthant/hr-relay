@@ -2,6 +2,10 @@
 <!-- roadmap: dash-shell -->
 
 **Current assignment: 3.1.9.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
+
+**Current delivery:** operator-directed shell integration is being completed under the amendment
+below. The earlier candidate-only stopping boundary is superseded for this child; 3.1.9.8 remains
+responsible for combined surface acceptance and downstream release.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
 Earlier labels and filenames are recorded in the [rename map](README.md#earlier-labels-and-filenames).
@@ -372,3 +376,47 @@ and focused integration gates, then integrate into local `master` and clean the 
 only when the operator instructs it. Full gates and complete acceptance remain 3.1.19. No merge,
 push, sibling launch or next-task dispatch occurred. Existing task/roadmap completion marks remain
 unchanged until assigned integration and cleanup finish.
+
+## Operator-directed integration amendment — 2026-09-13
+
+After candidate delivery, the operator instructed **“why stop? complete it”**, then **“keep going”**.
+This assigns local `master` integration and owned cleanup for this shell child in this session,
+superseding its earlier candidate-only stop and deferred child integration. It does not launch
+3.1.9.8, the six sibling tasks, or any downstream task. Group acceptance and 3.1.19 broad gates
+remain with their named owners. No push or independent review is authorized or required.
+
+Integration preflight verified clean `master` at `f37a4f4be20a6ff6e806ce95070ce55f6e4ccd1f`,
+ancestral to the candidate, and no competing worktrees. The implementation, fixture and frozen
+evidence hashes matched. The added `npm run typecheck` gate found five shell typing errors and one
+pre-existing schema-fixture parameter mismatch. Repair commit `b3eb8a33c` uses the already-narrowed
+selection detail for the descriptor hash, supplies an async fixture fetch, and validates LocalDate
+and RowRevision values through their existing schemas. The integration-only test correction adds
+the already-current schema 51 to `createExactReleasedDatabase`'s explicit accepted parameter union
+in `tests/unit/sqlite-authority-database.test.ts`. Its body, production migration/authority logic and
+refusal assertion are unchanged; the existing at-floor invalid-baseline test passes. This precise
+compiler-blocker repair is included in the operator-directed integration scope.
+
+| Corrected-candidate check | Result and retained evidence |
+| --- | --- |
+| `npm run typecheck` | PASS, exit 0; `integration-typecheck-fixed.log`. The original diagnostics remain in `integration-typecheck.log`. |
+| Assigned seven-file shell unit command | PASS, 93 tests; `integration-unit.log`, exit 0. |
+| Assigned four-file architecture command | PASS, 28 tests; `integration-architecture.log`, exit 0. |
+| `npm run test -- tests/unit/sqlite-authority-database.test.ts -t 'refuses an at-floor authority whose immutable baseline claims another target'` | PASS, the selected regression; 81 other cases unselected; `integration-schema-fixture.log`, exit 0. |
+| ESLint over all 13 original TS/TSX paths plus the schema-fixture test | PASS, zero warnings; exact argv in `integration-lint.log`, exit 0. |
+| Assigned seven-spec production parity command, `--workers=4` | PASS, 34 cases and wrapper a11y validation; `integration-parity.log`, exit 0. No new reference changes. |
+| Actual zoom on the rebuilt bundle | PASS, all four theme/zoom combinations; `integration-zoom-receipts.json`, retained script and eight viewport PNGs. Same tab-scoped setZoom/getZoom mechanism, 1024×576 CSS at 125% and 720×450 CSS at 200%, with focus/scroll assertions. |
+
+Corrected build input SHA-256: `1816c790ab74d638d481d009e27caf3c4a8f431f8fd18c7ef0c24be89ca36409`;
+bundle output: `bb4fc8db2790edbd5ee41482e559ac94e2f5f2bdda94fa483913a6c976d612fb`.
+`integration-inputs.json` hashes the 34 implementation paths; its SHA-256 is
+`3f6bbc000dfe1e5b6817682e924796a4a62ec55cff08479eaaeb36eaad4222f0`.
+`integration-bundle/` and `integration-parity-output/` preserve final bundle and report/attachments
+before worktree removal. The earlier immutable evidence index remains intact as historical proof;
+integration receipts supplement it. The second owned zoom session and fixture server are stopped,
+and the recreated profile and loaded extension directory have been removed.
+
+The integration operation will use `--no-ff` and verify equality with this corrected candidate's
+tree. An equal merge tree reuses its typecheck/focused checks under D191; no code, fixture,
+configuration or dependency inputs change during merge. Owned cleanup and final roadmap marks
+are recorded only after the merge and physical/ref cleanup are verified. 3.1.9.8 can consume this
+accepted shell integration when the other six candidates are ready; it remains open.
