@@ -324,7 +324,8 @@ For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md
 supersedes automatic integration and required coordinator orchestration below. The operator launches tasks
 from accepted prerequisites and assigns the group finalizer. For Phase 3.1, the
 [2026-09-13 cadence](../../../docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-requires focused task/prerequisite checks, full gates at finalization and no independent review.
+requires focused task/prerequisite checks, typecheck plus focused group integration, full repository
+gates only at 3.1.19 with same-session final repairs, and no independent review.
 It supersedes conflicting review/gate instructions in this reference and personal skills. Elsewhere,
 workers return independently reviewed candidates after focused checks; the finalizer owns full gates,
 fixes and accepted integration.

@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
 asOf: 2026-09-13
-head: 21acb49b5
+head: 1ed231932
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
@@ -1347,7 +1347,7 @@ log:
 
 ### 3.1 · Shared dashboard {#dash-defaults}
 status: planned
-chip: Focused tasks · full gates at finalization · no independent review
+chip: Focused tasks/groups · full gates and repairs at 19 · no independent review
 size: XL
 doc: 3.1 §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
@@ -1385,6 +1385,7 @@ needs:
 - p2f-proof
 
 log:
+- 2026-09-13 | final-gates correction | group finalizers 9.8/11.3/14.6 use typecheck, focused integration, scoped lint and affected build/generated checks; 3.1.19 alone runs full repository gates and repairs gate-found defects in the same session; no independent review; all outcome and dependency requirements retained
 - 2026-09-13 | execution-order renumbering | former 3.1.23/24/25 move to finalization children 3.1.9.8/11.3/14.6; current headings, filenames and doc bindings agree with numeric order; stable nodes, dependencies, scope, focused checks and no-review cadence unchanged; 3.1.19 remains final mandatory acceptance
 - 2026-09-13 | operator execution-cadence amendment | remaining 3.1 tasks and prerequisites use focused tests/scoped lint/affected checks; full gates stay at 3.1.23/24/25 and final 3.1.19 acceptance; no independent review step; Codex subagents Astra/ultra; scope, task IDs and dependency edges unchanged
 - 2026-09-08 | D344 prerequisite planning | visible prerequisite gates and smaller dashboard groups; operator coordinates launches/merges; existing in-flight 2.6 briefs and all acceptance remain binding
@@ -1819,12 +1820,12 @@ size: M
 date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
 doc: 3.1/task-9-8-finalization-dashboard-surfaces §Task 3.1.9.8 · Finalization — dashboard surfaces · ref:guards-and-tests §3.14
 
-> Combine worker candidates with passing focused checks: 3.1.9.1–3.1.9.7; run full gates and deferred acceptance checks, fix failures, pass the required gates on the final corrected tree and complete accepted integration and cleanup; no independent review step.
+> Combine worker candidates with passing focused checks: 3.1.9.1–3.1.9.7; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
 - [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS candidate SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
 - dash-shell
@@ -1932,12 +1933,12 @@ size: M
 date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
 doc: 3.1/task-11-3-finalization-run-operations §Task 3.1.11.3 · Finalization — run operations · ref:guards-and-tests §3.14
 
-> Combine worker candidates with passing focused checks: 3.1.11.1–3.1.11.2; run full gates and deferred acceptance checks, fix failures, pass the required gates on the final corrected tree and complete accepted integration and cleanup; no independent review step.
+> Combine worker candidates with passing focused checks: 3.1.11.1–3.1.11.2; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
 - [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS candidate SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
 - dash-setup
@@ -2124,12 +2125,12 @@ size: M
 date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
 doc: 3.1/task-14-6-finalization-run-detail §Task 3.1.14.6 · Finalization — run detail · ref:guards-and-tests §3.14
 
-> Combine worker candidates with passing focused checks: 3.1.14.1–3.1.14.5; run full gates and deferred acceptance checks, fix failures, pass the required gates on the final corrected tree and complete accepted integration and cleanup; no independent review step.
+> Combine worker candidates with passing focused checks: 3.1.14.1–3.1.14.5; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
 - [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS candidate SHAs, focused worker evidence, finalizer results, accepted integration and cleanup
+- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
 - dash-run-detail
@@ -2241,17 +2242,17 @@ log:
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.18; standalone prerequisite or individual task; acceptance and historical execution anchor retained
 
 
-#### 19 · Final acceptance and close Phase 3.1 {#dash-acceptance}
+#### 19 · Final repairs, acceptance, and close Phase 3.1 {#dash-acceptance}
 status: planned
 date: D344 · former 3.1.18 · independent worktree after named prerequisites
-doc: 3.1/task-19-final-acceptance-and-close-phase-3-1 §Task 3.1.19 · Final acceptance and close Phase 3.1 · 3.1 §Exit criteria
+doc: 3.1/task-19-final-acceptance-and-close-phase-3-1 §Task 3.1.19 · Final repairs, acceptance, and close Phase 3.1 · 3.1 §Exit criteria
 
 builds:
 - [ ] PROOF execute Task 8's unchanged acceptance matrix across run, queue, settings, setup, session, notification, date, trust, archive, Explorer, intake, and recovery journeys
 - [ ] PROOF D340: verify supported desktop sizing/zoom/accessibility and each former mobile obligation's disposition; mobile support is not a completion requirement
 - [ ] PROOF typecheck, lint, coverage, architecture, generated checks, parity, production smoke, performance, storage recovery, and live dry-run gates are green together
 - [ ] PROOF direct authority reconciliation finds no ghost, duplicate, stale, or orphaned run/settings state and no protected-value exposure
-- [ ] DOCS open focused remediation tasks for any failure; this supervisor audits and closes only after every row has independent evidence
+- [ ] BOTH fix gate-found defects in this session, add regression proof and establish every required gate on the final corrected tree before integration and cleanup
 
 needs:
 - dash-shell
@@ -3627,6 +3628,31 @@ New admitted subphases receive their own folder. This reorganizes storage only:
 node IDs, phase order, task scope, recorded status, admission rules and evidence remain unchanged.
 Frozen and commit-pinned citations resolve through the index's earlier-path table.
 
+### Phase 3.1 full gates and repairs at final acceptance (operator amendment, 2026-09-13)
+
+The operator reserves full repository gates for **3.1.19**. Group finalizers **3.1.9.8, 3.1.11.3
+and 3.1.14.6** still combine all group inputs, fix integration defects and release their existing
+downstream consumers, but require only typecheck, focused integration/regression tests, scoped
+lint and affected build/generated checks. Record a focused development release and all deferred
+broad proof at 3.1.19; do not claim full acceptance at a group checkpoint.
+
+**3.1.19 owns final repairs, acceptance and closure in one session.** It consumes the complete
+required 3.1 implementation, runs full gates and the frozen A01–A42/D01–D05 matrix, fixes failures
+within the approved outcomes across consumed paths, adds regression proof and establishes all
+required gates on the final corrected code tree. It inherits this repair ownership after intake;
+ordinary gate-found corrections do not require handbacks to earlier sessions. New product scope
+or changed contract decisions remain outside this authorization. Integration and cleanup follow
+the assigned permission; Phase 3.2 still waits for accepted 3.1.19.
+
+This explicitly supersedes earlier Phase 3.1 per-group full-gate and audit-only/no-repair rules,
+including D191/D344 and personal skills. All no-independent-review and Astra/ultra settings remain.
+Keep every existing task ID, dependency edge, product outcome, assertion, floor, timeout and live-
+write boundary. Reuse valid unchanged evidence; rerun invalidated gates after corrections. Group
+numbers and independent-worker ownership remain; other phases keep their gate/freeze policies.
+The [phase cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
+and [final session plan](../rebuild/plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md)
+own exact verification and repair procedure.
+
 ### Phase 3.1 execution-order labels (operator amendment, 2026-09-13)
 
 The operator renumbers former finalizers 3.1.23, 3.1.24 and 3.1.25 to **3.1.9.8**, **3.1.11.3**
@@ -3639,7 +3665,8 @@ permitted by D344's grandfathered-identity clause for 3.1 only. Other phases kee
 
 A parent releases its independent workers after focused acceptance; the finalization child requires
 every worker. The former 23/24/25 dependency barriers now appear before their consumers in the tree.
-3.1.19 is labeled **Final acceptance and close Phase 3.1**, the last required task. Optional
+At this renumbering, 3.1.19 was labeled **Final acceptance and close Phase 3.1**, the last required
+task; the later final-gates correction above adds same-session repairs. Optional
 3.1.20–3.1.22 remain outside the mandatory sequence. Numbering provides a valid sequential path,
 without adding dependency edges or serializing independent work. No product scope, acceptance
 outcome, gate timing, review policy, completion status, integration permission or live-write boundary
@@ -3654,7 +3681,7 @@ supersedes older Codex subagent model/effort selections in plans, repository and
 The operator still chooses the parent planning/supervisor session; Claude model choices are unchanged.
 
 For **all remaining Phase 3.1 work**, the operator removes the independent-review step and moves
-broad gates to finalization. The [phase execution cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
+broad gates to final task 3.1.19. The [phase execution cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
 owns the exact task/finalizer map. Prerequisites, standalone tasks and parallel workers complete
 assigned behavior with meaningful focused tests, scoped lint and affected quick/generated checks;
 no full suite or separate reviewer is required at each step or candidate commit. Fix focused
@@ -3663,10 +3690,11 @@ Prerequisites may release children after their integrated focused acceptance. Wo
 completion is distinct from finalizer acceptance; roadmap completion still records assigned
 integration and cleanup. Existing finalizer dependency edges remain binding.
 
-Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 combine their inputs, repair group defects, then run typecheck, lint,
-full coverage and all applicable deferred gates on the final corrected tree. Final audit 3.1.19
-executes the whole frozen A01–A42/D01–D05 matrix and final production/live acceptance; its existing
-remediation ownership remains unchanged. None of these stages requires independent review.
+Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 combine inputs and fix group defects with
+typecheck, focused integration/regression tests, scoped lint and affected build/generated checks.
+Full repository gates and broad deferred proof belong only to 3.1.19. That final session executes
+the whole frozen A01–A42/D01–D05 matrix, repairs gate-found defects itself, and verifies the final
+corrected code tree before release. No stage requires independent review.
 Preserve product outcomes, test membership/assertions/floors, isolation, timeouts and live-write
 boundaries. This supersedes conflicting D191/D344 and skill review/gate cadence for Phase 3.1 only;
 it does not reopen completed evidence, remove independent freezes in other phases, authorize push,
@@ -3871,7 +3899,7 @@ authorized supporting workers follow current native role policy.
 
 ### D344 — Operator-coordinated prerequisite groups (2026-09-08)
 
-For remaining Phase 3.1 work, apply the [2026-09-13 cadence](#phase-31-execution-cadence-and-codex-subagents-operator-amendment-2026-09-13): focused prerequisites/tasks, full gates at finalization, no independent review.
+For remaining Phase 3.1 work, apply the [2026-09-13 cadence](#phase-31-execution-cadence-and-codex-subagents-operator-amendment-2026-09-13): focused prerequisites/tasks and group integration, full gates and repairs only at 3.1.19, no independent review.
 
 The operator approves smaller, overlapping dashboard subphases and completed prerequisite tasks.
 This changes scheduling and plan organization, not product requirements or acceptance floors.
@@ -3952,7 +3980,7 @@ this roadmap amendment does not declare leaf briefs launch-ready or dispatch any
 
 #### 2026-09-09 amendment — prerequisite, parallel workers, finalizer
 
-**Phase 3.1 exception:** the 2026-09-13 execution-cadence amendment above removes independent review, uses focused prerequisite/standalone checks and assigns broad gates to the named finalizers. The general rules below continue to govern other phases.
+**Phase 3.1 exception:** the 2026-09-13 final-gates correction above removes independent review, uses focused prerequisite/task/group checks and assigns full repository gates plus same-session repairs only to 3.1.19. The general rules below continue to govern other phases.
 
 For Phase 3 and future parallel work, every group has three explicit stages. This amendment
 supersedes D344's earlier per-candidate gate/completion wording and any rule that lets a downstream

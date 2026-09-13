@@ -1,5 +1,13 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-13 final-gates correction for Phase 3.1:** 9.8/11.3/14.6 perform focused group
+integration with typecheck, focused tests, scoped lint and affected build/generated checks.
+3.1.19 alone owns full repository gates and repairs gate-found defects in the same session.
+No independent review; numbering, dependencies and frozen outcomes retained. Owners:
+[roadmap amendment](../../roadmap/roadmap.md#phase-31-full-gates-and-repairs-at-final-acceptance-operator-amendment-2026-09-13),
+[D191 exception](guards-and-tests.md#phase-3-1-focused-finalization),
+[final repair/acceptance plan](../plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md).
+
 **2026-09-13 Phase 3.1 execution-order labels:** former finalizers 3.1.23/24/25 become
 3.1.9.8/11.3/14.6, each the last child of its worker group. Active plan headings, filenames and
 roadmap bindings follow execution order; 3.1.19 remains final required acceptance. Stable node

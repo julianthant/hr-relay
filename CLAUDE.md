@@ -16,8 +16,9 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
 - Keep existing `AGENTS.md` / `CLAUDE.md` pairs byte-identical. Write one shared text; update both.
   Change instructions when their rules change, not after every feature edit. Put requested lessons
   in the module's linked ledger. Use `/docs` for broader documentation cleanup; `/docs audit` is read-only.
-- Phase 3.1 uses focused task/prerequisite checks, full gates only at named finalization boundaries,
-  and no independent review step: see the [approved cadence](docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13).
+- Phase 3.1 uses focused task/prerequisite checks and focused group integration. Full repository gates
+  belong only to 3.1.19, which also repairs final acceptance failures in the same session.
+  No independent review step: see the [approved cadence](docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13).
   This overrides conflicting module/personal review and per-candidate gate instructions for 3.1.
   Elsewhere, default implementation candidates and finalizers require typecheck, lint and full coverage (D191).
   Phase 3 and future parallel workers run focused tests, scoped lint and quick checks; the named
@@ -127,7 +128,7 @@ role names retain responsibilities and restrictions, not model tiers. Outside th
 `/supervise` dispatches a fresh read-only `/review` subagent (Codex
 `sup_review`; Claude `sup-review`), then fixes and finalizes in the same
 session. Phase 3.1 omits this independent-review step, including at finalization, and uses its
-linked focused/finalization cadence. Separate review sessions elsewhere remain an explicit operator option. Read roadmap §Governance's
+linked focused-group/final-3.1.19 cadence. Separate review sessions elsewhere remain an explicit operator option. Read roadmap §Governance's
 **Plan, implement, review** amendment for stage boundaries, plan approval, commit-bound review and
 finalization. Where review is required, record the candidate as awaiting independent review. Mark the
 phase/roadmap task complete only after its assigned checks, integration and cleanup, plus accepted

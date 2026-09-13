@@ -3,7 +3,7 @@
 
 **Current assignment: 3.1.20.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
-Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
+Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
 
 Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract) and
 [current task identities](README.md#current-task-identities) before a focused assignment.

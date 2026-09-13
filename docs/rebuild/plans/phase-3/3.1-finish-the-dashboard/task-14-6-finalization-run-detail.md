@@ -3,11 +3,11 @@
 
 **Current assignment: 3.1.14.6.** Intake: candidates with passing focused checks from 3.1.14.1–3.1.14.5.
 
-- [ ] combine every assigned worker candidate and complete the full group gates and deferred proofs
-- [ ] fix failures and pass the required full gates on the final corrected tree; no independent review step
-- [ ] integrate the accepted result, close worker/finalizer records and clean up owned resources
+- [ ] combine every assigned worker candidate and verify the integrated group with focused checks
+- [ ] fix group defects; pass typecheck, focused integration tests, scoped lint and affected build/generated checks
+- [ ] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
 
-Accepted output releases 3.1.16 realtime convergence and later acceptance. Existing audit-only 3.1.19 remains unchanged.
+Accepted output releases 3.1.16 realtime convergence and later acceptance. Full repository gates and final repairs remain at 3.1.19; this is a focused development release.
 
 Read [the group map](README.md#parallel-execution-and-worktree-contract),
 [D344](../../../../roadmap/roadmap.md#parallel-finalizer-cadence) and
@@ -19,13 +19,18 @@ step is required; worker development completion is distinct from the group relea
 
 Before worker launch, the focused plan binds the finalizer's exact branch/worktree/base, target,
 merge permission, quick worker commands, deferred acceptance checks and resource ownership.
-In an isolated integration worktree, combine the exact committed candidates, reconcile generated
-output, run typecheck, lint and full coverage plus applicable generated checks, desktop parity,
-build/production smoke, performance and acceptance proofs. Fix group defects, add regression
-coverage and rerun required gates on the final corrected tree. Integration, completion records and
-owned cleanup require a green result. Focused iteration is sufficient while fixing failures; do not
-repeat broad suites for each intermediate fix or documentation-only recording. No coverage floor,
-assertion, test membership, timeout or live-write boundary is weakened.
+In an isolated integration worktree, combine the exact committed candidates and reconcile generated
+output. Run `npm run typecheck`, focused integration/regression tests over the changed interfaces,
+scoped lint and affected build/generated checks. The focused brief names exact test/lint paths and
+commands. Fix group defects, add regression proof and rerun invalidated checks on the corrected tree.
+Pass this scoped verification before releasing downstream consumers; do not claim full acceptance.
+
+Defer full coverage, whole-repository lint/architecture, broad desktop parity, production smoke,
+performance, recovery and the complete acceptance matrix to 3.1.19. Retain fixtures, proof commands,
+missing broad evidence and exact candidate/integration SHAs for that task. Group-specific targeted
+proof remains required where it establishes a changed interface. No full suite is required just
+for a group release or documentation-only recording. Preserve coverage floors, assertions, test
+membership, timeouts and live-write boundaries. No independent reviewer is required.
 Shared contract/scope changes require a revised plan. Other groups' files remain outside ownership.
 
 Current baseline and acceptance: [inventory](task-8-dashboard-inventory.md) and

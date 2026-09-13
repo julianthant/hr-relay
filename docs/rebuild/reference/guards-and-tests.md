@@ -1140,7 +1140,7 @@ slipped in behind a coverage fix.
 
 #### D191 — the recommendation is adopted: `test:coverage` becomes the per-commit gate (operator decision, 2026-08-12)
 
-For remaining Phase 3.1 work, the [2026-09-13 exception](#phase-3-1-focused-finalization) below takes precedence: focused tasks/prerequisites, full gates at finalization, no independent review.
+For remaining Phase 3.1 work, the [2026-09-13 exception](#phase-3-1-focused-finalization) below takes precedence: focused tasks/prerequisites and group integration, full gates and repairs only at 3.1.19, no independent review.
 
 <!-- roadmap: phase-3 -->
 
@@ -1262,30 +1262,35 @@ contention. A red finalizer leaves the group and its downstream release blocked.
 
 <a id="phase-3-1-focused-finalization"></a>
 
-**2026-09-13 Phase 3.1 focused-execution amendment (operator-approved).** For remaining 3.1
-prerequisites, standalone tasks, workers and corrections, focused tests, scoped lint and affected
-quick/generated checks replace per-candidate full gates. No independent review step is required,
-including in finalizers. This explicitly supersedes the prerequisite/full-gate and review rows above
-for Phase 3.1 and its already admitted remaining plans; other phases keep their recorded cadence.
-The [phase execution table](../plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-assigns all deferred proof: 3.1.9 and its children to 3.1.9.8; 3.1.11 and its children to 3.1.11.3;
-3.1.14 and its children to 3.1.14.6; standalone 3.1.10/12/13/15–18 to final acceptance 3.1.19.
+**2026-09-13 Phase 3.1 focused-execution amendment (operator-approved; final-gates correction).**
+Prerequisites, standalone tasks, workers and corrections use meaningful focused tests, scoped lint
+and affected quick/generated checks. Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 combine
+inputs, fix integration defects, run `npm run typecheck`, focused integration/regression tests,
+scoped lint and affected build/generated checks, then release their existing downstream consumers.
+These are focused development releases; full repository acceptance remains open.
 
-Each task completes real behavior and meaningful regression proof, fixes focused failures, and
-records exact commands/results, candidate SHA and deferred checks in its existing owner. Broad
-suite reruns are not required for every step, commit or handoff. Task-specific proof work still
-runs its targeted cases. Finalizers combine inputs and fix defects, then run `npm run typecheck`,
-`npm run lint`, `npm run test:coverage` and applicable generated/parity/build/performance/acceptance
-checks on the final corrected code tree. 3.1.19 retains the complete frozen acceptance matrix and
-current production/live comparisons. Its existing audit/remediation split is unchanged.
+**3.1.19 is the sole full-gate boundary.** It owns `npm run typecheck`, `npm run lint`,
+`npm run test:coverage` and all required architecture/generated/parity/build/production/performance/
+recovery/live acceptance proofs, including every frozen A01–A42 and D01–D05 outcome. It repairs
+gate-found defects in the same session across the consumed required Phase 3.1 paths, adds regression
+proof and verifies the final corrected tree; it no longer hands ordinary repairs back to earlier
+tasks. The [phase execution table](../plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
+and [3.1.19 plan](../plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md)
+own exact intake, repair scope and proof scheduling. Product scope and contract decisions remain
+bounded by the approved frozen outcomes.
 
-Use focused iteration for repairs and reuse unchanged valid evidence under the rules above;
-do not duplicate broad suites for recording-only commits. Completion distinguishes focused
-development release from full group/phase acceptance. A red required check remains a failure.
-Preserve all assertions, membership, coverage floors, timeouts, isolation, the four-worker ceiling
-and coverage without this task's compiler/linter contention. The review waiver changes process,
-not product proof or operator integration/live-write permissions. Governance:
-[2026-09-13 amendment](../../roadmap/roadmap.md#phase-31-execution-cadence-and-codex-subagents-operator-amendment-2026-09-13).
+No independent review step is required at any remaining 3.1 stage. This explicitly supersedes
+older per-group full-suite, prerequisite/full-gate, review and audit-only rules for Phase 3.1;
+other phases keep their recorded cadence. Each task records commands/results, candidate SHA and
+all deferred broad proof at its existing owner. Task-specific targeted proof still runs when it
+establishes the assigned behavior. Group finalizers do not run broad suites merely for a release.
+
+Use focused repair iteration; establish all required gates on the final corrected code tree.
+Reuse valid unchanged evidence and rerun invalidated checks under D191; recording-only changes
+do not duplicate full runs. A failed check remains a failure. Preserve assertions, membership,
+coverage floors, timeouts, isolation, the four-worker ceiling and coverage without compiler/linter
+contention. Integration, live-write and cutover permissions do not expand. Governance:
+[2026-09-13 final-gates correction](../../roadmap/roadmap.md#phase-31-full-gates-and-repairs-at-final-acceptance-operator-amendment-2026-09-13).
 
 **2026-09-09 scoped combined-database exception (operator-approved).** Only newly planned
 Phase 2.6 database-modernization assignments in the [combined workflow](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)

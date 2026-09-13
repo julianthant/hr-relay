@@ -79,7 +79,7 @@ identity map; older doc-04 deferral references below are historical, not release
 Work from the current task table below in numeric order. Historical 3.1.1–3.1.8 keep their
 numbers and completion evidence. Each prerequisite is followed by its independent children,
 then **Finalization** as its last child. After that group is accepted, continue to the next
-whole-number task. The last mandatory task is **3.1.19 · Final acceptance and close Phase 3.1**.
+whole-number task. The last mandatory task is **3.1.19 · Final repairs, acceptance, and close Phase 3.1**.
 Optional 3.1.20–3.1.22 are a separate menu, not steps required after final acceptance.
 
 **Operator renumbering — 2026-09-13.** Former 3.1.23 becomes **3.1.9.8**, former 3.1.24 becomes
@@ -91,41 +91,53 @@ Dated evidence retains its original labels; use the rename map below to resolve 
 
 ### Execution cadence — operator amendment, 2026-09-13
 
-For all remaining Phase 3.1 work, complete the assigned behavior with focused verification and
-move broad validation to the named finalization sections. **There is no independent review step**
-for prerequisites, workers, standalone tasks, corrections, group finalizers or final acceptance.
-This explicitly supersedes older review and per-candidate full-gate requirements in D191, D344,
-root/module instructions, personal skills and these plans for Phase 3.1. Completed 3.1.8 evidence
-remains historical. Other phases retain their review rules. All Codex subagents use
-`gpt-6-astra` with `ultra` reasoning; role names describe duties, not different model tiers.
+**Final-gates correction (operator-approved, 2026-09-13).** Full repository gates run at **3.1.19**.
+Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 combine and repair their groups using focused
+integration checks. 3.1.19 repairs gate-found defects itself in the same session, then completes
+acceptance and closure. This replaces the earlier per-group full-gate and audit-only rules.
 
-| Work | Required before task handoff | Broad validation owner |
+There is no independent review step for remaining Phase 3.1 prerequisites, workers, standalone
+tasks, corrections, group finalizers or final acceptance. This exception supersedes conflicting
+D191/D344, root/module and personal-skill gate/review instructions for 3.1. Completed evidence
+remains historical; other phases keep their rules. All Codex subagents use `gpt-6-astra` with
+`ultra` reasoning; role names retain their duties and restrictions.
+
+| Stage | Required before release | Deferred proof |
 | --- | --- | --- |
-| 3.1.9 and surface children 3.1.9.1–3.1.9.7 | Meaningful affected tests, scoped lint and affected generated/static checks; shared prerequisite behavior must work before children start | 3.1.9.8 |
-| 3.1.11 and children 3.1.11.1–3.1.11.2 | Same focused checks, including actual session/control and independent launch interfaces | 3.1.11.3 |
-| 3.1.14 and children 3.1.14.1–3.1.14.5 | Same focused checks, including actual shared detail/subscription interfaces | 3.1.14.6 |
-| Standalone 3.1.10, 3.1.12, 3.1.13 and 3.1.15–3.1.18 | Same focused checks and the specific behavior/proof the task builds | 3.1.19 |
+| Prerequisites and individual tasks through 3.1.18 | Meaningful affected tests, scoped lint and affected quick/generated checks; finish the actual behavior or specific proof assigned to that task | Full repository and broad combined gates at 3.1.19 |
+| Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 | Combine exact worker commits, fix integration defects, run typecheck, focused integration/regression tests, scoped lint and affected build/generated checks | Full coverage, whole-repository lint/architecture, broad parity, production, performance, recovery and full acceptance at 3.1.19 |
+| 3.1.19 — final repairs and acceptance | Combine all required inputs, execute full gates and A01–A42/D01–D05, fix failures in this session, verify the final corrected tree, integrate and clean up under the assigned permission | None for Phase 3.1 release |
 | Optional 3.1.20–3.1.22, only if selected | Applicable focused checks; the selected brief names its final acceptance boundary | Never an added prerequisite for mandatory 3.1 release |
 
-The focused brief names real test paths and commands: `npm run test -- <exact test paths>`,
+A focused brief names real paths and commands: `npm run test -- <exact test paths>`,
 `npx eslint <affected code/test paths> --max-warnings 0`, and affected generation/freshness or
 other quick checks. Documentation-only work uses documentation checks and `git diff --check`.
-Run the checks that establish the changed behavior, fix failures immediately, and record the
-candidate SHA, commands/results and deferred proof owner in the existing task record. Do not
-repeat full typecheck, whole-repository lint, coverage, architecture, broad parity, production
-smoke or the entire acceptance matrix at each step, candidate commit or handoff. Do not add a
-separate review ceremony. A task whose purpose is a targeted browser, performance or live proof
-still supplies that proof; finalization owns broad combined execution, not unfinished implementation.
+Run checks that establish changed behavior, fix failures immediately, and record the candidate
+SHA, commands/results and every deferred proof in the existing task record. Do not repeat full
+suites for each step, candidate commit, group release or recording-only change. A task whose
+purpose is a targeted browser, performance, recovery or live proof still supplies that proof.
 
-At 3.1.9.8, 3.1.11.3 and 3.1.14.6, combine the completed group, fix integration defects, then run
-`npm run typecheck`, `npm run lint` and `npm run test:coverage`, plus applicable generated,
-desktop parity, build/production, performance and deferred acceptance checks. Run coverage
-without this task's compiler/linter contention. Corrections use focused iteration, followed by
-the required full gates on the final corrected code tree. Reuse unchanged valid evidence under
-D191; a commit or documentation recording alone does not trigger duplicate full runs.
-3.1.19 executes all A01–A42 and D01–D05 plus the final full/production/live acceptance gates;
-it retains its audit-only boundary and routes failures to the existing implementation owners,
-whose corrections use this same focused cadence. No independent reviewer is required there.
+Each group finalizer runs `npm run typecheck` once on its combined implementation, focused tests
+covering cross-worker interfaces and corrected behavior, scoped lint, and affected build/generated
+checks. Rerun invalidated checks after corrections. A successful group release unlocks its existing
+downstream consumers and may close integrated worker/group records with owned cleanup; it claims
+only that focused verification, not full Phase 3.1 acceptance. Record all deferred broad checks
+under 3.1.19. Shared interfaces must actually work before they are released to consumers.
+
+3.1.19 owns full `npm run typecheck`, `npm run lint`, `npm run test:coverage` and every applicable
+architecture, generated, desktop parity, production/build, performance, storage recovery and live
+dry-run acceptance proof. Execute all A01–A42 and D01–D05. Inspect failures, repair their causes
+within the approved 3.1 outcomes, add regression proof and use focused iteration, then establish
+all required gates on the final corrected code tree. Do not reopen earlier task sessions merely
+to hand back repairs. The [3.1.19 plan](task-19-final-acceptance-and-close-phase-3-1.md) owns this
+combined repair scope and release evidence. New product scope or contract decisions still require
+operator direction; routine corrections within the frozen outcomes are authorized here.
+
+Run coverage without this task's compiler/linter contention. Reuse valid unchanged evidence under
+D191 and repeat invalidated gates; a documentation-only SHA change does not require duplicate full
+runs. No failed check or unrun proof becomes green. Preserve required outcomes, assertions,
+coverage floors, membership, timeouts, isolation and all live-write/cutover boundaries. Phase 3.2
+still waits for successful 3.1.19 acceptance, integration and cleanup.
 
 ### Parallel execution and worktree contract
 
@@ -134,7 +146,7 @@ for ownership, operator integration and isolation; the execution cadence above c
 gates and review. The operator launches tasks and chooses merges. Targeted peer coordination is
 allowed to resolve blockers, overlap or duplicate work; no automatic dispatch or merging.
 
-| Complete and merge this prerequisite | Independent workers: focused checks | Finalizer: full gates and fixes |
+| Complete and merge this prerequisite | Independent workers: focused checks | Group finalizer: focused integration and fixes |
 | --- | --- | --- |
 | 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive | [3.1.9.8 · Finalize dashboard surfaces](task-9-8-finalization-dashboard-surfaces.md) |
 | 3.1.11 · Sessions (after accepted 3.1.9.8) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun | [3.1.11.3 · Finalize run operations](task-11-3-finalization-run-operations.md) |
@@ -211,7 +223,7 @@ under their approved ownership and worktree limits. Finalization waits for every
 | **3.1.16** | [Prove realtime convergence and reconnect](task-16-prove-realtime-convergence-and-reconnect.md) | `dash-realtime` |
 | **3.1.17** | [Meet large-data and responsiveness budgets](task-17-meet-large-data-and-responsiveness-budgets.md) | `dash-performance` |
 | **3.1.18** | [Build the complete dashboard proof infrastructure](task-18-build-the-complete-dashboard-proof-infrastructure.md) | `dash-proof-infrastructure` |
-| **3.1.19** | [Final acceptance and close Phase 3.1](task-19-final-acceptance-and-close-phase-3-1.md) | `dash-acceptance` |
+| **3.1.19** | [Final repairs, acceptance, and close Phase 3.1](task-19-final-acceptance-and-close-phase-3-1.md) | `dash-acceptance` |
 
 ### Optional tasks — outside the required sequence
 
@@ -381,7 +393,8 @@ sentence implies, and both matter to whoever wires the next workflow:
 
 Use the [current task table](#current-task-identities), whose labels and filenames follow execution
 order. Implementation starts only after Phase 2.6 and the task's own prerequisites are accepted.
-Final acceptance 3.1.19 retains its audit-only boundary and returns defects to existing owners.
+Final acceptance 3.1.19 owns gate-found repairs across the combined Phase 3.1 work and closes only
+after the corrected implementation passes its required full gates.
 
 **D339 release scope (2026-09-06).** Complete the admitted workflows' actual operator journeys.
 Generic People/Review pages and new advanced storage-recovery interfaces remain deferred unless a
@@ -444,7 +457,7 @@ platform_` in the ledger. They are listed here only because no phase owns them.
 ## Exit criteria
 
 Current release requires every A01–A42 and D01–D05 outcome in the frozen 3.1.8 acceptance matrix,
-all required focused task checks and full finalization gates, current production/live authority comparisons and
+all required focused task/group checks and full 3.1.19 gates, current production/live authority comparisons and
 owned cleanup. Historical criteria below preserve dated evidence; they do not close reopened 3.1
 work. Only 3.1.19 releases the shared dashboard to 3.2, and optional generic surfaces follow D339.
 
