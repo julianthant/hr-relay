@@ -13,6 +13,8 @@ import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../parity/helpers/fixture-queu
 import { FIXTURE_RUN_DETAILS } from "../../parity/helpers/fixture-detail.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-bootstrap.js";
 import type { RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
+import { LocalDateSchema } from "../../../src/domain/ids.js";
+import { RowRevisionSchema } from "../../../src/domain/dashboard/primitives.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -37,7 +39,7 @@ async function mount(search: string, overrides: Partial<DashboardClient> = {}) {
   localStorage.setItem("hr-dashboard.workflow-panel", "icon");
   const { app } = createFixtureBff();
   const client: DashboardClient = {
-    ...createDashboardClient({baseUrl:"http://fixture",fetchImpl: (url, init) => app.request(String(url), init)}),
+    ...createDashboardClient({baseUrl:"http://fixture",fetchImpl: async (url, init) => app.request(String(url), init)}),
     subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE); input.onState({state:"live"}); return {close() {}}; },
     ...overrides,
   };
@@ -220,7 +222,7 @@ it("failed and delayed day snapshots never render an empty or stale queue",async
   assert.match(document.body.textContent??"",/Loading queue/);
   await act(async()=>old?.onDay(FIXTURE_DAY_WIRE));
   assert.equal(document.querySelector(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`),null);
-  await act(async()=>current?.onDay({...FIXTURE_DAY_WIRE,day:"2026-08-04",queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
+  await act(async()=>current?.onDay({...FIXTURE_DAY_WIRE,day:LocalDateSchema.parse("2026-08-04"),queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
   assert.doesNotMatch(document.body.textContent??"",/Loading queue/);
 });
 it("a served detail failure stays a failure and an empty workflow catalog states absence",async()=>{
@@ -245,11 +247,11 @@ it("same-run refresh keeps the verified detail visible and does not invent a his
     runDetail:()=>++reads===1?Promise.resolve(value):new Promise(resolve=>{settleRefresh=resolve;}),
   });
   assert.equal(button("Back").disabled,true);
-  await act(async()=>subscription?.onDay({...FIXTURE_DAY_WIRE,queueSurfaces:FIXTURE_DAY_WIRE.queueSurfaces.map(row=>String(row.runId)===FIXTURE_IDS.runningRun?{...row,rowRevision:row.rowRevision+1}:row)}));
+  await act(async()=>subscription?.onDay({...FIXTURE_DAY_WIRE,queueSurfaces:FIXTURE_DAY_WIRE.queueSurfaces.map(row=>String(row.runId)===FIXTURE_IDS.runningRun?{...row,rowRevision:RowRevisionSchema.parse(row.rowRevision+1)}:row)}));
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,350));});
   assert.equal(reads,2);assert.match(selectedTab()??"",/Logs/);assert.doesNotMatch(document.body.textContent??"",/Loading run/);
   assert.equal(button("Back").disabled,true);
-  await act(async()=>settleRefresh?.({...value,rowRevision:value.rowRevision+1}));
+  await act(async()=>settleRefresh?.({...value,rowRevision:RowRevisionSchema.parse(value.rowRevision+1)}));
   assert.match(selectedTab()??"",/Logs/);
 });
 it("a known but unoffered section states its absence",async()=>{

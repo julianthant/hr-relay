@@ -1453,7 +1453,7 @@ function LoadedApp({
                   onTab={onTab}
                   workflowLabel={workflowLabelOf(selection.detail.header.workflowId)}
                   currentAppVersion={boot.appVersion}
-                  servedDescriptorHash={workflowShapeOf(detailValue.header.workflowId)}
+                  servedDescriptorHash={workflowShapeOf(selection.detail.header.workflowId)}
                   actorId={boot.actor.id}
                   onDetailEdited={onDetailEdited}
                   aiAdvisory={advisoryAvailability}
