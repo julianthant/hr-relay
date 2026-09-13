@@ -281,3 +281,94 @@ launch prerequisite under the approved allocation. A fresh supervisor creates it
 branch from the verified planning SHA and inherits the committed amendment. The plan ref remains
 until its commit is integrated and no consumer needs it. Planning-worktree cleanup retains the
 ref and external evidence; the final delivery receipt records the resolved SHA and cleanup facts.
+
+## Implementation delivery — 2026-09-13
+
+**Candidate delivered for operator-controlled 3.1.9.8 intake; integration and roadmap completion
+remain open.** Implementation commit: `c3c71769bf2960c1307de7680650542729465c81`;
+source tree: `b8055c4e2bc36843f4fa5c4b3d9b33f5775978a8`. This recording-only commit follows it
+on `codex/3.1.9.1-shell-baseline` at `/Users/julianhein/Projects/hr-worktree-shell-baseline`.
+The branch starts at exactly `814eb01d7db6f51178f5deabcdd9d6194f34b07f`, equal to the retained
+`codex/3.1.9.1-shell-plan` ref. Both accepted prerequisite SHAs named above were verified available
+and ancestral before creating the checkout. One supervisor performed S1–S5; no worker or independent
+review was dispatched under the approved Phase 3.1 cadence.
+
+| Step | Verified delivery |
+| --- | --- |
+| S1 | Verified allocation, approval and ancestry before edits; created the exclusive worktree and evidence directory; inspected the existing shell and production specimen. Private build/output/index, runner scratch and ephemeral fixture ports; shared dependencies used only through the read-only-by-convention symlink. |
+| S2 | URL owns the selected tab; selected run and served workflow agree. Toolbar travel preserves the requested section. Native Settings section/catalog travel retains the editor; guarded exits retain Keep/Discard behavior. Pending restoration/replay defers a newer door to the correct physical cursor and revokes abandoned confirmation callbacks. Repeated doors and competing takeover closes resolve to one surface. |
+| S3 | Consumer checks prevent old day/detail identity from painting as a new selection. Loading, failure, unavailable run/workflow/section, unknown section and real emptiness have separate messages. Same-run refresh remains visible. Queue shortcuts yield to takeovers, native selectors, handled keys, dialogs and popovers. Workflow modes, status counts/actions, Help through Settings, theme names and entry/return focus are verified. |
+| S4 | Final production fixture and isolated seeded-service cases pass in both themes. Selected queue/detail survive 1024×768 → 1024×720 → 1024×768; 900×600 scrolls the 1024×720 canvas. Keyboard focus, hit ownership, reduced motion, text/status contrast and toast/footer clearance pass. Actual browser zoom and additional narrow-control receipts are retained. |
+| S5 | Final focused gates and exact reference attribution pass. Committed 33 implementation/test/reference paths; archived and hashed evidence before removing owned scratch. Closed owned browsers and fixture server. Retained candidate branch, active supervisor checkout and durable evidence for intake. |
+
+Product changes are confined to the seven existing shell app modules plus new
+`app/shell-selection-model.ts`; the two app-file exceptions remain shell-only. Four new test files
+and `tests/parity/helpers/shell-proof.ts` own the regressions and proof. No sibling body/API, shared
+resource hook, DS/specimen, shared fixture, BFF/schema, configuration, dependency, generated output
+or guard-inventory change was made. The 20 changed reference files are exactly ten approved
+`queue-day` PNG/a11y pairs; each replaces the invented prior workflow-switch explanation with
+truthful unselected-run guidance. Reference metadata, geometry, fixture facts and all other reference
+families remain unchanged. `reference-attribution.json` records every before/after SHA-256 and reason.
+
+### Final focused checks and artifact custody
+
+All paths below are relative to the retained evidence root
+`/Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/`. `commands-and-results.json`
+records exact commands, tested implementation/tree and exits; `lint-final.log` records the exact
+13-file ESLint argv. Final unit and architecture runs were serialized, with at most four file
+workers; parity used `--workers=4`. No broad gate is represented as passed.
+
+| Check | Final result and evidence |
+| --- | --- |
+| Seven assigned dashboard unit files | PASS, 93 tests; `unit-serial-final.log`, exit 0. |
+| Four assigned architecture files | PASS, 28 tests; `architecture-serial-final.log`, exit 0. |
+| Seven assigned production parity specs | PASS, 34 tests, zero skipped/flaky; `parity-final.log`, exit 0. Required body-backed a11y wrapper verification passed. `parity-final-output/results.json` and 31 extracted attachments retain screenshots, accessibility trees, geometry, contrast and seeded receipts. |
+| Scoped ESLint and implementation whitespace | PASS, zero warnings; `lint-final.log`; `git diff --check` and cached check, exit 0. |
+| Actual Chromium zoom | PASS, Chromium `149.0.7827.55`, both themes. Tab-scoped extension `chrome.tabs.setZoom/getZoom` read back 1.25 at 1280×720 (1024×576 CSS, DPR 1.25) and 2 at 1440×900 (720×450 CSS, DPR 2). Every case retained the 1024×720 side-by-side canvas, keyboard access/return to Settings and document-scroll access to the footer. `zoom-receipts.json`, four top and four scrolled viewport PNGs, `zoom-proof.js`, config and extension source retain the mechanism and assertions. |
+| Narrow controls and contrast | PASS, both themes at 1024 CSS pixels: date/search/status/notification/session controls, selected detail and theme destination names; `narrow-receipts.json`. Search Escape clears a term, then closes on the second Escape. Contrast sampled 17 text/status controls per theme; minimum ratios 6.91 Graphite Warm and 6.87 Paper Ink. |
+| Recording-only checks | PASS: `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` (24 tests), `npx --no-install eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap --max-warnings 0`, `npm run roadmap:check`, and `python3 /Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/audit-docs.py`; all exit 0. Audit verifies 13 local links/fragments, nine identical instruction pairs, 18,376-byte maximum chain, ancestry, unchanged implementation inputs and all frozen evidence hashes. Logs: `roadmap-binding-final.log`, `docs-lint-final.log`, `roadmap-check-final.log`, `document-audit.json`. |
+
+The final result-table addition changes no checked heading, binding, status, link target or gate
+input. Binding/lint results are reused on that basis; document audit, freshness and whitespace
+checks are rerun before the recording commit. Product gate reuse is bound to the unchanged
+implementation and fixture manifests and production bundle digests above.
+
+The seeded cases use the existing real isolated SQLite/projection/query/HTTP/SSE composition and
+compare the served run identity with the opened route. They retain `SEEDED_COVERAGE_GAPS` and name
+the manual clock, synthetic runtime/descriptor input and fixture preflight/archive/explorer/intake
+dependencies. This is shell integration evidence, not live external HR or complete production
+authority proof. No operator state, credentials or fixed operator ports 3938/5174 were used.
+
+Retained failure evidence shows the original navigation/selection defects (`s2-before.log`) and
+shortcut defects (`s3-before.log`). Iteration also caught a toolbar-history regression: waiting for
+day data must apply only to initial deep-link resolution, not subsequent day changes. The existing
+focus suite reproduced it; `native-fixed.log` passes all 17 cases, followed by the combined 93-test
+run. Test-locator corrections and wrapper-only refreeze failures are retained, not counted as passes.
+The authorized refreeze rerun added the owned accessibility spec to supply the wrapper's required
+body-backed producer: `refreeze-verified.log`, 22 passed, exit 0. The subsequent 34-case assert lane
+passed without reference changes. An earlier successful unit/architecture pair briefly overlapped;
+the cited final receipts were rerun serially to restore the assigned four-worker resource bound.
+
+| Frozen input or artifact | SHA-256 |
+| --- | --- |
+| Production source input, computed by the unchanged parity bundle helper | `c15b87278a9944d55cac9f6423cdc364d36995dd9cc0d80ca037338ce6e2fda5` |
+| Production bundle output, retained under `final-bundle/` | `917b77a29db1e9ff245e55027a3eb59fa15d0626c019a28196d7717f6f7d2aa9` |
+| `implementation-inputs.json`, the 33 changed file hashes | `f9be1b2d2cee00936366bd07107042f70492d44a81d22608dc43363ee87af5ca` |
+| `fixture-inputs.json`, 54 unchanged helper inputs | `e916ae54e1e5c907a870a1b821dfce6ef774f9da0b276d55dc864f0b28aa1eca` |
+| `reference-attribution.json` | `5c26a2900f8ae7d701f888bce3ddca760d43dd5ac66ed3f46a3265bb337f36c2` |
+| `zoom-receipts.json` | `25b3fad537ec1d6e0582310447ddcc0f1a0b6381d1234c3e3e3a7e304386080d` |
+| `evidence-index.json`, frozen implementation evidence file hashes | `b64969e0405597c285f8d8967fce43d459ed2ed5074845a87c60e114c5da0f60` |
+
+The zoom profile and loaded extension directory were removed after closing `shell-zoom`; extension
+source remains in `zoom-extension-source/`. To reproduce, copy that source to the config's owned
+extension path, create a fresh owned profile, start `serve.mts`, and substitute its newly allocated
+URL in the retained proof scripts before opening the CLI session. The final fixture server PID
+29859 is stopped. Eight failed-run scratch directories were copied, hash-verified and removed only
+after their process groups were absent; `resource-cleanup.json` records exact custody. Final delivery
+metadata and recording-only audit logs sit beside the frozen index without changing its inputs.
+
+**Next owner: 3.1.9.8.** Consume this exact candidate with the six siblings, run assigned typecheck
+and focused integration gates, then integrate into local `master` and clean the retained worktree
+only when the operator instructs it. Full gates and complete acceptance remain 3.1.19. No merge,
+push, sibling launch or next-task dispatch occurred. Existing task/roadmap completion marks remain
+unchanged until assigned integration and cleanup finish.
