@@ -8,16 +8,16 @@ Historical filenames and headings remain citation aliases, not another assignmen
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] D339: bind each required screen to a current workflow/operator journey and record deferred
+- [x] D339: bind each required screen to a current workflow/operator journey and record deferred
   generic People/Review and advanced recovery interfaces explicitly; required workflows cannot lose
   a necessary screen through this deferral. Acceptance proves truthful absence of deferred controls.
 
 
-- [ ] Inventory every visible control, route, field, producer, command, and defect against code.
-- [ ] D340: consume the fixed 1024×720 CSS-pixel desktop canvas floor and bind the resize/zoom matrix;
+- [x] Inventory every visible control, route, field, producer, command, and defect against code.
+- [x] D340: consume the fixed 1024×720 CSS-pixel desktop canvas floor and bind the resize/zoom matrix;
   consume D340’s immediate proof dispositions and assign desktop evidence to exact owners.
   Preserve desktop behavior, accessibility and safety coverage; mobile proof is not a prerequisite.
-- [ ] Freeze the owner/gate/fixture/live-proof acceptance matrix Task 18 must execute unchanged,
+- [x] Freeze the owner/gate/fixture/live-proof acceptance matrix Task 18 must execute unchanged,
   including non-overlapping file and artifact ownership for every planned parallel wave.
 
 ## Approved execution brief — 2026-09-12
@@ -263,7 +263,7 @@ availability before issuing READY; the supervisor still executes B01–B06 in it
 
 ## Current execution record — 2026-09-12
 
-**B01–B05 complete; B06 awaiting R2 repair acceptance.** This records a documentation/proof candidate,
+**B01–B06 complete; 3.1.8 accepted and integrated locally.** This records a documentation/proof candidate,
 not implementation or acceptance of the remaining dashboard features. The operator amended review
 effort from Astra/high to **Astra/ultra** and explicitly requested changing the native `sup_review`
 role. Its local TOML and matching policy check now specify ultra; this host configuration amendment
@@ -277,12 +277,12 @@ One supervisor performed the work; no implementation workers were used.
 | B03 · Reconciliation | Current task descriptions, overview and roadmap consume the accepted Archive, Settings, summary, storage, Run/Rerun, intake and diagnostic contracts. `obligation-census-r3.json` maps all 224 original unchecked/proposed checkbox obligations; `historical-task4-r3.json` separately maps all 52 numbered Task 4 subjects to current requirements or explicit dispositions. Historical Tasks 1–7 and released evidence remain intact. |
 | B04 · Ownership | The [shared-boundary and leaf ownership map](task-8-acceptance-matrix.md#shared-ownership-and-admission-boundaries) assigns existing shared files and required operations to 3.1.9/3.1.11/3.1.14 before children. Extractions are unimplemented prerequisites, not available APIs. Existing IDs, dependency edges and 3.1.23/24/25 finalizers are unchanged. |
 | B05 · Acceptance | [A01–A42 and D01–D05](task-8-acceptance-matrix.md) freeze required outcomes, forbidden results, source authority, owner, existing/missing proof, desktop/browser/live need and release. Every inventory row has one acceptance row. 3.1.19 must execute the full matrix unchanged unless explicitly amended. |
-| B06 · Review/release | R2 completed independent review at `001ee0d31da9215badcaf0fc3d1c644bd4381b85` with three required documentation/evidence corrections. The repaired candidate awaits its bounded independent recheck. `candidate-freeze-r3.json` binds the repair commit, evidence and renewed gates. Integration and cleanup remain open. No future task is marked complete or dispatched. |
+| B06 · Review/release | R2’s complete Astra/ultra review and bounded repair recheck accept `baeed585dcefb3883deffac0e6b725dfb1381b80` with no unresolved finding. Local master integration `45df7f7de4bf54c7cee952b3b3909778f74b8b85` includes the approved planning commit. All scoped integration gates passed; both owned worktrees and integrated delivery refs are removed, and the exact R2 task is archived. No future task is complete or dispatched. |
 
 Evidence root: `/Users/julianhein/Projects/hr-dashboard-baseline-evidence-20260912/`.
-`evidence-manifest.json` hashes the retained source census, obligation map, browser artifacts,
-launcher/audit recipes and gate receipts. `candidate-freeze.json` binds the committed candidate and
-manifest without embedding a circular self-hash. The source of truth remains the committed companions
+`evidence-manifest-r3.json` and `candidate-freeze-r3.json` bind the accepted repair candidate,
+source census, complete obligation map, browser artifacts, audit recipes and scoped gate receipts.
+The original manifests/freezes remain immutable historical records. The source of truth remains the committed companions
 and their current production/test pointers, not the temporary authoring scripts.
 
 Browser inventory used the existing source-bound bundle helpers with isolated fixture and seeded
@@ -294,7 +294,7 @@ window scrolling were observed; actual 125%/200% browser zoom and full keyboard/
 downstream acceptance, not a claimed pass here. Both owned servers and the named Playwright session
 are closed (`browser-closed.json`). No operator database, credentials or external HR system was used.
 
-| Candidate check | Evidence / classification |
+| Initial candidate check (historical) | Evidence / classification |
 | --- | --- |
 | Roadmap binding | `candidate-corrected-binding`: 24 tests PASS. The initial run had one failure because the new historical heading removed the required current `Exit criteria` heading; the documentation was corrected and all 24 passed, with no test edits. |
 | Lint | `candidate-corrected-lint`: PASS, exit 0. |
@@ -303,18 +303,17 @@ are closed (`browser-closed.json`). No operator database, credentials or externa
 | Whitespace | `candidate-corrected-diff`: PASS. |
 | Reused product gates | `gate-reuse.json` compares every accepted 2.6 input with this candidate. Unchanged source/tests/fixtures/dependencies/runtime/reference images support reuse of typecheck, full coverage, architecture, parity, build and performance receipts. Historical documentation/generated output and previously classified legacy accounting metadata are separated from those code inputs. These are inspected historical results, not rerun gates or newly proven dashboard journeys. |
 
-Review fit: one cohesive documentation candidate, 42 journey rows and five desktop cases, bounded
+Initial R1 review-fit assessment: one cohesive documentation candidate, 42 journey rows and five desktop cases, bounded
 current source traces, and 221 historical obligations. The generated roadmap is checked as a derivative;
 the accepted 2.6 implementation is prerequisite evidence, not a repeated 938-path audit. R1 must inspect
 all changed requirements, material inventory assertions, ownership/proof rows and exclusions, reserving
-room for cross-checks and its verdict. There are no prior review findings at initial dispatch.
+room for cross-checks and its verdict. There were no prior review findings at initial dispatch; subsequent corrections and acceptance are recorded below.
 
-Cleanup classification: only the primary checkout and this task's baseline worktree exist physically
-and in Git registration; the earlier planner worktree is already absent. The primary's three unrelated
-dirty files remain byte-identical to `B01-identities.json`. The primary was later observed on
-`codex/dashboard-plan`; local release will restore it to `master`, preserve those files, integrate the
-plan and candidate, then remove the owned baseline worktree and integrated delivery refs. Retained
-evidence is intentionally kept outside the repository.
+Cleanup verified: only the primary checkout remains registered. The owned baseline and app-created
+detached R2 snapshot are physically absent; `codex/dashboard-baseline` and `codex/dashboard-plan`
+are deleted after ancestry verification. The primary is on `master`; its three unrelated dirty
+files remain byte-identical to admission. R2’s exact standalone task is archived. Retained evidence
+stays at the external evidence root. The original planner worktree was already absent.
 
 ### Independent review interruption and repair — 2026-09-12
 
@@ -324,8 +323,8 @@ compaction**. An earlier usage-limit interruption was resumed in that same revie
 or scoped PASS exists, and the exhausted native reviewer cannot continue substantive inspection.
 `R1-blocked-verdict.md` preserves its findings, reported partial coverage, final identity and exact
 unreviewed boundaries. No reliable per-call context accounting was available to justify repeating
-the same native assignment unchanged. The complete review arrangement remains to be resolved before
-dispatch; integration is still blocked on a valid complete independent PASS.
+the same native assignment unchanged. The operator subsequently resolved the review format through the standalone amendment below;
+this interruption record supplies no acceptance.
 
 | Finding / concern | Supervisor repair; independent verification remains open |
 | --- | --- |
@@ -377,12 +376,12 @@ review. The original supervisor owns repairs, integration and cleanup and stops 
 
 R2, standalone task `01a098c0-c5b2-7a10-8bad-5fbe4ad5a303` on GPT-6 Astra/ultra, completed
 the entire assignment at frozen `001ee0d31da9215badcaf0fc3d1c644bd4381b85` and returned
-**CHANGES REQUIRED**. Its retained `standalone-review/verdict.md` and `coverage.json` account for
+**CHANGES REQUIRED**. Its retained `standalone-review-initial/verdict.md` and `coverage.json` account for
 all 35 changed paths, 42 I/A pairs, five desktop cases, 52 historical numbered subjects and the
 complete 224-checkbox original scope. There are no unreviewed assigned boundaries. Both R1
 findings are independently confirmed repaired; no R1 acceptance was inherited.
 
-| Finding | Bounded supervisor repair; R2 recheck remains required |
+| Finding | Bounded supervisor repair; independently accepted by R2 |
 | --- | --- |
 | R2-F01 · P2 Settings container | The exact historical item 5 now preserves D272.1/D274.5’s full-page takeover, section navigation and Help → Keyboard. `historical-task4-r3.json` and the Markdown disposition agree. |
 | R2-F02 · P2 incomplete checkbox census | `obligation-census-r3.json` includes original roadmap lines 1417, 1566 and 1570 with current A15/A18/A22/A39/A40/A42 owners and explicit historical-proof limits. `original-obligations.py` derives all 224 original bodies from the approved Git tree without a node allowlist; `audit-r3.py` compares exact membership and complete text rather than trusting a hardcoded count. Historical R2 artifacts remain unchanged. |
@@ -394,3 +393,45 @@ independent R2 to reopen all affected rows and neighbors, verify unchanged compl
 issue a new commit-bound verdict. The supervisor renews all document gates with `gates-r3.py`,
 freezes the repaired identity and evidence in `candidate-freeze-r3.json`, and retains the original
 R2 verdict before any repair recheck. No product/test/configuration or reference image changes.
+
+### Accepted local release — 2026-09-12
+
+**Only 3.1.8 is complete.** The frozen inventory and acceptance matrix govern remaining dashboard
+work; they do not claim that every dashboard feature, browser/live journey or Phase 3.1 exit passes.
+The supervisor used no implementation workers and dispatched no successor.
+
+| Release evidence | Verified binding |
+| --- | --- |
+| Approved plan/base | `e182022edfa0cd05a46a74358cd3296bcade6e79`, included in the local integration ancestry |
+| Accepted implementation/evidence | `baeed585dcefb3883deffac0e6b725dfb1381b80`; `candidate-freeze-r3.json`, 166-entry `evidence-manifest-r3.json` SHA256 `dd3c2fb50bb7c25c935cc7e23b9072b51473db28e9f66101fb0f2b508ebbca8d` |
+| Independent review | R2 task `01a098c0-c5b2-7a10-8bad-5fbe4ad5a303`, configured GPT-6 Astra/ultra. Initial complete review at `001ee0d31da9215badcaf0fc3d1c644bd4381b85`, followed by bounded repair PASS at the accepted candidate. `standalone-review/repair-r3-verdict.md` and `repair-r3-coverage.json` retain exact scope, unchanged-coverage verification, finding dispositions and limits. |
+| Review coverage | 35 changed paths, all B01–B06, 42 I/A pairs, five D cases, 52 numbered historical subjects and all 224 original checkbox bodies. R1-F01/F02 and R2-F01/F02/F03 independently resolved; no open required finding. |
+| Integration | Local `master` merge `45df7f7de4bf54c7cee952b3b3909778f74b8b85` from target `3549973552377f50b2bb690f0de0bcee981dd159`; accepted candidate tree preserved without conflict. No push. |
+| Candidate and integration gates | `candidate-r3-*` and `integration-r3-*`: binding 24 PASS; lint, roadmap generation/freshness, full document audit and whitespace checks exit 0. The audit compares complete source-derived obligation membership/bodies, exact historical dispositions, links, instruction twins/caps, source hashes, allowed paths and unchanged dependency graph. |
+| Broad gate reuse | `gate-reuse-r3.json` and integration input comparison preserve the inspected accepted 2.6 typecheck/coverage/architecture/parity/build/performance evidence. Product/test/fixture/dependency/runtime/reference-image inputs did not change. These gates were reused, not rerun or converted into new journey acceptance. |
+| Cleanup | `owned-cleanup.json`: both owned worktrees absent physically and in registration, both integrated delivery refs absent, inventory servers/session closed, exact R2 task archived. Primary and its unrelated edits preserved. |
+
+The completion-only record runs scoped binding/link/generated/twin/whitespace checks under D191.
+Its unchanged product inputs permit reuse of the fresh integration lint and broad-gate bindings;
+`completion-r3-*` and `completion-r3-reuse.json` retain that comparison. This recording does not alter
+the independently accepted inventory/acceptance requirements or renew product acceptance.
+
+### Delivery assessment
+
+This was one documentation/proof assignment under approved B01–B06. Two independent reviewers
+were used: native R1 stopped after compaction with incomplete coverage; the approved standalone
+R2 completed the whole scope, then performed one bounded repair recheck. There were two review-driven
+repair candidates (`5320f46506d90686f1ce9dfd51b354faf8200312` and the accepted candidate).
+The initial document-heading correction preceded review and is not another independent review round.
+
+| Material event | Classification and supported improvement |
+| --- | --- |
+| Missing current Exit criteria heading caused one binding failure; fixed without changing tests | Implementation defect. Preserve binding-required owner headings when labeling historical material. |
+| Worker-operation omissions, historical mapping errors, incomplete census and overstated browser observations | Implementation/proof defects against requirements already covered by B02–B05. Enumerate the original source membership independently of the disposition map; compare exact ratified clauses and distinguish source, rendered and live evidence before freezing. R2’s 224-row correction supersedes both earlier counts. |
+| Native review exhausted after compaction; complete standalone format required | Review-sizing assumption failed. The pre-dispatch fit evidence did not establish that full source/proof reconciliation would fit a native context. Use the actual obligation/trace inventory when selecting a review format. Native usage telemetry and exact standalone compaction counts were not instrumented; no cost or time-saving estimate is claimed. |
+| Operator requested Astra/ultra and the native role change; approved the standalone review and extra worktree cleanup | New operator scope affecting review configuration/format and owned cleanup only. No product requirement or future task identity changed. |
+| Usage interruption and app task-list omission of the created reviewer | External execution/tool-visibility issues. Retained exact task/checkout metadata resolved the reviewer without duplicate dispatch; initial review state and evidence survived interruption. |
+
+No product fix, operator database change, credentials or external HR action, screenshot refreeze,
+push or successor dispatch occurred. Remaining dashboard work stays with the existing owners and
+requires its own approved brief.

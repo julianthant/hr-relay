@@ -1615,18 +1615,19 @@ log:
 - 2026-08-25 | observed-logs live proof | §9.25 records the dashboard/composed run: document 4502, plan `479f9f1e-83b3-4157-915b-2794bcf61ab0`, run `25d90c9d-72bf-4fa4-bcea-116665f22790` / `sp-143516-25d9`, `parked-gate` v52; 13 observed rows in sequences 0..12, no notes and 0 / 0 / 0 run-scoped write evidence. The service-origin row at `separations-2026-08-25.jsonl:12` has no browser-system declaration; `17468e60` repaired the false API-500 invariant, so the API answered 200 and UI omitted the system claim. Processes and browser sessions stopped after collection · left: notes emitter and fidelity extras
 
 #### 8 · Re-baseline dashboard truth and acceptance {#dash-truth-reset}
-status: planned
-date: 2026-09-12 · approved B01–B06 baseline after accepted 2.6.9; implementation unstarted
+status: done
+date: 2026-09-12 · baseline accepted after complete Astra/ultra review, local integration and cleanup
 doc: 3.1/task-8-re-baseline-dashboard-truth-and-acceptance §Task 8 · Re-baseline dashboard truth and acceptance · ref:dashboard-surfaces · ref:frontend-backend-integration
 
 builds:
-- [ ] PROOF inventory every visible control, route, served field, command arm, producer, and current defect against production code
-- [ ] DOCS map each generic operator journey to one owner, red/green gate, fixture, live proof need, later workflow-specific boundary, and non-overlapping wave file/artifact scope
-- [ ] DOCS turn every historical unchecked 3.1 line into a current task, explicit disposition, or superseded record
-- [ ] PROOF publish the acceptance matrix that Task 18 will execute unchanged
-- [ ] DOCS D340: settle minimum desktop viewport and resize/zoom acceptance in planning; consume the immediate pre-1.6.6 mobile-proof dispositions without losing desktop assertions
+- [x] PROOF inventory every visible control, route, served field, command arm, producer, and current defect against production code
+- [x] DOCS map each generic operator journey to one owner, red/green gate, fixture, live proof need, later workflow-specific boundary, and non-overlapping wave file/artifact scope
+- [x] DOCS turn every historical unchecked 3.1 line into a current task, explicit disposition, or superseded record
+- [x] PROOF publish the acceptance matrix that Task 18 will execute unchanged
+- [x] DOCS D340: settle minimum desktop viewport and resize/zoom acceptance in planning; consume the immediate pre-1.6.6 mobile-proof dispositions without losing desktop assertions
 
 log:
+- 2026-09-12 | 3.1.8 accepted | candidate `baeed585dcefb3883deffac0e6b725dfb1381b80`, complete R2 Astra/ultra review plus bounded repair PASS; integrated locally as `45df7f7de4bf54c7cee952b3b3909778f74b8b85` including approved plan `e182022edfa0cd05a46a74358cd3296bcade6e79`. 42 I/A pairs, five desktop cases, 52 historical subjects and 224 original obligations frozen; scoped gates PASS, both owned worktrees/refs removed, unrelated edits preserved. Documentation/proof only; remaining tasks unimplemented, no push or successor dispatch.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.8.1; former 3.1.8; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | serial prerequisite in `phase-3-1-dashboard-c21194e18-r08-truth-reset`; it must merge before any implementation wave and freeze the file/artifact ownership that makes peers independent · left: execute after 2.6 closes
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.8; standalone prerequisite or individual task; acceptance and historical execution anchor retained

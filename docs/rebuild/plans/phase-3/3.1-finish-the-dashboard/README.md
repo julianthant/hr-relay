@@ -21,8 +21,9 @@ or amended live in `reference/`; this doc holds the work, its state, and its exi
 
 The [inventory](task-8-dashboard-inventory.md) records current source/proof and disposes of historical
 unchecked obligations; the [acceptance matrix](task-8-acceptance-matrix.md) freezes A01–A42, D01–D05
-and prerequisite/leaf/finalizer ownership. Baseline implementation is awaiting document gates and
-independent review; no downstream task is complete or launch-ready from these pointers alone.
+and prerequisite/leaf/finalizer ownership. **3.1.8 is accepted and integrated locally** after complete
+Astra/ultra review, scoped gates and owned cleanup; the [task release record](task-8-re-baseline-dashboard-truth-and-acceptance.md#accepted-local-release--2026-09-12)
+binds the candidate and integration. Downstream tasks still need their own approved briefs.
 Accepted 2.6 is the product input. Old surface/exit counts below retain their dated release evidence
 and are not a current Phase 3.1 completion claim. Current acceptance is owned by 3.1.19.
 
