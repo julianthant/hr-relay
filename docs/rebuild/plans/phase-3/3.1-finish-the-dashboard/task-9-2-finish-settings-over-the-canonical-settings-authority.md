@@ -1,11 +1,10 @@
-# Task 9-2 · Finish Settings over the canonical settings authority
+# Task 3.1.9.2 · Finish Settings over the canonical settings authority
 <!-- roadmap: dash-settings -->
 
 **Current assignment: 3.1.9.2.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
-Historical filenames and headings remain citation aliases, not another assignment.
-
+Earlier labels and filenames are recorded in the [rename map](README.md#earlier-labels-and-filenames).
 
 **D341 (approved 2026-09-07).** Consume the detour’s application-only 86-row catalog. Test subjects,
 canaries, fixture paths and shared test data are not Settings/Setup leaves or protected-setting
@@ -17,7 +16,6 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 > **D336 (2026-09-06):** ordinary settings are SQLite-owned; credentials are independently stored.
 > Consume the existing catalog/revision/set-clear behavior and current settings activation through the service and protected
 > write-only input through its independent operation. The file-target wording below is superseded.
-
 
 - [ ] Render every catalog leaf and implement revisioned edit/conflict/draft-reset/persisted-clear flows; protected
   values remain write-only and prove persisted readback by presence/revision.

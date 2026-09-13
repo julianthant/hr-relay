@@ -1,4 +1,4 @@
-# Prepare dashboard inventory during tail revalidation
+# Task 3.1.20 · Optional: Prepare dashboard inventory during tail revalidation
 <!-- roadmap: dash-early-inventory -->
 
 **Current assignment: 3.1.20.** Standalone prerequisite or individual task; follow its explicit dependencies.

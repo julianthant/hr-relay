@@ -1,17 +1,16 @@
-# Task 12-1 · Finish queue rows, commands, and deletion
+# Task 3.1.13 · Finish queue rows, commands, and deletion
 <!-- roadmap: dash-queue -->
 
 **Current assignment: 3.1.13.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
-Historical filenames and headings remain citation aliases, not another assignment.
-
+Earlier labels and filenames are recorded in the [rename map](README.md#earlier-labels-and-filenames).
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 - [ ] Render display facts from current summary-backed queries, enriched by canonical run services; make all single/bulk commands real,
   revision-bound, idempotent, and convergent across current/archive/tombstone views.
-- [ ] Keep Rerun as Task 11-2's plan-backed modal launcher; this task does not restore direct
+- [ ] Keep Rerun as Task 3.1.11.2's plan-backed modal launcher; this task does not restore direct
   retry/restart queue mutations.
 
 The accepted 2.6 U summary consumer replaces the old whole-run projection requirement. Derived

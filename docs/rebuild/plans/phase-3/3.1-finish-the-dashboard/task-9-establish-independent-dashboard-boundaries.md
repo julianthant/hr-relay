@@ -1,17 +1,18 @@
-# Assess further prerequisite extractions
-<!-- roadmap: dash-smaller-prerequisites -->
+# Task 3.1.9 · Establish independent dashboard boundaries
+<!-- roadmap: dash-boundary-foundation -->
 
-**Current assignment: 3.1.21.** Standalone prerequisite or individual task; follow its explicit dependencies.
+**Current assignment: 3.1.9.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
 
 Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract) and
 [current task identities](README.md#current-task-identities) before a focused assignment.
 
-Candidate splits only: shared navigation before date work, configuration/status before sessions, and enqueue/identity before queue/detail. No dependency is shortened until a focused plan proves the replacement boundary.
+Complete the shared changes discovered by the acceptance inventory before independent surface writers start. Preserve existing behavior and real production consumers; no mock-only foundation.
 
-- [ ] inspect exact consumers, shared files and independent proof; admit a smaller complete prerequisite only with approved ownership and gates
-- [ ] retain existing whole-task dependencies wherever the proposed extraction is unverified; no unfinished-branch consumers
+- [ ] isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
+- [ ] verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
+- [ ] publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
 
 This is roadmap scope, not a launch-ready execution brief. Before implementation, the operator
 approves exact paths, base, branch/worktree, proof commands and resource ownership through

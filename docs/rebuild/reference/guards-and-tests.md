@@ -1268,8 +1268,8 @@ quick/generated checks replace per-candidate full gates. No independent review s
 including in finalizers. This explicitly supersedes the prerequisite/full-gate and review rows above
 for Phase 3.1 and its already admitted remaining plans; other phases keep their recorded cadence.
 The [phase execution table](../plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-assigns all deferred proof: 3.1.9 and its children to 3.1.23; 3.1.11 and its children to 3.1.24;
-3.1.14 and its children to 3.1.25; standalone 3.1.10/12/13/15–18 to final acceptance 3.1.19.
+assigns all deferred proof: 3.1.9 and its children to 3.1.9.8; 3.1.11 and its children to 3.1.11.3;
+3.1.14 and its children to 3.1.14.6; standalone 3.1.10/12/13/15–18 to final acceptance 3.1.19.
 
 Each task completes real behavior and meaningful regression proof, fixes focused failures, and
 records exact commands/results, candidate SHA and deferred checks in its existing owner. Broad

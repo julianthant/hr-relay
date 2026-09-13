@@ -1,5 +1,12 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-13 Phase 3.1 execution-order labels:** former finalizers 3.1.23/24/25 become
+3.1.9.8/11.3/14.6, each the last child of its worker group. Active plan headings, filenames and
+roadmap bindings follow execution order; 3.1.19 remains final required acceptance. Stable node
+IDs, dependencies, scope and the focused/no-review cadence are unchanged. Owners:
+[roadmap amendment](../../roadmap/roadmap.md#phase-31-execution-order-labels-operator-amendment-2026-09-13),
+[current task and rename maps](../plans/phase-3/3.1-finish-the-dashboard/README.md#current-task-identities).
+
 **2026-09-13 Phase 3.1 cadence and Codex subagents:** all Codex subagents use Astra/ultra.
 Remaining 3.1 work uses focused task/prerequisite checks, full gates at its named finalizers and
 final acceptance, and no independent review step. Product scope and dependency edges remain unchanged.

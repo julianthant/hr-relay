@@ -1,18 +1,17 @@
-# Task 12-2 · Finish run detail and the live timeline
+# Task 3.1.14.1 · Finish run detail and the live timeline
 <!-- roadmap: dash-run-detail -->
 
 **Current assignment: 3.1.14.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
-Historical filenames and headings remain citation aliases, not another assignment.
-
+Earlier labels and filenames are recorded in the [rename map](README.md#earlier-labels-and-filenames).
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
 - [ ] Render groups/attempts/status arms/duration/systems/provenance and preserve exact live UI state
   across patches, retry, archive, reconnect, and out-of-order delivery.
 D344 moves the shared section projector/component/test extraction to
-[the detail foundation](prerequisite-detail-foundation.md), which must be accepted first.
+[the detail foundation](task-14-establish-independent-run-detail-sections.md), which must be accepted first.
 This task retains all timeline/rendering/realtime acceptance above and owns none of the four
 section tasks. Those tasks depend on the accepted foundation and Queue, not this timeline task.
 

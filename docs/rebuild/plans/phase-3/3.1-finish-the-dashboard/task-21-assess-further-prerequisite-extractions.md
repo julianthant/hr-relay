@@ -1,18 +1,17 @@
-# Establish independent run-detail sections
-<!-- roadmap: dash-detail-foundation -->
+# Task 3.1.21 · Optional: Assess further prerequisite extractions
+<!-- roadmap: dash-smaller-prerequisites -->
 
-**Current assignment: 3.1.14.** Standalone prerequisite or individual task; follow its explicit dependencies.
+**Current assignment: 3.1.21.** Standalone prerequisite or individual task; follow its explicit dependencies.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full gates at finalization, no independent review.
 
 Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract) and
 [current task identities](README.md#current-task-identities) before a focused assignment.
 
-Extract the section-boundary obligation from former Task 12-2. Finish this prerequisite before the timeline and evidence-section tasks; those tasks need this accepted boundary, not each other.
+Candidate splits only: shared navigation before date work, configuration/status before sessions, and enqueue/identity before queue/detail. No dependency is shortened until a focused plan proves the replacement boundary.
 
-- [ ] separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
-- [ ] preserve the existing live detail path and section behavior, pass focused checks, then integrate the common base
-- [ ] freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
+- [ ] inspect exact consumers, shared files and independent proof; admit a smaller complete prerequisite only with approved ownership and gates
+- [ ] retain existing whole-task dependencies wherever the proposed extraction is unverified; no unfinished-branch consumers
 
 This is roadmap scope, not a launch-ready execution brief. Before implementation, the operator
 approves exact paths, base, branch/worktree, proof commands and resource ownership through

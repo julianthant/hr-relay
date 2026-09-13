@@ -31,3 +31,7 @@ For remaining 3.1 work, the [2026-09-13 execution cadence](3.1-finish-the-dashbo
 also gives prerequisites and standalone tasks focused checks and removes independent review at
 every stage, including finalization. Other subphases retain their review requirements. All Codex
 subagents use Astra/ultra under the current native role policy.
+
+Phase 3.1 now places Finalization at 3.1.9.8, 3.1.11.3 and 3.1.14.6, immediately after each
+group’s workers. Its numbered plans form a valid sequential path through final acceptance 3.1.19;
+optional 3.1.20–3.1.22 remain outside that required sequence.

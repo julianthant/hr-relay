@@ -576,7 +576,7 @@ proposed obligation to current work or an explicit superseding decision.
 | Settings-file/restart/old import and lone-authority restore language | Current C0 settings activation, D336 independent credentials and F07 schema/floor/custody apply (A03–A07/A42). No automatic restart for ordinary new-run activation; authenticated database/archive/file recovery remains. |
 | Generic advanced restore/migrate/repair UI | D339 deferral only; A06/A42 retain health, core recovery, explicit instructions and negative proof. |
 | Mobile/touch/Capture Mode and former narrow portrait tests | D340 desktop replacement D01–D05; D294 retirement. No restoration of phone UI or coarse-pointer tests; safety/attachment/keyboard cases remain. |
-| Original proposed worktree waves/coordinator-only automatic merges | D344 current IDs and 3.1.23/24/25 finalizers supersede old scheduling; matrix owns shared extraction and admission checks. Original logs remain history. |
+| Original proposed worktree waves/coordinator-only automatic merges | D344 current IDs and 3.1.9.8, 3.1.11.3 and 3.1.14.6 finalizers supersede old scheduling; matrix owns shared extraction and admission checks. Original logs remain history. |
 | Optional 3.1.20 early inventory | Its tail-revalidation window has elapsed; B01/B02 now perform the authoritative inventory after accepted 2.6. No duplicate prerequisite or retroactive task completion. |
 | Optional 3.1.21 extraction proposals | No new task topology admitted. Current whole-task dependencies remain; any later split needs focused approval/either-order proof. |
 

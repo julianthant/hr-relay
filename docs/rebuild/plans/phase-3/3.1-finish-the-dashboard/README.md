@@ -2,7 +2,7 @@
 
 **D341 dependency (approved 2026-09-07).** The pre-1.6.7 test-data detour is complete before this
 phase starts. Consume its shared fixtures and application-only Settings catalog; no test-only
-configuration UI or second canary source. Task 9-2 owns the corresponding Settings presentation.
+configuration UI or second canary source. Task 3.1.9.2 owns the corresponding Settings presentation.
 
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
@@ -43,7 +43,7 @@ and are not a current Phase 3.1 completion claim. Current acceptance is owned by
 - [ ] D339 absence proof for optional generic **Review** and **People** bodies remains at 3.1.19; concrete required workflow screens cannot be deferred (A41)
 - [x] demo fidelity — CLOSED BY DISPOSITION 2026-08-27 (D279); D294 subsequently retires the phone-capture portion of its historical residue. The remaining historical audit counts remain evidence, not active product work (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/dashboard.md` §D271–D276)
 - [x] historical Tasks 1–7 retain their evidence
-- [ ] D326/D344 current 3.1.8–3.1.19 and admitted finalizers 3.1.23/24/25 finish required dashboard journeys after 2.6; 3.2 waits for every frozen acceptance row
+- [ ] D326/D344 current 3.1.8–3.1.19, including finalization children 3.1.9.8, 3.1.11.3 and 3.1.14.6, finish required dashboard journeys after 2.6; 3.2 waits for every frozen acceptance row
 > 2026-09-05 | D334 operator correction | Task 10-4 now owns intake only. Task 11-2 owns ordinary Run plus the shared source-bound Rerun modal over 2.6 Task 1-2's completed-value/provenance read; the source run is immutable and the former `edit-checkpoint` surface does not return
 > 2026-09-04 | D328 parallel task identities | each parallel wave now shares one ordinal and uses numeric members (`9-1`, `9-2`, ...); serial tasks keep plain ordinals. The hyphen names a peer supervisor task, not a checklist subtask, and each member's exact branch/worktree appears in the binding table below
 > 2026-09-03 | D326/D327 dashboard reset | operator review found broken/incomplete run-modal, date, queue-delete, settings/setup, session, notification, log, archive, Explorer, intake, trust, realtime, and production journeys. Historical closure is superseded; no workflow-specific policy moves into 3.1
@@ -76,10 +76,18 @@ identity map; older doc-04 deferral references below are historical, not release
 
 ### The order of work
 
-Historical Tasks 1–7 remain unchanged. Current numbering describes execution: a three-part
-identity is an actual standalone task or prerequisite; its decimal children are independent parallel
-assignments unlocked after that parent is complete. Historical task filenames and headings remain
-citation aliases. The map below is authoritative for current assignments.
+Work from the current task table below in numeric order. Historical 3.1.1–3.1.8 keep their
+numbers and completion evidence. Each prerequisite is followed by its independent children,
+then **Finalization** as its last child. After that group is accepted, continue to the next
+whole-number task. The last mandatory task is **3.1.19 · Final acceptance and close Phase 3.1**.
+Optional 3.1.20–3.1.22 are a separate menu, not steps required after final acceptance.
+
+**Operator renumbering — 2026-09-13.** Former 3.1.23 becomes **3.1.9.8**, former 3.1.24 becomes
+**3.1.11.3**, and former 3.1.25 becomes **3.1.14.6**. Current plan headings, filenames and roadmap
+positions now agree with that order. Stable execution node IDs, prerequisite edges, scope,
+acceptance outcomes, gate timing and the no-independent-review rule are unchanged. Numeric order
+is a valid sequential path; it does not add dependencies between independent tasks or workers.
+Dated evidence retains its original labels; use the rename map below to resolve older references.
 
 ### Execution cadence — operator amendment, 2026-09-13
 
@@ -93,9 +101,9 @@ remains historical. Other phases retain their review rules. All Codex subagents 
 
 | Work | Required before task handoff | Broad validation owner |
 | --- | --- | --- |
-| 3.1.9 and surface children 3.1.9.1–3.1.9.7 | Meaningful affected tests, scoped lint and affected generated/static checks; shared prerequisite behavior must work before children start | 3.1.23 |
-| 3.1.11 and children 3.1.11.1–3.1.11.2 | Same focused checks, including actual session/control and independent launch interfaces | 3.1.24 |
-| 3.1.14 and children 3.1.14.1–3.1.14.5 | Same focused checks, including actual shared detail/subscription interfaces | 3.1.25 |
+| 3.1.9 and surface children 3.1.9.1–3.1.9.7 | Meaningful affected tests, scoped lint and affected generated/static checks; shared prerequisite behavior must work before children start | 3.1.9.8 |
+| 3.1.11 and children 3.1.11.1–3.1.11.2 | Same focused checks, including actual session/control and independent launch interfaces | 3.1.11.3 |
+| 3.1.14 and children 3.1.14.1–3.1.14.5 | Same focused checks, including actual shared detail/subscription interfaces | 3.1.14.6 |
 | Standalone 3.1.10, 3.1.12, 3.1.13 and 3.1.15–3.1.18 | Same focused checks and the specific behavior/proof the task builds | 3.1.19 |
 | Optional 3.1.20–3.1.22, only if selected | Applicable focused checks; the selected brief names its final acceptance boundary | Never an added prerequisite for mandatory 3.1 release |
 
@@ -109,7 +117,7 @@ smoke or the entire acceptance matrix at each step, candidate commit or handoff.
 separate review ceremony. A task whose purpose is a targeted browser, performance or live proof
 still supplies that proof; finalization owns broad combined execution, not unfinished implementation.
 
-At 3.1.23, 3.1.24 and 3.1.25, combine the completed group, fix integration defects, then run
+At 3.1.9.8, 3.1.11.3 and 3.1.14.6, combine the completed group, fix integration defects, then run
 `npm run typecheck`, `npm run lint` and `npm run test:coverage`, plus applicable generated,
 desktop parity, build/production, performance and deferred acceptance checks. Run coverage
 without this task's compiler/linter contention. Corrections use focused iteration, followed by
@@ -128,9 +136,9 @@ allowed to resolve blockers, overlap or duplicate work; no automatic dispatch or
 
 | Complete and merge this prerequisite | Independent workers: focused checks | Finalizer: full gates and fixes |
 | --- | --- | --- |
-| 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive | [3.1.23 · Finalize dashboard surfaces](parallel-finalizers.md#task-23--finalize-dashboard-surfaces) |
-| 3.1.11 · Sessions (after accepted 3.1.23) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun | [3.1.24 · Finalize run operations](parallel-finalizers.md#task-24--finalize-run-operations) |
-| 3.1.14 · Detail foundation (after accepted 3.1.24 and Queue) | 3.1.14.1–3.1.14.5: Timeline, Context/Data, Logs, Receipts, Gates | [3.1.25 · Finalize run detail](parallel-finalizers.md#task-25--finalize-run-detail) |
+| 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive | [3.1.9.8 · Finalize dashboard surfaces](task-9-8-finalization-dashboard-surfaces.md) |
+| 3.1.11 · Sessions (after accepted 3.1.9.8) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun | [3.1.11.3 · Finalize run operations](task-11-3-finalization-run-operations.md) |
+| 3.1.14 · Detail foundation (after accepted 3.1.11.3 and Queue) | 3.1.14.1–3.1.14.5: Timeline, Context/Data, Logs, Receipts, Gates | [3.1.14.6 · Finalize run detail](task-14-6-finalization-run-detail.md) |
 
 A prerequisite closes on its own integrated focused release before its children. A worker finishes
 its implementation session after focused checks pass and its committed candidate/evidence are
@@ -139,10 +147,11 @@ integration remain separate, visible obligations. Worker roadmap completion foll
 integration and cleanup, without an independent-review prerequisite. The group and its downstream
 release stay open until the named finalizer passes. No task may claim deferred gates passed.
 
-Every child requires its parent; no child requires a sibling. Workers can enter the finalizer in
-either order. Date/Activity/Sessions require 3.1.23; Queue/Runtime/Detail foundation require 3.1.24;
-integrated detail consumers require 3.1.25. Integrated proofs 3.1.16–3.1.19 retain their required
-inputs; optional 3.1.20–3.1.22 never gate release. Existing task IDs and dependency edges are unchanged.
+Each worker requires its parent and no worker requires a sibling. The finalization child requires
+every worker and can take their candidates in either order. Date/Activity/Sessions require 3.1.9.8; Queue/Runtime/Detail foundation require 3.1.11.3;
+integrated detail consumers require 3.1.14.6. Integrated proofs 3.1.16–3.1.19 retain their required
+inputs; optional 3.1.20–3.1.22 never gate release. Stable execution node IDs and dependency edges
+are unchanged; finalizer display numbers follow the renumbering above.
 
 Before launch, bind exact paths, prerequisite commit, branch/worktree, shared contract and generated
 ownership, isolated tests/resources, focused commands, finalizer target/merge permission and every
@@ -163,52 +172,108 @@ to inventory current dashboard behavior, reconcile these existing task descripti
 schema-50/Settings/summary/archive handover, and freeze remaining ownership and acceptance.
 In particular, current Archive/relaunch and general Settings/restart wording below is not authority
 to restore retired behavior. The baseline task corrects those requirements before downstream
-implementation admission. Existing task IDs and admitted finalizer identities remain unchanged;
+implementation admission. That historical admission retained its then-current task labels; the
+renumbering above now supplies their current labels. Stable node IDs remain unchanged;
 approval of 3.1.8 does not launch or complete another task.
 
 ### Current task identities
 
-| Current task | Outcome and owner | Stable execution node |
-| --- | --- | --- |
-| 3.1.8 | [Re-baseline dashboard truth and acceptance](task-8-re-baseline-dashboard-truth-and-acceptance.md) | `dash-truth-reset` |
-| 3.1.9 | [Establish independent dashboard boundaries](prerequisite-boundary-foundation.md) | `dash-boundary-foundation` |
-| 3.1.9.1 | [Finish the shell, navigation, and accessibility baseline](task-9-1-finish-the-shell-navigation-and-accessibility-baseline.md) | `dash-shell` |
-| 3.1.9.2 | [Finish Settings over the canonical settings authority](task-9-2-finish-settings-over-the-canonical-settings-authority.md) | `dash-settings` |
-| 3.1.9.3 | [Finish basic storage health and recovery access](task-9-3-finish-basic-storage-health-and-recovery-access.md) | `dash-storage` |
-| 3.1.9.4 | [Finish Workflow Explorer and catalog editing](task-9-4-finish-workflow-explorer-and-catalog-editing.md) | `dash-explorer` |
-| 3.1.9.5 | [Finish notifications and delivery behavior](task-10-3-finish-notifications-and-delivery-behavior.md) | `dash-notifications` |
-| 3.1.9.6 | [Finish Intake surfaces](task-10-4-finish-intake-surfaces.md) | `dash-intake-edit` |
-| 3.1.9.7 | [Finish Archive saved reports, version changes, and deletion](task-11-3-finish-archive-versions-relaunch-and-deletion.md) | `dash-archive` |
-| 3.1.10 | [Repair date navigation and the date picker](task-10-1-repair-date-navigation-and-the-date-picker.md) | `dash-date-navigation` |
-| 3.1.11 | [Finish sessions, worker pools, and browser lifecycle](task-10-2-finish-sessions-worker-pools-and-browser-lifecycle.md) | `dash-sessions` |
-| 3.1.11.1 | [Finish Setup and preflight](task-11-1-finish-setup-and-preflight.md) | `dash-setup` |
-| 3.1.11.2 | [Make Run and Rerun enqueue real work](task-11-2-make-run-and-rerun-enqueue-real-work.md) | `dash-run-modal` |
-| 3.1.12 | [Finish Activity, search, and export](task-12-3-finish-activity-search-and-export.md) | `dash-activity` |
-| 3.1.13 | [Finish queue rows, commands, and deletion](task-12-1-finish-queue-rows-commands-and-deletion.md) | `dash-queue` |
-| 3.1.14 | [Establish independent run-detail sections](prerequisite-detail-foundation.md) | `dash-detail-foundation` |
-| 3.1.14.1 | [Finish run detail and the live timeline](task-12-2-finish-run-detail-and-the-live-timeline.md) | `dash-run-detail` |
-| 3.1.14.2 | [Finish Context, Data, Attempts, and provenance readback](task-13-1-finish-context-data-attempts-and-provenance-readback.md) | `dash-context-data` |
-| 3.1.14.3 | [Finish logs, observations, and captures](task-13-2-finish-logs-observations-and-captures.md) | `dash-logs` |
-| 3.1.14.4 | [Finish receipts and failure records](task-13-3-finish-receipts-and-failure-records.md) | `dash-receipts-failures` |
-| 3.1.14.5 | [Finish gates and parked-write resolution](task-13-4-finish-gates-and-parked-write-resolution.md) | `dash-gates` |
-| 3.1.15 | [Finish production startup, serving, and shutdown](task-12-4-finish-production-startup-serving-and-shutdown.md) | `dash-production-runtime` |
-| 3.1.16 | [Prove realtime convergence and reconnect](task-15-prove-realtime-convergence-and-reconnect.md) | `dash-realtime` |
-| 3.1.17 | [Meet large-data and responsiveness budgets](task-16-meet-large-data-and-responsiveness-budgets.md) | `dash-performance` |
-| 3.1.18 | [Build the complete dashboard proof infrastructure](task-17-build-the-complete-dashboard-proof-infrastructure.md) | `dash-proof-infrastructure` |
-| 3.1.19 | [Execute integrated dashboard acceptance and close 3.1](task-18-execute-integrated-dashboard-acceptance-and-close-3-1.md) | `dash-acceptance` |
-| 3.1.20 | [Prepare dashboard inventory during tail revalidation](prerequisite-early-inventory.md) | `dash-early-inventory` |
-| 3.1.21 | [Assess further prerequisite extractions](prerequisite-smaller-prerequisites.md) | `dash-smaller-prerequisites` |
-| 3.1.22 | [Generic Review and People pages — deferred until needed](task-14-generic-review-and-people-pages-deferred-until-needed.md) | `dash-review-people` |
-| 3.1.23 | [Finalize dashboard surfaces](parallel-finalizers.md#task-23--finalize-dashboard-surfaces) | `dash-surfaces-finalizer` |
-| 3.1.24 | [Finalize run operations](parallel-finalizers.md#task-24--finalize-run-operations) | `dash-operations-finalizer` |
-| 3.1.25 | [Finalize run detail](parallel-finalizers.md#task-25--finalize-run-detail) | `dash-detail-finalizer` |
+Read top to bottom for the sequential execution path. Independent workers may still run in parallel
+under their approved ownership and worktree limits. Finalization waits for every worker in its group.
 
-The former six organizational containers are retired; they were never executable prerequisites.
-Their old files remain redirects to this map: `dash-foundations`, `dash-shell-configuration`,
-`dash-run-operations`, `dash-detail-evidence`, `dash-standing-surfaces`, and
-`dash-integrated-acceptance`. Every real execution node keeps its ID, scope and dated evidence.
-For the original and intermediate numbers, consult each task's unchanged historical heading and
-the roadmap's dated D344 logs; current assignments use only the identities above.
+| Task | Outcome and plan | Stable execution node |
+| --- | --- | --- |
+| 3.1.8 — complete | [Re-baseline dashboard truth and acceptance](task-8-re-baseline-dashboard-truth-and-acceptance.md) | `dash-truth-reset` |
+| **3.1.9** | [Establish independent dashboard boundaries](task-9-establish-independent-dashboard-boundaries.md) | `dash-boundary-foundation` |
+| **3.1.9.1** | [Finish the shell, navigation, and accessibility baseline](task-9-1-finish-the-shell-navigation-and-accessibility-baseline.md) | `dash-shell` |
+| **3.1.9.2** | [Finish Settings over the canonical settings authority](task-9-2-finish-settings-over-the-canonical-settings-authority.md) | `dash-settings` |
+| **3.1.9.3** | [Finish basic storage health and recovery access](task-9-3-finish-basic-storage-health-and-recovery-access.md) | `dash-storage` |
+| **3.1.9.4** | [Finish Workflow Explorer and catalog editing](task-9-4-finish-workflow-explorer-and-catalog-editing.md) | `dash-explorer` |
+| **3.1.9.5** | [Finish notifications and delivery behavior](task-9-5-finish-notifications-and-delivery-behavior.md) | `dash-notifications` |
+| **3.1.9.6** | [Finish Intake surfaces](task-9-6-finish-intake-surfaces.md) | `dash-intake-edit` |
+| **3.1.9.7** | [Finish Archive saved reports, version changes, and deletion](task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md) | `dash-archive` |
+| **3.1.9.8** | [Finalization — dashboard surfaces](task-9-8-finalization-dashboard-surfaces.md) | `dash-surfaces-finalizer` |
+| **3.1.10** | [Repair date navigation and the date picker](task-10-repair-date-navigation-and-the-date-picker.md) | `dash-date-navigation` |
+| **3.1.11** | [Finish sessions, worker pools, and browser lifecycle](task-11-finish-sessions-worker-pools-and-browser-lifecycle.md) | `dash-sessions` |
+| **3.1.11.1** | [Finish Setup and preflight](task-11-1-finish-setup-and-preflight.md) | `dash-setup` |
+| **3.1.11.2** | [Make Run and Rerun enqueue real work](task-11-2-make-run-and-rerun-enqueue-real-work.md) | `dash-run-modal` |
+| **3.1.11.3** | [Finalization — run operations](task-11-3-finalization-run-operations.md) | `dash-operations-finalizer` |
+| **3.1.12** | [Finish Activity, search, and export](task-12-finish-activity-search-and-export.md) | `dash-activity` |
+| **3.1.13** | [Finish queue rows, commands, and deletion](task-13-finish-queue-rows-commands-and-deletion.md) | `dash-queue` |
+| **3.1.14** | [Establish independent run-detail sections](task-14-establish-independent-run-detail-sections.md) | `dash-detail-foundation` |
+| **3.1.14.1** | [Finish run detail and the live timeline](task-14-1-finish-run-detail-and-the-live-timeline.md) | `dash-run-detail` |
+| **3.1.14.2** | [Finish Context, Data, Attempts, and provenance readback](task-14-2-finish-context-data-attempts-and-provenance-readback.md) | `dash-context-data` |
+| **3.1.14.3** | [Finish logs, observations, and captures](task-14-3-finish-logs-observations-and-captures.md) | `dash-logs` |
+| **3.1.14.4** | [Finish receipts and failure records](task-14-4-finish-receipts-and-failure-records.md) | `dash-receipts-failures` |
+| **3.1.14.5** | [Finish gates and parked-write resolution](task-14-5-finish-gates-and-parked-write-resolution.md) | `dash-gates` |
+| **3.1.14.6** | [Finalization — run detail](task-14-6-finalization-run-detail.md) | `dash-detail-finalizer` |
+| **3.1.15** | [Finish production startup, serving, and shutdown](task-15-finish-production-startup-serving-and-shutdown.md) | `dash-production-runtime` |
+| **3.1.16** | [Prove realtime convergence and reconnect](task-16-prove-realtime-convergence-and-reconnect.md) | `dash-realtime` |
+| **3.1.17** | [Meet large-data and responsiveness budgets](task-17-meet-large-data-and-responsiveness-budgets.md) | `dash-performance` |
+| **3.1.18** | [Build the complete dashboard proof infrastructure](task-18-build-the-complete-dashboard-proof-infrastructure.md) | `dash-proof-infrastructure` |
+| **3.1.19** | [Final acceptance and close Phase 3.1](task-19-final-acceptance-and-close-phase-3-1.md) | `dash-acceptance` |
+
+### Optional tasks — outside the required sequence
+
+These existing proposed tasks are selectable only when their stated need applies. They do not
+follow 3.1.19 as mandatory work and do not gate Phase 3.2.
+
+| Task | Outcome and plan | Stable execution node |
+| --- | --- | --- |
+| 3.1.20 | [Optional: Prepare dashboard inventory during tail revalidation](task-20-prepare-dashboard-inventory-during-tail-revalidation.md) | `dash-early-inventory` |
+| 3.1.21 | [Optional: Assess further prerequisite extractions](task-21-assess-further-prerequisite-extractions.md) | `dash-smaller-prerequisites` |
+| 3.1.22 | [Optional: Generic Review and People pages — deferred until needed](task-22-generic-review-and-people-pages-deferred-until-needed.md) | `dash-review-people` |
+
+### Earlier labels and filenames
+
+The following lookup preserves earlier citations without using stale labels as current assignments.
+Dated logs, completed task records and commit-pinned artifacts retain their original text. Files
+moved from their earlier paths; use the current link here. The finalization index also preserves
+its three old section anchors. No task is added, completed or removed by this mapping.
+
+<details>
+<summary>Earlier plan names → current plans</summary>
+
+| Earlier heading / assignment | Earlier filename | Current plan |
+| --- | --- | --- |
+| Establish independent dashboard boundaries | `prerequisite-boundary-foundation.md` | [3.1.9](task-9-establish-independent-dashboard-boundaries.md) |
+| Task 9-1 · Finish the shell, navigation, and accessibility baseline | `task-9-1-finish-the-shell-navigation-and-accessibility-baseline.md` | [3.1.9.1](task-9-1-finish-the-shell-navigation-and-accessibility-baseline.md) |
+| Task 9-2 · Finish Settings over the canonical settings authority | `task-9-2-finish-settings-over-the-canonical-settings-authority.md` | [3.1.9.2](task-9-2-finish-settings-over-the-canonical-settings-authority.md) |
+| Task 9-3 · Finish basic storage health and recovery access | `task-9-3-finish-basic-storage-health-and-recovery-access.md` | [3.1.9.3](task-9-3-finish-basic-storage-health-and-recovery-access.md) |
+| Task 9-4 · Finish Workflow Explorer and catalog editing | `task-9-4-finish-workflow-explorer-and-catalog-editing.md` | [3.1.9.4](task-9-4-finish-workflow-explorer-and-catalog-editing.md) |
+| Task 10-3 · Finish notifications and delivery behavior | `task-10-3-finish-notifications-and-delivery-behavior.md` | [3.1.9.5](task-9-5-finish-notifications-and-delivery-behavior.md) |
+| Task 10-4 · Finish Intake surfaces | `task-10-4-finish-intake-surfaces.md` | [3.1.9.6](task-9-6-finish-intake-surfaces.md) |
+| Task 11-3 · Finish Archive saved reports, version changes, and deletion | `task-11-3-finish-archive-versions-relaunch-and-deletion.md` | [3.1.9.7](task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md) |
+| Task 23 · Finalize dashboard surfaces (3.1.23) | `parallel-finalizers.md` | [3.1.9.8](task-9-8-finalization-dashboard-surfaces.md) |
+| Task 10-1 · Repair date navigation and the date picker | `task-10-1-repair-date-navigation-and-the-date-picker.md` | [3.1.10](task-10-repair-date-navigation-and-the-date-picker.md) |
+| Task 10-2 · Finish sessions, worker pools, and browser lifecycle | `task-10-2-finish-sessions-worker-pools-and-browser-lifecycle.md` | [3.1.11](task-11-finish-sessions-worker-pools-and-browser-lifecycle.md) |
+| Task 11-1 · Finish Setup and preflight | `task-11-1-finish-setup-and-preflight.md` | [3.1.11.1](task-11-1-finish-setup-and-preflight.md) |
+| Task 11-2 · Make Run and Rerun enqueue real work | `task-11-2-make-run-and-rerun-enqueue-real-work.md` | [3.1.11.2](task-11-2-make-run-and-rerun-enqueue-real-work.md) |
+| Task 24 · Finalize run operations (3.1.24) | `parallel-finalizers.md` | [3.1.11.3](task-11-3-finalization-run-operations.md) |
+| Task 12-3 · Finish Activity, search, and export | `task-12-3-finish-activity-search-and-export.md` | [3.1.12](task-12-finish-activity-search-and-export.md) |
+| Task 12-1 · Finish queue rows, commands, and deletion | `task-12-1-finish-queue-rows-commands-and-deletion.md` | [3.1.13](task-13-finish-queue-rows-commands-and-deletion.md) |
+| Establish independent run-detail sections | `prerequisite-detail-foundation.md` | [3.1.14](task-14-establish-independent-run-detail-sections.md) |
+| Task 12-2 · Finish run detail and the live timeline | `task-12-2-finish-run-detail-and-the-live-timeline.md` | [3.1.14.1](task-14-1-finish-run-detail-and-the-live-timeline.md) |
+| Task 13-1 · Finish Context, Data, Attempts, and provenance readback | `task-13-1-finish-context-data-attempts-and-provenance-readback.md` | [3.1.14.2](task-14-2-finish-context-data-attempts-and-provenance-readback.md) |
+| Task 13-2 · Finish logs, observations, and captures | `task-13-2-finish-logs-observations-and-captures.md` | [3.1.14.3](task-14-3-finish-logs-observations-and-captures.md) |
+| Task 13-3 · Finish receipts and failure records | `task-13-3-finish-receipts-and-failure-records.md` | [3.1.14.4](task-14-4-finish-receipts-and-failure-records.md) |
+| Task 13-4 · Finish gates and parked-write resolution | `task-13-4-finish-gates-and-parked-write-resolution.md` | [3.1.14.5](task-14-5-finish-gates-and-parked-write-resolution.md) |
+| Task 25 · Finalize run detail (3.1.25) | `parallel-finalizers.md` | [3.1.14.6](task-14-6-finalization-run-detail.md) |
+| Task 12-4 · Finish production startup, serving, and shutdown | `task-12-4-finish-production-startup-serving-and-shutdown.md` | [3.1.15](task-15-finish-production-startup-serving-and-shutdown.md) |
+| Task 15 · Prove realtime convergence and reconnect | `task-15-prove-realtime-convergence-and-reconnect.md` | [3.1.16](task-16-prove-realtime-convergence-and-reconnect.md) |
+| Task 16 · Meet large-data and responsiveness budgets | `task-16-meet-large-data-and-responsiveness-budgets.md` | [3.1.17](task-17-meet-large-data-and-responsiveness-budgets.md) |
+| Task 17 · Build the complete dashboard proof infrastructure | `task-17-build-the-complete-dashboard-proof-infrastructure.md` | [3.1.18](task-18-build-the-complete-dashboard-proof-infrastructure.md) |
+| Task 18 · Execute integrated dashboard acceptance and close 3.1 | `task-18-execute-integrated-dashboard-acceptance-and-close-3-1.md` | [3.1.19](task-19-final-acceptance-and-close-phase-3-1.md) |
+| Prepare dashboard inventory during tail revalidation | `prerequisite-early-inventory.md` | [3.1.20](task-20-prepare-dashboard-inventory-during-tail-revalidation.md) |
+| Assess further prerequisite extractions | `prerequisite-smaller-prerequisites.md` | [3.1.21](task-21-assess-further-prerequisite-extractions.md) |
+| Task 14 · Generic Review and People pages — deferred until needed | `task-14-generic-review-and-people-pages-deferred-until-needed.md` | [3.1.22](task-22-generic-review-and-people-pages-deferred-until-needed.md) |
+
+</details>
+
+The six retired organizational containers remain citation redirects: `dash-foundations`,
+`dash-shell-configuration`, `dash-run-operations`, `dash-detail-evidence`, `dash-standing-surfaces`
+and `dash-integrated-acceptance`. They were never executable prerequisites. Every real execution
+node keeps its stable ID, scope and dated evidence.
 
 ### Historical closure criteria — 2026-08-27
 
@@ -314,76 +379,22 @@ sentence implies, and both matter to whoever wires the next workflow:
 
 ## Reopened completion tasks
 
+Use the [current task table](#current-task-identities), whose labels and filenames follow execution
+order. Implementation starts only after Phase 2.6 and the task's own prerequisites are accepted.
+Final acceptance 3.1.19 retains its audit-only boundary and returns defects to existing owners.
+
 **D339 release scope (2026-09-06).** Complete the admitted workflows' actual operator journeys.
-Generic People/Review pages and new advanced storage-recovery interfaces are deferred unless a
-current workflow requires them; Task 14 is not a Phase-3.1 completion dependency. Task 9-3 retains
-basic health/status and access to the supported recovery commands. Task 8 names required and deferred
-surfaces, and Tasks 15–18 accept that scope. Ref frontend-backend-integration §10 owns the exact rule.
+Generic People/Review pages and new advanced storage-recovery interfaces remain deferred unless a
+current workflow requires them. Optional 3.1.22 does not gate release. Task 3.1.9.3 retains basic
+health/status and supported recovery access; 3.1.8 identifies required and deferred surfaces, and
+3.1.16–3.1.19 supply integrated proof. Ref frontend-backend-integration §10 owns the exact rule.
 
-
-**D340 desktop-only scope (operator-approved amendment, 2026-09-06).** The dashboard is for desktop
-and laptop use; mobile layouts/navigation and touch-specific proof are outside release scope.
-The operator subsequently moved mobile/coarse-pointer cleanup to immediate execution before 1.6.6.
-This phase consumes that desktop-only baseline; it does not defer or repeat the cleanup. Desktop
-resizing, smaller laptop windows, zoom and accessibility remain required. Ref frontend-backend-integration
-§10 owns the exact retirement/replacement mapping and the fixed 1024×720 CSS-pixel canvas floor.
-The queue stays beside detail; smaller browser windows scroll that canvas. Task 8 binds desktop/zoom
-journeys to this floor; Tasks 9-1/17/18 implement and accept desktop journeys. No dedicated Task-8 execution plan is
-approved by this scope amendment.
-
-D344 replaces the old waves with the current identity map above. Leaf implementation starts only
-after 2.6 closes and its own prerequisites are integrated. Former Task 18 remains the final
-acceptance audit, not a place to absorb repairs. The following historical headings retain links.
-
-- [Task 8 · Re-baseline dashboard truth and acceptance](task-8-re-baseline-dashboard-truth-and-acceptance.md)
-
-- [Task 9-1 · Finish the shell, navigation, and accessibility baseline](task-9-1-finish-the-shell-navigation-and-accessibility-baseline.md)
-
-- [Task 9-2 · Finish Settings over the canonical settings authority](task-9-2-finish-settings-over-the-canonical-settings-authority.md)
-
-- [Task 9-3 · Finish basic storage health and recovery access](task-9-3-finish-basic-storage-health-and-recovery-access.md)
-
-- [Task 9-4 · Finish Workflow Explorer and catalog editing](task-9-4-finish-workflow-explorer-and-catalog-editing.md)
-
-- [Task 10-1 · Repair date navigation and the date picker](task-10-1-repair-date-navigation-and-the-date-picker.md)
-
-- [Task 10-2 · Finish sessions, worker pools, and browser lifecycle](task-10-2-finish-sessions-worker-pools-and-browser-lifecycle.md)
-
-- [Task 10-3 · Finish notifications and delivery behavior](task-10-3-finish-notifications-and-delivery-behavior.md)
-
-- [Task 10-4 · Finish Intake surfaces](task-10-4-finish-intake-surfaces.md)
-
-- [Task 11-1 · Finish Setup and preflight](task-11-1-finish-setup-and-preflight.md)
-
-- [Task 11-2 · Make Run and Rerun enqueue real work](task-11-2-make-run-and-rerun-enqueue-real-work.md)
-
-- [Task 11-3 · Finish Archive saved reports, version changes, and deletion](task-11-3-finish-archive-versions-relaunch-and-deletion.md)
-
-- [Task 12-1 · Finish queue rows, commands, and deletion](task-12-1-finish-queue-rows-commands-and-deletion.md)
-
-- [Task 12-2 · Finish run detail and the live timeline](task-12-2-finish-run-detail-and-the-live-timeline.md)
-
-- [Task 12-3 · Finish Activity, search, and export](task-12-3-finish-activity-search-and-export.md)
-
-- [Task 12-4 · Finish production startup, serving, and shutdown](task-12-4-finish-production-startup-serving-and-shutdown.md)
-
-- [Task 13-1 · Finish Context, Data, Attempts, and provenance readback](task-13-1-finish-context-data-attempts-and-provenance-readback.md)
-
-- [Task 13-2 · Finish logs, observations, and captures](task-13-2-finish-logs-observations-and-captures.md)
-
-- [Task 13-3 · Finish receipts and failure records](task-13-3-finish-receipts-and-failure-records.md)
-
-- [Task 13-4 · Finish gates and parked-write resolution](task-13-4-finish-gates-and-parked-write-resolution.md)
-
-- [Task 14 · Generic Review and People pages — deferred until needed](task-14-generic-review-and-people-pages-deferred-until-needed.md)
-
-- [Task 15 · Prove realtime convergence and reconnect](task-15-prove-realtime-convergence-and-reconnect.md)
-
-- [Task 16 · Meet large-data and responsiveness budgets](task-16-meet-large-data-and-responsiveness-budgets.md)
-
-- [Task 17 · Build the complete dashboard proof infrastructure](task-17-build-the-complete-dashboard-proof-infrastructure.md)
-
-- [Task 18 · Execute integrated dashboard acceptance and close 3.1](task-18-execute-integrated-dashboard-acceptance-and-close-3-1.md)
+**D340 desktop-only scope (2026-09-06).** Preserve the accepted desktop/laptop baseline; mobile
+layouts/navigation and touch-specific proof remain outside release scope. Mobile/coarse-pointer
+cleanup moved before 1.6.6 and is not repeated here. Desktop resizing, smaller laptop windows,
+zoom and accessibility remain required. The fixed 1024×720 CSS-pixel canvas keeps queue beside
+detail; smaller windows scroll it. The frozen 3.1.8 matrix binds those journeys; 3.1.9.1 and
+3.1.18–3.1.19 build and accept the proof under ref frontend-backend-integration §10.
 
 ## Integration execution rule
 
