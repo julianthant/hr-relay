@@ -10,3 +10,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 - [ ] Make URL, selected date, timezone, loaded snapshot, controls, focus, races, DST, and browser
   history one tested state machine.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

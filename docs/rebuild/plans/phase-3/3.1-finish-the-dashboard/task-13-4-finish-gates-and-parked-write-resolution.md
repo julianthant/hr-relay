@@ -10,3 +10,9 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 - [ ] Implement evidence-complete revision-bound gate/parked-write commands and prove stale, expired,
   changed-plan, skipped-condition, resume, rejection, archive, and authorization cases.
+
+Gate decisions remain checkpoint-backed; run_operations/run_operation_attempts retain write evidence and parked resolution. The retirement of SQL gates/ocr_approvals does not remove required approval or durable review behavior. Do not restore the retired tables to satisfy old storage wording.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

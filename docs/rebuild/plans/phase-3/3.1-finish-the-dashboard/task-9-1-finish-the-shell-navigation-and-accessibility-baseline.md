@@ -13,3 +13,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
   accessibility, component, and production-browser proof. Mobile/touch-specific support is not owed.
 - [ ] D340: consume the desktop-only control/layout baseline. Keep responsive CSS useful for
   desktop resizing and zoom; do not reintroduce mobile-only variants or schedule another cleanup.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

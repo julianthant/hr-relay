@@ -17,6 +17,15 @@ tasks. [3.2](../3.2-finish-workflow-authoring/README.md), [3.3](../3.3-accept-pe
 unnumbered until the operator verifies and approves its admission packet. Contracts this phase built
 or amended live in `reference/`; this doc holds the work, its state, and its exit.
 
+## Current baseline — 3.1.8
+
+The [inventory](task-8-dashboard-inventory.md) records current source/proof and disposes of historical
+unchecked obligations; the [acceptance matrix](task-8-acceptance-matrix.md) freezes A01–A42, D01–D05
+and prerequisite/leaf/finalizer ownership. Baseline implementation is awaiting document gates and
+independent review; no downstream task is complete or launch-ready from these pointers alone.
+Accepted 2.6 is the product input. Old surface/exit counts below retain their dated release evidence
+and are not a current Phase 3.1 completion claim. Current acceptance is owned by 3.1.19.
+
 ## Phase summary
 <!-- roadmap: dash-defaults -->
 
@@ -30,10 +39,10 @@ or amended live in `reference/`; this doc holds the work, its state, and its exi
 - [x] the worker pool / sessions node — pool-indexed identity, durable pool/session authority, the FE session view, the real dashboard supervisor with its panel controls (W3/W4), and the two-scenario parallel proof recorded live 2026-08-26 (`docs/rebuild/migrations/separations.md` §9.27)
 - [x] observed logs — the real dashboard/composed separations dry run served 13 observed rows (sequences 0..12), no notes and zero run-scoped write evidence (`docs/rebuild/migrations/separations.md` §9.25)
 - [x] `ref frontend-backend-integration` §7.4's performance budgets — the instrument, BEFORE baseline and both D4/D5 AFTER measurements are recorded against the same 1,240-row / 108-member fixture; the recorded bounds are the later-workflow non-regression gates
-- [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with their admitted Phase 4 workflow consumers, not here
+- [ ] D339 absence proof for optional generic **Review** and **People** bodies remains at 3.1.19; concrete required workflow screens cannot be deferred (A41)
 - [x] demo fidelity — CLOSED BY DISPOSITION 2026-08-27 (D279); D294 subsequently retires the phone-capture portion of its historical residue. The remaining historical audit counts remain evidence, not active product work (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/dashboard.md` §D271–D276)
 - [x] historical Tasks 1–7 retain their evidence
-- [ ] D326 reopens Task 8, parallel waves 9–13, and serial Tasks 14–18 after 2.6 to finish every generic operator journey; 3.2 cannot resume until the unchanged Task-8 acceptance matrix is green
+- [ ] D326/D344 current 3.1.8–3.1.19 and admitted finalizers 3.1.23/24/25 finish required dashboard journeys after 2.6; 3.2 waits for every frozen acceptance row
 > 2026-09-05 | D334 operator correction | Task 10-4 now owns intake only. Task 11-2 owns ordinary Run plus the shared source-bound Rerun modal over 2.6 Task 1-2's completed-value/provenance read; the source run is immutable and the former `edit-checkpoint` surface does not return
 > 2026-09-04 | D328 parallel task identities | each parallel wave now shares one ordinal and uses numeric members (`9-1`, `9-2`, ...); serial tasks keep plain ordinals. The hyphen names a peer supervisor task, not a checklist subtask, and each member's exact branch/worktree appears in the binding table below
 > 2026-09-03 | D326/D327 dashboard reset | operator review found broken/incomplete run-modal, date, queue-delete, settings/setup, session, notification, log, archive, Explorer, intake, trust, realtime, and production journeys. Historical closure is superseded; no workflow-specific policy moves into 3.1
@@ -59,9 +68,10 @@ categories, `nodePurposes`, `subjectProjection`) and a proof, never a new surfac
 every later workflow receives its own admitted Phase 4 part under `ref workflow-model` §1.6.2. They read this node as their
 prerequisite, which is exactly why "done" here has to mean something checkable.
 
-**It is not the deferrals its surfaces name.** Editable settings, the explorer's EDIT half, the
-production byte path for the built dashboard and the search/export surface each have a node with a
-trigger in doc 04 — they are named absences on a built surface, not unfinished work in this phase.
+**Current retained deferrals are D339 only.** Generic People/Review and advanced recovery interfaces
+remain optional until a concrete workflow need or explicit post-release request. Editable Settings,
+Explorer editing, production serving and search/export are active 3.1 obligations under the current
+identity map; older doc-04 deferral references below are historical, not release waivers.
 
 ### The order of work
 
@@ -107,6 +117,15 @@ Phase 2.6 still closes before dashboard implementation. Optional inventory can p
 draft; baseline 3.1.8 freezes acceptance against the final 2.6 handoff. Final acceptance executes that
 matrix unchanged. Workflow-specific work and frozen-candidate proof remain in 3.2/3.3.
 
+**3.1.8 planning admission — 2026-09-12.** Phase 2.6 is now accepted and locally integrated.
+The operator approved [B01–B06](task-8-re-baseline-dashboard-truth-and-acceptance.md#approved-execution-brief--2026-09-12)
+to inventory current dashboard behavior, reconcile these existing task descriptions with the
+schema-50/Settings/summary/archive handover, and freeze remaining ownership and acceptance.
+In particular, current Archive/relaunch and general Settings/restart wording below is not authority
+to restore retired behavior. The baseline task corrects those requirements before downstream
+implementation admission. Existing task IDs and admitted finalizer identities remain unchanged;
+approval of 3.1.8 does not launch or complete another task.
+
 ### Current task identities
 
 | Current task | Outcome and owner | Stable execution node |
@@ -119,7 +138,7 @@ matrix unchanged. Workflow-specific work and frozen-candidate proof remain in 3.
 | 3.1.9.4 | [Finish Workflow Explorer and catalog editing](task-9-4-finish-workflow-explorer-and-catalog-editing.md) | `dash-explorer` |
 | 3.1.9.5 | [Finish notifications and delivery behavior](task-10-3-finish-notifications-and-delivery-behavior.md) | `dash-notifications` |
 | 3.1.9.6 | [Finish Intake surfaces](task-10-4-finish-intake-surfaces.md) | `dash-intake-edit` |
-| 3.1.9.7 | [Finish Archive, versions, relaunch, and deletion](task-11-3-finish-archive-versions-relaunch-and-deletion.md) | `dash-archive` |
+| 3.1.9.7 | [Finish Archive saved reports, version changes, and deletion](task-11-3-finish-archive-versions-relaunch-and-deletion.md) | `dash-archive` |
 | 3.1.10 | [Repair date navigation and the date picker](task-10-1-repair-date-navigation-and-the-date-picker.md) | `dash-date-navigation` |
 | 3.1.11 | [Finish sessions, worker pools, and browser lifecycle](task-10-2-finish-sessions-worker-pools-and-browser-lifecycle.md) | `dash-sessions` |
 | 3.1.11.1 | [Finish Setup and preflight](task-11-1-finish-setup-and-preflight.md) | `dash-setup` |
@@ -151,7 +170,7 @@ Their old files remain redirects to this map: `dash-foundations`, `dash-shell-co
 For the original and intermediate numbers, consult each task's unchanged historical heading and
 the roadmap's dated D344 logs; current assignments use only the identities above.
 
-### What "done" means for this phase
+### Historical closure criteria — 2026-08-27
 
 A later migration's `Dashboard · wire` task may read `{#dash-defaults}` as met when all of these
 hold. The original eight criteria are 7/8 met; demo fidelity remains open. The expanded ten-row exit
@@ -179,7 +198,7 @@ observed logs met.
    the cross-ledger vocabulary sweep and the receipt action entry's wire (§Demo fidelity — every
    detail, region by region).
 
-### The honest state at HEAD, surface by surface
+### Historical surface baseline — 2026-08-20
 
 Verified against the code on 2026-08-20, not against the earlier prose (D252's rule). Where the two
 disagreed, the code won and the row says so.
@@ -298,7 +317,7 @@ acceptance audit, not a place to absorb repairs. The following historical headin
 
 - [Task 11-2 · Make Run and Rerun enqueue real work](task-11-2-make-run-and-rerun-enqueue-real-work.md)
 
-- [Task 11-3 · Finish Archive, versions, relaunch, and deletion](task-11-3-finish-archive-versions-relaunch-and-deletion.md)
+- [Task 11-3 · Finish Archive saved reports, version changes, and deletion](task-11-3-finish-archive-versions-relaunch-and-deletion.md)
 
 - [Task 12-1 · Finish queue rows, commands, and deletion](task-12-1-finish-queue-rows-commands-and-deletion.md)
 
@@ -372,6 +391,13 @@ dispositions), 74 (D243/D244 the Duo signCount — the hazard `{#duo-lease}` exi
 platform_` in the ledger. They are listed here only because no phase owns them.
 
 ## Exit criteria
+
+Current release requires every A01–A42 and D01–D05 outcome in the frozen 3.1.8 acceptance matrix,
+all required task/finalizer reviews and gates, current production/live authority comparisons and
+owned cleanup. Historical criteria below preserve dated evidence; they do not close reopened 3.1
+work. Only 3.1.19 releases the shared dashboard to 3.2, and optional generic surfaces follow D339.
+
+## Historical exit criteria — 2026-08-27
 
 07 recorded no exit block for the dashboard-defaults half of phase 3 — it predates Tracks B, C and
 D. What binds instead is the checklist below, which is what a later migration's `Dashboard · wire`
