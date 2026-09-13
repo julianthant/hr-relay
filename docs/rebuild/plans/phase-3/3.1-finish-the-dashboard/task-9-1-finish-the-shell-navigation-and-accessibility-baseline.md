@@ -3,8 +3,8 @@
 
 **Current assignment: 3.1.9.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 
-**Current delivery:** operator-directed shell integration is being completed under the amendment
-below. The earlier candidate-only stopping boundary is superseded for this child; 3.1.9.8 remains
+**Current delivery: complete.** Shell integration and owned cleanup were accepted on local `master`
+at `251d471b27dcdb0d32027fc5dd9acffffe3c6449` under the operator amendment below. 3.1.9.8 remains
 responsible for combined surface acceptance and downstream release.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -14,10 +14,10 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. The approved brief below and the [shell ownership amendment](task-9-establish-independent-dashboard-boundaries.md#shell-child-ownership-amendment--2026-09-13) own this child. Other shared registration and generated outputs remain reserved.
 
-- [ ] Finish shell/navigation and responsive containment within Task 8's supported desktop matrix,
+- [x] Finish shell/navigation and responsive containment within Task 8's supported desktop matrix,
   including smaller laptop windows and zoom; preserve keyboard, focus, reduced-motion, theme,
   accessibility, component, and production-browser proof. Mobile/touch-specific support is not owed.
-- [ ] D340: consume the desktop-only control/layout baseline. Keep responsive CSS useful for
+- [x] D340: consume the desktop-only control/layout baseline. Keep responsive CSS useful for
   desktop resizing and zoom; do not reintroduce mobile-only variants or schedule another cleanup.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
@@ -420,3 +420,50 @@ tree. An equal merge tree reuses its typecheck/focused checks under D191; no cod
 configuration or dependency inputs change during merge. Owned cleanup and final roadmap marks
 are recorded only after the merge and physical/ref cleanup are verified. 3.1.9.8 can consume this
 accepted shell integration when the other six candidates are ready; it remains open.
+
+
+## Accepted shell integration and cleanup — 2026-09-13
+
+**3.1.9.1 is complete.** Local `master` accepted corrected candidate
+`9056e236bf73024ab9649a73c5c6915633e23061` through merge
+`251d471b27dcdb0d32027fc5dd9acffffe3c6449`. The merge's parents are the unchanged integration
+base `f37a4f4be20a6ff6e806ce95070ce55f6e4ccd1f` and that candidate. Its tree
+`2bddcf41577ef03f987097e6fd6a8f0b633e9e2b` equals the verified candidate tree. All 34 implementation
+file hashes match after integration, so the corrected typecheck, 93 shell tests, 28 architecture
+checks, targeted schema-fixture regression, scoped lint, 34 production-browser cases and actual
+zoom proof apply unchanged. `integration-accepted.json` and `integration-merge.log` retain the
+exact operation and equality evidence in the existing external evidence root.
+
+Ordinary `git worktree remove` removed the registered and physical
+`/Users/julianhein/Projects/hr-worktree-shell-baseline` checkout from the separate primary checkout.
+The integrated `codex/3.1.9.1-shell-baseline` and `codex/3.1.9.1-shell-plan` refs were deleted with
+`git branch -d` after both were verified ancestral to `master`. Build/parity output and remaining
+CLI snapshots/lock artifacts were copied and hash-verified before their owned local copies were
+removed. Only the dependency symlink was unlinked; primary dependencies were preserved.
+`cleanup-pre-removal.json` and `cleanup-complete.json` record exact custody, process absence,
+registration/path removal and ref cleanup. No owned resource remains. The calling task remains
+visible; no other task was archived, dispatched or modified, and nothing was pushed.
+
+The task's two completion boxes and the roadmap's three `dash-shell` obligations now reflect this
+accepted shell delivery. The six sibling tasks and 3.1.9.8 remain open; this single-child integration
+does not release downstream group consumers. Full coverage, broad parity and complete A01–A42/
+D01–D05 acceptance remain at 3.1.19. The initial candidate-only receipt above is historical and
+is superseded by this integration/cleanup record.
+
+Completion documentation is prepared on `codex/3.1.9.1-shell-closure`, based on the accepted
+integration, and returned to local `master` only after document binding, scoped lint, generated
+roadmap freshness, owner links, instruction twins, unchanged product-input hashes and whitespace
+checks. This record changes no implementation, fixture, dependency or gate-script input.
+
+Completion checks pass: `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts`
+(24 tests), scoped test/generator ESLint, `npm run roadmap` / `npm run roadmap:check`, and
+`python3 /Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/audit-closure.py`.
+The audit checks the three exact documentation paths, 13 owner links/fragments, nine identical
+instruction pairs, the 18,376-byte maximum instruction chain, every frozen evidence hash, unchanged
+implementation inputs, removed worktree/refs, and all roadmap nodes outside `dash-shell` unchanged.
+`closure-doc-binding.log`, `closure-doc-lint.log`, `closure-roadmap-generation-fixed.log`,
+`closure-roadmap-check.log` and `closure-document-audit.json` retain exit-0 evidence. An initial
+generator attempt correctly rejected the unsupported status word `complete`; it was corrected to
+the existing vocabulary's `done` before generation and checks. This result paragraph changes no
+checked binding/status/gate input; the final audit, freshness and whitespace checks are rerun,
+and unchanged binding/lint evidence is reused under D191.

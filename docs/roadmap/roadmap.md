@@ -1665,20 +1665,21 @@ log:
 
 
 ##### 1 · Finish the shell, navigation, and accessibility baseline {#dash-shell}
-status: planned
-date: D344 · former 3.1.9-1 · independent worktree after named prerequisites
+status: done
+date: 2026-09-13 · shell integration and owned cleanup accepted
 doc: 3.1/task-9-1-finish-the-shell-navigation-and-accessibility-baseline §Task 3.1.9.1 · Finish the shell, navigation, and accessibility baseline · ref:dashboard-surfaces §3 · ref:frontend-backend-integration §7
 
 builds:
-- [ ] FE finish top bar, workflow rail, route state, status/help/theme controls, desktop resize/zoom containment, and empty/error states (D340)
-- [ ] FE make every action keyboard/pointer reachable with truthful names, focus return, reduced motion, and both-theme contrast
-- [ ] PROOF component plus production-bundle desktop accessibility and parity coverage; consume the immediate desktop-only baseline while retaining desktop assertions and responsive CSS (D340)
+- [x] FE finish top bar, workflow rail, route state, status/help/theme controls, desktop resize/zoom containment, and empty/error states (D340)
+- [x] FE make every action keyboard/pointer reachable with truthful names, focus return, reduced motion, and both-theme contrast
+- [x] PROOF component plus production-bundle desktop accessibility and parity coverage; consume the immediate desktop-only baseline while retaining desktop assertions and responsive CSS (D340)
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-13 | 3.1.9.1 accepted | Operator-directed local integration `251d471b27dcdb0d32027fc5dd9acffffe3c6449` accepts corrected candidate `9056e236bf73024ab9649a73c5c6915633e23061`. Typecheck, 93 shell tests, 28 architecture checks, focused schema-fixture regression, scoped lint, 34 production-browser cases and actual 125%/200% zoom pass; exact candidate-tree equality and owned worktree/ref cleanup verified. No push or group release; 3.1.9.8 combined acceptance and 3.1.19 full gates remain open.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.1; former 3.1.9-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 frame seam in `phase-3-1-dashboard-c21194e18-r09-shell`, parallel with Tasks 11, 13 and 25 · left: Task 8 ownership freeze
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9.1; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
