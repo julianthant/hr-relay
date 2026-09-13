@@ -8,6 +8,8 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
+Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. This child owns only its listed surface/fixture/spec/reference paths and still needs its own approved execution brief. Shared registration and generated outputs remain reserved.
+
 - [ ] Complete upload-to-handoff, mapping, validation, reject review, manifest and rerun-diff flows
   with progress/provenance/refusals; prove real, malformed, partial, canceled, stale, redacted,
   duplicate and archived cases.

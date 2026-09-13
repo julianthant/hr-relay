@@ -13,6 +13,8 @@ interface supplies this taskâ€™s fixtures; operational credentials retain D336â€
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
+Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. This child owns only its listed surface/fixture/spec/reference paths and still needs its own approved execution brief. Shared registration and generated outputs remain reserved.
+
 > **D336 (2026-09-06):** ordinary settings are SQLite-owned; credentials are independently stored.
 > Consume the existing catalog/revision/set-clear behavior and current settings activation through the service and protected
 > write-only input through its independent operation. The file-target wording below is superseded.
