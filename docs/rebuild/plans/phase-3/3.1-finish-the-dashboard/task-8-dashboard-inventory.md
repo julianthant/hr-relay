@@ -7,7 +7,7 @@ Source: `e182022edfa0cd05a46a74358cd3296bcade6e79`. Product: accepted 2.6 at `d4
 
 W = working within the expressly cited accepted backend proof; P = implemented but insufficiently proven for the full journey; F = incomplete/defective; D = deliberately deferred. Superseded historical requirements are mapped separately below. W does not close its future task or claim new browser/live acceptance. Every I row maps to its same-numbered A row in the [acceptance matrix](task-8-acceptance-matrix.md). All listed tests exist at this source; unless called out in the task gate record, they were inspected/reused, not rerun.
 
-All runtime mutations still enter the loopback ingress guard and registered command kernel, with admitted actor, strict body, revision/digest and canonical service authority. A display projection, fixture response, browser cache or successful HTTP transport is not mutation authority. Route registration is `src/server/dashboard/routes/api.ts` (`createDashboardApp`), with `operator.ts`, `data.ts` and `trust.ts`; production dependency wiring is `src/server/dashboard/compose.ts`. The command and source census below preserves exact locations rather than relying on comments describing older storage.
+Mutation routes use the loopback ingress guard and their registered canonical service. Command envelopes enter the command kernel; direct operations such as intake upload create authority through their own validated service transaction. Actor, body, revision/digest and replay requirements follow each operation's contract, not a fictitious universal kernel path. A display projection, fixture response, browser cache or successful HTTP transport is not mutation authority. Route registration is `src/server/dashboard/routes/api.ts` (`createDashboardApp`), with `operator.ts`, `data.ts` and `trust.ts`; production dependency wiring is `src/server/dashboard/compose.ts`. The command and source census below preserves exact locations rather than relying on comments describing older storage.
 
 ## Current inventory
 
@@ -150,7 +150,7 @@ All runtime mutations still enter the loopback ingress guard and registered comm
 | Owner / class | 3.1.9.6 / **P** |
 | Controls and fields | Run-modal file handoff, session URL, source hash/name/rows, worksheet/header detection, field mapping, constants, required fields and cancel/close. |
 | Source / authority trace | [src/dashboard/surfaces/intake.tsx](../../../../../src/dashboard/surfaces/intake.tsx); [src/dashboard/surfaces/intake-model.ts](../../../../../src/dashboard/surfaces/intake-model.ts); [src/server/dashboard/commands/intake-service.ts](../../../../../src/server/dashboard/commands/intake-service.ts) |
-| Actual behavior and limit | Production file route and imported-artifact service exist; source mapping inspected, not a fresh upload acceptance run. |
+| Actual behavior and limit | Production file route and imported-artifact service exist; `intake-service.ts:346–351` joins an active session for the same source digest and workflow, as the upload contract requires. This retry identity is distinct from preserving independent submitted import/run origins under C0. Source mapping inspected, not a fresh upload acceptance run. |
 | Existing proof inputs | [tests/unit/intake-header-discovery.test.ts](../../../../../tests/unit/intake-header-discovery.test.ts); [tests/unit/intake-mapping.test.ts](../../../../../tests/unit/intake-mapping.test.ts); [tests/unit/server/intake-surface.test.ts](../../../../../tests/unit/server/intake-surface.test.ts) |
 | Remaining acceptance | [A13](task-8-acceptance-matrix.md#a13) — No merge of same-byte independent imports, raw secret exposure or synthetic session before upload. Run/Rerun internals remain 3.1.11.2. |
 
@@ -246,11 +246,11 @@ All runtime mutations still enter the loopback ingress guard and registered comm
 
 | Inventory | Current evidence |
 | --- | --- |
-| Owner / class | 3.1.11 / **P** |
-| Controls and fields | Session strip/cards, Add workers, planned count, spawn/replacement/stop, worker/browser identity, attention and app version. |
+| Owner / class | 3.1.11 / **F** |
+| Controls and fields | Session strip/cards, Add workers, planned count, spawn/replacement/stop, worker/browser identity, attention and app version. Required pause/resume and refresh/reopen controls are missing. |
 | Source / authority trace | [src/dashboard/surfaces/shell.tsx](../../../../../src/dashboard/surfaces/shell.tsx); [src/dashboard/app/command-dispatch.ts](../../../../../src/dashboard/app/command-dispatch.ts); [src/server/dashboard/worker-supervisor.ts](../../../../../src/server/dashboard/worker-supervisor.ts) |
-| Actual behavior and limit | Real supervisor commands exist; seeded footer has zero workers. No real browser workers launched for inventory. |
-| Existing proof inputs | [tests/unit/cli-dashboard-lifecycle.test.ts](../../../../../tests/unit/cli-dashboard-lifecycle.test.ts); [tests/parity/pool-control-desktop-target.spec.ts](../../../../../tests/parity/pool-control-desktop-target.spec.ts) |
+| Actual behavior and limit | `command-dispatch.ts:319–383` composes Stop, plan count and spawn. The supervisor's pause/resume arms attest owned-child directives (`worker-supervisor.ts:898–932,1010–1013`), but the app has no corresponding composers/controls. Refresh/reopen are declared kernel verbs; the supervisor explicitly refuses them because no cross-process browser channel exists (`:1014–1024`), and `shell.tsx:712–718` records the missing menu. Seeded footer has zero workers; no real browser workers were launched for inventory. |
+| Existing proof inputs | [tests/unit/cli-dashboard-lifecycle.test.ts](../../../../../tests/unit/cli-dashboard-lifecycle.test.ts); [tests/parity/pool-control-desktop-target.spec.ts](../../../../../tests/parity/pool-control-desktop-target.spec.ts); [tests/unit/server/worker-supervisor.test.ts](../../../../../tests/unit/server/worker-supervisor.test.ts) (pause/resume ownership at 900–943; refresh/reopen refusal at 1320–1327). Existing refusal proof does not satisfy the required real browser effect. |
 | Remaining acceptance | [A22](task-8-acceptance-matrix.md#a22) — No stale claim execution, inferred child death, unowned browser closure or control success without a real supervisor effect. |
 
 ### I23 · Start ordinary work
@@ -260,7 +260,7 @@ All runtime mutations still enter the loopback ingress guard and registered comm
 | Owner / class | 3.1.11.2 / **P** |
 | Controls and fields | Workflow/method picker, text/spreadsheet input, options/priority/dryRun/browser/capture, custom Steps/Values, preview/Confirm, final submit and result identity. |
 | Source / authority trace | [src/dashboard/surfaces/run-start.tsx](../../../../../src/dashboard/surfaces/run-start.tsx); [src/dashboard/surfaces/run-start-model.ts](../../../../../src/dashboard/surfaces/run-start-model.ts); [src/server/dashboard/commands/start-plan-service.ts](../../../../../src/server/dashboard/commands/start-plan-service.ts) |
-| Actual behavior and limit | Ordinary modal and server plan exist; initial fixture dialog inspected. Full single/batch/worker/reload journey remains open. |
+| Actual behavior and limit | Ordinary modal and server plan exist; initial fixture dialog inspected. `services/start/plan.ts:210` checks `reject-active`, while `core/run-fan-out.ts:154` implements `supersede-active`; exact affected-generation preview/result consistency remains an explicit gap under 3.1.11.2. Full single/batch/worker/reload journey remains open. |
 | Existing proof inputs | [tests/unit/start-plan.test.ts](../../../../../tests/unit/start-plan.test.ts); [tests/unit/server/start-plan-omissions.test.ts](../../../../../tests/unit/server/start-plan-omissions.test.ts) |
 | Remaining acceptance | [A23](task-8-acceptance-matrix.md#a23) — No browser/transaction before admission, made-up run ID, duplicate enqueue or future workflow admission from an available catalog entry. |
 
@@ -392,7 +392,7 @@ All runtime mutations still enter the loopback ingress guard and registered comm
 | Owner / class | 3.1.14.5 / **P** |
 | Controls and fields | Served approval shape, evidence packet, choice/acknowledgement, approve/reject, settled actor/time and refusal. |
 | Source / authority trace | [src/dashboard/surfaces/identity-approve.tsx](../../../../../src/dashboard/surfaces/identity-approve.tsx); [src/dashboard/app/identity-ceremony.ts](../../../../../src/dashboard/app/identity-ceremony.ts); [src/server/dashboard/queries/run-trust.ts](../../../../../src/server/dashboard/queries/run-trust.ts) |
-| Actual behavior and limit | Checkpoint-backed gate service and three ceremonies exist; seeded gate display inspected, no decision sent. |
+| Actual behavior and limit | Checkpoint-backed operator gate service and three ceremonies exist; seeded gate display inspected, no decision sent. Non-operator `subscribes` is declared/validated in `src/base/flow.ts:226–235,682–696` but not consumed in `src/core/run-executor.ts`; its gate arm at 1656 parks without dispatching that subscription. This historical obligation remains missing: 3.1.14 owns the shared dispatch seam, and 3.1.14.5 owns resolver/evidence proof. No automatic operator answer is permitted. |
 | Existing proof inputs | [tests/unit/server/run-detail-gate-outcome.test.ts](../../../../../tests/unit/server/run-detail-gate-outcome.test.ts); [tests/unit/gate-resume-always-rerun.test.ts](../../../../../tests/unit/gate-resume-always-rerun.test.ts) |
 | Remaining acceptance | [A35](task-8-acceptance-matrix.md#a35) — No unknown-shape one-click approval, SQL gates/ocr_approvals restoration, missing evidence acceptance or synthetic operator answer. |
 
@@ -566,6 +566,9 @@ proposed obligation to current work or an explicit superseding decision.
 | README optional Review/People and old unserved-captures claims | D339: A41 proves absent generic doors while keeping required workflow evidence. Captures are now served by DCA3/D292 (A32); the 2026-08-20 unserved claim is superseded. |
 | Old editable Settings, Explorer EDIT, production bytes, search/export “doc 04 deferrals” | Superseded as current deferrals by D326/D339: A03/A04/A09/A20/A37 are required 3.1 work. No rewrite of historical exit evidence. |
 | Old notes-emitter/observations residue | A31 owns caller census and missing real producers; the current writer and observation/fence path are present. SQL spans/notes retirement does not retire logs. |
+| Old ledger writer, ledger outbox drain and ledger health | Accepted 2.6 F07 retires `ledger_partitions`, `ledger_projections` and the former operation outbox. A21/A42 preserve canonical SQLite timeline/confirmed history and explicit exports; A12 preserves actual storage-health notifications. Do not rebuild the retired writer/drainer. |
+| `supersede-active` planner/kernel mismatch | A23 retains exact affected-generation preview and result/atomic enqueue proof under 3.1.11.2. Present kernel support does not excuse an incomplete planner or misleading control. |
+| Declared gate `subscribes` with no executor consumer | A35 retains this missing behavior. 3.1.14 must publish the shared resolver/dispatch boundary before 3.1.14.5 proves non-operator gate evidence, terminal/external settlement and replay. No fake human answer or silent permanent park is acceptance. |
 | Archive relaunch, archived_runs and archive_relaunches | Superseded by C0 and accepted 2.6.9 retirement; A15–A18 prove saved reports/version changes/export/deletion and absence of execution doors. |
 | Settings-file/restart/old import and lone-authority restore language | Current C0 settings activation, D336 independent credentials and F07 schema/floor/custody apply (A03–A07/A42). No automatic restart for ordinary new-run activation; authenticated database/archive/file recovery remains. |
 | Generic advanced restore/migrate/repair UI | D339 deferral only; A06/A42 retain health, core recovery, explicit instructions and negative proof. |
@@ -579,29 +582,62 @@ not 52 new operator decisions. All remain historical D271–D279 evidence. The e
 mapping below keeps surviving behavior at current owners; retired relaunch/phone/in-place editing
 subclauses are superseded by C0/D294/D334 respectively. No historical unchecked row is silently green.
 
-| Historical Task 4 row(s) | Current acceptance / disposition |
+| Historical Task 4 row / original subject | Current acceptance / disposition |
 | --- | --- |
-| 1 | A39 performance trigger; A15 indexed archive browsing. |
-| 2, 12, 33 | A17 version changes; reviewed membership and major/minor behavior remain. |
-| 3, 4, 49 | A02/A10 design-system specimen and catalog; D274 completed subfeatures retain proof. |
-| 5, 6, 7, 48 | A03/A04/A06/A10 Settings/help/doctor. |
-| 8 | D294 phone Capture retirement; A41 absence. |
-| 9, 10, 29, 34, 45 | A13/A14 intake and its Run-modal handoff, A23 for the upload door. |
-| 11 | A16/A32 retained archive/capture metadata and safe bytes. |
-| 13, 17, 42, 43 | A33/A34 receipt/failure/diagnostics; frozen archive annotations stay read-only. |
-| 14, 18, 19, 23, 24, 39, 40 | A29 timeline/identity/follow; A31 logs; A30 attempt/provenance. |
-| 15, 25, 28, 30, 31, 37 | A26/A27 queue semantics, commands, checked client state and bulk outcomes; A22 session copy. |
-| 16, 20, 21, 41 | A30 read-only Data/provenance; D334 supersedes in-place Edit Data; A24/A25 own new modal values. |
-| 22, 26, 27, 38 | A23–A25 ordinary Run/Rerun controls, omission and warnings. |
-| 32, 36 | A01/A02 shared layout/focus/async/labels; A15/A21 for table/error rendering. |
-| 35, 46 | A08/A09 Explorer. |
-| 44 | A15–A18 frozen Archive; relaunch text is retired, remaining evidence/copy obligations remain. |
-| 47 | A21 Activity semantics/accessibility. |
-| 50 | A01/A20 search Escape; A23 empty workflow/zero-system/start-plan provenance. |
-| 51 | A29–A36 detail/provenance/refusal/diagnostic/park behavior; D334 supersedes source editing. |
-| 52 | A08/A13–A17 standing surfaces and versioning; generic People body D339 only. |
+| 1 · Archive virtualization | A15/A39: Retain the performance trigger and indexed browsing; historical virtualization claim is not proof. |
+| 2 · Major/minor version behavior | A17: Retain reviewed membership and distinct major/minor effects under current C0 version changes. |
+| 3 · Design-system specimen | A02/A10: D274 completed specimen remains evidence; preserve its required parity scene. |
+| 4 · Row/panel vocabulary surface | A10/A26: Retain catalog vocabulary and queue row explanations under current wire/display contracts. |
+| 5 · Settings container | A03: Retain ratified Settings dialog/section presentation. |
+| 6 · Keyboard help reachability | A02/A10: Retain reachable help and keyboard legend. |
+| 7 · System-host and capability sections | A04/A07: Retain truthful host facts and descriptor-derived readiness/capability display. |
+| 8 · Phone Capture | A41: D294 retires the feature; prove absence, not a revived phone surface. |
+| 9 · Intake final-stage controls | A14: Retain Compare, Run, membership and closing copy using served facts. |
+| 10 · Intake rejection review gate | A14: Unresolved rejections block Run until reviewed or explicitly excluded. |
+| 11 · Archived capture metadata/bytes | A16/A32: Retain metadata-only unavailable-file explanation and safe available-byte viewer. |
+| 12 · Version review membership list | A17: Show exact reviewed affected runs/reports, not only a count. |
+| 13 · Failure disclosure/write-state frame | A33/A34: Retain diagnostic disclosure and truthful write-state sentence/tone. |
+| 14 · Focusable timeline segment | A29: Retain keyboard-accessible segment/member disclosure. |
+| 15 · Grouped log stream | A31: Historical port credit retained; preserve real producer grouping without invented note ownership. |
+| 16 · Data expansion state | A30: One source controls rail width and matching expansion label across close/reopen. |
+| 17 · Context step-group Well | A30: Retain ratified grouped Data containment, band and dividers. |
+| 18 · Refused Edit Data save | A24/A25/A30: D334 retires in-place source editing; retain source read-only proof and visible refusal/draft preservation in the new modal. |
+| 19 · Orphan-gate timeline segment | A29/A35: An unmatched waiting gate must remain visible; no vanished wait. |
+| 20 · Toast floor/theme providers | A01/A02: Retain toast inset above the session bar and correct theme/provider nesting, including below-floor scrolling. |
+| 21 · Run plan-stage input/result invalidation | A23: Retain typed input/shape at Plan and invalidate stale results after shared-setting changes. |
+| 22 · Run flags and section numbering | A23: Show only declared options; numbering follows available sections. |
+| 23 · Run plan Card/Table presentation | A23: Preserve the ratified plan presentation and served row anatomy; the historical question does not authorize arbitrary Card/Table substitution. |
+| 24 · Command result feed/toast | A27: Retain per-command applied/refused result feedback and applied-result toast. |
+| 25 · Bulk result vector | A27: Retain all outcome buckets, closing sentences, skipped-row disclosure and human heading. |
+| 26 · Conflict reload exit | A23/A24/A25: Provide a visible reload/review path; exact replay cannot silently retry a stale envelope. |
+| 27 · Visible locked/enqueue reasons | A23/A25: Read-only reasons remain on screen and keyboard-accessible, not tooltip-only. |
+| 28 · Checked marks | A26: Retain row/tally/drill-in checked state and its ratified client-state lifetime. |
+| 29 · Spreadsheet entrypoint | A13/A23: Retain the approved Run-modal-to-intake handoff and truthful navigation. |
+| 30 · Bulk destructive action order | A27: Keep destructive commands last under the ratified action order. |
+| 31 · Queue fact Chip | A02/A26: Use the ratified shared design-system presentation; no divergent copy of primitive semantics. |
+| 32 · App/rail containment geometry | A01/A02: Retain ratified desktop containment and rail spacing, subject to D340 floor. |
+| 33 · Version authoring presentation | A17: Retain reviewed kind choice, reasons, outcomes and Archive navigation under current version-change contracts. |
+| 34 · Intake rejection/editor/result shapes | A13/A14: Retain ratified review/exclusion/correction and result presentation. |
+| 35 · Explorer field edit affordance | A08/A09: Retain field-level presentation editing and truthful structural facts under D337. |
+| 36 · Cross-surface containment/async/enums | A01/A02/A08/A15/A21: Retain shared containment, overflow, async refusal and wire-to-display conventions on each named surface. |
+| 37 · Worker and bulk copy | A22/A27: Retain singular/plural attention, app-version explanation and bulk heading copy. |
+| 38 · Run result close/provenance copy | A23: Retain applied Close versus refused Dismiss semantics and human plan expiry/provenance. |
+| 39 · Run identity copy | A29: Retain truthful workflow/provenance/rename/subject and floor-state copy. |
+| 40 · Timeline/log copy and timing | A29/A31/A35: Retain working duration, wait age, hover provenance, log search and gate timing; D225 named timing exception remains. |
+| 41 · Context accessibility/provenance copy | A30: Retain accessible Data name, producer grouping explanation and read/write direction. |
+| 42 · Receipt words/evidence/tones | A33: Retain confidence explanation, receipt identity, dry-run status, commit/prepare and uncertainty/invariant truth. |
+| 43 · Failure classification/retry copy | A33/A34: Retain own summary, category/code, permanent-retry boundary, subject danger and first-occurrence truth. |
+| 44 · Archive copy and evidence | A15/A16/A17/A18: C0 retires relaunch and old workflow-specific tabs; preserve applicable frozen report, file, export, version and deletion wording/evidence. Generic People is D339 only. |
+| 45 · Intake naming | A13/A14: Retain the ratified source/mapping/rejection/exclusion/Run labels and counts. |
+| 46 · Explorer copy/geometry | A08/A09: Retain truthful graph/kind/system/store/edit labels, reachable states and named exceptions. |
+| 47 · Activity accessible date group/spacing | A21: Retain named date grouping, ratified geometry and accessibility. |
+| 48 · Storage health presentation | A06: Retain health/header/status presentation under current recovery authority. |
+| 49 · Design primitives/catalog scenario names | A02/A10/A29: Retain ratified row/step/duration primitives and named verification scenarios, not an unexplained count. |
+| 50 · Shell/Run additional states | A01/A20/A23: Retain search Escape, empty workflow, zero-system and plan-provenance explanations with their recorded rationale. |
+| 51 · Detail additional states | A29/A30/A31/A33/A34/A35/A36: Retain identity/rename/failure/log-empty/park/refusal facts; D334 moves old Edit Data save states into A24/A25. |
+| 52 · Standing-surface additional states | A08/A13/A14/A15/A16/A17: Retain applicable Archive/Explorer/Intake/version accessibility/provenance states; retired Archive People/relaunch bodies follow C0/D339. |
 
 All current task/roadmap checklists retain their complete remaining scope, mapped by stable execution
-node in `obligation-census.json`. It records each original unchecked/proposed line, source/line and
+node in `obligation-census-r2.json`. It records each original unchecked/proposed line, source/line and
 assigned I rows or historical disposition. Duplicate history and repeated active checklist wording
 are not counted as new product requirements. Leaf launch still requires a complete approved brief.
