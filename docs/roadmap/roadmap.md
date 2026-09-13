@@ -1641,23 +1641,24 @@ needs:
 - p2f-proof
 
 #### 9 · Establish independent dashboard boundaries {#dash-boundary-foundation}
-status: planned
-date: D344 · operator-coordinated prerequisites
+status: done
+date: 2026-09-13 · A/B focused acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-establish-independent-dashboard-boundaries §Task 3.1.9 · Establish independent dashboard boundaries · ref:operator-trust §5.4
 
 > Complete the shared changes discovered by the acceptance inventory before independent surface writers start. Preserve existing behavior and real production consumers; no mock-only foundation.
 
 builds:
-- [ ] BOTH isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
-- [ ] BE D337: complete SQLite override conversion, atomic command/audit binding and shared wiring; preserve existing values and retire runtime file authority and prepared-claim recovery
-- [ ] PROOF verify fresh/supported conversion, rollback, restart/replay, source refusal and backup/restore preservation; old override files cannot influence converted appearance
-- [ ] PROOF verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
-- [ ] DOCS publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
+- [x] BOTH isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
+- [x] BE D337: complete SQLite override conversion, atomic command/audit binding and shared wiring; preserve existing values and retire runtime file authority and prepared-claim recovery
+- [x] PROOF verify fresh/supported conversion, rollback, restart/replay, source refusal and backup/restore preservation; old override files cannot influence converted appearance
+- [x] PROOF verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
+- [x] DOCS publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
 
 needs:
 - dash-truth-reset
 
 log:
+- 2026-09-13 | 3.1.9 accepted | A integration `c990662e91604cfd38baa53e12bfb6e7c60610eb` and B integration `3d4d8c0c64cf2e96096b193966a66741861d6f1c` complete the authority/backend and UI/fixture/release prerequisite. Assigned focused tests/compiler/lint/build and 124 affected desktop parity cases pass; complete membership and 693 reference files are unchanged. Exact candidate-tree reuse and owned cleanup verified; actual child exports, ownership and gate resources published. No independent review, child dispatch or push; broad gates remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9; standalone prerequisite or individual task; acceptance and historical execution anchor retained
 - 2026-09-13 | focused plan approved | two sequential Astra ultra sessions A (authority/backend), then B (UI/fixtures/release); complete D337 storage conversion belongs here; focused checks and no independent review; product work unstarted

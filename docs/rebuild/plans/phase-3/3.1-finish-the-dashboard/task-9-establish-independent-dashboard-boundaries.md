@@ -10,9 +10,9 @@ Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract)
 
 Complete the shared changes discovered by the acceptance inventory before independent surface writers start. Preserve existing behavior and real production consumers; no mock-only foundation.
 
-- [ ] isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
-- [ ] verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
-- [ ] publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
+- [x] isolate shared shell/navigation, query/route/composition registration and fixture entry points required by the selected surface assignments
+- [x] verify unchanged production paths, strict contracts, redaction and behavioral negative controls; pass focused checks and the assigned integration checks
+- [x] publish exact owned paths, exports, generated-artifact ownership, independent gate resources and either-order integration evidence for each admitted task
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
@@ -234,7 +234,7 @@ state; ordinary A-to-B transfer uses the committed task record.
 | Session | Candidate / accepted integration | Focused evidence | Remaining |
 | --- | --- | --- | --- |
 | A | Implementation `1bdc41406a7725d900a2bfa48af4ff48a23dc432`; recorded candidate `98c8f32ec9d1745bd3b7bf0dae5450b23ce800e8`; accepted local integration `c990662e91604cfd38baa53e12bfb6e7c60610eb` | PASS: 40 suites / 768 tests; final production-boundary recheck 6 suites / 218 tests; final fixture/record recheck 2 suites / 92 tests; scoped compiler, 80-path lint, build, generation/freshness and document checks. Integration tree equals the checked candidate. | A complete; owned cleanup verified; B may start under operator direction |
-| B | Base `c990662e91604cfd38baa53e12bfb6e7c60610eb`; implementation `edb257a0123dcd9a90049505d1ad6b54a36393bd`; recording candidate is this commit | B1/B2 PASS: 18 suites / 196 tests; final test-only correction 2 suites / 6 tests; scoped compiler/lint; 124 desktop parity tests, exact membership and unchanged references | B3 ownership/evidence recorded and document checks PASS; local master integration pending operator direction; owned cleanup; overall 3.1.9 remains open |
+| B | Implementation `edb257a0123dcd9a90049505d1ad6b54a36393bd`; recorded candidate `317e88d553ab88031bd3070572b8f532b397a2eb`; prepared candidate `105e97b042509e2bac17c1ebf487a9f410d445e3`; accepted local integration `3d4d8c0c64cf2e96096b193966a66741861d6f1c` | B1/B2 PASS: 18 suites / 196 tests; final test-only correction 2 suites / 6 tests; scoped compiler/lint/build; 124 desktop parity tests, exact membership and unchanged references. B3 ownership/evidence and document checks PASS. Integration tree equals the checked candidate. | B complete; owned cleanup verified; overall 3.1.9 complete. Child briefs and launches remain operator-controlled. |
 
 ### A implementation and backend ownership — 2026-09-13
 
@@ -358,8 +358,8 @@ no task was launched and nothing was pushed. Full repository gates remain at 3.1
 
 ### B implementation and child release contract — 2026-09-13
 
-**Current state:** B1 and B2 are implemented and verified; B3 ownership and evidence are recorded in
-`/Users/julianhein/Projects/hr-worktree-boundary-ui`, branch `codex/3.1.9-boundary-ui`, from the
+**Current state:** B1–B3 are accepted on local `master` at `3d4d8c0c64cf2e96096b193966a66741861d6f1c`; owned cleanup is complete. Implementation used
+`/Users/julianhein/Projects/hr-worktree-boundary-ui`, branch `codex/3.1.9-boundary-ui` (both now removed), from the
 accepted A integration `c990662e91604cfd38baa53e12bfb6e7c60610eb`. At creation, local master was
 clean at `ef48b55eae4f7442ea72b13310943e2c162f5273`; A's accepted integration and approved plan
 `367a2a51848153a63b1c4219bea2b66d07a93671` were verified ancestors. The only other repository
@@ -367,9 +367,9 @@ tasks were idle or not loaded, and the assigned branch/path were absent. No work
 independent reviewer was dispatched. The later A closure above is preserved from master's
 evidence-only commit; it does not replace B's named base.
 
-B3 publishes these **implemented candidate interfaces**. Child launch still requires B's directed
-integration, owned cleanup, completion of 3.1.9 and a separately approved child brief. No child
-candidate or either-order child merge is claimed here. Integration is pending operator direction.
+B3 publishes these **accepted working interfaces**. The 3.1.9 prerequisite is complete; each child
+still requires a separately approved execution brief and operator launch. No child was dispatched,
+and no future child-candidate or either-order child merge result is claimed here.
 
 The app now delegates native URL history to `useRoute`, Settings-aware queue history to
 `useDashboardNavigation`, committed-route focus to `useTakeoverCloseFocus`, and the existing
@@ -570,7 +570,7 @@ and A01–A42/D01–D05 remain 3.1.19. No independent review is required for thi
 #### B verification receipt
 
 Evidence root: `/Users/julianhein/Projects/hr-boundary-ui-evidence-20260913/run-1403/`.
-Implementation commit: `edb257a0123dcd9a90049505d1ad6b54a36393bd`. This subsequent recording commit changes only the nine task/matrix documents; no product, test, dependency or configuration input changed. `accepted-inputs.json` binds 2,344 non-document file hashes; `candidate-audit.json` binds all changed paths and documentation checks. Tests and parity used only disposable synthetic authorities. All final commands below exited zero.
+Implementation commit: `edb257a0123dcd9a90049505d1ad6b54a36393bd`. The subsequent recording commit `317e88d553ab88031bd3070572b8f532b397a2eb` changed only the nine task/matrix documents; no product, test, dependency or configuration input changed. `accepted-inputs.json` binds 2,344 non-document file hashes; `candidate-audit.json` binds all changed paths and documentation checks. Tests and parity used only disposable synthetic authorities. All final commands below exited zero.
 
 | Check | Result and receipt |
 | --- | --- |
@@ -582,18 +582,17 @@ Implementation commit: `edb257a0123dcd9a90049505d1ad6b54a36393bd`. This subseque
 | Production dashboard build | PASS reused from the parity global setup's `npm run web:build`; the stamped input/output digests are reasserted by `build-receipt.json`. The lane stamps only a zero-exit build and validates the same inputs before serving. No extra same-input build is claimed. |
 | Membership and reference equality | PASS: all 274 discovered test titles and all 124 selected titles are identical before/after; `parity-before.log`, `parity-after.log`, `parity-selection.json`. All 693 reference files are byte-identical to the accepted A base; hashes in `reference-equality.json`. The 22 default scenes are partitioned exactly once. |
 | Fixture authority and interfaces | PASS: all 28 original fixture-day exports match the source-rebased baseline (values/digests and four sample identities for each identity function); `fixture-equality.json`. Real HTTP/SSE fixture and seeded service tests passed. `ownership.json` records all 95 new module owners/exports/imports. |
-| Documentation and commit checks | PASS: roadmap binding test 24/24 (`document-tests-final.log`); scoped test/generator ESLint (`document-lint-final.log`); roadmap generation/freshness (`roadmap-record` receipts), unchanged generated bytes; 15 links/fragments; all nine existing instruction twins equal, largest chain 18,376 bytes; `git diff --check` and staged whitespace check. Seven child pointers target this release record. The product checks above are reused on identical inputs. Parent checkboxes and child admission remain open. |
+| Documentation and commit checks | PASS: roadmap binding test 24/24 (`document-tests-final.log`); scoped test/generator ESLint (`document-lint-final.log`); roadmap generation/freshness (`roadmap-record` receipts), unchanged generated bytes; 15 links/fragments; all nine existing instruction twins equal, largest chain 18,376 bytes; `git diff --check` and staged whitespace check. Seven child pointers target this release record. The product checks above are reused on identical inputs. These candidate checks kept parent checkboxes open; closure below completes the prerequisite after integration and cleanup. Separate child admission remains required. |
 
 The inherited unit-runner configuration uses `maxWorkers: Math.min(4, availableParallelism())`;
 its unit project extends that configuration and no worker override was supplied. Parity's explicit
 four-worker value is verified in its actual report. No full repository gate or coverage run occurred.
 
-Owned resources remain until directed integration and cleanup: this registered worktree/branch,
-its `node_modules` symlink, dashboard build and parity output, and the failed-iteration scratch
-roots `/private/tmp/hrt-501/run-RE2u4P`, `/private/tmp/hrt-501/run-jK1EbK`, and
-`/private/tmp/hrt-501/run-O3Ze2t`. Successful runners removed their scratch roots; fixture and
-seeded servers closed through their runner teardown. Cleanup must recheck exact receipts and
-process absence before removing those owned roots. `candidate-processes.json` records zero matching owned runtime processes at candidate preparation. Evidence remains outside the worktree.
+The candidate retained its worktree/branch, dependency symlink, dashboard build, parity output,
+and three failed-iteration scratch roots until directed integration. Successful runners had already
+removed their scratch roots and closed fixture/seeded servers. The cleanup receipt below now proves
+removal of the retained resources after ownership and process checks. Evidence remains outside
+the removed worktree.
 
 Earlier failed iteration logs are retained as repaired evidence, not acceptance results. The first
 import rewrite touched the specimen barrel; the existing wire guard caught it and all unowned
@@ -603,6 +602,49 @@ into a number field; its corrected valid text-field setup then exposed the real 
 The guard inventory records the moved geometry-before-capture enforcement and expanded fixture
 input scan with its deciding focused proof. No source-authored workflow or generated catalog input
 changed, so their generators are not affected.
+
+#### B accepted integration, cleanup and 3.1.9 closure — 2026-09-13
+
+The operator's `ok` authorized the exact `105e97b04` local-master merge request. Local `master`
+accepted candidate `105e97b042509e2bac17c1ebf487a9f410d445e3` through `--no-ff` integration
+`3d4d8c0c64cf2e96096b193966a66741861d6f1c`. Its parents are the unchanged target
+`ef48b55eae4f7442ea72b13310943e2c162f5273` and that exact candidate. The integration tree
+`3a770ed5f173db0f8fd36925e488dd357b1928f5` equals the checked recording-candidate tree.
+All 2,344 non-document input hashes and all 38 acceptance-evidence hashes matched before merge;
+all input hashes matched again on master. Focused checks are reused on those exact inputs under
+D191. `integration-preparation.json`, `integration-merge.log` and `integration-accepted.json`
+record authorization, ancestry, command, exit and tree equality. No broader gate is claimed.
+
+Preparation incorporated A's evidence-only closure into B's branch. Its two documentation hunks
+retained B's current evidence row and added release section; the accepted A SHA, conversion and
+cleanup evidence remained intact. This produced candidate `105e97b04` with exactly the tree of
+checked recording candidate `317e88d55`. `candidate-closure-merge.json` records both hunk intents
+and the equality proof; no production or test change resulted.
+
+Owned cleanup is complete. Ordinary `git worktree remove` removed the registered and physical
+`/Users/julianhein/Projects/hr-worktree-boundary-ui`; ancestry-checked `git branch -d` removed
+`codex/3.1.9-boundary-ui`. Before removal, 90 ignored artifacts were inventoried and hashed: the
+owned dashboard build, parity results, dependency symlink and empty parity command lock. The
+lock was verified available; no owned runtime process remained. Shared installed dependencies
+were preserved. The exact failed-run roots `/private/tmp/hrt-501/run-RE2u4P`,
+`/private/tmp/hrt-501/run-jK1EbK` and `/private/tmp/hrt-501/run-O3Ze2t` were removed only after
+matching their runner logs, owner identities and failure hashes and verifying absent process
+groups. `cleanup-pre-removal.json` and `cleanup-complete.json` preserve that proof. Only the primary
+worktree remains registered. The calling task stays visible; no separate task required archiving.
+
+A1–A3 and B1–B3 now satisfy the assigned 3.1.9 prerequisite outcomes; the three parent checklist
+items and five roadmap obligations are complete. The seven surface children and 3.1.9.8 remain
+unimplemented and require their own approved briefs and operator launch. Full repository gates,
+broad production/performance/recovery/live proof and A01–A42/D01–D05 remain at 3.1.19.
+No worker, independent reviewer, child task or push occurred.
+
+This closure changes only the owner, its acceptance-matrix pointer, the 3.1.9 roadmap status and
+its generated page. `closure-checks.json` and `closure-audit.json` bind the final documentation
+checks and unchanged implementation inputs. Closure checks passed: 24 roadmap-binding tests,
+scoped test/generator lint, roadmap generation/freshness, seven links/fragments, all nine instruction
+twins and the 18,376-byte maximum instruction chain, plus whitespace checks. The 2,344 non-document
+input hashes still match accepted integration. No runtime, test, dependency or configuration input
+changed after accepted integration.
 
 #### B delivery assessment
 

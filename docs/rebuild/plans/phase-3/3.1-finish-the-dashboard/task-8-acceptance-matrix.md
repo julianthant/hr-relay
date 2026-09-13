@@ -574,9 +574,9 @@ D340's completed immediate dispositions remain: no coarse-pointer variants; no d
 
 ## Shared ownership and admission boundaries
 
-The implemented 3.1.9 B candidate publishes [exact module ownership, working ports, fixture/reference names and gate resources](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13). Its release still requires the recorded operator-directed integration and cleanup; the baseline allocations below do not independently admit children.
+The accepted 3.1.9 B release publishes [exact module ownership, working ports, fixture/reference names and gate resources](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13). Its directed integration and owned cleanup are complete; the baseline allocations below do not independently admit children.
 
-These allocations identify current coupled files and the operations that must be extracted or completed. They do not claim that new APIs already exist. A later focused plan must name the actual accepted prerequisite commit, resulting exports/paths, exact focused commands, fixture/output roots and either-order merge proof. A child may not edit the reserved shared file because it finds a missing hook. Resolve that requirement in its prerequisite before launch. No unfinished sibling dependency is permitted.
+These baseline allocations retain the planned responsibilities. The accepted A/B records above now own the actual implemented modules and working interfaces. A later focused plan must name the actual accepted prerequisite commit, resulting exports/paths, exact focused commands, fixture/output roots and either-order merge proof. A child may not edit the reserved shared file because it finds a missing hook. Resolve that requirement in its prerequisite before launch. No unfinished sibling dependency is permitted.
 
 | Shared seam now | Sole prerequisite owner and required operation | Independent consumers after acceptance |
 | --- | --- | --- |
