@@ -13,7 +13,7 @@ interface supplies this task’s fixtures; operational credentials retain D336�
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. This child owns only its listed surface/fixture/spec/reference paths and still needs its own approved execution brief. Shared registration and generated outputs remain reserved.
+Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. The approved execution brief below and the [Settings ownership amendment](task-9-establish-independent-dashboard-boundaries.md#settings-child-ownership-amendment--2026-09-13) add the missing Settings projection and local wiring to this child. Other shared registration and generated outputs remain reserved.
 
 > **D336 (2026-09-06):** ordinary settings are SQLite-owned; credentials are independently stored.
 > Consume the existing catalog/revision/set-clear behavior and current settings activation through the service and protected
@@ -44,3 +44,260 @@ remain this task's work, using the current scene list rather than assuming eleve
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
 their mapped outcome/proof; historical subfeature credit does not complete this task.
+
+## Approved execution brief — 2026-09-13
+
+The operator selected **A**: include the missing full-catalog and protected-presence read wiring
+inside 3.1.9.2 through a bounded Settings ownership exception. The operator then approved the
+complete S1–S4 proposal with `approve.`. This authorizes planning persistence and the following
+fresh supervisor assignment. It does not launch implementation, accept a candidate, merge into
+master, complete the roadmap task, or authorize a push.
+
+### Current state, prerequisites and allocation
+
+Planning inspected clean local `master` at `07221394ece638d5de9f38407654ad2b305f1f9f`.
+The accepted 3.1.9 A integration `c990662e91604cfd38baa53e12bfb6e7c60610eb`, B integration
+`3d4d8c0c64cf2e96096b193966a66741861d6f1c`, and accepted 3.1.8 baseline
+`e182022edfa0cd05a46a74358cd3296bcade6e79` are ancestors. The current base also includes the
+accepted shell child; that existing ancestry does not add a sibling prerequisite. Roadmap needs
+remain `dash-truth-reset` and `dash-boundary-foundation`.
+
+One **GPT-6 Astra medium supervisor**, zero implementation workers, zero independent reviewers.
+The projection, typed drafts, privacy/readback, recovery and browser proof form one coupled Settings
+delivery. Medium effort fits its cross-layer judgment; splitting producer and consumer across
+parallel workers would create a dependency rather than independently acceptable work. Phase 3.1's
+approved focused cadence omits independent review, including refreeze acceptance. The supervisor
+inspects reference diffs and supplies attributed proof. No agent or sibling dispatch is assigned.
+
+| Assignment | Branch and absolute checkout | Base and availability | Release and merge condition |
+| --- | --- | --- | --- |
+| Planning persistence | `codex/3.1.9.2-settings-plan`; `/Users/julianhein/Projects/hr-worktree-settings-plan` | Created from `07221394ece638d5de9f38407654ad2b305f1f9f` after approval | Commit and verify this complete brief and the parent amendment. Remove the owned planning worktree after verifying artifact custody, retaining the named plan ref. No master merge is assigned to the planner. |
+| S1–S4 implementation | `codex/3.1.9.2-settings`; `/Users/julianhein/Projects/hr-worktree-settings` | Create from the final verified planning commit delivered by the planner; it contains the integrated prerequisites and approved ownership amendment | Freeze the passing focused candidate for operator-controlled 3.1.9.8 intake. Ultimate target is local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`, only under an operator integration instruction. |
+
+At discovery, only the primary worktree existed and both proposed paths/refs were available.
+Recheck ref/path ownership, ancestry, committed plan content and the four-auxiliary-worktree
+ceiling before implementation. Do not reset a colliding ref, switch the primary checkout, copy
+operator state, or overwrite another session's work. A missing planned implementation branch is
+expected: its creation from the delivered plan commit is assigned to the supervisor.
+
+The retained planning ref is the documentation delivery path. Implementation creates its branch
+from that verified commit and inherits the approved amendment; documentation integration into
+master is not a separate prerequisite. Keep the plan ref until integrated and no consumer needs it.
+
+### Requirements, feasibility and proof ownership
+
+The [frozen A03/A04 requirements](task-8-acceptance-matrix.md#a03),
+[Settings edit contract](../../../reference/clock-config-secrets.md#d33110--the-settingssetup-interface-edit-contract-31-consumes),
+[independent credentials](../../../reference/clock-config-secrets.md#d336--sqlite-settings-and-an-independent-credential-store-operator-decision-2026-09-06),
+and [current activation amendment](../../../reference/clock-config-secrets.md#c0-settings-activation-and-recovery--2026-09-09)
+own behavior. D341/D343 exclude test inputs and retain provider keys in `.env.providers`.
+The [Settings surface contract](../../../reference/dashboard-surfaces.md#98-settings-and-the-storage-doctor),
+[frontend state ownership](../../../reference/frontend-backend-integration.md#4-state-ownership),
+and [P40/A8](../../../reference/guards-and-tests.md#a8--the-settingsjson-not-set-parity-references)
+remain applicable subject to their later amendments. Do not revive historical file authority,
+ordinary environment precedence, blanket restart, mobile/coarse-pointer or historical pseudonym
+consumer behavior from superseded prose.
+
+| Requirement / current mechanism | Needed change and permitted owner | Acceptance proof and forbidden result |
+| --- | --- | --- |
+| `src/domain/config/catalog.ts` has 86 rows: 59 ordinary, 5 protected, 5 provider, 16 runtime-isolation, 1 derived-host. `src/domain/dashboard/settings-editor.ts` and `src/server/dashboard/queries/settings-editor.ts` still close the editor over eight paths. | S1 expands the dedicated Settings wire/query from the existing catalog and executable schemas; no second allowlist. Settings-local composition supplies authoritative values and value-free auxiliary reads. | Compare canonical catalog identities in both directions, including wildcard templates; reject unknown, duplicate, missing, wrongly classified and wrongly typed rows. Expanded fiscal-year instances do not redefine the catalog's 86-row count. |
+| The existing resolver and `SettingsPatchSchema` already admit booleans, route objects, complete provider budgets, ordered model chains and `annualDates.FYyyyy.<leaf>`. Display overrides require both dimensions; each fiscal year requires all three dates. | S1 serves typed descriptors/validated fiscal-year templates. S2 supplies suitable structured controls and complete atomic operations for coupled records. | Prove every value category, optional/unset rows, valid new-year creation, invalid year/date/number/object/list and partial display/year rejection. No invented defaults, automatic previous-year fallback or client-invented writable key. |
+| `patchFromDraft` currently turns an edit equal to a default into Clear; its Reset only discards an edit. | S2 retains explicit draft operations, including saved values equal to defaults, and distinguishes per-leaf Reset, Discard all and persisted Clear. | Set-to-default stays a saved override. Clear removes it. Display Clear restores the observed host-derived default through the existing pair constraint. An invalid mixed patch changes no authority. |
+| The ordinary executor atomically saves/configures/journals; current settings readers and stale-plan tests already enforce new-run activation. | S1 serves a coherent ordinary snapshot; S2 consumes the existing command and checks matching readback before clearing confirmed drafts. Retain active identity fields needed by preflight. | Prove save/readback/reopen and concurrent-read coherence; current/new-run and stale-plan regressions stay green. No blanket restart or retroactive change to existing runs. Readback failure or later intervening save cannot masquerade as confirmation of every draft row. |
+| `createProtectedSettingsRuntimeReader` and the independent credential store exist; dashboard Settings lacks its own complete presence read wiring. Storage doctor is not the editor's authority. | S1 wires the existing reader through Settings-local composition/query. S3 supplies an independent credential draft, revision and command, with presence-only readback. Provider availability uses the existing sole secret-family accessor; derived display uses established host facts. | Prove missing, present and unavailable states, independent revision/conflict, exact set/clear readback identity and redaction. Unknown is not missing. No value, digest, length or partial-value echo; no provider input. |
+| `useEditableSettings` reload discards drafts, surfaces raw messages and labels all transport failures refused. Shared command parsing admits broader command/history shapes. | S2/S3 retain drafts while rereading conflict authority, require deliberate resubmission, map typed failures to fixed safe copy, bind result to submitted command/target and validate current protected readback through the five-name schema. | Conflict never auto-merges/resubmits. Foreign/stale/wrong-family results and legacy seven-name Settings readback do not become success. Exact retry preserves command/write identity; divergent input is not retried as the same attempt. |
+| The existing protected executor can commit independently before a later audit failure; its tests cover uncertain/replayed outcomes. | S3 represents an unconfirmed response truthfully and retains the exact in-memory attempt for explicit retry. Never store secret drafts in browser persistence or mint a new identity merely because a response was lost. | Exercise pre-effect refusal, lost response after apply, failed readback, exact retry and intervening update. Reopening the page only shows current authority, not a claim that the abandoned attempt succeeded. Do not infer rollback from an error or success from presence alone. |
+| Settings owns its draft lifetime and informs the accepted shell exit guard; Storage/preflight/Catalog consume existing props. | S2/S3 extend dirty protection to both drafts without changing sibling component contracts. S4 tests Settings exit/navigation and fixture composition. | Drafts survive section changes and cancelled exits; confirmed discard removes them. No sibling body/API, root registration, fixture-order or route-history regression. |
+| Existing reference families contain 18 sets/54 files: `settings` 8, `settings-activation-saved` 2, `settings-activation-reset` 2, `storage-settings` 6. The activation spec uses CSS zoom. | S4 deliberately attributes owned reference changes, adds Settings states and proves actual browser zoom using the accepted tab-scoped browser mechanism. | No assumption that eleven historical copies remain. No CSS zoom claim as browser zoom, omitted titles, unrelated refreeze or weakened parity allowance. |
+
+These are source/ancestry findings, not new execution PASS claims. The accepted backend tests are
+mechanism evidence and regression inputs, not proof that the future full editor already works.
+No actual operator migration, deployment or recovery is assigned. Real-composition proof uses new
+private synthetic authorities and synthetic credentials; no operator-state inspection/copy or
+external HR transaction is required.
+
+### Exact change ownership and exclusions
+
+All source paths below are repository-relative. New cohesive Settings-only helper modules are
+permitted alongside the named owners; preserve component-only TSX exports and pure model boundaries.
+
+| Scope | Permitted paths and limits |
+| --- | --- |
+| Settings UI and client | `src/dashboard/surfaces/settings.tsx`, `settings-model.ts`, `settings-editor.tsx`, `settings-editor-model.ts`, `settings-facts.tsx`, `settings-facts-model.ts`, `settings-hosts.tsx`, `settings-hosts-model.ts`, `settings-capabilities.tsx`, `settings-capabilities-model.ts`, `settings-keyboard.tsx`; `src/dashboard/client/settings-queries.ts`, `settings-commands.ts`; `src/dashboard/state/settings-client.ts`. Preserve provider object stability and the published Storage/preflight/Catalog/shell interfaces. |
+| Approved backend projection exception | `src/domain/dashboard/settings-editor.ts`, `src/domain/dashboard/settings.ts`; `src/server/dashboard/queries/settings-editor.ts`, `queries/settings.ts`; `src/server/dashboard/routes/settings.ts`, `routes/settings-types.ts`; `src/server/dashboard/compose/settings.ts`. Add the needed catalog/protected/provider/host projection and Settings-local dependency wiring through the existing root registration. |
+| Settings fixtures and tests | `tests/parity/helpers/fixture-settings.ts`, `fixture-settings-routes.ts`, `fixture-settings-activation.ts`, `reference-settings-scenes.ts`; `tests/parity/reference-settings.spec.ts`, `settings-activation.spec.ts`, new `settings-catalog.spec.ts`; existing Settings unit suites and new `tests/unit/server/settings-catalog-projection.test.ts`, `tests/unit/dashboard/settings-catalog-surface.test.ts`, `tests/unit/dashboard/settings-protected-surface.test.ts`. New synthetic Settings test helpers may live beside these owners. |
+| Bounded test-construction and audit exceptions | Settings dependency construction in `tests/parity/helpers/seeded-services.ts` and `tests/unit/server/bff-flow.test.ts`; Settings-specific assertions/fixtures in `tests/unit/server/settings-runtime-reader.test.ts`, `tests/unit/dashboard/takeover-frame-focus.test.ts`, `surface-fixture-boundaries.test.ts`, `tests/unit/architecture/strict-boundary-schemas.test.ts`, `redaction-surface-scan.test.ts`, and Settings-only entries in `tests/unit/architecture/helpers/redaction-surface-audit.ts`. Preserve unrelated builders, custody, assertions and membership. |
+| References | Existing `settings--*`, `settings-activation-saved--*`, `settings-activation-reset--*` PNG/a11y/metadata and new Settings-owned states. `storage-settings--*` may change only for shared Settings navigation, with exact attribution; Storage body semantics and facts remain its owner's. `reference-storage.spec.ts` is a verification input, not permission to redesign its cases. |
+| Execution/evidence documentation | This task owner; the parent allocation amendment during planning. Implementation records actual changed paths, commands, accepted proof, reference attribution and pending integration/cleanup here. Requested lessons belong in the linked module ledger, not instruction-file churn. |
+
+Do not modify catalog membership, ordinary/protected value schemas, credential storage/executors,
+`src/server/settings-runtime.ts`, database schema/migrations, shared command unions, root BFF or
+dashboard registration, aggregate query/command/provider/transport code, sibling production modules,
+DS/specimen primitives, runtime-isolation configuration, operator state or test-data authorities.
+The projection must compose existing authority readers rather than change their guarantees.
+Settings source facts must describe current SQLite/credential/provider/host/deployment ownership,
+not repeat obsolete `currentSource` environment/file migration metadata as current provenance.
+
+No credential reveal, masked saved-value echo, comparator, copy/export or diagnostic settings dump.
+No new cross-store atomicity claim, provider-key editor, canary/test-subject/fixture-path control,
+advanced storage recovery, workflow-specific feature, external HR action, automatic merge or push.
+Retain the historical-only purpose of `activityPersonPseudonym`; rendering its catalogued operation
+does not restore retired Activity consumers. No guard addition/retirement is expected; if one becomes
+necessary, apply the guard-inventory contract with deciding evidence rather than silently changing it.
+
+### Ordered implementation steps
+
+| Step | Outcome and required work |
+| --- | --- |
+| **S1 — Complete the served catalog** | Before edits, verify plan/base/ref/path/capacity and current scoped ownership; create the assigned worktree and private evidence namespace. Read module instructions, use `/ui` with Components lead, local execution and Operate mode, inspect the specimen through `playwright-cli`, and record baseline behavior/reference inventory. Implement the full strict catalog projection and Settings-local wiring from existing authorities. Keep ordinary values/revisions coherent and protected/provider unknown states explicit. Establish catalog/schema/source/redaction and structured-type negative controls. |
+| **S2 — Complete ordinary editing** | Render every applicable ordinary row with source, validity, editability, sensitivity, current activation scope and persisted/active/default distinctions. Use typed scalar/structured controls; support server-served fiscal-year templates and coupled display/year records. Keep one atomic ordinary Save across sections, explicit Reset/Discard/Clear operations, input errors and Saved/Default badges. On conflict refresh current authority beside the unchanged draft and require deliberate resubmission. Clear only readback-confirmed drafts. Preserve preflight identity and new-run activation. |
+| **S3 — Complete protected editing and recovery** | Add separate credential draft/revision/Save over the existing protected command. Inputs start empty, remain masked and never refill from readback; no reveal. Clear submits its explicit operation. Show only presence/write identity/time and revision, with next-use copy. Show provider availability/count without keys, deployment facts read-only and observed host beside saved display. Fixed refusal copy uses typed codes and served names, never raw messages. Bind command/readback identity, represent transport/audit uncertainty honestly, retain exact pending attempts for explicit retry, and extend existing dirty exits to both drafts. |
+| **S4 — Prove and deliver** | Run complete focused proof, production build, scoped lint and affected browser/parity checks on final inputs. Use real isolated composition for ordinary/protected saves, conflicts, clear, interruption/readback and redaction. Inspect actual 125%/200% browser zoom in both themes. Deliberately refreeze only attributed permitted references, inspect diffs, then assert. Record final candidate/source/bundle/fixture/reference/evidence hashes, commands/exits and every deferred gate. Commit exact paths by logical category, close owned processes, preserve candidate/evidence for operator-controlled 3.1.9.8 intake and report remaining integration/cleanup. |
+
+### Focused proof matrix
+
+| Proof | Earliest stable step / required cases |
+| --- | --- |
+| **P1 — Complete and truthful catalog** | S1: two-way 86-row/template membership; all five source classes; correct source/editability/sensitivity/activation; no test inputs; corrupt/missing/duplicate/wrong-type/wrong-section payloads; provider missing/present/unknown without values. Ordinary snapshot identity must agree with its values. |
+| **P2 — Types and atomic omission** | S1/S2: text, positive/nonnegative integers, empty/invalid numeric text, booleans, dates, paths/URLs, route objects, full budgets and ordered model chains; new fiscal year and all three required dates; partial display/year and mixed valid/invalid patches; saved-to-default versus omitted values; Reset/Discard versus explicit persisted Clear; readback/reopen and host observation. Failed validation changes no authority. |
+| **P3 — Conflict and confirmation** | S2: competing save while draft is open, fresh revision/current values beside retained edits, explicit retry after review, no automatic merge; matched command/result/readback, failed or stale readback after apply, another writer between apply and readback, foreign/wrong-family result. Preserve unconfirmed edits and truthful state. |
+| **P4 — Independent protected operations** | S3: missing/present/clear, valid and invalid per-name values (including the structured historical entry), independent ordinary/protected revisions and outcomes, protected conflict, successful readback identity, unavailable store, and rejection of legacy seven-name readback on this live surface. No ordinary mutation from credential Save or vice versa. |
+| **P5 — Interruption, exact retry and privacy** | S3: request refusal before effect versus lost response after effect; retained exact command/write identity, exact replay, divergent retry, intervening update, and failed readback/audit without a false rollback/success claim. Synthetic sentinels must be absent from GET/readback, errors/diagnostics, console/logs, accessible output, saved DOM content, snapshots and journal evidence; the masked write-only input is the transient user-entry boundary. Reuse existing credential-store/history regression coverage for unchanged internal semantics. |
+| **P6 — Integration and desktop** | S4: Settings navigation, section persistence, ordinary/protected cancelled/confirmed exit, keyboard save/error focus, both themes, minimum 1024×720 canvas and desktop resize; actual 125%/200% browser zoom, reachable scrolling/footer/controls and focus restoration. Preserve Storage/preflight/Catalog contracts and forward/reverse fixture registration. Current/new-run, stale-plan and historical protected regressions remain required. |
+
+The supervisor can repair tactical implementation/test setup failures inside these outcomes.
+For a definitive `write-id-reused` refusal, follow the contract's explicit recovery with a fresh
+write identity without demanding re-entry; this is distinct from retrying an uncertain attempt,
+which must keep its original identity. Do not weaken ordering or identity checks to make a case pass.
+
+### Gate commands, resources and reference policy
+
+Run from the assigned implementation worktree. The following are exact focused inputs; S1/S3 create
+the three new unit files and S4 creates the new catalog browser spec before final candidate gates.
+
+```sh
+npm run test -- tests/unit/dashboard/settings-editor-surface.test.ts tests/unit/dashboard/settings-editor-client.test.ts tests/unit/dashboard/settings-takeover.test.ts tests/unit/dashboard/surface-fixture-boundaries.test.ts tests/unit/server/settings-runtime-reader.test.ts tests/unit/settings-activation/save-create.test.ts tests/unit/settings-activation/stale-plan.test.ts tests/unit/server/settings-catalog-projection.test.ts tests/unit/dashboard/settings-catalog-surface.test.ts tests/unit/dashboard/settings-protected-surface.test.ts
+npm run test -- tests/unit/architecture/settings-catalog.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/architecture/redaction-surface-scan.test.ts
+npm run test -- tests/unit/config/credential-store.test.ts tests/unit/protected-settings-history.test.ts tests/unit/dashboard/takeover-frame-focus.test.ts tests/unit/server/bff-flow.test.ts
+npm run web:build
+npm run test:parity -- reference-settings.spec.ts settings-activation.spec.ts reference-storage.spec.ts shell-navigation.spec.ts settings-catalog.spec.ts --workers=4
+git diff --check
+```
+
+Lint every changed authored code/test file, including untracked additions, with zero warnings.
+This reproducible selector records the exact argv and avoids ignored build artifacts:
+
+```sh
+python3 - <<'LINT'
+import subprocess
+base = '07221394ece638d5de9f38407654ad2b305f1f9f'
+tracked = subprocess.check_output(['git', 'diff', '--name-only', '--diff-filter=ACMR', base, '--'], text=True).splitlines()
+new = subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard'], text=True).splitlines()
+paths = sorted({p for p in tracked + new if p.endswith(('.ts', '.tsx', '.js', '.mjs', '.cjs'))})
+if not paths:
+    raise SystemExit('No changed authored source/test paths found for implementation lint')
+argv = ['npx', '--no-install', 'eslint', *paths, '--max-warnings', '0']
+print(repr(argv), flush=True)
+subprocess.run(argv, check=True)
+LINT
+```
+
+During iteration, run discriminating focused tests and scoped lint. Before each logical implementation
+commit and S4 freeze, establish the applicable focused checks on final inputs; run the combined
+focused selection at candidate completion. Repeat invalidated checks after repairs, not unchanged
+broad suites after each small cycle. Preserve assertions, discovered membership, isolation, deadlines
+and floors. Use at most four file workers; parity's explicit `--workers=4` overrides its five-worker
+default. Confirm effective concurrency through resolved config/output. No independent review step.
+
+Actual-browser proof uses `playwright-cli` and the platform playbook, with snapshot-before-locator
+selection. Inspect the existing specimen before selecting primitives. For actual zoom, reuse the
+accepted shell delivery's reproducible tab-scoped `chrome.tabs.setZoom/getZoom` mechanism under an
+owned Chromium profile/extension, verifying 1.25 and 2 and recording viewport/geometry/focus receipts
+on the current Settings bundle in both themes. The shell task's committed delivery record names
+the retained mechanism and artifacts; recreate owned files and close the session. Do not claim
+`document.documentElement.style.zoom` or deviceScaleFactor as browser zoom. Existing CSS-zoom
+references may retain their actual attribution while the separate actual-zoom proof supplies D04.
+
+Add Settings-owned catalog/protected/structured-value/conflict/read-only scene coverage through
+`settings-catalog.spec.ts` and surface-specific helpers. Preserve all existing scene identities and
+titles. Before refreeze, record a complete discovered title/reference census and the expected visible
+change. Use:
+
+```sh
+npm run test:parity:update -- reference-settings.spec.ts settings-activation.spec.ts reference-storage.spec.ts settings-catalog.spec.ts --workers=4
+```
+
+That command is not permission to update every file it encounters. The approved allowlist is the
+three Settings families and new Settings-owned states; the six existing `storage-settings` sets
+may change solely because of shared Settings navigation. Attribute exact filenames and before/after
+hashes with the requirement causing each changed PNG/a11y/metadata item. Inspect the visual and
+accessibility diff, preserve unchanged metadata, and rerun the assert command above. Unexpected
+Storage-body, non-Settings or other-family drift stops dependent refreeze work. Do not lower pixel
+tolerance, discard titles or change unrelated fixture facts. The baseline has 18 sets/54 files;
+new states are additions, not permission to remove those cases.
+
+The Git index, compiler evidence, `dist/dashboard`, `tests/parity/.output`, screenshot/profile state,
+fixture roots and evidence namespace must be private. Installed `node_modules` may be a read-only
+link; do not install into or mutate that shared directory. Use the runner's private
+`/tmp/hrt-<uid>/run-*` roots and ephemeral HTTP/SSE ports, never 3938/5174 or operator state.
+Do not overlap build/parity writers in one checkout. Keep test/provider/credential values synthetic;
+no external HR action or operator credential change is assigned. Retain implementation evidence at
+`/Users/julianhein/Projects/hr-settings-evidence-20260913/`, creating it only if absent or verifying
+this assignment owns it. Record commands, effective workers, tested inputs, exit status and artifact
+hashes; preserve required evidence before releasing scratch/worktrees.
+
+The Settings-only shared-test edits do not assign sibling behavior or root interfaces. 3.1.9.8
+combines exact candidates, resolves shared/generated output and any independently changed reference
+hunks, proves the assigned either-order combination, runs typecheck and focused integration/lint/
+affected build checks, then completes operator-authorized integration/cleanup. No future merge result
+is claimed by planning. Full coverage, whole-repository lint/architecture, broad parity, production,
+performance, recovery, live acceptance and complete A01–A42/D01–D05 remain **3.1.19**. No unrun proof
+becomes green. Any affected generated artifact must be regenerated through its owner, never by hand;
+an unexpected need to alter reserved generated/runtime inputs returns for allocation.
+
+### Stop conditions, progress and delivery
+
+Stop dependent work for changed prerequisites/ref ownership, missing required proof, necessary
+changes outside the bounded Settings projection/test/reference exception, unexpected reference
+drift, or a new material product/contract choice. Routine coding choices and tactical corrections
+within S1–S4 remain with the supervisor; do not re-ask the approved ownership choice. No fallback
+through a second authority, guessed values, swallowed errors or weaker checks.
+
+At start/resume and after each verified step, send **Done / Now / Remaining** before the next tool
+call. Maintain this task's current state with branch/base/head, scoped changes, accepted proof,
+next action and all pending finalizer/integration/cleanup work. No workers or independent review
+are pending. Use `/handoff` for interrupted unique state, not a second standing plan.
+
+Commit/freeze the focused candidate and preserve its branch/evidence for 3.1.9.8. Close owned browser,
+server and extension/profile resources. Release a clean stopped worker worktree only from a separate
+safe checkout after preserving artifacts, retaining its candidate ref; otherwise report it for
+finalizer cleanup. Do not remove an active supervisor checkout or delete an unintegrated candidate.
+Development completion is distinct from assigned integration/cleanup and roadmap completion. Do not
+mark this task implemented during planning or claim group release before 3.1.9.8. Never push.
+
+### Planning validation and delivery
+
+Planning evidence is retained at `/Users/julianhein/Projects/hr-settings-plan-evidence-20260913/`.
+The planner validates doc binding, scoped lint for any executed documentation test, generated roadmap
+freshness, local links, existing instruction twins/chains, exact changed-path scope, complete approved
+controls and Git ancestry. Read back this entire section from the final plan commit, verify named-ref
+reachability and creation from the plan SHA, then remove only the owned planning worktree while
+retaining the branch and evidence. Product code/tests/references remain unchanged during planning.
+Record the scoped results here before handoff; no product gate reuse or new runtime PASS is claimed.
+
+| Planning check | Result and evidence |
+| --- | --- |
+| `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS: 24 tests, exit 0; `roadmap-binding.log` and its command JSON. The runner removed successful private scratch. |
+| `npx --no-install eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap --max-warnings 0` | PASS, zero warnings, exit 0; `scoped-lint.log` and command JSON. |
+| `npm run roadmap`; `npm run roadmap:check` | PASS, exit 0. Generation produces the same `docs/roadmap/index.html` bytes as the planning base; `roadmap-check.log` records freshness. |
+| `python3 /Users/julianhein/Projects/hr-settings-plan-evidence-20260913/audit.py /Users/julianhein/Projects/hr-worktree-settings-plan` | PASS: exactly two approved documentation paths, 17 links/fragments, 19 existing/planned test paths, nine byte-identical instruction pairs, maximum chain 18,376 bytes below 32,768, all execution-control sections and prerequisite ancestries. `document-audit.json` records inputs/hashes. The first audit run's literal label check was corrected from `Settings-only dependency construction` to the actual `Settings dependency construction`; no plan scope was changed to satisfy it. |
+| Source and whitespace boundary | PASS: `git diff --check`; no product/test/config/dependency/instruction/reference or generated-roadmap changes from `07221394ece638d5de9f38407654ad2b305f1f9f`. No implementation or broad acceptance gates were run or claimed. |
+
+The recording table changes no source, test, tool/configuration input, links, requirement, task
+identity, acceptance status or ownership. Scoped lint is reused against its unchanged input bytes;
+binding/freshness/audit and whitespace are checked again after this table and before commit.
+The planner's external `commit-verification.json` records the final full plan SHA, committed-document
+hashes, named-ref reachability, prerequisite ancestry and worktree/ref availability after readback.
+Planning-worktree cleanup retains the named branch and durable evidence. The outgoing prompt uses
+that verified plan commit as the implementation creation base; no master merge or implementation
+dispatch is assigned to this planning stage.
