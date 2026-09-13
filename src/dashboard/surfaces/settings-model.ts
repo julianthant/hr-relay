@@ -1,73 +1,21 @@
-/**
- * Whether the storage summary owes the operator attention, and the Settings
- * page's own navigation fold.
- *
- * It lives beside `settings.tsx` rather than inside it because a module that
- * exports a component may export nothing else if React Fast Refresh is to treat
- * it as a refresh boundary: one non-component export makes every edit to the
- * surface invalidate upward into `dashboard-app.tsx` and remount the app
- * instead of hot-swapping the component.
- */
-import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import type {
-  SettingsSectionPrimitiveSchema,
-  StorageHealthSummaryWireSchema,
+SettingsSectionPrimitiveSchema
 } from "../../domain/dashboard/bootstrap.js";
-import {
-  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
-  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
-  type SettingsFactsWire,
-  type SystemHostWire,
-  type WorkflowCapabilityRowWire,
-} from "../../domain/dashboard/settings.js";
-import { useDashboardClient } from "../state/client-context.js";
-import { systemClock } from "../../domain/clock.js";
-import type { BrowserSystemId } from "./system-chip-model.js";
-import {
-  deriveSettingsPatchFingerprint,
-  SettingsPatchSchema,
-  type SettingsPatch,
-} from "../../domain/config/settings.js";
-import type {
-  EditableSettingsLeafWire,
-  EditableSettingsPath,
-  EditableSettingsWire,
-} from "../../domain/dashboard/settings-editor.js";
-import type { CommandResult } from "../../domain/commands.js";
 import { PreflightCheckWireSchema } from "../../domain/dashboard/bootstrap.js";
-import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import type {
+EditableSettingsWire
+} from "../../domain/dashboard/settings-editor.js";
+import {
+SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
+} from "../../domain/dashboard/settings.js";
 
-type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
 
-export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;
+export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
+
 export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
 
-type DegradedSpanAuthority = Extract<StorageDoctorWire["spanAuthority"], { state: "degraded" }>;
-export type SpanAuthorityProblem = DegradedSpanAuthority["problems"][number];
-
-/**
- * The strict degraded union's operator facts. The discriminant is rendered
- * separately, so this fold carries only that arm's safe identifying detail.
- */
-export function spanAuthorityProblemDetail(problem: SpanAuthorityProblem): string {
-  switch (problem.state) {
-    case "missing":
-    case "restore-loss":
-      return `run ${problem.runId}${problem.possibleExternalWrite === true ? " · possible external write" : ""}`;
-    case "missing-span":
-      return `run ${problem.runId}`;
-    case "malformed-authority":
-      return `source ${problem.source} · record ${problem.recordKey} · ${problem.summary}`;
-    case "malformed":
-      return `table ${problem.table} · run ${problem.runId} · ${problem.summary}`;
-  }
-}
-
-/** True when the top-bar gear should carry the attention dot. */
-export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
-  return storage.authority !== "healthy" || storage.backup !== "current";
-}
 
 /**
  * Which glyph a nav entry draws. A KEY rather than the component itself,
@@ -86,6 +34,7 @@ export type SettingsNavIcon =
   | "ui-catalog"
   | "unrendered";
 
+
 /**
  * The glyph for each SERVED section this build renders, keyed by the id the
  * server lists. A served id that is not here draws `unrendered` and the pane
@@ -101,6 +50,7 @@ const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze
   [SETTINGS_SYSTEM_HOSTS_SECTION_ID]: "system-hosts",
   [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "capabilities",
 });
+
 
 export interface SettingsNavEntry {
   readonly id: string;
@@ -120,13 +70,16 @@ export interface SettingsNavEntry {
   readonly source: "served" | "client";
 }
 
+
 export interface SettingsNavGroup {
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
 
+
 /** The Help group's keyboard entry — the destination the top bar's deleted keyboard glyph was traded for. */
 export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
+
 
 /**
  * The Help group's catalog entry (D295).
@@ -138,6 +91,7 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
  * been added, removed and restored three times (D275 item 1, D281 item 2).
  */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
+
 
 /**
  * The gear's stable DOM id, and the app shell's main region behind the
@@ -151,7 +105,9 @@ export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
  * held as a React ref threaded down through `TopBar`.
  */
 export const SETTINGS_GEAR_ID = "settings-gear";
+
 export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
+
 
 /**
  * Which id to focus when the takeover closes: the gear it was opened from, or
@@ -164,6 +120,7 @@ export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
 export function settingsCloseFocusTargetId(gearMounted: boolean): string {
   return gearMounted ? SETTINGS_GEAR_ID : DASHBOARD_MAIN_REGION_ID;
 }
+
 
 /**
  * The demo's three nav groups, minus the ones this build has no member for.
@@ -214,6 +171,7 @@ export function buildSettingsNav(
   return groups;
 }
 
+
 /**
  * Which section the page opens on, resolved from `?settings=`.
  *
@@ -228,6 +186,7 @@ export type SettingsSectionResolution =
   | { readonly state: "unknown"; readonly requested: string }
   | { readonly state: "empty" };
 
+
 export function resolveSettingsSection(
   groups: readonly SettingsNavGroup[],
   requested: string,
@@ -240,518 +199,13 @@ export function resolveSettingsSection(
   const found = entries.find((entry) => entry.id === requested);
   return found === undefined ? { state: "unknown", requested } : { state: "open", entry: found };
 }
-
-/* ── the two READ-ONLY status sections (D274 item 6, ledger 3 SE40–SE42) ──── */
-
-export type SettingsFactsState =
-  | { readonly state: "loading" }
-  | { readonly state: "loaded"; readonly facts: SettingsFactsWire }
-  | { readonly state: "failed"; readonly message: string };
-
-/**
- * Reads `GET /api/v1/settings/facts` once, when a section that needs it opens.
- *
- * Three states, all of them drawn (D275 item 4). A refusal is NOT an empty
- * table: "no host is configured" and "we could not ask" are different sentences
- * and only one of them is ever true, so the failed arm carries the transport's
- * own message rather than falling back to a plausible blank page.
- */
-export function useSettingsFacts(): SettingsFactsState {
-  const client = useDashboardClient();
-  const [state, setState] = useState<SettingsFactsState>({ state: "loading" });
-  useEffect(() => {
-    let live = true;
-    client.settingsFacts().then(
-      (facts) => { if (live) setState({ state: "loaded", facts }); },
-      (caught: unknown) => {
-        if (!live) return;
-        setState({
-          state: "failed",
-          message: caught instanceof Error ? caught.message : String(caught),
-        });
-      },
-    );
-    return () => { live = false; };
-  }, [client]);
-  return state;
-}
-
-export type EditableSettingsState =
-  | { readonly state: "loading" }
-  | { readonly state: "failed"; readonly message: string }
-  | { readonly state: "loaded"; readonly document: EditableSettingsWire };
-
-export type SettingsSaveState =
-  | { readonly state: "idle" }
-  | { readonly state: "saving" }
-  | { readonly state: "applied"; readonly replayed: boolean }
-  | { readonly state: "refused"; readonly message: string };
-
-export type PreflightRerunState =
-  | { readonly state: "idle" }
-  | { readonly state: "running" }
-  | { readonly state: "completed"; readonly checks: readonly PreflightCheckWire[] }
-  | { readonly state: "refused"; readonly message: string };
-
-type DraftValues = Partial<Record<EditableSettingsPath, string | number>>;
-type DraftErrors = Partial<Record<EditableSettingsPath, string>>;
-
-function currentDraft(document: EditableSettingsWire): DraftValues {
-  return Object.fromEntries(document.sections.flatMap((section) => section.leaves.map((leaf) => [leaf.path, leaf.effectiveValue])));
-}
-
-function leafFor(document: EditableSettingsWire, path: EditableSettingsPath): EditableSettingsLeafWire {
-  const leaf = document.sections.flatMap((section) => section.leaves).find((candidate) => candidate.path === path);
-  if (leaf === undefined) throw new Error(`settings editor did not serve leaf ${path}`);
-  return leaf;
-}
-
-function patchFromDraft(document: EditableSettingsWire, draft: DraftValues): SettingsPatch {
-  const patch: Record<string, { readonly set: unknown } | { readonly clear: true }> = {};
-  const leaves = document.sections.flatMap((section) => section.leaves);
-  const dirty = leaves.filter((leaf) => leaf.editable && draft[leaf.path] !== leaf.effectiveValue);
-  const displayDirty = dirty.some((leaf) => leaf.path.startsWith("display."));
-  const displayLeaves = leaves.filter((leaf) => leaf.path.startsWith("display."));
-  const clearDisplay = displayDirty && displayLeaves.every((leaf) => (
-    draft[leaf.path] === leaf.defaultValue && leaf.settingsValue !== undefined
-  ));
-  for (const leaf of leaves) {
-    if (!dirty.includes(leaf) && !(displayDirty && leaf.path.startsWith("display."))) continue;
-    const value = draft[leaf.path];
-    if (value === undefined) throw new Error(`settings editor draft omitted ${leaf.path}`);
-    patch[leaf.path] = clearDisplay && leaf.path.startsWith("display.")
-      ? { clear: true }
-      : value === leaf.defaultValue && leaf.settingsValue !== undefined && !leaf.path.startsWith("display.")
-      ? { clear: true }
-      : { set: value };
-  }
-  return SettingsPatchSchema.parse(patch);
-}
-
-function commandRefusal(result: CommandResult): string | undefined {
-  switch (result.state) {
-    case "applied":
-    case "already-applied": return undefined;
-    case "conflict": return `${result.message} The server is now at revision ${String(result.currentVersion)}; reload before saving.`;
-    case "rejected": return result.message;
-  }
-}
-
-/** The DCC3 page controller: one document, one N-leaf draft, one atomic patch. */
-export function useEditableSettings(input: Readonly<{
-  actorId: string;
-  descriptorFingerprint: string;
-}>) {
-  const client = useDashboardClient();
-  const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
-  const [draft, setDraft] = useState<DraftValues>({});
-  const [errors, setErrors] = useState<DraftErrors>({});
-  const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
-  const [preflight, setPreflight] = useState<PreflightRerunState>({ state: "idle" });
-
-  const load = (): void => {
-    setEditor({ state: "loading" });
-    client.editableSettings().then(
-      (document) => {
-        setEditor({ state: "loaded", document });
-        setDraft(currentDraft(document));
-        setErrors({});
-      },
-      (caught: unknown) => setEditor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }),
-    );
-  };
-
-  useEffect(() => { load(); }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const dirtyCount = useMemo(() => {
-    const leaves = editor.state === "loaded" ? editor.document.sections.flatMap((section) => section.leaves) : [];
-    return leaves.filter((leaf) => draft[leaf.path] !== leaf.effectiveValue).length;
-  }, [draft, editor]);
-
-  const update = (path: EditableSettingsPath, raw: string): void => {
-    if (editor.state !== "loaded") return;
-    const leaf = leafFor(editor.document, path);
-    if (!leaf.editable) return;
-    if (leaf.input === "text") {
-      setDraft((previous) => ({ ...previous, [path]: raw }));
-      setErrors((previous) => ({ ...previous, [path]: raw.trim().length === 0 ? "Enter a value." : undefined }));
-      return;
-    }
-    const canonical = /^(?:0|[1-9]\d*)$/u.test(raw);
-    const value = canonical ? Number(raw) : undefined;
-    const error = value === undefined || value < leaf.minimum
-      ? `Enter a whole number of at least ${String(leaf.minimum)}.`
-      : undefined;
-    // Keep malformed text in the draft so clearing a zero-allowed field can
-    // never become a quiet numeric zero before the visible refusal is fixed.
-    setDraft((previous) => ({ ...previous, [path]: value ?? raw }));
-    setErrors((previous) => ({ ...previous, [path]: error }));
-  };
-
-  const reset = (path: EditableSettingsPath): void => {
-    if (editor.state !== "loaded") return;
-    const leaf = leafFor(editor.document, path);
-    setDraft((previous) => ({ ...previous, [path]: leaf.effectiveValue }));
-    setErrors((previous) => ({ ...previous, [path]: undefined }));
-  };
-
-  const discard = (): void => {
-    if (editor.state !== "loaded") return;
-    setDraft(currentDraft(editor.document));
-    setErrors({});
-    setSave({ state: "idle" });
-  };
-
-  const submit = (): void => {
-    if (editor.state !== "loaded" || Object.values(errors).some((error) => error !== undefined)) return;
-    let patch: SettingsPatch;
-    try {
-      patch = patchFromDraft(editor.document, draft);
-    } catch (error) {
-      if (!(error instanceof z.ZodError)) throw error;
-      const invalidPaths = new Set(error.issues.map((issue) => issue.path.join(".")));
-      const validationErrors: DraftErrors = Object.fromEntries(
-        editor.document.sections.flatMap((section) => section.leaves)
-          .filter((leaf) => invalidPaths.has(leaf.path))
-          .map((leaf) => [leaf.path, "Enter a valid value."]),
-      );
-      setErrors(validationErrors);
-      setSave({ state: "refused", message: "Check the highlighted settings values." });
-      return;
-    }
-    if (Object.keys(patch).length === 0) return;
-    setSave({ state: "saving" });
-    client.applySettings({
-      commandId: crypto.randomUUID(),
-      requestedAt: systemClock.now().toISOString(),
-      requestedBy: input.actorId,
-      source: "settings-surface",
-      family: "settings",
-      type: "apply-settings",
-      target: { expectedRevision: editor.document.revision },
-      payload: {
-        settingsSchemaHash: editor.document.settingsSchemaHash,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      },
-    }).then(
-      (result) => {
-        const refusal = commandRefusal(result);
-        if (refusal !== undefined) {
-          setSave({ state: "refused", message: refusal });
-          return;
-        }
-        setSave({ state: "applied", replayed: result.state === "already-applied" });
-        load();
-      },
-      (caught: unknown) => setSave({ state: "refused", message: caught instanceof Error ? caught.message : String(caught) }),
-    );
-  };
-
-  const rerunPreflight = (): void => {
-    if (editor.state !== "loaded") return;
-    if (editor.document.runtimeStatus.state === "restart-required") {
-      setPreflight({ state: "refused", message: "Restart is required before rerunning preflight; the current runtime still has the previous settings." });
-      return;
-    }
-    setPreflight({ state: "running" });
-    client.rerunPreflight({
-      commandId: crypto.randomUUID(),
-      requestedAt: systemClock.now().toISOString(),
-      requestedBy: input.actorId,
-      source: "settings-surface",
-      type: "rerun-preflight",
-      target: {
-        expectedConfigFingerprint: editor.document.activeConfigFingerprint,
-        expectedDescriptorFingerprint: input.descriptorFingerprint,
-      },
-    }).then(
-      (result) => setPreflight({
-        state: "completed",
-        checks: result.report.results.map((check) => ({
-          id: check.check,
-          label: check.check,
-          verdict: check.status === "pass" ? "pass" : check.status,
-          detail: check.summary,
-          blocks: check.status === "fail" ? check.blocks : [],
-          ...(check.status === "pass" ? {} : { remediation: check.status === "warning" ? check.remediation : check.remediation }),
-          checkedAt: result.report.checkedAt,
-        })),
-      }),
-      (caught: unknown) => setPreflight({ state: "refused", message: caught instanceof Error ? caught.message : String(caught) }),
-    );
-  };
-
-  return Object.freeze({ editor, draft, errors, save, preflight, dirtyCount, update, reset, discard, submit, reload: load, rerunPreflight });
-}
-
-/**
- * SE40's SYSTEM column, as an operator reads it: the system's own name, and one
- * sentence saying why the instance choice matters for THAT system.
- *
- * The table printed the raw wire id (`ucpath`, `new-kronos`) and no sentence at
- * all (UF-SET-25 / UF-SET-26). The demo prints both, off a client constant
- * (legacy `1ec1d870`
- * `src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:88-124`,
- * rendered at `DemoSettings.tsx:837-844`), so the current can too.
- *
- * NOT `SYSTEM_LABEL` from `system-chip-model.ts`: that map is the CHIP's
- * treatment — `UCPATH`, `NEW KRONOS` — a token shouted at chip size in a dense
- * row. This is a name in a table beside prose, and `UCPath` / `OnBase` /
- * `I-9` are what the systems are actually called. One vocabulary, two
- * treatments, and the two are not interchangeable in either direction.
- *
- * **Where a note comes from.** The demo is the design authority for every
- * system it covers, and demo-covered copy is ported BYTE FOR BYTE (operator's
- * ruling, unit U4b) — including `onbase` and `i9`, whose notes restate
- * provisioning state that the served `Test` column also carries. U3 read that
- * restatement as the fail-loud rule's plausible-but-wrong sentence and
- * re-authored both; that was the wrong call. The tension is real — one of these
- * constants could one day contradict the column beside it — but it is an
- * operator question about the demo's copy, not a licence to write new prose in
- * the demo's place. Raise it; do not resolve it here.
- *
- * A system the demo does NOT cover (`new-kronos`, `old-kronos`, `sharepoint` —
- * the demo carried one undifferentiated `kronos` and no SharePoint) has no copy
- * to port, so its note is authored and marked as such at the entry. Every note
- * says why the instance choice matters for that system.
- *
- * `Record<BrowserSystemId, …>` on the CLOSED enum, so a tenth system is a
- * compile error here rather than a row that renders its id again.
- */
-export interface SystemHostPresentation {
-  /** the system's own name, as it is written everywhere but a chip */
-  readonly name: string;
-  /** why the instance choice matters for this system */
-  readonly note: string;
-}
-
-export const SYSTEM_HOST_PRESENTATION: Record<BrowserSystemId, SystemHostPresentation> = {
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:89-93
-  ucpath: {
-    name: "UCPath",
-    note: "A UCPath write on the test host files nothing real and reads a stale copy of the roster.",
-  },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:94-98
-  kuali: {
-    name: "Kuali",
-    note: "Staging holds its own documents — a doc ID from production will not resolve there.",
-  },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:104-108
-  crm: {
-    name: "CRM",
-    note: "Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write.",
-  },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:109-113
-  servicenow: {
-    name: "ServiceNow",
-    note: "A ticket filed on the dev host is real and visible — it just goes to nobody.",
-  },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:114-118
-  onbase: {
-    name: "OnBase",
-    note: "No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production.",
-  },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:119-123
-  // The second sentence names a doctor check this build does not serve yet; it
-  // is the demo's sentence and stays as written (U4b).
-  i9: {
-    name: "I-9",
-    note: "No test host is provisioned. The doctor's I-9 test-instance check reports the same thing.",
-  },
-  // authored — no demo counterpart (UI-1 sheet item 6): the demo carried one
-  // undifferentiated `kronos` (demo-runstart-wire.ts:99-103), this build
-  // resolves two tenants (`stores` catalog, `new-kronos` / `old-kronos`).
-  "new-kronos": {
-    name: "New Kronos",
-    note: "Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total.",
-  },
-  // authored — no demo counterpart (UI-1 sheet item 6)
-  "old-kronos": {
-    name: "Old Kronos",
-    note: "Workforce Central, kept for the reports the new tenant did not carry across.",
-  },
-  // authored — no demo counterpart (UI-1 sheet item 6)
-  sharepoint: {
-    name: "SharePoint",
-    note: "A download source, so the wrong host here yields the wrong file rather than the wrong write.",
-  },
-};
-
-/**
- * `N of M have a test host` — SE40's panel meta. Only `provisioned` counts: a
- * `not-distinct` test host is configured wrong and refused at run time, so it
- * is not a usable test host any more than an unconfigured one is (unit F11b
- * finding 2).
- */
-export function systemHostsMeta(hosts: readonly SystemHostWire[]): string {
-  const withTest = hosts.filter(({ test }) => test.state === "provisioned").length;
-  return `${String(withTest)} of ${String(hosts.length)} have a test host`;
-}
-
-export type CapabilityKey =
-  | "dry-run"
-  | "typed-start"
-  | "review-panel"
-  | "edit-data"
-  | "operator-gates"
-  | "browser-systems";
-
-export interface CapabilitySpec {
-  readonly key: CapabilityKey;
-  readonly label: string;
-  /** what the capability means, in the operator's words — lives behind the ⓘ */
-  readonly meaning: string;
-}
-
-/**
- * The SERVED vocabulary, in the order the page reads it: what starts it, what
- * it will and will not write, then what it touches and who has to be there.
- *
- * Six, not the demo's sixteen. D274 item 4's rule for exactly this case is to
- * build the vocabulary the product actually serves and NAME the absence rather
- * than mint a column with nothing behind it — a matrix that claims a capability
- * no descriptor declares is wrong silently, which is the worst way to be wrong
- * on a page whose whole job is to say what is true.
- */
-export const CAPABILITY_SPECS: readonly CapabilitySpec[] = Object.freeze([
-  {
-    key: "typed-start",
-    label: "Typed start",
-    meaning: "Whether you can start this by typing subjects into the Run modal. A workflow without one is started as a step of the composition that owns it.",
-  },
-  {
-    key: "dry-run",
-    label: "Dry run",
-    meaning: "Offers a rehearsal that reads everything for real and writes nothing. A workflow that changes no system of record has nothing to rehearse.",
-  },
-  {
-    key: "edit-data",
-    label: "Edit Data",
-    meaning: "Which checkpoint values you may correct from the Context rail. The descriptor names the exact paths; anything it does not name is read-only.",
-  },
-  {
-    key: "review-panel",
-    label: "Review panel",
-    meaning: "Its rows get a Review panel of their own rather than being read from the queue.",
-  },
-  {
-    key: "operator-gates",
-    label: "Operator gates",
-    meaning: "The points where a run parks and waits for you. A gate resolved by another system or by its own children is not your work and is not listed.",
-  },
-  {
-    key: "browser-systems",
-    label: "Systems",
-    meaning: "The systems a run signs into and drives. Every one of them needs an authenticated session before the run can move.",
-  },
-]);
-
-/**
- * ONE cell. Three shapes, told apart by SHAPE and by WORD, never by colour:
- * available carries the thing itself, `not-applicable` carries the decision, and
- * `not-built` carries the gap with its named offender. Collapsing the last two
- * into one grey dash is how "we chose not to" and "we have not got to it" become
- * indistinguishable, and an operator plans differently depending on which it is.
- */
-export type CapabilityCell =
-  | { readonly state: "available"; readonly detail: string }
-  | { readonly state: "not-applicable"; readonly reason: string }
-  | { readonly state: "not-built"; readonly reason: string };
-
-export interface CapabilityRow {
-  readonly workflowId: string;
-  /** the bootstrap's label, or the id itself when this document does not list it */
-  readonly label: string;
-  readonly labelServed: boolean;
-  readonly cells: Readonly<Record<CapabilityKey, CapabilityCell>>;
-  /** SE41's posture table reads the same served arm this row's `dry-run` cell does */
-  readonly dryRunPosture: string;
-}
-
-function dryRunCell(row: WorkflowCapabilityRowWire): CapabilityCell {
-  if (row.dryRun.state === "supported") {
-    return { state: "available", detail: `stops at ${String(row.dryRun.stopsAt)}` };
-  }
-  if (row.dryRun.reason === "no-transaction-node") {
-    return { state: "not-applicable", reason: "writes to no system of record" };
-  }
-  return { state: "not-built", reason: `${String(row.dryRun.nodeId)} declares no preview arm` };
-}
-
-/**
- * The one fact that is NOT a yes/no, so it also gets its own table: a workflow
- * can honour a rehearsal, have nothing to rehearse, or write and refuse one —
- * and the third is the answer worth reading before a real HR transaction.
- */
-export function dryRunPostureSentence(row: WorkflowCapabilityRowWire): string {
-  if (row.dryRun.state === "supported") {
-    return `Stops after the prepare of ${String(row.dryRun.stopsAt)} — nothing is committed.`;
-  }
-  if (row.dryRun.reason === "no-transaction-node") {
-    return "Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run.";
-  }
-  return `Refused: ${String(row.dryRun.nodeId)} commits and declares no preview arm, so a rehearsal cannot reach the end.`;
-}
-
-function editDataCell(row: WorkflowCapabilityRowWire): CapabilityCell {
-  if (row.editData.state === "read-only") {
-    return { state: "not-applicable", reason: "no correctable path is declared" };
-  }
-  if (row.editData.editableFields === 0) {
-    return { state: "not-applicable", reason: "declared, and no path is correctable" };
-  }
-  const count = row.editData.editableFields;
-  return { state: "available", detail: `${String(count)} correctable field${count === 1 ? "" : "s"}` };
-}
-
-/**
- * The served rows, joined to the bootstrap's labels.
- *
- * The label is the BOOTSTRAP's — the capability wire deliberately carries none,
- * so one page cannot hold two names for one workflow. A row this document does
- * not list falls back to the workflow's own id, which is its identity and not an
- * invented name, and says so through `labelServed` rather than reading as a
- * badly-cased label.
- */
-export function capabilityMatrix(
-  rows: readonly WorkflowCapabilityRowWire[],
-  labels: ReadonlyMap<string, string>,
-): readonly CapabilityRow[] {
-  return rows.map((row) => {
-    const id = String(row.workflowId);
-    const served = labels.get(id);
-    const gates = row.operatorGates.map((gate) => String(gate));
-    const systems = row.browserSystems.map((system) => String(system));
-    return Object.freeze({
-      workflowId: id,
-      label: served ?? id,
-      labelServed: served !== undefined,
-      dryRunPosture: dryRunPostureSentence(row),
-      cells: Object.freeze({
-        "typed-start": row.typedStart
-          ? { state: "available" as const, detail: "typed input" }
-          : { state: "not-applicable" as const, reason: "no typed start surface is declared" },
-        "dry-run": dryRunCell(row),
-        "edit-data": editDataCell(row),
-        "review-panel": row.reviewPanel
-          ? { state: "available" as const, detail: "Review panel" }
-          : { state: "not-applicable" as const, reason: "read from the queue" },
-        "operator-gates": gates.length > 0
-          ? { state: "available" as const, detail: gates.join(", ") }
-          : { state: "not-applicable" as const, reason: "parks on no operator gate" },
-        "browser-systems": systems.length > 0
-          ? { state: "available" as const, detail: systems.join(", ") }
-          : { state: "not-applicable" as const, reason: "drives no browser system" },
-      }),
-    });
-  });
-}
-
-/** `N of M` per capability — how many workflows answer it at all. */
-export function capabilityAvailableCount(
-  matrix: readonly CapabilityRow[],
-  key: CapabilityKey,
-): number {
-  return matrix.filter((row) => row.cells[key].state === "available").length;
-}
+export { CAPABILITY_SPECS,capabilityAvailableCount,capabilityMatrix,dryRunPostureSentence } from "./settings-capabilities-model.js";
+export type { CapabilityCell,CapabilityKey,CapabilityRow,CapabilitySpec } from "./settings-capabilities-model.js";
+export { useEditableSettings } from "./settings-editor-model.js";
+export type { EditableSettingsState,PreflightRerunState,SettingsSaveState } from "./settings-editor-model.js";
+export { useSettingsFacts } from "./settings-facts-model.js";
+export type { SettingsFactsState } from "./settings-facts-model.js";
+export { SYSTEM_HOST_PRESENTATION,systemHostsMeta } from "./settings-hosts-model.js";
+export type { SystemHostPresentation } from "./settings-hosts-model.js";
+export { spanAuthorityProblemDetail,storageNeedsAttention } from "./storage-settings-model.js";
+export type { SpanAuthorityProblem,StorageHealthSummary } from "./storage-settings-model.js";

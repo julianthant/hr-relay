@@ -470,6 +470,36 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
 });
 
 describe("Settings exits share the page-owned draft guard", () => {
+  it("retains the same draft across catalog subroutes and a cancelled shell exit, then restores close focus", async () => {
+    await mountDashboard("?settings=general");
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement);
+    await setInputValue(input, "Draft through catalog");
+    const sectionLink = (label: string): HTMLAnchorElement => {
+      const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
+        .find(candidate => candidate.textContent?.trim() === label);
+      assert.ok(link instanceof HTMLAnchorElement, `missing section ${label}`);
+      return link;
+    };
+    const editorLabel = sectionLink("General").textContent?.trim();
+    assert.equal(editorLabel, "General");
+    await act(async () => sectionLink("UI catalog").click());
+    assert.match(window.location.search, /settings=ui-catalog/u);
+    assert.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
+    await press(buttonNamed("Dashboard"));
+    await press(buttonNamed("Keep editing"));
+    assert.match(window.location.search, /settings=ui-catalog/u);
+    await act(async () => sectionLink("General").click());
+    const restored = document.querySelector("input");
+    assert.ok(restored instanceof HTMLInputElement);
+    assert.equal(restored.value, "Draft through catalog");
+    await press(buttonNamed("Back to the dashboard"));
+    await press(buttonNamed("Discard changes"));
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.equal(window.location.search.includes("catalog"), false);
+    assert.equal(document.activeElement?.id, "settings-gear");
+  });
+
   it("requires a discard before persistent TopBar navigation unmounts a dirty Settings draft", async () => {
     await mountDashboard("?settings=display");
     const input = document.querySelector("input");

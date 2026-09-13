@@ -2,14 +2,18 @@
  * Image bytes are the encoder-produced diagnostic corpus; dimensions come from
  * their real format headers, never synthetic DOM metadata. */
 import { createHash } from "node:crypto";
-import { deepFreeze } from "../../../src/domain/immutability.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema,
-  type RunCaptureArtifactWire, type RunDetailSectionResponse, type RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
-import { readImageGeometry } from "../../fixtures/image-geometry.js";
+import {
+RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema,
+type RunCaptureArtifactWire,type RunDetailSectionResponse,type RunDetailWire
+} from "../../../src/domain/dashboard/run-detail.js";
+import { deepFreeze } from "../../../src/domain/immutability.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_DESCRIPTOR_HASH, FIXTURE_IDS, FIXTURE_RUN_DETAILS } from "./fixture-day.js";
+import { BASELINE_JPEG_BASE64,TRUECOLOUR_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
+import { readImageGeometry } from "../../fixtures/image-geometry.js";
+import { FIXTURE_RUN_DETAILS } from "./fixture-detail.js";
+import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
+import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "./fixture-queue.js";
 
 export const RUN_CAPTURE_FIXTURE_IDS = deepFreeze({
   png: "00000000-0000-4000-8000-00000000c101",

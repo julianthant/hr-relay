@@ -442,13 +442,18 @@ describe("parity lane reference authority (D132)", () => {
   });
 
   it("keeps mutable parity references out of fixture inputs", () => {
-    const fixturePath = "tests/parity/helpers/fixture-day.ts";
-    const fixtureSource = readFileSync(join(REPO_ROOT, fixturePath), "utf8");
-    assert.doesNotMatch(
-      fixtureSource,
-      /(?:readFileSync|readFile)[\s\S]{0,240}(?:\.\.\/references|tests\/parity\/references)/u,
-      `${fixturePath} may not read a parity output as fixture input; parallel updates would race old and new bytes`,
-    );
+    const fixtures = gitVisibleFiles(["tests/parity/helpers"])
+      .filter(path => /\/(?:fixture|seeded)-[^/]+\.ts$/u.test(path));
+    assert.ok(fixtures.includes("tests/parity/helpers/fixture-day.ts"));
+    assert.ok(fixtures.includes("tests/parity/helpers/fixture-settings.ts"));
+    for (const fixturePath of fixtures) {
+      const fixtureSource = readFileSync(join(REPO_ROOT, fixturePath), "utf8");
+      assert.doesNotMatch(
+        fixtureSource,
+        /(?:readFileSync|readFile)[\s\S]{0,240}(?:\.\.\/references|tests\/parity\/references)/u,
+        `${fixturePath} may not read a parity output as fixture input; parallel updates would race old and new bytes`,
+      );
+    }
   });
 
   it("fails a stale, unstamped, or tampered bundle", () => {
@@ -617,7 +622,12 @@ describe("parity lane reference authority (D132)", () => {
     });
 
     it("is wired into the lane's own capture path, not merely available", () => {
-      const spec = readFileSync(join(REPO_ROOT, "tests/parity/dashboard-reference.spec.ts"), "utf8");
+      const spec = readFileSync(join(REPO_ROOT, "tests/parity/helpers/reference-scenes.ts"), "utf8");
+      for (const path of ["dashboard-reference", "reference-settings", "reference-explorer", "reference-intake", "reference-archive", "reference-activity", "reference-start", "reference-detail"]) {
+        const registration = readFileSync(join(REPO_ROOT, `tests/parity/${path}.spec.ts`), "utf8");
+        assert.match(registration, /registerReferenceScenes\(SCENES, \(\) => servers\.server, ANCHORS\)/u,
+          `${path} must use the guarded capture registration`);
+      }
       assert.match(
         spec,
         /assertShellGeometry\(page,/,

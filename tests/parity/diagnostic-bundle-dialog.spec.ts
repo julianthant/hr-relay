@@ -1,30 +1,24 @@
 /** E29: the diagnostic bundle is a real, accessible readback surface, not a text fragment. */
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect,test,type Locator,type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { DiagnosticBundleWireSchema,type DiagnosticBundleWire } from "../../src/domain/dashboard/diagnostic-bundle.js";
 import { RunDetailSectionResponseSchema } from "../../src/domain/dashboard/run-detail.js";
-import { DiagnosticBundleWireSchema, type DiagnosticBundleWire } from "../../src/domain/dashboard/diagnostic-bundle.js";
-import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
-import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../fixtures/diagnostic-image-fixtures.js";
+import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
+import { BASELINE_JPEG_BASE64,TRUECOLOUR_PNG_BASE64 } from "../fixtures/diagnostic-image-fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import { captureParityPair, installTheme } from "./helpers/capture.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { captureParityPair,installTheme } from "./helpers/capture.js";
 import { diagnosticGalleryOrigin } from "./helpers/diagnostic-gallery-origin.js";
 import { restrictedJpegDiagnosticFixture } from "./helpers/diagnostic-jpeg-fixture.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import {
-  FIXTURE_DAY,
-  FIXTURE_APP_VERSION,
-  FIXTURE_DIAGNOSTIC_BUNDLE,
-  FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
-  FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES,
-  FIXTURE_DESCRIPTOR_HASH,
-  FIXTURE_IDS,
-  FIXTURE_SECTIONS,
-} from "./helpers/fixture-day.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_SECTIONS } from "./helpers/fixture-detail.js";
+import { FIXTURE_DIAGNOSTIC_BUNDLE,FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES } from "./helpers/fixture-diagnostic.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
+import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 
 const NARROW_DESKTOP_VIEWPORT = { width: 1024, height: 768 } as const;
 const REFERENCES = resolve(import.meta.dirname, "references");

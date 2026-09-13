@@ -1,3 +1,4 @@
+import { observeResource } from "../state/async-resource.js";
 /**
  * The spreadsheet intake workspace — ref data-intake-and-edit-data §2.2's upload → map → validate →
  * run, and ref dashboard-surfaces §11's surface contract (2i-E3, D173).
@@ -40,103 +41,103 @@
  * that fails puts its message on screen with `role="alert"` and changes
  * nothing else, because the wire is the truth and the next read re-derives it.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Check,
-  CheckCircle2,
-  FileSpreadsheet,
-  GitCompare,
-  Info,
-  ListChecks,
-  Play,
-  Table2,
-  X,
+Check,
+CheckCircle2,
+FileSpreadsheet,
+GitCompare,
+Info,
+ListChecks,
+Play,
+Table2,
+X,
 } from "lucide-react";
+import { useCallback,useEffect,useMemo,useState,type ReactNode } from "react";
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
-import { settleCommandResult } from "../app/command-result.js";
-import type {
-  DetectedColumnSchema,
-  ColumnBindingSchema,
-} from "../../domain/intake/mapping.js";
 import type { RowRejectSchema } from "../../domain/intake/manifest.js";
+import type {
+ColumnBindingSchema,
+DetectedColumnSchema,
+} from "../../domain/intake/mapping.js";
 import type { IntakeTargetSchema } from "../../domain/intake/projection.js";
 import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
 import type { IntakeSessionWire } from "../../domain/intake/wire.js";
+import { settleCommandResult } from "../app/command-result.js";
 import { DashboardClientError } from "../client/index.js";
 import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Checkbox,
-  Chip,
-  CountBadge,
-  EmptyState,
-  Field,
-  IconButton,
-  Input,
-  KeyValueList,
-  MetaLine,
-  PanelBody,
-  PanelHeader,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Refusal,
-  SectionLabel,
-  Select,
-  Skeleton,
-  Tab,
-  TabList,
-  TabPanel,
-  Table,
-  TakeoverFrame,
-  Tabs,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Well,
-  dsIcon,
-  dsMotion,
-  dsText,
-  useDsEnterTransition,
+Badge,
+Banner,
+Button,
+Card,
+Checkbox,
+Chip,
+CountBadge,
+dsIcon,
+dsMotion,
+dsText,
+EmptyState,
+Field,
+IconButton,
+Input,
+KeyValueList,
+MetaLine,
+PanelBody,
+PanelHeader,
+Popover,
+PopoverContent,
+PopoverTrigger,
+Refusal,
+SectionLabel,
+Select,
+Skeleton,
+Tab,
+Table,
+TabList,
+TabPanel,
+Tabs,
+TakeoverFrame,
+TBody,
+TD,
+TH,
+THead,
+TR,
+useDsEnterTransition,
+Well,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
-import { useDashboardClient } from "../state/client-context.js";
-import { fmtClock, plural, pluralize, shortHash } from "./format.js";
+import { useIntakeClient as useDashboardClient } from "../state/intake-client.js";
+import { fmtClock,plural,pluralize,shortHash } from "./format.js";
 import {
-  correctionEditorLabel,
-  correctionText,
-  exclusionEditorLabel,
-  headerCandidateOptionLabel,
-  INTAKE_REVIEW_CONTROL_NAMES,
-  INTAKE_REVIEW_COPY,
-  intakeTab,
-  type IntakeTab,
-  type IntakeListPageController,
-  layoutFingerprint,
-  layoutMetaItems,
-  manifestIdentifierFacts,
-  manifestRowDetailFacts,
-  manifestStage,
-  type ManifestStageRow,
-  type RerunChangedInput,
-  type RerunMembershipRow,
-  rerunIdentifierFacts,
-  rerunMembershipDetailFacts,
-  rerunStage,
-  rejectionReviewEligibility,
-  REJECT_KIND_LABEL,
-  rejectionReviewLabel,
-  type RejectionReviewEligibility,
-  sourceLabel,
-  startRunsLabel,
-  suggestionProposalText,
-  useIntakeListPage,
+correctionEditorLabel,
+correctionText,
+exclusionEditorLabel,
+headerCandidateOptionLabel,
+INTAKE_REVIEW_CONTROL_NAMES,
+INTAKE_REVIEW_COPY,
+intakeTab,
+layoutFingerprint,
+layoutMetaItems,
+manifestIdentifierFacts,
+manifestRowDetailFacts,
+manifestStage,
+REJECT_KIND_LABEL,
+rejectionReviewEligibility,
+rejectionReviewLabel,
+rerunIdentifierFacts,
+rerunMembershipDetailFacts,
+rerunStage,
+sourceLabel,
+startRunsLabel,
+suggestionProposalText,
+useIntakeListPage,
+type IntakeListPageController,
+type IntakeTab,
+type ManifestStageRow,
+type RejectionReviewEligibility,
+type RerunChangedInput,
+type RerunMembershipRow,
 } from "./intake-model.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
@@ -1520,20 +1521,10 @@ export function IntakeWorkspace({
     : undefined;
 
   useEffect(() => {
-    let live = true;
     setResource({ state: "loading" });
-    client.intakeSession(sessionId).then(
-      (session) => {
-        if (live) setResource({ state: "loaded", session });
-      },
-      (caught: unknown) => {
-        if (!live) return;
-        setResource({ state: "failed", message: messageOf(caught) });
-      },
-    );
-    return () => {
-      live = false;
-    };
+    return observeResource(() => client.intakeSession(sessionId),
+      (session) => setResource({ state: "loaded", session }),
+      (caught) => setResource({ state: "failed", message: messageOf(caught) }));
   }, [client, sessionId]);
 
   const issue = useCallback(

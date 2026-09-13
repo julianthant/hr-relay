@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, ArrowLeft, RefreshCw, Download } from "lucide-react";
-import type { SavedArchiveReportWire, SavedArchiveQuery, SavedArchiveIndexWire, SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import { Archive,ArrowLeft,Download,RefreshCw } from "lucide-react";
+import { useCallback,useEffect,useRef,useState } from "react";
+import type { SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { useDashboardClient } from "../state/client-context.js";
-import { Button, ButtonLink, Input, Select, PageHeader, Panel, PanelBody, PanelHeader, Table, THead, TBody, TR, TH, TD, StatusPill, dsText } from "../ds/ui.js";
+import { Button,ButtonLink,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,StatusPill,Table,TBody,TD,TH,THead,TR } from "../ds/ui.js";
+import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
+import { savedCell,savedCommandEnvelope,savedDownload,savedFilterQuery,savedPlanRequest,useSavedResource } from "./archive-report-model.js";
 import { dsStatusOf } from "./status-model.js";
-import { savedCell, savedCommandEnvelope, savedPlanRequest, useSavedResource, savedDownload, savedFilterQuery } from "./archive-report-model.js";
 
 export function SavedArchiveReport({ report }: { report: SavedArchiveReportWire }) {
   return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[var(--ds-space-cozy)]`}>

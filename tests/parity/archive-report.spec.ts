@@ -1,12 +1,12 @@
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
+import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
 /** H's isolated saved-document browser proof; never uses live database state. */
-import { expect, test, type Page } from "@playwright/test";
+import { expect,test,type Page } from "@playwright/test";
 import { join } from "node:path";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
-import { H_REPORT } from "./helpers/fixture-archive-report.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { captureParityPair, installTheme, assertThemeApplied, PARITY_THEMES } from "./helpers/capture.js";
-import { FIXTURE_DAY, FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-day.js";
+import { assertThemeApplied,captureParityPair,installTheme,PARITY_THEMES } from "./helpers/capture.js";
+import { H_REPORT } from "./helpers/fixture-archive-report.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 let server: FixtureServer;
 const second = { ...H_REPORT, runId: "00000000-0000-4000-8000-000000000083", title: "Second saved report" };
 const digest = H_REPORT.files[0].digest;

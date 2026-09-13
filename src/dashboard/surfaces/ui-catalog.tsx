@@ -1,3 +1,4 @@
+import { observeAsyncResource } from "../state/async-resource.js";
 /**
  * The generated UI catalog surface (ref operator-trust §1.3, ref dashboard-surfaces §13, D177),
  * mounted as the `ui-catalog` section of the Settings takeover (D295).
@@ -40,49 +41,48 @@
  * writer, and a surface that regenerated on demand would silently heal a stale
  * checkout — the exact failure the 2026-08-03 tracked-artifact lesson records.
  */
-import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
-import { BookMarked, CircleAlert, ScanEye } from "lucide-react";
+import { BookMarked,CircleAlert,ScanEye } from "lucide-react";
+import { useCallback,useEffect,useId,useMemo,useState,type KeyboardEvent } from "react";
 import type { UiCatalogWire } from "../../domain/dashboard/explorer.js";
 import type { UiCatalogEntry } from "../../domain/ui/contracts.js";
 import {
-  Badge,
-  Banner,
-  Chip,
-  EmptyState,
-  KeyValueList,
-  Panel,
-  PanelHeader,
-  PanelToolbar,
-  SearchInput,
-  SectionLabel,
-  Spinner,
-  Tab,
-  TabList,
-  TabPanel,
-  Tabs,
-  dsClip,
-  dsFocus,
-  dsIcon,
-  dsMotion,
-  dsText,
+Badge,
+Banner,
+Chip,
+EmptyState,
+KeyValueList,
+Panel,
+PanelHeader,
+PanelToolbar,
+SearchInput,
+SectionLabel,
+Spinner,
+Tab,
+TabList,
+TabPanel,
+Tabs,
+dsClip,
+dsFocus,
+dsIcon,
+dsMotion,
+dsText,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
+import { LOADING,type AsyncResource } from "../state/async-resource.js";
+import { useExplorerClient as useDashboardClient } from "../state/explorer-client.js";
+import { parseCatalogView,type CatalogView } from "./row-catalog-model.js";
 import { RowCatalogView } from "./row-catalog.js";
-import { parseCatalogView, type CatalogView } from "./row-catalog-model.js";
 import {
-  ENTRY_KIND,
-  catalogRowDomId,
-  foldCatalogRail,
-  railDisplayId,
-  resolveCatalogSelection,
-  siblingsOnScreen,
-  stepCatalogSelection,
-  type CatalogRail,
-  type CatalogSelectionRequest,
+ENTRY_KIND,
+catalogRowDomId,
+foldCatalogRail,
+railDisplayId,
+resolveCatalogSelection,
+siblingsOnScreen,
+stepCatalogSelection,
+type CatalogRail,
+type CatalogSelectionRequest,
 } from "./ui-catalog-model.js";
-import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { DashboardClientError } from "../client/index.js";
-import { useDashboardClient } from "../state/client-context.js";
 
 /**
  * A wrapping row of chips, packed rather than tracked.
@@ -418,24 +418,8 @@ export function UiCatalogSection({
   // whose only visible effect is a refusal banner on the wrong screen.
   useEffect(() => {
     if (view !== "selectors") return undefined;
-    let live = true;
     setResource(LOADING);
-    client.uiCatalog().then(
-      (value) => {
-        if (live) setResource(loaded(value));
-      },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) {
-          setResource(failed(error));
-          return;
-        }
-        throw error;
-      },
-    );
-    return () => {
-      live = false;
-    };
+    return observeAsyncResource(() => client.uiCatalog(), setResource);
   }, [client, view]);
 
   const wire = resource.state === "loaded" ? resource.value : undefined;

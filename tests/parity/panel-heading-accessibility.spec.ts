@@ -4,18 +4,19 @@
  * test uses the built dashboard and role queries so a title that looks right
  * while dropping out of the accessibility tree fails loud.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect,test,type Page } from "@playwright/test";
 import {
-  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
-  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
+SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 } from "../../src/domain/dashboard/settings.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import { FIXTURE_ARCHIVED_RUN_ID, FIXTURE_ACTIVITY_RANGE, FIXTURE_SAVED_REPORT } from "./helpers/fixture-archive.js";
-import { FIXTURE_CATALOG_QUERY, FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
-import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { FIXTURE_ACTIVITY_RANGE,FIXTURE_ARCHIVED_RUN_ID,FIXTURE_SAVED_REPORT } from "./helpers/fixture-archive.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_CATALOG_QUERY,FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 
 let server: FixtureServer;
 

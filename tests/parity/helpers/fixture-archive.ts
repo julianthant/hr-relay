@@ -15,18 +15,18 @@
  * that is reviewable but would be refused. A reference set that only ever
  * photographed the happy path would not be a test of a refusal surface.
  */
+import { archiveRetention } from "../../../src/domain/archive/retention.js";
 import {
-  ActivityReportWireSchema,
-  type ActivityReportWire,
+ActivityReportWireSchema,
+type ActivityReportWire,
 } from "../../../src/domain/dashboard/activity.js";
 import {
-  ArchiveIndexWireSchema,
-  ArchivedRunDetailWireSchema,
-  type ArchiveIndexWire,
-  type ArchivedRunDetailWire,
+ArchiveIndexWireSchema,
+ArchivedRunDetailWireSchema,
+type ArchiveIndexWire,
+type ArchivedRunDetailWire,
 } from "../../../src/domain/dashboard/archive.js";
-import { archiveRetention } from "../../../src/domain/archive/retention.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, uuidOf } from "./fixture-day.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH,uuidOf } from "./fixture-identity.js";
 
 const PRIOR_HASH = "b".repeat(64);
 const PLAN_FINGERPRINT = "c".repeat(64);
@@ -515,7 +515,7 @@ export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityR
 
 export const FIXTURE_ARCHIVED_RUN_ID = ARCHIVED_RUN_ID;
 
-import { SavedArchiveReportWireSchema, SavedVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveReportWireSchema,SavedVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
 /** V's generic H baseline is authored independently of live descriptors and Queue shapes. */
 export const FIXTURE_SAVED_REPORT = SavedArchiveReportWireSchema.parse({ state: "available", runId: ARCHIVED_RUN_ID,
   title: "Synthetic saved lookup", workflow: "retired-synthetic-workflow", descriptorVersion: "1", outcome: "done",

@@ -2,14 +2,14 @@
  * H stores warnings as frozen generic report sections and filters terminal outcomes.
  * Preserve warning-count accessibility, exact rows and route-history proof on that surface.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect,test,type Page } from "@playwright/test";
 import { SavedArchiveReportWireSchema } from "../../src/domain/dashboard/archive.js";
-import { gotoAppState, routeUrl } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { gotoAppState,routeUrl } from "./helpers/app-driver.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { FIXTURE_SAVED_REPORT } from "./helpers/fixture-archive.js";
-import { FIXTURE_DAY } from "./helpers/fixture-day.js";
+import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 const FIRST_WARNING = "CRM returned a stale session on attempt 1";
 const PARTIAL_RUN_ID = "00000000-0000-4000-8000-000000000099";

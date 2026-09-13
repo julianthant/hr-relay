@@ -10,20 +10,20 @@
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import {
-  ArchiveIndexWireSchema,
-  ArchivedRunDetailWireSchema,
-  type ArchivedRunDetailWire,
-} from "../../../src/domain/dashboard/archive.js";
-import {
-  ArchivedRunContentSchema,
-  ArchivedRunRecordSchema,
-  archivedRunContentDigest,
+ArchivedRunContentSchema,
+ArchivedRunRecordSchema,
+archivedRunContentDigest,
 } from "../../../src/domain/archive/model.js";
-import { ArchivedCaptureTileSchema } from "../../../src/domain/archive/sections.js";
 import { archiveRetention } from "../../../src/domain/archive/retention.js";
+import { ArchivedCaptureTileSchema } from "../../../src/domain/archive/sections.js";
+import {
+ArchiveIndexWireSchema,
+ArchivedRunDetailWireSchema,
+type ArchivedRunDetailWire,
+} from "../../../src/domain/dashboard/archive.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
 import { FIXTURE_ARCHIVE_INDEX } from "./fixture-archive.js";
-import { FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./fixture-day.js";
+import { FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 
 const WIDTH = 1440;
 const HEIGHT = 900;

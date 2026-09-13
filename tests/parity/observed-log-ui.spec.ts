@@ -1,18 +1,15 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect,test,type Page } from "@playwright/test";
 import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
-import {
-  fixtureSnapshotEnvelope,
-  startFixtureServer,
-  type FixtureServer,
-} from "./helpers/fixture-bff.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import {
-  FIXTURE_DAY,
-  FIXTURE_DAY_WIRE,
-  FIXTURE_IDS,
-  FIXTURE_RUN_DETAILS,
-} from "./helpers/fixture-day.js";
 import { gotoAppState } from "./helpers/app-driver.js";
+import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import {
+fixtureSnapshotEnvelope,
+startFixtureServer,
+type FixtureServer,
+} from "./helpers/fixture-bff.js";
+import { FIXTURE_RUN_DETAILS } from "./helpers/fixture-detail.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "./helpers/fixture-queue.js";
 
 const RUN = FIXTURE_IDS.doneRun;
 const TRACE = "pl-100000-e1b8";

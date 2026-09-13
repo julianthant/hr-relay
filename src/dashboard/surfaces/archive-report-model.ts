@@ -1,15 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect,useState } from "react";
 import { systemClock } from "../../domain/clock.js";
-import { SavedArchiveFileWireSchema, type SavedArchiveQuery, type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import { SavedArchiveFileWireSchema,type SavedArchiveQuery,type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import { observeResource } from "../state/async-resource.js";
 
 export type SavedResource<T> = { state: "loading" } | { state: "loaded"; value: T } | { state: "error"; message: string };
 export function useSavedResource<T>(read: () => Promise<T>, revision = 0): SavedResource<T> {
   const [settled, setSettled] = useState<{ read: typeof read; revision: number; resource: SavedResource<T> }>();
   useEffect(() => {
-    let active = true;
-    void read().then(value => { if (active) setSettled({ read, revision, resource: { state: "loaded", value } }); },
-      (error: unknown) => { if (active) setSettled({ read, revision, resource: { state: "error", message: error instanceof Error ? error.message : "Saved report request failed." } }); });
-    return () => { active = false; };
+    return observeResource(read,
+      value => setSettled({ read, revision, resource: { state: "loaded", value } }),
+      (error) => setSettled({ read, revision, resource: { state: "error", message: error instanceof Error ? error.message : "Saved report request failed." } }));
   }, [read, revision]);
   const resource: SavedResource<T> = settled?.read === read && settled.revision === revision ? settled.resource : { state: "loading" };
   return resource;
