@@ -10,3 +10,9 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 - [ ] Implement bounded cross-date filters and stable redacted exports; prove pagination,
   cancellation, stale responses, large history, errors, and exported-row reconciliation.
+
+Accepted U supplies summary-backed Activity, current range/group metrics and the separate confirmed transaction-history query. Preserve unavailable distinct-person facts, privacy and archived confirmed totals until explicit deletion. Remaining search/export, pagination/cancellation, stale response and exported-row reconciliation proof stays open; no generic all-time archive Activity population is added.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

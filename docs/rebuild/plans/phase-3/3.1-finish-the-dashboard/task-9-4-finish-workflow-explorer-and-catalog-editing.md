@@ -15,3 +15,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 - [ ] Complete graph/catalog authority and validated overlay preview/diff/version/hot-apply/rollback;
   prove invalid, cyclic, stale, manifest-drift, reload, and clean-context authoring cases.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

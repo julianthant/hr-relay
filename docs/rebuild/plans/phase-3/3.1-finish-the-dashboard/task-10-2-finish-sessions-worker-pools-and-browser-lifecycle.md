@@ -14,3 +14,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 Before closing this prerequisite, bind disjoint Setup and Run/Rerun paths, fixtures, generated
 outputs and gate resources. Complete shared session-interface changes and demonstrate that both
 children can pass independently and merge in either order from this accepted base.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

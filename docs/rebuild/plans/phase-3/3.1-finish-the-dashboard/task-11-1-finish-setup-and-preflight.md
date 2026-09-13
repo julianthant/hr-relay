@@ -16,3 +16,9 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 > preflight name a protected leaf by NAME and presence only. The first post-upgrade boot's
 > `migrated-refused { key }` refusal is a SETUP fault, not an outage: it is presented with the same
 > `.env` remove-list the upgrade plan printed (`ref clock-config-secrets` §D332.S5). No redesign.
+
+Consume schema 50/floor 46 and the current catalog/preflight contract. The dated migrated-refused/environment-import wording is historical: it does not authorize retired imports or below-floor upgrade. Display the current named admission/refusal and explicit compatible-release remedy. Full declared fault-corpus execution remains open despite the six existing dashboard runners.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

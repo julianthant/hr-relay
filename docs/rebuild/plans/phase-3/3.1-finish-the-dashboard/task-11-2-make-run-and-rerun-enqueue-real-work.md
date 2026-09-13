@@ -45,3 +45,9 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 > values and creates a new run. The former Context-rail `edit-checkpoint` writer and D314's direct
 > Resume/Restart controls do not return. Task 10-4 retains intake only, so the two assignments have
 > no shared implementation owner.
+
+The current app still exposes Resume from checkpoints and Restart through generic command dispatch; the source-bound modal remains real implementation work. Preserve accepted backend prior-run read, settings selection and warning/replay protocol. New-run settings and stale-preview cases are part of final-submit proof. Archive reports provide no execution source.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

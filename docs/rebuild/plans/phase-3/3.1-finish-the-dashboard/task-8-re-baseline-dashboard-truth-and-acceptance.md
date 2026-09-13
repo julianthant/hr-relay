@@ -24,7 +24,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 The operator approved B01–B06, the scope and exclusions below, one Astra/medium supervisor with
 no implementation workers, one independent Astra/high reviewer, and local integration after PASS.
-This is the sole execution owner for **3.1.8 / dash-truth-reset**. Implementation is unstarted.
+This is the sole execution owner for **3.1.8 / dash-truth-reset**. The current execution record below supersedes the original unstarted planning status.
 The assignment produces an evidence-backed dashboard baseline and corrects the existing 3.1 plans;
 it does not implement the remaining dashboard features or repeat the completed 2.6 redesign.
 
@@ -213,7 +213,7 @@ servers/browser sessions and retain decisive evidence before removing owned temp
 
 ### Review, stop conditions and completion
 
-One fresh read-only **R1 / sup_review / GPT-6 Astra high** reviews the complete committed B01–B06
+One fresh read-only **R1 / sup_review / GPT-6 Astra ultra** reviews the complete committed B01–B06
 candidate and its acceptance/ownership matrix, source-backed claims, exclusions, historical
 dispositions and gate evidence. Zero review workers or further delegation. The supervisor is the
 sole implementer and integration owner. Freeze the candidate while review runs; a co-designer or
@@ -238,7 +238,7 @@ companions, corrected existing plans/roadmap, no unexplained requirement/ownersh
 independent R1 PASS, required document gates, and verified owned cleanup. Close only 3.1.8; other
 tasks retain their remaining scope and their own admission/review/gate requirements.
 
-### Planning status
+### Historical planning status
 
 The operator approved this complete brief on 2026-09-12. B01–B06 implementation, inventory artifacts,
 runtime/browser inventory, independent review and task integration remain unstarted. Planning
@@ -260,3 +260,58 @@ The final recording append renews affected document checks; it does not invalida
 inputs. No runtime/browser inventory, full code gates or independent implementation review is
 claimed by this planning record. The planner verifies the actual committed brief and prerequisite
 availability before issuing READY; the supervisor still executes B01–B06 in its fresh task checkout.
+
+## Current execution record — 2026-09-12
+
+**B01–B05 complete; B06 awaiting independent review.** This records a documentation/proof candidate,
+not implementation or acceptance of the remaining dashboard features. The operator amended review
+effort from Astra/high to **Astra/ultra** and explicitly requested changing the native `sup_review`
+role. Its local TOML and matching policy check now specify ultra; this host configuration amendment
+is outside the repository candidate and changes no repository instruction, runtime or product input.
+One supervisor performed the work; no implementation workers were used.
+
+| Outcome | Verified evidence and remaining boundary |
+| --- | --- |
+| B01 · Baseline | Approved plan/base `e182022edfa0cd05a46a74358cd3296bcade6e79`; dedicated `codex/dashboard-baseline` checkout at `/Users/julianhein/Projects/hr-worktree-dashboard-baseline`, created only after availability checks. Accepted 2.6 implementation `d4c599edece5bd53a61fa13f85708ab6bfb0935a`, candidate `7a0ae2f89525e13d23a07c2ea9c0c53f4f3c7c1c` and product integration `81bd3e3841005edc57b7d4820d41e529f73e88ac` are bound in `B01-identities.json`; six retained evidence files and all 22 referenced custody/fixture assets were rehashed. |
+| B02 · Inventory | [I01–I42](task-8-dashboard-inventory.md), production route/dispatch traces, and representative fixture/seeded browser observations. `source-census.json` binds 199 source files, 877 JSX declarations, 2,449 field declarations and 65 route registrations to exact hashes/lines and inventory IDs. Mechanical counts support completeness; they do not prove behavior. Missing producers, interactions and proof remain explicitly owned. |
+| B03 · Reconciliation | Current task descriptions, overview and roadmap consume the accepted Archive, Settings, summary, storage, Run/Rerun, intake and diagnostic contracts. `obligation-census.json` maps all 227 original unchecked/proposed obligations, including historical Task 4's numbered audit, to current requirements or explicit dispositions. Historical Tasks 1–7 and released evidence remain intact. |
+| B04 · Ownership | The [shared-boundary and leaf ownership map](task-8-acceptance-matrix.md#shared-ownership-and-admission-boundaries) assigns existing shared files and required operations to 3.1.9/3.1.11/3.1.14 before children. Extractions are unimplemented prerequisites, not available APIs. Existing IDs, dependency edges and 3.1.23/24/25 finalizers are unchanged. |
+| B05 · Acceptance | [A01–A42 and D01–D05](task-8-acceptance-matrix.md) freeze required outcomes, forbidden results, source authority, owner, existing/missing proof, desktop/browser/live need and release. Every inventory row has one acceptance row. 3.1.19 must execute the full matrix unchanged unless explicitly amended. |
+| B06 · Review/release | Candidate is recorded as awaiting R1 complete independent review. Commit/evidence identities are retained in `candidate-freeze.json` when frozen. Review findings, integration, integrated document checks and final checkout/ref cleanup remain open. No future task is marked complete or dispatched. |
+
+Evidence root: `/Users/julianhein/Projects/hr-dashboard-baseline-evidence-20260912/`.
+`evidence-manifest.json` hashes the retained source census, obligation map, browser artifacts,
+launcher/audit recipes and gate receipts. `candidate-freeze.json` binds the committed candidate and
+manifest without embedding a circular self-hash. The source of truth remains the committed companions
+and their current production/test pointers, not the temporary authoring scripts.
+
+Browser inventory used the existing source-bound bundle helpers with isolated fixture and seeded
+servers on loopback ports allocated by the helpers. `launcher.mts`, `browser-recipe.json`,
+`browser-inputs.json` and `browser-server.log` retain the body, invocation, source/output digests and
+declared seeded coverage gaps. Shell, Settings, Archive/report/Versions, Run, Explorer, Activity,
+Storage/doctor and seeded running/failed/gate detail were inspected. The 1024×720 floor and smaller
+window scrolling were observed; actual 125%/200% browser zoom and full keyboard/a11y execution remain
+downstream acceptance, not a claimed pass here. Both owned servers and the named Playwright session
+are closed (`browser-closed.json`). No operator database, credentials or external HR system was used.
+
+| Candidate check | Evidence / classification |
+| --- | --- |
+| Roadmap binding | `candidate-corrected-binding`: 24 tests PASS. The initial run had one failure because the new historical heading removed the required current `Exit criteria` heading; the documentation was corrected and all 24 passed, with no test edits. |
+| Lint | `candidate-corrected-lint`: PASS, exit 0. |
+| Roadmap generation/freshness | `candidate-corrected-roadmap` and `candidate-corrected-roadmap-check`: PASS, exit 0. |
+| Document audit | Links/fragments, nine instruction pairs and chains below 32,768 bytes, all 42 I/A rows, 199 source hashes, 227 historical dispositions, unchanged dependency graph and allowed changed paths pass. `audit.py` retains the exact recipe; the final `candidate-final-*` recording renews checks after this append. |
+| Whitespace | `candidate-corrected-diff`: PASS. |
+| Reused product gates | `gate-reuse.json` compares every accepted 2.6 input with this candidate. Unchanged source/tests/fixtures/dependencies/runtime/reference images support reuse of typecheck, full coverage, architecture, parity, build and performance receipts. Historical documentation/generated output and previously classified legacy accounting metadata are separated from those code inputs. These are inspected historical results, not rerun gates or newly proven dashboard journeys. |
+
+Review fit: one cohesive documentation candidate, 42 journey rows and five desktop cases, bounded
+current source traces, and 227 historical obligations. The generated roadmap is checked as a derivative;
+the accepted 2.6 implementation is prerequisite evidence, not a repeated 938-path audit. R1 must inspect
+all changed requirements, material inventory assertions, ownership/proof rows and exclusions, reserving
+room for cross-checks and its verdict. There are no prior review findings at initial dispatch.
+
+Cleanup classification: only the primary checkout and this task's baseline worktree exist physically
+and in Git registration; the earlier planner worktree is already absent. The primary's three unrelated
+dirty files remain byte-identical to `B01-identities.json`. The primary was later observed on
+`codex/dashboard-plan`; local release will restore it to `master`, preserve those files, integrate the
+plan and candidate, then remove the owned baseline worktree and integrated delivery refs. Retained
+evidence is intentionally kept outside the repository.

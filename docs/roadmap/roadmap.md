@@ -1681,14 +1681,14 @@ status: planned
 date: D344 · former 3.1.9-2 · independent worktree after named prerequisites
 doc: 3.1/task-9-2-finish-settings-over-the-canonical-settings-authority §Task 9-2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
-> D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset and restart behavior.
+> D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset/clear behavior and accepted new-run settings activation.
 
 > D341: consume the application-only 86-row catalog; test subjects, canaries, file paths and test data are excluded from Settings/Setup and credential operations.
 
 builds:
-- [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and restart scope
+- [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and current activation scope
 - [ ] BOTH support revisioned edit/save/conflict/reset flows; protected values are write-only and display presence, never plaintext
-- [ ] PROOF invalid, stale, partial, interrupted, restart-required, and redaction paths against persisted readback
+- [ ] PROOF invalid, stale, partial, interrupted, current/stale-plan, and redaction paths against persisted readback
 
 needs:
 - dash-truth-reset
@@ -1788,15 +1788,16 @@ log:
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9.6; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
 
 
-##### 7 · Finish Archive, versions, relaunch, and deletion {#dash-archive}
+##### 7 · Finish Archive saved reports, version changes, and deletion {#dash-archive}
 status: planned
 date: D344 · former 3.1.11-3 · independent worktree after named prerequisites
-doc: 3.1/task-11-3-finish-archive-versions-relaunch-and-deletion §Task 11-3 · Finish Archive, versions, relaunch, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
+doc: 3.1/task-11-3-finish-archive-versions-relaunch-and-deletion §Task 11-3 · Finish Archive saved reports, version changes, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
 
 builds:
-- [ ] BOTH derive terminal/archive/tombstone lists and frozen sections from the same canonical run authority
-- [ ] BOTH implement view, compare, version bump, export, relaunch, archive, and delete with explicit evidence-retention results
-- [ ] PROOF historical-generation read-forward, stale commands, relaunch lineage, storage delta, delete idempotence, and current/archive convergence
+- [ ] BOTH finish indexed saved-report browsing and frozen generic evidence without current descriptors; credit accepted A/H subfeatures only within their proof
+- [ ] BOTH complete version-change review/apply/resume, report export and exact terminal live/saved-report deletion with canonical disposition and shared-file custody
+- [ ] PROOF current/missing/corrupt/stale/partial/replay cases, minor-versus-major membership, redaction, truthful labels, storage deltas and convergence
+- [ ] PROOF archive execution doors remain absent; C0 and accepted 2.6.9 supersede archived_runs, relaunch and archive_relaunches obligations
 
 needs:
 - dash-truth-reset
@@ -1816,7 +1817,7 @@ doc: 3.1/task-10-1-repair-date-navigation-and-the-date-picker §Task 10-1 · Rep
 
 builds:
 - [ ] BOTH make selected date, URL, loaded day snapshot, timezone, Today, next/previous, keyboard input, and browser history one coherent state machine
-- [ ] FE handle month/year boundaries, invalid input, loading races, disabled dates, focus/escape/outside-click, and mobile geometry
+- [ ] FE handle month/year boundaries, invalid input, loading races, disabled dates, focus/escape/outside-click, and desktop resize/zoom geometry
 - [ ] PROOF timezone/DST matrix plus browser tests for direct links, rapid changes, refresh, Back/Forward, and stale-response rejection
 
 needs:
@@ -1885,7 +1886,7 @@ builds:
 - [ ] FE use one Rerun action: failed/interrupted sources default to remaining steps, successful sources to all steps; allow freely changed selections. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values only, and final submission carries 1.6.4's D335 acknowledgment
 - [ ] BOTH make ordinary Run and Rerun use one modal and one source-bound server plan/confirm/enqueue path; Rerun opens at Steps, optional warning Confirm advances to Values, and only final modal submission consumes the plan and queues work
 - [ ] BOTH offer descriptor-allowed completed-step values as optional editable prefill and let the operator independently copy/change/clear values and select/omit eligible steps; submitted values/omissions alone are authoritative
-- [ ] BOTH create and reveal a new queued run identity only on Confirm; keep the source byte-identical, never replay an unselected step, and never fabricate proof for an omitted transaction
+- [ ] BOTH create and reveal a new queued run identity only on final modal submission; keep the source byte-identical, never replay an unselected step, and never fabricate proof for an omitted transaction
 - [ ] PROOF ordinary/single/batch/dry-run, Rerun defaults and customization, stale/deleted/archived source, malformed/partial prefill, changed item, unknown-write refusal, conflict, no-worker, delayed-worker, reload, and exactly-once paths
 
 needs:
@@ -1927,8 +1928,8 @@ date: D344 · former 3.1.12-1 · independent worktree after named prerequisites
 doc: 3.1/task-12-1-finish-queue-rows-commands-and-deletion §Task 12-1 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from the canonical run record
-- [ ] BOTH make cancel/rename/archive/relaunch/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary; Rerun launchers remain Task 11-2's plan-backed modal
+- [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from summary-backed display queries with canonical service enrichment
+- [ ] BOTH make cancel/rename/bump/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary; Rerun launchers remain Task 11-2's plan-backed modal
 - [ ] BOTH define delete as an idempotent lifecycle/tombstone operation with explicit evidence-retention and visible result
 - [ ] PROOF command matrix, stale conflicts, double-clicks, concurrent worker transitions, and queue/current/archive convergence
 

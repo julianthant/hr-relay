@@ -15,3 +15,7 @@ requires a page or the operator requests it after the first production release. 
 - [ ] On admission, bind the actual Review/People use case, descriptor-owned fields/actions and
   acceptance proof before building generic panel/page contracts.
 - [ ] Prove required routes, accessibility, group size, partial and absence states for that use case.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

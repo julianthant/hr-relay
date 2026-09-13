@@ -49,3 +49,7 @@ Accepted output releases 3.1.13 Queue, 3.1.14 Detail foundation and 3.1.15 Runti
 - [ ] integrate the accepted result, close worker/finalizer records and clean up owned resources
 
 Accepted output releases 3.1.16 realtime convergence and later acceptance. Existing audit-only 3.1.19 remains unchanged.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

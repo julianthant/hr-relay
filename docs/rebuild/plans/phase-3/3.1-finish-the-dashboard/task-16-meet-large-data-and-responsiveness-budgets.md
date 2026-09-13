@@ -10,3 +10,9 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 - [ ] Bound database/filesystem/projection/serialization/render/memory work and add shared
   pagination/virtualization only where the preserved structural fixture crosses its trigger.
+
+Consume the accepted F07 benchmark and summary-query instruments, preserving the 1,240 selected / 360 outside / 108 member / 20,800 note fixture and §7.4 bounds. Timings are observations, not replacement thresholds. Keep selected-set query costs, zero heartbeat summary writes, one affected update and explicit unavailable rows-visited accounting.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.

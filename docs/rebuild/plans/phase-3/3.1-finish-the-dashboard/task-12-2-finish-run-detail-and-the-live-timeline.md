@@ -22,3 +22,7 @@ section tasks. Those tasks depend on the accepted foundation and Queue, not this
 > contributing no lifecycle arm (§D330.12 item 1). Attempts render as separately selectable evidence
 > rows under one item and are never compared for the operator (the D289 amendment, root `CLAUDE.md`).
 > No redesign.
+
+Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
+[frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
+their mapped outcome/proof; historical subfeature credit does not complete this task.
