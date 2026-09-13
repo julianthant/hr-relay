@@ -11,6 +11,7 @@ activeTakeover,
 type AppRouteState
 } from "./url-state.js";
 export function useTakeoverCloseFocus(takeover: ReturnType<typeof activeTakeover>, setRoute: (next: AppRouteState) => void) {
+  const previousTakeover = useRef(takeover);
   const pendingTakeoverCloseFocusId = useRef<DashboardTakeoverCloseFocusTargetId | undefined>(undefined);
 
   /* Intake replaces the toolbar that opened it, so its door
@@ -19,7 +20,16 @@ export function useTakeoverCloseFocus(takeover: ReturnType<typeof activeTakeover
      once React has mounted the queue again. */
   useEffect(() => {
     const targetId = pendingTakeoverCloseFocusId.current;
-    if (targetId === undefined) return;
+    const returnedToQueue = previousTakeover.current !== "none" && takeover === "none";
+    previousTakeover.current = takeover;
+    if (targetId === undefined) {
+      if (returnedToQueue && document.activeElement === document.body) {
+        const main = document.getElementById(DASHBOARD_MAIN_REGION_ID);
+        if (main === null) throw new Error("dashboard main region is missing on takeover return");
+        main.focus();
+      }
+      return;
+    }
     restoreDashboardTakeoverFocus(document, targetId, DASHBOARD_MAIN_REGION_ID);
     pendingTakeoverCloseFocusId.current = undefined;
   }, [takeover]);

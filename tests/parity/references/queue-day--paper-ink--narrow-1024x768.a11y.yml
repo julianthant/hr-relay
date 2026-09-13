@@ -243,7 +243,7 @@
       - button "Resume from checkpoints"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10222009
-  - text: No run open Pick a run from the Person Lookup queue and its logs, decisions, data and receipt open here. The run you had open belongs to a different workflow, so it closed when you switched.
+  - text: No run open Select a run from the queue to open its logs, decisions, data and receipt.
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

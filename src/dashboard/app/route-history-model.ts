@@ -11,6 +11,8 @@ type AppRouteState
 export interface RouteHistoryTarget {
   readonly route: AppRouteState;
   readonly cursor: number;
+  /** Revokes a delayed guard callback after a newer navigation intent. */
+  readonly intent?: number;
 }
 
 export type PopstateRouteHandler = (target: RouteHistoryTarget) => void;
@@ -35,7 +37,10 @@ export function useRoute(
   onPopstateRef: { readonly current: PopstateRouteHandler | undefined },
 ): [AppRouteState, (next: AppRouteState) => void, NativeRouteHistory] {
   const [route, setRouteState] = useState<AppRouteState>(() => parseRoute(window.location.search));
+  const acceptedRoute = useRef(route);
   const cursor = useRef(cursorOf(window.history.state) ?? 0);
+  const intent = useRef(0);
+  const queuedRoute = useRef<AppRouteState | undefined>(undefined);
   const pendingPop = useRef<
     | { readonly cursor: number; readonly kind: "restore"; readonly afterRestore: () => void }
     | { readonly cursor: number; readonly kind: "accept"; readonly route: AppRouteState }
@@ -48,6 +53,15 @@ export function useRoute(
     }
   }, []);
 
+  const commitRoute = useCallback((next: AppRouteState) => {
+    if (routeAdvancesHistory(next, window.location.search)) {
+      cursor.current += 1;
+      window.history.pushState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
+    }
+    acceptedRoute.current = next;
+    setRouteState(next);
+  }, []);
+
   useEffect(() => {
     const onPop = (): void => {
       const next = parseRoute(window.location.search);
@@ -57,34 +71,39 @@ export function useRoute(
       if (pending !== undefined && pending.cursor === nextCursor) {
         pendingPop.current = undefined;
         cursor.current = nextCursor;
-        if (pending.kind === "restore") pending.afterRestore();
-        else setRouteState(pending.route);
+        const queued = queuedRoute.current;
+        queuedRoute.current = undefined;
+        if (queued !== undefined) commitRoute(queued);
+        else if (pending.kind === "restore") pending.afterRestore();
+        else { acceptedRoute.current = next; setRouteState(next); }
         return;
       }
+      if (pending === undefined && nextCursor === cursor.current
+        && routeToSearch(next) === routeToSearch(acceptedRoute.current)) return;
       const handler = onPopstateRef.current;
+      const target = { route: next, cursor: nextCursor, intent: ++intent.current };
       if (handler === undefined) {
+        cursor.current = nextCursor;
+        acceptedRoute.current = next;
         setRouteState(next);
         return;
       }
-      handler({ route: next, cursor: nextCursor });
+      handler(target);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [onPopstateRef]);
+  }, [onPopstateRef, commitRoute]);
 
   const setRoute = useCallback((next: AppRouteState) => {
-    // Re-pressing the door already open (the gear, the active nav entry, the
-    // Storage door) must not push a second, identical history entry — that
-    // makes the browser's own Back button appear inert (unit F4b finding 2).
-    if (routeAdvancesHistory(next, window.location.search)) {
-      cursor.current += 1;
-      window.history.pushState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
-    }
-    setRouteState(next);
-  }, []);
+    intent.current += 1;
+    // A push during native restoration would truncate the wrong forward
+    // branch. Finish the physical traversal, then commit the latest intent.
+    if (pendingPop.current !== undefined) { queuedRoute.current = next; return; }
+    commitRoute(next);
+  }, [commitRoute]);
 
   const nativeHistory = useMemo<NativeRouteHistory>(() => ({
-    accept: (target) => { cursor.current = target.cursor; setRouteState(target.route); },
+    accept: (target) => { pendingPop.current = undefined; cursor.current = target.cursor; acceptedRoute.current = target.route; setRouteState(target.route); },
     restore: (target, afterRestore) => {
       const delta = cursor.current - target.cursor;
       if (delta === 0) { afterRestore(); return; }
@@ -92,8 +111,9 @@ export function useRoute(
       window.history.go(delta);
     },
     replay: (target) => {
+      if (target.intent !== undefined && target.intent !== intent.current) return;
       const delta = target.cursor - cursor.current;
-      if (delta === 0) { cursor.current = target.cursor; setRouteState(target.route); return; }
+      if (delta === 0) { cursor.current = target.cursor; acceptedRoute.current = target.route; setRouteState(target.route); return; }
       pendingPop.current = { cursor: target.cursor, kind: "accept", route: target.route };
       window.history.go(delta);
     },

@@ -43,6 +43,8 @@ import type { PanelTab } from "../surfaces/log-panel-model.js";
 import type { WorkflowPanelMode } from "../surfaces/shell-model.js";
 
 export interface GlobalKeyBindings {
+  /** Queue bindings have no target while another surface owns the main region. */
+  readonly queueVisible?: boolean;
   /** `r` — the run-start dialog is workflow-global, so this needs no scope */
   onStartRun: () => void;
   /** `w` — the panel's own three-mode cycle */
@@ -105,6 +107,7 @@ export function nextAttention(
 export function useGlobalKeys(bindings: GlobalKeyBindings): void {
   const modalOpen = useDsModalOpen();
   const {
+    queueVisible = true,
     onStartRun,
     onCyclePanelMode,
     panelMode,
@@ -119,15 +122,17 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      if (!queueVisible || event.defaultPrevented || event.isComposing) return;
       const target = event.target;
       if (
         target instanceof HTMLElement
-        && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+        && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable
+          || target.closest('[role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [role="tablist"]') !== null)
       ) {
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (modalOpen) return;
+      if (modalOpen || document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]') !== null) return;
 
       if (event.key === "r") {
         event.preventDefault();
@@ -204,6 +209,7 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
     return () => window.removeEventListener("keydown", onKey);
   }, [
     modalOpen,
+    queueVisible,
     onStartRun,
     onCyclePanelMode,
     panelMode,

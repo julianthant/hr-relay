@@ -301,3 +301,9 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
     case "intake": return "none";
   }
 }
+
+/** A close leaves one queue surface, including links containing competing keys. */
+export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
+  return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
+    activity: undefined, settings: undefined, catalog: undefined, catalogView: undefined };
+}

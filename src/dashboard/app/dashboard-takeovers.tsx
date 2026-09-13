@@ -19,6 +19,7 @@ type DashboardTakeoverCloseFocusTargetId
 import type { SettingsExitGuard } from "./navigation-model.js";
 import {
 activeTakeover,
+routeWithoutTakeovers,
 type AppRouteState
 } from "./url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
@@ -59,7 +60,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               onClose={() => {
                 // The discard dialog must leave before focus can return to
                 // the persistent gear; the coordinator restores it after commit.
-                closeTakeoverTo(SETTINGS_GEAR_ID, { ...route, settings: undefined, catalog: undefined, catalogView: undefined });
+                closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route));
               }}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
@@ -81,9 +82,9 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               sessionId={route.intake}
               onClose={() => closeTakeoverTo(
                 RUN_START_DOOR_ID,
-                { ...route, intake: undefined },
+                routeWithoutTakeovers(route),
               )}
-              onEnqueued={() => setRoute({ ...route, intake: undefined })}
+              onEnqueued={() => setRoute(routeWithoutTakeovers(route))}
             />
           ) : takeover === "archive" ? (
             /*
@@ -101,7 +102,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               actorId={boot.actor.id}
               onSelection={(next) => setRoute({ ...route, archive: next })}
               onView={(next) => setRoute({ ...route, archiveView: next })}
-              onClose={() => setRoute({ ...route, archive: undefined, archiveView: undefined })}
+              onClose={() => setRoute(routeWithoutTakeovers(route))}
             />
           ) : takeover === "activity" ? (
             /*
@@ -150,6 +151,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 catalog: undefined,
                 catalogView: undefined,
               })}
-              onClose={() => setRoute({ ...route, explore: undefined })}
+              onClose={() => setRoute(routeWithoutTakeovers(route))}
             />
           ) : children);}

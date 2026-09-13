@@ -29,7 +29,7 @@ type PendingCommand,
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { serverLocalDay,type DayCountWire } from "../surfaces/date-navigation-model.js";
 import { fmtClock } from "../surfaces/format.js";
-import { defaultTabFor,tabsFor,type PanelTab } from "../surfaces/log-panel-model.js";
+import { tabsFor,type PanelTab } from "../surfaces/log-panel-model.js";
 import { LogPanel } from "../surfaces/log-panel.js";
 import { type NotificationRowWire } from "../surfaces/notification-bell-model.js";
 import type { QueueBatch } from "../surfaces/queue-model.js";
@@ -86,6 +86,7 @@ import { useGlobalKeys } from "./global-keys.js";
 import { useDashboardNavigation } from "./navigation-model.js";
 import type { NativeRouteHistory,PopstateRouteHandler } from "./route-history-model.js";
 import { useRoute } from "./route-history-model.js";
+import { SHELL_PANEL_TABS, shellSelection } from "./shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./takeover-focus-model.js";
 import {
 activeTakeover,
@@ -140,10 +141,6 @@ function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDe
 }
 
 
-/** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
-const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
-
-
 export function DashboardApp() {
   const bootstrap = useBootstrap();
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
@@ -152,7 +149,8 @@ export function DashboardApp() {
   const panelMode = useWorkflowPanelMode();
   const [filter, setFilter] = useState<StatusBucket>("all");
   const [openWells, setOpenWells] = useState<ReadonlySet<string>>(() => new Set());
-  const [tab, setTab] = useState<PanelTab | undefined>(undefined);
+  const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
+  const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
   /** the toolbar's ordering control and its select mode — client UI state, D18 */
   const [sort, setSort] = useState<QueueSortKey>("attention");
   const [selectMode, setSelectMode] = useState(false);
@@ -333,7 +331,7 @@ function LoadedApp({
    * page load and a parked run read `0s` for over two minutes.
    */
   const nowIso = useServedNow(boot.serverClock.now);
-  const dayWire = dayResource.state === "loaded" ? dayResource.value : undefined;
+  const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   // Bumped by an applied Data correction: the save moved the run version, so
   // the open detail (and, through its rowRevision, every fetched section)
   // refetches rather than serving a CAS basis the kernel will now refuse.
@@ -356,21 +354,10 @@ function LoadedApp({
   const servedRowRevision = dayWire?.queueSurfaces
     .find((row) => String(row.runId) === route.run)?.rowRevision;
   const detail = useRunDetail(route.run, detailNonce, servedRowRevision);
-  const detailValue = detail.state === "loaded" ? detail.value : undefined;
-  // Precedence: what the operator clicked this session, then what the URL asked
-  // for, then the panel's own default. The URL arm is what makes a link to a
-  // specific tab work — without it `?section=logs` was parsed and silently
-  // dropped, so a shared link landed on whatever the run's default happened to
-  // be. A section the panel does not offer is ignored rather than forced.
-  const routeTab = PANEL_TABS.find((candidate) => candidate === route.section);
+  const selection = shellSelection(route, day, dayWire, detail);
+  const detailValue = selection.state === "ready" ? selection.detail : undefined;
   const offered = detailValue === undefined ? [] : tabsFor(detailValue);
-  const effectiveTab =
-    tab ??
-    (routeTab !== undefined && offered.includes(routeTab)
-      ? routeTab
-      : detailValue === undefined
-        ? "logs"
-        : defaultTabFor(detailValue));
+  const effectiveTab = selection.state === "ready" ? selection.tab : "logs";
   const { sections } = usePanelSections(detailValue, effectiveTab);
   const logsAdvertiseCaptures = detailValue?.captures !== undefined
     || detailValue?.availableSections.includes("captures") === true;
@@ -382,7 +369,9 @@ function LoadedApp({
   );
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const [activeWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
+  const [chosenWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
+  const selectedRow = dayWire?.queueSurfaces.find(row => String(row.runId) === route.run);
+  const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
   const [startOpen, setStartOpen] = useState(route.start);
   /**
    * The command waiting on the operator's confirmation. A descriptor that
@@ -624,20 +613,29 @@ function LoadedApp({
     [surfaces],
   );
 
+  const { nav, leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
+    route, setRoute, day, activeWorkflowId, setActiveWorkflowId, tab, onTab, dayWire,
+    workflowLabelOf, onPopstateRef, nativeHistory,
+  });
+
+  const selectWorkflow = useCallback((next: string): void => {
+    if (next === activeWorkflowId) return;
+    setActiveWorkflowId(next);
+    setRoute({ ...route, run: undefined, section: undefined });
+  }, [activeWorkflowId, route, setRoute]);
+
   const selectRun = useCallback(
     (runId: string) => {
-      setRoute({ ...route, run: runId });
-      onTab("logs");
+      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay: day}), section: "logs" }));
     },
-    [route, setRoute, onTab],
+    [route, setRoute, day, leaveSettings],
   );
 
   const selectCrossDateRun = useCallback(
     (result: CrossDateSearchResult): void => {
-      setRoute(routeForCrossDateSearchResult(route, result));
-      onTab("logs");
+      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, result), section: "logs" }));
     },
-    [route, setRoute, onTab],
+    [route, setRoute, leaveSettings],
   );
 
   /**
@@ -1059,6 +1057,7 @@ function LoadedApp({
     [surfaces, sort, nowIso],
   );
   useGlobalKeys({
+    queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
     onStartRun: () => setStartOpen(true),
     onCyclePanelMode: panelMode.cycleMode,
     panelMode: panelMode.mode,
@@ -1069,29 +1068,6 @@ function LoadedApp({
     onSelectRun: selectRun,
     panelTabs: offered,
     onTab,
-  });
-
-  /*
-    BACK AND FORWARD, over PLACES rather than over presses.
-
-    A place is `day + workflow + run + tab` (`nav-history.ts`), and the history
-    is recorded by OBSERVING those four rather than by asking every navigation
-    call site to remember to log itself. That is the whole reason this is cheap
-    to satisfy: several routes already move the panel (the rail, search, a
-    notification link, a queue row) and another will be added by somebody who
-    has never read this file. An observer cannot be forgotten by a new call
-    site; a `pushPlace()` sprinkled through the handlers can, and one that is
-    forgotten produces a Back button that skips a step — which is worse than no
-    Back button.
-
-    The ref is what stops the observer from recording its OWN moves: applying a
-    history entry changes exactly the state the effect watches, so without it
-    every Back would immediately re-push the place it just left and the history
-    would be two entries long forever.
-  */
-  const { nav, leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
-    route, setRoute, day, activeWorkflowId, setActiveWorkflowId, tab, onTab, dayWire,
-    workflowLabelOf, onPopstateRef, nativeHistory,
   });
 
   /**
@@ -1136,8 +1112,8 @@ function LoadedApp({
     [workflows],
   );
   const onSelectDay = useCallback(
-    (next: string): void => setRoute({ ...route, day: next }),
-    [route, setRoute],
+    (next: string): void => { if (next !== day) setRoute({ ...route, day: next, run: undefined, section: undefined }); },
+    [day, route, setRoute],
   );
 
   /**
@@ -1288,14 +1264,14 @@ function LoadedApp({
         />
 
         <div className="flex min-h-0 flex-1">
-          {panelMode.mode === "sidebar" && (
+          {panelMode.mode === "sidebar" && dayWire !== undefined && (
             <WorkflowSidebar
               mode={panelMode.mode}
               onMode={panelMode.setMode}
               workflows={workflows}
               counts={dayWire?.workflowCounts ?? []}
               activeWorkflowId={activeWorkflowId}
-              onActive={setActiveWorkflowId}
+              onActive={selectWorkflow}
             />
           )}
 
@@ -1348,7 +1324,7 @@ function LoadedApp({
             bulkOutcome={bulkOutcome}
             onDismissBulkOutcome={() => setBulkOutcome(null)}
             onSelectRun={selectRun}
-            leading={
+            leading={dayWire === undefined ? null :
               <WorkflowPanelToggle
                 mode={panelMode.mode}
                 onMode={panelMode.setMode}
@@ -1387,7 +1363,7 @@ function LoadedApp({
               <RunStartButton id={RUN_START_DOOR_ID} onOpen={() => setStartOpen(true)} />
             }
             filters={
-              <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
+              dayWire === undefined ? null : <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
             }
           />
 
@@ -1434,7 +1410,12 @@ function LoadedApp({
           */}
           <div className="relative min-h-0 flex-1">
             <div className="grid h-full grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)] gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)]">
-              <QueuePanel
+              {dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+                <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
+                  <EmptyState title={dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
+                    description={dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`} />
+                </PanelBody></Panel>
+              ) : <QueuePanel
                 surfaces={surfaces}
                 state={viewState}
                 handlers={queueHandlers}
@@ -1446,15 +1427,15 @@ function LoadedApp({
                 isToday={day === today}
                 sort={sort}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
-              />
+              />}
 
             {/* NOTHING SELECTED IS A STATE, not the absence of one. It owes the
                 three things ref dashboard-surfaces §9 says an empty state owes and no more:
                 what would be here, why it is not, and what to do. It is reached
                 by switching workflows, so the reason is the switch. */}
-            {detailValue !== undefined ? (
+            {selection.state === "ready" ? (
                 <LogPanel
-                  detail={detailValue}
+                  detail={selection.detail}
                   sections={sections}
                   captures={captures}
                   surface={openPanelSurface}
@@ -1470,7 +1451,7 @@ function LoadedApp({
                   onAction={runAction}
                   tab={effectiveTab}
                   onTab={onTab}
-                  workflowLabel={workflowLabelOf(detailValue.header.workflowId)}
+                  workflowLabel={workflowLabelOf(selection.detail.header.workflowId)}
                   currentAppVersion={boot.appVersion}
                   servedDescriptorHash={workflowShapeOf(detailValue.header.workflowId)}
                   actorId={boot.actor.id}
@@ -1488,8 +1469,8 @@ function LoadedApp({
                 <PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState
                     icon={<PanelRight aria-hidden className={dsIcon.lg} />}
-                    title="No run open"
-                    description={`Pick a run from the ${workflowLabelOf(activeWorkflowId)} queue and its logs, decisions, data and receipt open here. The run you had open belongs to a different workflow, so it closed when you switched.`}
+                    title={selection.absence.title}
+                    description={selection.absence.description}
                   />
                 </PanelBody>
               </Panel>
@@ -1502,7 +1483,7 @@ function LoadedApp({
                 queue whole; a workflow switcher hovering over it would be
                 offering to change the scope of a surface that no longer has
                 one. */}
-            {panelMode.mode === "floating" && (
+            {panelMode.mode === "floating" && dayWire !== undefined && (
               <WorkflowWindow
                 mode={panelMode.mode}
                 onMode={panelMode.setMode}
@@ -1510,7 +1491,7 @@ function LoadedApp({
                 workflows={workflows}
                 counts={dayWire?.workflowCounts ?? []}
                 activeWorkflowId={activeWorkflowId}
-                onActive={setActiveWorkflowId}
+                onActive={selectWorkflow}
               />
             )}
           </div>
