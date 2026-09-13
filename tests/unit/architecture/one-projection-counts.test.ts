@@ -76,7 +76,7 @@ const LEDGER_BLOCK_BUILDERS = [
 const LEDGER_BLOCK_CONSUMERS = [
   "src/infra/sqlite/transaction-history.ts",
   THE_PROJECTION,
-  "src/server/dashboard/queries/run-summaries.ts",
+  "src/server/dashboard/queries/activity-summaries.ts",
 ];
 
 function identifiers(filePath: string): ReadonlySet<string> {

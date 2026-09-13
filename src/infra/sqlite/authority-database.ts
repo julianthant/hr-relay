@@ -1,3 +1,4 @@
+import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
@@ -905,6 +906,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 }>;
 
 export type AuthorityRepositories = Readonly<{
+  explorerOverrides: ReturnType<typeof createExplorerOverrideRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;
@@ -2169,6 +2171,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
     throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
   }
   validateAuthorityRecordSchemas(database);
+  if (schemaVersion >= 51) validateExplorerOverrides(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
@@ -2833,6 +2836,7 @@ export class AuthorityDatabase implements Disposable {
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
+  #explorerOverridesDirty = false;
   #archiveSourcesDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
@@ -2864,6 +2868,15 @@ export class AuthorityDatabase implements Disposable {
     const existed = options.path !== ":memory:" && existsSync(options.path);
     if (conversion === undefined && options.openMode === "read-write" && options.path.endsWith("/state.db") && existsSync(join(dirname(options.path), ".lifecycle-restore.json"))) throw new Error("lifecycle-restore-incomplete");
     if (conversion === undefined && options.openMode === "read-write" && options.migrationOwner !== "storage-upgrade-audit" && (existsSync(join(dirname(options.path), ".archive-conversion.json")) || existsSync(join(dirname(options.path), ".archive-restore.json")))) throw new Error("archive-conversion-incomplete");
+    if (conversion === undefined && !existed && options.path !== ":memory:" && options.openMode === "read-write") {
+      // A missing database cannot turn retained Explorer evidence into fresh defaults.
+      // Existing/current authority never inspects these obsolete source paths.
+      for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) {
+        if (lstatSync(join(dirname(options.path), `explorer-overrides.json${suffix}`), { throwIfNoEntry: false }) !== undefined) {
+          throw new Error("explorer-override-upgrade-required: restore matching authority or use stopped storage upgrade to inspect retained Explorer evidence");
+        }
+      }
+    }
     const readOnlyNoMigrate = options.openMode !== "read-write";
     if (readOnlyNoMigrate && !existed) {
       throw new Error(`${options.openMode} requires an existing authority database`);
@@ -4294,6 +4307,7 @@ export class AuthorityDatabase implements Disposable {
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
       const sourcesDirtyBefore = this.#archiveSourcesDirty;
+      const explorerDirtyBefore = this.#explorerOverridesDirty;
       const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
       this.#transactionDepth += 1;
@@ -4306,6 +4320,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
         this.#archiveSourcesDirty = sourcesDirtyBefore;
+        this.#explorerOverridesDirty = explorerDirtyBefore;
         this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
       } finally {
@@ -4317,6 +4332,7 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = mode;
     this.#authorityDirty = false;
+    this.#explorerOverridesDirty = false;
     this.#archiveSourcesDirty = false;
     let result: Result;
     try {
@@ -4367,6 +4383,7 @@ export class AuthorityDatabase implements Disposable {
           }
         }
       }
+      if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
       if (this.#authorityDirty) createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
@@ -4377,6 +4394,7 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
+      this.#explorerOverridesDirty = false;
       this.#archiveSourcesDirty = false;
     }
     const publications = this.#authorityCommitCallbacks.splice(0);
@@ -4392,6 +4410,7 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = "read";
     this.#authorityDirty = false;
+    this.#explorerOverridesDirty = false;
     this.#archiveSourcesDirty = false;
     try {
       const result = read();
@@ -4404,6 +4423,7 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
       this.#authorityDirty = false;
+      this.#explorerOverridesDirty = false;
       this.#archiveSourcesDirty = false;
     }
   }
@@ -4418,6 +4438,7 @@ export class AuthorityDatabase implements Disposable {
       const outcome = operation();
       if (outcome.changes > 0) {
         this.#authorityDirty = true;
+        if (table === "explorer_overrides") this.#explorerOverridesDirty = true;
         // These two lifecycle protocols verify source identity themselves and
         // do not author new source evidence. Mixed transactions still check.
         if (table !== "archive_transfers" && table !== "version_changes") this.#archiveSourcesDirty = true;
@@ -4739,6 +4760,10 @@ export class AuthorityDatabase implements Disposable {
     const imports = createImportedArtifactRepositories({ database: this.#database,
       mutate: (work) => this.#authorityWrite("imported_artifacts", work) });
     return Object.freeze({
+      explorerOverrides: createExplorerOverrideRepository({ database: this.#database, mutate: (work) => {
+        if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("explorer-override-command-transaction-required");
+        return this.#authorityWrite("explorer_overrides", work);
+      } }),
       timelineEvents: createTimelineRepository({
         database: this.#database,
         read: (work) => this.#withReadSnapshot(work),

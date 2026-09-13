@@ -1,3 +1,4 @@
+import { explorerEditCommandFingerprint } from "../../src/domain/dashboard/explorer-override.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
@@ -52,7 +53,7 @@ import {
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
 } from "../../src/domain/config/protected-settings.js";
-import { ExplorerEditApplyResultSchema, ExplorerOverrideDocumentSchema } from "../../src/domain/dashboard/explorer.js";
+import { ExplorerEditApplyResultSchema, ExplorerWorkflowOverrideSchema } from "../../src/domain/dashboard/explorer.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema, FingerprintSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -88,7 +89,6 @@ import {
   UNWIRED_ARCHIVE_SNAPSHOTS,
 } from "../fixtures/archive-fixtures.js";
 import { createExplorerEditService } from "../../src/server/dashboard/commands/explorer-edit-service.js";
-import { createExplorerOverrideStore } from "../../src/server/dashboard/commands/explorer-override-store.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 
 const roots: string[] = [];
@@ -277,21 +277,21 @@ function createHarness(
       resolve: (workflowId) => DESCRIPTOR_SET.find((descriptor) => String(descriptor.id) === workflowId),
     },
     explorerEdits: options.explorerEdits ?? {
-      reconcilePending: () => undefined,
-      apply: (input) => {
+      apply: (input, repositories) => {
         explorerCalls.push(input);
-        const override = {
+        const override = ExplorerWorkflowOverrideSchema.parse({
           overrideVersion: 1 as const,
           workflowId: input.target.workflowId,
           descriptorVersion: input.target.expectedVersion,
           contractFingerprint: input.target.contractFingerprint,
           revision: input.target.expectedOverrideRevision + 1,
           appliedCommandId: input.commandId,
-          commandFingerprint: "a".repeat(64),
+          commandFingerprint: explorerEditCommandFingerprint(input),
           presentation: { label: "Reviewed fixture label" },
-        };
+        });
+        const readback = repositories.explorerOverrides.replace(input, override);
         return {
-          result: ExplorerEditApplyResultSchema.parse({ state: "applied", override, readback: override }),
+          result: ExplorerEditApplyResultSchema.parse({ state: "applied", override, readback }),
         };
       },
     },
@@ -344,7 +344,7 @@ function explorerCommand(
   } as const;
 }
 
-function realExplorerEdits(path: string) {
+function realExplorerEdits() {
   const query = explorerQueryDeps(
     manualClock(new Date(NOW)),
     FingerprintSchema.parse("b".repeat(64)),
@@ -357,7 +357,7 @@ function realExplorerEdits(path: string) {
     descriptor,
     service: createExplorerEditService({
       explorer: query,
-      overrides: createExplorerOverrideStore(path),
+      overrides: { read: () => undefined, readAll: () => [] },
     }),
   };
 }
@@ -778,6 +778,7 @@ describe("D113 command idempotency", () => {
     if (first.state !== "applied") return;
     assert.deepEqual(first.affectedTargets, [{ family: "explorer", workflowId: fixtureDescriptor.id, revision: 1 }]);
     assert.equal(harness.explorerCalls.length, 1);
+    assert.equal(harness.database.authority.explorerOverrides.read(fixtureDescriptor.id)?.revision, 1);
 
     const audit = harness.database.authority.commandAudits.findByCommand(first.commandId);
     assert.ok(audit !== undefined);
@@ -794,117 +795,46 @@ describe("D113 command idempotency", () => {
     assert.equal(harness.explorerCalls.length, 1);
   });
 
-  it("keeps an applied file claimed across audit rollback, blocks an intervening command, and completes exact replay", () => {
-    const overridePath = databasePath("explorer-overrides.json");
-    const explorer = realExplorerEdits(overridePath);
+  it("rolls back an Explorer edit with its audit, then accepts a valid intervening command", () => {
+    const explorer = realExplorerEdits();
     let failAudit = true;
     const harness = createHarness((repositories) => ({
       ...repositories,
-      commandAudits: {
-        ...repositories.commandAudits,
-        insert: (input: unknown) => {
-          if (failAudit) {
-            failAudit = false;
-            throw new Error("injected post-file audit failure");
-          }
-          return repositories.commandAudits.insert(input);
-        },
-      },
+      commandAudits: { ...repositories.commandAudits, insert: (input: unknown) => {
+        if (failAudit) { failAudit = false; throw new Error("injected Explorer audit failure"); }
+        return repositories.commandAudits.insert(input);
+      } },
     }), { explorerEdits: explorer.service });
-    const original = explorerCommand(
-      explorer.descriptor,
-      "11111111-2222-4333-8444-555555555555",
-      0,
-      "People search",
-    );
-
-    assert.throws(() => harness.kernel.execute(original), /injected post-file audit failure/u);
-    assert.equal(existsSync(`${overridePath}.claim`), true);
+    const original = explorerCommand(explorer.descriptor, "11111111-2222-4333-8444-555555555555", 0, "People search");
+    const generation = harness.database.getMeta().authorityGeneration;
+    assert.throws(() => harness.kernel.execute(original), /injected Explorer audit failure/u);
     assert.equal(harness.database.authority.commands.get(original.commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(original.commandId), undefined);
-
-    const intervening = explorerCommand(
-      explorer.descriptor,
-      "66666666-7777-4888-8999-000000000000",
-      1,
-      "Directory search",
-    );
-    assert.throws(
-      () => harness.kernel.execute(intervening),
-      /has uncommitted command 11111111-2222-4333-8444-555555555555/u,
-    );
-    assert.equal(harness.database.authority.commands.get(intervening.commandId), undefined);
-
-    const replayed = harness.kernel.execute(structuredClone(original));
-    assert.equal(replayed.state, "applied");
-    assert.equal(existsSync(`${overridePath}.claim`), false);
-    const audit = harness.database.authority.commandAudits.findByCommand(original.commandId);
-    assert.ok(audit !== undefined);
-    assert.deepEqual(audit.request, original);
-    const document = ExplorerOverrideDocumentSchema.parse(JSON.parse(readFileSync(overridePath, "utf8")));
-    assert.equal(document.workflows[0]?.presentation.label, "People search");
+    assert.deepEqual(harness.database.authority.explorerOverrides.readAll(), []);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    const stale = explorerCommand(explorer.descriptor, "66666666-7777-4888-8999-000000000000", 1, "Directory search");
+    assert.equal(harness.kernel.execute(stale).state, "conflict");
+    const valid = { ...stale, target: { ...stale.target, expectedOverrideRevision: 0 } };
+    assert.equal(harness.kernel.execute(valid).state, "applied");
+    assert.equal(harness.kernel.execute(original).state, "conflict");
+    assert.equal(harness.database.authority.explorerOverrides.read("person-lookup")?.presentation.label, "Directory search");
   });
 
-  it("recovers an ambiguous authority commit from the journal after a service restart", () => {
-    const overridePath = databasePath("explorer-overrides.json");
-    const explorer = realExplorerEdits(overridePath);
+  it("recovers an ambiguous authority commit from the journal without a file finalizer", () => {
+    const explorer = realExplorerEdits();
     let throwAfterCommit = true;
-    const harness = createHarness(undefined, {
-      explorerEdits: explorer.service,
-      afterAuthorityCommit: () => {
-        if (!throwAfterCommit) return;
-        throwAfterCommit = false;
-        throw new Error("injected ambiguous authority commit return");
-      },
-    });
-    const original = explorerCommand(
-      explorer.descriptor,
-      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-      0,
-      "People search",
-    );
-
-    assert.throws(
-      () => harness.kernel.execute(original),
-      /injected ambiguous authority commit return/u,
-    );
-    assert.equal(existsSync(`${overridePath}.claim`), true);
-    assert.ok(harness.database.authority.commandAudits.findByCommand(original.commandId) !== undefined);
-
-    const restarted = realExplorerEdits(overridePath);
-    const committedAudit = harness.database.authority.commandAudits.findByCommand(original.commandId);
-    assert.ok(committedAudit !== undefined);
-    assert.throws(
-      () => restarted.service.reconcilePending(
-        structuredClone(original),
-        () => ({
-          request: CommandRequestSchema.parse({ ...original, requestedBy: "different-operator" }),
-          audit: committedAudit,
-        }),
-      ),
-      /journal .* does not preserve the pending complete command envelope/u,
-    );
-    assert.equal(existsSync(`${overridePath}.claim`), true);
-    restarted.service.reconcilePending(
-      structuredClone(original),
-      (commandId) => ({
-        request: harness.database.authority.commands.get(commandId),
-        audit: harness.database.authority.commandAudits.findByCommand(commandId),
-      }),
-    );
-    assert.equal(existsSync(`${overridePath}.claim`), false);
-
-    const replayed = harness.kernel.execute(structuredClone(original));
-    assert.equal(replayed.state, "already-applied");
-    const next = explorerCommand(
-      explorer.descriptor,
-      "ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb",
-      1,
-      "Directory search",
-    );
+    const harness = createHarness(undefined, { explorerEdits: explorer.service, afterAuthorityCommit: () => {
+      if (throwAfterCommit) { throwAfterCommit = false; throw new Error("injected ambiguous authority commit return"); }
+    } });
+    const original = explorerCommand(explorer.descriptor, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", 0, "People search");
+    assert.throws(() => harness.kernel.execute(original), /injected ambiguous authority commit return/u);
+    assert.equal(harness.database.authority.explorerOverrides.read("person-lookup")?.presentation.label, "People search");
+    assert.ok(harness.database.authority.commandAudits.findByCommand(original.commandId));
+    assert.throws(() => harness.kernel.execute({ ...original, reason: "Different envelope" }), /reused|identity/u);
+    assert.equal(harness.kernel.execute(structuredClone(original)).state, "already-applied");
+    const next = explorerCommand(explorer.descriptor, "ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb", 1, "Directory search");
     assert.equal(harness.kernel.execute(next).state, "applied");
-    const document = ExplorerOverrideDocumentSchema.parse(JSON.parse(readFileSync(overridePath, "utf8")));
-    assert.equal(document.workflows[0]?.presentation.label, "Directory search");
+    assert.equal(harness.database.authority.explorerOverrides.read("person-lookup")?.presentation.label, "Directory search");
   });
 
   it("returns already-applied for a byte-exact replay after revalidating the plan bindings", () => {

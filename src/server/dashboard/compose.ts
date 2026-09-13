@@ -1,13 +1,22 @@
-import { queryQueueSummaries, queryActivitySummaries } from "./queries/run-summaries.js";
+import { composeShell } from "./compose/shell.js";
+import { composeActivity } from "./compose/activity.js";
+import { composeQueueSummaries } from "./compose/queue-summaries.js";
+import { composeExplorer } from "./compose/explorer.js";
+import { composeSettings } from "./compose/settings.js";
+import { composeStorage } from "./compose/storage.js";
+import { composeIntake } from "./compose/intake.js";
 import type { ServedSummaryQueries } from "./projectors/run-queue-projection.js";
 import { composeFailureResolution } from "./compose/failure-resolution.js";
 import { localDatePart } from "../../domain/clock.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../domain/archive/retention.js";
-import { createOperatorProjection, createOperatorRunDetail, createOperatorArchive } from "./compose/operator.js";
-import { createTrustNotifications, createTrustReadDependencies } from "./compose/trust.js";
+import { createOperatorProjection } from "./compose/queue.js";
+import { createOperatorRunDetail } from "./compose/run-detail.js";
+import { createOperatorArchive } from "./compose/archive.js";
+import { createTrustNotifications } from "./compose/notifications.js";
+import { createTrustReadDependencies } from "./compose/trust.js";
 import { composeDataQueries } from "./compose/data.js";
 export { dataOriginViewsOf } from "./compose/run-detail-descriptors.js";
-export { readGateParks } from "./compose/trust.js";
+export { readGateParks } from "./compose/notifications.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { ActorIdSchema } from "../../domain/ids.js";
@@ -46,7 +55,6 @@ import { hostConfigFacts } from "../../domain/config/host-display.js";
  *   supervisor refuses to do.
  */
 import { spawn as spawnChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -64,12 +72,9 @@ import {
   DESCRIPTORS,
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
-  WORKFLOW_MODULES,
-  readPendingImplBindings,
 } from "../../control/workflow-registry.js";
 import {
   createCommandKernel,
-  createExplorerCommandJournal,
   type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
 } from "../../core/command-kernel.js";
@@ -87,7 +92,6 @@ import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
-import { SETTINGS_SCHEMA_HASH } from "../../domain/config/settings.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -111,7 +115,6 @@ import {
   AuthorityDatabase,
   AuthorityHealthPreflightRunner,
   summarizeBackupHealth,
-  type AuthorityRepositories,
 } from "../../infra/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
@@ -122,26 +125,13 @@ import { createContentAddressedArtifactWriter } from "../../infra/artifacts/cont
 import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server-verified-artifact-reader.js";
 
 import { createIntakeParser } from "../intake/intake-parser.js";
-import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createSettingsRuntimeReader, readSettings } from "../settings-runtime.js";
+import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
-import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
-import { createExplorerEditService } from "./commands/explorer-edit-service.js";
-import {
-  createExplorerOverrideStore,
-  ExplorerOverridePendingError,
-} from "./commands/explorer-override-store.js";
-import { createIntakeService } from "./commands/intake-service.js";
 import { runQueuedSpanEvent } from "./commands/run-queued-span.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
-import { createCrossDateSearchService } from "./queries/search.js";
-import { composeGeneratedExports } from "./compose/generated-exports.js";
 import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
-import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
-import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
-import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
-import { createDashboardStreamHub } from "./subscriptions/dashboard-stream.js";
 import { startDashboardHttpServer } from "./http-server.js";
 import { createAdvisoryProviderClient } from "../../core/provider-admission.js";
 import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
@@ -465,24 +455,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
     try {
-      const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
-      try {
-        database.withAuthorityTransaction((repositories) => {
-          explorerOverrides.reconcilePending(
-            undefined,
-            createExplorerCommandJournal(repositories).findOutcome,
-          );
-        });
-      } catch (error) {
-        if (!(error instanceof ExplorerOverridePendingError)) throw error;
-        // An unjournaled prepared claim retains the exact-command replay door.
-        // Explorer GET/validate repeats this admission and fails loud until
-        // that command commits; partial/divergent evidence refuses boot.
-      }
       const persistedSettings = database.withAuthorityTransaction((repositories) =>
         readSettings(repositories));
       return Object.freeze({
-        explorerOverrides,
         persistedSettings,
         resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock),
       });
@@ -508,19 +483,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       throw bootError;
     }
   })();
-  const { explorerOverrides, persistedSettings, resolved } = bootConfig;
-  const reconcileExplorerRead = (repositories: AuthorityRepositories): void => {
-    explorerOverrides.reconcilePending(
-      undefined,
-      createExplorerCommandJournal(repositories).findOutcome,
-    );
-  };
-  const settingsReader = createSettingsRuntimeReader({
-    database,
-    hostFacts,
-    clock,
-    active: activeSettingsRuntimeIdentity,
-  });
+  const { persistedSettings, resolved } = bootConfig;
+  const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
+    environment: env, credentials: protectedSettingsAuthority });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
@@ -670,11 +635,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    */
   const ledger = createTransactionHistory(database.authority);
 
-  const summaries: ServedSummaryQueries = {
-    withSnapshot: read => database.withAuthorityReadSnapshot(read),
-    queue: query => queryQueueSummaries(database, query),
-    activity: (from, to) => queryActivitySummaries(database, { from, to, generatedAt: clock.now().toISOString() }, { descriptors, ledger }),
-  };
+  const activity = composeActivity({ database, clock, descriptors, ledger });
+  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), summaries };
   const projection = createOperatorProjection({ stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
 
@@ -777,28 +739,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
 
-  const explorerDeps = {
-    clock,
-    modules: WORKFLOW_MODULES,
-    descriptorSetHash: setHash,
-    pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
-    uiCatalog: buildSafeUiCatalog(),
-    listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
-    overrides: explorerOverrides,
-  };
-  const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
-  // Only the command kernel may supply an exact replay envelope. Query and
-  // validation admission cannot use the file as authority ahead of its audit.
-  // Capture the whole immutable view before releasing that same transaction;
-  // every later request must reconcile and capture anew.
-  const readExplorerOverrides = () => database.withAuthorityTransaction((repositories) => {
-    reconcileExplorerRead(repositories);
-    return explorerOverrides.readAll();
-  });
-  const readableExplorerDeps = {
-    ...explorerDeps,
-    overrides: { readAll: readExplorerOverrides },
-  };
+  const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
   const kernel = createCommandKernel({
     failureResolution: composeFailureResolution(database.authority).commands,
@@ -818,9 +759,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
-    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostFacts, clock), protectedSettingsAuthority),
+    settings: settingsBoundary.executor,
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
-    explorerEdits,
+    explorerEdits: explorerBoundary.executor,
   });
 
   const commands = createDashboardCommandService({ kernel, projection, versionChanges: lifecycle.lifecycleStorage() });
@@ -838,22 +779,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const intake = createIntakeService({
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    authorityRead: {
-      getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
-      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
-      findIntakeManifestsBySource: (sourceSha256) =>
-        database.authority.intakeManifests.findBySource(sourceSha256),
-    },
-    artifacts,
-    parser: intakeParser,
-    projections: intakeProjections,
-    descriptors,
-    clock,
-    ids,
-    actorId: LOCAL_OPERATOR_ACTOR_ID,
-  });
+  const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
 
   /**
    * Ref operator-trust §4.4's advisory (2i-G, D178). The pool composes from the SAME
@@ -908,29 +834,15 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       },
     };
 
-  const hub = createDashboardStreamHub({ projection, backfillGaps: backfillGapNotifier });
-
-  const search = createCrossDateSearchService({
-    clock,
-    sourceIdentity: database.getSourceDatabaseIdentity(),
-    cursorSigningKey: randomBytes(32),
-    descriptors,
-    authority: {
-      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-        authorityGeneration: database.getMeta().authorityGeneration,
-        searchRuns: (searchInput) => database.authority.runs.search(searchInput),
-      })),
-    },
+  const shell = composeShell({ database, projection, clock, ids, artifacts, descriptors,
+    appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
+    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
+    advisoryAvailability: () => (advisory === undefined
+      ? { state: "unavailable", code: "not-configured",
+        reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process" }
+      : { state: "available" }),
   });
-  const xlsxExports = composeGeneratedExports({
-    clock,
-    ids,
-    sourceIdentity: database.getSourceDatabaseIdentity(),
-    artifacts,
-    authority: database.authority.operatorXlsxExports,
-    search,
-    activityReport: (from, to) => projection.buildActivityReportWire(from, to),
-  });
+  const { hub } = shell;
 
   const abortStartup = (reason: Error): never => {
     hub.close();
@@ -966,30 +878,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
-    bootstrap: {
-      appVersion,
-      clock,
-      // The MODULE tuple, not `DESCRIPTORS`: the served `role` (D219) is the
-      // module's declaration, so the bootstrap document is built from the same
-      // composition root the explorer reads.
-      modules: WORKFLOW_MODULES,
-      descriptorSetHash: setHash,
-      preflightReport: () => preflightAuthority.readLatest(),
-      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-      projection,
-      authorityMeta: () => database.getMeta(),
-      advisoryAvailability: () => (advisory === undefined
-        ? {
-          state: "unavailable",
-          code: "not-configured",
-          reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process",
-        }
-        : { state: "available" }),
-      backupSummary: readBackupSummary,
-    },
+    ...shell,
     projection,
-    search,
-    xlsxExports,
     runDetail: runDetailDeps,
     data: composeDataQueries(runDetailDeps),
     diagnosticBundles: trustReads.diagnosticBundles,
@@ -1003,43 +893,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     startPlans,
     intake,
-    hub,
-    settings: { get config() { return database.withAuthorityTransaction(activeSettingsConfig); }, descriptors: DESCRIPTORS },
-    settingsEditor: { settings: settingsReader, environment: env, clock },
-    storage: {
-      doctorOptions: {
-        stateRootTrustAnchor: repoRoot,
-        stateRoot,
-        authorityPath: join(stateRoot, "state.db"),
-        backupDirectory,
-        busyTimeoutMs: 5000,
-      },
-      clock,
-      serviceState: () => backupServiceState,
-    },
-    /**
-     * The explorer reads the SAME `WORKFLOW_MODULES` tuple the kernel composes
-     * from (2i-G, D176) — not `DESCRIPTORS`, because a module also carries the
-     * store list and the intake projection the surface reports. The UI catalog
-     * comes off the in-memory registries here so the
-     * served committed artifact can be checked against them on every read.
-     */
+    ...settingsBoundary.routes,
+    ...composeStorage({ repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
+    ...explorerBoundary.routes,
+    activity,
     ...(advisory === undefined ? {} : { advisory }),
-    explorer: readableExplorerDeps,
-    explorerEdits: {
-      validate(input) {
-        const overrides = readExplorerOverrides();
-        return createExplorerEditService({
-          explorer: { ...explorerDeps, overrides: { readAll: () => overrides } },
-          // Validation's revision/presentation basis is the graph's same view.
-          overrides: {
-            ...explorerOverrides,
-            read: (workflowId) => overrides.find((entry) => entry.workflowId === workflowId),
-          },
-        }).validate(input);
-      },
-    },
-    uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
   });
 
   const server = await startDashboardHttpServer({

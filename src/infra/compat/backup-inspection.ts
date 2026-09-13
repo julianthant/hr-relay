@@ -38,7 +38,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -52,6 +52,7 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "run_summaries", "summary_publication", "archive_transfers", "version_changes",
   "authority_meta",
   "database_state",
+  "explorer_overrides",
   "tasks",
   "workflow_runs",
   "run_terminal_authorizations",

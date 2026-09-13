@@ -1,3 +1,4 @@
+import { readExplorerOverrideSource } from "../../infra/sqlite/explorer-override-conversion.js";
 import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspection.js";
 import { requireSupportedRecoverySchema, requireDatabaseSourcePath } from "../../infra/sqlite/recovery-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../infra/compat/backup-inspection.js";
@@ -138,8 +139,9 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock, a
   const backupEvidence = inspection === undefined ? undefined : await requiredBackup(input.stateRoot, inspection.authorityGeneration, inspection.authorityContentFingerprint, input.backupManifest);
   const timelineSources = backupEvidence === undefined ? undefined : timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
   const timelineCopyDirectory = timelineSources === undefined || backupEvidence === undefined ? undefined : join(dirname(backupEvidence.manifestPath), "timeline-sources", timelineSources.digest);
+  const explorerSource = readExplorerOverrideSource(input.stateRoot);
   const historicalExposure = inspectHistoricalSettingsExposure(existed ? path : undefined);
-  const args = { input, path, existed, from, inspection, backupEvidence, timelineSources, timelineCopyDirectory, historicalExposure,
+  const args = { input, path, existed, from, inspection, backupEvidence, timelineSources, timelineCopyDirectory, explorerSource, historicalExposure,
     archiveRecordedAt: archiveJournal?.recordedAt ?? clock.now().toISOString() };
   convertStoppedDatabase({ ...args, verifyOnly: true }, clock);
   const report = reportFor("planned", from, historicalExposure, backupEvidence?.manifestPath);

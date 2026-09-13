@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
@@ -87,7 +88,7 @@ for(const interruption of ["restored","quarantined","converted"] as const)it(`re
     await assert.rejects(restoreHistoricalStorage(options,{manifestPath,stoppedSystemProof:proof()},join(f.root,".env"),f.clock,step=>{if(step===interruption)throw new Error("restore-interrupted");}),/historical-restore-incomplete/u);
     assert.throws(()=>AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"runtime"},f.clock),/archive-conversion-incomplete/u);
     const result=await restoreHistoricalStorage(options,{manifestPath,stoppedSystemProof:proof()},join(f.root,".env"),f.clock);
-    assert.equal(result.upgrade.state,"converted");assert.equal(result.upgrade.toSchemaVersion,50);
+    assert.equal(result.upgrade.state,"converted");assert.equal(result.upgrade.toSchemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);
     const db=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"restore-readback"},f.clock);
     try{
       const storage=createRunLifecycleStorage(db);assert.ok(storage.readReport(f.run.envelope.runId));
@@ -147,7 +148,7 @@ for(const interruption of ["beforeCommit","afterCommit"] as const)it(`retires po
     assert.deepEqual(readFileSync(archivePath),beforeArchive,"table retirement never rewrites a saved report database");
     const db=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"schema49-readback"},f.clock);
     try {
-      assert.equal(db.getMeta().schemaVersion,50);
+      assert.equal(db.getMeta().schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);
       const storage=createRunLifecycleStorage(db),report=storage.readReport(f.run.envelope.runId);assert.ok(report);
       assert.deepEqual(storage.readFile(f.run.envelope.runId,f.file.file.digest).bytes,f.file.bytes);
       assert.equal(db.authority.deletedRuns.get(f.run.envelope.runId),undefined);

@@ -1,3 +1,4 @@
+import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 /**
  * `workflow-editor-compile-integrity` — Phase A projection + Phase B safe edits.
  *
@@ -347,7 +348,7 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
   });
 
   it("registers both projection routes as GET only", () => {
-    const routes = read("src/server/dashboard/routes/api.ts");
+    const routes = dashboardRouteSource();
     for (const path of ["/api/v1/explorer", "/api/v1/ui-catalog"]) {
       assert.ok(routes.includes(`app.get("${path}"`), `${path} must be registered with app.get`);
       for (const verb of ["post", "put", "patch", "delete"]) {
@@ -427,23 +428,28 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
     }
   });
 
-  it("keeps persistence on temp + fsync + atomic replace with strict readback", () => {
-    const source = read("src/server/dashboard/commands/explorer-override-store.ts");
-    for (const token of [
-      ".pending",
-      ".claim",
-      "fsyncSync",
-      "atomicReplace",
-      "ExplorerOverrideDocumentSchema.parse",
-      "ExplorerOverrideStateUncertainError",
-      "readback differs",
-    ]) {
-      assert.ok(source.includes(token), `Explorer override persistence omits ${token}`);
+  it("keeps override writes inside the command transaction with strict SQL readback and audit binding", () => {
+    const repository = read("src/infra/sqlite/explorer-overrides.ts");
+    const database = read("src/infra/sqlite/authority-database.ts");
+    const kernel = read("src/core/command-kernel.ts");
+    const service = read("src/server/dashboard/commands/explorer-edit-service.ts");
+    const violations = (source: string): string[] => [
+      "REFERENCES commands(record_key)", "ExplorerWorkflowOverrideSchema.parse", "assertExplorerOverrideEvidence",
+      "explorer-override-command-transaction-required", "Explorer override readback differs",
+    ].filter(token => !source.includes(token));
+    assert.deepEqual(violations(repository), []);
+    for (const token of violations("")) assert.deepEqual(violations(repository.replaceAll(token, "")), [token]);
+    assert.match(database, /if \(this\.#explorerOverridesDirty\) validateExplorerOverrides\(this\.#database\)/u);
+    assert.match(kernel, /executor\.apply\(request, repositories\)/u);
+    assert.match(service, /const overrides = repositories\.explorerOverrides/u);
+    assert.match(service, /overrides\.replace\(request, override\)/u);
+    for (const source of [kernel, service, repository]) {
+      assert.doesNotMatch(source, /finalizeAfterCommit|reconcilePending|writeFileSync|atomicReplace/u);
     }
   });
 
   it("keeps validation read-only and routes apply only through the command kernel", () => {
-    const routes = read("src/server/dashboard/routes/api.ts");
+    const routes = dashboardRouteSource();
     assert.ok(routes.includes('app.post("/api/v1/explorer/validate"'));
     assert.ok(!routes.includes('/api/v1/explorer/apply'));
     const commands = read("src/domain/commands.ts");

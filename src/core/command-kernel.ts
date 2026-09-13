@@ -59,13 +59,11 @@ import {
   CommandResultSchema,
   deriveSettingsCommandFingerprint,
   markSettingsCommand,
-  type CommandAuditRecord,
   type CommandRequest,
   type CommandResult,
 } from "../domain/commands.js";
 import { deriveItemId, type IdFactory } from "../domain/identifiers.js";
 import {
-  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -212,17 +210,7 @@ type RunDeleteCommand = Extract<RunCommand, { type: "delete" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
 export interface ExplorerEditExecutor {
-  reconcilePending(
-    input: ExplorerEditApplyRequest,
-    findOutcome: (commandId: string) => Readonly<{
-      request: CommandRequest | undefined;
-      audit: CommandAuditRecord | undefined;
-    }>,
-  ): void;
-  apply(input: ExplorerEditApplyRequest): Readonly<{
-    result: ExplorerEditApplyResult;
-    finalizeAfterCommit?: () => void;
-  }>;
+  apply(input: ExplorerEditApplyRequest, repositories: AuthorityRepositories): Readonly<{ result: ExplorerEditApplyResult }>;
 }
 
 export interface WriteResolutionContext {
@@ -274,26 +262,6 @@ const OrdinarySettingsReplayVerificationSchema = z.strictObject({
 });
 
 const ProtectedSettingsReplayVerificationSchema = ProtectedSettingsReadbackSchema;
-
-/**
- * Explorer recovery observes the existing journal/audit pair through its
- * command owner, just like settings recovery below. It exposes no mutation
- * or inferred outcome: the file store still proves the exact claim and bytes.
- * The caller retains its authority transaction across both reads.
- */
-export function createExplorerCommandJournal(
-  authority: Pick<AuthorityRepositories, "commands" | "commandAudits">,
-): Readonly<{ findOutcome: Parameters<ExplorerEditExecutor["reconcilePending"]>[1] }> {
-  return Object.freeze({
-    findOutcome(commandIdInput: string) {
-      const commandId = CommandIdSchema.parse(commandIdInput);
-      return {
-        request: authority.commands.get(commandId),
-        audit: authority.commandAudits.findByCommand(commandId),
-      };
-    },
-  });
-}
 
 /**
  * The worker/browser process seam. Worker leases and their durable directives
@@ -2593,13 +2561,14 @@ function executeSettings(
 
 function executeExplorerEdit(
   dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "explorer" }>,
 ): CommandApplication {
   const executor = dependencies.explorerEdits;
   if (executor === undefined) {
     throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
   }
-  const execution = executor.apply(request);
+  const execution = executor.apply(request, repositories);
   const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
   if (outcome.state === "conflict") {
     conflict(request, outcome.currentOverrideRevision, outcome.message);
@@ -2611,11 +2580,14 @@ function executeExplorerEdit(
     reject(request, "policy-refused", outcome.brief.reason);
   }
   const override = outcome.override;
-  if (String(override.workflowId) !== String(request.target.workflowId)
+  const persisted = repositories.explorerOverrides.read(request.target.workflowId);
+  if (persisted === undefined
+    || String(override.workflowId) !== String(request.target.workflowId)
     || override.descriptorVersion !== request.target.expectedVersion
     || override.contractFingerprint !== request.target.contractFingerprint
     || override.revision !== request.target.expectedOverrideRevision + 1
-    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)) {
+    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)
+    || canonicalJsonStringify(override) !== canonicalJsonStringify(persisted)) {
     throw new Error(
       `Explorer edit executor returned a readback that does not exactly advance command ${request.commandId}'s target`,
     );
@@ -2630,12 +2602,7 @@ function executeExplorerEdit(
     before: request.target.expectedOverrideRevision,
     after: override.revision,
   }]);
-  return Object.freeze({
-    ...application,
-    ...(execution.finalizeAfterCommit === undefined
-      ? {}
-      : { finalizeAfterCommit: execution.finalizeAfterCommit }),
-  });
+  return application;
 }
 
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
@@ -2692,7 +2659,7 @@ function dispatchActive(
     case "version-archive":
       return executeVersionArchive(dependencies, repositories, request, now);
     case "explorer":
-      return executeExplorerEdit(dependencies, request);
+      return executeExplorerEdit(dependencies, repositories, request);
     case "settings":
       return executeSettings(dependencies, repositories, request);
   }
@@ -2898,21 +2865,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
       let rollback: (() => void) | undefined;
       let commit: (() => void) | undefined;
-      let finalizeAfterCommit: (() => void) | undefined;
       try {
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           repositories.commands.assertIdentity(request, parentCommandId);
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-          if (request.family === "explorer") {
-            const executor = dependencies.explorerEdits;
-            if (executor === undefined) {
-              throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
-            }
-            executor.reconcilePending(
-              request,
-              createExplorerCommandJournal(repositories).findOutcome,
-            );
-          }
           const journalRequest = request;
           const journal = repositories.commands.insert(journalRequest, parentCommandId);
           if (journal.state === "existing") return replay(dependencies, repositories, request, now);
@@ -2936,14 +2892,12 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
               committedAt: now,
             });
           }
-          finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
         const committedSettings = commit;
         rollback = undefined;
         commit = undefined;
         committedSettings?.();
-        finalizeAfterCommit?.();
         return result;
       } catch (error) {
         // A typed refusal already unwound the transaction — every partial arm

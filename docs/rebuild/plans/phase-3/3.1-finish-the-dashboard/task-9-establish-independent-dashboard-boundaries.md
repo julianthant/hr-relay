@@ -233,8 +233,112 @@ state; ordinary A-to-B transfer uses the committed task record.
 
 | Session | Candidate / accepted integration | Focused evidence | Remaining |
 | --- | --- | --- | --- |
-| A | Unstarted | None from implementation | A1–A3, candidate checks, operator-directed integration, owned cleanup |
+| A | Implementation candidate `1bdc41406a7725d900a2bfa48af4ff48a23dc432` on `codex/3.1.9-boundary-data`; accepted integration **pending operator direction** | PASS: 40 suites / 768 tests; final production-boundary recheck 6 suites / 218 tests; final fixture/record recheck 2 suites / 92 tests; scoped compiler, 80-path lint, build, generation/freshness and document checks. See the receipt below. | Operator-directed integration, accepted SHA for B, owned cleanup; B remains blocked |
 | B | Waiting on A's accepted integration | None from implementation | B1–B3, focused tests/parity, candidate checks, operator-directed integration, owned cleanup |
+
+### A implementation and backend ownership — 2026-09-13
+
+A1–A3 are implemented in the assigned worktree. The override row now belongs to SQLite migration
+51, and the command kernel verifies the executor's readback against the same transaction repository
+before recording success. Commit validates the applied audit; injected audit failure and fabricated
+executor success both roll back. Stopped conversion admits schemas 46–50, proves the complete
+presentation history against command/audit records, and writes a source/database/backup receipt.
+Pending claims require the original compatible release. Fresh startup refuses orphan file evidence;
+current-schema reads and replay ignore obsolete files. Released migration statements 1–50 and
+recovery floor 46 are unchanged. All conversion and restore runs used disposable synthetic fixtures.
+
+The following are actual production bindings for B's release record. Paths are repository-relative.
+The downstream column names the exclusive intended surface owner after complete 3.1.9 admission;
+this record does not launch or admit a child. B owns its assigned UI/client/fixture extraction and
+must preserve these backend interfaces. Existing command families remain available through the
+shared strict command ingress and command kernel; no surface needs a new root dispatch switch to
+invoke its existing operations.
+
+| Downstream owner | Exclusive backend paths / exports | Production operations |
+| --- | --- | --- |
+| 3.1.9.1 · Shell | `src/server/dashboard/routes/shell.ts` (`registerShellRoutes`), `shell-types.ts` (`ShellRouteDeps`); `src/server/dashboard/compose/shell.ts` (`composeShell`); `queries/bootstrap.ts` (`BootstrapQueryDeps`, `buildBootstrap`) | Bootstrap, signed cross-date search, evidenced XLSX export, bounded resumable SSE subscription. Production binds real authority, search, export service and stream hub. |
+| 3.1.9.2 · Settings | `routes/settings.ts`, `settings-types.ts` (`registerSettingsRoutes`, `SettingsRouteDeps`); `routes/settings-preflight.ts`, `settings-preflight-types.ts` (`registerSettingsPreflightRoutes`, `SettingsPreflightRouteDeps`); `compose/settings.ts` (`composeSettings`) | Facts, editable inventory, ordinary/protected settings executor and preflight rerun. SQLite settings and independent credential authority remain separate; existing settings wire modules remain their owners. |
+| 3.1.9.3 · Storage | `routes/storage.ts`, `storage-types.ts` (`registerStorageRoutes`, `StorageRouteDeps`); `compose/storage.ts` (`composeStorage`) | Real storage doctor with explicit state-root trust anchor, authority path, backup directory and service state. |
+| 3.1.9.4 · Explorer/Catalog | `routes/explorer.ts`, `explorer-types.ts` (`registerExplorerRoutes`, `ExplorerRouteDeps`); `compose/explorer.ts` (`composeExplorer`); `commands/explorer-edit-service.ts`; `queries/explorer.ts`, `queries/ui-catalog.ts`; `src/domain/dashboard/explorer.ts` | One-snapshot graph/validation, committed UI catalog read, preview/code-change brief, command apply/conflict/refusal/replay through the accepted SQLite repository. Catalog routing/composition belongs here, not to Settings. |
+| 3.1.9.5 · Notifications | `compose/notifications.ts` (`createTrustNotifications`, `readGateParks`); existing `src/services/notifications/` and `src/domain/notifications.ts`, `notification-triggers.ts` | Durable inbox publication/read, gate-park/backfill notifications; existing notification command family and day/SSE wire provide read/unread/snooze and readback. |
+| 3.1.9.6 · Intake | `routes/intake.ts`, `intake-types.ts` (`registerIntakeRoutes`, `IntakeRouteDeps`); `compose/intake.ts` (`composeIntake`); existing `commands/intake-service.ts`, `src/domain/intake/` | Bounded upload, session read, verified attachment preparation, all existing intake commands through shared ingress; preparation still precedes execution. |
+| 3.1.9.7 · Archive | `routes/archive.ts`, `archive-types.ts` (`registerArchiveRoutes`, `ArchiveRouteDeps`); `compose/archive.ts` (`createOperatorArchive`); existing archive query/service and dedicated domain modules | Saved indexes, report/file/capture read and exact download leases, version read, existing version/relaunch/delete command families and typed refusals. Saved-report authority and download headers/identity checks are unchanged. |
+| Later Queue / Activity owners | `routes/queue.ts`, `queue-types.ts`, `compose/queue.ts`, `compose/queue-summaries.ts`, `queries/queue-summaries.ts`; separately `routes/activity.ts`, `activity-types.ts`, `compose/activity.ts`, `queries/activity-summaries.ts` | Queue day/member/action summaries and stable bounded paging remain one projection; Activity named-range JSON/CSV reads the real indexed summary query and independent confirmed-transaction history. `queryQueueSummaries` and `queryActivitySummaries` have separate implementations. |
+| Later Run Detail owner | `routes/run-detail.ts`, `run-detail-types.ts`, `compose/run-detail.ts`; existing `routes/data.ts`, `compose/data.ts` | Run detail, section/advisory and data queries keep their real service adapters. Existing trust resource routes/types/composition remain dedicated supporting boundaries. No new detail/session behavior is included. |
+
+Within the table, unqualified `routes/`, `compose/`, `queries/` and `commands/` paths are beneath
+`src/server/dashboard/`. Each route type lives beside its route, not in a shared interface every
+surface must edit. `DashboardAppDeps` remains an aggregate compatibility entry point for existing
+fixtures. Its optional Activity adapter preserves those fixtures; production always supplies
+`composeActivity`. `compose/operator.ts` and `queries/run-summaries.ts` contain compatibility exports,
+not duplicate implementations. New callers should use the dedicated modules.
+
+Reserved shared owners remain `routes/api.ts` / `api-types.ts` (registration and request identity),
+`routes/commands.ts` / `commands-types.ts` (strict acceptance, execute/bulk, exact replay and Intake
+prepare), `routes/loopback.ts`, the command union/kernel, SQLite schemas/recovery, runtime lifetime and
+preflight composition, the stream protocol, generated export registration, the common status fold
+`queries/run-summary-status.ts`, root configuration and combined scene membership. Existing
+`src/domain/dashboard/` wire files keep their matching surface owners; the new
+`src/domain/dashboard/explorer-override.ts` and `src/infra/sqlite/explorer-*` files are accepted
+prerequisite authority, reserved against sibling storage redesign.
+
+The shared `tests/unit/server/bff-flow.test.ts` and `compose-real-port.test.ts` remain integration
+proofs pending B's assigned fixture extraction. `tests/fixtures/explorer-authority.ts` and
+`tests/unit/server/explorer-sqlite-authority.test.ts` provide Explorer-specific disposable authority
+fixtures/proofs; `explorer-override-store.test.ts` now owns stopped-source conversion rather than the
+retired runtime file protocol. `surface-boundaries.test.ts` proves real independent Activity/Queue
+ports and remains shared integration evidence. Tests use the repository runner's private temporary
+roots and no operator state. Future sibling gates must retain separate worktrees and their runner
+resources; B owns the final fixture/spec/reference allocation and either-order release evidence.
+
+No generated input ownership is transferred to a sibling: the workflow manifest
+`src/domain/workflow/generated-build-manifest.ts`, UI catalog generation and
+`docs/roadmap/index.html` remain their generator/finalizer's responsibility. A regenerated the
+workflow manifest without changing its bytes; no source-authored workflow, catalog input, frontend
+component, parity fixture or reference image changed. B and both downstream finalizers retain their
+assigned broader acceptance obligations. Full repository gates remain 3.1.19.
+
+### A verification receipt
+
+Implementation candidate: `1bdc41406a7725d900a2bfa48af4ff48a23dc432`; approved base:
+`367a2a51848153a63b1c4219bea2b66d07a93671`. This evidence update changes only the owning task record;
+the implementation, contract, test, dependency and configuration inputs remain those of that commit.
+The candidate keeps 3.1.9 open for B and subsequent directed integration/cleanup.
+
+Evidence root: `/Users/julianhein/Projects/hr-boundary-data-evidence-20260913/run-103137/`.
+
+| Check | Accepted result and exact receipt |
+| --- | --- |
+| Complete A focused set plus affected consumers/guards | PASS: 40 files / 768 tests, exit 0; `focused-tests-final.log`, exact argv in `focused-tests-final-argv.json`. Includes all eleven named A suites, atomic/conversion tests, real backend boundaries and recovery/privacy/ingress regressions. |
+| Final Shell/Catalog extraction | PASS: 6 files / 218 tests, exit 0; `a3-production-final.log`. Exact command: `npm run test -- tests/unit/server/compose-real-port.test.ts tests/unit/server/bff-flow.test.ts tests/unit/server/surface-boundaries.test.ts tests/unit/architecture/operator-mutation-admission.test.ts tests/unit/architecture/workflow-editor-compile-integrity.test.ts tests/unit/architecture/dashboard-wire-boundary.test.ts`. |
+| Final strict fixture/record recheck | PASS: 2 files / 92 tests, exit 0; `record-tests.log`. `npm run test -- tests/unit/command-kernel.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts`. |
+| Scoped compiler | PASS, exit 0; `npx tsc --project /Users/julianhein/Projects/hr-boundary-data-evidence-20260913/run-103137/tsconfig.focused.json`; exact changed roots plus their imported closure, repository compiler options, no suppressed diagnostics. This is not the deferred whole-repository typecheck. |
+| Scoped lint | PASS, exit 0; `lint.log` and exact 80-path `lint-argv.json`. NUL-delimited changed/untracked selection from the approved base, direct argv, `--max-warnings 0`. |
+| Production dashboard build | PASS, exit 0; `npm run web:build`, `web-build.log`. Vite reported its non-failing 500 kB chunk warning; no threshold was changed. |
+| Generated artifacts | PASS, exit 0; `npm run build:manifest` then `npm run build:manifest:check`; `npm run roadmap` then `npm run roadmap:check`. Commands/results in `final-checks.json`; generated bytes are unchanged. Catalog inputs are unchanged. |
+| Registration and document audit | PASS: exact multiset of 48 route/middleware registrations preserved (`route-inventory.mts` / `.json`); hostile-ingress order covered by the architecture and HTTP tests. `audit-candidate.py` / `candidate-audit.json` verifies scope, links/fragments, unchanged protected inputs/parent checkboxes, nine identical instruction pairs and a maximum 18,376-byte chain below 32,768. |
+| Commit whitespace | PASS: `git diff --cached --check`; five new files lost trailing blank lines only before commit. `eof-whitespace-equality.json` binds before/after digests and proves no other bytes changed, supporting reuse of their already-passed behavior/compiler checks. `implementation-diff.patch` retains the exact committed candidate. |
+
+All successful runner receipts report exit 0 and removal of their private scratch. Earlier failed
+iteration logs remain evidence of repaired defects and are not acceptance results. No independent
+review, whole-repository lint/coverage, broad parity, operator-state conversion or live external-system
+acceptance is claimed. Full repository gates remain 3.1.19; B retains its assigned UI/parity proofs.
+
+A's accepted integration SHA is **pending operator direction**. B must not use the implementation
+candidate as a substituted accepted base. The owned branch/worktree remain retained until verified
+integration and cleanup; master and all dependent task statuses remain unchanged.
+
+### A delivery assessment
+
+No scope amendment, worker dispatch or independent review occurred. Development repairs covered
+backup table-order registration, stale schema-version fixtures, source moved beneath architecture
+allowlists, strict operational-interface/redaction registrations, and complete transaction readback.
+These were implementation/proof compatibility repairs within A1–A3, not new operator scope. The
+failed and passing focused logs are retained beside the final evidence. One context compaction
+required resumed-state verification. No elapsed-time or planning-efficiency estimate is claimed.
+Checking each moved source against its exact guard/egress registry before the first combined run
+would have reduced these repair reruns. The approved sequential A/B allocation and 3.1.19 gate
+cadence remain unchanged.
 
 Planning persistence is documentation-only in the clean primary checkout. At persistence preflight,
 the app's task inventory showed this planning task as the only active task in the repository; other

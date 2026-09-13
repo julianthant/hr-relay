@@ -571,7 +571,7 @@ const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] 
   { file: "src/server/dashboard/projectors/run-queue-projection.ts", workflowId: "separations",
     reason: "D288/Q — retained projection callers use the same current-Separations-only canonical identity corpus as indexed Activity." },
   {
-    file: "src/server/dashboard/queries/run-summaries.ts",
+    file: "src/server/dashboard/queries/activity-summaries.ts",
     workflowId: "separations",
     reason:
       "D288/Q — the Activity distinct-person fold is current-Separations-only BY DECISION: its validated identity is derived "

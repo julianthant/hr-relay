@@ -145,7 +145,6 @@ function createHarness(): Harness {
       resolve: (workflowId) => DESCRIPTOR_SET.find((descriptor) => String(descriptor.id) === workflowId),
     },
     explorerEdits: {
-      reconcilePending: () => undefined,
       apply: (): never => { throw new Error("this harness composes no explorer edit executor"); },
     },
     writeResolution: requeueingWriteResolution(),

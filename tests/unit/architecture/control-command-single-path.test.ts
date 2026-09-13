@@ -211,7 +211,6 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       }),
     },
     explorerEdits: {
-      reconcilePending: () => undefined,
       apply: () => ({
         result: {
           state: "refused",

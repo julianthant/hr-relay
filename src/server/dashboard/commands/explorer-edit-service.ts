@@ -1,3 +1,4 @@
+import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 /**
  * Explorer draft validation and apply authority (D186/D283).
  *
@@ -6,7 +7,6 @@
  * contracts, UI registry and scenario corpus and parsed the resulting strict
  * wire. Presentation overrides never become a second executable graph.
  */
-import type { CommandAuditRecord, CommandRequest } from "../../../domain/commands.js";
 import {
   descriptorRuntimeNodes,
   workflowProjections,
@@ -34,6 +34,7 @@ import {
   type ExplorerEditDraft,
   type ExplorerEditValidationResult,
   type ExplorerWorkflowWire,
+  type ExplorerWorkflowOverride,
 } from "../../../domain/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../domain/ids.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
@@ -43,30 +44,21 @@ import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explor
 import {
   explorerEditCommandFingerprint,
   ExplorerOverrideConflictError,
-  ExplorerOverrideDivergentCommandError,
-} from "./explorer-override-store.js";
-import type { ExplorerOverrideRepository } from "./explorer-override-store.js";
+} from "../../../domain/dashboard/explorer-override.js";
+import type { ExplorerOverrideReader } from "../../../domain/dashboard/explorer-override.js";
 
 export interface ExplorerEditExecution {
   readonly result: ExplorerEditApplyResult;
-  readonly finalizeAfterCommit?: () => void;
 }
 
 export interface ExplorerEditService {
   validate(input: unknown): ExplorerEditValidationResult;
-  reconcilePending(
-    input: unknown,
-    findOutcome: (commandId: string) => Readonly<{
-      request: CommandRequest | undefined;
-      audit: CommandAuditRecord | undefined;
-    }>,
-  ): void;
-  apply(input: unknown): ExplorerEditExecution;
+  apply(input: unknown, repositories: Pick<AuthorityRepositories, "explorerOverrides">): ExplorerEditExecution;
 }
 
 export interface ExplorerEditServiceDeps {
   readonly explorer: ExplorerQueryDeps;
-  readonly overrides: ExplorerOverrideRepository;
+  readonly overrides: ExplorerOverrideReader;
 }
 
 const REQUIRED_SOURCE_CHECKS = [
@@ -342,10 +334,10 @@ function codeChangeBrief(
 }
 
 export function createExplorerEditService(deps: ExplorerEditServiceDeps): ExplorerEditService {
-  const validate = (input: unknown): ExplorerEditValidationResult => {
+  const validate = (input: unknown, overrides: ExplorerOverrideReader = deps.overrides): ExplorerEditValidationResult => {
     const draft = ExplorerEditDraftSchema.parse(input);
     // This is the real compile-integrity path, not a descriptor-shaped fixture.
-    const explorer = buildWorkflowExplorer(deps.explorer);
+    const explorer = buildWorkflowExplorer({ ...deps.explorer, overrides });
     const workflow = explorer.workflows.find(({ id }) => String(id) === String(draft.workflowId));
     if (workflow === undefined) {
       return ExplorerEditValidationResultSchema.parse({
@@ -354,7 +346,7 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         message: `workflow ${String(draft.workflowId)} is not registered; Explorer safe edit cannot author a new workflow`,
       });
     }
-    const current = deps.overrides.read(String(draft.workflowId));
+    const current = overrides.read(String(draft.workflowId));
     const currentRevision = current?.revision ?? 0;
     if (draft.baseDescriptorVersion !== workflow.version) {
       return ExplorerEditValidationResultSchema.parse({
@@ -508,18 +500,9 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
 
   return Object.freeze({
     validate,
-    reconcilePending(
-      input: unknown,
-      findOutcome: (commandId: string) => Readonly<{
-        request: CommandRequest | undefined;
-        audit: CommandAuditRecord | undefined;
-      }>,
-    ): void {
-      deps.overrides.reconcilePending(ExplorerEditApplyRequestSchema.parse(input), findOutcome);
-    },
-    apply(input: unknown): ExplorerEditExecution {
+    apply(input: unknown, repositories: Pick<AuthorityRepositories, "explorerOverrides">): ExplorerEditExecution {
       const request = ExplorerEditApplyRequestSchema.parse(input);
-      deps.overrides.reconcilePending(request, () => ({ request: undefined, audit: undefined }));
+      const overrides = repositories.explorerOverrides;
       const draft = ExplorerEditDraftSchema.parse({
         draftVersion: 1,
         workflowId: request.target.workflowId,
@@ -529,20 +512,7 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         changes: request.payload.changes,
       });
       const commandFingerprint = explorerEditCommandFingerprint(request);
-      const existing = deps.overrides.read(String(draft.workflowId));
-      if (existing?.appliedCommandId === request.commandId) {
-        if (existing.commandFingerprint !== commandFingerprint) {
-          throw new ExplorerOverrideDivergentCommandError(request.commandId);
-        }
-        const committed = deps.overrides.replace(request, existing);
-        const result = ExplorerEditApplyResultSchema.parse({
-          state: "applied",
-          override: committed.override,
-          readback: committed.override,
-        });
-        return Object.freeze({ result, finalizeAfterCommit: committed.finalizeAfterCommit });
-      }
-      const validation = validate(draft);
+      const validation = validate(draft, overrides);
       if (validation.state !== "ready-to-apply") {
         return Object.freeze({ result: ExplorerEditApplyResultSchema.parse(validation) });
       }
@@ -551,9 +521,9 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         appliedCommandId: request.commandId,
         commandFingerprint,
       });
-      let committed: ReturnType<ExplorerOverrideRepository["replace"]>;
+      let committed: ExplorerWorkflowOverride;
       try {
-        committed = deps.overrides.replace(request, override);
+        committed = overrides.replace(request, override);
       } catch (error) {
         if (!(error instanceof ExplorerOverrideConflictError)) throw error;
         const workflow = buildWorkflowExplorer(deps.explorer).workflows.find(
@@ -578,10 +548,10 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
       }
       const result = ExplorerEditApplyResultSchema.parse({
         state: "applied",
-        override: committed.override,
-        readback: committed.override,
+        override: committed,
+        readback: committed,
       });
-      return Object.freeze({ result, finalizeAfterCommit: committed.finalizeAfterCommit });
+      return Object.freeze({ result });
     },
   });
 }

@@ -1,3 +1,4 @@
+import { ExplorerOverrideImportReceiptSchema } from "../../../../src/domain/dashboard/explorer-override.js";
 /**
  * Ref guards-and-tests §3.15 / D183 — the redaction surface scan's declaration half.
  *
@@ -95,6 +96,7 @@ import {
   ExplorerEditApplyResultSchema,
   ExplorerEditValidationResultSchema,
   ExplorerOverrideDocumentSchema,
+  ExplorerWorkflowOverrideSchema,
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
 } from "../../../../src/domain/dashboard/explorer.js";
@@ -896,6 +898,9 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "durable/operator-xlsx-export", egress: "durable-authority", module: "src/domain/dashboard/xlsx-export.ts", schema: OperatorXlsxExportEvidenceSchema },
   { id: "wire/start-plan", egress: "operator-loopback", module: "src/domain/dashboard/start-plan.ts", schema: StartPlanWireSchema },
   { id: "file/ledger-entry", egress: "durable-file", module: "src/domain/ledger.ts", schema: LedgerEntrySchema },
+  { id: "durable/explorer-overrides", egress: "durable-authority", module: "src/domain/dashboard/explorer.ts", schema: ExplorerWorkflowOverrideSchema },
+  { id: "durable/explorer-import-receipt", egress: "durable-authority", module: "src/domain/dashboard/explorer-override.ts", schema: ExplorerOverrideImportReceiptSchema },
+  // Read-only historical conversion source; current writes use the two SQLite surfaces above.
   { id: "file/explorer-overrides", egress: "durable-file", module: "src/domain/dashboard/explorer.ts", schema: ExplorerOverrideDocumentSchema },
   { id: "egress/advisory-prompt", egress: "process-egress", module: "src/domain/trust/advisory.ts", schema: AdvisoryPromptSchema },
   { id: "os/notification-projection", egress: "os-notification", module: "src/domain/notification-triggers.ts", schema: NotificationProjectionSchema },
@@ -1523,6 +1528,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/explorer-edit-apply", path: "override.presentation.label", origin: "operator-authored" },
   { surface: "wire/explorer-edit-apply", path: "readback.presentation.label", origin: "operator-authored" },
 
+  { surface: "durable/explorer-overrides", path: "presentation.label", origin: "operator-authored", exception: "D337 / ref operator-trust §5.4 preserves the operator-authored label in SQLite; ExplorerPresentationLabelSchema rejects credential and regulated-value shapes before persistence." },
+  { surface: "durable/explorer-import-receipt", path: "source.document.workflows[].presentation.label", origin: "operator-authored", exception: "D337 / ref operator-trust §5.4 requires a durable source receipt for stopped conversion; it embeds only the same strict presentation label accepted by the existing safe-edit schema." },
   { surface: "file/explorer-overrides", path: "workflows[].presentation.label", origin: "operator-authored" },
 
   { surface: "wire/ui-catalog", path: "entries[].label", origin: "repository-authored" },
@@ -1802,6 +1809,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
     { module: "src/domain/dashboard/diagnostic-bundle.ts", state: "audited", reason: "D137 readback carries only verified attachment metadata and capture-time redaction facts" },
     { module: "src/domain/dashboard/explorer-edit.ts", state: "audited", reason: "D290 preserves the superseded DCC4 schema declarations only through source ancestry; no integrated durable surface or active runtime repository uses them" },
+    { module: "src/domain/dashboard/explorer-override.ts", state: "audited", reason: "D337 transaction ports use the existing strict override values; the durable stopped-import receipt retains only that safe presentation document and source/backup digests" },
     { module: "src/domain/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and the UI catalog" },
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },

@@ -1,3 +1,4 @@
+import { ExplorerWorkflowOverrideSchema } from "../../domain/dashboard/explorer.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { VersionChangeStorageSchema } from "../../domain/archive/change-record.js";
 import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
@@ -196,6 +197,7 @@ export const RetainedVersionChangeSchema = z.union([VersionChangeStorageSchema, 
 type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
+  explorer_overrides: ExplorerWorkflowOverrideSchema,
   archive_transfers: ArchiveTransferIdentitySchema,
   version_changes: RetainedVersionChangeSchema,
   run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,

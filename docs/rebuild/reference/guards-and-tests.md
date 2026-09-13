@@ -1442,8 +1442,8 @@ remain test-only source-lineage evidence, and an existing exact DCC4 v19 databas
 mutation. `explorer_edit_reviews` and `explorer_edit_outbox` are omitted from the integrated registry;
 their inert declarations in `src/domain/dashboard/explorer-edit.ts` have no repository, writer, read
 surface, or registered durable egress. They therefore do not create `durable-authority` redaction
-surfaces or retention exceptions. Active Explorer wire results and the current atomic override file
-remain audited through `src/domain/dashboard/explorer.ts`.
+surfaces or retention exceptions. Active Explorer wire results and the current SQLite override record remain audited through
+`src/domain/dashboard/explorer.ts`; migration 51 and the stopped source receipt implement D337.
 
 Redaction arms are recognised **structurally** — every arm declares `state`, `classification` and
 `transform` — never by comparing bytes against a standalone serialization of `RedactedFieldSchema`.
