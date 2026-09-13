@@ -339,3 +339,36 @@ The original freeze/evidence manifest remains immutable. Repairs use `rows-r2.js
 checks. R1's other unreviewed source/proof boundaries remain required for the complete replacement,
 even where the supervisor corrected a concern. No product or test edit, new task identity, screenshot
 refreeze or operator database change is part of this repair.
+
+### Approved complete standalone review amendment — 2026-09-12
+
+After R1's native compaction stop, the operator approved opening one separate **GPT-6 Astra/ultra**
+review task with checkpointed compaction. R2 is a fresh standalone root reviewer, independent of the
+supervisor and R1. Its complete verdict replaces the unsuccessful native R1 attempt; this is not a
+partitioned review and R1 contributes no accepted coverage. No implementation worker or successor
+task is authorized by this amendment.
+
+R2 reviews the whole approved B01–B06 assignment from base
+`e182022edfa0cd05a46a74358cd3296bcade6e79`, repaired implementation
+`5320f46506d90686f1ce9dfd51b354faf8200312`, and this later evidence-only amendment commit. The exact
+frozen checkout/evidence HEAD and generated Git inventory are bound in `standalone-freeze.json` at
+the retained evidence root before dispatch. All 35 changed paths, 42 I/42 A/five D rows, 52 numbered
+historical subjects, 221 scoped obligations, current source/proof assertions, ownership, exclusions
+and gate reuse require independent verification. R1-F01/F02 and every unreviewed boundary in
+`R1-blocked-verdict.md` remain in scope; supervisor repairs are not independent acceptance.
+
+The repository candidate stays read-only and frozen throughout review. R2 may retain only its own
+coverage/checkpoint/verdict artifacts under the retained evidence root's `standalone-review/`
+directory. No product/docs edits, mutating gates, browser/server operation, external state changes,
+merge, push or delegation. Necessary write-producing verification returns to this supervisor on
+the pinned candidate. On approaching compaction, R2 records exact identities, every path/proof's
+inspection state and evidence, findings, unreviewed boundaries and next checks. After compaction it
+rechecks checkout/branch/head/dirty state, reconciles that ledger against primary artifacts and
+reopens uncertain source/proof; summaries alone cannot establish PASS. This explicit standalone
+exception does not alter the exhausted native reviewer's stop rule or raise native context limits.
+
+Acceptance requires R2's complete commit-bound PASS with no unresolved required finding, all
+applicable document gates, verified local master integration including the planning commit, and
+owned cleanup. Bounded repair rechecks may stay with independent R2 under this arrangement while
+scope/contracts remain unchanged; material scope or lifecycle changes require renewed complete
+review. The original supervisor owns repairs, integration and cleanup and stops after 3.1.8.
