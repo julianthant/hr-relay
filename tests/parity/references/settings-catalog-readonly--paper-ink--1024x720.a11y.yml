@@ -1,0 +1,104 @@
+# settings-catalog-readonly--paper-ink--1024x720
+# adapter: fixture
+# fixture: settings-catalog
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# appVersion: 0.1.0
+# viewport: 1024x720  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Test routes":
+        - /url: "?settings=routes"
+      - link "Annual dates":
+        - /url: "?settings=annual-dates"
+      - link "Provider budgets & models":
+        - /url: "?settings=providers"
+      - text: Authorities
+      - link "Credentials":
+        - /url: "?settings=protected-store"
+      - link "Provider availability":
+        - /url: "?settings=provider-env"
+      - link "Observed host":
+        - /url: "?settings=derived-host"
+      - link "Deployment":
+        - /url: "?settings=runtime-isolation"
+      - text: Status
+      - link "Storage health":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
+    - heading "Deployment" [level=2]
+    - text: Code-owned · Read-only · Process lifetime
+    - paragraph: Deployment facts change through config/runtime-isolation.json, runtime-paths.ts and configuration code.
+    - term: actor.id
+    - definition: local-operator
+    - term: urls.kuali.prod
+    - definition: "{\"entry\":\"https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb\"}"
+    - term: urls.newKronos.prod
+    - definition: "{\"entry\":\"https://ucsd-sso.prd.mykronos.com/wfd/home\"}"
+    - term: urls.crm.prod
+    - definition: "{\"entry\":\"https://crm.ucsd.edu/hr\",\"onboardingSearch\":\"https://act-crm.my.site.com/hr/ONB_SearchOnboardings\",\"ucPathEntrySheet\":\"https://act-crm.my.site.com/hr/ONB_PPSEntrySheet\",\"onboardingHistory\":\"https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory\",\"idocsViewer\":\"https://act-idocs.ucsd.edu\"}"
+    - term: urls.onbase.prod
+    - definition: "{\"entry\":\"https://ucsd.hylandcloud.com/251ids/NavPanel.aspx\"}"
+    - term: urls.ucpath.prod
+    - definition: "{\"login\":\"https://ucpath.ucsd.edu\",\"smartHr\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y\",\"jobSummary\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL\",\"personalData\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1\",\"personProfile\":\"https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL\"}"
+    - term: urls.i9.prod
+    - definition: "{\"entry\":\"https://i9complete.ucop.edu\",\"app\":\"https://wwwe.i9complete.com\"}"
+    - term: urls.oldKronos.prod
+    - definition: "{\"entry\":\"https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/\"}"
+    - term: urls.servicenow.prod
+    - definition: "{\"entry\":\"https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf\"}"
+    - term: urls.sharepoint.prod
+    - definition: "{\"entry\":\"https://ucsdcloud.sharepoint.com\"}"
+    - term: paths.stateRoot
+    - definition: /tmp/settings-fixture/state
+    - term: paths.artifactRoot
+    - definition: /tmp/settings-fixture/artifacts
+    - term: paths.browserProfileRoot
+    - definition: /tmp/settings-fixture/auth
+    - term: paths.duoCredential
+    - definition: /tmp/settings-fixture/auth/duo-webauthn.json
+    - term: paths.duoExtensionDir
+    - definition: /tmp/settings-fixture/duo-autopilot
+    - term: duoWebauthnCredential
+    - definition: /tmp/settings-fixture/auth/duo-webauthn.json
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live

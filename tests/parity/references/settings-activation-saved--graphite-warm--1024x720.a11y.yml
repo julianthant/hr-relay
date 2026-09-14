@@ -35,6 +35,21 @@
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
+      - link "Test routes":
+        - /url: "?settings=routes"
+      - link "Annual dates":
+        - /url: "?settings=annual-dates"
+      - link "Provider budgets & models":
+        - /url: "?settings=providers"
+      - text: Authorities
+      - link "Credentials":
+        - /url: "?settings=protected-store"
+      - link "Provider availability":
+        - /url: "?settings=provider-env"
+      - link "Observed host":
+        - /url: "?settings=derived-host"
+      - link "Deployment":
+        - /url: "?settings=runtime-isolation"
       - text: Status
       - link "Storage health":
         - /url: "?settings=storage"
@@ -48,16 +63,30 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Display" [level=2]
-    - text: The viewport assumptions used when browser work is composed. Screen width px
+    - text: "Ordinary settings · SQLite Revision 2 Observed host: 2560 × 1440"
+    - button "Clear override"
+    - text: Screen width px
     - spinbutton "Screen width": "1980"
-    - paragraph: The composed browser viewport width.
-    - text: "Saved display.screenWidth Environment: not set Saved: 1980 Default: 2560 Screen height px"
+    - text: Saved Valid · Ordinary · Editable · New runs display.screenWidth
+    - term: Saved
+    - definition: "1980"
+    - term: Active
+    - definition: "1980"
+    - term: Default
+    - definition: "2560"
+    - text: Screen height px
     - spinbutton "Screen height": "1080"
-    - paragraph: The composed browser viewport height.
-    - text: "Saved display.screenHeight Environment: not set Saved: 1080 Default: 1440 0 unsaved changes"
+    - text: Saved Valid · Ordinary · Editable · New runs display.screenHeight
+    - term: Saved
+    - definition: "1080"
+    - term: Active
+    - definition: "1080"
+    - term: Default
+    - definition: "1440"
+    - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
+    - text: 0 unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]
-    - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
   - button "Add workers"

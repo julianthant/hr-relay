@@ -1,3 +1,4 @@
+import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
 import {captureArchiveReport} from "../../../src/services/archive/report-capture.js";
 import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
@@ -336,7 +337,8 @@ function harness(options: {
     },
   };
 
-  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
+  const activeSettings = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), activeSettings.fingerprint);
   const credentials = createCredentialStore({ stateRoot });
   const settingsFile = {
     read: () => {
@@ -344,15 +346,15 @@ function harness(options: {
       // harness therefore models the same persisted/active split as the real
       // runtime instead of serving a stale identity as a false "current".
       const record = readSettings(database.authority);
-      const persisted = settingsRuntimeIdentity(record, HASH_B);
+      const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock).fingerprint);
       if (
         persisted.settingsRevision === activeSettingsIdentity.settingsRevision
         && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
         && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
       ) {
-        return { record, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
+        return { record, activeConfig: activeSettings.config, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
       }
-      return { record, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
+      return { record, activeConfig: activeSettings.config, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
   };
   const kernel = createCommandKernel({
@@ -486,7 +488,7 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
-    settingsEditor: { settings: settingsFile, environment: {}, clock },
+    settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials), environment: {}, clock },
     storage: {
       doctorOptions: {
         stateRootTrustAnchor: root,
@@ -3465,7 +3467,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
     assert.equal(initial.revision, 1);
-    assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths"]);
+    assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths", "routes", "annual-dates", "providers"]);
     const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
     assert.equal(initialWidth?.source, "default");
 

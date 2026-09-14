@@ -61,11 +61,11 @@ describe("SQLite Settings reader snapshot", () => {
   it("builds a current editor with exactly one authoritative read and no file authority", () => {
     const f = fixture();
     for (let count = 0; count < 2; count += 1) {
-      const before = f.reads(); const editor = buildSettingsEditor({ settings: f.reader, environment: {}, clock: f.clock });
+      const before = f.reads(); const editor = buildSettingsEditor({ settings: f.reader, protectedSettings: f.protectedReader, environment: {}, clock: f.clock });
       assert.equal(f.reads() - before, 1); assert.equal(editor.revision, 1);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
-      assert.equal(editor.sections.flatMap((section) => section.leaves).length, 8);
+      assert.equal(editor.sections.flatMap((section) => section.leaves).length, 56);
     }
     assert.equal(existsSync(join(f.root, "settings")), false);
   });
@@ -74,7 +74,7 @@ describe("SQLite Settings reader snapshot", () => {
     const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance(record.settings, hostConfigFacts({}), f.clock).fingerprint);
     const expectedStatus = { state: "current", identity: persisted };
     assert.deepEqual(f.reader.read(), { record, runtimeStatus: expectedStatus });
-    const editor = buildSettingsEditor({ settings: f.reader, environment: {}, clock: f.clock });
+    const editor = buildSettingsEditor({ settings: f.reader, protectedSettings: f.protectedReader, environment: {}, clock: f.clock });
     assert.deepEqual(editor.runtimeStatus, expectedStatus);
     const width = editor.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
     assert.equal(width?.effectiveValue, 1980); assert.equal(width?.settingsValue, 1980); assert.equal(width?.source, "settings");

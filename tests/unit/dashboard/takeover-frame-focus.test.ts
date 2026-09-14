@@ -1,3 +1,4 @@
+import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 /**
  * ENTERING a takeover moves focus into it — the open half of a pair this tree
@@ -54,7 +55,6 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
-import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
@@ -132,27 +132,7 @@ const EMPTY_UI_CATALOG = UiCatalogWireSchema.parse({
   schemaVersion: 1,
   entries: [],
 });
-const EDITABLE_SETTINGS = EditableSettingsWireSchema.parse({
-  revision: 1,
-  settingsSchemaHash: FIXTURE_FINGERPRINT,
-  settingsFingerprint: "b".repeat(64),
-  activeConfigFingerprint: "c".repeat(64),
-  runtimeStatus: { state: "current", identity: { settingsRevision: 1, settingsSchemaHash: FIXTURE_FINGERPRINT, settingsFingerprint: "b".repeat(64), configFingerprint: "c".repeat(64) } },
-  sections: [
-    { id: "general", label: "General", description: "General.", leaves: [{ path: "actor.label", input: "text", label: "Operator label", description: "Label.", effectiveValue: "Local operator", defaultValue: "Local operator", source: "default", editable: true }] },
-    { id: "display", label: "Display", description: "Display.", leaves: [
-      { path: "display.screenWidth", input: "number", label: "Screen width", description: "Width.", effectiveValue: 2560, defaultValue: 2560, source: "default", editable: true, minimum: 1, unit: "px" },
-      { path: "display.screenHeight", input: "number", label: "Screen height", description: "Height.", effectiveValue: 1440, defaultValue: 1440, source: "default", editable: true, minimum: 1, unit: "px" },
-    ] },
-    { id: "performance", label: "Performance", description: "Performance.", leaves: [
-      { path: "ocr.pageConcurrency", input: "number", label: "OCR concurrency", description: "OCR.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
-      { path: "ocr.maxValidationRetries", input: "number", label: "OCR retries", description: "Retries.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
-      { path: "timeouts.duoApprovalSeconds", input: "number", label: "Duo timeout", description: "Duo.", effectiveValue: 180, defaultValue: 180, source: "default", editable: true, minimum: 1 },
-      { path: "concurrency.defaultWorkers", input: "number", label: "Workers", description: "Workers.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 1 },
-    ] },
-    { id: "paths", label: "Paths", description: "Paths.", leaves: [{ path: "paths.reportsDir", input: "text", label: "Reports", description: "Reports.", effectiveValue: "/tmp/reports", defaultValue: "/tmp/reports", source: "default", editable: true }] },
-  ],
-});
+const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS;
 
 let mounted: Root | undefined;
 

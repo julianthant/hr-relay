@@ -1,5 +1,6 @@
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
 import { SettingsFactsWireSchema,type SettingsFactsWire } from "../../domain/dashboard/settings.js";
+import { DashboardClientError } from "./errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";
 
@@ -30,10 +31,7 @@ export function createSettingsQueries(transport: DashboardTransport): SettingsQu
     },
 
     async editableSettings(): Promise<EditableSettingsWire> {
-      return parseOrThrow(
-        EditableSettingsWireSchema,
-        "GET /api/v1/settings/editable",
-        await transport.requestJson("/api/v1/settings/editable"),
-      );
+      try { return EditableSettingsWireSchema.parse(await transport.requestJson("/api/v1/settings/editable")); }
+      catch { throw new DashboardClientError({ kind: "schema", code: "SETTINGS_READ_UNAVAILABLE", message: "GET /api/v1/settings/editable: settings could not be read or verified" }); }
     }
 }); }

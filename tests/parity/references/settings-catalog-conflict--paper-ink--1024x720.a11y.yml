@@ -1,0 +1,121 @@
+# settings-catalog-conflict--paper-ink--1024x720
+# adapter: fixture
+# fixture: settings-catalog
+# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# appVersion: 0.1.0
+# viewport: 1024x720  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Test routes":
+        - /url: "?settings=routes"
+      - link "Annual dates":
+        - /url: "?settings=annual-dates"
+      - link "Provider budgets & models":
+        - /url: "?settings=providers"
+      - text: Authorities
+      - link "Credentials":
+        - /url: "?settings=protected-store"
+      - link "Provider availability":
+        - /url: "?settings=provider-env"
+      - link "Observed host":
+        - /url: "?settings=derived-host"
+      - link "Deployment":
+        - /url: "?settings=runtime-isolation"
+      - text: Status
+      - link "Storage health":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
+    - heading "General" [level=2]
+    - text: Ordinary settings · SQLite Revision 3 Operator label
+    - textbox "Operator label": Retained operator draft
+    - text: Saved Unsaved Valid · Ordinary · Editable · New runs actor.label
+    - button "Reset"
+    - button "Clear Operator label": Clear
+    - term: Saved
+    - definition: Competing operator
+    - term: Active
+    - definition: Competing operator
+    - term: Default
+    - definition: Local operator
+    - text: browser · headless
+    - combobox "browser · headless":
+      - option "Enabled" [selected]
+      - option "Disabled"
+    - text: Default Valid · Ordinary · Editable · New runs browser.headless
+    - button "Clear browser · headless" [disabled]: Clear
+    - term: Saved
+    - definition: not set
+    - term: Active
+    - definition: "true"
+    - term: Default
+    - definition: "true"
+    - text: features · debug Screenshots
+    - combobox "features · debug Screenshots":
+      - option "Enabled"
+      - option "Disabled" [selected]
+    - text: Default Valid · Ordinary · Editable · New runs features.debugScreenshots
+    - button "Clear features · debug Screenshots" [disabled]: Clear
+    - term: Saved
+    - definition: not set
+    - term: Active
+    - definition: "false"
+    - term: Default
+    - definition: "false"
+    - text: features · duo Web Authn
+    - combobox "features · duo Web Authn":
+      - option "Enabled" [selected]
+      - option "Disabled"
+    - text: Default Valid · Ordinary · Editable · New runs features.duoWebAuthn
+    - button "Clear features · duo Web Authn" [disabled]: Clear
+    - term: Saved
+    - definition: not set
+    - term: Active
+    - definition: "true"
+    - term: Default
+    - definition: "true"
+    - status: Settings changed Settings changed. Current values are refreshed beside your retained draft. Review them, then save deliberately.
+    - text: 1 unsaved change
+    - button "Discard all"
+    - button "Save 1"
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live

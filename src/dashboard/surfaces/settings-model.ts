@@ -46,6 +46,13 @@ const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze
   display: "display",
   performance: "performance",
   paths: "paths",
+  routes: "system-hosts",
+  "annual-dates": "general",
+  providers: "performance",
+  "protected-store": "general",
+  "provider-env": "capabilities",
+  "derived-host": "display",
+  "runtime-isolation": "paths",
   storage: "storage",
   [SETTINGS_SYSTEM_HOSTS_SECTION_ID]: "system-hosts",
   [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "capabilities",
@@ -149,6 +156,14 @@ export function buildSettingsNav(
         source: "served",
       })),
     });
+  }
+  if (editor !== undefined) {
+    groups.push({ heading: "Authorities", entries: [
+      { id: "protected-store", label: "Credentials", icon: "general", source: "served" },
+      { id: "provider-env", label: "Provider availability", icon: "capabilities", source: "served" },
+      { id: "derived-host", label: "Observed host", icon: "display", source: "served" },
+      { id: "runtime-isolation", label: "Deployment", icon: "paths", source: "served" },
+    ] });
   }
   if (sections.length > 0) {
     groups.push({

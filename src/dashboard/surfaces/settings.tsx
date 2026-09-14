@@ -1,3 +1,5 @@
+import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
+import { SettingsAuthoritySection } from "./settings-authorities.js";
 import {
 ArrowLeft,
 BookMarked,
@@ -42,10 +44,8 @@ export type { SettingsSection,StorageHealthSummary };
  * the set is spelled once and both the switch and the gap read it.
  */
 const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
-  "general",
-  "display",
-  "performance",
-  "paths",
+  ...EditableSettingsSectionIdSchema.options,
+  "protected-store", "provider-env", "derived-host", "runtime-isolation",
   "storage",
   SETTINGS_SYSTEM_HOSTS_SECTION_ID,
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
@@ -222,7 +222,8 @@ export function SettingsPage({
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
-  const hasDirtyDraft = editor.dirtyCount > 0;
+  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
+  const hasDirtyDraft = totalDirty > 0;
 
   useEffect(() => {
     if (!hasDirtyDraft) return undefined;
@@ -254,6 +255,7 @@ export function SettingsPage({
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     editor.discard();
+    editor.protectedEditor.discard();
     setPendingExit(undefined);
     pendingExit();
   };
@@ -322,9 +324,10 @@ export function SettingsPage({
           />
         )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} editor={editor} preflight={preflight} />}
-        {resolution.state === "open" && ["general", "display", "performance", "paths"].includes(resolution.entry.id) && (
+        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
         )}
+        {resolution.state === "open" && ["protected-store", "provider-env", "derived-host", "runtime-isolation"].includes(resolution.entry.id) && <SettingsAuthoritySection editor={editor} sectionId={resolution.entry.id} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID && (
           <SystemHostsSection />
         )}
@@ -351,7 +354,7 @@ export function SettingsPage({
         <DialogContent
           size="sm"
           title="Discard unsaved settings?"
-          description={`You have ${plural(editor.dirtyCount, "unsaved change")}. Leaving Settings discards the entire atomic draft.`}
+          description={`You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards both drafts and any pending retry identity. A write already submitted may still be stored.`}
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>

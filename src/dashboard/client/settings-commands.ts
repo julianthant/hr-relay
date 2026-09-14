@@ -3,7 +3,7 @@ CommandResultSchema,
 SettingsCommandRequestSchema,
 type CommandResult
 } from "../../domain/commands.js";
-import { schemaError } from "./errors.js";
+import { DashboardClientError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
 
@@ -23,8 +23,8 @@ export function createSettingsCommands(transport: DashboardTransport): SettingsC
       });
       try {
         return CommandResultSchema.parse(response);
-      } catch (error) {
-        throw schemaError("POST /api/v1/commands", error);
+      } catch {
+        throw new DashboardClientError({ kind: "schema", code: "SETTINGS_RESPONSE_INVALID", message: "Settings command response could not be verified" });
       }
     }
 }); }

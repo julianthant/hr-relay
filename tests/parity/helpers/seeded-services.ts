@@ -1,3 +1,5 @@
+import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
+import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
 import { join } from "node:path";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
@@ -193,10 +195,11 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
     settingsEditor: {
+      protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }),
       settings: {
         read: () => {
           const record = initialSettingsFileRecord();
-          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, CONFIG_FINGERPRINT) } };
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolveConfigWithProvenance({}, hostConfigFacts({}), clock).fingerprint) } };
         },
       },
       environment: {},

@@ -1,7 +1,7 @@
 import { DESCRIPTORS } from "../../../control/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../domain/config/resolve.js";
 import type { createCredentialStore } from "../../../infra/config/credential-store.js";
-import { activeSettingsConfig, createSettingsRuntimeReader } from "../../settings-runtime.js";
+import { activeSettingsConfig, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader } from "../../settings-runtime.js";
 import { createSettingsApplicationExecutor } from "../commands/settings-service.js";
 import type { SettingsRouteDeps } from "../routes/settings-types.js";
 
@@ -12,7 +12,10 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   const reader = createSettingsRuntimeReader(input);
   const routes: SettingsRouteDeps = {
     settings: { get config() { return database.withAuthorityTransaction(activeSettingsConfig); }, descriptors: DESCRIPTORS },
-    settingsEditor: { settings: reader, environment: input.environment, clock },
+    settingsEditor: {
+      settings: { read: () => database.withAuthorityTransaction(repositories => ({ ...reader.read(), activeConfig: activeSettingsConfig(repositories) })) },
+      protectedSettings: createProtectedSettingsRuntimeReader(input.credentials), environment: input.environment, clock,
+    },
   };
   return { routes, executor: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostFacts, clock), input.credentials) };
 }
