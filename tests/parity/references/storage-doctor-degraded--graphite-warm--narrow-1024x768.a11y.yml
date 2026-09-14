@@ -49,15 +49,19 @@
         - /url: "?settings=ui-catalog"
     - heading "Storage health" [level=2]
     - text: The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
-    - status: Read-write — healthy From the newest write-time-verified backup manifest; the doctor below re-verifies bytes.
+    - status: Authority summary healthy Backup metadata has not been re-verified by this summary.
     - img "Done"
     - text: Authority healthy
     - img "Done"
     - text: Backup current
     - button "Run the read-only storage doctor": Run storage doctor
+    - button "Storage recovery instructions"
     - text: Read-only doctor · checked 9:01 AM
     - img "Done"
     - text: Authority healthy — schema v27 · generation 41 · 12 pages pending commands 0 unresolved write intents 0 leases 0 provider reservations 0 artifact outbox 0
+    - region "Recovery status":
+      - img "Done"
+      - text: Recovery No interruption markers
     - region "Span authority degraded":
       - img "Review"
       - heading "Span authority degraded" [level=3]
@@ -71,6 +75,12 @@
         - listitem: missing-span run 00000000-0403-4000-8000-000000000403
         - listitem: malformed-authority source archived · record record-digest-8dc3 · archived authority record failed strict parsing
         - listitem: malformed table span_stream · run 00000000-0404-4000-8000-000000000404 · queued root ordering is contradictory
+    - region "Authority upgrade history":
+      - heading "Authority upgrade history" [level=3]
+      - text: No upgrade history recorded.
+    - region "Independent credentials":
+      - heading "Independent credentials" [level=3]
+      - text: "Credential inspection unavailable: protected settings fixture is unavailable"
     - img "Failed"
     - text: "Backup missing — no verified backup is present Backup service: backup service has not run 0 restore candidates"
     - separator
