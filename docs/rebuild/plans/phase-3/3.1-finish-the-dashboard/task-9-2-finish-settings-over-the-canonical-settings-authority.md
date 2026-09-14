@@ -301,3 +301,105 @@ hashes, named-ref reachability, prerequisite ancestry and worktree/ref availabil
 Planning-worktree cleanup retains the named branch and durable evidence. The outgoing prompt uses
 that verified plan commit as the implementation creation base; no master merge or implementation
 dispatch is assigned to this planning stage.
+
+### Implementation execution record — 2026-09-13
+
+The supervisor created `codex/3.1.9.2-settings` at
+`/Users/julianhein/Projects/hr-worktree-settings` from the exact approved plan commit
+`e89a8fb7fb0105d0765e08120d6f64064ff01ab2`, after checking ref/path ownership,
+capacity and all three prerequisite ancestries. The retained plan ref still names that commit.
+One supervisor executes locally; zero workers and no independent review under the Phase 3.1 cadence.
+
+At the first S4 checkpoint, S1–S3 were implemented in the allocated Settings projection,
+ordinary/protected editor and tests. The passing candidate record below supersedes that checkpoint. Evidence lives at `/Users/julianhein/Projects/hr-settings-evidence-20260913/`.
+The exact ten-file unit gate passed 91 tests. The first real HTTP browser proof passed in both
+themes, including independent saves, conflicts, explicit clear, response loss after effect, failed
+readback, exact retry, privacy, cancelled/confirmed dirty exits and focus restoration. Actual
+Chromium tab zoom read back 1.25 and 2 in both themes, with CSS zoom 1, reachable ordinary and
+protected footers, retained drafts, keyboard error focus and confirmed exit restoration.
+Final gate and reference results will supersede these iteration results below.
+
+**Reference allocation clarification.** The six `storage-settings` cases retain their existing
+blank Settings route, which renders General rather than the Storage body. The supervisor showed
+the proposed General body and requested an amendment; the operator replied “keep going”, and
+the supervisor explicitly stated that this authorized attribution of those General changes.
+These six sets may therefore include the completed General catalog/editor and shared navigation.
+The Storage warning band, source facts, body code and test assertions remain unchanged.
+The before/after proposal is retained as `storage-settings-proposed.png` and `.yml`.
+
+The first complete parity assertion also found four `storage-doctor-degraded` sets whose shared
+Settings navigation changes and seven inherited `storage-queue` stale empty-state references.
+The latter reproduce identically on an untouched private export of the exact plan commit;
+`base-reproduction.json` and `base-storage-queue.log` record that proof. The operator explicitly approved “Approve 11 reference-only fixes”. The four Storage-doctor
+sets may change only for shared Settings navigation; the seven queue sets may replace only the
+proven stale empty-state copy. All code, facts, case identities and assertions remain unchanged.
+Exact before/after hashes and semantic/pixel attribution are required for each changed item.
+
+That checkpoint retained an uncommitted candidate while focused gates and reference attribution
+finished. Final candidate/evidence commits and owned-resource cleanup are recorded below. 3.1.9.8 intake, operator-controlled integration and eventual
+worktree cleanup remain separate; all 3.1.19 broad gates remain deferred. No merge or push is assigned.
+
+### Passing implementation candidate — 2026-09-13
+
+S1–S4 and P1–P6 are complete for this child's development scope. The catalog projection contains
+all 86 entries: 56 concrete ordinary rows plus three served fiscal-year templates, five independent
+protected operations, five provider availability families, sixteen deployment facts and one host
+observation. Ordinary records retain atomic coupled fields and explicit set/clear semantics;
+per-leaf Reset preserves other deliberate edits. Both authority drafts survive conflicts, require
+explicit resubmission, retain exact uncertain attempts and clear only after matched result/readback.
+Credential values remain transient masked input; readback exposes only presence and write metadata.
+
+| Focused proof on candidate inputs | Result / retained evidence |
+| --- | --- |
+| Exact ten-file unit command above | PASS: 91 tests / 10 files; `unit-final.log`, command JSON. |
+| Exact catalog / strict-boundary / redaction command above | PASS: 42 tests / 3 files; `architecture-final.log`, command JSON. |
+| Exact credential / history / focus / BFF command above | PASS: 202 tests / 4 files; `regression-final-fixed.log`. The first run exposed the BFF fixture's old invented Settings fingerprint; only its Settings construction and complete section expectation changed. |
+| Scoped lint, exact selector above | PASS: zero warnings; `lint-final-argv.json` and `lint-final.command.json` contain the exact argv and input hashes. |
+| Additional scoped compiler | PASS: `compiler-candidate.log`; external `tsconfig.focused.json` includes every changed authored file and its import closure. This does not claim the finalizer's full typecheck. |
+| `npm run web:build` | PASS: `build-final.log`; bundle input digest `c190e455b50214544179677b395659268706e1a4c883e197d14ab8b4f5a75395`, output digest `070487ee69fa54ccbabb55735934947ba2bdc6ce5c1e5d65e3fe0b95452c4864`. The existing bundle-size advisory remains non-fatal. |
+| Exact deliberate refreeze command above | PASS: 39 browser cases, maximum four workers; `refreeze-final.log`. |
+| Exact five-spec parity assertion above | PASS: 45 browser cases, four workers; `parity-final.log` and retained `parity-final-output/results.json`, including required body-backed a11y attachments. |
+| Reference attribution / complete discovery | PASS: all 288 previous discovered titles remain; 12 new titles bring discovery to 300. All 693 baseline files remain; 30 new files make 723. The 88 changed/added items are 58 existing PNG/a11y files and 30 new Settings scene files. No existing metadata changed. `reference-attribution.json` gives every path, before/after SHA-256, requirement and pixel bounds; `reference-a11y.diff` preserves semantic diffs. |
+| Actual Chromium zoom via `playwright-cli` | PASS: 1.25 and 2 read back through tab-scoped `chrome.tabs.getZoom`, both themes, CSS zoom 1. Canvas stays 1024×720; effective viewports are 1024×576 and 720×450. Ordinary/protected controls and footers remain reachable; section drafts, keyboard error focus and cancelled/confirmed exits are verified. `zoom-proof.js`, `zoom-provenance.json`, `zoom-receipts.json` and screenshots retain the mechanism and geometry. |
+| Source and whitespace boundary | PASS: `git diff --check`; all authored Settings/test paths are bound by `candidate-authored-inputs.json`. Runtime authorities, root wiring, catalog membership, schemas, dependencies, DS primitives, Storage/queue code, guard inventory and instruction twins are unchanged. |
+
+The original 18 Settings-related reference sets remain. The eleven additional existing sets are
+only the operator-approved exceptions above. Pixel bounds prove that Storage-doctor and existing
+System-host/capability body pixels are unchanged; their differences stay within the 220-pixel
+Settings navigation. Every queue a11y diff contains exactly the one inherited empty-state line.
+New synthetic scenes use revision two for saved values; revision one correctly rejects nonempty
+settings. Captures preserve real CSS-zoom attribution separately from actual browser zoom.
+
+`candidate-nondoc-inputs.json` binds source/test/reference bytes; `final-reference-hashes.json`
+binds the complete corpus. `gate-reuse.json` records the sole late BFF test-fixture correction and
+which independent gates stayed valid. `final-bundle/` retains the tested build. The final Git
+candidate and evidence hashes are recorded in the external delivery receipt after commit, avoiding
+a self-referential commit hash in this document. No independent review is pending or claimed.
+
+Documentation binding, roadmap freshness, scoped documentation lint, local links, existing twin
+identity/chains and cleanup are checked during final delivery. Finalizer-owned work remains:
+3.1.9.8 intake and combined gates, explicit operator integration into local master, then candidate
+worktree/branch cleanup. The stopped implementation checkout and candidate ref remain in custody
+until that integration decision. Full coverage, repository-wide gates and broad acceptance remain
+3.1.19. This development record does not mark the roadmap task integrated or release downstream work.
+
+Final documentation checks pass: 24 roadmap-binding tests, zero-warning documentation lint,
+generated-roadmap freshness, fifteen local links/fragments, nineteen required test paths,
+nine byte-identical instruction pairs and a maximum instruction chain of 18,376 bytes
+(under 32,768). The ownership audit accepts exactly 118 allocated source/test/reference/document
+paths, including the operator-approved reference-only exceptions. No guard was added or retired.
+
+Owned fixture servers and all owned Chromium sessions are stopped. Temporary extension/profile
+files are removed after retaining their source, scripts and receipts. The baseline diagnostic
+export was removed after preserving its report and bundle hashes. `cleanup.json` records custody.
+The worker checkout remains in place, stopped, for 3.1.9.8; removing an active supervisor checkout
+or an unintegrated candidate is not assigned. No operator state, primary checkout edits or pushes
+were made.
+
+For the 200% screenshots, Chromium's default screenshot clip interpreted the scrolled viewport
+in unzoomed capture coordinates. `zoom-capture.js` uses the measured zoom/DPR to express the
+clip in capture coordinates, through CDP inside `playwright-cli`; it does not alter page zoom.
+`zoom-confirmed-dark-2.png`, `zoom-confirmed-light-2.png` and `zoom-confirmed-receipts.json`
+are the inspected viewport captures. Earlier capture attempts remain diagnostic artifacts.
+The Save control is visible with focus at the viewport bottom; the independent hit-test receipt
+also confirms it is reachable after document scrolling.
