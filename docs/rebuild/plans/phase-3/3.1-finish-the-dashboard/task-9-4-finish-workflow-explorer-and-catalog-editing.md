@@ -243,7 +243,7 @@ absolute checkout, owning section, E1–E4, focused/no-review cadence and finali
 | --- | --- |
 | Approval | Approved by the operator on 2026-09-14; full proposal retained above. |
 | Persistence | Full approved content committed as `958018aa2fbce724de176922cfcd8873f355bc96`, integrated into local `master` at `eb5c1fe5f7fc30eabf4b89e4743f78d575583d29`. The verified handoff resolves the subsequent recording-only commit as the final approved-plan SHA and implementation creation base. |
-| Implementation | Not started; all task acceptance checkboxes remain open. |
+| Implementation | E1–E4 development is recorded below. The checked worker candidate awaits 3.1.9.8 intake, integration and cleanup; task acceptance checkboxes remain open. |
 | Shared-target integration | Complete under the operator's explicit "merge the plan" direction. The merged tree exactly equals the validated candidate tree; all product inputs are unchanged. |
 | Planning cleanup | Complete: the planning worktree registration, physical path and `codex/plan-3.1.9.4` ref are gone. Only its owned dependency symlink was removed; shared dependencies and Settings/Storage worktrees remain. Planning evidence is retained at the namespace below. |
 
@@ -279,3 +279,104 @@ ancestry from local `master`. The resulting full commit is the handoff's approve
 creation base. Before issuing **READY**, also recheck the proposed implementation branch/path are
 available and capacity remains within four auxiliary worktrees. Implementation is still unstarted;
 the operator opens the fresh Astra medium `/supervise 3.1.9.4` session.
+
+### Worker candidate and finalizer intake — 2026-09-14
+
+The operator opened `/supervise 3.1.9.4` with the exact creation base below and authorized E1–E4
+locally through `/ui`, with zero workers and no independent review. Components led the local UI
+work using the existing Operate design and primitives. This record supplies a checked worker
+candidate; it does not release the parallel group or close the roadmap task.
+
+| Intake fact | Verified value |
+| --- | --- |
+| Approved plan and exact creation base | `9f9dfe3566084e165bd508ae8b66dc3ebe325010`, reachable from local `master`; its committed owner content was checked before editing. |
+| Required prerequisite | `3d4d8c0c64cf2e96096b193966a66741861d6f1c`, verified ancestor of the creation base and candidate. |
+| Branch and checkout | `codex/3.1.9.4-explorer`, `/Users/julianhein/Projects/hr-worktree-explorer`; both were available at creation. Two auxiliary worktrees existed before this third checkout, within the four-worktree ceiling. |
+| Implementation candidate | `4e7aa2bc9bf16e646c623f669e622d078ce16a31`; tree `e8acf9207371c4a31a89029f3b00f81071ef1797`. The subsequent evidence-only commit changes this owner alone; final intake HEAD is returned in the supervisor's completion message and `final-intake.json`. |
+| Exact changed inputs | `src/dashboard/surfaces/explorer.tsx`; `tests/unit/dashboard/explorer-edit-dialog.test.ts`; `tests/unit/server/explorer-acceptance.test.ts`; `tests/parity/helpers/fixture-explorer-authority.ts`; `tests/parity/explorer-authority.spec.ts`. All other production, backend, shared fixture, configuration and reference inputs are unchanged. |
+| Accepted evidence identity | `accepted-inputs.json` hashes all 2,353 non-document tracked/added inputs. Hashes were rechecked after gates and before the implementation commit; the evidence-only recording must preserve them. `reference-audit.json` separately covers every existing reference file and scene membership. |
+| Remaining owner | Operator-directed 3.1.9.8 intake, combined focused checks/typecheck, integration into local `master`, and branch/worktree cleanup. No push, merge, independent reviewer or sibling dispatch occurred here. |
+
+Evidence is retained at `/Users/julianhein/Projects/hr-explorer-evidence-20260914-_eicf9z4`.
+This private namespace contains logs, input identities, cleanup records and the browser-output
+archive, not another plan. The installed dependency symlink is read-only; this checkout owns its
+build and test outputs.
+
+| Step | Verified outcome and proof |
+| --- | --- |
+| E1 | The mounted real parent reproduced lost success for all three fields: three expected failures before the fix. The editor now retains only its exact verified readback across the parent's revision update, preserves the reviewed basis, and invalidates retired apply responses. Label/icon/category regressions cover exact command/readback identity, actor/value/target changes, close/reopen, late validation/command/readback settlement, no automatic resubmission and focus return to the corresponding edit door. Existing refusal, unknown-result and acknowledged-but-unverified distinctions remain. |
+| E2 | The new acceptance suite consumes registered workflows and immutable prerequisite services. It checks graph nodes/dependencies/conditions/replay and dry-run facts, exact source/catalog links, empty versus unknown versus invalid zero-node cases, manifest/source drift, forbidden drafts, no-op/mixed/partial edits, complete policy and Edit Data source briefs, stale bases/revision, exact replay after database reopen and reviewed new-revision restore. Existing builder-cycle and SQLite atomicity/refusal suites are included in the release set. Refusal cases retain valid controls and check authority effects. |
+| E3 | Six theme/viewport journeys prove preview, apply, retained success, reload and a fresh browser context restoring all three original values through ordinary reviewed revisions, reaching r6. They exercise selector and row/panel catalogs, search/selection/provenance, rail keyboard movement, unavailable vocabulary, Settings Help/Keyboard and Version registry navigation, resizing graph/editor/catalog to 1024×720 and back, decision-control reachability and exact edit-door focus. Further cases cover a competing edit, failed/mismatched readback, lost command response, empty/unresolved/stale/malformed inputs, unknown workflow recovery, and real HTTP Host/Origin/media/actor admission. |
+| E4 | The complete focused release set passed on the implementation candidate inputs. Only the permitted surface and task-owned proofs changed. Existing reference scenes and all reference bytes remain unchanged. The implementation is committed; this evidence record is checked separately before its exact-path commit. Finalizer intake/integration/cleanup and 3.1.19 remain pending. |
+
+The browser harness serves production Explorer/catalog reads, validation, command ingress, command
+service/kernel and SQLite authority over ephemeral loopback HTTP. Shell, Settings, Archive and SSE
+surroundings use existing synthetic fixture responses. Successful command acceptance is never
+fabricated. Fault injection is limited to explicit negative read/catalog/transport cases; uncertain
+UI cases verify the actual durable command. This proves the assigned service boundary, not live HR,
+full root composition, broad accessibility, executed source-brief obligations or production recovery.
+
+Both `paper-ink` and `graphite-warm` ran at 1280×720, 1440×900 and 1024×768. The 93 private
+screenshots and 93 body-backed accessibility snapshots include the additional 1024×720 states;
+representative graph, editor and catalog renders were visually inspected. The original
+`explorer-graph`, `explorer-transaction` and `catalog-search` scenes are unchanged, as are all 693
+files under `tests/parity/references`. Interaction evidence remains in this checkout's
+`tests/parity/.output` and the retained `parity-output.tar.gz`, including the JSON report and
+attachment identities. No reference refreeze occurred.
+
+### Worker release gates
+
+All commands ran in `/Users/julianhein/Projects/hr-worktree-explorer`. `release-gates.json` records
+exact argv, working directory, exit and elapsed time for each check; matching `.log` files retain
+output. The exact 14-suite command in **Focused gates and private resources** above was executed
+unchanged. Vitest's effective maximum was four file workers; Playwright used four workers, also
+asserted in the new journey tests. Build/parity, compiler and lint ran sequentially in this checkout.
+
+| Check | Result |
+| --- | --- |
+| Exact focused unit/architecture set above | PASS, exit 0: 14 files, 186 tests; `focused-tests.log`. |
+| `npm run test:parity -- tests/parity/reference-explorer.spec.ts tests/parity/explorer-authority.spec.ts --workers=4` | PASS, exit 0: 34 cases, comprising 18 unchanged reference cases and 16 new service cases; `parity.log`. |
+| `npx eslint src/dashboard/surfaces/explorer.tsx tests/parity/explorer-authority.spec.ts tests/parity/helpers/fixture-explorer-authority.ts tests/unit/dashboard/explorer-edit-dialog.test.ts tests/unit/server/explorer-acceptance.test.ts --max-warnings 0` | PASS, exit 0; `lint.log`. |
+| `npx tsc --project /Users/julianhein/Projects/hr-explorer-evidence-20260914-_eicf9z4/iteration/tsconfig.json --noEmit` | PASS, exit 0; scoped check of the four changed test files and their imported production closure, using the repository compiler options and explicit dependency type roots. This is additional scoped evidence, not whole-repository typecheck. |
+| `npm run build:manifest:check` | PASS, exit 0; `manifest.log`. No manifest/catalog regeneration or source-authority change. |
+| `git diff --check` and `git diff --cached --check` | PASS, exit 0 before the implementation commit. |
+| Reference identity and runtime cleanup | PASS: 693 reference hashes and exact membership match the creation base. Successful runner roots were removed by the runner; five owned failed-run roots were archived then removed after exact owner and absent process-group checks. Browser session `explorer-3194`, private ports 61713/62204 and the manual synthetic database were closed/removed; `runner-cleanup.json` and `manual-runtime-cleanup.json`. Peer resources remain untouched. |
+
+The evidence-only recording passed the checks below. Exact argv and exits are retained in
+`documentation-gates.json`; `document-checks.json` records the owner hash and unchanged implementation
+inputs. Source checks retain the implementation candidate's exact input identity.
+
+| Documentation check | Result |
+| --- | --- |
+| `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS, exit 0: 1 file, 24 tests. |
+| `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap/parse-plan.ts scripts/roadmap/scan-docs.ts scripts/roadmap/schema.ts --max-warnings 0` | PASS, exit 0. |
+| `npm run roadmap` then `npm run roadmap:check` | PASS, both exit 0; generated roadmap bytes unchanged. |
+| `sh /Users/julianhein/Projects/hr-explorer-evidence-20260914-_eicf9z4/document-check.sh` | PASS, exit 0: 14 local links/fragments, nine byte-identical existing instruction pairs, largest project chain 18,376 bytes below 32,768, approved controls retained, only this owner differs from the implementation candidate, all 2,353 non-document input hashes unchanged. |
+| `git diff --check` and `git diff --cached --check` | PASS, exit 0 before recording commit. |
+
+Full repository typecheck/lint/coverage,
+architecture, broad parity, production, performance, recovery/live and complete A01–A42/D01–D05
+acceptance are deferred to 3.1.19; none is claimed here. The finalizer's combined checks are also
+unrun here.
+
+### Delivery assessment
+
+The approved bounded scope and prerequisite interfaces held. No ownership amendment, new operator
+scope, worker dispatch or independent review occurred. The expected lifecycle defect was reproduced
+and corrected locally. Proof implementation required repair rounds for the footer Close locator,
+strict source/draft fixtures, the catalog's existing selected-row focus semantics, and synthetic SSE
+surroundings cleanup. A passing inner browser run initially failed the parity wrapper because the
+new captures lacked statically declared body-backed accessibility attachments; the proof now uses
+that established contract. The first release run caught command-envelope guard adjacency after
+generation capture was inserted between the request and busy state; moving generation capture
+before the request preserved the unchanged guard and passed the complete release set. Relocating
+the private compiler recipe required an explicit Node type root, after which only compilation and
+the remaining unchanged-input gates were rerun. Failed logs and owner records remain in the evidence
+namespace; these were implementation/proof setup repairs, not waived acceptance or backend defects.
+
+Earlier inspection of the existing roving-row focus and parity attachment contract could have
+prevented those proof repairs. The plan already assigned both outcomes, so the evidence does not
+support a scope/planning amendment. The observed context compaction resumed the same assignment without
+resizing or delegation. Retained logs establish the listed events, not a complete timing breakdown
+or estimated savings. Routine finalizer transfer uses this owner record; no separate handoff plan
+or cleanup of the implementation checkout is performed by this worker.
