@@ -297,3 +297,131 @@ roadmap freshness, the final document audit and whitespace after recording, then
 and verify the committed documents against those hashes. The final planning handoff records the
 full plan SHA outside the commit to avoid a self-referential hash. The dedicated checkout/ref
 remain available for the operator's fresh supervisor session; no master merge or push occurred.
+
+
+### Execution amendment — 2026-09-14
+
+The operator approved both narrow corrections after the assigned focused gates exposed inherited
+prerequisite defects: extend production ownership to the read-only `authorityContentFingerprint`
+function in `src/infra/sqlite/authority-database.ts`, and regenerate the seven inherited
+`storage-queue` reference states from this candidate's actual rendering. No writer, migration,
+recovery floor, credential, lock or Settings contract change is authorized by this amendment.
+
+Schema 51 introduced `explorer_overrides`, but the historical schema-48 read-only fingerprint used
+the current table registry unconditionally. Eighteen existing historical recovery checks therefore
+failed, including direct inspector calls that bypass the modified doctor. The current fingerprint
+and historical test helper were byte-identical to implementation base `07221394ece638d5de9f38407654ad2b305f1f9f`.
+The correction excludes this table only for pre-51 schemas; a missing table in a current-schema
+source must still fail. Existing recovery assertions and their historical source layouts remain.
+The explicit current physical inventory and native SQLite owner lists also retain the prerequisite's
+new table and two native owners; no guard is added or retired.
+
+The seven queue states retained older no-run copy despite the already-integrated source correction.
+The Storage candidate regenerates and verifies its own output. The Settings candidate's approved
+reference changes remain untouched, and 3.1.9.8 retains sole combined-reference ownership.
+Evidence and the proposed source patch are in `/Users/julianhein/Projects/hr-storage-evidence-20260913/`.
+
+
+### Execution delivery — 2026-09-14
+
+**Current state:** S1–S4 and P1–P5 are delivered as a tested, committed candidate frozen for
+operator-controlled 3.1.9.8 intake. The final recording commit is identified in the external receipt
+below. This task's completion checkboxes remain open until integration and assigned cleanup.
+No independent review is assigned under the Phase 3.1 cadence.
+
+| Identity | Verified value |
+| --- | --- |
+| Checkout / branch | `/Users/julianhein/Projects/hr-worktree-storage` / `codex/3.1.9.3-storage` |
+| Implementation base / approved plan | `07221394ece638d5de9f38407654ad2b305f1f9f` / `8e41297f27ccc9ce480d0551b50eaa296fad7954` |
+| Implementation and tests | `9fcd074e4a16385aae3285481777d0133f93ed33` |
+| Approved reference output | `205e6b5eb1a6e41c4e762c036a9471d1aec0fe6f` |
+| Frozen input receipt | `frozen-inputs.json`: 2,566 tracked/new inputs excluding this evidence owner; receipt SHA-256 `8cf65c9e9e3ed12e2b434bfd55688db17d572bc2befc52262d993bca34fdd5cb` |
+| Built input / emitted bundle | `9bd0ab8020748a50de73f1cb460bfe07a6a1f1ac4c42b8eca3f1e71b05abd210` / `21626f1da779ddfbd4432727d72c7170891d8045fd6a750101230299e3a6363c` |
+
+Evidence files named here live in `/Users/julianhein/Projects/hr-storage-evidence-20260913/`.
+The final recording commit is bound externally by `frozen-candidate.json`, avoiding a self-referential
+commit hash. `preflight.json` records initial clean ownership and prerequisite ancestry; later
+checks retained the same base and Settings candidate. Two auxiliary worktrees stayed below the
+four-worktree ceiling. Master and the Settings worktree/ref were not mutated.
+
+| Proof | Implemented outcome and focused evidence |
+| --- | --- |
+| P1 | Doctor, CLI and BFF distinguish clear, interrupted and unavailable lifecycle/archive markers, including healthy integrity with blocked startup and simultaneous corrupt authority/marker. Marker reads use bounded no-follow inspection and before/after identity comparison. `storage-recovery-status.test.ts` snapshots authority, markers, credentials and retained files. Only existing SQLite reader bookkeeping is normalized: warmed `.db-shm` read marks at offsets 100–120, with an empty live WAL asserted; semantic authority and recovery bytes remain unchanged. |
+| P2 | The doctor authenticates exact lifecycle manifests through `verifyLifecyclePair`, including pending/published files. The matrix refuses missing/corrupt manifests, archive/files, source mismatch and aliases; a lone half is incomplete when custody exists. Unreadable authority does not establish absent custody. Verified bytes, complete pair selection, generation availability, supported conversion and below-floor remedies are separate facts. Current-schema missing-table validation remains a negative control after the approved historical fingerprint correction. |
+| P3 | Mounted Settings tests cover idle/loading/success/failure/failed refresh, authority/backup combinations, counts/spans, upgrade phases and independent credential presence/unavailability. The surface exposes five exact CLI commands through the existing accessible popover. Opening instructions makes no doctor or mutation request. Stale/missing backup is informational; summary health no longer claims writable runtime. Settings editor/preflight contracts remain intact. |
+| P4 | The assigned recovery/conversion/backup suites pass with stopped 46–50 conversion, floor 46 refusal ordering, interruption retention, exact corrected replay, pending/published custody, unchanged independent credentials and preserved external-write uncertainty. Recovery writers, migration statements, conversion/restore admission and runtime-lock implementation are unchanged. |
+| P5 | Four theme/viewport journeys use the built strict browser client and real `registerStorageRoutes → buildStorageDoctor → doctorAuthorityStorage` over private disposable schema-51 roots. Each proves ordinary startup refusal, stops its diagnostic host, executes the real exact-pair CLI restore, restarts and observes cleared markers with identical credentials/retained bytes. A fifth browser case preserves corrupt-authority plus invalid-marker findings. All browser requests are GET. Source identity, pair digest, bundle stamp and request traces are retained in `real-route-final-provenance.json` and `parity-frozen-artifacts/results.json`. |
+
+P5's surrounding shell, Settings, SSE and unrelated API responses use the existing fixture server;
+static transport serves the bound production bundle. This is a real storage-route journey through a
+diagnostic host, not a full production-runtime acceptance claim. The synthetic fixture's unavailable
+span-stream evidence remains visibly unavailable; it is not replaced by fabricated healthy spans.
+No operator authority, credential store, `.env`, legacy live state or external HR system was used.
+
+Both themes pass at 1024×720 and 1440×900, with 1100×760 resize, keyboard activation, Escape/focus
+restoration and reachable scrolling. Existing references retain 1280×720, 1440×900 and 1024×768.
+`playwright-cli` also verified actual Chromium 149.0.7827.55 zoom using an owned extension's
+`chrome.tabs.setZoom/getZoom`: 125% at 1280×900 yields 1024×720 CSS pixels; 200% at 1440×900
+yields 720×450 with the preserved 1024×720 canvas and document scrolling. CSS zoom remains 1.
+`zoom-final-receipts.json`, `zoom-server.json`, `zoom-proof.js` and four `zoom-final-*.png`/a11y
+captures bind the final bundle, reachable credentials/restore command and settled opacity. All four
+captures were visually inspected. The only manual-browser console entry was the fixture favicon 404.
+
+| Assigned gate | Final result / evidence |
+| --- | --- |
+| Full listed focused unit selection plus both conditional boundary guards | PASS: 18 files, 411 tests, exit 0; `focused-gates-verified.log`. Four observed Vitest fork workers under the unchanged configuration; `final-gate-processes.txt`. |
+| Exact authored-file ESLint | PASS: 20 files, exit 0; exact argv in `lint-final.log`, paths in `lint-paths.json`. The later browser-capture assertion also passes `lint-capture-final.log`. |
+| `npm run web:build` / parity bundle validation | PASS; `web-build.log`, `storage-reference-final-update.log` and bundle stamp. Existing Vite chunk-size advisory only. |
+| `npm run test:parity:update -- reference-storage.spec.ts storage-recovery.spec.ts --workers=4` | PASS: 22 cases, exit 0; `storage-reference-final-update.log`. |
+| `npm run test:parity -- reference-storage.spec.ts storage-recovery.spec.ts --workers=4` | PASS: final 22 cases, four resolved workers, zero skipped/unexpected/flaky cases; `storage-parity-frozen-assert.log` and `parity-frozen-artifacts/results.json`. |
+| Actual 125%/200% zoom, both themes | PASS: four final-bundle samples, command geometry and focus assertions, exit 0; `zoom-proof-final-settled-output.txt`, `zoom-final-receipts.json`. |
+| Descriptor/task manifest impact | PASS: computed seven descriptor and 37 task closures; no intersection with changed inputs and no stale generated bytes. `manifest-scope.json`; no regeneration required. |
+| Evidence-record checks | PASS: 24 roadmap binding tests, scoped documentation-tool lint, fresh roadmap, 23 links/fragments, nine identical instruction pairs and maximum complete chain 22,199 bytes; `docs-binding-final.log`, `docs-lint-final.log`, `roadmap-check-final.log`, `docs-audit.json`. Whitespace is clean. |
+
+`reference-attribution.json` names all before/after hashes and reasons: four loaded-doctor states
+and the seven operator-approved inherited queue states, each PNG plus accessibility YAML, 22 changed
+files total. All 17 metadata files and the six Settings states remain unchanged. The original 17
+reference cases and five new journey cases are preserved; original reference spec bytes and the
+before/after title census were checked. All eleven changed PNGs and semantic diffs were inspected.
+The Settings candidate `368496e0d55a259e8dd098c81a37bbcc9a966763` remains intact. 3.1.9.8 must
+resolve reference overlap from its actual combined source and verify the assigned either-order
+combination; neither candidate's images substitute for combined evidence.
+
+After the 411-test run, the only authored change was an additional browser assertion awaiting help
+popover opacity 1 before capture. The complete browser selector and its lint reran. No unit,
+production, dependency, configuration or reference input changed; `evidence-reuse.json` binds this
+comparison. Documentation recording reuses those unchanged product gates and runs the assigned
+roadmap binding, scoped lint, freshness, links/instruction-pair and whitespace checks.
+
+D339 remains explicit: new interactive restore, upgrade and repair interfaces are deferred until a
+concrete workflow need or explicit post-release request. Recovery commands and core proof remain
+implemented and mandatory. No new backup cadence, recovery writer, migration, credential authority,
+runtime admission or Settings behavior was introduced.
+
+All owned Vite, browser, diagnostic HTTP/SSE and database processes are stopped. The two named
+browser sessions were closed; final zoom server PID 74916 and browser PID 74940 exited. Successful
+private runner roots removed themselves. Seven failed synthetic runner roots were removed only
+after verifying recorded ownership and absent process groups; `synthetic-cleanup.json` preserves
+those receipts and failure logs remain. The first specimen launch briefly used Vite's default cache
+through shared `node_modules`; it was stopped and subsequent launches used the private evidence
+cache and explicit read-only dependency allowlist. No dependency installation or tracked dependency
+change occurred. The unintegrated Storage checkout/ref, private build/parity output and evidence
+remain for finalizer intake/cleanup. No merge, push, sibling dispatch or operator-state recovery ran.
+
+**Remaining owner:** the operator launches 3.1.9.8 for combined integration, typecheck, focused group
+checks, reference/generated reconciliation and checkout/ref cleanup. Full coverage, whole-repository
+lint/architecture, broad parity and production/performance/recovery/live acceptance remain 3.1.19 as allocated above;
+none is claimed passed here. This supervisor stops after freezing this assignment.
+
+**Delivery assessment:** one amendment addressed inherited prerequisite defects: schema-51 registry
+use during historical fingerprint reads and seven old queue baselines. Earlier baseline execution
+of the assigned historical recovery suites and storage parity would have exposed these ownership
+conflicts before implementation. Static native-owner/current-table expectations were corrected to
+the prerequisite's explicit ownership without retiring guards. Test-fixture repair rounds addressed
+SQLite reader bookkeeping, a permission-test snapshot, source-table error classification, contention
+output synchronization and browser stop/restart/capture evidence. The contention test now waits for
+the child snapshot message before retaining its active-state assertion; lock behavior and deadlines
+are unchanged. Browser screenshots now wait for the existing entrance animation to settle. Logs
+retain failed and corrected runs; no independent review occurred. Context was compacted during the
+long assignment without adding workers or changing task boundaries. Complete elapsed-time and
+repair-round telemetry is unavailable, so no aggregate cost or quality score is inferred.
