@@ -15,7 +15,7 @@ import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
-import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
+import { createExplorerEditService, buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { ExplorerEditDialog, WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { explorerPresentationChange, explorerPresentationDraft } from "../../../src/dashboard/surfaces/explorer-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
@@ -168,13 +168,13 @@ async function typeReason(value: string): Promise<void> {
   await act(async () => { setValue(node, value); });
 }
 
-function dialog(client: DashboardClient, workflow: ExplorerWorkflowWire, field: "workflow-label" | "workflow-icon" | "workflow-category") {
+function dialog(client: DashboardClient, workflow: ExplorerWorkflowWire, field: "workflow-label" | "workflow-icon" | "workflow-category", actorId = ACTOR_ID) {
   return createElement(DashboardClientProvider, {
     client,
     children: createElement(ExplorerEditDialog, {
       workflow,
       field,
-      actorId: ACTOR_ID,
+      actorId,
       onClose: () => undefined,
       onReadback: () => undefined,
     }),
@@ -314,6 +314,142 @@ describe("DCC5 Explorer edit dialog", () => {
     assert.equal(text().includes("Explorer edit result is unknown"), true);
     assert.equal(text().includes("Explorer edit was not applied"), false);
     assert.equal(text().includes("Apply presentation change"), false);
+  });
+
+  it.each(["workflow-label", "workflow-icon", "workflow-category"] as const)(
+    "retains the exact %s success through the real parent readback and reopens on the new revision",
+    async (field) => {
+      const { wire, first } = servedWorkflows();
+      const value = field === "workflow-label" ? `${first.label} reviewed`
+        : (field === "workflow-icon" ? first.edit.presentation.iconValues : first.edit.presentation.categoryValues)
+          .find((option) => option !== (field === "workflow-icon" ? first.icon : first.category));
+      assert.ok(value !== undefined);
+      const draft = explorerPresentationDraft(first, explorerPresentationChange(first, field, value));
+      const validator = createExplorerEditService({ explorer: explorerQueryDeps(CLOCK, HASH), overrides: { read: () => undefined, readAll: () => [] } });
+      const validated = validator.validate(draft);
+      assert.equal(validated.state, "ready-to-apply");
+      if (validated.state !== "ready-to-apply") throw new Error("valid presentation control refused");
+      const fresh = { ...wire, workflows: wire.workflows.map((workflow) => workflow.id === first.id
+        ? { ...workflow, ...validated.override.presentation, edit: { ...workflow.edit, overrideRevision: validated.override.revision } }
+        : workflow) };
+      let commands = 0;
+      let reads = 0;
+      const client = strictClient({
+        bootstrap: async () => FIXTURE_BOOTSTRAP,
+        validateExplorerEdit: async (requested) => {
+          assert.deepEqual(requested, draft);
+          return validator.validate(requested);
+        },
+        workflowExplorer: async () => ++reads === 1 ? wire : fresh,
+        executeCommand: async (request) => {
+          const command = request as { commandId: string; requestedBy: string; reason: string; payload: unknown; target: unknown };
+          commands += 1;
+          assert.equal(command.requestedBy, ACTOR_ID);
+          assert.equal(command.reason, "Correct presentation");
+          assert.deepEqual(command.payload, { changes: draft.changes });
+          assert.deepEqual(command.target, { workflowId: first.id, expectedVersion: first.version, contractFingerprint: first.contractFingerprint, expectedOverrideRevision: 0 });
+          return CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+            affectedTargets: [{ family: "explorer", workflowId: first.id, revision: 1 }] });
+        },
+      });
+      await render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, {
+        workflowId: String(first.id), onWorkflow: () => undefined, onVersionRegistry: () => undefined, onClose: () => undefined,
+      }) }));
+      await settle();
+      const door = button(`Edit ${field.replace("-", " ")}`);
+      await press(`Edit ${field.replace("-", " ")}`);
+      const input = document.body.querySelector(field === "workflow-label" ? "input" : "select");
+      assert.ok(input instanceof HTMLInputElement || input instanceof HTMLSelectElement);
+      await act(async () => { setValue(input, value); });
+      await typeReason("Correct presentation");
+      await press("Review change");
+      await press("Apply presentation change");
+      assert.equal(commands, 1);
+      assert.equal(reads, 2);
+      assert.match(text(), /Applied and read back exactly/u);
+      assert.match(text(), /override r1/u);
+      assert.equal(text().includes("Review change"), false);
+      assert.equal(text().includes("Apply presentation change"), false);
+      const close = [...document.body.querySelectorAll("button")].find((candidate) => candidate.textContent === "Close");
+      assert.ok(close !== undefined, "the success footer must offer Close");
+      await act(async () => { close.click(); });
+      await act(async () => { await new Promise<void>((resolve) => window.setTimeout(resolve, 0)); });
+      assert.equal(document.activeElement, door);
+      await press(`Edit ${field.replace("-", " ")}`);
+      assert.equal(text().includes("Applied and read back exactly"), false);
+      const reopened = document.body.querySelector(field === "workflow-label" ? "input" : "select");
+      assert.ok(reopened instanceof HTMLInputElement || reopened instanceof HTMLSelectElement);
+      assert.equal(reopened.value, value);
+      assert.equal(button("Review change").disabled, true);
+      assert.equal(commands, 1);
+    },
+  );
+
+  it.each(["actor", "value"] as const)("drops late validation after the %s changes", async (changed) => {
+    const { first } = servedWorkflows();
+    let release: ((result: ReturnType<typeof ready>) => void) | undefined;
+    const draft = explorerPresentationDraft(first, explorerPresentationChange(first, "workflow-label", first.label));
+    const client = strictClient({ validateExplorerEdit: async () => new Promise((resolve) => { release = resolve; }) });
+    await render(dialog(client, first, "workflow-label"));
+    await typeReason("Review original value");
+    await press("Review change");
+    if (changed === "actor") await act(async () => { root?.render(dialog(client, first, "workflow-label", "other-operator")); });
+    else {
+      const input = document.body.querySelector("input");
+      assert.ok(input instanceof HTMLInputElement);
+      await act(async () => { setValue(input, "A different label"); });
+    }
+    assert.ok(release);
+    await act(async () => { release?.(ready(draft)); });
+    assert.equal(text().includes("Apply presentation change"), false);
+  });
+
+  it.each(["target", "actor", "close"] as const)("ignores a late apply response after %s invalidates the editor", async (changed) => {
+    const { first, second } = servedWorkflows();
+    let release: (() => void) | undefined;
+    let reads = 0;
+    const client = strictClient({
+      validateExplorerEdit: async (draft) => ready(draft as ExplorerEditDraft),
+      executeCommand: async (request) => new Promise((resolve) => {
+        const command = request as { commandId: string };
+        release = () => resolve(CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+          affectedTargets: [{ family: "explorer", workflowId: first.id, revision: 1 }] }));
+      }),
+      workflowExplorer: async () => { reads += 1; return servedWorkflows().wire; },
+    });
+    await render(dialog(client, first, "workflow-label"));
+    await typeReason("Review presentation");
+    await press("Review change");
+    await press("Apply presentation change");
+    if (changed === "close") await press("Cancel");
+    else await act(async () => { root?.render(dialog(client, changed === "target" ? second : first, "workflow-label", changed === "actor" ? "other-operator" : ACTOR_ID)); });
+    assert.ok(release);
+    await act(async () => { release?.(); });
+    assert.equal(reads, 0, "a retired editor must not publish another target's readback");
+    assert.equal(text().includes("Applied and read back exactly"), false);
+    assert.equal(text().includes("Explorer edit applied but unverified"), false);
+  });
+
+  it("does not publish readback that arrives after close/reopen", async () => {
+    const { wire, first } = servedWorkflows();
+    let release: ((fresh: typeof wire) => void) | undefined;
+    const client = strictClient({
+      validateExplorerEdit: async (draft) => ready(draft as ExplorerEditDraft),
+      executeCommand: async (request) => CommandResultSchema.parse({ state: "applied", commandId: (request as { commandId: string }).commandId,
+        affectedTargets: [{ family: "explorer", workflowId: first.id, revision: 1 }] }),
+      workflowExplorer: async () => new Promise((resolve) => { release = resolve; }),
+    });
+    await render(dialog(client, first, "workflow-label"));
+    await typeReason("Review presentation");
+    await press("Review change");
+    await press("Apply presentation change");
+    assert.ok(release);
+    await press("Cancel");
+    await act(async () => { root?.render(createElement("div")); });
+    await act(async () => { root?.render(dialog(client, first, "workflow-label")); });
+    await act(async () => { release?.({ ...wire, workflows: [{ ...first, edit: { ...first.edit, overrideRevision: 1 } }] }); });
+    assert.equal(text().includes("Applied and read back exactly"), false);
+    assert.equal(button("Review change").disabled, true);
   });
 
   it("returns keyboard focus to the exact field-row edit door on close", async () => {

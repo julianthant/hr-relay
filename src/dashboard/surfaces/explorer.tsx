@@ -1885,10 +1885,19 @@ export function ExplorerEditDialog({
   const [problem, setProblem] = useState<ExplorerEditProblem | undefined>(undefined);
   const [applied, setApplied] = useState<ExplorerWorkflowWire | undefined>(undefined);
   const validationGeneration = useRef(0);
+  // Only our verified readback may advance the parent basis without dismissing
+  // its outcome. A new target, actor, field or external revision starts fresh.
+  const completedReadback = useRef<{ targetIdentity: string; value: string; actorId: string } | undefined>(undefined);
   const value = editor.targetIdentity === targetIdentity ? editor.value : servedValue;
 
   useEffect(() => {
     validationGeneration.current += 1;
+    const completed = completedReadback.current;
+    if (completed !== undefined && completed.targetIdentity === targetIdentity
+      && completed.value === servedValue && completed.actorId === actorId) {
+      return () => { validationGeneration.current += 1; };
+    }
+    completedReadback.current = undefined;
     setEditor({ targetIdentity, value: servedValue });
     setReason("");
     setReview(undefined);
@@ -1900,7 +1909,8 @@ export function ExplorerEditDialog({
 
   if (field === undefined) return null;
   const draft = explorerPresentationDraft(workflow, explorerPresentationChange(workflow, field, value));
-  const validationBases = `Descriptor v${String(workflow.version)} · contract ${String(workflow.contractFingerprint)} · override r${String(workflow.edit.overrideRevision)}`;
+  const reviewedDraft = review?.result.state === "ready-to-apply" ? review.result.draft : draft;
+  const validationBases = `Descriptor v${String(reviewedDraft.baseDescriptorVersion)} · contract ${String(reviewedDraft.baseContractFingerprint)} · override r${String(reviewedDraft.baseOverrideRevision)}`;
   const canReview = actorId !== undefined && value.trim() === value && value.length > 0 && reason.trim() === reason && reason.length > 0;
   const readbackUncertain = problem?.kind === "result-unknown" || problem?.kind === "applied-but-unverified";
 
@@ -1923,6 +1933,7 @@ export function ExplorerEditDialog({
   };
 
   const close = (): void => {
+    completedReadback.current = undefined;
     invalidateReview();
     onClose();
   };
@@ -1962,6 +1973,8 @@ export function ExplorerEditDialog({
       setProblem({ kind: "validation", message: "The reviewed Explorer change no longer matches this editor. Review it again before applying." });
       return;
     }
+    const generation = ++validationGeneration.current;
+    const isCurrent = (): boolean => generation === validationGeneration.current;
     const request = {
       commandId: crypto.randomUUID(),
       requestedAt: systemClock.now().toISOString(),
@@ -1984,6 +1997,7 @@ export function ExplorerEditDialog({
       let acknowledgedCommandId: string | undefined;
       try {
         const result = await client.executeCommand(request);
+        if (!isCurrent()) return;
         if (!matchesExplorerCommandResultId(result, request.commandId)) {
           throw new Error("Explorer command result did not name this generated command");
         }
@@ -2012,14 +2026,22 @@ export function ExplorerEditDialog({
         }
         acknowledgedCommandId = result.commandId;
         const fresh = await client.workflowExplorer();
+        if (!isCurrent()) return;
         const readback = fresh.workflows.find((entry) => String(entry.id) === String(workflow.id));
         if (!matchesExplorerAppliedReadback(workflow, reviewed.draft, reviewed.override, readback)) {
           throw new Error(`Explorer apply ${result.commandId} did not return the exact reviewed presentation readback`);
         }
+        completedReadback.current = {
+          targetIdentity: `${String(readback.id)}:${String(readback.version)}:${String(readback.contractFingerprint)}:${String(readback.edit.overrideRevision)}:${field}`,
+          value: explorerPresentationValue(readback, field),
+          actorId,
+        };
         onReadback(fresh);
         setBusy(undefined);
         setApplied(readback);
       } catch (error: unknown) {
+        if (!isCurrent()) return;
+        completedReadback.current = undefined;
         const message = error instanceof Error ? error.message : String(error);
         setProblem(acknowledgedCommandId === undefined
           ? { kind: "result-unknown", message }
