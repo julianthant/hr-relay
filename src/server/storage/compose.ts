@@ -115,7 +115,7 @@ const STORAGE_USAGE = [
   "       storage restore --from <manifest.json> [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
-  "           authority and span/authority reconciliation are healthy; the backup arm is reported, not gated (D322)",
+  "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated (D322)",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
   "           this command is the only backup writer (D322) — the dashboard runs no cadence",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
@@ -143,6 +143,11 @@ function formatReport(report: StorageDoctorReport): string {
     );
   } else {
     lines.push(`authority: DEGRADED — ${report.authority.cause.code}: ${report.authority.cause.summary}`);
+  }
+  lines.push(report.recovery.state === "clear" ? "recovery: clear (no interruption markers; not runtime admission)"
+    : `recovery: ${report.recovery.state.toUpperCase()}${report.recovery.state === "unavailable" ? ` — ${report.recovery.cause.summary}` : " — preserve evidence and settle the exact interrupted operation"}`);
+  if (report.recovery.state !== "clear") for (const finding of report.recovery.findings) {
+    lines.push(`  ${finding.marker}: ${finding.state}`);
   }
   lines.push(report.protectedSettings.state === "available"
     ? `protected settings: ${report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(" · ")}`
@@ -222,7 +227,7 @@ function formatReport(report: StorageDoctorReport): string {
   for (const candidate of report.restoreCandidates) {
     if (candidate.state === "verified-compatible") {
       lines.push(
-        `  ok ${candidate.manifestFileName} — created ${candidate.createdAt}, `
+        `  verified bytes ${candidate.manifestFileName} — ${candidate.selection}; restore ${candidate.restoreEligibility.state}; created ${candidate.createdAt}, `
         + `generation ${String(candidate.authorityGeneration)}, age ${formatAge(candidate.ageMs)}`,
       );
     } else {
@@ -608,6 +613,7 @@ export async function composeStorageCommand(
     busyTimeoutMs: 5000,
   }, clock);
   const healthy = report.authority.state === "healthy"
+    && report.recovery.state === "clear"
     && report.spanAuthority.state === "reconciled"
     && report.protectedSettings.state === "available";
   return {

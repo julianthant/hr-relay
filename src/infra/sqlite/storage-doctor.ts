@@ -1,3 +1,5 @@
+import { inspectDoctorPair, inspectRestoreEligibility, inspectStorageRecovery } from "./storage-recovery-status.js";
+import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { ProtectedSettingsNameSchema } from "../../domain/config/protected-settings.js";
 import { TimelineRecordError } from "./timeline-repository.js";
 import { createCredentialStore } from "../config/credential-store.js";
@@ -1066,10 +1068,10 @@ type CandidateWithMtime = Readonly<{
   modifiedMs: number;
 }>;
 
-function backupInvalidCause(error: unknown) {
+function backupInvalidCause(_error: unknown) {
   return StorageHealthCauseSchema.parse({
     code: "backup-invalid",
-    summary: error instanceof Error ? error.message : String(error),
+    summary: "The selected backup could not be authenticated as a complete readable recovery source. Check its manifest, identity, databases and retained files.",
   });
 }
 
@@ -1083,19 +1085,24 @@ async function inspectCandidates(
   directory: string,
   sourceDatabaseIdentity: string,
   authorityInspection: AuthorityCopyInspection | undefined,
+  stateRoot: string,
   clock: Clock,
 ): Promise<readonly CandidateWithMtime[]> {
-  if (!existsSync(directory)) return [];
+  requireDatabaseSourcePath(join(directory, "probe"));
+  try { lstatSync(directory); } catch (error) { if (errnoCode(error) === "ENOENT") return []; throw error; }
   const manifestNames = readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".manifest.json"))
+    .filter((entry) => entry.name.endsWith(".manifest.json") || entry.name.endsWith(".lifecycle.json"))
     .map(({ name }) => name)
     .sort();
   const candidates: CandidateWithMtime[] = [];
   for (const manifestFileName of manifestNames) {
     const manifestPath = join(directory, manifestFileName);
-    const modifiedMs = statSync(manifestPath).mtimeMs;
+    const modifiedMs = lstatSync(manifestPath).mtimeMs;
     try {
-      const verified = await verifyBackupManifestAtPath(manifestPath, sourceDatabaseIdentity);
+      requireDatabaseSourcePath(manifestPath);
+      const paired = manifestFileName.endsWith(".lifecycle.json");
+      const verified = paired ? await inspectDoctorPair(manifestPath, sourceDatabaseIdentity)
+        : await verifyBackupManifestAtPath(manifestPath, sourceDatabaseIdentity);
       const ageMs = clock.nowMs() - Date.parse(verified.manifest.createdAt);
       if (ageMs < 0) throw new Error(`backup manifest ${manifestFileName} was created in the future`);
       const generationGap = authorityInspection === undefined
@@ -1108,6 +1115,10 @@ async function inspectCandidates(
         modifiedMs,
         candidate: RestoreCandidateSchema.parse({
           state: "verified-compatible",
+          selection: paired ? "lifecycle-pair" : "single-database",
+          schemaVersion: verified.manifest.schemaVersion,
+          restoreEligibility: inspectRestoreEligibility({ schemaVersion: verified.manifest.schemaVersion, paired,
+            backupPath: verified.backupPath, stateRoot, authorityAvailable: authorityInspection !== undefined }),
           manifestFileName,
           backupFileName: verified.manifest.backupFileName,
           createdAt: verified.manifest.createdAt,
@@ -1170,12 +1181,12 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     ? initialAuthorityRead.identity
     : undefined;
 
-  const candidates = await inspectCandidates(
-    backupDirectory,
-    sourceDatabaseIdentity,
-    authorityInspection,
-    clock,
-  );
+  const initialRecovery = inspectStorageRecovery(stateRoot, sourceDatabaseIdentity);
+  let candidates: readonly CandidateWithMtime[] = [];
+  let candidateInspectionFailed = false;
+  try {
+    candidates = await inspectCandidates(backupDirectory, sourceDatabaseIdentity, authorityInspection, stateRoot, clock);
+  } catch { candidateInspectionFailed = true; }
   const first = candidates[0];
   const latestVerified = candidates
     .filter((entry): entry is CandidateWithMtime & { candidate: Extract<RestoreCandidate, { state: "verified-compatible" }> } => (
@@ -1184,7 +1195,10 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     .sort((left, right) => Date.parse(right.candidate.createdAt) - Date.parse(left.candidate.createdAt))[0];
 
   let backup: z.infer<typeof BackupHealthSchema>;
-  if (first?.candidate.state === "invalid") {
+  if (candidateInspectionFailed) {
+    backup = BackupHealthSchema.parse({ state: "invalid", cause: { code: "backup-invalid",
+      summary: "Backup directory inspection is unavailable; no restore selection can be established." } });
+  } else if (first?.candidate.state === "invalid") {
     backup = BackupHealthSchema.parse({ state: "invalid", cause: first.candidate.cause });
   } else if (latestVerified === undefined) {
     backup = BackupHealthSchema.parse({
@@ -1251,7 +1265,12 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (spanAuthorityIdentityMismatch) {
     throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
   }
+  const finalRecovery = inspectStorageRecovery(stateRoot, sourceDatabaseIdentity);
+  const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
+    : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
+      cause: { code: "authority-unavailable", summary: "Recovery evidence changed during inspection. Run the doctor again before deciding recovery." } };
   return StorageDoctorReportSchema.parse({
+    recovery,
     authorityUpgrades,
     kind: "authority-storage-doctor",
     tombstoneOrdinals: spanAuthorityRead.tombstoneOrdinalFindings === undefined

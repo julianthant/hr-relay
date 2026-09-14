@@ -25,6 +25,7 @@ export const FIXTURE_STORAGE_DEGRADED_BOOTSTRAP: FrontendBootstrapWire =
 
 /** The strict loaded-doctor fixture: every degraded problem arm in one operator view. */
 export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
+  recovery: { state: "clear" },
   authorityUpgrades: { state: "absent", reason: "journal-empty" },
   protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "protected settings fixture is unavailable" } },
   mode: "read-only",

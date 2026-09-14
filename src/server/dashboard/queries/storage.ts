@@ -31,6 +31,7 @@ export async function buildStorageDoctor(deps: StorageQueryDeps): Promise<Storag
   const report = await doctorAuthorityStorage(deps.doctorOptions, deps.clock);
   return StorageDoctorWireSchema.parse({
     mode: report.mode,
+    recovery: report.recovery,
     authorityUpgrades: report.authorityUpgrades,
     protectedSettings: report.protectedSettings,
     checkedAt: report.checkedAt,

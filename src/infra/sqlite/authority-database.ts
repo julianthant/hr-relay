@@ -2102,7 +2102,8 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   }
   const hash = createHash("sha256");
   hash.update("[");
-  for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name)).entries()) {
+  for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => (hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name))
+    && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "database_state") {

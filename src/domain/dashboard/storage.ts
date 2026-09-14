@@ -26,9 +26,29 @@ export const StorageCauseWireSchema = z.strictObject({
   summary: StorageDiagnosticMessageSchema,
 });
 
+const RecoveryFindingSchema = z.strictObject({
+  marker: z.enum(["lifecycle-restore", "archive-conversion", "archive-restore"]),
+  state: z.enum(["interrupted", "unavailable"]),
+});
+export const StorageRecoveryInspectionWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("clear") }),
+  z.strictObject({ state: z.literal("interrupted"), findings: z.array(RecoveryFindingSchema).min(1) }),
+  z.strictObject({ state: z.literal("unavailable"), findings: z.array(RecoveryFindingSchema), cause: StorageCauseWireSchema }),
+]);
+const RestoreEligibilitySchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("eligible") }),
+  z.strictObject({ state: z.literal("requires-upgrade") }),
+  z.strictObject({ state: z.literal("unsupported"), reason: z.string().min(1) }),
+  z.strictObject({ state: z.literal("incomplete"), reason: z.string().min(1) }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+]);
+
 export const RestoreCandidateWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("verified-compatible"),
+    selection: z.enum(["single-database", "lifecycle-pair"]),
+    schemaVersion: z.number().int().positive(),
+    restoreEligibility: RestoreEligibilitySchema,
     manifestFileName: z.string().min(1),
     backupFileName: z.string().min(1),
     createdAt: IsoInstantSchema,
@@ -153,6 +173,7 @@ const AuthorityUpgradeInspectionWireSchema = z.discriminatedUnion("state", [
 ]);
 
 export const StorageDoctorWireSchema = z.strictObject({
+  recovery: StorageRecoveryInspectionWireSchema,
   mode: z.literal("read-only"),
   authorityUpgrades: AuthorityUpgradeInspectionWireSchema,
   protectedSettings: ProtectedSettingsInspectionWireSchema,
