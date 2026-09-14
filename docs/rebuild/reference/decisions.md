@@ -2469,3 +2469,24 @@ so shared live authorities can advance while immutable archive replay retains it
 The [finalization owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-review-sizing-amendment--2026-09-11)
 replaces four exhausted focused scopes with eight complete focused scopes plus fresh integration,
 Astra/high, maximum three concurrent. Existing gates and local merge conditions remain binding.
+
+
+<a id="notifications-amendment-2026-09-14"></a>
+
+### Notifications amendments — 2026-09-14
+
+Operator-approved with the complete 3.1.9.5 plan; requirements are ratified, implementation is pending.
+These are dated amendments to existing decisions, not new decision numbers or completed build claims.
+
+| Existing decision | Approved amendment and normative owner |
+| --- | --- |
+| D134 / D138 / D262 | Notification-owned SQLite source identity and health observations make source replay a no-op; identity and inbox create/fold are atomic. Distinct events fold once, preserving replayed operator state. This supersedes the historical absence of processing metadata and memory-only restart dedupe, while retaining inbox authority, immutable ledger and no per-attempt OS history. See [dashboard-surfaces §2.6](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14) and [operator-trust §6](operator-trust.md#notifications-behavior-amendment-2026-09-14). |
+| D79b / D86 / D138 | All eight current event kinds get production callers; repeating starts on the third distinct retained matching workflow/step/error-class failure with no time window, including verified archives. Verified-done requires canonical receipt evidence. Actual channel/count/publication identity, current-authority targets and explicit browser delivery are owned by [dashboard-surfaces §9.6](dashboard-surfaces.md#notifications-inbox-amendment-2026-09-14) and [frontend-backend-integration §5.1.6](frontend-backend-integration.md#notifications-wire-amendment-2026-09-14). |
+| D322 / D222 | Narrowly allow notification of actual failed backup operations or verified corrupt backup evidence. Missing/old/generation-stale unrequested backups still do not alert; explicit-only backup writing and unchanged doctor/recovery remain. D222's retired cadence/producer does not return. See [dashboard-surfaces §2.5](dashboard-surfaces.md#backup-notification-amendment-2026-09-14). |
+
+Persistence joins the next schema migration (52 at the approved base), strict registration, supported
+stopped conversion and backup/restore without changing floor 46 or released migrations. Canonical
+archive transfer preserves notification metadata and delete removes associated metadata; frozen
+snapshots stay immutable. Applicable health concerns and numeric thresholds, ownership exceptions,
+negative proofs and focused gates are recorded in the normative contracts and the
+[single task owner](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).

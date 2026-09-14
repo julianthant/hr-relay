@@ -1609,6 +1609,30 @@ workflow-versioning half is row **D8**.
 
 #### 5.1.6 Notifications — the durable inbox and its bell
 
+<a id="notifications-wire-amendment-2026-09-14"></a>
+
+**Approved wire/target amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+Consume the [publication contract](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14)
+and [operator behavior](operator-trust.md#notifications-behavior-amendment-2026-09-14). The notification
+arms of the existing day wire serve actual Ping/Inbox channel, count and publication identity along
+with safe typed targets. Row revision remains the command CAS token; publication identity changes
+only on new source events. Ordinary state commands and replayed observations never look like a new
+publication. Pinned rows retain their closed, immutable lifecycle arm.
+
+A notification-specific query resolves destinations from current canonical live/archive/deleted
+membership: live run on its own date, exact failure, verified saved report, Storage, or explicit
+missing/deleted refusal. Forward only notification navigation through the top-bar/app seam, preserving
+search behavior and the existing Settings draft guard. Strict wire/fixture/route registration changes
+are limited to those fields and ports. The shared transport, SSE protocol, command union and kernel
+semantics are unchanged. Private archive source JSON and arbitrary diagnostic text never leave the
+server through this query or the day wire.
+
+Browser desktop delivery consumes committed publication changes using explicit permission and a
+same-origin Web Locks owner. It does not publish domain events, infer backfill gaps or use row
+revision as a toast trigger. Dismiss is UI-only. The historical implementation paragraph below predates
+D322's retired backup caller; current caller coverage is recorded at dashboard-surfaces §2.6.
+
+
 <!-- roadmap: dash-defaults -->
 
 1. A service publishes a durable, actor-keyed notification row on a closed trigger; the row commits

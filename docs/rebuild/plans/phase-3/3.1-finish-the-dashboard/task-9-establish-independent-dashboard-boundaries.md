@@ -412,7 +412,7 @@ operation summary; the local `ownership.json` also records exact import edges.
 | Later owners | 3.1.10: `DateNav` and date model. 3.1.11: `SessionPanel` and session model. 3.1.11.1: `PreflightPopover`, `PreflightControl`, `useSettingsPreflight`, preflight query/client ports. 3.1.11.2: start commands and start fixture/spec family. 3.1.12: Activity queries/CSV, export command, Activity fixture/spec family; A's Activity summary source remains separate from Queue. 3.1.13: Queue query, queue fixture/spec. 3.1.14: detail queries and detail/diagnostic fixtures/specs. | Existing `start-run*`/`separations-start-*`, `activity-report*`/`cross-date-search`, `run-*`/`diagnostic-bundle-gallery`/`failure-resolution-*` references retain their corresponding later owner. Mixed failure-resolution proof and combined scene membership remain finalizer-owned. These extractions add no new session control, Run or detail feature. |
 
 `SettingsPage` owns the Settings host and draft lifetime; its Storage, preflight and Catalog
-component contracts are existing inputs. Except for 3.1.9.1's bounded shell amendment below,
+component contracts are existing inputs. Except for 3.1.9.1's bounded shell amendment and 3.1.9.5's bounded Notifications amendment below,
 children implement their surface without editing
 `dashboard-app.tsx`, `dashboard-takeovers.tsx`, the query/command aggregate, a sibling's module or
 the shared command union. Dedicated wire files retain A's matching owner. All surface client
@@ -420,7 +420,7 @@ hooks return the exact provider object; the per-surface types introduce no fresh
 render. Compatibility exports in the old shell, top-bar, Settings model and client modules point
 to the implementations; production consumers import the dedicated owners.
 
-Subject only to the bounded shell amendment below, reserved shared inputs are the app/root takeover
+Subject to the bounded shell and Notifications amendments below, reserved shared inputs are the app/root takeover
 registration, provider/transport/subscription,
 `query-parse.ts`, `shared-commands.ts`, `async-resource.ts`, A's root BFF/command/schema/kernel
 registration, `fixture-day.ts`, fixture identity/profile/error helpers, `fixture-bff.ts`, seeded
@@ -722,3 +722,41 @@ the command results. Recording this receipt adds no product input or roadmap bin
 passed binding/lint results are reused on that inspected basis. Regenerate/check the final roadmap
 and rerun the document audit/whitespace check before committing. The final planning handoff verifies
 the committed owner bytes against this checked file, plan reachability, prerequisites and Git state.
+
+
+### Notifications child ownership amendment — 2026-09-14
+
+Operator-approved with the complete [3.1.9.5 execution brief](task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).
+Implementation remains pending. This amendment admits the notification pipeline needed by frozen
+A11/A12 without transferring a sibling's feature ownership or changing an in-flight merge order.
+The exact owned paths and protected seams are in that single task owner.
+
+The 3.1.9.5 supervisor is the sole author of notification-specific publication repositories,
+source identities/health observation state, the next schema migration (52 at its approved base),
+strict table/version registration and notification lifecycle deletion accounting. Floor 46 and
+released migrations stay unchanged. Narrow notification service lifecycle/route registration in
+root BFF composition, notification fields in the day wire and client aggregate, and notification-only
+navigation forwarding in the top bar/app are included. Root command semantics, shared SSE/transport,
+Settings bodies/config, Storage doctor/recovery implementation and Explorer remain protected.
+
+Notification fixtures, the owned backfill/notification browser scenarios, focused notification
+proofs, and directly affected strict fixture/architecture registration hunks belong to this child.
+It may regenerate its affected build manifest using the generator. It may not refreeze existing
+PNG families, alter shared scene membership or hand-edit generated output. New scenarios use owned
+profiles. Canonical live/archive readers remain inputs; the child adds no workflow behavior or
+operator-state conversion.
+
+The plan is delivered on retained ref `codex/plan-3.1.9.5`. Implementation creates
+`codex/3.1.9.5-notifications` in `/Users/julianhein/Projects/hr-worktree-notifications` from the exact
+verified planning commit, which already contains the accepted parent and 3.1.8 prerequisites.
+Remove the owned planning checkout before launch to respect the four-auxiliary-worktree ceiling.
+This direct committed-ref delivery does not require or authorize a planning merge into `master`.
+
+This child adds no dependency on a sibling's unfinished candidate. Existing Settings, Storage and
+Explorer plans retain their ownership, resource schedules and merge order. The notification changes
+must remain compatible with either integration order; overlapping bounded registration or plan-text
+hunks are combined by the already assigned **3.1.9.8 finalizer**, from the exact approved owners.
+That finalizer owns the shared integration target, combined generation, focused integration checks
+and candidate cleanup under operator instruction. Do not create a peer reservation chain or merge
+another candidate inside this child. No independent review for Phase 3.1; full acceptance remains
+3.1.19. No push or task dispatch is authorized.

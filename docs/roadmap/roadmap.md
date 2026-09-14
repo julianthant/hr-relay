@@ -1759,7 +1759,7 @@ log:
 ##### 5 · Finish notifications and delivery behavior {#dash-notifications}
 status: planned
 date: D344 · former 3.1.10-3 · independent worktree after named prerequisites
-doc: 3.1/task-9-5-finish-notifications-and-delivery-behavior §Task 3.1.9.5 · Finish notifications and delivery behavior · ref:operator-trust §4 · ref:dashboard-surfaces §2.6
+doc: 3.1/task-9-5-finish-notifications-and-delivery-behavior §Task 3.1.9.5 · Finish notifications and delivery behavior · ref:operator-trust §6 · ref:dashboard-surfaces §2.6
 
 builds:
 - [ ] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
@@ -1771,6 +1771,7 @@ needs:
 - dash-boundary-foundation
 
 log:
+- 2026-09-14 | approved 3.1.9.5 execution brief | N1–N5, durable source identities, all eight production triggers, actionable inbox and explicit browser delivery; narrow shared ownership and contract amendments; focused candidate for 3.1.9.8, full acceptance at 3.1.19; implementation pending
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.2; former 3.1.10-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 notification seam in `phase-3-1-dashboard-c21194e18-r17-notifications`, parallel with Tasks 10, 14 and 26 · left: Task 8 ownership freeze
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9.5; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
