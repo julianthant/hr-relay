@@ -33,6 +33,11 @@ planning persistence to continue. This approval covers the assignment below and 
 persistence, validation, commit and verified supervisor handoff. It does not start implementation,
 dispatch another task, authorize a push, or direct candidate integration into the shared target.
 
+The operator subsequently directed **"merge the plan"** on 2026-09-14, authorizing this planning
+session to integrate the documentation into local `master` and remove its temporary branch/worktree.
+That direction is limited to planning documentation; product-candidate integration remains with the
+operator-directed 3.1.9.8 finalizer below.
+
 ### Outcome and scope
 
 Complete the frozen [A08–A10 acceptance rows](task-8-acceptance-matrix.md#a08) over the accepted
@@ -237,9 +242,10 @@ absolute checkout, owning section, E1–E4, focused/no-review cadence and finali
 | Item | State |
 | --- | --- |
 | Approval | Approved by the operator on 2026-09-14; full proposal retained above. |
-| Persistence | Full approved content persisted in the isolated planning worktree from the verified discovery base. Documentation checks passed as recorded below; the handoff resolves and verifies the exact candidate SHA. |
+| Persistence | Full approved content committed as `958018aa2fbce724de176922cfcd8873f355bc96`, integrated into local `master` at `eb5c1fe5f7fc30eabf4b89e4743f78d575583d29`. The verified handoff resolves the subsequent recording-only commit as the final approved-plan SHA and implementation creation base. |
 | Implementation | Not started; all task acceptance checkboxes remain open. |
-| Shared-target integration | Awaiting explicit operator direction for this documentation candidate; no integration owner has been appointed by inference. |
+| Shared-target integration | Complete under the operator's explicit "merge the plan" direction. The merged tree exactly equals the validated candidate tree; all product inputs are unchanged. |
+| Planning cleanup | Complete: the planning worktree registration, physical path and `codex/plan-3.1.9.4` ref are gone. Only its owned dependency symlink was removed; shared dependencies and Settings/Storage worktrees remain. Planning evidence is retained at the namespace below. |
 
 ### Planning validation — 2026-09-14
 
@@ -255,3 +261,21 @@ This is retained planning evidence, not a second plan or implementation checkout
 | Approved controls and scope | The approved E1–E4 sequence, medium/zero-worker allocation, no-review cadence, exact owners, proof/gates and finalizer conditions are retained. Only this task owner differs from the discovery base; no implementation, test, configuration or generated input changed. |
 | Whitespace and committed-content verification | `git diff --check` and staged whitespace checks are required before the exact-path commit. The planner then reads this file from the resulting SHA and verifies its complete content, ref reachability and prerequisite ancestry before returning the candidate. |
 | Product acceptance | Not run or claimed during planning. The mounted lifecycle observation above is discovery evidence only; E1–E4 and finalizer/3.1.19 acceptance remain open. |
+
+### Planning integration and launch release — 2026-09-14
+
+The authorized integration has parents `07221394ece638d5de9f38407654ad2b305f1f9f` and
+`958018aa2fbce724de176922cfcd8873f355bc96`. Its tree equals the checked documentation candidate,
+so the recorded 24/24 binding tests, scoped lint, generation/freshness, links and instruction checks
+retain their exact inputs. `integration-verification.json` records that equality; no broad product
+gate is inferred from it. `cleanup-verification.json` records removal of the exact planning checkout
+and ref after ancestry, cleanliness, ignored-file and lock checks. No other task was archived.
+
+This closure record changes only the owning plan's authorization and verified state, not E1–E4,
+scope, owners, effort, gates or acceptance. Run final roadmap generation/freshness, binding tests,
+link/twin/chain and whitespace checks for this record; the scoped lint's source inputs are unchanged.
+Commit the exact owner, then verify its complete `git show` content and the accepted prerequisite's
+ancestry from local `master`. The resulting full commit is the handoff's approved-plan SHA and
+creation base. Before issuing **READY**, also recheck the proposed implementation branch/path are
+available and capacity remains within four auxiliary worktrees. Implementation is still unstarted;
+the operator opens the fresh Astra medium `/supervise 3.1.9.4` session.
