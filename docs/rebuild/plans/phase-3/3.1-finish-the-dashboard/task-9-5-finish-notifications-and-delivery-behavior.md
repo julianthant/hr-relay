@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration, together with the [approved Notifications ownership amendment](task-9-establish-independent-dashboard-boundaries.md#notifications-child-ownership-amendment--2026-09-14). The complete execution brief below is approved; implementation remains pending.
+Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration, together with the [approved Notifications ownership amendment](task-9-establish-independent-dashboard-boundaries.md#notifications-child-ownership-amendment--2026-09-14). The complete execution brief below is approved. N1–N5 focused candidate evidence is recorded below; group integration and full acceptance remain pending.
 
 - [ ] Publish every declared trigger and prove durable row-before-delivery, dedupe, restart,
   reconnect-gap, permission-denied, lifecycle controls, and target navigation.
@@ -295,3 +295,97 @@ assignment, check named-ref reachability/prerequisite ancestry and available exe
 then remove only `/Users/julianhein/Projects/hr-worktree-notify-plan` while retaining
 `codex/plan-3.1.9.5`. The returned full commit SHA binds the supervisor's execution base. The primary
 checkout stays at the inspected base; local master integration remains operator-directed 3.1.9.8 work.
+
+### Focused candidate — 2026-09-14
+
+**N1–N5 are complete for focused intake.** Product completion remains open for operator-directed
+3.1.9.8 integration and branch/worktree cleanup; full acceptance belongs to 3.1.19. No independent
+review was performed under the Phase 3.1 exception. No worker, reviewer or sibling task was dispatched.
+
+| Custody | Verified identity |
+| --- | --- |
+| Base / retained plan | `897b3a2b232621db14955c0071928babf36b9e18`; `codex/plan-3.1.9.5` remains at that exact SHA. |
+| Persistence commit | `de29e3f7c79fb6517db0bcdf7196dfcd7678d962` — 15 exact paths. |
+| Implementation candidate | `f77ba90f6183761c964eac334b3b9cc08f3cb827` — 34 additional exact paths; includes persistence and approved planning ancestry. |
+| Frozen intake ref | `codex/3.1.9.5-notifications`; its final documentation-only recording commit is returned in the supervisor's completion message and external `frozen-candidate.json`. Integrate that full tip. |
+| Checkout | `/Users/julianhein/Projects/hr-worktree-notifications`. Created from the exact plan commit after free branch/path, four-worktree capacity, ownership and module-instruction checks. |
+| Prerequisites | 3.1.8 `e182022edfa0cd05a46a74358cd3296bcade6e79`, B `3d4d8c0c64cf2e96096b193966a66741861d6f1c`, A `c990662e91604cfd38baa53e12bfb6e7c60610eb` and Shell `251d471b27dcdb0d32027fc5dd9acffffe3c6449` remain ancestors. |
+| Preserved resources | Primary master `9f9dfe3566084e165bd508ae8b66dc3ebe325010`; Explorer, Settings and Storage worktrees/refs preserved. Four auxiliary worktrees remain. No operator-state conversion, merge or push. |
+
+**Operator-approved registration amendments.** The operator answered `approve` to the exact
+registration patch in `src/infra/compat/backup-inspection.ts` (two notification table names and
+historical schema 51 admission) and `src/domain/run/deleted-run.ts` (notification publication deletion
+accounting). A subsequent real restore/upgrade rerun exposed the companion manifest bound in protected
+`src/infra/sqlite/recovery-contracts.ts`; the operator explicitly approved changing its historical
+upper bound from `50` to `51`. Those literal corrections are applied. The recovery floor remains
+**46**, released migrations **1–51** remain immutable, and migration 52's pinned digest is
+`360f6b9bb5725cc9df6e48202cb2900dd9870270c332782d3377453445b81bb5`.
+No general recovery behavior changed.
+
+| Step / proof boundary | Implemented result and executed proof |
+| --- | --- |
+| N1 — publication | Atomic source identity plus inbox create/fold/adoption; replay preserves count, read/snooze and version. `notification-publication.test.ts` proves concurrent replay, distinct sources, rollback, real process exit before/after commit, restart, historical adoption and failed delivery. No OS attempt ledger. |
+| N1 — recovery | `notification-upgrade.test.ts` exercises fresh schema 52, supported stopped conversions 46–51, interrupted recovery and exact metadata backup/restore. Supported-conversion, backup, restore-drill, migration immutability and table-generation suites also pass. Synthetic isolated authority only. |
+| N2 — production callers | Canonical observer produces run-failed, subject-mismatch, gate-opened, write-parked, repeating-failure and verified-done; health observer produces storage-degraded; existing server-resume boundary remains the sole backfill-gap producer. Failed observed facts remain pending across subsequent polls, publication failures are exposed through closed status codes, reads serialize and shutdown drains. |
+| N2 — identity / archive | Producer suite proves distinct retained failure counts, third-failure threshold including real frozen archives, publication of a live observation after transfer, restart without replay, canonical deletion of owned metadata, dry-run/warning/missing/mismatched/corrupt archive evidence and publication retry. |
+| N2 — health | Real read-only integrity inspection, actual backup manifest verification without a backup writer, generation-stale backup acceptance, actual worker lease boundary at 60 seconds, disk/WAL thresholds, clear/re-enter and inapplicable outbox are exercised. |
+| N3 — wire / commands | Actual channel, count and stable publication identity served for ordinary and pinned rows; safe text composed from closed triggers. Inbox/kernel regressions preserve actor/CAS, exact/divergent replay, pinned refusals and independent read/snooze state, including expired snooze. Projector/stream and privacy guards pass. |
+| N3 — destinations | Current authority resolves own-date live run, exact current failure, verified saved report and Storage; actor, malformed identity, deleted/missing target and changed lookup refusal are explicit. Model proof and browser navigation prove dirty-Settings cancellation preserves the draft and accepted navigation rechecks the destination. |
+| N4 — desktop | Explicit enable gesture, silent Ping delivery, real same-origin Web Locks owner and fresh owner baseline. Unit/browser cases cover grant/default/denial, unsupported capability, constructor/async failure, two tabs and owner closure, replay/reload/reconnect, read/snooze, Inbox suppression and newly committed pins. API acceptance does not prove a person saw a toast. |
+| N4 — UI | `/ui` Components executed locally using existing primitives; specimen inspected with playwright-cli. Authoritative filtered parity passes both Paper Ink and Graphite Warm, 1024×720 and 1440×900 at 125% zoom, keyboard opening/Escape focus restoration, bounded scrolling and pins under every filter. Four final PNGs inspected/retained; existing reference images unchanged. |
+| N5 — candidate | Implementation split into the two exact-path commits above; this evidence-only record preserves focused outcomes and deferred ownership. No required focused failure is deferred. |
+
+Evidence root: `/Users/julianhein/Projects/hr-notifications-evidence-20260914/`. Full logs, expanded
+argv, final non-documentation SHA-256 input map (`final-inputs.json`) and retained browser artifacts
+are outside the checkout. Source/test/build/config/dependency inputs match the implementation
+candidate; the final commit changes only this owner. No code-gate result is attributed to unrun
+broad acceptance. The consumed N1 handoff's facts and approvals now live here and its exact file was
+removed after verification.
+
+| Gate | Exact command / result / artifact |
+| --- | --- |
+| Typecheck | `npm run typecheck` — exit 0 on final implementation inputs; `n5-typecheck-freeze.log`. |
+| Approved focused set | The exact 17-suite `npm run test -- …` command in the approved schedule above — exit 0, **17 files / 271 tests**; expanded argv `n5-focused-green-argv.json`, log `n5-focused-green.log`, exit receipt `n5-focused-green-exit.json`. All named new suites executed. |
+| Recovery / registration neighbors | `npm run test -- tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/dashboard-wire-boundary.test.ts tests/unit/sqlite-authority-database.test.ts` — exit 0, **5 files / 167 tests**; `n5-recovery-final.log` and matching argv/exit JSON. |
+| Scoped lint | Expanded command below — exit 0 over **49 paths**, `n5-lint-final.log` / `n5-lint-argv.json`. The later strict pinned expectation change was separately rechecked with `npx eslint tests/unit/notification-inbox.test.ts --max-warnings 0`, exit 0, `n5-lint-pinned-expectation.log`. |
+| Browser / build | `npm run test:parity -- tests/parity/backfill-gap.spec.ts tests/parity/notifications.spec.ts --workers=4` — exit 0, **8 scenarios**, authoritative global build/setup and signed a11y evidence; `n5-parity-final.log`, `browser-final/`. No reference refreeze. |
+| Manifest | `npm run build:manifest` then `npm run build:manifest:check` — both exit 0; `n5-manifest.log`, `n5-manifest-check.log`; no generated source diff. |
+| Documentation | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` — exit 0, **1 file / 24 tests**; `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts --max-warnings 0` and `npm run roadmap:check` — exit 0. `python3 /Users/julianhein/Projects/hr-notifications-evidence-20260914/check-candidate.py` and `git diff --check` — exit 0: 13 owner links valid, nine instruction pairs equal, largest chain 18,376 bytes, four prerequisite ancestors, approved brief unchanged, 2,366 non-documentation inputs identical to the implementation commit. Logs: `n5-roadmap-binding.log`, `n5-doc-lint.log`, `n5-roadmap-check.log`; receipt: `candidate-validation.json`. |
+| Deferred | Full coverage, broad parity, performance and live acceptance were not run or claimed. 3.1.9.8 runs its focused combined integration schedule; 3.1.19 owns full acceptance and repairs. |
+
+Expanded lint argv also enumerates the exact 49 implementation/proof paths. The only additional
+candidate path is this task owner:
+
+```sh
+npx eslint src/dashboard/app/dashboard-app.tsx src/dashboard/client/index.ts src/dashboard/client/notification-queries.ts src/dashboard/client/queries.ts src/dashboard/state/notification-client.ts src/dashboard/state/notification-delivery.ts src/dashboard/state/notification-navigation.ts src/dashboard/state/use-notification-delivery.ts src/dashboard/surfaces/notification-bell-model.ts src/dashboard/surfaces/notification-bell.tsx src/dashboard/surfaces/top-bar.tsx src/domain/authority.ts src/domain/dashboard/projection.ts src/domain/notifications.ts src/domain/run/deleted-run.ts src/infra/compat/backup-inspection.ts src/infra/sqlite/authority-database.ts src/infra/sqlite/migrations.ts src/infra/sqlite/notification-publications.ts src/infra/sqlite/recovery-contracts.ts src/infra/sqlite/storage-records.ts src/server/dashboard/compose.ts src/server/dashboard/compose/notification-health.ts src/server/dashboard/compose/notification-sources.ts src/server/dashboard/compose/notifications.ts src/server/dashboard/queries/notifications.ts src/server/dashboard/routes/api-types.ts src/server/dashboard/routes/api.ts src/server/dashboard/routes/notifications.ts src/services/notifications/inbox.ts src/services/notifications/observation.ts src/services/notifications/storage-health.ts tests/parity/backfill-gap.spec.ts tests/parity/helpers/fixture-notifications.ts tests/parity/notifications.spec.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/notification-durability.test.ts tests/unit/dashboard-wire.test.ts tests/unit/dashboard/notification-delivery.test.ts tests/unit/dashboard/notification-inbox-model.test.ts tests/unit/notification-gate-park.test.ts tests/unit/notification-inbox.test.ts tests/unit/notification-publication.test.ts tests/unit/notification-upgrade.test.ts tests/unit/server/notification-producers.test.ts tests/unit/server/notification-target.test.ts tests/unit/server/run-queue-projection.test.ts tests/unit/sqlite-authority-database.test.ts tests/unit/storage-health-notifier.test.ts --max-warnings 0
+```
+
+**Expectation decisions and delivery assessment.** Two planning omissions required operator-approved
+registration amendments: backup/delete registration, then the historical manifest admission bound.
+Checking the complete migration-to-backup-to-delete registration path during planning would have
+avoided those pauses. These amendments complete the approved behavior; they do not broaden recovery.
+
+Implementation repairs caught by focused proofs included retained expired snoozes, strict wire
+fixtures, archive fixture/source shapes, retry retention, pinned desktop delivery and accessibility
+attachment/theme setup. The first N5 run had two old-contract expectations: Storage now has its
+approved destination, and the retired backup helper's identical event cannot invent a new source.
+Those expectations changed under approved decisions 1/5/7; exact replay equality and private
+fingerprint exclusion were added, while the production observer separately proves health re-entry.
+The three old durability fold assertions now use distinct failure IDs and retain their original
+fold/unread/snooze outcomes. The projector ordering assertion uses exact IDs because public titles
+are now safely composed. Strict pinned assertions add delivery fields while preserving refusal of
+revision, link, mutable state, Inbox channel and count changes.
+
+The pre-existing `sqlite-authority-database.test.ts` generation-membership assertion failed on the
+unchanged primary base because its Explorer case was absent (`preexisting-explorer-registration.log`).
+Its existing supported Explorer fixture now supplies the missing registration case; production
+Explorer code and membership assertions are unchanged. New notification table cases are included.
+No guard was added or retired, so guard inventory remains unchanged. Historical repair telemetry is
+partial; no total repair count or elapsed-time savings is inferred. The interrupted N1 state was
+consumed, approvals verified and required gates rerun; no assignment resizing or extra agents occurred.
+
+Owned verification browser `notifications-3195` is closed; the ephemeral specimen port 57791 has no
+listener. Parity fixtures closed their owned servers/contexts. The ignored dependency symlink and
+build/evidence outputs remain within the implementation checkout for finalizer cleanup. Operator
+ports 3938/5174, runtime authority, credentials and legacy state were not used. Retain this branch,
+worktree and planning ref until operator-directed 3.1.9.8 consumption and cleanup. No self-integration.
