@@ -46,3 +46,5 @@ export function createDashboardClient(input: Readonly<{
       subscribeDashboardDay({ ...subscriptionInput, transport }),
   });
 }
+
+export type { NotificationQueries } from "./notification-queries.js";

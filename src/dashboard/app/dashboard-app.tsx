@@ -1,3 +1,4 @@
+import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
 import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../domain/absence.js";
@@ -631,6 +632,18 @@ function LoadedApp({
     [route, setRoute, day, leaveSettings],
   );
 
+  const openNotification = useCallback<OpenNotification>((id, opened, refused) => {
+    void navigateNotification({ lookup: () => client.notificationTarget(id), guard: leaveSettings, refused,
+      open: target => {
+        const base = routeForCrossDateSearchResult(route, { runId: "", partitionDay: day });
+        if (target.kind === "storage") setRoute({ ...base, run: undefined, section: undefined, settings: "storage" });
+        else if (target.kind === "archive") setRoute({ ...base, run: undefined, section: undefined, archive: target.runId, archiveView: "runs" });
+        else setRoute({ ...base, day: target.day, run: target.runId, section: "logs" });
+        opened();
+      },
+    });
+  }, [client, leaveSettings, route, day, setRoute]);
+
   const selectCrossDateRun = useCallback(
     (result: CrossDateSearchResult): void => {
       leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, result), section: "logs" }));
@@ -1210,6 +1223,8 @@ function LoadedApp({
         onOpenRun={selectRun}
         onOpenCrossDateResult={selectCrossDateRun}
         notifications={dayNotifications}
+        onOpenNotification={openNotification}
+        notificationConnected={connection.state === "live" && dayWire !== undefined}
         actorId={boot.actor.id}
         nowIso={nowIso}
         storage={boot.storage}

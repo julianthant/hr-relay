@@ -1,3 +1,4 @@
+import { createNotificationQueries, type NotificationQueries } from "./notification-queries.js";
 import type { ActivityQueries } from "./activity-queries.js";
 import { createActivityQueries } from "./activity-queries.js";
 import type { ArchiveQueries } from "./archive-queries.js";
@@ -21,9 +22,9 @@ import { createStorageQueries } from "./storage-queries.js";
 import type { DashboardTransport } from "./transport.js";
 
 
-export interface DashboardQueries extends ShellQueries, QueueQueries, DetailQueries, StorageQueries, SettingsQueries, PreflightQueries, IntakeQueries, ExplorerQueries, ArchiveQueries, ActivityQueries {}
+export interface DashboardQueries extends NotificationQueries, ShellQueries, QueueQueries, DetailQueries, StorageQueries, SettingsQueries, PreflightQueries, IntakeQueries, ExplorerQueries, ArchiveQueries, ActivityQueries {}
 
-export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {return Object.freeze({...createShellQueries(transport),...createQueueQueries(transport),...createDetailQueries(transport),...createStorageQueries(transport),...createSettingsQueries(transport),...createPreflightQueries(transport),...createIntakeQueries(transport),...createExplorerQueries(transport),...createArchiveQueries(transport),...createActivityQueries(transport)});}
+export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {return Object.freeze({...createNotificationQueries(transport),...createShellQueries(transport),...createQueueQueries(transport),...createDetailQueries(transport),...createStorageQueries(transport),...createSettingsQueries(transport),...createPreflightQueries(transport),...createIntakeQueries(transport),...createExplorerQueries(transport),...createArchiveQueries(transport),...createActivityQueries(transport)});}
 export { createActivityQueries } from "./activity-queries.js";
 export type { ActivityQueries } from "./activity-queries.js";
 export { createArchiveQueries } from "./archive-queries.js";

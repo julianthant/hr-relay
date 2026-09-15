@@ -87,7 +87,7 @@ describe("backup-health notifier (D222)", () => {
     assert.equal(unchanged[0]?.version, 1);
   });
 
-  it("stale → missing is a new transition with its own identity; a later stale FOLDS into the first row", async () => {
+  it("retains distinct legacy health identities without treating a source replay as a new occurrence", async () => {
     const { inbox } = world();
     const notifier = createBackupHealthNotifier({ inbox });
     await notifier.observed("stale");
@@ -97,14 +97,16 @@ describe("backup-health notifier (D222)", () => {
     assert.equal(rows.length, 2);
     assert.ok(rows.some((row) => row.title === "Storage failed — backup"));
 
-    // Recovery is recorded but never published (no trigger arm exists for it);
-    // the NEXT stale episode dedupes into the row that already said it.
+    // This retired producer has no durable occurrence identity. Replaying its
+    // same event cannot invent a new occurrence under the publication contract.
+    // The production health observer proves distinct episodes separately.
     await notifier.observed("current");
     await notifier.observed("stale");
     const after = inbox.list(LOCAL_OPERATOR_ACTOR_ID);
     assert.equal(after.length, 2);
     const staleRow = after.find((row) => row.title === "Storage degraded — backup");
-    assert.equal(staleRow?.count, 2);
+    assert.equal(staleRow?.count, 1);
+    assert.deepEqual(staleRow, rows.find((row) => row.title === "Storage degraded — backup"));
   });
 
   it("a failed publish forgets nothing: the same transition retries on the next observation", async () => {

@@ -1225,7 +1225,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
       { workflowId: "person-lookup", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
       { workflowId: "separations-kuali-finalization", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
     ]);
-    assert.deepEqual(day.notifications.map(({ title }) => title), ["earlier id", "later id", "oldest"]);
+    assert.deepEqual(day.notifications.map(({ notificationId }) => notificationId), [uuidOf(7030), uuidOf(7031), uuidOf(7032)]);
+    assert.deepEqual(day.notifications.map(({ title }) => title), ["Run failed", "Run failed", "Run failed"]);
     assert.equal(day.notifications[0].severity, "error");
     assert.equal(day.notifications[0].state, "unread");
   });

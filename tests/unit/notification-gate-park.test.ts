@@ -209,9 +209,9 @@ describe("gate-park notifier: the durable row it actually writes", () => {
    * D262's surface half. The bell's navigate affordance has existed since 2i-B
    * and was UNREACHABLE, because nothing put a link on the wire — so a needs-you
    * alert could only ever be marked read. This pins the derivation the button
-   * reaches, and its refusal: a row that names no run draws no button.
+   * reaches, including the approved Storage destination without a run.
    */
-  it("serves the run link on the wire, and none for a row that names no run", async () => {
+  it("serves exact run and Storage destinations without diagnostic prose", async () => {
     const { clock, inbox } = realWorld();
     const notifier = createGateParkNotifier({ inbox });
     const first = await notifier.observed([PARK_A]);
@@ -234,6 +234,7 @@ describe("gate-park notifier: the durable row it actually writes", () => {
     const storageWire = notificationWireOf(storage.notification, clock.nowMs());
     assert.equal(storageWire.kind, "notification");
     if (storageWire.kind !== "notification") assert.fail("storage degradation must project an ordinary notification");
-    assert.equal(storageWire.link, undefined);
+    assert.deepEqual(storageWire.link, { kind: "storage" });
+    assert.equal(JSON.stringify(storageWire).includes("ab".repeat(32)), false);
   });
 });

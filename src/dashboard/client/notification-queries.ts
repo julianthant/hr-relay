@@ -1,0 +1,23 @@
+import { NotificationWireSchema, type NotificationWire } from "../../domain/dashboard/projection.js";
+import { z } from "zod";
+import { NotificationIdSchema } from "../../domain/ids.js";
+import { NotificationObservationStatusSchema, NotificationTargetSchema, type NotificationTarget } from "../../domain/notifications.js";
+import { parseOrThrow } from "./query-parse.js";
+import type { DashboardTransport } from "./transport.js";
+export interface NotificationQueries {
+  notificationSnapshot(): Promise<readonly NotificationWire[]>;
+  notificationTarget(id: string): Promise<NotificationTarget>;
+  notificationStatus(): Promise<z.infer<typeof NotificationObservationStatusSchema>>;
+}
+export function createNotificationQueries(transport: DashboardTransport): NotificationQueries {
+  return Object.freeze({
+    async notificationSnapshot() { return parseOrThrow(z.array(NotificationWireSchema), "GET notifications", await transport.requestJson("/api/v1/notifications")); },
+    async notificationTarget(id: string) {
+      const path = `/api/v1/notifications/${NotificationIdSchema.parse(id)}/target`;
+      return parseOrThrow(NotificationTargetSchema, "GET notification target", await transport.requestJson(path));
+    },
+    async notificationStatus() {
+      return parseOrThrow(NotificationObservationStatusSchema, "GET notification status", await transport.requestJson("/api/v1/notifications/status"));
+    },
+  });
+}

@@ -1,3 +1,4 @@
+import { registerNotificationRoutes } from "./notifications.js";
 import { registerShellRoutes } from "./shell.js";
 import { registerSettingsPreflightRoutes } from "./settings-preflight.js";
 import { registerSettingsRoutes } from "./settings.js";
@@ -70,6 +71,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
   registerTrustRoutes(app, deps);
   registerShellRoutes(app, deps);
+  registerNotificationRoutes(app, deps);
   registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
   registerStorageRoutes(app, deps);

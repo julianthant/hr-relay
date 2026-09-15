@@ -1,3 +1,6 @@
+import { createNotificationObserver } from "../../../services/notifications/observation.js";
+import { readNotificationSources } from "./notification-sources.js";
+import { createNotificationHealthObserver, readNotificationHealth } from "./notification-health.js";
 import { RunRecordService } from "../../../core/run-record-service.js";
 import type { Clock } from "../../../domain/clock.js";
 import { type IdFactory } from "../../../domain/identifiers.js";
@@ -19,17 +22,7 @@ import {
 import { createTrustRunReader } from "../../trust/canonical-reader.js";
 import { listLiveTrustRuns, type TrustRunReader } from "../../trust/run-reader.js";
 
-/**
- * D262's read: every run currently parked at a gate, narrowed to the shape
- * `GateParkNotifier.observed` takes. Exported (not a `createDashboardRuntime`
- * closure) so a scenario test can prove the SAME fold the running composition
- * calls, rather than a hand-copy that could drift from it unnoticed. Lives
- * here rather than in `src/services/notifications/gate-park.ts` because that
- * module's own header is explicit that the notifier "holds no authority
- * handle and does no I/O of its own" — this function does both, so it belongs
- * with the other authority-reading folds the composition owns (see
- * `readBackupSummary` below).
- */
+/** Retained gate-watch adapter; production observation also includes canonical occurrence identity. */
 export function readGateParks(database: AuthorityDatabase, reader: TrustRunReader = createTrustRunReader(database)): readonly GateParkObservation[] {
   return database.withAuthorityReadSnapshot(() => listLiveTrustRuns(reader).filter(run => run.lifecycle.state === "parked-gate").map((run) => {
     // The repository refuses such a row before it reaches here; this keeps the
@@ -45,8 +38,11 @@ export function readGateParks(database: AuthorityDatabase, reader: TrustRunReade
   }));
 }
 
-export function createTrustNotifications(input: { database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list"> }) {
-  const { database, clock, ids } = input;
+export function createTrustNotifications(input: { database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list">; stateRoot?: string }) {
+  const { database, clock, ids, stateRoot } = input;
   const inbox = createNotificationInbox({ authority: database, clock, ids, runReader: input.reader, actorId: LOCAL_OPERATOR_ACTOR_ID });
-  return { inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
+  const observer = createNotificationObserver({ inbox, read: () => readNotificationSources(database, input.reader),
+    health: stateRoot === undefined ? async () => {} : createNotificationHealthObserver({ database, clock, inbox, read: () => readNotificationHealth({ database, clock, reader: input.reader, stateRoot }) }),
+  });
+  return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }

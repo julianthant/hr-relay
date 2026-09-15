@@ -1,3 +1,4 @@
+import type { OpenNotification } from "../state/notification-navigation.js";
 import {
 Moon,
 ShieldCheck,
@@ -96,6 +97,8 @@ function ShellViewSwitcher({
  */
 export const TopBar = memo(function TopBar({
   notifications,
+  onOpenNotification,
+  notificationConnected,
   actorId,
   nowIso,
   preflight,
@@ -118,6 +121,8 @@ export const TopBar = memo(function TopBar({
   onOpenCrossDateResult,
 }: {
   notifications: readonly NotificationRowWire[];
+  onOpenNotification: OpenNotification;
+  notificationConnected: boolean;
   actorId: string;
   /**
    * The app's ONE live instant (D256) — the same value the queue rows, the
@@ -231,7 +236,7 @@ export const TopBar = memo(function TopBar({
             absence removes it, because an indicator over no report would
             invent a pass. */}
         {preflight !== undefined && <PreflightPopover checks={preflight} onRerun={onPreflightRerun} />}
-        <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenRun={onOpenRun} />
+        <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenNotification={onOpenNotification} connected={notificationConnected} />
         {/* THE KEYBOARD GLYPH IS GONE. Operator, on the demo: *"the keyboard
             icon will be removed from there since we already have help in
             settings."* The destination that instruction traded it for now

@@ -2,16 +2,9 @@ import type { z } from "zod";
 import type { NotificationWireSchema } from "../../domain/dashboard/projection.js";
 
 
-export interface NotificationRowExtras {
-  readonly body?: string;
-  readonly triggerLabel?: string;
-  readonly delivery?: "ping" | "inbox";
-  readonly count?: number;
-  readonly desktopDelivered?: boolean;
-}
+export type NotificationRowWire = z.infer<typeof NotificationWireSchema>;
 
-
-export type NotificationRowWire = z.infer<typeof NotificationWireSchema> & NotificationRowExtras;
+export type NotificationRowExtras = Pick<Extract<NotificationRowWire, { kind: "notification" }>, "channel" | "count">;
 
 export type PinnedNotificationRowWire = Extract<NotificationRowWire, { kind: "backfill-gap" }>;
 
@@ -56,19 +49,19 @@ export function notificationInboxView(
     if (entry.kind === "backfill-gap") pinned.push(entry);
     else listed.push(entry);
   }
-  const ordinaryUnread = listed.filter((entry) => entry.state === "unread").length;
+  const ordinaryUnread = listed.filter((entry) => entry.readState === "unread").length;
   const counts: Record<NotificationFilterKey, number> = {
     all: notifications.length,
     unread: pinned.length + ordinaryUnread,
-    ping: pinned.length + listed.filter((entry) => entry.delivery === "ping").length,
-    inbox: listed.filter((entry) => entry.delivery === "inbox").length,
+    ping: pinned.length + listed.filter((entry) => entry.channel === "ping").length,
+    inbox: listed.filter((entry) => entry.channel === "inbox").length,
     snoozed: listed.filter((entry) => entry.state === "snoozed").length,
   };
   const shown = listed.filter((entry) => {
     if (filter === "all") return true;
-    if (filter === "unread") return entry.state === "unread";
+    if (filter === "unread") return entry.readState === "unread";
     if (filter === "snoozed") return entry.state === "snoozed";
-    return entry.delivery === filter;
+    return entry.channel === filter;
   });
   return Object.freeze({
     pinned: Object.freeze(pinned),
@@ -78,6 +71,6 @@ export function notificationInboxView(
     empty: pinned.length + shown.length === 0,
     unread: pinned.length + ordinaryUnread,
     critical: pinned.length > 0
-      || listed.some((entry) => entry.state === "unread" && entry.severity === "error"),
+      || listed.some((entry) => entry.readState === "unread" && entry.severity === "error"),
   });
 }
