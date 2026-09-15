@@ -234,10 +234,10 @@ describe("notification-durability: the durable row is committed before delivery"
 });
 
 describe("notification-durability: repeats fold, they do not spam", () => {
-  it("folds an identical trigger into one row with count and lastSeenAt", async () => {
+  it("folds a distinct occurrence of the same trigger into one row with count and lastSeenAt", async () => {
     const database = openDatabase();
     const first = await inboxFor(database, NOW).publish(RUN_FAILED);
-    const second = await inboxFor(database, NEXT).publish(RUN_FAILED);
+    const second = await inboxFor(database, NEXT).publish({ ...RUN_FAILED, failureId: UUID_4 });
 
     assert.equal(second.durable, "folded");
     assert.equal(second.notification.notificationId, first.notification.notificationId);
@@ -253,7 +253,7 @@ describe("notification-durability: repeats fold, they do not spam", () => {
     const read = inboxFor(database, NEXT).markRead(created.notification.notificationId, 1);
     assert.equal(read.status, "read");
 
-    const repeated = await inboxFor(database, NEXT).publish(RUN_FAILED);
+    const repeated = await inboxFor(database, NEXT).publish({ ...RUN_FAILED, failureId: UUID_4 });
     assert.equal(repeated.durable, "folded");
     assert.equal(repeated.notification.status, "unread");
     assert.equal(repeated.notification.count, 2);
@@ -290,7 +290,7 @@ describe("notification-durability: snooze suppresses delivery and nothing else",
         delivered += 1;
         return Promise.resolve();
       },
-    }).publish(RUN_FAILED);
+    }).publish({ ...RUN_FAILED, failureId: UUID_4 });
     assert.equal(delivered, 0);
     assert.deepEqual(report.delivery, { state: "suppressed-snoozed", until });
     // Still folded durably: suppression is about delivery, not about recording.

@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { sha256Hex } from "../../domain/sha256.js";
 import type { RunExistence } from "../../domain/authority.js";
 /**
  * Ref dashboard-surfaces §2.6 / §10.4 (D79b) and ref operator-trust §6 — the durable, actor-keyed inbox.
@@ -23,7 +25,7 @@ import type { RunExistence } from "../../domain/authority.js";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import type { IdFactory } from "../../domain/identifiers.js";
-import { ActorIdSchema, IsoInstantSchema, NotificationIdSchema } from "../../domain/ids.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema } from "../../domain/ids.js";
 import {
   NotificationDeliverabilitySchema,
   NotificationTriggerEventSchema,
@@ -64,7 +66,7 @@ export type NotificationPublishReport = z.infer<typeof NotificationPublishReport
 
 export interface NotificationInbox {
   /** Takes `unknown` and parses: the trigger union is the boundary. */
-  publish(event: unknown): Promise<NotificationPublishReport>;
+  publish(event: unknown, source?: Readonly<{ identity: string; occurredAt: string }>): Promise<NotificationPublishReport>;
   list(actorId: string, status?: "unread" | "read"): readonly NotificationRecord[];
   get(notificationId: string): NotificationRecord | undefined;
   markRead(notificationId: string, expectedVersion: number): NotificationRecord;
@@ -80,7 +82,7 @@ export interface NotificationInbox {
  * both take the create branch and collide on the unique index.
  */
 export interface NotificationAuthority {
-  readonly authority: Pick<AuthorityRepositories, "notifications">;
+  readonly authority: Pick<AuthorityRepositories, "notifications" | "notificationPublications">;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }
 
@@ -117,22 +119,34 @@ export function createNotificationInbox(
   const current = (notificationId: string): NotificationRecord => {
     const record = repository.get(NotificationIdSchema.parse(notificationId));
     if (record === undefined) throw new Error(`notification ${notificationId} does not exist`);
+    if (record.actorId !== actorId) throw new Error("NOTIFICATION_ACTOR_MISMATCH");
     return record;
   };
 
   return Object.freeze({
-    async publish(event: unknown): Promise<NotificationPublishReport> {
+    async publish(event: unknown, source?: Readonly<{ identity: string; occurredAt: string }>): Promise<NotificationPublishReport> {
       const trigger = NotificationTriggerEventSchema.parse(event);
       const projection = projectNotificationTrigger(trigger);
       const seenAt = now();
+      const occurredAt = source === undefined ? seenAt : IsoInstantSchema.parse(source.occurredAt);
+      const occurrence = source === undefined ? canonicalJsonStringify(trigger) : FingerprintSchema.parse(source.identity);
+      const sourceId = sha256Hex(`hrauto:notification-source:v1\0${actorId}\0${occurrence}`);
 
       /* ── phase 1: durable, and complete before anything is delivered ───── */
       const settled = dependencies.authority.withAuthorityTransaction((repositories) => {
+        const publications = repositories.notificationPublications;
+        const replay = publications.get(sourceId);
+        if (replay !== undefined) {
+          if (canonicalJsonStringify(replay.event) !== canonicalJsonStringify(trigger)) throw new Error("NOTIFICATION_SOURCE_CONFLICT");
+          const record = repositories.notifications.get(replay.notificationId);
+          if (record === undefined) throw new Error("NOTIFICATION_SOURCE_OWNER_MISSING");
+          return { durable: "existing" as const, notification: record };
+        }
         if ("runId" in trigger) {
           if (dependencies.runReader === undefined) throw new Error("NOTIFICATION_RUN_READER_NOT_CONFIGURED");
           const existence = dependencies.runReader.read(trigger.runId);
-          if (existence.state !== "present" || existence.disposition !== "live") {
-            throw new Error(`NOTIFICATION_RUN_UNAVAILABLE: ${trigger.runId} is ${existence.state === "present" ? existence.disposition : existence.state}`);
+          if (existence.state !== "present") {
+            throw new Error(`NOTIFICATION_RUN_UNAVAILABLE: ${trigger.runId} is ${existence.state}`);
           }
           if (existence.run.envelope.runId !== trigger.runId || existence.run.envelope.workflow !== trigger.workflowId) {
             throw new Error(`NOTIFICATION_RUN_IDENTITY_MISMATCH: ${trigger.runId}`);
@@ -140,6 +154,15 @@ export function createNotificationInbox(
         }
         const notifications = repositories.notifications;
         const existing = notifications.findByDedupe(actorId, projection.dedupeFingerprint);
+        const remember = (record: NotificationRecord, adopted: boolean) => publications.create({
+          sourceId, actorId, notificationId: record.notificationId, event: trigger, occurredAt, createdAt: seenAt, adopted,
+        });
+        // Historical facts already covered by a row adopt source custody without replaying it.
+        if (existing !== undefined && (projection.trigger === "backfill-gap" ||
+          (source !== undefined && occurredAt <= existing.lastSeenAt && publications.latest(existing.notificationId) === undefined))) {
+          remember(existing, true);
+          return { durable: "existing" as const, notification: existing };
+        }
         if (existing === undefined) {
           const created = notifications.create(NotificationRecordSchema.parse({
             notificationId: NotificationIdSchema.parse(dependencies.ids.uuid()),
@@ -158,6 +181,7 @@ export function createNotificationInbox(
             createdAt: seenAt,
             updatedAt: seenAt,
           }));
+          remember(created.record, false);
           return { durable: "created" as const, notification: created.record };
         }
         if (projection.trigger === "backfill-gap") {
@@ -170,6 +194,7 @@ export function createNotificationInbox(
           title: projection.title,
           summary: projection.summary,
         });
+        remember(folded.notification, false);
         return { durable: "folded" as const, notification: folded.notification };
       });
       const notification = settled.notification;
@@ -190,7 +215,7 @@ export function createNotificationInbox(
       let delivery: z.infer<typeof NotificationDeliveryOutcomeSchema>;
       if (deliverability.state === "suppressed-snoozed") {
         delivery = { state: "suppressed-snoozed", until: deliverability.until };
-      } else if (dependencies.delivery === undefined) {
+      } else if (notification.channel === "inbox" || dependencies.delivery === undefined) {
         delivery = { state: "no-channel" };
       } else {
         try {

@@ -1,3 +1,4 @@
+import { NotificationPublicationSchema, NotificationHealthSchema } from "./notification-publications.js";
 import { ExplorerWorkflowOverrideSchema } from "../../domain/dashboard/explorer.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { VersionChangeStorageSchema } from "../../domain/archive/change-record.js";
@@ -223,6 +224,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
   command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
   notifications: NotificationRecordSchema,
+  notification_publications: NotificationPublicationSchema,
+  notification_health: NotificationHealthSchema,
   settings_snapshots: ConfigSnapshotRecordSchema,
   app_settings: AppSettingsSchema,
   version_plans: VersionPlanStorageRecordSchema,

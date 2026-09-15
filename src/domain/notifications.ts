@@ -86,8 +86,8 @@ export const NotificationRecordSchema = z.strictObject({
   if (Date.parse(notification.updatedAt) < Date.parse(notification.createdAt)) {
     context.addIssue({ code: "custom", path: ["updatedAt"], message: "notification updatedAt cannot precede createdAt" });
   }
-  if (notification.snooze.state === "snoozed" && Date.parse(notification.snooze.until) <= Date.parse(notification.updatedAt)) {
-    context.addIssue({ code: "custom", path: ["snooze", "until"], message: "notification snooze must end after updatedAt" });
+  if (notification.snooze.state === "snoozed" && Date.parse(notification.snooze.until) <= Date.parse(notification.createdAt)) {
+    context.addIssue({ code: "custom", path: ["snooze", "until"], message: "notification snooze must end after createdAt" });
   }
   if (Date.parse(notification.lastSeenAt) < Date.parse(notification.createdAt)) {
     context.addIssue({ code: "custom", path: ["lastSeenAt"], message: "notification lastSeenAt cannot precede createdAt" });
@@ -134,3 +134,18 @@ export function requireMutableNotification(input: unknown): NotificationRecord {
   }
   return record;
 }
+
+/** Closed destinations resolved afresh from authority when the operator opens a row. */
+export const NotificationTargetSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: z.iso.date() }),
+  z.strictObject({ kind: z.literal("failure"), runId: RunIdSchema, failureId: FailureIdSchema, day: z.iso.date() }),
+  z.strictObject({ kind: z.literal("archive"), runId: RunIdSchema, reportDigest: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("storage") }),
+  z.strictObject({ kind: z.literal("refused"), reason: z.enum(["wrong-actor", "notification-unavailable", "pinned", "run-unavailable", "failure-unavailable", "archive-unavailable", "target-unavailable"]) }),
+]);
+export type NotificationTarget = z.infer<typeof NotificationTargetSchema>;
+export const NotificationObservationStatusSchema = z.strictObject({
+  state: z.enum(["ready", "failed", "stopped"]),
+  code: z.enum(["NOTIFICATION_OBSERVATION_FAILED", "NOTIFICATION_RECEIPT_MISSING"]).optional(),
+  pending: z.number().int().nonnegative(),
+});
