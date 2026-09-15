@@ -23,6 +23,7 @@ test.afterAll(async () => {
 test.use({ viewport: { width: 1024, height: 768 } });
 
 test("six pinned refusals and ordinary rows remain reachable on a narrow desktop", async ({ page }) => {
+  await page.route("**/api/v1/notifications/status", route => route.fulfill({ json: { state: "ready", pending: 0 } }));
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
   const bell = page.getByRole("button", { name: /Notifications/u });
   const bellBox = await bell.boundingBox();
@@ -44,7 +45,7 @@ test("six pinned refusals and ordinary rows remain reachable on a narrow desktop
   const scroll = drawer.locator("[data-notification-scroll]");
   expect(await scroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 
-  await drawer.getByRole("button", { name: "Pings 6" }).click();
+  await drawer.getByRole("button", { name: "Pings 7" }).click();
   await expect(drawer.locator("[data-backfill-gap='pinned']")).toHaveCount(6);
   await expect(drawer.getByText("Nothing under this filter")).toHaveCount(0);
 

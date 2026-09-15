@@ -122,7 +122,7 @@ for (const fault of ["directory", "symlink", "permissions"] as const) it(`never 
   } finally { f.dispose(); }
 });
 
-for (const version of [45, 46, 50, 51]) it(`distinguishes byte verification from release eligibility at schema ${String(version)}`, async () => {
+for (const version of [45, 46, 50, 51, 52]) it(`distinguishes byte verification from release eligibility at schema ${String(version)}`, async () => {
   const f = storageRecoveryFixture(version);
   try {
     await f.backup();
@@ -131,7 +131,7 @@ for (const version of [45, 46, 50, 51]) it(`distinguishes byte verification from
     const candidate = report.restoreCandidates[0];
     assert.ok(candidate?.state === "verified-compatible");
     assert.equal(candidate.schemaVersion, version);
-    assert.equal(candidate.restoreEligibility.state, version < 46 ? "unsupported" : version < 51 ? "requires-upgrade" : "eligible");
+    assert.equal(candidate.restoreEligibility.state, version < 46 ? "unsupported" : version < 52 ? "requires-upgrade" : "eligible");
   } finally { f.dispose(); }
 });
 
@@ -177,7 +177,7 @@ for (const pending of [false, true]) {
 }
 
 it("withholds absence of custody for an unreadable live database and inaccessible backup directory", async () => {
-  const f = storageRecoveryFixture(51);
+  const f = storageRecoveryFixture(52);
   try {
     await f.backup();
     writeFileSync(f.path, "corrupt synthetic authority");
@@ -193,11 +193,12 @@ it("withholds absence of custody for an unreadable live database and inaccessibl
   } finally { chmodSync(options(f.root).backupDirectory, 0o700); f.dispose(); }
 });
 
-it("does not hide a missing schema-51 authority table after historical fingerprint correction", () => {
-  const f = storageRecoveryFixture(51);
+it.each(["explorer_overrides", "notification_publications", "notification_health"])("does not hide a missing current authority table %s after historical fingerprint correction", table => {
+  const f = storageRecoveryFixture(52);
   try {
+    AuthorityDatabase.inspectSpanRunAuthorityReadOnly(f.path, [], 500);
     const database = new DatabaseSync(f.path);
-    try { database.exec("DROP TABLE explorer_overrides"); } finally { database.close(); }
-    assert.throws(() => AuthorityDatabase.inspectSpanRunAuthorityReadOnly(f.path, [], 500), /authority database tables do not match registry:.*expected=.*explorer_overrides/u);
+    try { database.exec(`DROP TABLE ${table}`); } finally { database.close(); }
+    assert.throws(() => AuthorityDatabase.inspectSpanRunAuthorityReadOnly(f.path, [], 500), new RegExp(`authority database tables do not match registry:.*expected=.*${table}`, "u"));
   } finally { f.dispose(); }
 });

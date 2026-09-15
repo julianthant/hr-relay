@@ -11,7 +11,7 @@ const CURRENT_TABLES = [
   "app_settings", "archive_transfers", "checkpoint_payloads", "command_audits", "commands",
   "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files",
   "diagnostic_snapshots", "dryrun_results", "explorer_overrides", "extracted_artifacts", "generated_artifacts", "imported_artifacts",
-  "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures",
+  "notification_health", "notification_publications", "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures",
   "run_operation_attempts", "run_operations", "run_receipts", "run_results", "run_summaries", "settings_snapshots",
   "summary_publication", "timeline_events", "timeline_operation_sources", "version_changes", "worker_auth",
   "worker_pools", "workflow_run_batches", "workflow_run_requests", "workflow_runs", "workflow_workers",

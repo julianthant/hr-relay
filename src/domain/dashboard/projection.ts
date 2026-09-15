@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { NotificationRecordSchema } from "../notifications.js";
+import { sha256Hex } from "../sha256.js";
+import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifications.js";
 /**
  * The two worker vocabularies are IMPORTED, not mirrored (§8.8's fourth joint
  * is for copies forced by §8.13). `src/domain/run/worker.ts` value-imports zod
@@ -13,6 +14,7 @@ import {
   ActorIdSchema,
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
+  FailureIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -805,8 +807,11 @@ export function notificationWireOf(
       kind: "backfill-gap",
       notificationId: record.notificationId,
       actorId: record.actorId,
+      channel: record.channel,
+      count: record.count,
+      publicationId: sha256Hex(`notification-publication:${record.notificationId}:${String(record.count)}:${record.lastSeenAt}`),
       severity: "error",
-      title: record.title,
+      title: notificationTitle(record.trigger),
       state: "pinned",
       occurredAt: record.lastSeenAt,
     });
@@ -817,41 +822,43 @@ export function notificationWireOf(
       ? "info"
       : "warning";
   const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
-  /**
-   * D262: the FIRST durable link that names a run. `storage` names none, so a
-   * storage row carries no link and the bell draws no button — an affordance
-   * that navigated nowhere would be worse than none. The row's other durable
-   * facts (summary, trigger, count) still stay off the wire: they are prose and
-   * derived counts, and this is an id.
-   */
-  const runLink = record.links.find((link) => link.kind === "run" || link.kind === "failure");
+  const link = record.links[0];
   return NotificationWireSchema.parse({
     kind: "notification",
     notificationId: record.notificationId,
     actorId: record.actorId,
     severity,
-    title: record.title,
+    title: notificationTitle(record.trigger),
+    channel: record.channel,
+    count: record.count,
+    trigger: record.trigger,
+    readState: record.status,
+    publicationId: sha256Hex(`notification-publication:${record.notificationId}:${String(record.count)}:${record.lastSeenAt}`),
     state: snoozed ? "snoozed" : record.status,
     occurredAt: record.lastSeenAt,
     revision: record.version,
-    ...(runLink === undefined ? {} : { link: { kind: runLink.kind, runId: runLink.runId } }),
+    ...(link === undefined ? {} : { link: link.kind === "storage" ? { kind: "storage" } : link }),
   });
 }
 
-/**
- * D262: the one row fact that is a NAVIGATION TARGET rather than prose. §2.6's
- * as-built kept `link` off the wire beside `summary`, `trigger` and `count`, and
- * a needs-you alert whose only affordance is "mark read" is an alert nobody can
- * act on. The line it draws is the one §2.6 already draws inside the trigger
- * union: ids and closed codes may cross to a surface, prose may not.
- */
-const NotificationLinkWireSchema = z.strictObject({
-  kind: z.enum(["run", "failure"]),
-  runId: RunIdSchema,
-});
+/** Compose public text from closed trigger codes, never private diagnostic prose. */
+export function notificationTitle(trigger: z.infer<typeof NotificationTriggerSchema>): string {
+  const titles = { failed: "Run failed", "gate-waiting": "Needs you", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete" };
+  return titles[trigger];
+}
+const NotificationLinkWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema }),
+  z.strictObject({ kind: z.literal("failure"), runId: RunIdSchema, failureId: FailureIdSchema }),
+  z.strictObject({ kind: z.literal("storage") }),
+]);
 
 const StandardNotificationWireSchema = z.strictObject({
   kind: z.literal("notification"),
+  channel: z.enum(["ping", "inbox"]),
+  count: PositiveIntSchema,
+  publicationId: FingerprintSchema,
+  trigger: NotificationTriggerSchema.exclude(["backfill-gap"]),
+  readState: z.enum(["read", "unread"]),
   notificationId: NotificationIdSchema,
   actorId: ActorIdSchema,
   severity: z.enum(["info", "warning", "error"]),
@@ -864,6 +871,9 @@ const StandardNotificationWireSchema = z.strictObject({
 
 const BackfillGapNotificationWireSchema = z.strictObject({
   kind: z.literal("backfill-gap"),
+  channel: z.literal("ping"),
+  count: z.literal(1),
+  publicationId: FingerprintSchema,
   notificationId: NotificationIdSchema,
   actorId: ActorIdSchema,
   severity: z.literal("error"),
@@ -935,3 +945,5 @@ export const DashboardDayWireSchema = z.strictObject({
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 export type DashboardDayWire = z.infer<typeof DashboardDayWireSchema>;
+
+export type NotificationWire = z.infer<typeof NotificationWireSchema>;

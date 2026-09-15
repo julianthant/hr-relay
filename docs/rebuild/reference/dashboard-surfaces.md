@@ -1726,6 +1726,17 @@ read-only inspection of a backup copy leaves SQLite `-wal`/`-shm` companions beh
 them after every inspection (an empty WAL is the only admissible state), so `backups/authority/` holds
 exactly `.sqlite` + `.manifest.json` pairs.
 
+<a id="backup-notification-amendment-2026-09-14"></a>
+
+**D322 narrow notification amendment — 2026-09-14 (approved; implementation pending in 3.1.9.5).**
+An actual failed backup operation or verified corrupt backup evidence may publish a
+`storage-degraded`/`backup` notification under [§2.6's publication contract](#notifications-publication-amendment-2026-09-14).
+This narrows the former blanket prohibition on backup-health inbox alerts; it does not restore
+D222's missing/stale producer. A missing, old or generation-stale unrequested backup is not a
+failure. `cli storage backup` remains the sole writer; no cadence, start/drain backup or automatic
+upgrade backup returns. Storage doctor/recovery behavior and its existing service wire are unchanged.
+Only verified available failure evidence may announce the failure; absence cannot stand in for it.
+
 #### D181 — the restore command, and the process locks the interlock was always about (2j, 2026-08-09)
 
 <!-- roadmap: p2-2j -->
@@ -2553,6 +2564,48 @@ ref guards-and-tests §5.2's and are not repeated here.
    three reasons that forbid rewriting a snapshot are unchanged and are the reason the arm exists.
 
 ### 2.6 Durable single-operator notifications
+
+<a id="notifications-publication-amendment-2026-09-14"></a>
+
+**Approved publication amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+The operator approved the complete [Notifications execution brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).
+This is the current requirement where historical D134/D138/D222/D262 descriptions below differ;
+it is not an assertion that the newly required code or proof already exists.
+
+- A stable source occurrence identity and its inbox create/fold settle in one authority transaction.
+  Notification-owned SQLite processing metadata makes replay a no-op for count, read state, snooze,
+  version and publication identity. A distinct new occurrence folds once. Existing inbox rows are
+  adopted without replaying history or resetting operator state. The inbox remains the authority
+  for operator state; source/health metadata is not per-attempt OS delivery history.
+- Dashboard notification composition owns production callers for all eight existing event kinds.
+  Observations use canonical live records and verified frozen archive evidence, serialize owned
+  work, retain/expose retryable publication failures, and drain before authority closes. The
+  `backfill-gap` caller remains the server's unreplayable-cursor boundary; the browser cannot assert it.
+- Repeating failure starts with the third distinct retained matching workflow/step/error-class
+  failure, including verified archive evidence, with no time window. Later distinct occurrences
+  fold one alert. Polls, restarts, replay and archive transfer do not add occurrences. Verified-done
+  requires a canonical verified receipt; dry-run, warnings, partial, missing or incompatible
+  historical evidence do not qualify and unsupported evidence gets a named diagnostic.
+- Applicable storage concerns are free space below 1 GiB, WAL at least 256 MiB and growing across
+  three one-minute observations, integrity failures, actual failed/corrupt backup evidence and
+  expired ownership using the existing 60-second lease rule. Health clearance changes observation
+  state without inventing a recovery trigger. Retired `outbox-stalled` is explicitly inapplicable;
+  never recreate that authority. Missing/old/generation-stale unrequested backups are not failures.
+- Notification metadata joins strict registration, backup/restore and supported stopped conversion
+  in the next migration (52 at the approved base); floor 46 and released migrations 1–51 remain
+  immutable. Archive transfer preserves inbox/publication metadata; canonical delete removes
+  associated notification-owned metadata without rewriting frozen snapshots.
+- Serve actual channel, count and a publication identity that changes only for new events, alongside
+  safe typed targeting. Only validated IDs, closed codes, counts and safely composed strings cross
+  notification boundaries; never private archive source JSON, arbitrary diagnostics, captured fields
+  or secrets. Resolve targets at open time against current lifecycle authority.
+
+**Current baseline at `9f9dfe3566084e165bd508ae8b66dc3ebe325010`:** only `gate-opened` and
+`backfill-gap` have production callers. The storage-health module is present but D322 retired its
+caller; the other five event kinds are unwired. The historical checklist/table below records earlier
+builds and does not establish current publication coverage. §9.6's dated amendment owns the UI and
+browser delivery behavior; ref operator-trust §6 owns receipt, replay and lifecycle constraints.
+
 
 <!-- roadmap: p2-2g -->
 <!-- roadmap-status: p2-2g -->
@@ -6136,6 +6189,31 @@ own entry stays a `ghost` button because it is not a command.
 <!-- /roadmap-status -->
 
 ### 9.6 Notifications — the durable inbox and its bell
+
+<a id="notifications-inbox-amendment-2026-09-14"></a>
+
+**Approved inbox/delivery amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+Read §2.6's [publication amendment](#notifications-publication-amendment-2026-09-14) as the current
+contract where the historical wire restrictions below differ. Actual Ping/Inbox channel and counts
+make the filters truthful. Publication identity is distinct from row revision: read/unread/snooze
+changes do not represent a new delivery event. Pinned backfill rows remain permanent, immutable and
+visible under every ordinary filter. Read/unread and snooze stay independent; dismiss closes the
+drawer or desktop toast and never deletes a durable row. Existing actor, revision and command-replay
+protections remain; no unsnooze or new lifecycle command is introduced.
+
+Notification targets resolve on activation to the current live run on its own date, exact failure,
+verified saved report, Storage, or an explicit missing/deleted refusal. Navigation uses the existing
+Settings dirty-draft guard and honors cancellation. No frozen archive snapshot is rewritten.
+
+An explicit gesture in the drawer enables desktop notifications. Silent Ping delivery uses the
+Notifications API only while the dashboard is open and only after durable publication. Inbox-only
+rows never toast. Same-origin Web Locks elect one tab owner; initial baseline, reload, reconnect,
+duplicate snapshots, state commands and owner handover do not replay old toasts. Denied permission,
+unsupported capability, synchronous throws and asynchronous errors are explicit. An accepted API
+call proves only submission to the browser API, not human visibility. Delivery failures never mutate
+the inbox or create per-attempt OS authority. Both themes, keyboard/focus, desktop resizing and zoom
+retain the Phase 3.1 contract; no mobile/coarse-pointer variants or existing PNG refreeze are admitted.
+
 
 <!-- roadmap: p2-2g -->
 

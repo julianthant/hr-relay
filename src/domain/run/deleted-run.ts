@@ -67,7 +67,7 @@ export const DeletedRunTableSchema = z.enum([
   "run_terminal_authorizations",
   "checkpoint_payloads",
   "run_checkpoints",
-  "notifications",
+  "notifications", "notification_publications",
   "dependencies", // Historical deletion receipts.
   "delegation_dependencies",
   "delegation_manifests", // Historical deletion receipts.

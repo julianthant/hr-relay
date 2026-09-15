@@ -1,3 +1,4 @@
+import { NOTIFICATION_PUBLICATIONS_DDL, NOTIFICATION_HEALTH_DDL } from "./notification-publications.js";
 export const VERSION_CHANGES_DDL = `CREATE TABLE version_changes (record_key TEXT PRIMARY KEY, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL) STRICT`;
 import { ARCHIVE_TRANSFER_DDL } from "./run-evidence-ownership.js";
 import { RUN_SUMMARIES_DDL, SUMMARY_PUBLICATION_DDL } from "./run-summaries.js";
@@ -13,7 +14,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 51;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 52;
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -91,6 +92,8 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   generated_artifacts: GENERATED_ARTIFACT_DDL,
   app_settings: APP_SETTINGS_DDL,
   explorer_overrides: EXPLORER_OVERRIDES_DDL,
+  notification_publications: NOTIFICATION_PUBLICATIONS_DDL,
+  notification_health: NOTIFICATION_HEALTH_DDL,
   provider_requests: PROVIDER_REQUEST_DDL,
   provider_usage: PROVIDER_USAGE_DDL,
   imported_artifacts: IMPORTED_ARTIFACT_DDL,
@@ -819,6 +822,7 @@ const V36_TABLES = V35_TABLES.map((name) => name === "write_intents" ? "run_oper
 const V37_TABLES = V36_TABLES.filter((name) => name !== "bulk_command_acceptances")
   .map((name) => name === "delegation_manifests" ? "run_delegations" : name === "dependencies" ? "delegation_dependencies" : name).sort();
 export const POST_FLOOR_AUTHORITY_TABLES_BY_VERSION: Readonly<Record<number, readonly string[]>> = deepFreeze({
+  51: ["explorer_overrides", "app_settings", "archive_transfers", "checkpoint_payloads", "command_audits", "commands", "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files", "diagnostic_snapshots", "dryrun_results", "extracted_artifacts", "generated_artifacts", "imported_artifacts", "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures", "run_operation_attempts", "run_operations", "run_receipts", "run_results", "run_summaries", "settings_snapshots", "summary_publication", "timeline_events", "timeline_operation_sources", "version_changes", "worker_auth", "worker_pools", "workflow_run_batches", "workflow_run_requests", "workflow_runs", "workflow_workers"],
   50: ["app_settings", "archive_transfers", "checkpoint_payloads", "command_audits", "commands", "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files", "diagnostic_snapshots", "dryrun_results", "extracted_artifacts", "generated_artifacts", "imported_artifacts", "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures", "run_operation_attempts", "run_operations", "run_receipts", "run_results", "run_summaries", "settings_snapshots", "summary_publication", "timeline_events", "timeline_operation_sources", "version_changes", "worker_auth", "worker_pools", "workflow_run_batches", "workflow_run_requests", "workflow_runs", "workflow_workers"],
   49: ["app_settings", "archive_relaunches", "archive_transfers", "checkpoint_payloads", "command_audits", "commands", "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files", "diagnostic_snapshots", "dryrun_results", "extracted_artifacts", "generated_artifacts", "imported_artifacts", "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures", "run_operation_attempts", "run_operations", "run_receipts", "run_results", "run_summaries", "settings_snapshots", "summary_publication", "timeline_events", "timeline_operation_sources", "version_changes", "worker_auth", "worker_pools", "workflow_run_batches", "workflow_run_requests", "workflow_runs", "workflow_workers"],
   48: ["app_settings", "archive_relaunches", "archive_transfers", "archived_runs", "checkpoint_payloads", "command_audits", "commands", "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files", "diagnostic_snapshots", "dryrun_results", "extracted_artifacts", "generated_artifacts", "imported_artifacts", "notifications", "provider_requests", "provider_usage", "run_checkpoints", "run_delegations", "run_failures", "run_operation_attempts", "run_operations", "run_receipts", "run_results", "run_summaries", "settings_snapshots", "summary_publication", "timeline_events", "timeline_operation_sources", "version_bump_applications", "version_changes", "version_plans", "worker_auth", "worker_pools", "workflow_run_batches", "workflow_run_requests", "workflow_runs", "workflow_workers"],
@@ -2128,6 +2132,10 @@ export const SQLITE_MIGRATIONS = deepFreeze([
   ] },
   { version: 50, statements: ["DROP TABLE archive_relaunches"] },
   { version: 51, statements: [EXPLORER_OVERRIDES_DDL, ...EXPLORER_OVERRIDE_CONSTRAINTS] },
+  { version: 52, statements: [NOTIFICATION_PUBLICATIONS_DDL, NOTIFICATION_HEALTH_DDL,
+    "CREATE INDEX notification_publications_owner_idx ON notification_publications(notification_id)",
+    "CREATE TRIGGER notification_publications_immutable BEFORE UPDATE ON notification_publications BEGIN SELECT RAISE(ABORT, 'notification publication is immutable'); END",
+  ] },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
@@ -2152,7 +2160,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
     }
   }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
-  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes", "explorer_overrides"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes", "explorer_overrides", "notification_publications", "notification_health"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
   for (const name of retiredNames) {
     if (!TABLE_ORDER.some((migrationName) => migrationName === name || renamed(migrationName) === name)) {
       violations.push(`retired table ${name} is absent from migration history`);

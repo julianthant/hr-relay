@@ -2368,6 +2368,47 @@ reported twice. The demo's third segment (`1 file`) stays absent for the reason 
 
 ## 6. Notifications—durable, event-derived, and actionable
 
+<a id="notifications-behavior-amendment-2026-09-14"></a>
+
+**Approved operator behavior amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+The [complete task brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14)
+and [dashboard-surfaces §2.6 amendment](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14)
+ratify the current behavior where the historical sections below differ. Eight existing event kinds
+are in scope; the broader policy examples below do not create new trigger arms in this task.
+
+Durable notification-owned source identities and health observations make the same source replay a
+no-op while a new distinct occurrence folds once. Source identity and inbox change commit atomically.
+Processing metadata supersedes D134's historical assumption that no folded-source rows exist; it does
+not weaken ledger immutability or introduce OS-attempt history. Existing row adoption preserves
+operator state. D262's memory-only restart behavior is superseded by durable source identity;
+failed publication remains retryable and exposed, with serialized observation and awaited shutdown.
+
+The third distinct retained workflow/step/error-class failure crosses the repeating threshold,
+including verified archived sources; no time window applies. Later distinct failures fold that
+alert. Canonical verified receipts alone admit verified-done: dry-run, warning/partial results,
+missing historical receipt and incompatible evidence cannot be promoted. Unsupported frozen evidence
+is a named diagnostic. Private archive source data never crosses the notification wire or OS payload.
+
+Read/unread and snooze are independent. Actor/CAS and exact/divergent replay rules stay; pinned
+backfill rows are immutable and permanently retained. Dismissal only closes UI. Archive transfer
+preserves notification/publication metadata; canonical deletion removes the associated metadata.
+Opening a notification resolves current live date/exact failure/saved report/Storage or an explicit
+missing/deleted result and respects the existing dirty-Settings guard, including cancellation.
+
+Silent desktop Pings require explicit drawer enablement, durable commit and one same-origin tab owner
+while the dashboard is open. Initial baseline, restart/reload/reconnect, duplicate snapshots,
+read/snooze changes and owner handover do not replay historical toasts. Inbox-only events never
+notify the desktop. Permission denial, unsupported API and synchronous/asynchronous delivery failure
+stay explicit without changing the durable row; API submission is not proof of human visibility.
+Applicable storage thresholds and D322's narrow actual-failed/corrupt-backup exception are owned by
+[dashboard-surfaces](dashboard-surfaces.md#backup-notification-amendment-2026-09-14); no automatic or
+missing/stale-backup alerting and no retired outbox are restored.
+
+At discovery base `9f9dfe3566084e165bd508ae8b66dc3ebe325010`, only gate and server-proven backfill
+publishers are wired. The following older as-built counts and storage-cadence claims are historical;
+they do not prove the approved producer or browser behavior has been implemented.
+
+
 <!-- roadmap: p2-2g -->
 
 The notification wire is owned by ref dashboard-surfaces; this section defines operator behavior. Notifications

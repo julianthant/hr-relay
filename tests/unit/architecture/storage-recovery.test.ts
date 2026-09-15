@@ -3761,6 +3761,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/infra/sqlite/generated-artifacts.ts",
       "src/infra/sqlite/generated-conversion.ts",
       "src/infra/sqlite/imported-artifacts.ts",
+      "src/infra/sqlite/notification-publications.ts",
       "src/infra/sqlite/provider-accounting.ts",
       "src/infra/sqlite/provider-storage.ts",
       "src/infra/sqlite/settings-activation.ts",

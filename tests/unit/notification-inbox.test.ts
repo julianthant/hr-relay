@@ -219,6 +219,8 @@ describe("notificationWireOf", () => {
 
     assert.deepEqual(wire, {
       kind: "backfill-gap",
+      channel: "ping", count: 1,
+      publicationId: "884926bc73b2ee67b639aeab1c2ca18bb77f295027642c812516aed141fc8bdc",
       notificationId: UUID_7,
       actorId: ACTOR,
       severity: "error",
@@ -229,6 +231,8 @@ describe("notificationWireOf", () => {
     assert.equal(NotificationWireSchema.safeParse({ ...wire, revision: 1 }).success, false);
     assert.equal(NotificationWireSchema.safeParse({ ...wire, link: { kind: "run", runId: UUID_2 } }).success, false);
     assert.equal(NotificationWireSchema.safeParse({ ...wire, state: "unread" }).success, false);
+    assert.equal(NotificationWireSchema.safeParse({ ...wire, channel: "inbox" }).success, false);
+    assert.equal(NotificationWireSchema.safeParse({ ...wire, count: 2 }).success, false);
   });
 
   it("maps severity by trigger and state by status", () => {
@@ -255,4 +259,20 @@ describe("notificationWireOf", () => {
     }), nowMs);
     assert.equal(expired.state, "read");
   });
+});
+
+it("read/snooze commands preserve publication identity, count, and expired snooze evidence", () => {
+  const { database, kernel } = harness();
+  const initial = record({ snooze: { state: "snoozed", until: "2026-07-31T17:00:30.000Z" } });
+  database.authority.notifications.create(initial);
+  const before = notificationWireOf(initial, Date.parse(LATER));
+  assert.equal(kernel.execute(command("notification-read", 1)).state, "applied");
+  const updated = database.authority.notifications.get(UUID_7);
+  assert.ok(updated);
+  const after = notificationWireOf(updated, Date.parse(LATER));
+  assert.equal(before.kind, "notification"); assert.equal(after.kind, "notification");
+  if (before.kind !== "notification" || after.kind !== "notification") throw new Error("ordinary row expected");
+  assert.equal(after.publicationId, before.publicationId); assert.equal(after.count, 1);
+  assert.equal(after.readState, "read"); assert.deepEqual(updated.snooze, initial.snooze);
+  assert.equal(after.title, "Run failed");
 });

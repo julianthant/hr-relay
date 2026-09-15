@@ -1,3 +1,5 @@
+import { notificationWireOf } from "../../domain/dashboard/projection.js";
+import { createNotificationTargetQuery } from "./queries/notifications.js";
 import { composeShell } from "./compose/shell.js";
 import { composeActivity } from "./compose/activity.js";
 import { composeQueueSummaries } from "./compose/queue-summaries.js";
@@ -147,6 +149,7 @@ import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.
 export interface DashboardRuntime {
   readonly port: number;
   readonly noteWriter: NoteJsonlWriter;
+  readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
   stop(): Promise<void>;
 }
 
@@ -553,41 +556,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
     },
   });
-  const { backfillGapNotifier, gateParkNotifier, readParks } = createTrustNotifications({
-    database, clock, ids, reader: lifecycle,
+  const { backfillGapNotifier, observer: notificationObserver } = createTrustNotifications({
+    database, clock, ids, reader: lifecycle, stateRoot,
   });
 
-  /**
-   * D262: the second wired producer — ref dashboard-surfaces §2.6's open operator gate. A run
-   * parked at a gate is the one state in this product that cannot move without a
-   * person, and until now nothing told anybody. The park itself is written by
-   * the worker (a separate process, no operator attached, and a run must park
-   * even when the inbox cannot be written), so the fact is READ back here from
-   * authority, where it stands until a human resolves it.
-   */
-
-  const publishGateParks = async (): Promise<void> => {
-    try {
-      await gateParkNotifier.observed(readParks());
-    } catch {
-      /*
-       * This catch keeps the timer alive; it does not decide the alert was
-       * sent. The notifier advances its memory only after a durable row
-       * commits, so the failed park is still pending and the NEXT tick retries
-       * the same publish — the tree's own "retrying the same operation" arm,
-       * not a substituted value. Nothing about the park is hidden meanwhile:
-       * the run is `Waiting` on the queue with its gate named, served from
-       * authority by a path that shares nothing with the inbox, and if
-       * authority itself cannot be written the `StorageBanner`'s
-       * authority-unavailable arm is already the surface that says so — D222's
-       * structural argument (an authority that cannot be written cannot record
-       * a notification about its own death), from the other side.
-       */
-    }
-  };
-  void publishGateParks();
-  const gateParkTimer = setInterval(() => void publishGateParks(), GATE_PARK_WATCH_MS);
-  gateParkTimer.unref();
+  // Start only after startup acceptance; stop drains the exact owned observation.
 
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
@@ -847,7 +820,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const abortStartup = (reason: Error): never => {
     hub.close();
     clearInterval(timelineTimer);
-    clearInterval(gateParkTimer);
     for (const evidence of workerControl.supervisor.close()) {
       reportSupervisorFault(new Error(
         `dashboard preflight cleanup leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
@@ -874,7 +846,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ));
   }
 
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get, report: id => { const report = lifecycle.lifecycleStorage().readReport(id); return report === undefined ? undefined : { runId: report.content.runId, digest: report.digest }; } });
   const app = createDashboardApp({
+    notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs()))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },
     ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
@@ -906,9 +880,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     onTransferError: reportDashboardTransferFault,
   });
   dashboardPreflightRunners.markBackendOwned(server.port);
+  void notificationObserver.observe();
+  const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
+  gateParkTimer.unref();
 
   return Object.freeze({
     port: server.port,
+    notificationStatus: notificationObserver.status,
     noteWriter,
     stop: async (): Promise<void> => {
       const failures: unknown[] = [];
@@ -924,6 +902,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       }
       clearInterval(timelineTimer);
       clearInterval(gateParkTimer);
+      await notificationObserver.stop();
       /**
        * W3 shutdown ordering: the supervisor closes AFTER ingress stopped
        * accepting worker commands (`server.close()` above) and BEFORE the

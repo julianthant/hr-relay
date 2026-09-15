@@ -1,3 +1,4 @@
+import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
@@ -941,6 +942,8 @@ export type AuthorityRepositories = Readonly<{
   }>;
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
+  notificationPublications: ReturnType<typeof createNotificationMetadataRepositories>["notificationPublications"];
+  notificationHealth: ReturnType<typeof createNotificationMetadataRepositories>["notificationHealth"];
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   settingsCurrent: SettingsCurrentRepository;
   runtimeConfig: RuntimeConfigRepository;
@@ -2103,7 +2106,8 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   const hash = createHash("sha256");
   hash.update("[");
   for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => (hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name))
-    && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)).entries()) {
+    && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)
+    && (!["notification_publications", "notification_health"].includes(name) || readIntPragma(database, "user_version") >= 52)).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "database_state") {
@@ -2173,6 +2177,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   }
   validateAuthorityRecordSchemas(database);
   if (schemaVersion >= 51) validateExplorerOverrides(database);
+  if (schemaVersion >= 52) validateNotificationMetadata(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
@@ -3142,6 +3147,10 @@ export class AuthorityDatabase implements Disposable {
           remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
           for (const key of (transfer ? [] : evidence.checkpointKeys)) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
           // Inbox items that would otherwise link to a run nobody can open.
+          if (!transfer) remove("notification_publications", `DELETE FROM notification_publications WHERE notification_id IN (
+            SELECT record_key FROM notifications WHERE EXISTS (
+              SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?))
+            OR json_extract(record_json, '$.event.runId') = ?`, runId, runId);
           if (!transfer) remove("notifications", `
             DELETE FROM notifications WHERE EXISTS (
               SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
@@ -4257,6 +4266,7 @@ export class AuthorityDatabase implements Disposable {
       );
     }
     validateAuthorityRecordSchemas(this.#database, new Set(names));
+    if (schemaVersion >= 52) validateNotificationMetadata(this.#database);
     if (schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
       inspectHistoricalAuthorityInvariants(this.#database, schemaVersion);
       return;
@@ -4695,6 +4705,7 @@ export class AuthorityDatabase implements Disposable {
             summary: request.summary,
             // A repeat is news again: the operator has not seen this occurrence.
             status: "unread",
+            snooze: existing.snooze,
             count: existing.count + 1,
             lastSeenAt: request.seenAt,
             version: existing.version + 1,
@@ -5296,6 +5307,10 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       notifications: this.#buildNotificationRepository(),
+      ...createNotificationMetadataRepositories({ database: this.#database, mutate: (table, work) => {
+        if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("notification-metadata-transaction-required");
+        return this.#authorityWrite(table, work);
+      } }),
       configSnapshots: Object.freeze({
         insert: (input: unknown) => {
           // The WRITE schema, not the read schema: an older generation is read

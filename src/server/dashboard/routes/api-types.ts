@@ -19,6 +19,7 @@ import type { RequestIdentityCheckpoint } from "../request-identity.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
 export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, ArchiveRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
+  readonly notifications?: { snapshot(actor: string): readonly import("../../../domain/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../services/notifications/observation.js").NotificationObservationStatus };
   readonly requestIdentity: RequestIdentityCheckpoint;
   readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
   readonly projection: RunQueueProjection;

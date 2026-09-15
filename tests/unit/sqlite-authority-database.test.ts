@@ -1,3 +1,4 @@
+import { explorerAuthorityFixture } from "../fixtures/explorer-authority.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
 import { versionChangeReviewFingerprint } from "../../src/domain/archive/change-record.js";
@@ -440,7 +441,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50 | 51): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50 | 51 | 52): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -1970,7 +1971,31 @@ describe("authority generation accounting", () => {
     { table: "delegation_dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
+    { table: "explorer_overrides", mutate: db => {
+      const f = explorerAuthorityFixture();
+      try {
+        const command = f.command(UUID_7);
+        const result = f.kernel.execute(command);
+        assert.equal(result.state, "applied");
+        const override = f.database.authority.explorerOverrides.read(command.target.workflowId);
+        const audit = f.database.authority.commandAudits.findByCommand(command.commandId);
+        assert.ok(override); assert.ok(audit);
+        db.withAuthorityTransaction(repos => {
+          repos.commands.insert(command);
+          repos.explorerOverrides.replace(command, override);
+          repos.commandAudits.insert(audit);
+        });
+      } finally { f.dispose(); }
+    } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
+    { table: "notification_publications", prepare: db => { db.authority.notifications.create(NOTIFICATION); }, mutate: db => {
+      db.withAuthorityTransaction(repos => repos.notificationPublications.create({ sourceId: HASH_A, actorId: NOTIFICATION.actorId,
+        notificationId: NOTIFICATION.notificationId, event: { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: HASH_A },
+        occurredAt: NOW, createdAt: NOW, adopted: false }));
+    } },
+    { table: "notification_health", mutate: db => { db.withAuthorityTransaction(repos => repos.notificationHealth.put({
+      concern: "disk-space", active: false, occurrence: 0, samples: [], observedAt: NOW, createdAt: NOW,
+    })); } },
     { table: "settings_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     {
       table: "app_settings",

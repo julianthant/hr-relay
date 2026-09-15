@@ -99,7 +99,7 @@ const DAY = {
     leaseVersion: 3,
     revision: 1,
   }],
-  notifications: [{ kind: "notification", notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1 }],
+  notifications: [{ kind: "notification", channel: "inbox", count: 1, publicationId: "a".repeat(64), trigger: "verified-done", readState: "unread", notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1 }],
 };
 
 const DETAIL = {
