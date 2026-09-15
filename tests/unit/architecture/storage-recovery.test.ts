@@ -3754,6 +3754,8 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/infra/sqlite/stopped-database-conversion.ts",
       "src/infra/sqlite/timeline-conversion.ts",
       "src/infra/sqlite/timeline-repository.ts",
+      "src/infra/sqlite/explorer-override-conversion.ts",
+      "src/infra/sqlite/explorer-overrides.ts",
       "src/infra/sqlite/failure-resolution.ts",
       "src/infra/sqlite/foundation-retirement.ts",
       "src/infra/sqlite/generated-artifacts.ts",

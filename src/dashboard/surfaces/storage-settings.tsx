@@ -1,17 +1,18 @@
 import {
 Database,
+Info,
 ShieldAlert
 } from "lucide-react";
 import { useState } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
-import { Banner,Button,dsFocus,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,Separator,StatusDot,type DsStatus } from "../ds/ui.js";
+import { IconButton,Popover,PopoverContent,PopoverTrigger,Banner,Button,dsFocus,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,Separator,StatusDot,type DsStatus } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useStorageClient as useDashboardClient } from "../state/storage-client.js";
 import { fmtClock,fmtInstantDay,plural } from "./format.js";
 import { useEditableSettings } from "./settings-editor-model.js";
 import { PreflightControl } from "./settings-preflight.js";
-import { spanAuthorityProblemDetail,type StorageHealthSummary } from "./storage-settings-model.js";
+import { STORAGE_RECOVERY_GUIDANCE,spanAuthorityProblemDetail,type StorageHealthSummary } from "./storage-settings-model.js";
 
 
 /* whether the storage summary owes the operator attention, the nav fold and the
@@ -67,8 +68,8 @@ function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
 const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
 
 const BACKUP_HAZARD: Record<Exclude<StorageHealthSummary["backup"], "current">, string> = {
-  stale: "Runs and writes are unaffected; the newest verified backup is older than the backup cadence allows.",
-  missing: "Runs and writes are unaffected; no verified backup was found, so there is no restore point.",
+  stale: "The backup summary is stale. Run the doctor to inspect the exact backup and generation gap.",
+  missing: "No backup manifest was found by the summary. Run the doctor to inspect recovery sources.",
 };
 
 
@@ -128,10 +129,10 @@ type DoctorState =
 
 function HealthLine({ status, label, value }: { status: DsStatus; label: string; value: string }) {
   return (
-    <span className="flex items-center gap-[var(--ds-space-snug)]">
+    <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
       <StatusDot status={status} />
       <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{label}</span>
-      <span className={cn(dsText.body, "font-medium text-[color:var(--ds-fg)]")}>{value}</span>
+      <span className={cn(dsText.body, "min-w-0 break-words font-medium text-[color:var(--ds-fg)]")}>{value}</span>
     </span>
   );
 }
@@ -179,7 +180,7 @@ function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWi
         aria-live="polite"
         className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
       >
-        <span className="flex items-center gap-[var(--ds-space-snug)]">
+        <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
           <StatusDot status="failed" />
           <h3 id="span-authority-title" className={cn(dsText.body, "font-semibold text-[color:var(--ds-danger)]")}>
             Span authority unavailable
@@ -198,7 +199,7 @@ function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWi
       aria-live="polite"
       className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
     >
-      <span className="flex items-center gap-[var(--ds-space-snug)]">
+      <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
         <StatusDot status={reconciled ? "verifiedDone" : "waiting"} />
         <h3
           id="span-authority-title"
@@ -249,6 +250,45 @@ const COUNT_LABELS = [
 ] as const;
 
 
+function RecoveryStatus({ report }: { report: StorageDoctorWire }) {
+  const recovery = report.recovery;
+  return <section aria-label="Recovery status" aria-live="polite" className="flex flex-col gap-[var(--ds-space-tight)]">
+    <HealthLine status={recovery.state === "clear" ? "verifiedDone" : "failed"} label="Recovery"
+      value={recovery.state === "clear" ? "No interruption markers" : recovery.state === "interrupted" ? "Interrupted recovery" : "Inspection unavailable"} />
+    {recovery.state !== "clear" && <>
+      <span className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
+        {recovery.state === "unavailable" ? recovery.cause.summary : "Runtime startup remains blocked. Preserve the evidence and settle the exact interrupted operation."}
+      </span>
+      <ul aria-label="Recovery findings" className={dsText.meta}>
+        {recovery.findings.map(finding => <li key={finding.marker}>{finding.marker}: {finding.state}</li>)}
+      </ul>
+    </>}
+  </section>;
+}
+
+function UpgradeAndCredentials({ report }: { report: StorageDoctorWire }) {
+  const upgrades = report.authorityUpgrades, credentials = report.protectedSettings;
+  return <>
+    <section aria-label="Authority upgrade history" className="flex flex-col gap-[var(--ds-space-tight)]">
+      <h3 className={cn(dsText.body, "font-semibold")}>Authority upgrade history</h3>
+      {upgrades.state === "available" ? <ul className={cn(dsText.meta, dsText.nums)}>
+        {upgrades.phases.map((row, index) => <li key={index}>
+          {row.phase}: v{row.fromSchemaVersion} → v{row.toSchemaVersion}; {fmtInstantDay(row.recordedAt)} {fmtClock(row.recordedAt)}
+        </li>)}
+      </ul> : <span className={dsText.meta}>{upgrades.state === "unavailable"
+        ? `Upgrade history unavailable: ${upgrades.cause.summary}`
+        : upgrades.reason === "pre-journal-schema" ? "This source predates the upgrade journal." : "No upgrade history recorded."}</span>}
+    </section>
+    <section aria-label="Independent credentials" className="flex flex-col gap-[var(--ds-space-tight)]">
+      <h3 className={cn(dsText.body, "font-semibold")}>Independent credentials</h3>
+      {credentials.state === "available" ? <ul className={cn(dsText.meta, "grid grid-cols-2 gap-[var(--ds-space-tight)]")}>
+        {credentials.entries.map(entry => <li key={entry.name}>{entry.name}: {entry.present ? "present" : "absent"}</li>)}
+      </ul> : <span className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>Credential inspection unavailable: {credentials.cause.summary}</span>}
+    </section>
+  </>;
+}
+
+
 function DoctorReport({ report }: { report: StorageDoctorWire }) {
   const counts = report.counts;
   return (
@@ -288,7 +328,9 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
         </span>
       )}
 
+      <RecoveryStatus report={report} />
       <SpanAuthorityReport spanAuthority={report.spanAuthority} />
+      <UpgradeAndCredentials report={report} />
 
       {report.backup.state === "current" || report.backup.state === "stale" ? (
         <HealthLine
@@ -330,16 +372,39 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
         {report.restoreCandidates.map((candidate) => (
           <span
             key={candidate.manifestFileName}
-            className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}
+            className={cn(dsText.meta, dsText.nums, "break-all text-[color:var(--ds-fg-muted)]")}
           >
             {candidate.state === "verified-compatible"
-              ? `ok ${candidate.manifestFileName} — created ${fmtClock(candidate.createdAt)} · generation ${String(candidate.authorityGeneration)} · age ${fmtAge(candidate.ageMs)}`
+              ? `Verified bytes: ${candidate.manifestFileName}. ${candidate.selection === "lifecycle-pair" ? "Complete lifecycle pair" : "Individual database"}; restore ${candidate.restoreEligibility.state}. Schema v${String(candidate.schemaVersion)}; generation ${String(candidate.authorityGeneration)}; age ${fmtAge(candidate.ageMs)}.`
+                + ("reason" in candidate.restoreEligibility ? ` ${candidate.restoreEligibility.reason}` : candidate.restoreEligibility.state === "requires-upgrade" ? " Supported source requires stopped conversion with this release." : " Stopped-system checks still apply.")
               : `INVALID ${candidate.manifestFileName} — ${candidate.cause.code}: ${candidate.cause.summary}`}
           </span>
         ))}
       </div>
     </div>
   );
+}
+
+
+function RecoveryGuidance() {
+  return <Popover>
+    <PopoverTrigger asChild>
+      <IconButton size="xs" label="Storage recovery instructions" icon={<Info aria-hidden className={dsIcon.sm} />} />
+    </PopoverTrigger>
+    <PopoverContent title="Storage recovery instructions" width="lg"
+      className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+      <div className="flex flex-col gap-[var(--ds-space-base)]">
+        <p>Run these commands from the intended rebuild checkout. Stop its dashboard with Ctrl+C and wait for the BFF and all workers to finish before backup, upgrade or restore.</p>
+        {STORAGE_RECOVERY_GUIDANCE.map(row => <section key={row.title} className="flex flex-col gap-[var(--ds-space-tight)]">
+          <h3 className={cn(dsText.body, "font-semibold text-[color:var(--ds-fg)]")}>{row.title}</h3>
+          <code className={cn(dsText.meta, dsText.nums, "block break-words whitespace-pre-wrap select-text")}>{row.command}</code>
+          <p>{row.detail}</p>
+        </section>)}
+        <p>Interrupted or unavailable recovery: preserve the markers, suspect files and exact backup bytes. Correct the named evidence before replaying that exact operation. A generic retry is not safe. Never retry an UNKNOWN submit or re-admit a run lost during restore.</p>
+        <p>After recovery, rerun the doctor and check credentials before restarting services. Interactive restore, upgrade and repair controls are deferred until a concrete workflow need or an explicit post-release request.</p>
+      </div>
+    </PopoverContent>
+  </Popover>;
 }
 
 
@@ -404,19 +469,20 @@ export function StorageSection({
         */}
         <Banner
           tone={degraded ? "danger" : "success"}
-          title={degraded ? "Read-only — degraded" : "Read-write — healthy"}
+          title={degraded ? "Authority unavailable" : "Authority summary healthy"}
         >
           {degraded
             ? AUTHORITY_HAZARD
-            : "From the newest write-time-verified backup manifest; the doctor below re-verifies bytes."}
+            : "Backup metadata has not been re-verified by this summary."}
         </Banner>
 
         <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
         <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
-        <span>
+        <span className="flex items-center gap-[var(--ds-space-snug)]">
           <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
             {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
           </Button>
+          <RecoveryGuidance />
         </span>
         {doctor.state === "failed" && (
           <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>

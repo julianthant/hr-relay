@@ -273,7 +273,7 @@ fixtures. Its optional Activity adapter preserves those fixtures; production alw
 `composeActivity`. `compose/operator.ts` and `queries/run-summaries.ts` contain compatibility exports,
 not duplicate implementations. New callers should use the dedicated modules.
 
-Reserved shared owners remain `routes/api.ts` / `api-types.ts` (registration and request identity),
+Except for the [Storage child's narrowly approved read-only doctor correction](#storage-child-ownership-amendment--2026-09-13), reserved shared owners remain `routes/api.ts` / `api-types.ts` (registration and request identity),
 `routes/commands.ts` / `commands-types.ts` (strict acceptance, execute/bulk, exact replay and Intake
 prepare), `routes/loopback.ts`, the command union/kernel, SQLite schemas/recovery, runtime lifetime and
 preflight composition, the stream protocol, generated export registration, the common status fold
@@ -404,7 +404,7 @@ operation summary; the local `ownership.json` also records exact import edges.
 | --- | --- | --- |
 | 3.1.9.1 Shell | `TopBar`, `WorkflowSidebar`, `WorkflowWindow`, `WorkflowPanelToggle`, `StatusFilters`; `NavHistoryControls`, `useRoute`, `useDashboardNavigation`, `useTakeoverCloseFocus`; existing `url-state.ts`, `nav-history.ts`, global keys and shell models. `createShellQueries` supplies real bootstrap/search. `subscribeDay` remains the shared bounded transport. Date, notification, preflight, session and Settings bodies are separate imports. | `fixture-bootstrap.ts`, `fixture-shell-routes.ts`, `reference-shell-scenes.ts`, `dashboard-reference.spec.ts`; existing shell/toolbar/kit specs. Exact `queue-day`, `ds-kit`, `ds-kit-cancelling` reference families. The shell may change its dedicated navigation modules and the bounded app-file seams in the [approved shell amendment](#shell-child-ownership-amendment--2026-09-13); other shared registration remains reserved. |
 | 3.1.9.2 Settings | `SettingsPage`, `SettingsGear`, navigation model; `EditableSettingsSection`, `useEditableSettings`, `FactsPane`, `useSettingsFacts`, `SystemHostsSection`, `CapabilitiesSection`, `KeyboardSection`. `useSettingsClient` exposes Settings queries, atomic `applySettings`, and shared strict command execution for existing protected-setting operations. The [Settings amendment](#settings-child-ownership-amendment--2026-09-13) assigns the missing full-catalog/value-free projection and Settings-local wiring to this child; ordinary/protected executors and authority readers remain accepted backend inputs. | `fixture-settings.ts`, `fixture-settings-routes.ts`, `fixture-settings-activation.ts`, `reference-settings-scenes.ts`, `reference-settings.spec.ts`, existing `settings-activation.spec.ts` and new Settings-owned proof; `settings`, `settings-activation-saved`, `settings-activation-reset`. The amendment permits precisely attributed `storage-settings` navigation changes and Settings-only shared-test construction/audit edits. Full catalog/P40/A8 proof belongs to the approved child brief; none was made by B. |
-| 3.1.9.3 Storage | `StorageBanner`, `StorageSection`, storage presentation model and `useStorageClient`/`createStorageQueries.storageDoctor`. The section consumes the existing editor and preflight props without owning their drafts or executors. A's real doctor and trust-anchor binding are unchanged. | `fixture-storage.ts`, `fixture-storage-routes.ts`, `reference-storage.spec.ts`; `storage-queue`, `storage-settings`, `storage-doctor-degraded`. No schema/recovery redesign or automatic backup is admitted. |
+| 3.1.9.3 Storage | `StorageBanner`, `StorageSection`, storage presentation model and `useStorageClient`/`createStorageQueries.storageDoctor`. The section consumes the existing editor and preflight props without owning their drafts or executors. The [Storage amendment](#storage-child-ownership-amendment--2026-09-13) permits the narrow read-only doctor/report correction while preserving the trust anchor and all recovery writers. | `fixture-storage.ts`, `fixture-storage-routes.ts`, `reference-storage.spec.ts`; `storage-queue`, `storage-settings`, `storage-doctor-degraded`, plus storage-owned recovery proof. No database-schema/recovery-writer redesign or automatic backup is admitted. |
 | 3.1.9.4 Explorer/Catalog | Existing `explorer*.ts*`, `ui-catalog*.ts*`, `row-catalog*.ts*`; `useExplorerClient`, `createExplorerQueries` for graph, validation and catalog, plus existing strict command apply/replay/refusal. A's transaction-owned SQLite repository is immutable prerequisite authority. | Existing `fixture-explorer.ts`, new `fixture-explorer-routes.ts`, `reference-explorer-scenes.ts`, `reference-explorer.spec.ts`; `explorer-graph`, `explorer-transaction`, `catalog-search`. The Settings-hosted catalog slot is already registered. |
 | 3.1.9.5 Notifications | `NotificationBell`, dedicated notification model and `useNotificationClient`; served day notifications and shared SSE deliver real inbox updates, while existing command execution supplies read/unread/snooze and A's services supply durable delivery. | `fixture-notifications.ts` supplies the exact current ordinary/backfill arrays to the day fixture; existing `backfill-gap.spec.ts` owns notification-specific accessibility proof. There is no separate notification PNG family to invent or retire. New scenarios use child-owned profiles; changing a default row must not silently refreeze shared scenes. |
 | 3.1.9.6 Intake | Existing intake surfaces/models, `useIntakeClient`, `createIntakeQueries` upload/session ports and strict command execution. A's ingress still prepares attachments before execution. | Existing `fixture-intake.ts`, new `fixture-intake-routes.ts`, `reference-intake-scenes.ts`, `reference-intake.spec.ts`, existing `intake-accessibility.spec.ts`; `intake-mapping`, `intake-review`, `intake-manifest`, `intake-rerun`. Run-start spreadsheet references remain with the later Run owner. |
@@ -420,7 +420,7 @@ hooks return the exact provider object; the per-surface types introduce no fresh
 render. Compatibility exports in the old shell, top-bar, Settings model and client modules point
 to the implementations; production consumers import the dedicated owners.
 
-Subject only to the bounded shell and Settings amendments below, reserved shared inputs are the app/root takeover
+Subject only to the bounded shell, Settings, Storage and Intake amendments below, reserved shared inputs are the app/root takeover
 registration, provider/transport/subscription,
 `query-parse.ts`, `shared-commands.ts`, `async-resource.ts`, A's root BFF/command/schema/kernel
 registration, `fixture-day.ts`, fixture identity/profile/error helpers, `fixture-bff.ts`, seeded
@@ -627,6 +627,38 @@ is launched by this record. Deliberate reference updates are limited to the four
 identities for approved behavior, with exact attribution and assert proof. Shared membership and
 `start-run-spreadsheet` resting reference bytes remain unchanged. No new migration, artifact table,
 OCR/classification surface, full-gate requirement or independent review is added.
+
+#### Storage child ownership amendment — 2026-09-13
+
+During `/phase-plan 3.1.9.3`, the operator directed the planner to include the narrowly required
+read-only doctor correction, then approved the complete execution brief. An interrupted paired
+restore can block writable startup while the existing doctor reports healthy database integrity
+without its recovery marker. Its individual database-backup inspection also does not establish
+the complete live/archive/file pair that restore admission can require. Clear storage health and
+recovery guidance require fixing those observations before presenting them as actionable truth.
+
+3.1.9.3 is the sole child writer for this bounded extension: read-only diagnosis/report changes in
+`src/infra/sqlite/storage-doctor.ts`, `src/infra/sqlite/recovery-contracts.ts`, an optional dedicated
+`src/infra/sqlite/storage-recovery-status.ts` helper, the existing storage wire/query/routes/client,
+and only doctor formatting/help/status in `src/server/storage/compose.ts`. Storage report fixtures
+and strict-schema coverage in `tests/unit/architecture/strict-boundary-schemas.test.ts` may follow
+that wire; unrelated assertions and guard membership stay unchanged. The complete ownership,
+S1–S4 sequence, P1–P5 proof, exact commands and stop conditions live only in the
+[approved Storage execution brief](task-9-3-finish-basic-storage-health-and-recovery-access.md#approved-execution-brief--2026-09-13).
+
+This transfers no backup/restore/upgrade writer, migration, persisted recovery format, credential
+authority, runtime lock, root registration or Settings editor contract. Reuse the existing pair
+verifier without changing it. Read-only report/wire additions are permitted; database schema 51,
+floor 46, stopped 46–50 conversion and all accepted custody/replay protections remain unchanged.
+Other children still may not edit these reserved mechanisms. D339 continues to defer new
+interactive restore/upgrade/repair UI; no automatic recovery or operator-state operation is admitted.
+
+Preserve the already-approved in-flight Settings candidate and its Storage reference exceptions.
+Storage owns its candidate's attributed reference changes; 3.1.9.8 owns the combined reference
+refresh from both implementations and the assigned either-order integration proof. Do not pick
+one candidate's images to erase another's approved behavior or add a sibling implementation
+dependency. This amendment changes allocation only, not A06/A42 outcomes, the frozen task graph,
+the focused group/3.1.19 gate cadence or the no-independent-review rule.
 
 #### Independent gate resources and combination obligations
 

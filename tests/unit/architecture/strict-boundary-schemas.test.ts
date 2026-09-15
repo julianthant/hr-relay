@@ -796,6 +796,9 @@ const BACKUP_MANIFEST = {
 const HEALTH_CAUSE = { code: "backup-stale", summary: "verified backup is behind authority" };
 const RESTORE_CANDIDATE = {
   state: "verified-compatible",
+  selection: "single-database",
+  schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+  restoreEligibility: { state: "eligible" },
   manifestFileName: "authority-g4.sqlite.manifest.json",
   backupFileName: "authority-g4.sqlite",
   createdAt: NOW,
@@ -826,6 +829,7 @@ const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
   },
 };
 const STORAGE_DOCTOR_REPORT = {
+  recovery: { state: "clear" },
   authorityUpgrades: { state: "absent", reason: "journal-empty" },
   tombstoneOrdinals: { state: "available", findings: [{ code: "tombstone-ordinal-unknown", runId: UUID_1, missingFields: ["runNumber"] }] },
   protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "protected settings fixture is unavailable" } },

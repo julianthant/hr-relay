@@ -63,3 +63,12 @@ describe("the app-wide storage band (D281 item 7)", () => {
     assert.doesNotMatch(classes, /(?:^| )border-b(?: |$)/u);
   });
 });
+
+for (const authority of ["healthy", "unavailable"] as const) {
+  for (const backup of ["current", "stale", "missing"] as const) it(`keeps ${authority}/${backup} summary claims independent`, () => {
+    const markup = renderToStaticMarkup(createElement(StorageBanner, {storage: {...storage(authority), backup}, onOpenSettings: () => undefined}));
+    if (authority === "healthy") assert.equal(markup, "");
+    else assert.match(markup, /Authority storage is unavailable/u);
+    assert.doesNotMatch(markup, /unaffected|cadence allows|read-write/iu);
+  });
+}

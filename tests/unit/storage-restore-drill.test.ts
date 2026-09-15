@@ -892,6 +892,9 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
         () => outputs.join("").match(/^(?:ADMITTED|REFUSED) /gmu)?.length === contenderCount,
         outputs,
       );
+      // Admission is printed before the child finishes its read-only snapshot.
+      // Wait for that distinct observation, then retain the active-state assertion.
+      await waitFor(() => /^SNAPSHOT \S+$/mu.test(outputs.join("")), outputs);
       const output = outputs.join("");
       assert.equal(output.match(/^ADMITTED /gmu)?.length, 1, output);
       assert.equal(output.match(/^REFUSED /gmu)?.length, contenderCount - 1, output);
@@ -996,7 +999,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(usage.exitCode, 1);
     assert.match(
       usage.output,
-      /authority and span\/authority reconciliation are healthy; the backup arm is reported, not gated \(D322\)/u,
+      /authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated \(D322\)/u,
     );
   });
 
