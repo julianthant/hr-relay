@@ -403,7 +403,7 @@ operation summary; the local `ownership.json` also records exact import edges.
 | Owner | Production binding and working interface | Fixture/spec entry and reference ownership |
 | --- | --- | --- |
 | 3.1.9.1 Shell | `TopBar`, `WorkflowSidebar`, `WorkflowWindow`, `WorkflowPanelToggle`, `StatusFilters`; `NavHistoryControls`, `useRoute`, `useDashboardNavigation`, `useTakeoverCloseFocus`; existing `url-state.ts`, `nav-history.ts`, global keys and shell models. `createShellQueries` supplies real bootstrap/search. `subscribeDay` remains the shared bounded transport. Date, notification, preflight, session and Settings bodies are separate imports. | `fixture-bootstrap.ts`, `fixture-shell-routes.ts`, `reference-shell-scenes.ts`, `dashboard-reference.spec.ts`; existing shell/toolbar/kit specs. Exact `queue-day`, `ds-kit`, `ds-kit-cancelling` reference families. The shell may change its dedicated navigation modules and the bounded app-file seams in the [approved shell amendment](#shell-child-ownership-amendment--2026-09-13); other shared registration remains reserved. |
-| 3.1.9.2 Settings | `SettingsPage`, `SettingsGear`, navigation model; `EditableSettingsSection`, `useEditableSettings`, `FactsPane`, `useSettingsFacts`, `SystemHostsSection`, `CapabilitiesSection`, `KeyboardSection`. `useSettingsClient` exposes Settings queries, atomic `applySettings`, and shared strict command execution for existing protected-setting operations; real ordinary/protected executors and read-presence remain A's accepted backend. | `fixture-settings.ts`, `fixture-settings-routes.ts`, `reference-settings-scenes.ts`, `reference-settings.spec.ts`, existing `settings-activation.spec.ts`; `settings`, `settings-activation-saved`, `settings-activation-reset`. Full catalog editor/P40/A8 changes require this child's own approved proof; none was made by B. |
+| 3.1.9.2 Settings | `SettingsPage`, `SettingsGear`, navigation model; `EditableSettingsSection`, `useEditableSettings`, `FactsPane`, `useSettingsFacts`, `SystemHostsSection`, `CapabilitiesSection`, `KeyboardSection`. `useSettingsClient` exposes Settings queries, atomic `applySettings`, and shared strict command execution for existing protected-setting operations. The [Settings amendment](#settings-child-ownership-amendment--2026-09-13) assigns the missing full-catalog/value-free projection and Settings-local wiring to this child; ordinary/protected executors and authority readers remain accepted backend inputs. | `fixture-settings.ts`, `fixture-settings-routes.ts`, `fixture-settings-activation.ts`, `reference-settings-scenes.ts`, `reference-settings.spec.ts`, existing `settings-activation.spec.ts` and new Settings-owned proof; `settings`, `settings-activation-saved`, `settings-activation-reset`. The amendment permits precisely attributed `storage-settings` navigation changes and Settings-only shared-test construction/audit edits. Full catalog/P40/A8 proof belongs to the approved child brief; none was made by B. |
 | 3.1.9.3 Storage | `StorageBanner`, `StorageSection`, storage presentation model and `useStorageClient`/`createStorageQueries.storageDoctor`. The section consumes the existing editor and preflight props without owning their drafts or executors. A's real doctor and trust-anchor binding are unchanged. | `fixture-storage.ts`, `fixture-storage-routes.ts`, `reference-storage.spec.ts`; `storage-queue`, `storage-settings`, `storage-doctor-degraded`. No schema/recovery redesign or automatic backup is admitted. |
 | 3.1.9.4 Explorer/Catalog | Existing `explorer*.ts*`, `ui-catalog*.ts*`, `row-catalog*.ts*`; `useExplorerClient`, `createExplorerQueries` for graph, validation and catalog, plus existing strict command apply/replay/refusal. A's transaction-owned SQLite repository is immutable prerequisite authority. | Existing `fixture-explorer.ts`, new `fixture-explorer-routes.ts`, `reference-explorer-scenes.ts`, `reference-explorer.spec.ts`; `explorer-graph`, `explorer-transaction`, `catalog-search`. The Settings-hosted catalog slot is already registered. |
 | 3.1.9.5 Notifications | `NotificationBell`, dedicated notification model and `useNotificationClient`; served day notifications and shared SSE deliver real inbox updates, while existing command execution supplies read/unread/snooze and A's services supply durable delivery. | `fixture-notifications.ts` supplies the exact current ordinary/backfill arrays to the day fixture; existing `backfill-gap.spec.ts` owns notification-specific accessibility proof. There is no separate notification PNG family to invent or retire. New scenarios use child-owned profiles; changing a default row must not silently refreeze shared scenes. |
@@ -412,7 +412,7 @@ operation summary; the local `ownership.json` also records exact import edges.
 | Later owners | 3.1.10: `DateNav` and date model. 3.1.11: `SessionPanel` and session model. 3.1.11.1: `PreflightPopover`, `PreflightControl`, `useSettingsPreflight`, preflight query/client ports. 3.1.11.2: start commands and start fixture/spec family. 3.1.12: Activity queries/CSV, export command, Activity fixture/spec family; A's Activity summary source remains separate from Queue. 3.1.13: Queue query, queue fixture/spec. 3.1.14: detail queries and detail/diagnostic fixtures/specs. | Existing `start-run*`/`separations-start-*`, `activity-report*`/`cross-date-search`, `run-*`/`diagnostic-bundle-gallery`/`failure-resolution-*` references retain their corresponding later owner. Mixed failure-resolution proof and combined scene membership remain finalizer-owned. These extractions add no new session control, Run or detail feature. |
 
 `SettingsPage` owns the Settings host and draft lifetime; its Storage, preflight and Catalog
-component contracts are existing inputs. Except for 3.1.9.1's bounded shell amendment below,
+component contracts are existing inputs. Except for the bounded shell and Settings amendments below,
 children implement their surface without editing
 `dashboard-app.tsx`, `dashboard-takeovers.tsx`, the query/command aggregate, a sibling's module or
 the shared command union. Dedicated wire files retain A's matching owner. All surface client
@@ -420,7 +420,7 @@ hooks return the exact provider object; the per-surface types introduce no fresh
 render. Compatibility exports in the old shell, top-bar, Settings model and client modules point
 to the implementations; production consumers import the dedicated owners.
 
-Subject only to the bounded shell amendment below, reserved shared inputs are the app/root takeover
+Subject only to the bounded shell and Settings amendments below, reserved shared inputs are the app/root takeover
 registration, provider/transport/subscription,
 `query-parse.ts`, `shared-commands.ts`, `async-resource.ts`, A's root BFF/command/schema/kernel
 registration, `fixture-day.ts`, fixture identity/profile/error helpers, `fixture-bff.ts`, seeded
@@ -434,7 +434,8 @@ Reference scene modules register through the same guarded geometry/capture/prove
 Generated workflow manifest, UI catalog output, store catalog, combined scene membership and
 `docs/roadmap/index.html` remain generator/finalizer-owned. Source-authored workflows, every A
 backend/authority input, credentials/operator state, DS/specimen sources, runtime config and all
-693 reference files remain unchanged. New fixture/spec filenames do not change scene identity,
+693 reference files remained unchanged by B. The prospective shell and Settings amendments below
+own their explicit exceptions; all other inputs stay reserved. New fixture/spec filenames do not change scene identity,
 reference names, metadata or accepted outcomes.
 
 <details>
@@ -562,6 +563,42 @@ PNG/a11y/provenance updates for corrected shell empty-state copy, with exact att
 exception does not authorize kit or cross-owner refreezes, changed default fixture facts, or
 shared scene membership edits. The child's own focused proof and the existing 3.1.9.8/3.1.19
 cadence remain required. B's original reference/membership and integration receipts remain history.
+
+#### Settings child ownership amendment — 2026-09-13
+
+During `/phase-plan 3.1.9.2`, the operator selected **A** to include the missing full-catalog and
+protected-presence read wiring in the Settings child, then approved its
+[complete S1–S4 execution brief](task-9-2-finish-settings-over-the-canonical-settings-authority.md#approved-execution-brief--2026-09-13).
+Discovery verified that the accepted editor still serves only eight paths, despite the 86-row
+application catalog and functioning ordinary/protected operations. The independent protected reader
+exists, but the Settings editor lacks its own complete projection. This allocation makes A03/A04
+implementable without falsely treating B's extraction as full Settings completion.
+
+The child owns the dedicated `src/domain/dashboard/settings-editor.ts`/`settings.ts` wire,
+`src/server/dashboard/queries/settings-editor.ts`/`settings.ts`,
+`src/server/dashboard/routes/settings.ts`/`settings-types.ts`, and
+`src/server/dashboard/compose/settings.ts` for Settings projection and local dependency wiring.
+It composes existing ordinary/credential readers and sole provider-family accessors. Database
+schemas, settings/runtime authorities, credential stores/executors, shared command unions, aggregate
+clients and root registration remain unchanged. Preserve Storage/preflight/Catalog/shell component
+interfaces; the child extends its existing draft owner and exit guard to both Settings drafts.
+
+The child brief enumerates Settings-only dependency construction in shared seeded/unit BFF test
+builders and Settings-specific strict-schema/redaction inventory/assertion updates. These are
+bounded exceptions to the shared-test reservation, not permission to alter sibling behavior,
+custody, unrelated assertions or test membership. Other children retain their existing write sets;
+any overlapping shared-target change is resolved with the named finalizer rather than a new sibling
+dependency or an implicit root-interface rewrite.
+
+P40/A8 permits attributed changes to `settings`, `settings-activation-saved`,
+`settings-activation-reset` and new Settings-owned states. The six `storage-settings` reference sets
+may change only where shared Settings navigation changes; their Storage body/facts stay owned by
+3.1.9.3. Record every filename, before/after hash and reason, inspect the visual/accessibility diff,
+and rerun assert mode. No other family's drift is authorized. B's 693-file unchanged-reference and
+membership receipts remain historical evidence of B, not restrictions that defeat this approved
+child expansion. Group integration and actual combination proof remain with 3.1.9.8; full gates
+remain 3.1.19, with no independent review. No implementation, sibling launch, automatic merge or
+push is performed by this planning amendment.
 
 #### Intake child ownership amendment — 2026-09-14
 

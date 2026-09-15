@@ -1,3 +1,4 @@
+import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -15,27 +16,7 @@ import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalo
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
-const DOCUMENT = EditableSettingsWireSchema.parse({
-  revision: 1,
-  settingsSchemaHash: "a".repeat(64),
-  settingsFingerprint: "b".repeat(64),
-  activeConfigFingerprint: "c".repeat(64),
-  runtimeStatus: { state: "current", identity: { settingsRevision: 1, settingsSchemaHash: "a".repeat(64), settingsFingerprint: "b".repeat(64), configFingerprint: "c".repeat(64) } },
-  sections: [
-    { id: "general", label: "General", description: "General settings.", leaves: [{ path: "actor.label", input: "text", label: "Operator label", description: "Label.", effectiveValue: "Local operator", defaultValue: "Local operator", source: "default", editable: true }] },
-    { id: "display", label: "Display", description: "Display settings.", leaves: [
-      { path: "display.screenWidth", input: "number", label: "Screen width", description: "Width.", effectiveValue: 2560, defaultValue: 2560, source: "default", editable: true, minimum: 1, unit: "px" },
-      { path: "display.screenHeight", input: "number", label: "Screen height", description: "Height.", effectiveValue: 1440, defaultValue: 1440, source: "default", editable: true, minimum: 1, unit: "px" },
-    ] },
-    { id: "performance", label: "Performance", description: "Performance settings.", leaves: [
-      { path: "ocr.pageConcurrency", input: "number", label: "OCR page concurrency", description: "OCR.", effectiveValue: 0, defaultValue: 0, source: "default", editable: true, minimum: 0 },
-      { path: "ocr.maxValidationRetries", input: "number", label: "OCR validation retries", description: "Retries.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
-      { path: "timeouts.duoApprovalSeconds", input: "number", label: "Duo approval timeout", description: "Duo.", effectiveValue: 180, defaultValue: 180, source: "default", editable: true, minimum: 1, unit: "seconds" },
-      { path: "concurrency.defaultWorkers", input: "number", label: "Default workers", description: "Workers.", effectiveValue: 2, defaultValue: 2, source: "default", editable: true, minimum: 1, hazard: "Verify capacity." },
-    ] },
-    { id: "paths", label: "Paths", description: "Path settings.", leaves: [{ path: "paths.reportsDir", input: "text", label: "Reports directory", description: "Reports.", effectiveValue: "/tmp/reports", defaultValue: "/tmp/reports", source: "default", editable: true }] },
-  ],
-});
+const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
 const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
 let root: Root | undefined;
@@ -155,7 +136,7 @@ describe("editable Settings surface", () => {
       width.dispatchEvent(new Event("input", { bubbles: true }));
       width.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    assert.match(host.textContent ?? "", /1 unsaved change/u);
+    assert.match(host.textContent ?? "", /2 unsaved changes/u);
     await act(async () => { button("Back to the dashboard").click(); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
@@ -164,7 +145,7 @@ describe("editable Settings surface", () => {
     assert.equal(beforeUnload.defaultPrevented, true, "a dirty draft protects against browser unload");
     await act(async () => { overlayButton("Keep editing").click(); });
     assert.equal(closeCount, 0);
-    const save = button("Save 1");
+    const save = button("Save 2");
     save.focus();
     assert.equal(document.activeElement, save, "the atomic save action accepts keyboard focus");
     const form = host.querySelector("form");
@@ -218,7 +199,7 @@ describe("editable Settings surface", () => {
       }));
     });
     await act(async () => undefined);
-    const pageConcurrency = host.querySelector("input");
+    const pageConcurrency = host.querySelector('[data-settings-path="ocr.pageConcurrency"] input');
     if (!(pageConcurrency instanceof HTMLInputElement)) throw new Error("missing OCR page concurrency input");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.

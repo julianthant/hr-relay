@@ -35,6 +35,21 @@
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
+      - link "Test routes":
+        - /url: "?settings=routes"
+      - link "Annual dates":
+        - /url: "?settings=annual-dates"
+      - link "Provider budgets & models":
+        - /url: "?settings=providers"
+      - text: Authorities
+      - link "Credentials":
+        - /url: "?settings=protected-store"
+      - link "Provider availability":
+        - /url: "?settings=provider-env"
+      - link "Observed host":
+        - /url: "?settings=derived-host"
+      - link "Deployment":
+        - /url: "?settings=runtime-isolation"
       - text: Status
       - link "Storage health":
         - /url: "?settings=storage"

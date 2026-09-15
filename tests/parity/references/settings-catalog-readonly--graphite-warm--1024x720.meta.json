@@ -1,0 +1,11 @@
+{
+  "stateId": "settings-catalog-readonly",
+  "viewport": "1024x720",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "settings-catalog",
+  "descriptorHash": "71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

@@ -1,196 +1,135 @@
-import { useEffect,useMemo,useState } from "react";
-import { z } from "zod";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { systemClock } from "../../domain/clock.js";
-import type { CommandResult } from "../../domain/commands.js";
-import {
-deriveSettingsPatchFingerprint,
-SettingsPatchSchema,
-type SettingsPatch,
-} from "../../domain/config/settings.js";
-import type {
-EditableSettingsLeafWire,
-EditableSettingsPath,
-EditableSettingsWire,
-} from "../../domain/dashboard/settings-editor.js";
-import { useSettingsClient as useDashboardClient } from "../state/settings-client.js";
+import { deepFreeze } from "../../domain/immutability.js";
+import { SettingsCommandRequestSchema } from "../../domain/commands.js";
+import { deriveSettingsPatchFingerprint } from "../../domain/config/settings.js";
+import { EditableSettingsWireSchema, type EditableSettingsLeafWire, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import { useSettingsClient } from "../state/settings-client.js";
 import { useSettingsPreflight } from "./settings-preflight-model.js";
+import { useProtectedSettings } from "./settings-protected-model.js";
+import { beforeEffectRefusal, checkedSettingsResult, settingsRefusal, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
+import { coupledSettingsLeaves, draftError, fiscalYearLeaves, ordinaryReadbackConfirms, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
 
+export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
+export type { SettingsSaveState } from "./settings-attempt-model.js";
+export type { PreflightRerunState } from "./settings-preflight-model.js";
 
-export type EditableSettingsState =
-  | { readonly state: "loading" }
-  | { readonly state: "failed"; readonly message: string }
-  | { readonly state: "loaded"; readonly document: EditableSettingsWire };
-
-
-export type SettingsSaveState =
-  | { readonly state: "idle" }
-  | { readonly state: "saving" }
-  | { readonly state: "applied"; readonly replayed: boolean }
-  | { readonly state: "refused"; readonly message: string };
-
-
-type DraftValues = Partial<Record<EditableSettingsPath, string | number>>;
-
-type DraftErrors = Partial<Record<EditableSettingsPath, string>>;
-
-
-function currentDraft(document: EditableSettingsWire): DraftValues {
-  return Object.fromEntries(document.sections.flatMap((section) => section.leaves.map((leaf) => [leaf.path, leaf.effectiveValue])));
-}
-
-
-function leafFor(document: EditableSettingsWire, path: EditableSettingsPath): EditableSettingsLeafWire {
-  const leaf = document.sections.flatMap((section) => section.leaves).find((candidate) => candidate.path === path);
-  if (leaf === undefined) throw new Error(`settings editor did not serve leaf ${path}`);
-  return leaf;
-}
-
-
-function patchFromDraft(document: EditableSettingsWire, draft: DraftValues): SettingsPatch {
-  const patch: Record<string, { readonly set: unknown } | { readonly clear: true }> = {};
-  const leaves = document.sections.flatMap((section) => section.leaves);
-  const dirty = leaves.filter((leaf) => leaf.editable && draft[leaf.path] !== leaf.effectiveValue);
-  const displayDirty = dirty.some((leaf) => leaf.path.startsWith("display."));
-  const displayLeaves = leaves.filter((leaf) => leaf.path.startsWith("display."));
-  const clearDisplay = displayDirty && displayLeaves.every((leaf) => (
-    draft[leaf.path] === leaf.defaultValue && leaf.settingsValue !== undefined
-  ));
-  for (const leaf of leaves) {
-    if (!dirty.includes(leaf) && !(displayDirty && leaf.path.startsWith("display."))) continue;
-    const value = draft[leaf.path];
-    if (value === undefined) throw new Error(`settings editor draft omitted ${leaf.path}`);
-    patch[leaf.path] = clearDisplay && leaf.path.startsWith("display.")
-      ? { clear: true }
-      : value === leaf.defaultValue && leaf.settingsValue !== undefined && !leaf.path.startsWith("display.")
-      ? { clear: true }
-      : { set: value };
-  }
-  return SettingsPatchSchema.parse(patch);
-}
-
-
-function commandRefusal(result: CommandResult): string | undefined {
-  switch (result.state) {
-    case "applied":
-    case "already-applied": return undefined;
-    case "conflict": return `${result.message} The server is now at revision ${String(result.currentVersion)}; reload before saving.`;
-    case "rejected": return result.message;
-  }
-}
-
-
-/** The DCC3 page controller: one document, one N-leaf draft, one atomic patch. */
-export function useEditableSettings(input: Readonly<{
-  actorId: string;
-  descriptorFingerprint: string;
-}>) {
-  const client = useDashboardClient();
+/** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
+export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string }>) {
+  const client = useSettingsClient();
   const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
-  const [draft, setDraft] = useState<DraftValues>({});
-  const [errors, setErrors] = useState<DraftErrors>({});
+  const current = useRef<EditableSettingsWire | undefined>(undefined);
+  const [readProblem, setReadProblem] = useState<string | undefined>(undefined);
+  const [draft, setDraft] = useState<SettingsDraft>({});
+  const [added, setAdded] = useState<readonly EditableSettingsLeafWire[]>([]);
+  const [yearError, setYearError] = useState<string | undefined>(undefined);
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
+  const pending = useRef<OrdinarySettingsAttempt | undefined>(undefined);
+  const busy = useRef(false);
   const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
-
-  const load = (): void => {
-    setEditor({ state: "loading" });
-    client.editableSettings().then(
-      (document) => {
-        setEditor({ state: "loaded", document });
-        setDraft(currentDraft(document));
-        setErrors({});
-      },
-      (caught: unknown) => setEditor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }),
-    );
-  };
-
-  useEffect(() => { load(); }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const dirtyCount = useMemo(() => {
-    const leaves = editor.state === "loaded" ? editor.document.sections.flatMap((section) => section.leaves) : [];
-    return leaves.filter((leaf) => draft[leaf.path] !== leaf.effectiveValue).length;
-  }, [draft, editor]);
-
-  const update = (path: EditableSettingsPath, raw: string): void => {
-    if (editor.state !== "loaded") return;
-    const leaf = leafFor(editor.document, path);
-    if (!leaf.editable) return;
-    if (leaf.input === "text") {
-      setDraft((previous) => ({ ...previous, [path]: raw }));
-      setErrors((previous) => ({ ...previous, [path]: raw.trim().length === 0 ? "Enter a value." : undefined }));
-      return;
+  const refresh = useCallback(async (): Promise<EditableSettingsWire> => {
+    try {
+      const document = EditableSettingsWireSchema.parse(await client.editableSettings());
+      const previous = current.current;
+      if (previous !== undefined && (previous.revision > document.revision
+        || (previous.protectedSettings.state === "available" && document.protectedSettings.state === "available" && previous.protectedSettings.readback.revision > document.protectedSettings.readback.revision))) throw new Error("settings-readback-stale");
+      current.current = document; setEditor({ state: "loaded", document }); setReadProblem(undefined); return document;
+    } catch {
+      setReadProblem("Current settings could not be read. Your drafts are retained.");
+      throw new Error("settings-read-unavailable");
     }
-    const canonical = /^(?:0|[1-9]\d*)$/u.test(raw);
-    const value = canonical ? Number(raw) : undefined;
-    const error = value === undefined || value < leaf.minimum
-      ? `Enter a whole number of at least ${String(leaf.minimum)}.`
-      : undefined;
-    // Keep malformed text in the draft so clearing a zero-allowed field can
-    // never become a quiet numeric zero before the visible refusal is fixed.
-    setDraft((previous) => ({ ...previous, [path]: value ?? raw }));
-    setErrors((previous) => ({ ...previous, [path]: error }));
-  };
-
-  const reset = (path: EditableSettingsPath): void => {
-    if (editor.state !== "loaded") return;
-    const leaf = leafFor(editor.document, path);
-    setDraft((previous) => ({ ...previous, [path]: leaf.effectiveValue }));
-    setErrors((previous) => ({ ...previous, [path]: undefined }));
-  };
-
-  const discard = (): void => {
-    if (editor.state !== "loaded") return;
-    setDraft(currentDraft(editor.document));
-    setErrors({});
+  }, [client]);
+  useEffect(() => {
+    let active = true;
+    void refresh().catch(() => { if (active && current.current === undefined) setEditor({ state: "failed", message: "Settings could not be read. Try again." }); });
+    return () => { active = false; };
+  }, [refresh]);
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh });
+  const leaves = editor.state === "loaded" ? settingsLeaves(editor.document, added) : [];
+  const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
+    const leaf = leaves.find(candidate => candidate.path === path);
+    return [path, leaf === undefined ? "This setting is no longer served. Reset its draft." : draftError(leaf, operation)];
+  }));
+  const update = (path: string, raw: SettingsDraftInput): void => {
+    if (busy.current || pending.current !== undefined) return;
+    const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
+    setDraft(previous => {
+      const next = { ...previous };
+      for (const coupled of coupledSettingsLeaves(leaf, leaves)) {
+        if (next[coupled.path] === undefined || next[coupled.path]?.kind === "clear") next[coupled.path] = { kind: "set", raw: settingInput(coupled), companion: true };
+      }
+      next[path] = { kind: "set", raw }; return next;
+    });
     setSave({ state: "idle" });
   };
-
-  const submit = (): void => {
-    if (editor.state !== "loaded" || Object.values(errors).some((error) => error !== undefined)) return;
-    let patch: SettingsPatch;
-    try {
-      patch = patchFromDraft(editor.document, draft);
-    } catch (error) {
-      if (!(error instanceof z.ZodError)) throw error;
-      const invalidPaths = new Set(error.issues.map((issue) => issue.path.join(".")));
-      const validationErrors: DraftErrors = Object.fromEntries(
-        editor.document.sections.flatMap((section) => section.leaves)
-          .filter((leaf) => invalidPaths.has(leaf.path))
-          .map((leaf) => [leaf.path, "Enter a valid value."]),
-      );
-      setErrors(validationErrors);
-      setSave({ state: "refused", message: "Check the highlighted settings values." });
-      return;
-    }
-    if (Object.keys(patch).length === 0) return;
-    setSave({ state: "saving" });
-    client.applySettings({
-      commandId: crypto.randomUUID(),
-      requestedAt: systemClock.now().toISOString(),
-      requestedBy: input.actorId,
-      source: "settings-surface",
-      family: "settings",
-      type: "apply-settings",
-      target: { expectedRevision: editor.document.revision },
-      payload: {
-        settingsSchemaHash: editor.document.settingsSchemaHash,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      },
-    }).then(
-      (result) => {
-        const refusal = commandRefusal(result);
-        if (refusal !== undefined) {
-          setSave({ state: "refused", message: refusal });
-          return;
-        }
-        setSave({ state: "applied", replayed: result.state === "already-applied" });
-        load();
-      },
-      (caught: unknown) => setSave({ state: "refused", message: caught instanceof Error ? caught.message : String(caught) }),
-    );
+  const clear = (path: string): void => {
+    if (busy.current || pending.current !== undefined) return;
+    const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
+    setDraft(previous => ({ ...previous, ...Object.fromEntries(coupledSettingsLeaves(leaf, leaves).map(value => [value.path, { kind: "clear" as const }])) }));
+    setSave({ state: "idle" });
   };
-
-  return Object.freeze({ editor, draft, errors, save, preflight, dirtyCount, update, reset, discard, submit, reload: load, rerunPreflight });
+  const reset = (path: string): void => {
+    if (busy.current || pending.current !== undefined) return;
+    const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
+    setDraft(previous => {
+      const next = { ...previous };
+      const coupled = coupledSettingsLeaves(leaf, leaves);
+      const keep = previous[path]?.kind !== "clear" && coupled.some(other => { const operation = next[other.path]; return other.path !== path && operation?.kind === "set" && !operation.companion; });
+      if (keep) next[path] = { kind: "set", raw: settingInput(leaf), companion: true };
+      else for (const other of coupled) delete next[other.path];
+      return next;
+    });
+    setSave({ state: "idle" });
+  };
+  const discard = (): void => {
+    if (busy.current) return;
+    pending.current = undefined; setDraft({}); setAdded([]); setYearError(undefined); setSave({ state: "idle" });
+  };
+  const addYear = (year: string): void => {
+    if (editor.state !== "loaded" || busy.current || pending.current !== undefined) return;
+    try {
+      const newLeaves = fiscalYearLeaves(editor.document, year);
+      if (newLeaves.some(leaf => added.some(existing => existing.path === leaf.path))) throw new Error("duplicate-year");
+      setAdded(previous => [...previous, ...newLeaves]);
+      setDraft(previous => ({ ...previous, ...Object.fromEntries(newLeaves.map(leaf => [leaf.path, { kind: "set" as const, raw: "" }])) })); setYearError(undefined);
+    } catch { setYearError("Enter a new fiscal year as FY followed by four digits."); }
+  };
+  const perform = async (command: OrdinarySettingsAttempt): Promise<void> => {
+    if (busy.current) return;
+    busy.current = true; pending.current = command; setSave({ state: "saving" });
+    try {
+      const result = checkedSettingsResult(command, await client.applySettings(command));
+      if (result.state === "conflict") {
+        pending.current = undefined;
+        try { await refresh(); setSave({ state: "conflict", message: "Settings changed. Current values are refreshed beside your retained draft. Review them, then save deliberately." }); }
+        catch { setSave({ state: "conflict", message: "Settings changed, but current values could not be read. Refresh before saving the retained draft." }); }
+        return;
+      }
+      if (result.state === "rejected") {
+        if (!uncertainSettingsCode(result.code)) pending.current = undefined;
+        setSave({ state: uncertainSettingsCode(result.code) ? "unconfirmed" : "refused", code: result.code, message: settingsRefusal(result.code) }); return;
+      }
+      if (result.state !== "applied" && result.state !== "already-applied") throw new Error("settings-result-unconfirmed");
+      const document = await refresh();
+      if (document.revision !== result.settingsRevision || document.settingsFingerprint !== result.settingsFingerprint || !ordinaryReadbackConfirms(document, command.payload.patch)) throw new Error("settings-readback-unconfirmed");
+      pending.current = undefined; setDraft({}); setAdded([]); setSave({ state: "applied", replayed: result.state === "already-applied" });
+    } catch (error) {
+      const refused = beforeEffectRefusal(error); if (refused) pending.current = undefined;
+      setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your draft is retained." : "The settings write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
+    } finally { busy.current = false; }
+  };
+  const submit = (): void => {
+    if (editor.state !== "loaded" || busy.current || pending.current !== undefined || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined) || readProblem !== undefined) return;
+    try {
+      const patch = patchFromSettingsDraft(leaves, draft);
+      const command = deepFreeze(SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: input.actorId, source: "settings-surface", family: "settings", type: "apply-settings",
+        target: { expectedRevision: editor.document.revision }, payload: { settingsSchemaHash: editor.document.settingsSchemaHash, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }));
+      void perform(command);
+    } catch { setSave({ state: "refused", message: "Check the draft values. No request was sent." }); }
+  };
+  const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
+  const reload = (): void => { void refresh().catch(() => undefined); };
+  return Object.freeze({ editor, draft, errors, save, preflight, protectedEditor, leaves, yearError, readProblem,
+    dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
+    update, reset, clear, discard, submit, retry, reload, addYear, rerunPreflight });
 }
-
-export type { PreflightRerunState } from "./settings-preflight-model.js";

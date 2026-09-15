@@ -1,145 +1,111 @@
-import { settingsCatalogRow } from "../../../domain/config/catalog.js";
+import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { sha256Hex } from "../../../domain/sha256.js";
+/** One ordinary snapshot plus explicitly independent auxiliary authority reads. */
+import { SETTINGS_CATALOG } from "../../../domain/config/catalog.js";
 import { hostConfigFacts } from "../../../domain/config/host-display.js";
-/** The server-owned, bounded Settings editor inventory and its current values. */
-import {
-  resolveConfigWithProvenance,
-} from "../../../domain/config/resolve.js";
-import { SettingsRuntimeStatusSchema, type SettingsFileRecord } from "../../../domain/config/settings.js";
+import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../domain/config/resolve.js";
+import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../domain/config/settings.js";
 import type { Config, SettingsOverride } from "../../../domain/config/schema.js";
-import {
-  EditableSettingsWireSchema,
-  type EditableSettingsPath,
-  type EditableSettingsSectionId,
-  type EditableSettingsWire,
-} from "../../../domain/dashboard/settings-editor.js";
+import { ProtectedSettingsNameSchema } from "../../../domain/config/protected-settings.js";
+import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../domain/dashboard/settings-editor.js";
+import { EditableSettingsSectionIdSchema, settingsCatalogEntry, settingsControlFor, settingsSectionFor } from "../../../domain/dashboard/settings-catalog.js";
 import type { Clock } from "../../../domain/clock.js";
-import type { SettingsRuntimeSnapshot } from "../../settings-runtime.js";
+import { optionalSecretFamily, SecretFamilyNameSchema } from "../../../domain/secrets.js";
+import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../settings-runtime.js";
 
-type EditorValue = string | number;
-
-interface LeafSpec {
-  readonly section: EditableSettingsSectionId;
-  readonly path: EditableSettingsPath;
-  readonly label: string;
-  readonly description: string;
-  readonly input: "text" | "number";
-  readonly minimum?: number;
-  readonly unit?: string;
-  readonly hazard?: string;
-  readonly configValue: (config: Config) => EditorValue;
-  readonly settingsValue: (settings: SettingsOverride) => EditorValue | undefined;
+const SECTION_LABELS = { general: "General", display: "Display", performance: "Performance", paths: "Paths", routes: "Test routes", "annual-dates": "Annual dates", providers: "Provider budgets & models" } as const;
+const LABELS: Readonly<Record<string, string>> = {
+  "actor.label": "Operator label", "display.screenWidth": "Screen width", "display.screenHeight": "Screen height",
+  "ocr.pageConcurrency": "OCR page concurrency", "ocr.maxValidationRetries": "OCR validation retries",
+  "timeouts.duoApprovalSeconds": "Duo approval timeout", "concurrency.defaultWorkers": "Default workers", "paths.reportsDir": "Reports directory",
+  ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password", timekeeperName: "Timekeeper name",
+  sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL", activityPersonPseudonym: "Historical Activity pseudonym",
+};
+export function settingsLabel(key: string): string {
+  return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
 }
-
-const SECTION_COPY: Readonly<Record<EditableSettingsSectionId, Readonly<{ label: string; description: string }>>> = Object.freeze({
-  general: { label: "General", description: "The operator identity this runtime reports." },
-  display: { label: "Display", description: "The viewport assumptions used when browser work is composed." },
-  performance: { label: "Performance", description: "Concurrency and wait budgets. Saved changes apply to new runs." },
-  paths: { label: "Paths", description: "The durable report destination. Saved changes apply to new runs." },
-});
-
-/** One closed list. The client only renders this document and forms its patch from its paths. */
-const EDITABLE_LEAVES: readonly LeafSpec[] = Object.freeze([
-  {
-    section: "general", path: "actor.label", input: "text", label: "Operator label",
-    description: "The local operator label in dashboard and command evidence.",
-    configValue: (config) => config.actor.label,
-    settingsValue: (settings) => settings.actor?.label,
-  },
-  {
-    section: "display", path: "display.screenWidth", input: "number", minimum: 1, unit: "px", label: "Screen width",
-    description: "The composed browser viewport width.",
-    configValue: (config) => config.display.screenWidth,
-    settingsValue: (settings) => settings.display?.screenWidth,
-  },
-  {
-    section: "display", path: "display.screenHeight", input: "number", minimum: 1, unit: "px", label: "Screen height",
-    description: "The composed browser viewport height.",
-    configValue: (config) => config.display.screenHeight,
-    settingsValue: (settings) => settings.display?.screenHeight,
-  },
-  {
-    section: "performance", path: "ocr.pageConcurrency", input: "number", minimum: 0, label: "OCR page concurrency",
-    description: "Pages OCR may process concurrently; zero leaves provider admission to its own limit.",
-    configValue: (config) => config.ocr.pageConcurrency,
-    settingsValue: (settings) => settings.ocr?.pageConcurrency,
-  },
-  {
-    section: "performance", path: "ocr.maxValidationRetries", input: "number", minimum: 0, label: "OCR validation retries",
-    description: "Additional validation attempts after the first OCR answer.",
-    configValue: (config) => config.ocr.maxValidationRetries,
-    settingsValue: (settings) => settings.ocr?.maxValidationRetries,
-  },
-  {
-    section: "performance", path: "timeouts.duoApprovalSeconds", input: "number", minimum: 1, unit: "seconds", label: "Duo approval timeout",
-    description: "How long an authenticated browser may wait for the Duo ceremony.",
-    configValue: (config) => config.timeouts.duoApprovalSeconds,
-    settingsValue: (settings) => settings.timeouts?.duoApprovalSeconds,
-  },
-  {
-    section: "performance", path: "concurrency.defaultWorkers", input: "number", minimum: 1, label: "Default workers",
-    description: "Workers proposed for a newly planned pool.",
-    hazard: "Sets the proposed worker count for new pools; verify capacity before saving.",
-    configValue: (config) => config.concurrency.defaultWorkers,
-    settingsValue: (settings) => settings.concurrency?.defaultWorkers,
-  },
-  {
-    section: "paths", path: "paths.reportsDir", input: "text", label: "Reports directory",
-    description: "Absolute directory where report artifacts are written.",
-    configValue: (config) => config.paths.reportsDir,
-    settingsValue: (settings) => settings.paths?.reportsDir,
-  },
-]);
-
+function atPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const key of path.split(".")) {
+    if (current === undefined) return undefined;
+    if (current === null || typeof current !== "object" || Array.isArray(current)) throw new Error("settings-editor-path-invalid");
+    current = Reflect.get(current, key);
+  }
+  return current;
+}
 export interface SettingsEditorQueryDeps {
-  readonly settings: Readonly<{
-    read(): SettingsRuntimeSnapshot;
-  }>;
+  readonly settings: { read(): SettingsRuntimeSnapshot & { readonly activeConfig?: Config } };
+  readonly protectedSettings: { read(): ProtectedSettingsRuntimeSnapshot };
   readonly environment: NodeJS.ProcessEnv;
   readonly clock: Clock;
-}
-
-function activeConfigFingerprint(status: unknown): string {
-  const parsed = SettingsRuntimeStatusSchema.parse(status);
-  return parsed.state === "current" ? parsed.identity.configFingerprint : parsed.active.configFingerprint;
-}
-
-function buildLeaf(spec: LeafSpec, record: SettingsFileRecord, deps: SettingsEditorQueryDeps) {
-  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(deps.environment), deps.clock);
-  // D324: the "default" column shows the host display default, never the headless fallback.
-  const defaults = resolveConfigWithProvenance({}, hostConfigFacts(deps.environment), deps.clock);
-  const source = resolved.provenance[spec.path];
-  if (source === undefined) throw new Error(`settings editor leaf ${spec.path} has no resolver provenance`);
-  const common = {
-    path: spec.path,
-    label: spec.label,
-    description: spec.description,
-    effectiveValue: spec.configValue(resolved.config),
-    defaultValue: spec.configValue(defaults.config),
-    ...(spec.settingsValue(record.settings) === undefined ? {} : { settingsValue: spec.settingsValue(record.settings) }),
-    source,
-    editable: settingsCatalogRow(spec.path).editability === "operator",
-    ...(spec.hazard === undefined ? {} : { hazard: spec.hazard }),
-  };
-  return spec.input === "text"
-    ? { ...common, input: "text" as const }
-    : { ...common, input: "number" as const, minimum: spec.minimum ?? 0, ...(spec.unit === undefined ? {} : { unit: spec.unit }) };
+  /** Injected resolution stays Settings-local; tests supply deterministic synthetic path facts. */
+  readonly resolve?: (settings: SettingsOverride) => ResolvedConfig;
 }
 
 export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSettingsWire {
   const snapshot = deps.settings.read();
   const { record } = snapshot;
   const runtimeStatus = SettingsRuntimeStatusSchema.parse(snapshot.runtimeStatus);
+  const resolve = deps.resolve ?? ((settings: SettingsOverride) => resolveConfigWithProvenance(settings, hostConfigFacts(deps.environment), deps.clock));
+  const resolved = resolve(record.settings);
+  const defaults = resolve({}).config;
+  const persisted = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.persisted;
+  const active = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.active;
+  if (record.settingsFingerprint !== derivePersistedSettingsFingerprint(record.settings) || resolved.fingerprint !== persisted.configFingerprint) throw new Error("settings-editor-snapshot-mismatch");
+  // A current snapshot already binds these exact values. A differing active identity requires its actual snapshot.
+  const activeConfig = snapshot.activeConfig ?? (runtimeStatus.state === "current" ? resolved.config : undefined);
+  if (activeConfig === undefined) throw new Error("settings-editor-active-snapshot-missing");
+  if (sha256Hex(canonicalJsonStringify(activeConfig)) !== active.configFingerprint || sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) throw new Error("settings-editor-config-mismatch");
+  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings");
+  const years = [...new Set([...Object.keys(resolved.config.annualDates), ...Object.keys(activeConfig.annualDates)])].sort();
+  const leaf = (key: string, path = key) => {
+    const control = settingsControlFor(key);
+    const settingsValue = atPath(record.settings, path);
+    const effectiveValue = atPath(resolved.config, path);
+    return {
+      path, catalogKey: key, input: control.input, control, label: settingsLabel(path),
+      description: key.startsWith("annualDates.") ? "M/D/YYYY or MM/DD/YYYY" : settingsLabel(key),
+      ...(effectiveValue === undefined ? {} : { effectiveValue }),
+      ...(atPath(activeConfig, path) === undefined ? {} : { activeValue: atPath(activeConfig, path) }),
+      ...(atPath(defaults, path) === undefined ? {} : { defaultValue: atPath(defaults, path) }),
+      ...(settingsValue === undefined ? {} : { settingsValue }),
+      source: settingsValue === undefined ? "default" : "settings", sourceClass: "ordinary-settings", sensitivity: "ordinary",
+      editable: true, validity: effectiveValue === undefined ? "unset" : "valid",
+      activationScope: key.startsWith("daemon.") ? "next-idle" : "new-runs",
+      ...(control.input === "number" ? { minimum: control.minimum } : {}),
+      ...(key.startsWith("display.") ? { unit: "px" } : {}),
+      ...(key === "concurrency.defaultWorkers" ? { hazard: "Review capacity for new worker pools." } : {}),
+    };
+  };
+  const leaves = ordinary.flatMap(row => row.key.includes("*") ? years.map(year => leaf(row.key, row.key.replace("*", year))) : [leaf(row.key)]);
+  const protectedRows = ProtectedSettingsNameSchema.options.map(name => ({ name, label: settingsLabel(name), activationScope: "next-use",
+    purpose: name === "activityPersonPseudonym" ? "Historical records only; Activity pseudonym consumers remain retired." : `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
+  let protectedSettings: unknown;
+  try {
+    const read = deps.protectedSettings.read();
+    protectedSettings = { state: "available", rows: protectedRows, ...read };
+  } catch {
+    // Independent credential failure is an explicit unknown, never an empty store or leaked diagnostic.
+    protectedSettings = { state: "unknown", rows: protectedRows, reason: "credential-store-unavailable" };
+  }
+  const providers = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "provider-env").map(row => {
+    const name = SecretFamilyNameSchema.parse(row.key); // Registry defects must throw, outside availability handling.
+    try {
+      const count = optionalSecretFamily(name, deps.environment).length;
+      return [row.key, count === 0 ? { state: "missing" } : { state: "present", count }];
+    } catch { return [row.key, { state: "unknown" }]; }
+  }));
+  const deployment = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => {
+    const value = atPath(activeConfig, row.key === "duoWebauthnCredential" ? "paths.duoCredential" : row.key);
+    if (value === undefined) throw new Error("settings-editor-deployment-fact-missing");
+    return [row.key, value];
+  }));
   return EditableSettingsWireSchema.parse({
-    revision: record.revision,
-    settingsSchemaHash: record.settingsSchemaHash,
-    settingsFingerprint: record.settingsFingerprint,
-    activeConfigFingerprint: activeConfigFingerprint(runtimeStatus),
-    runtimeStatus,
-    sections: (Object.keys(SECTION_COPY) as EditableSettingsSectionId[]).map((id) => ({
-      id,
-      label: SECTION_COPY[id].label,
-      description: SECTION_COPY[id].description,
-      leaves: EDITABLE_LEAVES.filter((leaf) => leaf.section === id).map((leaf) => buildLeaf(leaf, record, deps)),
-    })),
+    revision: record.revision, settingsSchemaHash: record.settingsSchemaHash, settingsFingerprint: record.settingsFingerprint,
+    activeConfigFingerprint: active.configFingerprint, runtimeStatus,
+    catalog: SETTINGS_CATALOG.map(settingsCatalogEntry),
+    sections: EditableSettingsSectionIdSchema.options.map(id => ({ id, label: SECTION_LABELS[id], description: "Ordinary settings · SQLite", leaves: leaves.filter(value => settingsSectionFor(value.path) === id) })),
+    fiscalYearTemplate: { keyPattern: "^FY\\d{4}$", leaves: ordinary.filter(row => row.key.includes("*")).map(row => leaf(row.key)) },
+    protectedSettings, providers, host: hostConfigFacts(deps.environment), deployment,
   });
 }

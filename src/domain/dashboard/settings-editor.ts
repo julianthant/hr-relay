@@ -1,185 +1,109 @@
-/**
- * The closed browser projection for Settings editing. The server owns the
- * inventory: the browser receives leaves, provenance and editability, but
- * never infers a setting name or a default of its own.
- */
+/** Complete Settings projection; auxiliary authorities remain independent and value-free. */
 import { z } from "zod";
-import { SettingsRuntimeStatusSchema } from "../config/settings.js";
-import { ConfigProvenanceSchema } from "../config/provenance.js";
+import { canonicalJsonStringify } from "../canonical-json.js";
+import { SETTINGS_CATALOG } from "../config/catalog.js";
+import { SettingsPatchSchema, SettingsRuntimeStatusSchema } from "../config/settings.js";
+import { HostConfigFactsSchema } from "../config/host-display.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsNameSchema, ProtectedSettingsReadbackSchema } from "../config/protected-settings.js";
 import { FingerprintSchema, PositiveIntSchema } from "../ids.js";
+import { EditableSettingsSectionIdSchema, SettingsCatalogWireSchema, SettingsControlSchema, deploymentLeafSchema, catalogKeyForEditorPath, settingsControlFor, settingsSectionFor } from "./settings-catalog.js";
+export { EditableSettingsPathSchema, EditableSettingsSectionIdSchema } from "./settings-catalog.js";
+export type { EditableSettingsPath, EditableSettingsSectionId } from "./settings-catalog.js";
 
-export const EditableSettingsSectionIdSchema = z.enum(["general", "display", "performance", "paths"]);
-export type EditableSettingsSectionId = z.infer<typeof EditableSettingsSectionIdSchema>;
-
-export const EditableSettingsPathSchema = z.enum([
-  "actor.label",
-  "display.screenWidth",
-  "display.screenHeight",
-  "ocr.pageConcurrency",
-  "ocr.maxValidationRetries",
-  "timeouts.duoApprovalSeconds",
-  "concurrency.defaultWorkers",
-  "paths.reportsDir",
-]);
-export type EditableSettingsPath = z.infer<typeof EditableSettingsPathSchema>;
-
-const TextLeafSchema = z.strictObject({
-  // The input widget is part of the server-owned leaf contract. A text leaf
-  // must never be reinterpreted as a numeric resolver value by the browser.
-  path: z.enum(["actor.label", "paths.reportsDir"]),
-  input: z.literal("text"),
-  label: z.string().min(1),
-  description: z.string().min(1),
-  effectiveValue: z.string().min(1),
-  defaultValue: z.string().min(1),
-  settingsValue: z.string().min(1).optional(),
-  source: ConfigProvenanceSchema,
-  environmentVariable: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
-  editable: z.boolean(),
-  hazard: z.string().min(1).optional(),
-});
-
-const NumberLeafSchema = z.strictObject({
-  path: z.enum([
-    "display.screenWidth",
-    "display.screenHeight",
-    "ocr.pageConcurrency",
-    "ocr.maxValidationRetries",
-    "timeouts.duoApprovalSeconds",
-    "concurrency.defaultWorkers",
-  ]),
-  input: z.literal("number"),
-  label: z.string().min(1),
-  description: z.string().min(1),
-  effectiveValue: z.number().int().nonnegative(),
-  defaultValue: z.number().int().nonnegative(),
-  settingsValue: z.number().int().nonnegative().optional(),
-  source: ConfigProvenanceSchema,
-  environmentVariable: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
-  editable: z.boolean(),
-  minimum: z.number().int().nonnegative(),
-  unit: z.string().min(1).optional(),
-  hazard: z.string().min(1).optional(),
-});
-
-export const EditableSettingsLeafWireSchema = z.discriminatedUnion("input", [TextLeafSchema, NumberLeafSchema]).superRefine((leaf, context) => {
-  if (leaf.environmentVariable !== undefined) {
-    context.addIssue({ code: "custom", path: ["environmentVariable"], message: "the retired environment layer cannot own an editable setting" });
+const EditorValueSchema = z.union([z.string(), z.number().int(), z.boolean(), z.record(z.string(), z.union([z.string(), z.number().int(), z.boolean()])), z.array(z.string())]);
+export type EditorValue = z.infer<typeof EditorValueSchema>;
+export const EditableSettingsLeafWireSchema = z.strictObject({
+  path: z.string().min(1),
+  catalogKey: z.string().min(1),
+  input: z.enum(["text", "number", "boolean", "date", "path", "url", "object", "models"]),
+  control: SettingsControlSchema,
+  label: z.string().min(1), description: z.string().min(1),
+  effectiveValue: EditorValueSchema.optional(), activeValue: EditorValueSchema.optional(),
+  defaultValue: EditorValueSchema.optional(), settingsValue: EditorValueSchema.optional(),
+  source: z.enum(["settings", "default"]),
+  editable: z.literal(true), validity: z.enum(["valid", "unset"]),
+  sensitivity: z.literal("ordinary"), sourceClass: z.literal("ordinary-settings"),
+  activationScope: z.enum(["new-runs", "next-idle"]),
+  minimum: z.number().int().nonnegative().optional(), unit: z.string().min(1).optional(), hazard: z.string().min(1).optional(),
+}).superRefine((leaf, context) => {
+  const key = catalogKeyForEditorPath(leaf.path);
+  const row = SETTINGS_CATALOG.find(candidate => candidate.key === key && candidate.sourceClass === "ordinary-settings");
+  if (row === undefined || key !== leaf.catalogKey) {
+    context.addIssue({ code: "custom", message: "settings leaf is not catalogued" }); return;
   }
-  if (!leaf.editable) {
-    context.addIssue({ code: "custom", path: ["editable"], message: "every served ordinary setting is editable" });
+  if (row.defaultKind !== "none" && (leaf.effectiveValue === undefined || leaf.defaultValue === undefined || leaf.activeValue === undefined)) context.addIssue({ code: "custom", message: "required settings value missing" });
+  const control = settingsControlFor(key);
+  if (canonicalJsonStringify(control) !== canonicalJsonStringify(leaf.control) || leaf.input !== control.input
+    || leaf.minimum !== (control.input === "number" ? control.minimum : undefined)) {
+    context.addIssue({ code: "custom", message: "settings input type mismatch" });
   }
-  if (leaf.source === "settings" && leaf.settingsValue === undefined) {
-    context.addIssue({ code: "custom", path: ["settingsValue"], message: "settings provenance requires the persisted settings value" });
+  const valuePath = leaf.path.replace(".*.", ".FY2000.");
+  for (const name of ["effectiveValue", "activeValue", "defaultValue", "settingsValue"] as const) {
+    if (leaf[name] !== undefined && !SettingsPatchSchema.safeParse({ [valuePath]: { set: leaf[name] } }).success) {
+      context.addIssue({ code: "custom", path: [name], message: "invalid settings value" });
+    }
   }
-  if (leaf.source === "default" && leaf.settingsValue !== undefined) {
-    context.addIssue({ code: "custom", path: ["settingsValue"], message: "default provenance must not carry a persisted settings value" });
+  if ((leaf.source === "settings") !== (leaf.settingsValue !== undefined)
+    || canonicalJsonStringify(leaf.effectiveValue ?? null) !== canonicalJsonStringify((leaf.source === "settings" ? leaf.settingsValue : leaf.defaultValue) ?? null)
+    || leaf.validity !== (leaf.effectiveValue === undefined ? "unset" : "valid")
+    || leaf.activationScope !== (key.startsWith("daemon.") ? "next-idle" : "new-runs")) {
+    context.addIssue({ code: "custom", message: "settings value provenance mismatch" });
   }
 });
 export type EditableSettingsLeafWire = z.infer<typeof EditableSettingsLeafWireSchema>;
-
 export const EditableSettingsSectionWireSchema = z.strictObject({
-  id: EditableSettingsSectionIdSchema,
-  label: z.string().min(1),
-  description: z.string().min(1),
-  leaves: z.array(EditableSettingsLeafWireSchema).min(1),
+  id: EditableSettingsSectionIdSchema, label: z.string().min(1), description: z.string().min(1),
+  leaves: z.array(EditableSettingsLeafWireSchema),
 });
 export type EditableSettingsSectionWire = z.infer<typeof EditableSettingsSectionWireSchema>;
-
-/**
- * This projection is closed by the resolver inventory, not by a client
- * convenience list. Keep the section alongside the path/input discriminator:
- * a valid leaf in the wrong server section is still a malformed authority
- * document and must not be rendered as another section's setting.
- */
-const EDITABLE_LEAF_CONTRACT: Readonly<Record<EditableSettingsPath, {
-  readonly section: EditableSettingsSectionId;
-  readonly input: "text" | "number";
-}>> = {
-  "actor.label": { section: "general", input: "text" },
-  "display.screenWidth": { section: "display", input: "number" },
-  "display.screenHeight": { section: "display", input: "number" },
-  "ocr.pageConcurrency": { section: "performance", input: "number" },
-  "ocr.maxValidationRetries": { section: "performance", input: "number" },
-  "timeouts.duoApprovalSeconds": { section: "performance", input: "number" },
-  "concurrency.defaultWorkers": { section: "performance", input: "number" },
-  "paths.reportsDir": { section: "paths", input: "text" },
-};
-
-function duplicates(values: readonly string[]): readonly string[] {
-  const seen = new Set<string>();
-  return values.filter((value) => {
-    if (seen.has(value)) return true;
-    seen.add(value);
-    return false;
-  });
-}
-
+const ProtectedRowSchema = z.strictObject({ name: ProtectedSettingsNameSchema, label: z.string().min(1), purpose: z.string().min(1), activationScope: z.literal("next-use") });
+const ProtectedRowsSchema = z.array(ProtectedRowSchema).length(ProtectedSettingsNameSchema.options.length).superRefine((rows, context) => {
+  if (new Set(rows.map(row => row.name)).size !== ProtectedSettingsNameSchema.options.length) context.addIssue({ code: "custom", message: "protected catalog membership mismatch" });
+});
+export const SettingsProtectedWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), rows: ProtectedRowsSchema, protectedSchemaHash: z.literal(PROTECTED_SETTINGS_SCHEMA_HASH), readback: ProtectedSettingsReadbackSchema }),
+  z.strictObject({ state: z.literal("unknown"), rows: ProtectedRowsSchema, reason: z.literal("credential-store-unavailable") }),
+]);
+export const SettingsProviderWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), count: PositiveIntSchema }),
+  z.strictObject({ state: z.literal("missing") }),
+  z.strictObject({ state: z.literal("unknown") }),
+]);
+const ProviderKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClass === "provider-env").map(row => row.key));
+const DeploymentKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => row.key));
 export const EditableSettingsWireSchema = z.strictObject({
-  revision: PositiveIntSchema,
-  settingsSchemaHash: FingerprintSchema,
-  settingsFingerprint: FingerprintSchema,
-  /** The running process identity used by the strict preflight rerun command. */
-  activeConfigFingerprint: FingerprintSchema,
-  runtimeStatus: SettingsRuntimeStatusSchema,
-  sections: z.array(EditableSettingsSectionWireSchema).min(1),
+  revision: PositiveIntSchema, settingsSchemaHash: FingerprintSchema, settingsFingerprint: FingerprintSchema,
+  activeConfigFingerprint: FingerprintSchema, runtimeStatus: SettingsRuntimeStatusSchema,
+  catalog: SettingsCatalogWireSchema,
+  sections: z.array(EditableSettingsSectionWireSchema).length(EditableSettingsSectionIdSchema.options.length),
+  fiscalYearTemplate: z.strictObject({ keyPattern: z.literal("^FY\\d{4}$"), leaves: z.array(EditableSettingsLeafWireSchema).length(3) }),
+  protectedSettings: SettingsProtectedWireSchema,
+  providers: z.record(ProviderKeySchema, SettingsProviderWireSchema),
+  host: HostConfigFactsSchema,
+  deployment: z.record(DeploymentKeySchema, EditorValueSchema),
 }).superRefine((document, context) => {
-  const sectionIds = document.sections.map((section) => section.id);
-  const duplicateSectionIds = duplicates(sectionIds);
-  if (duplicateSectionIds.length > 0) {
-    context.addIssue({ code: "custom", path: ["sections"], message: `editable settings inventory repeats section ${duplicateSectionIds.join(", ")}` });
+  const issue = (message: string): void => context.addIssue({ code: "custom", message });
+  const ids = document.sections.map(section => section.id);
+  if (new Set(ids).size !== ids.length) issue(`editable settings inventory repeats section ${ids.find((id, index) => ids.indexOf(id) !== index) ?? "unknown"}`);
+  const leaves = document.sections.flatMap(section => section.leaves);
+  const keys = leaves.map(leaf => leaf.path);
+  if (new Set(keys).size !== keys.length) issue("editable settings inventory repeats a path");
+  const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.includes("*")).map(row => row.key);
+  if (expected.some(key => !keys.includes(key)) || keys.some(key => !new Set<string>(expected).has(key) && !/^annualDates\.FY\d{4}\./u.test(key))) issue("editable settings inventory membership mismatch");
+  for (const section of document.sections) for (const leaf of section.leaves) {
+    if (settingsSectionFor(leaf.path) !== section.id) issue("editable setting is in the wrong section");
+    if (document.runtimeStatus.state === "current" && canonicalJsonStringify(leaf.activeValue ?? null) !== canonicalJsonStringify(leaf.effectiveValue ?? null)) issue("current settings values disagree with active values");
   }
-  const expectedSectionIds = new Set(EditableSettingsSectionIdSchema.options);
-  const actualSectionIds = new Set(sectionIds);
-  if (expectedSectionIds.size !== actualSectionIds.size || [...expectedSectionIds].some((id) => !actualSectionIds.has(id))) {
-    context.addIssue({ code: "custom", path: ["sections"], message: "editable settings inventory does not match the closed server-owned section set" });
-  }
-  for (const [sectionIndex, section] of document.sections.entries()) {
-    for (const [leafIndex, leaf] of section.leaves.entries()) {
-      const expected = EDITABLE_LEAF_CONTRACT[leaf.path];
-      if (expected.section !== section.id) {
-        context.addIssue({
-          code: "custom",
-          path: ["sections", sectionIndex, "leaves", leafIndex, "path"],
-          message: `${leaf.path} belongs to the ${expected.section} section, not ${section.id}`,
-        });
-      }
-      if (expected.input !== leaf.input) {
-        context.addIssue({
-          code: "custom",
-          path: ["sections", sectionIndex, "leaves", leafIndex, "input"],
-          message: `${leaf.path} must use the ${expected.input} input contract`,
-        });
-      }
-    }
-  }
-  const paths = document.sections.flatMap((section) => section.leaves.map((leaf) => leaf.path));
-  const duplicatePaths = duplicates(paths);
-  if (duplicatePaths.length > 0) {
-    context.addIssue({ code: "custom", path: ["sections"], message: `editable settings inventory repeats ${duplicatePaths.join(", ")}` });
-  }
-  const expected = new Set(EditableSettingsPathSchema.options);
-  const actual = new Set(paths);
-  if (expected.size !== actual.size || [...expected].some((path) => !actual.has(path))) {
-    context.addIssue({ code: "custom", path: ["sections"], message: "editable settings inventory does not match the closed server-owned leaf set" });
-  }
-  const persisted = document.runtimeStatus.state === "current"
-    ? document.runtimeStatus.identity
-    : document.runtimeStatus.persisted;
-  const active = document.runtimeStatus.state === "current"
-    ? document.runtimeStatus.identity
-    : document.runtimeStatus.active;
-  if (document.revision !== persisted.settingsRevision) {
-    context.addIssue({ code: "custom", path: ["revision"], message: "settings revision must match the persisted runtime identity" });
-  }
-  if (document.settingsSchemaHash !== persisted.settingsSchemaHash) {
-    context.addIssue({ code: "custom", path: ["settingsSchemaHash"], message: "settings schema hash must match the persisted runtime identity" });
-  }
-  if (document.settingsFingerprint !== persisted.settingsFingerprint) {
-    context.addIssue({ code: "custom", path: ["settingsFingerprint"], message: "settings fingerprint must match the persisted runtime identity" });
-  }
-  if (document.activeConfigFingerprint !== active.configFingerprint) {
-    context.addIssue({ code: "custom", path: ["activeConfigFingerprint"], message: "active config fingerprint must match the active runtime identity" });
-  }
+  const template = document.fiscalYearTemplate.leaves;
+  const expectedTemplate = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.key.includes("*")).map(row => row.key);
+  if (new Set(template.map(leaf => leaf.path)).size !== expectedTemplate.length || expectedTemplate.some(key => !template.some(leaf => leaf.path === key))
+    || template.some(leaf => leaf.effectiveValue !== undefined || leaf.defaultValue !== undefined || leaf.activeValue !== undefined || leaf.settingsValue !== undefined)) issue("fiscal year template mismatch");
+  const years = new Set(keys.filter(key => key.startsWith("annualDates.")).map(key => key.split(".")[1]));
+  for (const year of years) if (expectedTemplate.some(key => !keys.includes(key.replace("*", String(year))))) issue("incomplete fiscal year");
+  for (const [key, value] of Object.entries(document.deployment)) if (!z.safeParse(deploymentLeafSchema(key), value).success) issue("invalid deployment fact type");
+  const persisted = document.runtimeStatus.state === "current" ? document.runtimeStatus.identity : document.runtimeStatus.persisted;
+  const active = document.runtimeStatus.state === "current" ? document.runtimeStatus.identity : document.runtimeStatus.active;
+  if (document.revision !== persisted.settingsRevision || document.settingsSchemaHash !== persisted.settingsSchemaHash
+    || document.settingsFingerprint !== persisted.settingsFingerprint || document.activeConfigFingerprint !== active.configFingerprint) issue("settings runtime identity mismatch");
 });
 export type EditableSettingsWire = z.infer<typeof EditableSettingsWireSchema>;
