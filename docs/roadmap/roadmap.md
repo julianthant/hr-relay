@@ -1782,16 +1782,17 @@ date: D344 · former 3.1.10-4 · independent worktree after named prerequisites
 doc: 3.1/task-9-6-finish-intake-surfaces §Task 3.1.9.6 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
 
 builds:
-- [ ] BOTH complete upload/classify/OCR/map/validate/reject/prepare/manifest/rerun-diff flows over existing services
+- [ ] BOTH complete spreadsheet upload/map/validate/reject/prepare/manifest/rerun-diff flows over existing services; classification/OCR obligations retain their existing owners
 - [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
 - [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
-- [ ] PROOF this task does not edit the Run modal, Rerun launchers, or 2.6's prior-run value projection
+- [ ] PROOF preserve ordinary Run/Rerun and prior-run values; only the spreadsheet upload extraction/call site and Intake-specific comparison/confirmation changes use the approved narrow shared-file exception
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-14 | operator-approved phase plan | I1–I5 completes spreadsheet Intake, with narrow upload extraction and Intake command/confirmation ownership; one Astra/medium supervisor, no workers/review, focused proof and 3.1.9.8 finalizer intake. Classification/OCR wording corrected; existing owners retained. Plan approval is complete, implementation unstarted; launch requires a free slot within the four-worktree ceiling.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.3; former 3.1.10-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 Intake/Edit Data seam in `phase-3-1-dashboard-c21194e18-r26-intake-edit`, parallel with Tasks 10, 14 and 17 · left: Task 8 ownership freeze
 - 2026-09-05 | D334 ownership correction | this task now owns Intake only; Rerun and prior-run value consumption move to Task 11-2, preserving independent wave ownership · left: Task 8 ownership freeze

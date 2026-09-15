@@ -1,5 +1,16 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-14 Intake scope and confirmation amendment (D170/D171/D173/D298):** 3.1.9.6 remains
+spreadsheet-only and owns the narrow extraction/repair of its upload component inside the Run
+modal. It completes current readiness, explicit prior-import comparison and confirmation checked
+again before enqueue, preserving immutable submissions, historical replay and independent imports.
+Ordinary Run/Rerun remains 3.1.11.2; existing OCR obligations retain their owners. Approved scope,
+not implemented behavior. Owners:
+[Intake contract](data-intake-and-edit-data.md#spreadsheet-intake-review-and-comparison-amendment--2026-09-14),
+[presentation](dashboard-surfaces.md#971-the-intake-workspace-2i-e3-d173),
+[boundary allocation](../plans/phase-3/3.1-finish-the-dashboard/task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14),
+[approved I1–I5 plan](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14).
+
 **2026-09-13 final-gates correction for Phase 3.1:** 9.8/11.3/14.6 perform focused group
 integration with typecheck, focused tests, scoped lint and affected build/generated checks.
 3.1.19 alone owns full repository gates and repairs gate-found defects in the same session.

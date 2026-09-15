@@ -1646,12 +1646,23 @@ notification service, not this surface.
 5. The final command atomically stores the immutable manifest, coordinator, members and dependencies.
 6. Group/member queue patches then follow the ordinary projection path.
 
-**Implemented:** all six intake steps. `surfaces/intake.tsx` over `POST /api/v1/intake/files` +
+**Historical implementation baseline:** `surfaces/intake.tsx` over `POST /api/v1/intake/files` +
 `GET /api/v1/intake/:sessionId` and the six `intake` command verbs; the fan-out emits a `run.queued`
 span per member, so the rows arrive through §5.1.2's ordinary path. The former Context-rail
 `run.edit-checkpoint` path is superseded by D334 and is now historical implementation evidence.
 2.6 Task 1-2 replaces it with a read-only completed-value/provenance projection; 3.1 Task 11-2
 consumes that projection in the shared Rerun Run modal.
+
+**2026-09-14 approved remaining Intake acceptance:**
+[3.1.9.6](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14)
+owns cancellation-safe upload extraction, truthful progress/delivery uncertainty, current
+reject/required-field/zero-row readiness, explicit prior-import comparison and confirmation checked
+again before enqueue, immutable/replay-safe handoff and real-service browser proof. The
+[Intake contract amendment](data-intake-and-edit-data.md#spreadsheet-intake-review-and-comparison-amendment--2026-09-14)
+owns identities and failure behavior. Step 2's saved-mapping store retains its existing deferred
+owner; step 5 uses the accepted manifest/session/member implementation rather than introducing a
+new coordinator shape. Ordinary Run/Rerun remains 3.1.11.2, which consumes the extracted upload
+component after 3.1.9.8. Approval does not claim these remaining outcomes implemented.
 
 **Mobile capture is retired, not deferred (D294, 2026-08-31).** `surfaces/capture-start.tsx`, the
 second browser bundle under `src/dashboard/phone/**` (`capture.html`), the nine bespoke REST routes,

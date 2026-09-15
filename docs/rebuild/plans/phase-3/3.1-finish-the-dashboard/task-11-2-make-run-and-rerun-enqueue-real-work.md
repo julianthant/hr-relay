@@ -8,6 +8,13 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
+**2026-09-14 Intake allocation:** consume 3.1.9.6's extracted spreadsheet upload component after
+3.1.9.8 releases it. The [approved Intake amendment](task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14)
+permits only that extraction/repair and replacement of its existing Run-modal call site, plus
+Intake-specific comparison/confirmation handling. Ordinary Run/Rerun and prior-run values remain
+this task's ownership. Do not duplicate or reverse the upload extraction; existing dependency edges
+already order this task after the surface-group release.
+
 - [ ] Make ordinary Run plus D334 Rerun use one modal and one server plan/confirm/enqueue path.
   Use one Rerun action for failed/interrupted and successful sources; do not offer a separate Retry
   action. Failed/interrupted sources default to failed/unfinished steps; successful sources default

@@ -6241,6 +6241,17 @@ parity references for all three.
 
 #### 9.7.1 The intake workspace (2i-E3, D173)
 
+**2026-09-14 approved presentation amendment:**
+[3.1.9.6](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14)
+extracts the existing spreadsheet upload component from the Run modal, preserving that entry and
+ordinary Run/Rerun behavior. Progress and cancellation must describe actual delivery; unresolved
+rejects, missing required fields and zero valid rows keep Start blocked even after review
+acknowledgement. Open imports expose explicit prior-import comparison and exact changed-plan
+confirmation, invalidated by changed reviewed facts and checked by the server before enqueue.
+The [Intake contract](data-intake-and-edit-data.md#spreadsheet-intake-review-and-comparison-amendment--2026-09-14)
+owns identity, replay, archived-source and failure semantics. This is approved remaining work,
+not an implemented claim; existing D173/D298 presentation rules and D340 desktop scope remain.
+
 Ref data-intake-and-edit-data §2.2 owns the FLOW (upload → map → validate → run) and ref data-intake-and-edit-data §2.5 owns the invariant that
 makes it safe. This section owns how that flow is presented, because three of its decisions are
 surface decisions with consequences and one of them is the reason the surface exists at all.

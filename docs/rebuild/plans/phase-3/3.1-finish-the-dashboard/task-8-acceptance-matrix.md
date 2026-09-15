@@ -175,9 +175,9 @@ All mutation cases bind actor, command identity, expected version/revision/diges
 | Acceptance | Frozen requirement |
 | --- | --- |
 | Inventory / requirement | [I13](task-8-dashboard-inventory.md#i13--upload-and-map-intake) · D173/D298; intake §2 |
-| Source of truth / owner | `src/dashboard/surfaces/intake.tsx`; `src/dashboard/surfaces/intake-model.ts`; `src/server/dashboard/commands/intake-service.ts` · **3.1.9.6** |
+| Source of truth / owner | `src/dashboard/surfaces/intake.tsx`; `src/dashboard/surfaces/intake-model.ts`; `src/server/dashboard/commands/intake-service.ts`; the [2026-09-14 narrow upload allocation](task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14) · **3.1.9.6** |
 | Expected outcome | Malformed files, duplicate/blank headers, partial/cancelled uploads and reload retain exact import identity and explicit progress; mapping names workflow fields. |
-| Forbidden result / missing proof | Retrying the same digest/workflow upload joins its open session and preserves mapping; it must not fork duplicate work. Separately submitted import records/run origins remain independent under C0. Do not confuse upload retry deduplication with merging those durable imports. No raw secret exposure or synthetic session before upload. Run/Rerun internals remain 3.1.11.2. |
+| Forbidden result / missing proof | Retrying the same digest/workflow upload joins its open session and preserves mapping; it must not fork duplicate work. Separately submitted import records/run origins remain independent under C0. Do not confuse upload retry deduplication with merging those durable imports. No raw secret exposure or synthetic session before upload. Cancellation must prevent late reopening without claiming durable rollback. Ordinary Run/Rerun internals remain 3.1.11.2; only the approved spreadsheet upload extraction/call site belongs here. |
 | Proof and browser/live need | Existing test/fixture pointers are in I13. D04 (real browser zoom and keyboard). Isolated production services plus real browser are required; no external HR action is needed for this row. |
 | Prerequisite / release | 3.1.9 → leaf focused gates → 3.1.9.8 focused group release; then 3.1.16–3.1.19 as required by the unchanged roadmap. Final acceptance owner: 3.1.19. |
 
@@ -188,8 +188,8 @@ All mutation cases bind actor, command identity, expected version/revision/diges
 | Acceptance | Frozen requirement |
 | --- | --- |
 | Inventory / requirement | [I14](task-8-dashboard-inventory.md#i14--review-intake-and-hand-off-work) · Intake §2/§7; artifact consolidation amendment |
-| Source of truth / owner | `src/dashboard/surfaces/intake.tsx`; `src/server/dashboard/commands/intake-service.ts`; `src/domain/intake/manifest.ts` · **3.1.9.6** |
-| Expected outcome | Unresolved rejections block handoff; explicit exclusions/counts/provenance reconcile. Changed file/mapping/schema requires visible new-plan diff and confirmation. |
+| Source of truth / owner | `src/dashboard/surfaces/intake.tsx`; `src/server/dashboard/commands/intake-service.ts`; `src/domain/intake/manifest.ts`; Intake-specific command/kernel confirmation under the [approved amendment](task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14) · **3.1.9.6** |
+| Expected outcome | Unresolved rejections block handoff; explicit exclusions/counts/provenance reconcile. Changed file/mapping/schema requires visible new-plan diff and confirmation. The [2026-09-14 contract amendment](../../../reference/data-intake-and-edit-data.md#spreadsheet-intake-review-and-comparison-amendment--2026-09-14) binds explicit prior-import selection and confirmation to current reviewed facts, rechecked before enqueue; acknowledgement cannot override unresolved rejects or zero valid rows. |
 | Forbidden result / missing proof | No mutable old manifest, unnoticed skipped rows, duplicate enqueue, artifact outbox restoration or archived-source execution door. |
 | Proof and browser/live need | Existing test/fixture pointers are in I14. D04 (real browser zoom and keyboard). Isolated production services plus real browser are required; no external HR action is needed for this row. |
 | Prerequisite / release | 3.1.9 → leaf focused gates → 3.1.9.8 focused group release; then 3.1.16–3.1.19 as required by the unchanged roadmap. Final acceptance owner: 3.1.19. |
@@ -574,6 +574,15 @@ D340's completed immediate dispositions remain: no coarse-pointer variants; no d
 
 ## Shared ownership and admission boundaries
 
+**2026-09-14 Intake exception:** the [approved boundary amendment](task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14)
+supersedes the reservations below only for 3.1.9.6's spreadsheet upload extraction/call site,
+Intake-specific command payload/kernel confirmation and directly affected Intake schema/redaction
+proof entries. SQLite DDL/repositories, other command families and ordinary Run/Rerun remain reserved.
+The six sibling production write sets and prerequisite edges are unchanged; 3.1.11 consumes the
+extracted component after 3.1.9.8. A13/A14 retain their outcomes with this explicit proof/allocation
+clarification. Deliberate reference updates are limited to the four Intake scene identities named
+in its approved brief, with attribution and assert proof; shared membership remains reserved.
+
 The accepted 3.1.9 B release publishes [exact module ownership, working ports, fixture/reference names and gate resources](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13). Its directed integration and owned cleanup are complete; the baseline allocations below do not independently admit children.
 
 These baseline allocations retain the planned responsibilities. The accepted A/B records above now own the actual implemented modules and working interfaces. A later focused plan must name the actual accepted prerequisite commit, resulting exports/paths, exact focused commands, fixture/output roots and either-order merge proof. A child may not edit the reserved shared file because it finds a missing hook. Resolve that requirement in its prerequisite before launch. The operator-approved [3.1.9.1 shell amendment](task-9-establish-independent-dashboard-boundaries.md#shell-child-ownership-amendment--2026-09-13) now grants that child bounded route/selection/focus/empty-state edits in the two app files; other reservations and A01–A42/D01–D05 outcomes are unchanged. No unfinished sibling dependency is permitted.
@@ -602,7 +611,7 @@ Paths below are existing seams to retain or separate; a shared file reserved abo
 | 3.1.9.3 | `queries/storage.ts`, isolated doctor/recovery presentation; accepted recovery tests, no advanced UI | `3.1.9.3/`; 3.1.9.8 |
 | 3.1.9.4 | `surfaces/explorer*.ts*`, `ui-catalog*.ts*`, `row-catalog*.ts*`, `queries/explorer.ts`, `ui-catalog.ts`, isolated editor/validation service over the accepted prerequisite storage port; excludes persistence/conversion, kernel and root-composition writers | `3.1.9.4/`; 3.1.9.8 |
 | 3.1.9.5 | isolated inbox from top-bar; `services/notifications/`, `domain/notification-triggers.ts` | `3.1.9.5/`; 3.1.9.8 |
-| 3.1.9.6 | `surfaces/intake*.ts*`, `commands/intake-service.ts`, `domain/intake/`; no Run modal or prior-run readback writer | `3.1.9.6/`; 3.1.9.8 |
+| 3.1.9.6 | `surfaces/intake*.ts*`, `commands/intake-service.ts`, `domain/intake/`, Intake client/route; narrow spreadsheet upload extraction/call site and Intake command/kernel confirmation per the approved amendment; no ordinary Run/Rerun or prior-run readback writer | `3.1.9.6/`; 3.1.9.8 |
 | 3.1.9.7 | `surfaces/archive*.ts*`, `queries/archive-reports.ts`, `archive.ts`, `commands/version-review-binding.ts`; existing archive tests/fixtures | `3.1.9.7/`; 3.1.9.8 |
 | 3.1.10 | isolated date picker/state/history integration tests | `3.1.10/`; focused checks; broad gates at 3.1.19 |
 | 3.1.11 | `worker-supervisor.ts`, isolated session control plus shared child APIs | `3.1.11/`; focused prerequisite checks; broad gates at 3.1.11.3 |

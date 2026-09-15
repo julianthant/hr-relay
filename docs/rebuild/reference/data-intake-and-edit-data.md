@@ -281,6 +281,53 @@ artifact id) are branded at parse time, so equally shaped strings cannot be inte
    success: it stays blocked with `no-valid-rows` and the manifest remains inspectable. Running fans
    out the *valid* rows as N workflow inputs; rejected rows are never launched.
 
+### Spreadsheet Intake review and comparison amendment — 2026-09-14
+
+**Operator-approved; implementation remains assigned to 3.1.9.6.** The operator selected the
+narrow Intake ownership amendment and spreadsheet-only scope, then approved its complete I1–I5
+[execution brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14).
+This amends the D170/D171/D173 interaction and confirmation boundary without changing D334's
+ordinary Run/Rerun ownership or C0's independent import identities.
+
+- Spreadsheet upload remains the Run modal's existing file entry, with its component extracted
+  into Intake ownership. Cancellation or supersession prevents a late response reopening the
+  workspace. Cancellation does not assert rollback of a durable import; a lost response is
+  uncertain delivery, not proof that the file never reached the server. Retrying the same
+  digest/workflow joins its open import and preserves its mapping and selected comparison.
+- The served review distinguishes unresolved rows from rejection history. Acknowledging the
+  history cannot make an unresolved rejection, unbound required field or zero-valid intake ready.
+  Corrections, explicit exclusions, counts and provenance must reconcile every source row; refused
+  commands retain the operator's draft. The kernel remains the final readiness authority.
+- An open import may explicitly select an earlier immutable manifest for the same workflow,
+  including one with different source bytes. Retain that comparison identity in the import's
+  preparation data and resolve it through existing manifest lookup. Missing or wrong-workflow
+  identities refuse; do not infer a changed file's predecessor from its name or latest unrelated
+  record. Existing same-byte comparison behavior remains, and changing an existing comparison is
+  an explicit revisioned action rather than an upload-retry side effect.
+- Show exact source-file, mapping, projection, workflow-contract, canonical-schema and
+  membership/input differences. A new enqueue carries the exact served review binding;
+  repeat/changed-plan confirmation names the comparison the operator saw. Bind it to the session
+  revision, current source/decisions, validation basis, current schema/projection and prior
+  comparison. Re-derive and verify inside the enqueue transaction before manifest/member effects.
+  Changing comparison, mapping, corrections, exclusions or schema invalidates confirmation.
+  Missing, stale or mismatched confirmation refuses without creating a manifest or runs.
+- Preserve historical record parsing and exact applied-command replay before new effects.
+  Read-forward optional preparation fields require no backfill or new table. An old command shape
+  may remain readable/replayable, but a new request cannot omit current confirmation to bypass it.
+  Immutable submitted data, old manifest identities, independent same-byte imports and run origins
+  remain unchanged in `imported_artifacts`.
+- Terminal imports remain read-only through member archive cases. Comparison reads import evidence;
+  it creates no execution action on an archived run and copies no executable values from an archive
+  report. A fresh upload has its own source, import identity and explicit review. Applied enqueue
+  followed by a lost response/readback recovers the exact result/session rather than blindly
+  submitting another enqueue.
+
+The scope is the existing spreadsheet pipeline. The roadmap's classification/OCR wording for
+3.1.9.6 is corrected accordingly; existing OCR and workflow-specific obligations retain their
+current owners. Phone Capture Mode remains retired. Saved-mapping persistence (§2.3) and
+constant/unbind commands retain their existing deferred ownership. This amendment authorizes no
+new artifact table, SQLite migration, external HR execution or workflow activation.
+
 ### 2.3 Per-source persistence — header fingerprint (recommended scheme)
 
 <!-- roadmap: p2-2h -->

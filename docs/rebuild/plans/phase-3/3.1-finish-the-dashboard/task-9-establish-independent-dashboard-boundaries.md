@@ -563,6 +563,34 @@ exception does not authorize kit or cross-owner refreezes, changed default fixtu
 shared scene membership edits. The child's own focused proof and the existing 3.1.9.8/3.1.19
 cadence remain required. B's original reference/membership and integration receipts remain history.
 
+#### Intake child ownership amendment — 2026-09-14
+
+During `/phase-plan 3.1.9.6`, the operator chose **1 A** to admit the narrow surrounding changes
+needed for Intake and **2 A** to keep the task spreadsheet-only, then approved its full
+[I1–I5 execution brief](task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14).
+This prospective exception permits that child to extract/repair `SpreadsheetIntake` from
+`src/dashboard/surfaces/run-start.tsx`, replace its imports/call site, and extend only Intake
+payloads in `src/domain/commands.ts` and Intake handling in `src/core/command-kernel.ts` for
+explicit prior-import selection and final confirmation. Its existing Intake service/domain/client
+ownership covers served readiness, preparation metadata and comparison derivation. Directly
+affected schema/redaction registrations and tests may change only their Intake entries.
+
+Discovery found a canceled upload can still invoke its navigation callback, the comparison lookup
+only finds identical source digests, and enqueue carries no reviewed comparison binding. These
+are the exact reasons for the exception; they do not reopen B's accepted extraction evidence or
+authorize unrelated shared changes. Ordinary Run/Rerun, prior-run values, other command families,
+root wiring, shared providers/DS, SQLite DDL/repositories and sibling bodies remain reserved.
+Existing command replay, C0 import identities and submitted-data immutability remain required.
+
+The six sibling production write sets and prerequisite edges remain unchanged. No other child owns
+these Intake command/caller changes; common schema/audit entries are additive, Intake-scoped proof
+updates composed by the finalizer. Preserve either-order combination with peers and existing gate
+resources. 3.1.11/3.1.11.2 consume the extracted uploader after 3.1.9.8's release; no future sibling
+is launched by this record. Deliberate reference updates are limited to the four Intake scene
+identities for approved behavior, with exact attribution and assert proof. Shared membership and
+`start-run-spreadsheet` resting reference bytes remain unchanged. No new migration, artifact table,
+OCR/classification surface, full-gate requirement or independent review is added.
+
 #### Independent gate resources and combination obligations
 
 Each future child brief must bind its accepted 3.1.9 base, dedicated branch and worktree directly
