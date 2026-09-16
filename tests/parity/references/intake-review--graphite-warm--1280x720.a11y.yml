@@ -84,10 +84,10 @@
             - cell "Exclude…":
               - button "Exclude…"
       - checkbox "I have read all 4 rejected rows"
-      - text: "I have read all 4 rejected rows Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen."
-    - text: "3 of 7 rows would run 4 rejected0 excluded Run is blocked: unresolved rejected rows have not been reviewed. header row 3fingerprint 55f5fb4b"
+      - text: I have read all 4 rejected rows Rejection history includes corrected and excluded rows.
+    - text: "3 of 7 rows would run 4 unresolved4 in rejection history0 excluded Run is blocked: 4 unresolved source rows; rejection history has not been reviewed. header row 3fingerprint 55f5fb4b"
     - button "Show full layout fingerprint"
-    - button "Re-validate" [disabled]
+    - button "Re-validate"
     - button "Start 3 runs" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"

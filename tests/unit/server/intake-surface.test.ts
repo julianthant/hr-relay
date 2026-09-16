@@ -451,7 +451,7 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     assert.equal((await harness.send(sessionId, beforeValidate.expectedVersion, "validate-intake")).state, "applied");
     const beforeEnqueue = await harness.intake.read(sessionId);
     assert.equal(
-      (await harness.send(sessionId, beforeEnqueue.expectedVersion, "enqueue-intake-manifest", { dryRun: false })).state,
+      (await harness.send(sessionId, beforeEnqueue.expectedVersion, "enqueue-intake-manifest", { dryRun: false, reviewBinding: beforeEnqueue.reviewBinding })).state,
       "applied",
     );
     return sessionId;

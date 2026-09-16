@@ -22,6 +22,8 @@
  * prepares it before the command runs.
  */
 import { z } from "zod";
+import { CsvError } from "csv-parse/sync";
+import { InvalidInputError, InvalidSpreadsheetError } from "read-excel-file/node";
 import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
 import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { IntakeProjectionResolver } from "../../../core/command-kernel.js";
@@ -38,7 +40,7 @@ import {
   IntakeSessionSchema,
   type IntakeSession,
 } from "../../../domain/intake/session.js";
-import { currentRerunState } from "../../../domain/intake/enqueue.js";
+import { currentRerunState, deriveIntakeEnqueuePlan } from "../../../domain/intake/enqueue.js";
 import {
   IntakeManifestTerminalProjectionSchema,
   rerunDiff,
@@ -49,6 +51,7 @@ import {
   type IntakeParse,
   type IntakeParseRefusalCode,
 } from "../../../domain/intake/parse.js";
+import { intakeReviewBinding, resolveIntakeComparison } from "../../../domain/intake/review.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { suggestBindings } from "../../../domain/intake/suggestions.js";
 import { validateIntakeRows } from "../../../domain/intake/validate.js";
@@ -209,6 +212,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           validatedAt: session.validation.validatedAt,
           readAt: session.validation.readAt,
           validRows: outcome.valid.length,
+          unresolvedRows: [...outcome.currentRejects].filter(([row, rejects]) => rejects.length > 0 && !outcome.excluded.includes(row)).map(([row]) => row).sort((a, b) => a - b),
           rejected: outcome.rejected,
           excluded: outcome.excluded,
         };
@@ -247,27 +251,10 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
      * created after the session.
      */
     const rerun = ((): unknown => {
-      const sessionCreatedAtMs = Date.parse(session.createdAt);
-      const prior = committedManifest ?? (() => {
-        const eligible = dependencies.authorityRead
-          .findIntakeManifestsBySource(session.artifact.sha256)
-          .filter((candidate) =>
-            candidate.workflow === session.workflow
-            && candidate.manifestId !== session.reservedManifestId
-            && Date.parse(candidate.createdAt) <= sessionCreatedAtMs);
-        if (eligible.length === 0) return undefined;
-
-        const latestCreatedAtMs = Math.max(...eligible.map((candidate) => Date.parse(candidate.createdAt)));
-        const latest = eligible.filter((candidate) => Date.parse(candidate.createdAt) === latestCreatedAtMs);
-        if (latest.length !== 1) {
-          const candidateIds = latest.map((candidate) => candidate.manifestId).sort();
-          throw new Error(
-            `intake session ${session.intakeSessionId} cannot select a unique prior manifest at `
-            + `${new Date(latestCreatedAtMs).toISOString()}: candidates ${candidateIds.join(", ")}`,
-          );
-        }
-        return latest[0];
-      })();
+      const prior = committedManifest ?? resolveIntakeComparison(session, {
+        get: dependencies.authorityRead.getIntakeManifest,
+        findBySource: dependencies.authorityRead.findIntakeManifestsBySource,
+      });
       if (prior === undefined) return undefined;
       if (layout === null) {
         throw new Error(
@@ -291,6 +278,22 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       };
     })();
 
+    const reviewBinding = (() => {
+      if (session.state !== "validated" || session.validation.state !== "validated" || layout === null
+        || session.sourceName === undefined || session.reservedManifestId === undefined) return undefined;
+      const assigned = new Set([...session.bindings.map(row => row.targetFieldId), ...session.constants.map(row => row.targetFieldId)]);
+      if (projection.targets.some(target => target.required && !assigned.has(target.targetFieldId))) return undefined;
+      const plan = deriveIntakeEnqueuePlan({
+        session: { ...session, sourceName: session.sourceName, readAt: session.validation.readAt },
+        layout, projection, manifestId: session.reservedManifestId, createdAt: session.updatedAt,
+        workflowContractFingerprint: descriptor.contractFingerprint,
+        canonicalInputSchemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), deriveItemId: deriveCurrentItemId,
+      });
+      return plan.readiness.ready ? intakeReviewBinding(session, plan.manifest, resolveIntakeComparison(session, {
+        get: dependencies.authorityRead.getIntakeManifest, findBySource: dependencies.authorityRead.findIntakeManifestsBySource,
+      })) : undefined;
+    })();
+
     return IntakeSessionWireSchema.parse({
       wireVersion: 1,
       intakeSessionId: session.intakeSessionId,
@@ -299,6 +302,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       ...(session.sourceName === undefined ? {} : { sourceName: session.sourceName }),
       state: session.state,
       expectedVersion: session.version,
+      ...(reviewBinding === undefined ? {} : { reviewBinding }),
       ...(session.reservedManifestId === undefined ? {} : { reservedManifestId: session.reservedManifestId }),
       ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
       ...(terminalManifest === undefined ? {} : { manifest: terminalManifest }),
@@ -334,8 +338,19 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       requireProjection(request.workflow);
       requireDescriptor(request.workflow);
 
+      if (request.mediaType !== "text/csv" && !(input.bytes[0] === 0x50 && input.bytes[1] === 0x4b)) {
+        return Object.freeze({ state: "refused" as const, code: "unreadable-file" as const, message: "The uploaded workbook has no XLSX archive signature." });
+      }
       const artifact = await dependencies.artifacts.put(input.bytes, { mediaType: request.mediaType });
-      const parse = await dependencies.parser.prepare({ artifact });
+      let parse: IntakeParse;
+      try {
+        parse = await dependencies.parser.prepare({ artifact });
+      } catch (error) {
+        // Only documented file-format failures become operator refusals; I/O and programming defects propagate.
+        const malformedCsv = error instanceof CsvError && ["CSV_INVALID_CLOSING_QUOTE", "CSV_NON_TRIMABLE_CHAR_AFTER_CLOSING_QUOTE", "CSV_QUOTE_NOT_CLOSED", "CSV_RECORD_INCONSISTENT_FIELDS_LENGTH", "INVALID_OPENING_QUOTE"].includes(error.code);
+        if (!malformedCsv && !(error instanceof InvalidInputError) && !(error instanceof InvalidSpreadsheetError)) throw error;
+        return Object.freeze({ state: "refused" as const, code: "unreadable-file" as const, message: "The spreadsheet is incomplete or malformed. Export a complete CSV or XLSX file and try again." });
+      }
       if (parse.state === "refused") {
         // The bytes are published and immutable — that is harmless and
         // content-addressed — but no session is minted over a file nobody can
@@ -386,6 +401,8 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       // family. The kernel remains the one authority that parses and refuses a
       // malformed request; this only warms a seam.
       if (!parsed.success || parsed.data.family !== "intake") return;
+      // Existing commands are resolved by kernel identity/replay before source reads or new effects.
+      if (dependencies.authority.withAuthorityTransaction(repositories => repositories.commands.get(parsed.data.commandId)) !== undefined) return;
       const session = dependencies.authorityRead.getIntakeSession(parsed.data.target.intakeSessionId);
       if (session === undefined) return;
       const selection = parsed.data.type === "inspect-intake"
