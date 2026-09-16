@@ -21,8 +21,9 @@ it.each([
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async () => new Response(JSON.stringify({ runId: H_REPORT.runId, digest, resource }), { headers: { "content-type": "application/json" } }) });
   const host = document.createElement("div"); const root = createRoot(host);
   try { await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveReport, { report: H_REPORT }) })));
-    expect(host.querySelector("a")?.getAttribute("href") ?? null).toBe(allowed ? url : null);
-    expect(host.querySelector("a")?.getAttribute("download") ?? null).toBe(allowed ? H_REPORT.files[0].name : null);
+    const attachment = [...host.querySelectorAll("a")].find(link => link.getAttribute("download") === H_REPORT.files[0].name);
+    expect(attachment?.getAttribute("href") ?? null).toBe(allowed ? url : null);
+    expect(attachment?.getAttribute("download") ?? null).toBe(allowed ? H_REPORT.files[0].name : null);
     if (!allowed) expect(host.querySelector('[role="alert"], [role="status"]')).not.toBeNull();
   } finally { await act(async () => root.unmount()); }
 });
@@ -38,8 +39,28 @@ it("does not expose a link while authorization is pending or after transport fai
   const host = document.createElement("div"); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveReport, { report: H_REPORT }) })));
-    expect(host.textContent).toContain("Checking Synthetic receipt.txt"); expect(host.querySelector("a")).toBeNull();
+    expect(host.textContent).toContain("Checking Synthetic receipt.txt");
+    expect([...host.querySelectorAll("a")].some(link => link.getAttribute("download") === H_REPORT.files[0].name)).toBe(false);
     await act(async () => reject(new Error("Transport failed")));
-    expect(host.querySelector('[role="alert"]')).not.toBeNull(); expect(host.querySelector("a")).toBeNull();
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect([...host.querySelectorAll("a")].some(link => link.getAttribute("download") === H_REPORT.files[0].name)).toBe(false);
+  } finally { await act(async () => root.unmount()); }
+});
+it("exports exactly the served public report wire under the stable run filename", async () => {
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async () => new Response(JSON.stringify({
+    runId: H_REPORT.runId,
+    digest,
+    resource: { state: "missing", reason: "Not needed for report export" },
+  }), { headers: { "content-type": "application/json" } }) });
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveReport, { report: H_REPORT }) })));
+    const exported = [...host.querySelectorAll("a")].find(link => link.textContent?.includes("Export report"));
+    expect(exported?.getAttribute("download")).toBe(`archive-${H_REPORT.runId}.json`);
+    const href = exported?.getAttribute("href") ?? "";
+    expect(href.startsWith("data:application/json;charset=utf-8,")).toBe(true);
+    expect(JSON.parse(decodeURIComponent(href.split(",", 2)[1] ?? ""))).toEqual(H_REPORT);
+    expect(href).not.toContain("sourceDigest");
+    expect(href).not.toContain("sources");
   } finally { await act(async () => root.unmount()); }
 });
