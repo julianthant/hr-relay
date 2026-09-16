@@ -1844,6 +1844,9 @@ needs:
 - dash-intake-edit
 - dash-archive
 
+log:
+- 2026-09-16 | operator-approved 3.1.9.8 execution brief | F1–F5 combines seven surface candidates and fixes group interfaces, including narrow Run-dialog focus repair; one Astra/medium supervisor, no workers or independent review, focused group gates and explicit operator integration. Five candidates are already integrated and Intake is frozen; launch waits for Archive's exact frozen candidate and completed focused proof. Full acceptance remains 3.1.19; implementation unstarted.
+
 #### 10 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned
 date: D344 · former 3.1.10-1 · independent worktree after named prerequisites

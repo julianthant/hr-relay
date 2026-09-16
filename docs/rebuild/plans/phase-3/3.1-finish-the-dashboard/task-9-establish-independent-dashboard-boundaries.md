@@ -857,3 +857,18 @@ That finalizer owns the shared integration target, combined generation, focused 
 and candidate cleanup under operator instruction. Do not create a peer reservation chain or merge
 another candidate inside this child. No independent review for Phase 3.1; full acceptance remains
 3.1.19. No push or task dispatch is authorized.
+
+### Surface finalizer focus ownership amendment — 2026-09-16
+
+The operator approved the [3.1.9.8 F1–F5 execution brief](task-9-8-finalization-dashboard-surfaces.md#approved-execution-brief--2026-09-16),
+including F3's narrow correction of the Run-dialog focus-return gap recorded by Intake. After all
+seven frozen candidates pass intake, 3.1.9.8 owns focus-only changes in the shell/app focus models,
+`ds/primitives-overlay.tsx`, and the existing `surfaces/run-start.tsx` hookup, with focused unit and
+browser proof. Dismissal restores the external launch control; successful Intake takeover keeps its
+focus; canceled or superseded upload responses cannot reopen Intake.
+
+This allocation preserves 3.1.9.6's extracted uploader and 3.1.11.2's ordinary Run/Rerun, warning,
+prior-value and enqueue semantics. It changes no frozen acceptance outcome or dependency edge.
+The finalizer preserves the five already accepted integrations and their recorded reference fixes,
+combines exact Intake/Archive inputs, and follows focused group gates with no independent review.
+Integration into local master still requires explicit operator instruction; full gates remain 3.1.19.

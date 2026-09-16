@@ -613,6 +613,7 @@ Paths below are existing seams to retain or separate; a shared file reserved abo
 | 3.1.9.5 | isolated inbox from top-bar; `services/notifications/`, `domain/notification-triggers.ts` | `3.1.9.5/`; 3.1.9.8 |
 | 3.1.9.6 | `surfaces/intake*.ts*`, `commands/intake-service.ts`, `domain/intake/`, Intake client/route; narrow spreadsheet upload extraction/call site and Intake command/kernel confirmation per the approved amendment; no ordinary Run/Rerun or prior-run readback writer | `3.1.9.6/`; 3.1.9.8 |
 | 3.1.9.7 | `surfaces/archive*.ts*`, `queries/archive-reports.ts`, `archive.ts`, `commands/version-review-binding.ts`; existing archive tests/fixtures | `3.1.9.7/`; 3.1.9.8 |
+| 3.1.9.8 | Combine the seven approved child scopes and repair their interfaces; [F3](task-9-8-finalization-dashboard-surfaces.md#approved-execution-brief--2026-09-16) adds narrow shell/dialog/Run-modal focus hookup, preserving Intake extraction and ordinary Run/Rerun semantics | `3.1.9.8/`; focused group release, broad acceptance at 3.1.19 |
 | 3.1.10 | isolated date picker/state/history integration tests | `3.1.10/`; focused checks; broad gates at 3.1.19 |
 | 3.1.11 | `worker-supervisor.ts`, isolated session control plus shared child APIs | `3.1.11/`; focused prerequisite checks; broad gates at 3.1.11.3 |
 | 3.1.11.1 | `server/preflight/`, `domain/trust/preflight-scenarios.ts`, isolated Setup presentation | `3.1.11.1/`; 3.1.11.3 |
