@@ -7379,3 +7379,52 @@ archive deletion retains files owned by another pending capture. Older admitted 
 reports or require exact retained-source proof before capture. Unprovable history refuses
 `archive-claim-source-unprovable` and preserves recovery assets. This amendment authorizes code and
 synthetic proofs only; it does not authorize applying changes to the operator database.
+
+<a id="archive-recovery-export-amendment-2026-09-16"></a>
+
+## Archive deletion recovery and saved-report export — 2026-09-16
+
+Operator-approved with [3.1.9.7](../plans/phase-3/3.1-finish-the-dashboard/task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md#approved-execution-brief--2026-09-16).
+This is a bounded implementation amendment to C0/D308/D223, not a completion claim or new deletion
+policy. Canonical terminal-tree admission, tombstones, permanent-key warnings, shared-file custody,
+immutable reports and the retirement of Archive execution doors remain binding.
+
+**Deletion identity and recovery.** The accepted Archive-delete envelope must survive canonical
+removal before cross-store file cleanup and the final operator audit. Retain narrowly validated
+Archive-delete request metadata in the existing lifecycle command/audit JSON, atomically with
+canonical deletion. Authenticate it against operation, command identity, actor, exact report
+reference and the retained fingerprint. A delayed HTTP retry or restarted browser must resume the
+same accepted request when that evidence exists. BFF provenance admission remains authoritative;
+never accept a caller-authored time or change the equivalence rules for another command family.
+Changed actor, target, report reference or optional intent refuses before additional effects.
+
+This is a read-forward JSON extension, not new SQL storage or a schema-floor change. Existing
+immutable command/audit/report bytes remain untouched. Historical absence of request metadata is
+explicit: preserve existing exact-envelope canonical replay, but never synthesize an unauthenticated
+browser recovery request or claim that missing evidence proves completion.
+
+**Readback and presentation.** Archive deletion readback binds the selected run and its canonical
+receipts to existing archive cleanup/command settlement evidence. It distinguishes canonical removal,
+pending cleanup and verified completion. Reads must not settle deletion. Missing/corrupt evidence
+remains an explicit refusal or unavailable state. Only authenticated retained requests may be offered
+for explicit resume; no automatic replay. Keep results tied to their original report when selection
+changes. A rejected retry after partial work does not establish that nothing changed.
+
+Display only authoritative deletion tallies and progress. Preserve shared live, published-report
+and pending-capture file owners. Logical row removal is not a measured reduction of SQLite file size;
+unmeasured byte savings remain unavailable. No report can reappear after canonical deletion. Queue
+controls remain owned by 3.1.13 and cross-surface convergence by 3.1.16; this amendment does not move
+those obligations into Archive.
+
+**Saved-report export and outcomes.** C0's generic saved report retains D223's whole-report Export
+control. Its file is `archive-<runId>.json`, containing exactly the public `SavedArchiveReportWire`
+already served to the selected viewer. This updates D223's old wire/trace-ID naming to the current
+report model; do not re-derive content, include private source payloads/digests, bundle attachment
+bytes, or create a second projection. Frozen sections and explicit absence remain intact even when
+the originating workflow is retired. Generic outcome `done` is not evidence of a confirmed external
+write; labels/tooltips may not claim verification from that outcome alone. Attachments still require
+exact membership and verified bytes before image/lightbox/download availability.
+
+The single task owner binds production-service browser proof, interruption/restart/changed-identity
+controls, privacy and historical compatibility, focused gates and exact ownership. No migration,
+operator-state application, external HR transaction or advanced recovery interface is authorized.

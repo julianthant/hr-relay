@@ -408,11 +408,11 @@ operation summary; the local `ownership.json` also records exact import edges.
 | 3.1.9.4 Explorer/Catalog | Existing `explorer*.ts*`, `ui-catalog*.ts*`, `row-catalog*.ts*`; `useExplorerClient`, `createExplorerQueries` for graph, validation and catalog, plus existing strict command apply/replay/refusal. A's transaction-owned SQLite repository is immutable prerequisite authority. | Existing `fixture-explorer.ts`, new `fixture-explorer-routes.ts`, `reference-explorer-scenes.ts`, `reference-explorer.spec.ts`; `explorer-graph`, `explorer-transaction`, `catalog-search`. The Settings-hosted catalog slot is already registered. |
 | 3.1.9.5 Notifications | `NotificationBell`, dedicated notification model and `useNotificationClient`; served day notifications and shared SSE deliver real inbox updates, while existing command execution supplies read/unread/snooze and A's services supply durable delivery. | `fixture-notifications.ts` supplies the exact current ordinary/backfill arrays to the day fixture; existing `backfill-gap.spec.ts` owns notification-specific accessibility proof. There is no separate notification PNG family to invent or retire. New scenarios use child-owned profiles; changing a default row must not silently refreeze shared scenes. |
 | 3.1.9.6 Intake | Existing intake surfaces/models, `useIntakeClient`, `createIntakeQueries` upload/session ports and strict command execution. A's ingress still prepares attachments before execution. | Existing `fixture-intake.ts`, new `fixture-intake-routes.ts`, `reference-intake-scenes.ts`, `reference-intake.spec.ts`, existing `intake-accessibility.spec.ts`; `intake-mapping`, `intake-review`, `intake-manifest`, `intake-rerun`. Run-start spreadsheet references remain with the later Run owner. |
-| 3.1.9.7 Archive | Existing archive surfaces/models, `useArchiveClient`, `createArchiveQueries`: index, saved report/index/version/file, archived run/capture resource and verified download URLs; strict command execution retains version/relaunch/delete and refusal/replay. Shared observer extraction preserves each existing resource policy. | Existing `fixture-archive.ts`/`fixture-archive-evidence.ts`, new `fixture-archive-routes.ts`, `reference-archive-scenes.ts`, `reference-archive.spec.ts`, existing archive specs; `archive-ledger`, `archive-run`, `archive-version-bump`, `archive-evidence`, `archive-report-saved`, `archive-report-zoom`. |
+| 3.1.9.7 Archive | Existing archive surfaces/models, `useArchiveClient`, `createArchiveQueries`: index, saved report/index/version/file, archived run/capture resource and verified download URLs; strict command execution retains version/delete and refusal/replay while Archive execution doors remain retired. The [Archive amendment](#archive-child-ownership-amendment-2026-09-16) admits the narrow deletion request-retention, authenticated-replay and progress/readback correction. | Existing `fixture-archive.ts`/`fixture-archive-evidence.ts`, new `fixture-archive-routes.ts`, `reference-archive-scenes.ts`, `reference-archive.spec.ts`, existing archive specs and Archive-owned real-service proof; `archive-ledger`, `archive-run`, `archive-version-bump`, `archive-evidence`, `archive-report-saved`, `archive-report-zoom`. |
 | Later owners | 3.1.10: `DateNav` and date model. 3.1.11: `SessionPanel` and session model. 3.1.11.1: `PreflightPopover`, `PreflightControl`, `useSettingsPreflight`, preflight query/client ports. 3.1.11.2: start commands and start fixture/spec family. 3.1.12: Activity queries/CSV, export command, Activity fixture/spec family; A's Activity summary source remains separate from Queue. 3.1.13: Queue query, queue fixture/spec. 3.1.14: detail queries and detail/diagnostic fixtures/specs. | Existing `start-run*`/`separations-start-*`, `activity-report*`/`cross-date-search`, `run-*`/`diagnostic-bundle-gallery`/`failure-resolution-*` references retain their corresponding later owner. Mixed failure-resolution proof and combined scene membership remain finalizer-owned. These extractions add no new session control, Run or detail feature. |
 
 `SettingsPage` owns the Settings host and draft lifetime; its Storage, preflight and Catalog
-component contracts are existing inputs. Except for the bounded shell, Settings and Notifications amendments below,
+component contracts are existing inputs. Except for the bounded shell, Settings, Notifications and Archive amendments below,
 children implement their surface without editing
 `dashboard-app.tsx`, `dashboard-takeovers.tsx`, the query/command aggregate, a sibling's module or
 the shared command union. Dedicated wire files retain A's matching owner. All surface client
@@ -420,7 +420,7 @@ hooks return the exact provider object; the per-surface types introduce no fresh
 render. Compatibility exports in the old shell, top-bar, Settings model and client modules point
 to the implementations; production consumers import the dedicated owners.
 
-Subject only to the bounded shell, Settings, Storage, Intake and Notifications amendments below, reserved shared inputs are the app/root takeover
+Subject only to the bounded shell, Settings, Storage, Intake, Notifications and Archive amendments below, reserved shared inputs are the app/root takeover
 registration, provider/transport/subscription,
 `query-parse.ts`, `shared-commands.ts`, `async-resource.ts`, A's root BFF/command/schema/kernel
 registration, `fixture-day.ts`, fixture identity/profile/error helpers, `fixture-bff.ts`, seeded
@@ -857,3 +857,42 @@ That finalizer owns the shared integration target, combined generation, focused 
 and candidate cleanup under operator instruction. Do not create a peer reservation chain or merge
 another candidate inside this child. No independent review for Phase 3.1; full acceptance remains
 3.1.19. No push or task dispatch is authorized.
+
+<a id="archive-child-ownership-amendment-2026-09-16"></a>
+
+### Archive child ownership amendment — 2026-09-16
+
+The operator selected **1 A** for the narrow backend deletion-recovery repair and approved the
+complete [3.1.9.7 AR1–AR5 brief](task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md#approved-execution-brief--2026-09-16).
+A disposable probe established that an interrupted cleanup followed by delayed browser retry is
+rejected as command-divergent because ingress restamps its time before the final operator journal
+exists. The saved-report wire also hides remaining deletion cleanup. These are required A18 repairs,
+not an expansion into advanced recovery or new deletion policy.
+
+3.1.9.7 exclusively owns Archive-delete request retention/authentication in the existing lifecycle
+record, command/run-record service and Archive-specific binding, plus read-only lifecycle/Archive
+progress and receipt projection. The exact allowed source paths, narrow composition/ingress
+exceptions, public-wire registrations and proofs are in that single task owner. Use a narrowly
+validated, read-forward JSON extension; preserve existing immutable records, canonical deletion
+admission and exact historical replay. No table, DDL, migration or schema-floor change is admitted.
+The [normative amendment](../../../reference/dashboard-surfaces.md#archive-recovery-export-amendment-2026-09-16)
+also binds whole-report export to the current public saved-report wire and truthful generic outcomes.
+
+Existing Archive reference families may change only for the approved behavior, with exact
+filename/hash/reason attribution, visual/a11y inspection and assert proof. The child owns a dedicated
+real-service synthetic browser helper/spec; shared fixture/seeded composition remains an input.
+Generated output stays generator-owned and combined by 3.1.9.8. Live Queue controls remain 3.1.13;
+paired convergence remains 3.1.16. No Archive execution door returns.
+
+Intake's shared command-schema ownership is restricted to Intake payloads; Archive's addition is
+restricted to lifecycle Archive-delete recovery metadata. Preserve Intake's in-flight assignment,
+gates and merge order. Each child is independently executable against its committed base; neither
+requires the other's unmerged API. 3.1.9.8 combines the separate schema/registration/document hunks
+and checks both admitted orders. No peer reservation queue or assignment transfer is required.
+
+The complete plan is delivered on retained ref `codex/plan-3.1.9.7`; the planner removes only its
+owned `/Users/julianhein/Projects/hr-worktree-archive-plan` checkout after verification. The fresh
+supervisor creates `codex/3.1.9.7-archive` at `/Users/julianhein/Projects/hr-worktree-archive` from the
+verified plan commit, which contains the integrated prerequisites. Direct committed-ref delivery
+does not require or authorize a planning merge into master. The operator controls integration
+through 3.1.9.8. The Phase 3.1 focused/no-review cadence and final 3.1.19 acceptance stay unchanged.
