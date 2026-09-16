@@ -3311,6 +3311,66 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  readArchiveDeletion(runIdInput: string) {
+    const runId = RunIdSchema.parse(runIdInput);
+    return this.withAuthorityReadSnapshot(() => {
+      const receipt = this.authority.deletedRuns.get(runId);
+      if (receipt === undefined) return undefined;
+      if (receipt.origin !== "archive") throw new Error("archive-deletion-origin-mismatch");
+
+      let cleanup: { state: "pending" | "complete"; fileCount: number } | { state: "unavailable"; reason: string };
+      try {
+        const path = join(dirname(this.#path), "archive.sqlite");
+        if (!existsSync(path)) throw new Error("archive-database-missing");
+        const deletion = this.lifecycleArchive(true).deletion(runId);
+        cleanup = deletion === undefined
+          ? { state: "unavailable", reason: "Archive cleanup evidence is missing." }
+          : {
+              state: deletion.state === "deleted" ? "complete" : "pending",
+              fileCount: deletion.files.length,
+            };
+        if (deletion !== undefined
+          && canonicalJsonStringify(deletion.receipt) !== canonicalJsonStringify(receipt)) {
+          cleanup = { state: "unavailable", reason: "Archive cleanup evidence does not match the canonical deletion." };
+        }
+      } catch {
+        cleanup = { state: "unavailable", reason: "Archive cleanup evidence failed integrity verification." };
+      }
+
+      let command: z.infer<typeof AuthorityCommandRecordSchema> | undefined;
+      let lifecycleAudit: z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
+      try {
+        command = this.authority.lifecycleJournal.getCommand(receipt.commandId);
+        lifecycleAudit = this.authority.lifecycleJournal.findAuditByCommand(receipt.commandId);
+      } catch {
+        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "Deletion recovery evidence failed integrity verification." } };
+      }
+      if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle"
+        || command.operation !== "delete-archived" || lifecycleAudit === undefined
+        || !("kind" in lifecycleAudit) || lifecycleAudit.kind !== "run-lifecycle"
+        || canonicalJsonStringify(lifecycleAudit.request) !== canonicalJsonStringify(command)
+        || lifecycleAudit.result.kind !== "deletion" || !lifecycleAudit.result.runIds.includes(runId)) {
+        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "Deletion recovery evidence is missing or does not match the canonical deletion." } };
+      }
+
+      const request = command.acceptedArchiveDeleteRequest;
+      if (request === undefined) {
+        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "This historical deletion has no authenticated browser recovery request." } };
+      }
+      const operatorCommand = this.authority.commands.get(request.commandId);
+      const operatorAudit = this.authority.commandAudits.findByCommand(request.commandId);
+      if (operatorCommand === undefined && operatorAudit === undefined) {
+        return { receipt, cleanup, command: { state: "pending" as const, request } };
+      }
+      if (operatorCommand === undefined || operatorAudit === undefined
+        || canonicalJsonStringify(operatorCommand) !== canonicalJsonStringify(request)
+        || canonicalJsonStringify(operatorAudit.request) !== canonicalJsonStringify(request)) {
+        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "The final operator command audit does not match the accepted deletion request." } };
+      }
+      return { receipt, cleanup, command: { state: "complete" as const, commandId: request.commandId, completedAt: operatorAudit.completedAt } };
+    });
+  }
+
   settleArchivedDeletion(runId: string) {
     // Claim acquisition retains files while holding the authority write lock.
     // Hold that same lock through owner inspection and unlinking so another
@@ -3517,7 +3577,9 @@ export class AuthorityDatabase implements Disposable {
     const deletion = this.authority.lifecycleJournal.getCommand(lifecycleCommandId("operator-delete-archive", record.commandId));
     if (deletion !== undefined && (!("kind" in deletion) || deletion.kind !== "run-lifecycle"
       || deletion.operation !== "delete-archived" || !("family" in record) || record.family !== "version-archive" || record.type !== "delete-archived-run"
-      || deletion.requestFingerprint !== sha256Hex(`hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(record)}`))) throw new CommandIdentityConflictError();
+      || deletion.requestFingerprint !== sha256Hex(`hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(record)}`)
+      || (deletion.acceptedArchiveDeleteRequest !== undefined
+        && canonicalJsonStringify(deletion.acceptedArchiveDeleteRequest) !== canonicalJsonStringify(record)))) throw new CommandIdentityConflictError();
     const claims=this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=?").all(record.commandId);
     if(claims.length>1)throw new CommandIdentityConflictError();
     if(claims.length===1) {

@@ -1,7 +1,7 @@
 import { authenticatedVersionApplyRequest, publicVersionReviewFingerprint } from "../commands/version-review-binding.js";
 import type { VersionChange } from "../../../domain/archive/change-record.js";
-import { SavedArchiveFileWireSchema } from "../../../domain/dashboard/archive.js";
-import { FingerprintSchema } from "../../../domain/ids.js";
+import { SavedArchiveDeletionStatusWireSchema, SavedArchiveFileWireSchema } from "../../../domain/dashboard/archive.js";
+import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
 import { SavedVersionIndexWireSchema } from "../../../domain/dashboard/archive.js";
 import type { createRunLifecycleStorage } from "../../../infra/sqlite/lifecycle-storage.js";
 import { readArchiveReport, queryArchiveReports } from "./archive-reports.js";
@@ -931,7 +931,29 @@ export function savedArchiveDetail(deps: ArchiveQueryDeps, runIdInput: string) {
   if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
   const storage = deps.storage;
   const existence = savedArchiveRead(() => storage.reportOwner(runId));
-  if (existence.state === "deleted") return SavedArchiveDetailWireSchema.parse({ state: "deleted", runId, reason: "This run was explicitly deleted." });
+  if (existence.state === "deleted") {
+    const deletion = storage.readArchiveDeletion(runId);
+    if (deletion === undefined) throw new Error("archive-deletion-readback-missing");
+    const command = deletion.command.state === "pending"
+      ? {
+          state: "pending" as const,
+          reason: "Canonical deletion is recorded, but the final operator command audit is still pending.",
+          ...(deletion.command.request.source === "dashboard"
+            && deletion.command.request.requestedBy === LOCAL_OPERATOR_ACTOR_ID
+            ? { resumeRequest: deletion.command.request }
+            : {}),
+        }
+      : deletion.command;
+    const status = SavedArchiveDeletionStatusWireSchema.parse({
+      state: "deleted",
+      runId,
+      deletedAt: deletion.receipt.deletedAt,
+      removed: deletion.receipt.removed,
+      cleanup: deletion.cleanup,
+      command,
+    });
+    return SavedArchiveDetailWireSchema.parse({ state: "deleted", runId, reason: "This run was explicitly deleted.", deletion: status });
+  }
   if (existence.state === "missing") return SavedArchiveDetailWireSchema.parse({ state: "missing", runId, reason: "No retained run has this identity." });
   if (existence.state !== "archived") return SavedArchiveDetailWireSchema.parse({ state: "unavailable", runId, reason: "This run has no published saved report." });
   if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");

@@ -40,6 +40,7 @@ import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { sha256Hex } from "./sha256.js";
 import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
+import { lifecycleCommandId } from "./lifecycle-command-id.js";
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
@@ -299,6 +300,13 @@ export const VersionScopeSchema = z.discriminatedUnion("kind", [
 ]);
 export type VersionScope = z.infer<typeof VersionScopeSchema>;
 
+export const ArchiveDeleteCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("version-archive"),
+  type: z.literal("delete-archived-run"),
+  target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
+});
+
 export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...CommandEnvelopeFields,
@@ -331,12 +339,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
   }),
   /** D308 — delete means delete: the archived run and every row it owns leave authority. */
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("delete-archived-run"),
-    target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
-  }),
+  ArchiveDeleteCommandRequestSchema,
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
@@ -588,6 +591,23 @@ export const RunLifecycleCommandRecordSchema = z.strictObject({
   requestFingerprint: FingerprintSchema,
   fence: RunLifecycleCommandFenceSchema,
   recordedAt: IsoInstantSchema,
+  /** Read-forward recovery evidence retained only for an accepted Archive deletion. */
+  acceptedArchiveDeleteRequest: ArchiveDeleteCommandRequestSchema.optional(),
+}).superRefine((record, context) => {
+  const request = record.acceptedArchiveDeleteRequest;
+  if (request === undefined) return;
+  const fingerprint = sha256Hex(
+    `hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(request)}`,
+  );
+  if (record.operation !== "delete-archived") {
+    context.addIssue({ code: "custom", path: ["acceptedArchiveDeleteRequest"], message: "archive delete request requires delete-archived operation" });
+  }
+  if (record.commandId !== lifecycleCommandId("operator-delete-archive", request.commandId)) {
+    context.addIssue({ code: "custom", path: ["acceptedArchiveDeleteRequest", "commandId"], message: "archive delete request command identity mismatch" });
+  }
+  if (record.requestFingerprint !== fingerprint) {
+    context.addIssue({ code: "custom", path: ["requestFingerprint"], message: "archive delete request fingerprint mismatch" });
+  }
 });
 
 export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [

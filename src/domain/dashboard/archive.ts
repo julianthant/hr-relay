@@ -1,6 +1,7 @@
-import { VersionArchiveCommandRequestSchema } from "../commands.js";
+import { ArchiveDeleteCommandRequestSchema, VersionArchiveCommandRequestSchema } from "../commands.js";
 import { ArchiveReportSectionSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema } from "../archive/report.js";
 import { VersionChangeReviewSchema } from "../archive/change-record.js";
+import { DeletedRunRecordSchema } from "../run/deleted-run.js";
 /**
  * The Archive + version-bump wire (ref dashboard-surfaces §10.2 D80, ref frontend-backend-integration §5 "Archive +
  * version bump", D179).
@@ -37,6 +38,7 @@ import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
+  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   RunIdSchema,
@@ -387,9 +389,32 @@ export const SavedArchiveReportWireSchema = z.strictObject({
     appliedBy: z.string(), startedAt: IsoInstantSchema }).optional(),
 });
 export type SavedArchiveReportWire = z.infer<typeof SavedArchiveReportWireSchema>;
+
+export const SavedArchiveDeletionStatusWireSchema = z.strictObject({
+  state: z.literal("deleted"),
+  runId: RunIdSchema,
+  deletedAt: IsoInstantSchema,
+  removed: DeletedRunRecordSchema.shape.removed,
+  cleanup: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("pending"), fileCount: z.number().int().nonnegative() }),
+    z.strictObject({ state: z.literal("complete"), fileCount: z.number().int().nonnegative() }),
+    z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+  ]),
+  command: z.discriminatedUnion("state", [
+    z.strictObject({
+      state: z.literal("pending"),
+      reason: z.string().min(1),
+      resumeRequest: ArchiveDeleteCommandRequestSchema.optional(),
+    }),
+    z.strictObject({ state: z.literal("complete"), commandId: CommandIdSchema, completedAt: IsoInstantSchema }),
+    z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+  ]),
+});
+export type SavedArchiveDeletionStatusWire = z.infer<typeof SavedArchiveDeletionStatusWireSchema>;
+
 export const SavedArchiveDetailWireSchema = z.discriminatedUnion("state", [SavedArchiveReportWireSchema,
   z.strictObject({ state: z.literal("missing"), runId: RunIdSchema, reason: z.string() }),
-  z.strictObject({ state: z.literal("deleted"), runId: RunIdSchema, reason: z.string() }),
+  z.strictObject({ state: z.literal("deleted"), runId: RunIdSchema, reason: z.string(), deletion: SavedArchiveDeletionStatusWireSchema }),
   z.strictObject({ state: z.literal("unavailable"), runId: RunIdSchema, reason: z.string() }),
 ]);
 export type SavedArchiveDetailWire = z.infer<typeof SavedArchiveDetailWireSchema>;

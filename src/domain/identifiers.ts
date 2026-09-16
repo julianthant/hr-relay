@@ -1,5 +1,3 @@
-import { canonicalJsonStringify } from "./canonical-json.js";
-import { sha256Hex } from "./sha256.js";
 /**
  * Fresh-identity minting, injected the same way time is (ref clock-config-secrets).
  *
@@ -11,8 +9,9 @@ import { sha256Hex } from "./sha256.js";
  */
 import { createHash, randomUUID } from "node:crypto";
 import type { Clock } from "./clock.js";
-import { ItemIdSchema, TraceIdSchema, CommandIdSchema } from "./ids.js";
+import { ItemIdSchema, TraceIdSchema } from "./ids.js";
 import type { TraceId } from "./ids.js";
+export { lifecycleCommandId } from "./lifecycle-command-id.js";
 
 export interface IdFactory {
   /** A fresh RFC-4122 v4 UUID, in the lowercase form every branded id expects. */
@@ -83,10 +82,4 @@ export function deriveItemId(workflowId: string, matchKey: string): string {
     `${variant}${digest.slice(17, 20)}`,
     digest.slice(20, 32),
   ].join("-"));
-}
-
-/** Domain separation keeps nested lifecycle entries distinct from product commands. */
-export function lifecycleCommandId(operation: string, identity: unknown) {
-  const hash = sha256Hex(`hrauto:worker-lifecycle:v1\0${operation}\0${canonicalJsonStringify(identity)}`);
-  return CommandIdSchema.parse(`${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`);
 }

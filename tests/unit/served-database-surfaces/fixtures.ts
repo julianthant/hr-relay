@@ -33,11 +33,12 @@ export function savedHttpFixture() {
   const f = archiveFixture();
   const app = () => createDashboardApp({
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
-    bootstrap: { clock: f.base.clock }, commandJournal: { get: () => undefined },
+    bootstrap: { clock: f.base.clock }, commandJournal: f.database.authority.commands,
     protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: () => { throw new Error("unexpected-bulk-command"); } },
     intake: { prepare: async () => {} },
     commands: createDashboardCommandService({ kernel: f.kernel, versionChanges: createRunLifecycleStorage(f.database),
+      archiveDeletionCommands: f.database.authority.lifecycleJournal,
       projection: { ingestFromTimeline() { throw new Error("archive-command-ingested-timeline"); }, refreshRun() { throw new Error("archive-command-refreshed-run"); } } }),
     archive: { storage: createRunLifecycleStorage(f.database),
       reader: new RunRecordService({ database: f.database, clock: f.base.clock,
