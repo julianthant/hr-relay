@@ -119,3 +119,19 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(h.host.textContent ?? "", /Missing/u);
   });
 });
+
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SettingsSaveFeedback } from "../../../src/dashboard/surfaces/settings-feedback.js";
+import type { SettingsSaveState } from "../../../src/dashboard/surfaces/settings-attempt-model.js";
+it.each([
+  [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", false],
+  [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials write unconfirmed", true],
+  [{ state: "refused", message: "Draft refused" }, "Credentials were not applied", false],
+  [{ state: "applied", replayed: false }, "Credentials applied", false],
+  [{ state: "applied", replayed: true }, "Credentials already applied", false],
+] satisfies [SettingsSaveState, string, boolean][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
+  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {} }));
+  assert.ok(html.includes(title));
+  assert.equal(html.includes("Retry exact attempt"), retry);
+});

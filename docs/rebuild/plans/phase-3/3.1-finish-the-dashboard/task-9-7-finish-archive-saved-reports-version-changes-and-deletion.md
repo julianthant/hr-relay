@@ -293,3 +293,18 @@ The planner verifies the committed owner against the checked document bytes, ver
 ref/prerequisite ancestry and removes only the clean owned planning checkout and its dependency
 symlink. The retained planning ref supplies the exact implementation base without a master merge.
 The handoff reports actual cleanup and READY/WAITING ON from the final verified state.
+
+
+### Execution amendment — 2026-09-17
+
+The required `command-result-exhaustive` gate failed on two Settings modules that were byte-identical
+to the approved plan base. The operator selected **Allow focused Settings fixes** during this
+supervisor task. This adds only `src/dashboard/surfaces/settings-feedback.tsx`,
+`src/dashboard/surfaces/settings-protected-model.ts` and their focused dashboard tests to ownership.
+The feedback title exhaustively maps the already-derived display state; protected command handling
+uses `settleCommandResult` after its existing strict identity check. Existing messages, refusal
+handling, draft retention, presence-only readback and exact retry remain unchanged. No command
+schema, Settings backend, credentials, guard exemption or other command-family behavior changes.
+Run the Settings protected/catalog surface tests, direct feedback-state proof, the assigned
+architecture gate, scoped lint and affected Settings parity. This is an explicit scope amendment,
+not a waiver of either failed assertion.
