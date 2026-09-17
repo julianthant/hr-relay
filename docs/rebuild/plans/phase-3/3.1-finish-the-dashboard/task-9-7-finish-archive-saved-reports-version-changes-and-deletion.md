@@ -308,3 +308,126 @@ schema, Settings backend, credentials, guard exemption or other command-family b
 Run the Settings protected/catalog surface tests, direct feedback-state proof, the assigned
 architecture gate, scoped lint and affected Settings parity. This is an explicit scope amendment,
 not a waiver of either failed assertion.
+
+
+### Focused implementation delivery — 2026-09-17
+
+**Frozen implementation:** `96771ec69511da58e1b79f5b274795fa97c44621` on
+`codex/3.1.9.7-archive`, retained at `/Users/julianhein/Projects/hr-worktree-archive`.
+The documentation-only commit containing this delivery record is the branch's delivery tip; its
+SHA is reported externally to avoid a self-reference. Product checkboxes remain open for
+operator-controlled 3.1.9.8 integration and cleanup. No independent reviewer under Phase 3.1.
+
+At resume, the requested branch/worktree already existed. The supervisor verified its creation
+from exact approved plan `76b2e1fc7809907010b2a1d0f7e117737815902c`, the retained
+`codex/plan-3.1.9.7` ref and prerequisite ancestry
+`3d4d8c0c64cf2e96096b193966a66741861d6f1c`, then preserved the existing two Archive commits.
+The initial local evidence lacked supporting logs and had inconsistent totals; fresh checks below
+supersede it. Master stayed at `ac8c620b72ec47d9788909a4a52941a4c741f42a` and Intake at
+`45748dae4436537ab86585ffa03b95dbc6843caa`; neither checkout was edited by this supervisor.
+
+| Step | Implemented result and proof |
+| --- | --- |
+| AR1 | Strict accepted-request retention is atomic with canonical deletion. Authenticated BFF replay restores only the accepted timestamp after checking all caller-controlled intent. Missing metadata permits only the original exact envelope; it is never backfilled. Twelve recovery tests cover before-removal rollback, cleanup/audit interruptions, reopened databases and later-clock HTTP retry, divergent actor/target/reference/reason, absent or corrupt evidence, and a contradictory final audit. Receipt, cleanup and operator completion remain separate facts. |
+| AR2 | Public-wire JSON export, generic outcome labels, retained-image inspection/download, bounded filters and deterministic 50+2 pagination. Real HTTP responses deliberately resolve out of order: current list/detail wins and history restores an exact report outside the current page. Retired descriptors, missing/corrupt/foreign attachment evidence, native downloaded bytes and explicit read failures are covered across service, mounted and browser checks. |
+| AR3 | Scope, kind, membership, blockers and progress remain visible. A changed major membership forces a new review and explicit confirmation. A partial transfer resumes after a real server/database restart, refuses a competing apply identity and preserves the already-published frozen report. A minor review containing active and terminal prior runs transfers none. |
+| AR4 | Confirmation and permanent-key warning remain. Canonical removal, file settlement, final audit and unavailable historical recovery have distinct readback. Recovery survives reload/restart; foreign nested status/resume targets fail identity validation. Real delayed deletion of A leaves B selected, and history returns to A's current deleted disposition. |
+| AR5 | All assigned focused gates pass, both themes inspected, actual browser zoom checked, all affected reference triples attributed, logical commits retained and owned browser/server resources closed. The branch and private evidence remain for integration. |
+
+The shared-file test retains simultaneous live, published-report and pending-capture owners while
+interrupting deletion after exclusive unlink. Reopen/replay preserves every surviving owner's
+verified bytes, removes only exclusive bytes and checks canonical row tallies and measured byte
+deltas. Readback tests assert no settlement or authority mutation. The historical-envelope positive
+control proves valid replay rather than relying on refusal caused by broken setup.
+
+The pure `lifecycleCommandId` implementation moved to a browser-safe domain module and remains
+re-exported from `identifiers.ts`; its formula is unchanged. This lets strict retained-request
+validation avoid importing Node identity minting into the dashboard. A computed manifest-closure
+intersection found no changed workflow/task source input, so no manifest regeneration is needed.
+No DDL, migration, schema-floor, guard exemption, Intake payload or shared-harness default changed.
+The only non-Archive ownership is the explicit Settings amendment above.
+
+#### Commands and verified results
+
+Run from the retained checkout. Exact commands for the first four rows are the unchanged assigned
+commands in **Gate schedule and resources** above, in the same order. Counts are per invocation;
+the Settings invocation overlaps the shared result-fold architecture test.
+
+| Gate | Result | Retained log under `.artifacts/3.1.9.7/resume/` |
+| --- | --- | --- |
+| Assigned service/storage/report selectors | Exit 0; 15 files / 135 tests | `gate-1-final.log` |
+| Assigned delete/version/SQLite selectors | Exit 0; 4 files / 99 tests | `gate-2.log` |
+| Assigned architecture selectors | Exit 0; 6 files / 62 tests | `gate-3-final.log` |
+| Assigned Archive parity assert | Exit 0; 45 tests / 4 workers | `parity-final.log` |
+| `npm run test -- tests/unit/dashboard/settings-protected-surface.test.ts tests/unit/dashboard/settings-catalog-surface.test.ts tests/unit/architecture/command-result-exhaustive.test.ts` | Exit 0; 3 files / 35 tests | `settings-fix.log` |
+| `npm run test:parity -- tests/parity/reference-settings.spec.ts tests/parity/settings-catalog.spec.ts tests/parity/settings-activation.spec.ts --workers=4` | Exit 0; 22 tests / 4 workers; no reference updates | `settings-parity.log` |
+| Assigned expanded ESLint script against the full approved plan SHA | Exit 0; all 28 changed TypeScript files; zero warnings; full argv retained | `lint-final.log` |
+| `git diff --check` and `git diff --cached --check` | Exit 0 | Rechecked at commit/freeze |
+
+Documentation recording checks also passed: `npm run test --
+tests/unit/architecture/roadmap-doc-binding.test.ts` (24 tests); scoped ESLint over that test and
+`scripts/generate-roadmap.ts`, `scripts/roadmap/parse-plan.ts`, `scripts/roadmap/scan-docs.ts`,
+`scripts/roadmap/schema.ts` with `--max-warnings 0`; `npm run roadmap` then `npm run roadmap:check`
+(no generated diff); and `python3 .artifacts/3.1.9.7/resume/check-delivery.py` (one owned document,
+no new local links, nine instruction twins equal, maximum chain 18,376 bytes, 47 retained approval
+controls, two required ancestors, unchanged product checkboxes). Results are retained as
+`roadmap-binding.log`, `docs-lint.log`, `roadmap-generation.log`, `roadmap-freshness.log` and
+`document-checks.json`. Final recording reruns the affected document checks; unchanged test/generator
+code reuses its scoped lint result.
+
+Unit configuration resolves `Math.min(4, availableParallelism())` to four file workers. Unit and
+parity wrappers use private `/tmp/hrt-<uid>/run-*` directories and report scratch removal on exit.
+Parity/build writers ran serially. All Archive authority hosts used ephemeral ports and synthetic
+state; the surrounding shell, unrelated APIs and SSE remained explicit fixtures. No credentials,
+operator roots, legacy state or HR transaction were used.
+
+The final parity build stamp is input digest
+`7d935ea71b9cb59d0aef98f80b7d852cbabd07f32cc23fcf38d02ea7d696504a`, output digest
+`d066b32ac93b9094bc8b74d7a7bbcb7a44508a9838c023ef962c5e855f5ff0ad`.
+`candidate-inputs.json` binds implementation/tree SHA, all 70 changed source/reference hashes,
+expanded lint argv and final runtime-log hashes. Those inputs are unchanged by this evidence-only
+record, so passing runtime checks are reused without claiming a new execution.
+
+#### Visual and reference evidence
+
+Using `/ui` and `playwright-cli`, the supervisor inspected the built specimen and Archive in both
+themes, including keyboard image opening, dialog focus, Escape restoration, reduced motion and
+native downloads. Actual Chromium zoom was set to 1.25 in an owned temporary browser profile;
+`chrome.tabs.getZoom` returned 1.25 while CSS zoom stayed 1. A 1280×960 viewport yielded
+1024×768 CSS pixels; 1280×900 yielded the 1024×720 minimum canvas. Image and controls remained
+visible. `actual-zoom.json.log` records the final dimensions, DPR 1.25, focus and reduced-motion
+state; `zoom-dark-image.png`, `zoom-light-image.png`, `zoom-light-report.png` and their YAML snapshots
+retain the inspection. This is additional actual-browser proof beyond the existing CSS-zoom cases.
+Automated page errors are fatal; the manual specimen's only console error was an absent favicon.
+
+`reference-triples.json` lists every exact filename, before/after SHA-256, change reason and
+inspection result for 24 affected triples (72 files: 24 changed PNGs, 18 changed a11y snapshots,
+30 unchanged companion files). The six `reference-sheet-*.png` contact sheets were inspected
+before/after; a11y differences were checked for matching names and unchanged surrounding structure.
+The changed families are only the six approved Archive families. Ledger outcomes lose verification
+styling; report views gain public export and plain outcome labels; evidence gains image inspection;
+version review gains explicit scope/kind/progress. References were retained from `d971e5989` and
+passed the subsequent complete Archive assert lane. No new reference baseline was accepted during
+this resumed repair. Private evidence remains at `.artifacts/3.1.9.7/` and is intentionally untracked.
+
+#### Delivery assessment and deferred work
+
+One resumed repair candidate corrected implementation/proof defects already covered by AR1–AR5:
+historical exact replay, source and nested target checks, final-audit truth, interrupted shared-file
+custody, real restart and delayed-response proof. Fixture diagnostics were repaired without weakening
+assertions: audit corruption obeys foreign keys, partial-transfer injection occurs after a completed
+member, and the Back locator is exact. Earlier implementation telemetry is incomplete, so no total
+repair count or elapsed-time claim is made.
+
+The two unchanged Settings failures were a prerequisite inconsistency with the required architecture
+gate. The operator amendment added two narrow frontend files and focused tests; this was required
+gate repair, not new Settings product behavior. Baseline execution of the exact architecture selector
+would have exposed the ownership conflict before implementation. There were zero workers and zero
+independent review rounds, as approved. No broader scope or weakened gate was used to obtain a pass.
+
+3.1.9.8 must consume the frozen branch, reconcile Intake, run combined typecheck and its focused
+integration/lint/build-output checks, then perform operator-authorized integration and cleanup.
+Full coverage, whole-repository lint/architecture, broad parity, production/performance/recovery and
+full A01–A42/D01–D05 acceptance remain at 3.1.19; none are claimed passed here. No merge, push,
+sibling launch or automatic next-task dispatch occurred. Owned browsers and manual hosts are closed;
+the clean tracked worktree, branch and private evidence are intentionally retained.
