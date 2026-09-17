@@ -162,6 +162,7 @@ export async function startArchiveAuthorityServer(options: { seed?: "saved" | "l
   let http: Awaited<ReturnType<typeof startDashboardHttpServer>> | undefined;
   try {
     shell = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const shellUrl = shell.baseUrl;
     const createHostApp = () => {
       const app = makeApp();
       app.get("/events/v1", c => {
@@ -175,7 +176,6 @@ export async function startArchiveAuthorityServer(options: { seed?: "saved" | "l
         });
         return c.body(body, 200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       });
-      const shellUrl = shell.baseUrl;
       app.get("*", async c => {
         const response = await fetch(new URL(`${c.req.path}${new URL(c.req.url).search}`, shellUrl));
         return new Response(await response.arrayBuffer(), { status: response.status, headers: response.headers });

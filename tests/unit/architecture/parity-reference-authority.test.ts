@@ -49,6 +49,31 @@ import { startFixtureServer } from "../../parity/helpers/fixture-bff.js";
 const PARITY_REFERENCES = join(REPO_ROOT, "tests/parity/references");
 const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
 
+/** These writers create disposable authority or proof files, never reference expectations. */
+const FIXTURE_WRITE_DESTINATIONS: Readonly<Record<string, readonly string[]>> = {
+  "tests/parity/archive-authority.spec.ts": ["info.outputPath(evidenceName)"],
+  "tests/parity/explorer-authority.spec.ts": ["info.outputPath(`${name}.a11y.yaml`)", 'info.outputPath("service-evidence.json")'],
+  "tests/parity/helpers/fixture-archive-authority.ts": ['join(fixture.base.root, "artifacts", `${digest}.artifact`)'],
+  "tests/parity/helpers/storage-recovery-server.ts": ['join(repoRoot, "package.json")'],
+  "tests/parity/storage-recovery.spec.ts": ["authorityPath", 'join(target.root, ".lifecycle-restore.json")'],
+};
+
+function assertFixtureWriteDestinations(source: string, path: string, expected: readonly string[]): void {
+  const ast = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const destinations: string[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node) && /^(?:writeFileSync|writeFile)$/u.test(node.expression.getText(ast))) {
+      const destination = node.arguments[0];
+      assert.ok(destination, `${path} write must name a destination`);
+      destinations.push(destination.getText(ast));
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  assert.deepEqual(destinations, expected, `${path} may write only its inspected disposable authority/evidence destinations`);
+}
+
+
 const METADATA: CaptureMetadata = {
   stateId: "queue-day",
   viewport: "1440x900",
@@ -414,7 +439,18 @@ describe("parity lane reference authority (D132)", () => {
     const allowedWriters: Readonly<Record<string, string>> = {
       "tests/parity/helpers/reference-store.ts": "owns the PARITY_UPDATE gate — the ONE place a reference may be written",
       "tests/parity/helpers/bundle.ts": "writes the build stamp into dist/, never into tests/parity/references/",
+      ...Object.fromEntries(Object.keys(FIXTURE_WRITE_DESTINATIONS).map(path => [path, "exact disposable authority/evidence destinations checked below"])),
     };
+    for (const [path, expected] of Object.entries(FIXTURE_WRITE_DESTINATIONS)) {
+      const source = readFileSync(join(REPO_ROOT, path), "utf8");
+      assertFixtureWriteDestinations(source, path, expected);
+      const first = expected[0];
+      assert.ok(first, `${path} must register a real write`);
+      const redirected = source.replace(`writeFileSync(${first}`, 'writeFileSync("tests/parity/references/forbidden.png"');
+      assert.notEqual(redirected, source, `${path} negative control must change a real destination`);
+      assert.throws(() => assertFixtureWriteDestinations(redirected, path, expected), /inspected disposable/u);
+      assert.throws(() => assertFixtureWriteDestinations(`${source}\nwriteFileSync("extra.png", "bad");`, path, expected), /inspected disposable/u);
+    }
     const writers = gitVisibleFiles(["tests/parity"])
       .filter((path) => path.endsWith(".ts"))
       .filter((path) => /\bwriteFileSync\b|\bwriteFile\(/u.test(readFileSync(join(REPO_ROOT, path), "utf8")));
