@@ -80,7 +80,8 @@ type CommandAction,
 } from "./command-dispatch.js";
 import { commandFailureToast,settleCommandResult,type CommandSettlement } from "./command-result.js";
 import {
-RUN_START_DOOR_ID
+RUN_START_DOOR_ID,
+restoreDashboardTakeoverFocus
 } from "./dashboard-app-model.js";
 import { DashboardTakeovers } from "./dashboard-takeovers.js";
 import { useGlobalKeys } from "./global-keys.js";
@@ -374,6 +375,19 @@ function LoadedApp({
   const selectedRow = dayWire?.queueSurfaces.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
   const [startOpen, setStartOpen] = useState(route.start);
+  const startIntakeHandoff = useRef(false);
+  const openStart = useCallback(() => {
+    startIntakeHandoff.current = false;
+    setStartOpen(true);
+  }, []);
+  const closeStartFocus = useCallback((event: Event) => {
+    // The toolbar door is outside Radix's root. Restore it only on dismissal;
+    // Intake replaces that toolbar and its frame already owns arrival focus.
+    event.preventDefault();
+    if (!startIntakeHandoff.current) {
+      restoreDashboardTakeoverFocus(document, RUN_START_DOOR_ID, DASHBOARD_MAIN_REGION_ID);
+    }
+  }, []);
   /**
    * The command waiting on the operator's confirmation. A descriptor that
    * carries a server-authored `confirm` block goes here first; everything else
@@ -1071,7 +1085,7 @@ function LoadedApp({
   );
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
-    onStartRun: () => setStartOpen(true),
+    onStartRun: openStart,
     onCyclePanelMode: panelMode.cycleMode,
     panelMode: panelMode.mode,
     onMinimisePanel: () => panelMode.setMode("icon"),
@@ -1375,7 +1389,7 @@ function LoadedApp({
                 answered. The `explore` route key, the deep links and the
                 surface are untouched.
               */
-              <RunStartButton id={RUN_START_DOOR_ID} onOpen={() => setStartOpen(true)} />
+              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
             }
             filters={
               dayWire === undefined ? null : <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
@@ -1533,6 +1547,7 @@ function LoadedApp({
       <RunStartSurfaces
         open={startOpen}
         onOpenChange={setStartOpen}
+        onCloseAutoFocus={closeStartFocus}
         workflows={startWorkflows}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
@@ -1543,6 +1558,7 @@ function LoadedApp({
            the panel would map the file onto whatever workflow the operator
            happened to be standing in. */
         onOpenIntake={(intakeWorkflowId, intakeSessionId) => {
+          startIntakeHandoff.current = true;
           setActiveWorkflowId(intakeWorkflowId);
           setRoute({ ...route, intake: intakeSessionId });
         }}

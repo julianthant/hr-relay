@@ -839,6 +839,7 @@ export function RunStartDialog({
   panelWorkflowId,
   actorId,
   onOpenIntake,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -856,6 +857,7 @@ export function RunStartDialog({
    * onto a workflow the operator did not choose.
    */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const client = useDashboardClient();
 
@@ -1305,6 +1307,7 @@ export function RunStartDialog({
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
+        onCloseAutoFocus={onCloseAutoFocus}
         size="lg"
         title="Start a run"
         description={<span className="sr-only">Choose a workflow, configure its start, review the server plan, and confirm.</span>}
@@ -1644,6 +1647,7 @@ export function RunStartSurfaces({
   panelWorkflowId,
   actorId,
   onOpenIntake,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1651,6 +1655,7 @@ export function RunStartSurfaces({
   panelWorkflowId: string;
   actorId: string;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   return (
     <RunStartDialog
@@ -1660,6 +1665,7 @@ export function RunStartSurfaces({
       panelWorkflowId={panelWorkflowId}
       actorId={actorId}
       onOpenIntake={onOpenIntake}
+      onCloseAutoFocus={onCloseAutoFocus}
     />
   );
 }

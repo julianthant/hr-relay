@@ -28,6 +28,7 @@ for (const theme of PARITY_THEMES) for (const viewport of PARITY_VIEWPORTS) {
       const bytes = xlsx ? await writeXlsxFile(INTAKE_CSV.trim().split("\n").map(row => row.split(","))).toBuffer() : Buffer.from(INTAKE_CSV);
       await page.locator('input[type="file"]').setInputFiles({ name: xlsx ? "synthetic.xlsx" : "synthetic.csv", mimeType: xlsx ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv", buffer: bytes });
       await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeFocused();
       const id = new URL(page.url()).searchParams.get("intake"); if (id === null) throw new Error("upload did not route to exact session");
       let wire = await server.authority.intake.read(id);
       expect(wire.artifact.bytes).toBe(bytes.length); expect(wire.artifact.sha256).toBe(createHash("sha256").update(bytes).digest("hex"));
@@ -149,9 +150,11 @@ test("canceled accepted upload stays closed; same-file retry joins the durable i
     await page.getByRole("button", { name: "Cancel", exact: true }).press("Enter"); release();
     await expect(page.getByRole("dialog", { name: "Start a run", exact: true })).toHaveCount(0); await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toHaveCount(0);
     await page.unrouteAll({ behavior: "wait" });
-    await start.focus(); await start.press("Enter"); await page.getByRole("tab", { name: "Import a spreadsheet" }).press("Enter");
+    await expect(start).toBeFocused();
+    await start.press("Enter"); await page.getByRole("tab", { name: "Import a spreadsheet" }).press("Enter");
     await page.locator('input[type="file"]').setInputFiles(file);
     await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeFocused();
     expect(new URL(page.url()).searchParams.get("intake")).toBe(id);
     expect(server.authority.database.authority.runSessions.list()).toHaveLength(0);
   } finally { release(); await server.close(); }
