@@ -44,7 +44,10 @@
       - tab "Manifest"
       - tab "Rerun diff" [selected]
     - tabpanel "Rerun diff":
-      - status: Compared with 7b92095b…, made 10:04 AM This file has run before, and the plan has changed since. The exact changed axes and membership are below.
+      - text: Earlier import manifest
+      - textbox "Earlier import manifest"
+      - button "Compare import" [disabled]
+      - status: Compared with 7b92095b…, made 10:04 AM This plan differs from the selected earlier import. The changed file, mapping, schema and membership facts are below.
       - text: prior manifest 7b92095b…1 changed axes
       - button "Show full prior manifest and changed-axis hashes"
       - text: the mapping aaaaaaaa… → bbbbbbbb… unchanged 1 added 1 removed 1 mapping changed contract identical changed inputs 1 In this plan, not in 7b92095b… 1c4ed0da-8e1b-523d-98ec-0318ee767b64 · input 63825050…
@@ -62,9 +65,9 @@
             - cell "e8b68575-86b3-55a5-bd97-a48142caee29"
             - cell "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
             - cell "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-    - text: "3 of 7 rows would run 4 rejected0 excluded Run is blocked: unresolved rejected rows have not been reviewed. header row 3fingerprint 55f5fb4b"
+    - text: "3 of 7 rows would run 4 unresolved4 in rejection history0 excluded Run is blocked: 4 unresolved source rows; rejection history has not been reviewed. header row 3fingerprint 55f5fb4b"
     - button "Show full layout fingerprint"
-    - button "Re-validate" [disabled]
+    - button "Re-validate"
     - button "Start 3 runs" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"

@@ -39,20 +39,27 @@ it("keeps refresh loading honest and ignores superseded list responses", async (
   await click("Refresh"); await act(async () => fresh.resolve({ items: [], next: null })); await act(async () => old.resolve({ items: [H_REPORT], next: null }));
   expect(document.body.textContent).toContain("No saved reports match"); expect(document.body.textContent).not.toContain(H_REPORT.title);
 });
-it.each(["missing", "deleted", "unavailable"])("names the served %s detail state", async state => {
+it.each(["missing", "unavailable"])("names the served %s detail state", async state => {
   await mount({ savedArchiveReport: async () => ({ state, runId: H_REPORT.runId, reason: "Served reason" }) });
   expect(document.body.textContent).toContain(`Report ${state}: Served reason`); expect(document.querySelector("article")).toBeNull();
+});
+it("draws the served deleted detail status", async () => {
+  await mount({ savedArchiveReport: async () => deletedDetail() });
+  expect(document.body.textContent).toContain("Saved report deleted");
+  expect(document.body.textContent).toContain("File cleanup: complete");
+  expect(document.querySelector("article")).toBeNull();
 });
 it("reports transport errors without claiming empty or deleted", async () => {
   await mount({ savedArchiveIndex: async () => { throw new Error("Index unavailable"); }, savedArchiveReport: async () => { throw new Error("Detail unavailable"); } });
   expect(document.body.textContent).toContain("Index unavailable"); expect(document.body.textContent).toContain("Detail unavailable"); expect(document.body.textContent).not.toContain("No saved reports match");
 });
-it("confirms exact deletion, preserves uncertain request identity, and clears only after applied", async () => {
-  const execute = vi.fn().mockRejectedValueOnce(new Error("Connection lost")).mockResolvedValueOnce({ state: "applied" });
-  const calls = await mount({ executeCommand: execute }); await click("Delete saved report"); expect(execute).not.toHaveBeenCalled();
+it("confirms exact deletion, preserves uncertain request identity, and refreshes canonical status after applied", async () => {
+  let deleted = false;
+  const execute = vi.fn().mockRejectedValueOnce(new Error("Connection lost")).mockImplementationOnce(async () => { deleted = true; return { state: "applied" }; });
+  const calls = await mount({ executeCommand: execute, savedArchiveReport: async () => deleted ? deletedDetail() : H_REPORT }); await click("Delete saved report"); expect(execute).not.toHaveBeenCalled();
   await click("Confirm deletion"); expect(document.querySelector("article")).not.toBeNull(); expect(document.body.textContent).toContain("Connection lost");
   await click("Confirm deletion"); expect(execute.mock.calls[1][0]).toEqual(execute.mock.calls[0][0]); expect(execute.mock.calls[0][0]).toMatchObject({ target: { archivedRunId: H_REPORT.runId, archiveFingerprint: H_REPORT.archiveFingerprint } });
-  expect(document.querySelector("article")).toBeNull(); expect(calls.savedArchiveIndex).toHaveBeenCalledTimes(2);
+  expect(document.querySelector("article")).toBeNull(); expect(document.body.textContent).toContain("Saved report deleted"); expect(calls.savedArchiveIndex).toHaveBeenCalledTimes(2);
 });
 it("late deletion settlement cannot clear a replacement selection", async () => {
   const result = deferred<unknown>(); const second = { ...H_REPORT, runId: "00000000-0000-4000-8000-000000000083", title: "Second report" };
@@ -64,8 +71,16 @@ it("late deletion settlement cannot clear a replacement selection", async () => 
 
 const reviewedChange = { changeId: "00000000-0000-4000-8000-000000009500", state: "planned", targetVersion: "2.0.0",
   change: { kind: "major", what: "Synthetic review", why: "Recovery proof" }, reviewFingerprint: "a".repeat(64),
-  memberRunIds: [], completedRunIds: [], blockerRunIds: [] };
+  scope: { kind: "workflows", workflowIds: ["removed-workflow"] }, memberRunIds: [], completedRunIds: [], blockerRunIds: [] };
 const versionWire = (change: Record<string, unknown>) => ({ appVersion: "0.1.0", workflows: [], changes: [change], historicalChanges: 0 });
+const retainedDeleteRequest = { commandId: "00000000-0000-4000-8000-000000009502", requestedAt: "2026-09-10T00:00:00.000Z",
+  requestedBy: "local-operator", source: "dashboard", family: "version-archive", type: "delete-archived-run",
+  target: { archivedRunId: H_REPORT.runId, archiveFingerprint: H_REPORT.archiveFingerprint } };
+const deletedDetail = (command: Record<string, unknown> = { state: "complete", commandId: retainedDeleteRequest.commandId, completedAt: "2026-09-10T00:01:00.000Z" }) => ({
+  state: "deleted", runId: H_REPORT.runId, reason: "This run was explicitly deleted.",
+  deletion: { state: "deleted", runId: H_REPORT.runId, deletedAt: "2026-09-10T00:00:00.000Z",
+    removed: [{ table: "workflow_runs", rows: 1 }], cleanup: { state: "complete", fileCount: 1 }, command },
+});
 it("reuses the exact apply envelope after a lost response", async () => {
   const execute = vi.fn().mockRejectedValueOnce(new Error("Connection lost")).mockResolvedValueOnce({ state: "applied" });
   await mount({ savedArchiveVersions: async () => versionWire(reviewedChange), executeCommand: execute }, "", "versions");
@@ -89,4 +104,40 @@ it("refuses to invent an envelope for an unrecoverable applying claim", async ()
   await click("Apply reviewed change");
   expect(execute).not.toHaveBeenCalled();
   expect(document.body.textContent).toContain("Original apply request unavailable");
+});
+it("refreshes a replacement review after membership refusal and requires a new explicit confirmation", async () => {
+  const replacement = { ...reviewedChange, changeId: "00000000-0000-4000-8000-000000009503", reviewFingerprint: "c".repeat(64) };
+  const reads = vi.fn()
+    .mockResolvedValueOnce(versionWire({ ...reviewedChange, memberRunIds: [H_REPORT.runId] }))
+    .mockResolvedValue({ ...versionWire(replacement), changes: [{ ...reviewedChange, state: "superseded" }, replacement] });
+  const execute = vi.fn().mockResolvedValueOnce({ state: "rejected", commandId: "unused", code: "replan-required", message: "Membership changed." })
+    .mockResolvedValueOnce({ state: "applied" });
+  await mount({ savedArchiveVersions: reads, executeCommand: execute }, "", "versions");
+  expect(document.body.textContent).toContain("Reviewed membership");
+  await click("Apply reviewed change");
+  expect(reads).toHaveBeenCalledTimes(2);
+  expect(execute).toHaveBeenCalledTimes(1);
+  expect(document.body.textContent).toContain("Membership changed.");
+  const applyButtons = [...document.querySelectorAll("button")].filter(button => button.textContent === "Apply reviewed change");
+  expect(applyButtons).toHaveLength(1);
+  await act(async () => applyButtons[0].click());
+  expect(execute).toHaveBeenCalledTimes(2);
+  expect(execute.mock.calls[1][0]).not.toEqual(execute.mock.calls[0][0]);
+});
+it("resumes only the authenticated retained deletion", async () => {
+  let completed = false;
+  const execute = vi.fn().mockImplementation(async () => { completed = true; return { state: "applied" }; });
+  const pending = { state: "pending", reason: "Final audit pending.", resumeRequest: retainedDeleteRequest };
+  await mount({ savedArchiveReport: async () => completed ? deletedDetail() : deletedDetail(pending), executeCommand: execute });
+  expect(document.body.textContent).toContain("File cleanup: complete");
+  await click("Resume deletion cleanup");
+  expect(execute).toHaveBeenCalledWith(retainedDeleteRequest);
+  expect(document.body.textContent).toContain("Command settlement: complete");
+});
+it("keeps historical deletion recovery without retained evidence explicit and inert", async () => {
+  const execute = vi.fn();
+  await mount({ savedArchiveReport: async () => deletedDetail({ state: "unavailable", reason: "Historical request metadata absent." }), executeCommand: execute });
+  expect(document.body.textContent).toContain("Historical request metadata absent.");
+  expect([...document.querySelectorAll("button")].some(button => button.textContent === "Resume deletion cleanup")).toBe(false);
+  expect(execute).not.toHaveBeenCalled();
 });

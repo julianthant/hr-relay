@@ -27,7 +27,9 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { ArchiveWorkspace } from "../../../src/dashboard/surfaces/archive.js";
 import { archivedDeleteConfirm, type ArchiveView } from "../../../src/dashboard/surfaces/archive-model.js";
 import {
+  SavedArchiveDetailWireSchema,
   SavedArchiveIndexWireSchema,
+  type SavedArchiveDetailWire,
   SavedArchiveReportWireSchema,
   type SavedArchiveIndexWire,
   type SavedArchiveReportWire,
@@ -37,6 +39,19 @@ import {H_REPORT} from "../../parity/helpers/fixture-archive-report.js";
 const FIXTURE_ARCHIVED_RUN=H_REPORT;
 const FIXTURE_ARCHIVED_RUN_ID=H_REPORT.runId;
 const FIXTURE_ARCHIVE_INDEX=SavedArchiveIndexWireSchema.parse({items:[H_REPORT],next:null});
+const DELETED_DETAIL = SavedArchiveDetailWireSchema.parse({
+  state: "deleted",
+  runId: FIXTURE_ARCHIVED_RUN_ID,
+  reason: "This run was explicitly deleted.",
+  deletion: {
+    state: "deleted",
+    runId: FIXTURE_ARCHIVED_RUN_ID,
+    deletedAt: "2026-09-10T00:00:00.000Z",
+    removed: [{ table: "workflow_runs", rows: 1 }],
+    cleanup: { state: "complete", fileCount: 0 },
+    command: { state: "complete", commandId: "00000000-0000-4000-8000-000000009801", completedAt: "2026-09-10T00:00:01.000Z" },
+  },
+});
 
 /* ── the two browser APIs jsdom does not implement, stubbed for MEASUREMENT
       only: nothing here asserts a position. ───────────────────────────────── */
@@ -181,6 +196,7 @@ async function mountArchive(options: {
   const queue = [...(options.indexes ?? [FIXTURE_ARCHIVE_INDEX, INDEX_AFTER_DELETE])];
   const commands: unknown[] = [];
   let indexReads = 0;
+  let deleted = false;
 
   const client = stubClient({
     savedArchiveIndex: async (): Promise<SavedArchiveIndexWire> => {
@@ -191,14 +207,16 @@ async function mountArchive(options: {
       indexReads += 1;
       return next;
     },
-    savedArchiveReport: async (runId: string): Promise<SavedArchiveReportWire> => {
+    savedArchiveReport: async (runId: string): Promise<SavedArchiveDetailWire> => {
       if (runId !== detail.runId) throw new Error(`the Archive asked for archived run ${runId}, which this case does not serve`);
-      return detail;
+      return deleted ? DELETED_DETAIL : detail;
     },
     savedArchiveFile: async (runId,digest) => ({runId:RunIdSchema.parse(runId),digest:FingerprintSchema.parse(digest),resource:{state:"missing",reason:"No file bytes in this UI fixture"}}),
     executeCommand: async (request: unknown): Promise<CommandResult> => {
       commands.push(request);
-      return options.result ?? APPLIED;
+      const result = options.result ?? APPLIED;
+      if (result.state === "applied") deleted = true;
+      return result;
     },
   });
 
@@ -306,9 +324,7 @@ describe("D308 — the archived run's delete door", () => {
     assert.equal(SERVED_DIGEST, FIXTURE_ARCHIVE_INDEX.items[0]?.archiveFingerprint);
   });
 
-  it("returns to the ledger on `applied`, and the ledger no longer lists the run", async () => {
-    // Mutation: dropping the applied navigation — the re-read then answers with
-    // "That archived run could not be read" for a run that was deleted on purpose.
+  it("re-reads canonical deletion status on `applied`, while the ledger no longer lists the run", async () => {
     const archive = await mountArchive({});
 
     await archive.press("Delete saved report");
@@ -316,9 +332,9 @@ describe("D308 — the archived run's delete door", () => {
 
     assert.equal(archive.indexReads(), 2, "the applied delete did not re-read the ledger");
     assert.equal(
-      archive.text().includes("Select a saved report."),
+      archive.text().includes("Saved report deleted"),
       true,
-      "the surface stayed on the record it had just deleted",
+      "the selected route did not show its canonical deletion status",
     );
     assert.equal(
       archive.text().includes(FIXTURE_ARCHIVED_RUN.title),
@@ -338,7 +354,7 @@ describe("D308 — the archived run's delete door", () => {
     assert.equal(text.includes("That command was refused"), true, text);
     assert.equal(text.includes("code schema-mismatch"), true, text);
     assert.equal(text.includes(MISMATCH_MESSAGE), true, "the kernel's own sentence was paraphrased away");
-    assert.equal(text.includes("Nothing was changed."), true);
+    assert.equal(text.includes("Nothing was changed."), false, "the UI invented a no-change assurance");
     // A refusal is not a landing: the ledger is not re-read and the record stays.
     assert.equal(archive.indexReads(), 1);
     assert.equal(text.includes(FIXTURE_ARCHIVED_RUN.title), true);

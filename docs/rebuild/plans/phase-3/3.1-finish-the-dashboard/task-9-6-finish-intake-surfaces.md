@@ -315,3 +315,90 @@ This receipt adds no implementation scope. Recheck document bindings/freshness a
 recording text; reuse the lint result because its exact source/configuration inputs are unchanged.
 The full committed plan SHA returned by the verified handoff is also the implementation creation
 base. No future or prerequisite-only SHA substitutes for that committed plan.
+
+### Implementation receipt — 2026-09-16
+
+**Ready for 3.1.9.8 finalizer intake.** I1–I5 are implemented and their focused proof is complete.
+This is candidate readiness, not roadmap completion or group release. Both approved scope decisions
+(**1 A**, **2 A**) remain in force: spreadsheet intake and its explicit prior-import comparison,
+with ordinary Run/Rerun and workflow activation reserved to their existing owners.
+
+| Identity | Verified value |
+| --- | --- |
+| Checkout / branch | `/Users/julianhein/Projects/hr-worktree-intake` · `codex/3.1.9.6-intake` |
+| Exact creation base | `ff73cf0c97a589f44bb20075b0278f28a463b016`; committed owner SHA-256 `072f7a5531fd2fb86fb0806f6861d407d62784815c9073921edfdbe131815d45` |
+| Accepted prerequisite | `3d4d8c0c64cf2e96096b193966a66741861d6f1c`, verified ancestor before edits |
+| Implementation commit | `2a518d007695437697663dc36960dead783d4a01` |
+| Verified input identity | `d8bfce41b44f80a5c601b7815fae9ef67ba54cb2fb6d339491055613e2dfbfd0`, SHA-256 of the sorted path→content-hash map retained with each gate |
+| Evidence | `/Users/julianhein/Projects/hr-intake-evidence-20260915-r4bjbjka`; exact commands, exits, input hashes, browser reports and reproduction scripts retained there |
+| Execution | Local supervisor; zero implementation workers and zero independent reviewers under the Phase 3.1 cadence |
+
+The separately authorized worktree sweep integrated and cleaned the four existing candidates before
+Intake creation, leaving zero occupied auxiliary slots. Its primary-checkout tip is
+`ac8c620b72ec47d9788909a4a52941a4c741f42a`; evidence is
+`/Users/julianhein/Projects/hr-sweep-evidence-20260915-5xbxjnap`. The Intake worktree was then created
+from the exact approved base above, not the sweep tip. No Intake-owned production drift was present
+in that tip. Intake has not been merged or pushed.
+
+#### Completed steps
+
+| Step | Result and proving boundary |
+| --- | --- |
+| I1 | Extracted uploader keeps the existing resting Run-modal rendering. Reading/uploading phases are truthful; canceled, unmounted and superseded attempts cannot reopen a workspace. Duplicate selection is fenced synchronously. A lost reply preserves uncertain delivery and same-file recovery. Documented malformed/partial CSV/XLSX errors receive typed refusals before session creation; unexpected infrastructure defects still propagate. |
+| I2 | Current unresolved rows are served separately from rejection evidence. Missing bindings, unresolved rows and zero valid rows block Start; acknowledging history cannot bypass readiness. Corrections/exclusions revalidate actual source rows; refused edits retain drafts. Source-backed synthetic EID rejection evidence uses its declared transform while authorized operator samples remain visible. |
+| I3 | An open import can select an exact earlier manifest, including a different file, with revision and workflow checks. File, mapping, schema and membership differences are browser reachable. Confirmation binds the current session, derived manifest and exact prior evidence; the kernel re-derives it inside the authority transaction before manifest/member creation. Missing, stale and mismatched bindings refuse; mapping, correction, exclusion, comparison and schema drift invalidate prior review. |
+| I4 | Recovery retains the exact command envelope after uncertain delivery. An applied answer followed by unreadable state retries only the exact session read. Historical commands replay before missing-source preparation. Restart, divergent replay, duplicate click, existing last-member rollback, separate same-byte imports and actual member archive transfer preserve immutable source/manifest evidence and terminal read-only behavior. |
+| I5 | Built-dashboard CSV/XLSX journeys passed through production Intake routes/service/parser/kernel with disposable SQLite/artifact roots and ephemeral loopback ports. Both themes and 1280×720, 1440×900 and 1024×768 passed, including keyboard decisions, correction/popover focus, explicit comparison and lost-enqueue-reply recovery. Surrounding bootstrap/day/SSE services are explicitly fixtures. No executing worker or external HR action was started. |
+
+#### Focused proof
+
+| Check | Result / retained receipt |
+| --- | --- |
+| Exact focused unit/architecture set | PASS: **19 suites / 344 tests**, effective maximum four file workers; `focused-tests.log/json`, including all three new suites. |
+| Typecheck | PASS: `final-typecheck.log/json`. |
+| Changed-path lint | PASS: all **24 changed TypeScript/TSX paths**, including new files, with `--max-warnings 0`; exact argv in `final-scoped-lint.json`. |
+| Assigned Intake parity | PASS: **38 cases**, four browser workers; `focused-parity.log/json`, complete report retained in `parity-focused-pass/`. Includes 24 reference scenes, one reference a11y receipt, four accessibility cases and nine production-service interaction cases. |
+| Start spreadsheet regression | PASS: both existing theme cases plus one Intake a11y receipt, **3 cases**; `start-parity-verified.log/json`, `parity-start-pass/`. All existing `start-run-spreadsheet` reference bytes remain unchanged. |
+| Generated manifest / whitespace | PASS: `manifest-check.log/json`; `git diff --check` and staged whitespace checks. No manifest regeneration, DDL, repository or shared composition change. |
+| Actual browser zoom | PASS: Chromium **149.0.7827.55**, tab-scoped zoom readback **1.25** at 1280×720 (CSS 1024×576), **2** at 1440×900 (CSS 720×450), both themes. Confirmation and Start were keyboard reachable and wholly visible after document scrolling; 200% required horizontal scrolling within the inherited 1024×720 canvas. See `zoom-receipts.json`, `i5-zoom-native.log/json`, native screenshots, extension source/config and proof script. |
+| Durable effects / isolation | `zoom-authority-effects.json` proves two synthetic queued runs, zero run operations/attempts and zero worker/auth/pool records. Browser journeys assert exact source digests, terminal manifests and member counts; the private harness throws if any external worker or HR execution seam is called. |
+| Documentation recording | PASS: roadmap binding **24 tests**, scoped test/generator lint, roadmap freshness, **14 owner links/fragments**, **9** identical instruction pairs and maximum chain **18,376 bytes**; `documentation-binding`, `documentation-lint`, `roadmap-freshness` and `documentation-checks.json`. Product/proof inputs are unchanged. |
+| Evidence reuse | `gate-input-comparison.json` proves focused tests, final lint/typecheck, parity, manifest and native zoom used the same product/proof input tree. This receipt changes only its owning Markdown file; broad gates are not inferred from focused results. |
+
+Reference attribution is retained in `reference-attribution.json` and `references-before/`. Only the
+four approved Intake scene identities changed for readiness/blocker rendering and explicit comparison
+copy/control. PNG/a11y/provenance triples remain present; metadata bytes retain their unchanged fixture,
+viewport and source-date identities. Selected real-service and reference screenshots were inspected.
+Playwright's ordinary screenshot path misframed native 200% zoom; the final visual evidence uses
+`Page.captureScreenshot` through the owned `playwright-cli` session, with actual zoom readback unchanged.
+Failed exploratory captures remain identified as failures, not acceptance evidence.
+
+Two existing proof/shell facts were resolved or retained explicitly:
+
+- The plan's literal `--grep start-run-spreadsheet` finds **zero tests**, because the existing test title
+  is `start-run spreadsheet handoff`. `start-parity-exact-selector.log` retains that failure. The
+  corrected assertion command was `npm run test:parity -- tests/parity/reference-start.spec.ts
+  tests/parity/reference-intake.spec.ts --grep 'start-run spreadsheet handoff|intake-review accessibility receipt'
+  --workers=4`. The extra Intake receipt satisfies the parity wrapper's required body-backed a11y
+  evidence; neither the Start test nor its references were edited. Reference updates likewise gained
+  an Intake-owned accessibility receipt and then passed the original exact scene selector (25 cases).
+- The existing ordinary Run modal's Cancel does not automatically return focus to its external
+  `Start a run` button, even with that button focused before opening. That behavior belongs to the
+  reserved modal/DS owner, beyond the permitted component extraction. It is retained for the finalizer
+  in `parity-expanded-failure/` and `parity-live-clock-failure/`. The Intake cancellation acceptance
+  proves the dialog closes, late accepted replies cannot reopen Intake, and keyboard reopening joins
+  the exact persisted import; it does not claim the ordinary modal's focus return was repaired.
+
+#### Finalizer intake and resource state
+
+Consume the implementation commit plus this documentation receipt from `codex/3.1.9.6-intake`.
+The branch and worktree remain retained and unmerged. 3.1.9.8 owns operator-controlled integration,
+combined gates and eventual branch/worktree cleanup; 3.1.19 owns full repository coverage, broad
+architecture/parity and final acceptance. No independent review, automatic merge, push or sibling
+dispatch occurred. The task remains unchecked until accepted integration and cleanup.
+
+Owned `intake-proof`/`intake-zoom` browser sessions, specimen preview and disposable zoom HTTP/SSE/SQLite
+services are closed. The owned live zoom profile/extension and its authority root were removed;
+reproducible extension source, config/argv, server/proof scripts and receipts remain in evidence.
+`resource-cleanup.json` records exact resources; peer processes and worktrees were preserved. The
+worktree's ignored build/parity artifacts and dependency symlink remain available for the finalizer.

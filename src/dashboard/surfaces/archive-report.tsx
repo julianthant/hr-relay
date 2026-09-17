@@ -1,16 +1,17 @@
-import { Archive,ArrowLeft,Download,RefreshCw } from "lucide-react";
+import { Archive,ArrowLeft,Download,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState } from "react";
-import type { SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { Button,ButtonLink,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,StatusPill,Table,TBody,TD,TH,THead,TR } from "../ds/ui.js";
+import { Button,ButtonLink,Dialog,DialogBody,DialogContent,DialogFooter,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR } from "../ds/ui.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
-import { savedCell,savedCommandEnvelope,savedDownload,savedFilterQuery,savedPlanRequest,useSavedResource } from "./archive-report-model.js";
-import { dsStatusOf } from "./status-model.js";
+import { savedCell,savedCommandEnvelope,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,savedReportExport,useSavedResource } from "./archive-report-model.js";
 
 export function SavedArchiveReport({ report }: { report: SavedArchiveReportWire }) {
+  const exported = savedReportExport(report);
   return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[var(--ds-space-cozy)]`}>
     <header><h2 className={dsText.title}>{report.title}</h2><p>{report.workflow} · version {report.descriptorVersion}</p>
-      <p>Outcome: {report.outcome}</p><p className="break-all">Report {report.runId}</p><p>Completed {report.completedAt} · Captured {report.capturedAt}</p><p>Saved record · read-only</p></header>
+      <p>Outcome: {savedOutcomeLabel(report.outcome)}</p><p className="break-all">Report {report.runId}</p><p>Completed {report.completedAt} · Captured {report.capturedAt}</p><p>Saved record · read-only</p>
+      <ButtonLink href={exported.href} download={exported.filename} icon={<Download />}>Export report</ButtonLink></header>
     {report.sections.map((section, index) => <section key={`${String(index)}:${section.title}`} aria-label={section.title}>
       <h3 className={dsText.ui}>{section.title}</h3>
       {section.kind === "unavailable" ? <p>{section.reason}</p> : section.kind === "text" ? <pre className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</pre>
@@ -22,19 +23,43 @@ export function SavedArchiveReport({ report }: { report: SavedArchiveReportWire 
       <p>{report.versionChange.change.commit.state === "present" ? report.versionChange.change.commit.value : report.versionChange.change.commit.reason}</p></section>}
     <section aria-label="Retained attachments"><h3 className={dsText.ui}>Retained attachments</h3>
       {report.files.length === 0 ? <p>No attachment was retained with this report.</p> : report.files.map(file =>
-        <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} digest={file.digest} name={file.name} />)}
+        <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} digest={file.digest} name={file.name} mediaType={file.mediaType} />)}
     </section>
   </article>;
 }
-function SavedAttachment({ runId, digest, name }: { runId: string; digest: string; name: string }) {
+function SavedAttachment({ runId, digest, name, mediaType }: { runId: string; digest: string; name: string; mediaType: string }) {
   const client = useDashboardClient();
+  const [open, setOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const inspectButton = useRef<HTMLButtonElement>(null);
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) requestAnimationFrame(() => inspectButton.current?.focus());
+  };
   const read = useCallback(async () => savedDownload(await client.savedArchiveFile(runId, digest), runId, digest), [client, runId, digest]);
   const resource = useSavedResource(read);
   if (resource.state === "loading") return <p role="status">Checking {name}…</p>;
   if (resource.state === "error") return <p role="alert">{name}: {resource.message}</p>;
   const file = resource.value;
-  return file.state === "available" ? <ButtonLink href={file.downloadUrl} download={name} icon={<Download />}>{name}</ButtonLink>
-    : <p role="status">{name}: {file.state === "missing" ? file.reason : file.message}</p>;
+  if (file.state !== "available") return <p role="status">{name}: {file.state === "missing" ? file.reason : file.message}</p>;
+  const image = /^image\//u.test(mediaType);
+  return <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
+    {image && <Button ref={inspectButton} icon={<ZoomIn />} onClick={() => { setImageError(false); setOpen(true); }}>Inspect {name}</Button>}
+    <ButtonLink href={file.downloadUrl} download={name} icon={<Download />}>{name}</ButtonLink>
+    {image && <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogContent size="lg" title={name} description="Verified retained image">
+        <DialogBody className="flex min-h-0 items-center justify-center">
+          {imageError
+            ? <p role="alert">{name}: retained image bytes could not be decoded.</p>
+            : <img src={file.downloadUrl} alt={name} loading="lazy" className="h-auto max-h-full max-w-full object-contain" onError={() => setImageError(true)} />}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => changeOpen(false)}>Close</Button>
+          <ButtonLink href={file.downloadUrl} download={name} icon={<Download />}>Download image</ButtonLink>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>}
+  </div>;
 }
 function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: string; nonce: number; onChanged: () => void; onArchive: () => void }) {
   const client = useDashboardClient();
@@ -63,6 +88,8 @@ function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: stri
       if (settled.kind === "applied") {
         if(changeId!==undefined)setAppliedChanges(prior=>new Set([...prior,changeId]));
         onChanged();
+      } else if (settled.reason === "rejected" && settled.code === "replan-required") {
+        onChanged();
       }
     }, (error: unknown) => setMessage(error instanceof Error ? error.message : "Version command failed.")).finally(() => {pending.current=false;setBusy(false);});
   };
@@ -71,7 +98,11 @@ function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: stri
       : <><SavedVersionForm wire={resource.value} actorId={actorId} busy={busy} onCommand={execute} />
         <p>{resource.value.historicalChanges} historical version records retained.</p>
         {resource.value.changes.map(change => <section key={change.changeId} className="border-b py-[var(--ds-space-cozy)]">
-          <h3>{change.change.what}</h3><p>{change.change.why}</p><p>{change.state} · target {change.targetVersion} · {change.memberRunIds.length} reviewed runs · {change.completedRunIds.length} archived</p>
+          <h3>{change.change.what}</h3><p>{change.change.why}</p>
+          <p>{change.change.kind === "major" ? "Major" : "Minor"} change · {change.state} · target {change.targetVersion}</p>
+          <p>Scope: {change.scope.kind === "application" ? `Application ${change.scope.applicationVersion}` : change.scope.workflowIds.join(", ")}</p>
+          <p>Progress: {change.memberRunIds.length} reviewed runs · {change.completedRunIds.length} archived.</p>
+          {change.memberRunIds.length > 0 && <p>Reviewed membership: {change.memberRunIds.join(", ")}</p>}
           {change.blockerRunIds.length > 0 && <p role="status">Blocked by: {change.blockerRunIds.join(", ")}</p>}
           {(change.state === "planned" || change.state === "applying") && !appliedChanges.has(change.changeId) && <Button disabled={busy || change.blockerRunIds.length > 0} onClick={() => apply(change)}>Apply reviewed change</Button>}
         </section>)}</>}
@@ -97,16 +128,6 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
   const client = useDashboardClient(); const [nonce, setNonce] = useState(0);
   const [query, setQuery] = useState<SavedArchiveQuery>({ limit: 50 });
   const refresh = useCallback(() => setNonce(value => value + 1), []);
-  const currentSelection = useRef({ selection, onSelection });
-  const mounted = useRef(true);
-  useEffect(() => { currentSelection.current = { selection, onSelection }; }, [selection, onSelection]);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const deleted = useCallback((runId: string) => {
-    if (!mounted.current) return;
-    if (currentSelection.current.selection === runId) currentSelection.current.onSelection("");
-    setQuery(current => savedFilterQuery(current, "title", current.title ?? ""));
-    refresh();
-  }, [refresh]);
   const changeQuery = (next: SavedArchiveQuery) => { onSelection(""); setQuery(next); };
   const filter = (key: "workflow" | "title" | "descriptorVersion" | "outcome" | "from" | "to" | "capturedFrom" | "capturedTo", value: string) => changeQuery(savedFilterQuery(query, key, value));
   const read = useCallback(() => client.savedArchiveIndex(query), [client, query]);
@@ -130,16 +151,19 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
             : <>{query.after !== undefined && <Button onClick={() => changeQuery(savedFilterQuery(query, "title", query.title ?? ""))}>First reports</Button>}<SavedReportList index={index.value} selection={selection} onSelection={onSelection} onNext={() => { if (index.value.next !== null) changeQuery({ ...query, after: index.value.next }); }} /></>}
         </PanelBody></Panel>
         <Panel aria-label="Selected saved report"><PanelBody className={`${dsText.body} min-w-0 space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]`}>{selection === "" ? <p>Select a saved report.</p> : detail.state === "loading" ? <p role="status">Loading saved report…</p> : detail.state === "error" ? <p role="alert">{detail.message}</p>
-          : detail.value === null ? <p>Select a saved report.</p> : detail.value.state !== "available" ? <p role="status">Report {detail.value.state}: {detail.value.reason}</p> : <><SavedArchiveReport report={detail.value} /><SavedArchiveDeletion key={`${detail.value.runId}:${detail.value.archiveFingerprint}`} report={detail.value} actorId={actorId} onDeleted={deleted} /></>}</PanelBody></Panel>
+          : detail.value === null ? <p>Select a saved report.</p>
+            : detail.value.state === "deleted" ? <SavedArchiveDeletionStatus status={detail.value.deletion} onRefresh={refresh} />
+              : detail.value.state !== "available" ? <p role="status">Report {detail.value.state}: {detail.value.reason}</p>
+                : <><SavedArchiveReport report={detail.value} /><SavedArchiveDeletion key={`${detail.value.runId}:${detail.value.archiveFingerprint}`} report={detail.value} actorId={actorId} onChanged={refresh} /></>}</PanelBody></Panel>
       </div>}
   </div>;
 }
 function SavedReportList({ index, selection, onSelection, onNext }: { index: SavedArchiveIndexWire; selection: string; onSelection: (id: string) => void; onNext: () => void }) {
   if (index.items.length === 0) return <p>No saved reports match this query.</p>;
-  return <><Table label="Saved reports"><THead><TR><TH>Report</TH><TH>Outcome</TH><TH>Completed</TH></TR></THead><TBody>{index.items.map(report => <TR key={report.runId}><TD><Button aria-pressed={selection === report.runId} onClick={() => onSelection(report.runId)}>{report.title}</Button><p>{report.workflow} · v{report.descriptorVersion}</p></TD><TD>{report.outcome === "done" || report.outcome === "failed" || report.outcome === "cancelled" ? <StatusPill status={dsStatusOf(report.outcome)} /> : report.outcome}</TD><TD>{report.completedAt}</TD></TR>)}</TBody></Table>{index.next !== null && <Button onClick={onNext}>Next reports</Button>}</>;
+  return <><Table label="Saved reports"><THead><TR><TH>Report</TH><TH>Outcome</TH><TH>Completed</TH></TR></THead><TBody>{index.items.map(report => <TR key={report.runId}><TD><Button aria-pressed={selection === report.runId} onClick={() => onSelection(report.runId)}>{report.title}</Button><p>{report.workflow} · v{report.descriptorVersion}</p></TD><TD>{savedOutcomeLabel(report.outcome)}</TD><TD>{report.completedAt}</TD></TR>)}</TBody></Table>{index.next !== null && <Button onClick={onNext}>Next reports</Button>}</>;
 }
 
-function SavedArchiveDeletion({ report, actorId, onDeleted }: { report: SavedArchiveReportWire; actorId: string; onDeleted: (runId: string) => void }) {
+function SavedArchiveDeletion({ report, actorId, onChanged }: { report: SavedArchiveReportWire; actorId: string; onChanged: () => void }) {
   const client = useDashboardClient(); const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [problem, setProblem] = useState("");
   const active = useRef(true);
   const pending = useRef(false);
@@ -153,8 +177,49 @@ function SavedArchiveDeletion({ report, actorId, onDeleted }: { report: SavedArc
     request.current ??= { ...savedCommandEnvelope(actorId), type: "delete-archived-run", target: { archivedRunId: report.runId, archiveFingerprint: report.archiveFingerprint } };
     void client.executeCommand(request.current).then(result => {
       const settled = settleCommandResult(result);
-      if (settled.kind === "applied") onDeleted(report.runId); else if (active.current) setProblem(settled.reason === "rejected" ? `That command was refused (code ${settled.code}). ${settled.message} Nothing was changed.` : settled.problem);
-    }, (error: unknown) => { if (active.current) setProblem(error instanceof Error ? error.message : "Deletion failed."); }).finally(() => { pending.current = false; if (active.current) setBusy(false); });
+      if (settled.kind === "applied") onChanged();
+      else if (active.current) setProblem(settled.reason === "rejected" ? `That command was refused (code ${settled.code}). ${settled.message}` : settled.problem);
+    }, (error: unknown) => {
+      if (!active.current) return;
+      const message = error instanceof Error ? error.message : "Deletion failed.";
+      setProblem(message);
+      void client.savedArchiveReport(report.runId).then(
+        readback => { if (active.current && readback.state === "deleted") onChanged(); },
+        readbackError => { if (active.current) setProblem(`${message} Deletion status readback failed: ${readbackError instanceof Error ? readbackError.message : "unknown error"}`); },
+      );
+    }).finally(() => { pending.current = false; if (active.current) setBusy(false); });
   };
   return <section aria-label="Delete saved report">{confirming ? <><p>Delete this saved report and its exclusively owned retained files? This cannot be undone.</p><p>Deleting this report also deletes its retained transaction evidence. If no other run owns its permanent idempotency keys, those keys are released; a later run could submit the same write again.</p><Button disabled={busy} onClick={remove}>Confirm deletion</Button><Button disabled={busy} onClick={() => setConfirming(false)}>Keep report</Button></> : <Button onClick={() => setConfirming(true)}>Delete saved report</Button>}{problem && <p role="alert">{problem}</p>}</section>;
+}
+
+function SavedArchiveDeletionStatus({ status, onRefresh }: { status: SavedArchiveDeletionStatusWire; onRefresh: () => void }) {
+  const client = useDashboardClient();
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const resume = status.command.state === "pending" ? status.command.resumeRequest : undefined;
+  const removed = status.removed.reduce((sum, entry) => sum + entry.rows, 0);
+  const execute = () => {
+    if (resume === undefined || busy) return;
+    setBusy(true);
+    setProblem("");
+    void client.executeCommand(resume).then(result => {
+      const settled = settleCommandResult(result);
+      if (settled.kind !== "applied") setProblem(settled.reason === "rejected" ? `That command was refused (code ${settled.code}). ${settled.message}` : settled.problem);
+      onRefresh();
+    }, (error: unknown) => {
+      setProblem(error instanceof Error ? error.message : "Deletion resume failed.");
+      onRefresh();
+    }).finally(() => setBusy(false));
+  };
+  return <section aria-label="Saved report deletion status" className="space-y-[var(--ds-space-base)]">
+    <h2 className={dsText.title}>Saved report deleted</h2>
+    <p>Canonical removal recorded {status.deletedAt} · {removed} authority rows removed.</p>
+    <p>File cleanup: {status.cleanup.state === "complete" ? `complete (${status.cleanup.fileCount} retained file references checked)`
+      : status.cleanup.state === "pending" ? `pending (${status.cleanup.fileCount} retained file references)`
+        : `unavailable · ${status.cleanup.reason}`}</p>
+    <p>Command settlement: {status.command.state === "complete" ? `complete ${status.command.completedAt}`
+      : status.command.state === "pending" ? status.command.reason : `unavailable · ${status.command.reason}`}</p>
+    {resume !== undefined && <Button disabled={busy} onClick={execute}>Resume deletion cleanup</Button>}
+    {problem && <p role="alert">{problem}</p>}
+  </section>;
 }

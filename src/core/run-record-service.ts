@@ -989,6 +989,7 @@ export class RunRecordService {
     const parsedFence = RunLifecycleCommandFenceSchema.parse(fence);
     const commandId = CommandIdSchema.parse((request as { commandId?: unknown }).commandId);
     let fingerprintInput = request;
+    let acceptedArchiveDeleteRequest: z.infer<typeof CanonicalDeleteArchivedRequestSchema>["operatorRequest"];
     if (operation === "create") {
       const create = CanonicalCreateRunRequestSchema.parse(request);
       fingerprintInput = valueFreeProtectedData(create, retainedRunProtectedBindings({
@@ -1005,7 +1006,10 @@ export class RunRecordService {
     }
     if (operation === "delete-archived") {
       const operator = CanonicalDeleteArchivedRequestSchema.safeExtend({ origin: z.literal("archive") }).parse(request).operatorRequest;
-      if (operator !== undefined) fingerprintInput = operator;
+      if (operator !== undefined) {
+        fingerprintInput = operator;
+        acceptedArchiveDeleteRequest = operator;
+      }
     }
     const requestFingerprint = FingerprintSchema.parse(sha256Hex(
       `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(fingerprintInput)}`,
@@ -1023,6 +1027,7 @@ export class RunRecordService {
           requestFingerprint,
           fence: parsedFence,
           recordedAt: this.dependencies.clock.now().toISOString(),
+          ...(acceptedArchiveDeleteRequest === undefined ? {} : { acceptedArchiveDeleteRequest }),
         }),
       };
     }

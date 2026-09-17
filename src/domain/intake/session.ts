@@ -103,6 +103,8 @@ export const IntakeSessionSchema = z.strictObject({
    * read forward; enqueue refuses such a row rather than minting a replacement.
    */
   reservedManifestId: IntakeManifestIdSchema.optional(),
+  /** Optional read-forward preparation metadata; never backfilled into submitted imports. */
+  comparisonManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued (E2); the manifest is the rerun authority. */
   intakeManifestId: IntakeManifestIdSchema.optional(),
   version: PositiveIntSchema,

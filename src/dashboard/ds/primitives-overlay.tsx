@@ -268,6 +268,7 @@ export function DialogContent({
   size = "md",
   hideClose,
   className,
+  onCloseAutoFocus,
   children,
 }: {
   title: ReactNode;
@@ -275,6 +276,7 @@ export function DialogContent({
   size?: DsDialogSize;
   hideClose?: boolean;
   className?: string;
+  onCloseAutoFocus?: (event: Event) => void;
   children: ReactNode;
 }) {
   return (
@@ -285,6 +287,7 @@ export function DialogContent({
         size={size}
         hideClose={hideClose}
         className={className}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         {children}
       </DialogSurface>
@@ -299,6 +302,7 @@ function DialogSurface({
   size,
   hideClose,
   className,
+  onCloseAutoFocus,
   children,
 }: {
   title: ReactNode;
@@ -306,6 +310,7 @@ function DialogSurface({
   size: DsDialogSize;
   hideClose?: boolean;
   className?: string;
+  onCloseAutoFocus?: (event: Event) => void;
   children: ReactNode;
 }) {
   const entered = useEntered();
@@ -314,6 +319,7 @@ function DialogSurface({
     <>
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
+        onCloseAutoFocus={onCloseAutoFocus}
         className={cn(
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],

@@ -52,7 +52,7 @@ Play,
 Table2,
 X,
 } from "lucide-react";
-import { useCallback,useEffect,useMemo,useState,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
@@ -117,6 +117,7 @@ headerCandidateOptionLabel,
 INTAKE_REVIEW_CONTROL_NAMES,
 INTAKE_REVIEW_COPY,
 intakeTab,
+intakeReadinessBlockers,
 layoutFingerprint,
 layoutMetaItems,
 manifestIdentifierFacts,
@@ -152,7 +153,7 @@ const SOURCE_SURFACE = "intake-workspace";
 
 /** The five mapping arms plus the enqueue, as the workspace issues them. */
 type IntakeCommand =
-  | { readonly type: "inspect-intake"; readonly payload: { sheet?: string; headerRowIndex?: number } }
+  | { readonly type: "inspect-intake"; readonly payload: { sheet?: string; headerRowIndex?: number; comparisonManifestId?: string } }
   | {
     readonly type: "confirm-intake-mapping";
     readonly payload: { targetFieldId: string; sourceColumnId: string; headerFingerprint: string };
@@ -163,7 +164,7 @@ type IntakeCommand =
   }
   | { readonly type: "exclude-intake-row"; readonly payload: { sourceRow: number; reason: string } }
   | { readonly type: "validate-intake" }
-  | { readonly type: "enqueue-intake-manifest"; readonly payload: { dryRun: boolean } };
+  | { readonly type: "enqueue-intake-manifest"; readonly payload: { dryRun: boolean; reviewBinding?: string } };
 
 /**
  * A command outcome the surface renders rather than throws.
@@ -253,7 +254,7 @@ function ProblemNotice({ problem, onDismiss }: { problem: CommandProblem; onDism
   }
   return (
     <Arriving>
-      <Banner tone="danger" title="The command did not reach the server" action={action}>
+      <Banner tone="danger" title="Command status needs verification" action={action}>
         {problem.message}
       </Banner>
     </Arriving>
@@ -334,7 +335,7 @@ function SourceBand({
           <Field label="Sheet" className="min-w-[var(--ds-w-session-card)]">
             <Select
               value={session.sheet}
-              disabled={busy || session.state === "enqueued"}
+              disabled={busy || session.state === "enqueued" || session.state === "discarded"}
               onChange={(event) => request({ sheet: event.currentTarget.value })}
             >
               {session.sheets.map((sheet) => (
@@ -352,7 +353,7 @@ function SourceBand({
         >
           <Select
             value={settled === null ? "" : String(settled)}
-            disabled={busy || session.state === "enqueued"}
+            disabled={busy || session.state === "enqueued" || session.state === "discarded"}
             onChange={(event) => request({ headerRowIndex: Number(event.currentTarget.value) })}
           >
             {settled === null && <option value="">Pick the row that holds the headers</option>}
@@ -471,7 +472,7 @@ function MappingGrid({
     );
   }
 
-  const locked = busy || session.state === "enqueued";
+  const locked = busy || session.state === "enqueued" || session.state === "discarded";
 
   return (
     <div className="overflow-x-auto">
@@ -709,7 +710,7 @@ function ValidationReview({
 
   const validation = session.validation;
   const rejects = [...validation.rejected].sort((left, right) => left.sourceRow - right.sourceRow);
-  const locked = busy || session.state === "enqueued";
+  const locked = busy || session.state === "enqueued" || session.state === "discarded";
   // A correction names a TARGET FIELD, so the control is labelled with the
   // field's own operator-facing label rather than its path — `emplId` is the
   // wire's word for it, "Employee ID (EID)" is the operator's.
@@ -723,7 +724,7 @@ function ValidationReview({
   // reader announced the gate that holds the plan closed as an unnamed control.
   // The visible label and the accessible name are read from this single
   // expression so the two can never drift apart (WCAG 2.5.3, Label in Name).
-  const reviewLabel = rejectionReviewLabel(new Set(rejects.map((reject) => reject.sourceRow)).size);
+  const reviewLabel = rejects.length === 0 ? "" : rejectionReviewLabel(new Set(rejects.map((reject) => reject.sourceRow)).size);
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)]">
@@ -1202,13 +1203,22 @@ function ChangedInputRows({
   );
 }
 
+function PriorImportComparison({ session, busy, onSelect }: { session: IntakeSessionWire; busy: boolean; onSelect: (id: string) => void }) {
+  const [draft, setDraft] = useState("");
+  if (session.state === "enqueued" || session.state === "discarded") return null;
+  return <div className="flex items-end gap-[var(--ds-space-base)]">
+    <Field label="Earlier import manifest" className="min-w-0 flex-1"><Input value={draft} disabled={busy} onChange={event => setDraft(event.currentTarget.value)} /></Field>
+    <Button variant="secondary" disabled={busy || draft.trim() === ""} onClick={() => onSelect(draft.trim())}>Compare import</Button>
+  </div>;
+}
+
 function RerunStageView({ session }: { session: IntakeSessionWire }) {
   const stage = rerunStage(session);
   if (stage.kind === "none") {
     return (
       <EmptyState
-        title="No prior intake of this source"
-        description="A rerun diff compares this plan with an earlier intake of the same file. This source has not been imported before, so there is nothing to compare it with — and nothing is invented to fill the gap."
+        title="No earlier import selected"
+        description="Enter an earlier manifest identity to compare this plan. The files may differ; the workflow must match."
       />
     );
   }
@@ -1232,7 +1242,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
   return (
     <section className="flex flex-col gap-[var(--ds-space-cozy)]">
       <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${fmtClock(stage.createdAt)}`}>
-        This file has run before, and the plan has changed since. The exact changed axes and membership are below.
+        This plan differs from the selected earlier import. The changed file, mapping, schema and membership facts are below.
       </Banner>
       <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
         <MetaLine items={[`prior manifest ${shortHash(stage.manifestId)}…`, `${String(stage.axes.length)} changed axes`]} />
@@ -1335,6 +1345,8 @@ function OutcomeBand({
   onDryRun,
   onValidate,
   onRun,
+  confirmed,
+  onConfirm,
 }: {
   session: IntakeSessionWire;
   busy: boolean;
@@ -1345,16 +1357,18 @@ function OutcomeBand({
   onDryRun: (next: boolean) => void;
   onValidate: () => void;
   onRun: () => void;
+  confirmed: boolean;
+  onConfirm: (next: boolean) => void;
 }) {
   const validation = session.validation;
   const noHeader = session.headerRowIndex === null;
   const nothingBound = session.bindings.length === 0 && session.constants.length === 0;
-  const blockers = [
+  const validationBlockers = [
     noHeader ? "no header row is settled" : undefined,
     nothingBound ? "no column is bound" : undefined,
-    rejectionReview.kind === "required" && !rejectionReview.reviewed ? INTAKE_REVIEW_COPY.unresolvedBlocker : undefined,
   ].filter((entry): entry is string => entry !== undefined);
 
+  const blockers = [...intakeReadinessBlockers(session), ...(rejectionReview.kind === "required" && !rejectionReview.reviewed ? [INTAKE_REVIEW_COPY.unresolvedBlocker] : [])];
   const validated = validation.state === "validated";
   const rejectedRows = rejectionReview.rejectedRows;
   const fingerprint = layoutFingerprint(session);
@@ -1376,7 +1390,8 @@ function OutcomeBand({
             </span>
             <MetaLine
               items={[
-                `${String(rejectedRows)} rejected`,
+                `${String(validation.unresolvedRows.length)} unresolved`,
+                `${String(rejectedRows)} in rejection history`,
                 `${String(validation.excluded.length)} excluded`,
               ]}
             />
@@ -1388,9 +1403,9 @@ function OutcomeBand({
               : "This mapping has not been validated, so nothing is known about its rows yet."}
           </span>
         )}
-        {rejectionReview.kind === "required" && !rejectionReview.reviewed && (
+        {blockers.length > 0 && (
           <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>
-            {`Run is blocked: ${INTAKE_REVIEW_COPY.unresolvedBlocker}.`}
+            {`Run is blocked: ${blockers.join("; ")}.`}
           </span>
         )}
         {/*
@@ -1429,16 +1444,21 @@ function OutcomeBand({
       <Button
         variant="secondary"
         loading={pending === "validate"}
-        disabled={busy || blockers.length > 0 || session.state === "enqueued"}
+        disabled={busy || validationBlockers.length > 0 || session.state === "enqueued" || session.state === "discarded"}
         onClick={onValidate}
       >
         {validated ? "Re-validate" : "Validate"}
       </Button>
+      {session.reviewBinding !== undefined && session.state === "validated" && (
+        <Checkbox checked={confirmed} disabled={busy || blockers.length > 0}
+          label={session.rerun === undefined ? "I confirm this reviewed plan" : `I confirm comparison with ${shortHash(session.rerun.intakeManifestId)}`}
+          onCheckedChange={next => onConfirm(next === true)} />
+      )}
       <Button
         variant="primary"
         icon={<Play aria-hidden className={dsIcon.md} />}
         loading={pending === "run"}
-        disabled={busy || !validated || blockers.length > 0 || session.state === "enqueued"}
+        disabled={busy || !validated || !confirmed || session.reviewBinding === undefined || blockers.length > 0 || session.state === "enqueued" || session.state === "discarded"}
         onClick={onRun}
       >
         {validated ? startRunsLabel(validation.validRows) : "Start runs"}
@@ -1464,7 +1484,11 @@ type SessionState =
   | { readonly state: "loaded"; readonly session: IntakeSessionWire }
   | { readonly state: "failed"; readonly message: string };
 
-export function IntakeWorkspace({
+export function IntakeWorkspace(props: Parameters<typeof IntakeSessionWorkspace>[0]) {
+  return <IntakeSessionWorkspace key={props.sessionId} {...props} />;
+}
+
+function IntakeSessionWorkspace({
   workflowLabel,
   actorId,
   supportsDryRun,
@@ -1507,7 +1531,12 @@ export function IntakeWorkspace({
    * without a transient frame that could offer a stale Run command.
    */
   const [reviewedRejectionKey, setReviewedRejectionKey] = useState<string | undefined>(undefined);
-  const busy = pending !== null;
+  const [recovery, setRecovery] = useState<{ retry: () => void } | null>(null);
+  const active = useRef(true);
+  const locked = useRef(false);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const busy = pending !== null || recovery !== null;
+  const [confirmedReview, setConfirmedReview] = useState<string | undefined>(undefined);
   /**
    * Undefined until the operator picks one: a VALIDATED session opens on its
    * review, because reviewing what the mapping rejects is the thing validation
@@ -1529,61 +1558,53 @@ export function IntakeWorkspace({
 
   const issue = useCallback(
     (session: IntakeSessionWire, command: IntakeCommand, pendingKey: string): void => {
-      setPending(pendingKey);
-      setProblem(null);
-      client.executeCommand({
-        commandId: crypto.randomUUID(),
-        requestedAt: systemClock.now().toISOString(),
-        requestedBy: actorId,
-        source: SOURCE_SURFACE,
-        family: "intake",
-        type: command.type,
-        target: {
-          intakeSessionId: session.intakeSessionId,
-          expectedVersion: session.expectedVersion,
-        },
+      if (locked.current) return;
+      locked.current = true;
+      const request = {
+        commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(),
+        requestedBy: actorId, source: SOURCE_SURFACE, family: "intake", type: command.type,
+        target: { intakeSessionId: session.intakeSessionId, expectedVersion: session.expectedVersion },
         ...("payload" in command ? { payload: command.payload } : {}),
-      }).then(
-        (result) => {
+      };
+      const read = async (): Promise<void> => {
+        if (!active.current) return;
+        setPending(pendingKey); setProblem(null);
+        try {
+          const next = await client.intakeSession(session.intakeSessionId);
+          if (!active.current) return;
+          if (next.intakeSessionId !== session.intakeSessionId) throw new Error("Intake read returned a different session");
+          setPending(null); setRecovery(null); locked.current = false;
+          setResource({ state: "loaded", session: next });
+          if (command.type === "validate-intake") setTab("review");
+          if (command.type === "enqueue-intake-manifest") setTab("manifest");
+        } catch (caught) {
+          if (!active.current) return;
+          setPending(null);
+          setProblem({ kind: "transport", message: `${command.type} applied; session read failed: ${messageOf(caught)}` });
+          setRecovery({ retry: () => { void read(); } });
+        }
+      };
+      const execute = async (): Promise<void> => {
+        if (!active.current) return;
+        setPending(pendingKey); setProblem(null);
+        try {
+          const result = await client.executeCommand(request);
+          if (!active.current) return;
           const failure = problemOf(result);
           if (failure !== undefined) {
-            setPending(null);
-            setProblem(failure);
-            return;
+            setPending(null); setRecovery(null); locked.current = false; setProblem(failure); return;
           }
-          // Applied: the session moved, so every derived view — bindings,
-          // suggestions, dispositions, the CAS token Run posts — is re-read
-          // rather than patched locally. Patching would be the one place this
-          // surface could come to disagree with authority.
-          client.intakeSession(session.intakeSessionId).then(
-            (next) => {
-              setPending(null);
-              setResource({ state: "loaded", session: next });
-              // Validation's whole point is the review, so land on it. The
-              // Enqueue hands the operator the committed manifest. The stage
-              // is not a prediction: it mounts only after the re-read serves
-              // the terminal projection from authority.
-              if (command.type === "validate-intake") setTab("review");
-              if (command.type === "enqueue-intake-manifest") setTab("manifest");
-            },
-            (caught: unknown) => {
-              setPending(null);
-              // The command DID apply; only the re-read failed. Saying so is
-              // the difference between "retry it" and "do not retry it".
-              setProblem({
-                kind: "transport",
-                message: `${command.type} applied, but re-reading the session failed: ${messageOf(caught)}`,
-              });
-            },
-          );
-        },
-        (caught: unknown) => {
+          await read();
+        } catch (caught) {
+          if (!active.current) return;
           setPending(null);
-          setProblem({ kind: "transport", message: messageOf(caught) });
-        },
-      );
-    },
-    [actorId, client],
+          setProblem({ kind: "transport", message: `Delivery is unknown: ${messageOf(caught)}` });
+          // Keep the exact envelope. Recovery replays it before any new effects.
+          setRecovery({ retry: () => { void execute(); } });
+        }
+      };
+      void execute();
+    }, [actorId, client],
   );
 
   const body = ((): ReactNode => {
@@ -1607,6 +1628,7 @@ export function IntakeWorkspace({
         />
 
         {problem !== null && <ProblemNotice problem={problem} onDismiss={() => setProblem(null)} />}
+        {recovery !== null && <Button variant="secondary" disabled={pending !== null} onClick={recovery.retry}>Recover exact command</Button>}
 
         <Tabs
           value={tab ?? (session.validation.state === "validated" ? "review" : "mapping")}
@@ -1695,7 +1717,8 @@ export function IntakeWorkspace({
             )}
           </TabPanel>
           <TabPanel value="rerun" className="p-[var(--ds-space-base)]">
-            <RerunStageView session={session} />
+            <PriorImportComparison session={session} busy={busy} onSelect={comparisonManifestId => issue(session, { type: "inspect-intake", payload: { comparisonManifestId } }, "comparison")} />
+              <RerunStageView session={session} />
           </TabPanel>
         </Tabs>
       </div>
@@ -1753,10 +1776,12 @@ export function IntakeWorkspace({
           supportsDryRun={supportsDryRun}
           dryRun={dryRun}
           onDryRun={setDryRun}
+          confirmed={resource.session.reviewBinding !== undefined && confirmedReview === `${resource.session.reviewBinding}:${String(dryRun)}`}
+          onConfirm={next => setConfirmedReview(next && resource.session.reviewBinding !== undefined ? `${resource.session.reviewBinding}:${String(dryRun)}` : undefined)}
           pending={pending}
           rejectionReview={rejectionReviewEligibility(resource.session, reviewedRejectionKey)}
           onValidate={() => issue(resource.session, { type: "validate-intake" }, "validate")}
-          onRun={() => issue(resource.session, { type: "enqueue-intake-manifest", payload: { dryRun } }, "run")}
+          onRun={() => issue(resource.session, { type: "enqueue-intake-manifest", payload: { dryRun, ...(resource.session.reviewBinding === undefined ? {} : { reviewBinding: resource.session.reviewBinding }) } }, "run")}
         />
       )}
     </TakeoverFrame>

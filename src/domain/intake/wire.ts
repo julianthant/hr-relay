@@ -56,6 +56,8 @@ export const IntakeValidationWireSchema = z.discriminatedUnion("state", [
     /** The retained observation instant; two-digit years resolve against it. */
     readAt: IsoInstantSchema,
     validRows: z.number().int().nonnegative(),
+    /** Current unresolved rows, separate from retained rejection history. */
+    unresolvedRows: z.array(PositiveIntSchema),
     rejected: z.array(RowRejectSchema),
     excluded: z.array(PositiveIntSchema),
   }),
@@ -103,6 +105,8 @@ export const IntakeSessionWireSchema = z.strictObject({
   state: IntakeSessionStateSchema,
   /** The CAS token every intake command target carries. */
   expectedVersion: PositiveIntSchema,
+  /** Exact served review; only open, validated, ready sessions can confirm enqueue. */
+  reviewBinding: FingerprintSchema.optional(),
   /** Absent only on a durable session created before manifest identities were reserved at upload. */
   reservedManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued; the manifest is the rerun authority. */

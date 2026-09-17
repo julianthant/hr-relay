@@ -71,8 +71,8 @@ describe("IN95 / IN99–IN122 — rejection review uses the demo's one vocabular
       excludeWithReason: "Exclude with this reason",
       corrections: "Corrections",
       exclusions: "Exclusions",
-      reviewDescription: "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen.",
-      unresolvedBlocker: "unresolved rejected rows have not been reviewed",
+      reviewDescription: "Rejection history includes corrected and excluded rows.",
+      unresolvedBlocker: "rejection history has not been reviewed",
     });
     assert.equal(rejectionReviewLabel(1), "I have read all 1 rejected row");
     assert.equal(rejectionReviewLabel(4), "I have read all 4 rejected rows");

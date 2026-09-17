@@ -15,6 +15,22 @@ test.beforeAll(async()=>{
 });
 test.afterAll(async()=>{await fixture.close();await seeded.close();});
 for(const theme of PARITY_THEMES){
+  test(`Run dialog restores its external door after every dismissal @ ${theme.name}`,async({page})=>{
+    await installTheme(page,theme);
+    await gotoAppState(page,fixture.baseUrl,{day:FIXTURE_DAY});
+    const start=page.getByRole("button",{name:"Start a run",exact:true});
+    for(const launch of ["button","shortcut"]){
+      for(const dismissal of ["Cancel","Escape","Close"]){
+        if(launch==="button")await start.press("Enter");
+        else {await page.getByRole("button",{name:"Dashboard",exact:true}).focus();await page.keyboard.press("r");}
+        const dialog=page.getByRole("dialog",{name:"Start a run",exact:true});await expect(dialog).toBeVisible();
+        await expect.poll(()=>dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
+        if(dismissal==="Escape")await page.keyboard.press("Escape");
+        else await dialog.getByRole("button",{name:dismissal,exact:true}).press("Enter");
+        await expect(dialog).toHaveCount(0);await expect(start).toBeFocused();
+      }
+    }
+  });
   test(`route, reload, native and toolbar history @ ${theme.name}`,async({page},info)=>{
     await installTheme(page,theme);
     await gotoAppState(page,fixture.baseUrl,{day:FIXTURE_DAY,run:FIXTURE_IDS.doneRun,section:"receipt"});

@@ -46,7 +46,9 @@
     - paragraph: 1 historical version records retained.
     - heading "Synthetic blocked version change" [level=3]
     - paragraph: A current run must finish before this reviewed archive transfer
-    - paragraph: planned · target 0.2.0 · 0 reviewed runs · 0 archived
+    - paragraph: Major change · planned · target 0.2.0
+    - paragraph: "Scope: person-lookup"
+    - paragraph: "Progress: 0 reviewed runs · 0 archived."
     - status: "Blocked by: 00000000-0000-4000-8000-000000000099"
     - button "Apply reviewed change" [disabled]
 - region "Session Panel":

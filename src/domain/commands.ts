@@ -20,6 +20,7 @@ import {
   FingerprintSchema,
   GateIdSchema,
   IntakeSessionIdSchema,
+  IntakeManifestIdSchema,
   IntakeTargetFieldIdSchema,
   IsoInstantSchema,
   LOCAL_OPERATOR_ACTOR_ID,
@@ -40,6 +41,7 @@ import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { sha256Hex } from "./sha256.js";
 import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
+import { lifecycleCommandId } from "./lifecycle-command-id.js";
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
@@ -198,12 +200,12 @@ export const StartCommandRequestSchema = z.strictObject({
 // `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
 // fan-out that silently chose whether to touch a real HR system.
 export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sheet: z.string().min(1).optional(), headerRowIndex: z.number().int().nonnegative().optional() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sheet: z.string().min(1).optional(), headerRowIndex: z.number().int().nonnegative().optional(), comparisonManifestId: IntakeManifestIdSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("confirm-intake-mapping"), target: IntakeVersionTargetSchema, payload: z.strictObject({ targetFieldId: IntakeTargetFieldIdSchema, sourceColumnId: SourceColumnIdSchema, headerFingerprint: FingerprintSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("correct-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sourceRow: PositiveIntSchema, field: IntakeTargetFieldIdSchema, correctedValue: z.string() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("exclude-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sourceRow: PositiveIntSchema, reason: OperatorReasonSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("validate-intake"), target: IntakeVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: IntakeVersionTargetSchema, payload: z.strictObject({ dryRun: z.boolean() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: IntakeVersionTargetSchema, payload: z.strictObject({ dryRun: z.boolean(), reviewBinding: FingerprintSchema.optional() }) }),
 ]);
 
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
@@ -299,6 +301,13 @@ export const VersionScopeSchema = z.discriminatedUnion("kind", [
 ]);
 export type VersionScope = z.infer<typeof VersionScopeSchema>;
 
+export const ArchiveDeleteCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("version-archive"),
+  type: z.literal("delete-archived-run"),
+  target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
+});
+
 export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...CommandEnvelopeFields,
@@ -331,12 +340,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
   }),
   /** D308 — delete means delete: the archived run and every row it owns leave authority. */
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("delete-archived-run"),
-    target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
-  }),
+  ArchiveDeleteCommandRequestSchema,
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
@@ -588,6 +592,23 @@ export const RunLifecycleCommandRecordSchema = z.strictObject({
   requestFingerprint: FingerprintSchema,
   fence: RunLifecycleCommandFenceSchema,
   recordedAt: IsoInstantSchema,
+  /** Read-forward recovery evidence retained only for an accepted Archive deletion. */
+  acceptedArchiveDeleteRequest: ArchiveDeleteCommandRequestSchema.optional(),
+}).superRefine((record, context) => {
+  const request = record.acceptedArchiveDeleteRequest;
+  if (request === undefined) return;
+  const fingerprint = sha256Hex(
+    `hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(request)}`,
+  );
+  if (record.operation !== "delete-archived") {
+    context.addIssue({ code: "custom", path: ["acceptedArchiveDeleteRequest"], message: "archive delete request requires delete-archived operation" });
+  }
+  if (record.commandId !== lifecycleCommandId("operator-delete-archive", request.commandId)) {
+    context.addIssue({ code: "custom", path: ["acceptedArchiveDeleteRequest", "commandId"], message: "archive delete request command identity mismatch" });
+  }
+  if (record.requestFingerprint !== fingerprint) {
+    context.addIssue({ code: "custom", path: ["requestFingerprint"], message: "archive delete request fingerprint mismatch" });
+  }
 });
 
 export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [

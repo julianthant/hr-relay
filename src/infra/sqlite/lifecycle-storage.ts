@@ -29,6 +29,7 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
     transfer: (input: {runId: string; digest: string; expectedVersion: number}) => database.transferLifecycleSources(input),
     publishReport: (runId: string, digest: string) => database.publishTransferredReport(runId,digest),
     reportOwner: (runId: string) => database.savedReportOwner(runId),
+    readArchiveDeletion: (runId: string) => database.readArchiveDeletion(runId),
     readReport: (runId: string) => {
       const identity = database.savedReportOwner(runId);
       return identity.state !== "archived" ? undefined : database.lifecycleArchive(true).readPublishedReport(runId);

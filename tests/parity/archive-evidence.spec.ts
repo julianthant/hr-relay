@@ -1,6 +1,5 @@
-/** H replaces the specialized archive lightbox with generic frozen facts and native files.
- * Keep the two reference identities and eleven browser cases; prove exact bytes,
- * stationary facts, keyboard/desktop access and refusal without a legacy reader. */
+/** H keeps generic frozen facts and native files while allowing generic retained-image inspection.
+ * Prove exact bytes, decode refusal, focus restoration, stationary facts and desktop access. */
 import { expect,test,type Download,type Locator,type Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { SavedArchiveReportWireSchema } from "../../src/domain/dashboard/archive.js";
@@ -91,7 +90,7 @@ for(const view of [
     }finally{resource.release();bytes.release();}
   });
 });
-test("desktop keyboard selects the report and downloads without a modal or focus trap",async({page})=>{
+test("desktop keyboard downloads natively and inspects an image with dialog focus restoration",async({page})=>{
   await routes(page);await page.setViewportSize({width:1280,height:720});
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
   const select=page.getByRole("button",{name:REPORT.title,exact:true});await select.focus();await page.keyboard.press("Enter");
@@ -99,7 +98,11 @@ test("desktop keyboard selects the report and downloads without a modal or focus
   const link=report.getByRole("link",{name:FILE_NAME});await link.focus();
   const pending=page.waitForEvent("download");await page.keyboard.press("Enter");await downloadedBytes(await pending);
   await expect(link).toBeFocused();await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.keyboard.press("Tab");await expect(page.getByRole("button",{name:"Delete saved report",exact:true})).toBeFocused();
+  const inspect=report.getByRole("button",{name:`Inspect ${FILE_NAME}`,exact:true});
+  await inspect.focus();await expect(inspect).toBeFocused();await page.keyboard.press("Enter");
+  const dialog=page.getByRole("dialog",{name:FILE_NAME,exact:true});
+  await expect(dialog).toBeVisible();await expect(dialog.getByRole("img",{name:FILE_NAME})).toBeVisible();
+  await page.keyboard.press("Escape");await expect(dialog).toHaveCount(0);await expect(inspect).toBeFocused();
 });
 test("narrow desktop keeps frozen facts readable and the native download reachable",async({page})=>{
   await routes(page);await page.setViewportSize({width:1024,height:768});const report=await openEvidence(page);await frozenFacts(report);
@@ -126,10 +129,12 @@ test("native byte failure leaves the exact frozen report available",async({page}
   const result=await pending;expect(await result.failure()).not.toBeNull();
   expect(await facts.innerText()).toBe(before);await expect(report).toBeVisible();
 });
-test("native retained image download invokes no retired inline decoder or capture resource",async({page})=>{
-  await routes(page);const oldReads:string[]=[];
-  page.on("request",request=>{if(request.url().includes("/captures/"))oldReads.push(request.url());});
-  await page.addInitScript(()=>{HTMLImageElement.prototype.decode=()=>{throw new Error("retired inline decoder invoked");};});
-  const report=await openEvidence(page);await download(page,report.getByRole("link",{name:FILE_NAME}));
-  await frozenFacts(report);expect(oldReads).toEqual([]);await expect(report.getByRole("img")).toHaveCount(0);
+test("retained image inspection reports decode failure without losing the native download",async({page})=>{
+  await routes(page);respondBytes=()=>new Response(Buffer.from("not an image"),{headers:{"Content-Type":"image/png"}});
+  const report=await openEvidence(page);
+  await report.getByRole("button",{name:`Inspect ${FILE_NAME}`,exact:true}).click();
+  const dialog=page.getByRole("dialog",{name:FILE_NAME,exact:true});
+  await expect(dialog.getByRole("alert")).toContainText(`${FILE_NAME}: retained image bytes could not be decoded.`);
+  await page.keyboard.press("Escape");
+  const link=report.getByRole("link",{name:FILE_NAME});await expect(link).toHaveAttribute("href",BYTE_PATH);
 });

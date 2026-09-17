@@ -1,3 +1,10 @@
+import { workflowPlanning } from "../../src/base/workflow.js";
+import { deriveItemId } from "../../src/domain/identifiers.js";
+import { ItemIdSchema } from "../../src/domain/ids.js";
+import { IntakeParseSchema } from "../../src/domain/intake/parse.js";
+import { deriveIntakeEnqueuePlan } from "../../src/domain/intake/enqueue.js";
+import { intakeReviewBinding, resolveIntakeComparison } from "../../src/domain/intake/review.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 /**
  * The kernel's D170 intake seams, for a kernel under test that issues no
  * intake command.
@@ -60,3 +67,25 @@ export const UNWIRED_INTAKE_SERVICE: IntakeService = Object.freeze({
     await Promise.resolve();
   },
 });
+
+/** Test callers explicitly review the same prepared plan the service serves. */
+export function reviewedIntakeFixture(input: {
+  session: import("../../src/domain/intake/session.js").IntakeSession;
+  parser: IntakeParser;
+  projection: import("../../src/domain/intake/projection.js").IntakeProjection;
+  descriptor: import("../../src/base/workflow.js").AnyWorkflowDescriptor;
+  manifests: Pick<import("../../src/infra/sqlite/authority-database.js").AuthorityRepositories["intakeManifests"], "get" | "findBySource">;
+}): string | undefined {
+  const s = input.session;
+  if (s.validation.state !== "validated" || s.sourceName === undefined || s.reservedManifestId === undefined) return undefined;
+  const parse = IntakeParseSchema.parse(input.parser.parse({ artifact: s.artifact, sheet: s.sheet, headerRowIndex: s.headerRowIndex }));
+  if (parse.state !== "parsed" || parse.layout === null) return undefined;
+  const planning = workflowPlanning(input.descriptor);
+  const plan = deriveIntakeEnqueuePlan({ session: { ...s, sourceName: s.sourceName, readAt: s.validation.readAt },
+    projection: input.projection, layout: parse.layout, manifestId: s.reservedManifestId, createdAt: s.updatedAt,
+    workflowContractFingerprint: input.descriptor.contractFingerprint,
+    canonicalInputSchemaHash: deriveSchemaHash(input.descriptor.canonicalInput, "output"),
+    deriveItemId: value => ItemIdSchema.parse(deriveItemId(s.workflow, planning.matchKey(value))),
+  });
+  return intakeReviewBinding(s, plan.manifest, resolveIntakeComparison(s, input.manifests));
+}

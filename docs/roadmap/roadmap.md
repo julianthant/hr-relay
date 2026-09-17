@@ -1820,6 +1820,7 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.8 (archive, `delete-archived-run` citing `contentDigest`), §D330.7 relaunch as a fresh run with archive lineage, and D332 §D332.7 item 7 (no redesign) · left: archive visibility is unchanged across the upgrade
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.9.7; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
+- 2026-09-16 | approved Archive AR1–AR5 plan | one Astra/medium supervisor, no workers or independent review; narrow interrupted-delete identity/progress repair, saved-report export and focused production-service browser proof admitted; direct committed-ref plan delivery, integration remains operator-controlled through 3.1.9.8; implementation pending
 
 
 ##### 8 · Finalization — dashboard surfaces {#dash-surfaces-finalizer}
@@ -1843,6 +1844,11 @@ needs:
 - dash-notifications
 - dash-intake-edit
 - dash-archive
+
+log:
+- 2026-09-16 | operator-approved 3.1.9.8 execution brief | F1–F5 combines seven surface candidates and fixes group interfaces, including narrow Run-dialog focus repair; one Astra/medium supervisor, no workers or independent review, focused group gates and explicit operator integration. Five candidates are already integrated and Intake is frozen; launch waits for Archive's exact frozen candidate and completed focused proof. Full acceptance remains 3.1.19; implementation unstarted.
+- 2026-09-17 | 3.1.9.8 prerequisites verified | Archive delivery `27bbbe74791fab7c4f7ec1485922dc2b485fd688` now contains completed AR1–AR5 and passing focused proof, including its approved Settings correction. Exact source/reference/log hashes and ancestry verified; Intake and the five accepted integrations unchanged. The approved finalizer is ready for a fresh supervisor after planning persistence checks; implementation and group release remain open.
+- 2026-09-17 | 3.1.9.8 focused candidate frozen | Exact Intake/Archive deliveries combined with five accepted ancestors; Run dismissal focus repaired; required 29-file/522-test selection, 138 browser cases plus exact Start selection, typecheck, scoped lint and generated checks pass. Implementation `752607c69bbfc8c425c7a3e1c9e7890b6cc88e84`; durable evidence and inherited broad-ratchet findings are recorded in the owner. Explicit master integration and cleanup remain pending; no downstream release or full acceptance claim.
 
 #### 10 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned

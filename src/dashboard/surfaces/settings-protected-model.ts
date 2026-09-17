@@ -1,3 +1,4 @@
+import { settleCommandResult } from "../app/command-result.js";
 import { useRef, useState } from "react";
 import { systemClock } from "../../domain/clock.js";
 import { deepFreeze } from "../../domain/immutability.js";
@@ -48,20 +49,22 @@ export function useProtectedSettings(input: {
     busy.current = true; pending.current = command; setSave({ state: "saving" });
     try {
       const result = checkedSettingsResult(command, await client.executeCommand(command));
-      if (result.state === "conflict") {
+      const settled = settleCommandResult(result);
+      if (settled.kind === "refused" && settled.reason === "conflict") {
         pending.current = undefined;
         try { await input.refresh(); setSave({ state: "conflict", message: "Credentials changed. Current presence is refreshed beside your retained draft. Review it, then save deliberately." }); }
         catch { setSave({ state: "conflict", message: "Credentials changed, but current presence could not be read. Refresh before saving the retained draft." }); }
         return;
       }
-      if (result.state === "rejected") {
-        if (!uncertainSettingsCode(result.code)) pending.current = undefined;
-        setSave({ state: uncertainSettingsCode(result.code) ? "unconfirmed" : "refused", code: result.code, message: settingsRefusal(result.code) }); return;
+      if (settled.kind === "refused") {
+        if (settled.reason !== "rejected") throw new Error("settings-result-unconfirmed");
+        if (!uncertainSettingsCode(settled.code)) pending.current = undefined;
+        setSave({ state: uncertainSettingsCode(settled.code) ? "unconfirmed" : "refused", code: settled.code, message: settingsRefusal(settled.code) }); return;
       }
       const document = await input.refresh();
       if (!protectedReadbackConfirms(command, result, document)) throw new Error("credential-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setErrors({});
-      setSave({ state: "applied", replayed: result.state === "already-applied" });
+      setSave({ state: "applied", replayed: settled.replayed });
     } catch (error) {
       const refused = beforeEffectRefusal(error);
       if (refused) pending.current = undefined;

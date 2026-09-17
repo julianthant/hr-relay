@@ -15,6 +15,11 @@ Intake-specific comparison/confirmation handling. Ordinary Run/Rerun and prior-r
 this task's ownership. Do not duplicate or reverse the upload extraction; existing dependency edges
 already order this task after the surface-group release.
 
+**2026-09-16 focus allocation:** consume the [approved 3.1.9.8 F3 correction](task-9-8-finalization-dashboard-surfaces.md#approved-execution-brief--2026-09-16)
+to shell/dialog focus and the narrow Run-modal hookup. Dismissal returns focus to the launch control;
+successful Intake handoff retains takeover focus. Preserve that correction and the extracted uploader.
+Ordinary Run/Rerun, warning, prior-value and enqueue semantics remain owned by this task.
+
 - [ ] Make ordinary Run plus D334 Rerun use one modal and one server plan/confirm/enqueue path.
   Use one Rerun action for failed/interrupted and successful sources; do not offer a separate Retry
   action. Failed/interrupted sources default to failed/unfinished steps; successful sources default

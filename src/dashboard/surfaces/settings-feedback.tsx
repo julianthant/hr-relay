@@ -7,8 +7,8 @@ export function SettingsSaveFeedback({ save, protectedStore = false, retry }: { 
     {protectedStore ? "Credential presence and revision confirmed. Changes apply at the next use." : "Saved settings are active for new runs. Existing runs keep their original settings."}
   </Banner>;
   if (save.state === "refused") return <Refusal title={`${name} were not applied`} code={save.code ?? "settings-draft-invalid"}>{save.message}</Refusal>;
-  return <Banner tone="warning"
-    title={save.state === "unconfirmed" ? `${name} write unconfirmed` : save.state === "conflict" ? `${name} changed` : `${name} were not applied`}>
+  const title = { unconfirmed: `${name} write unconfirmed`, conflict: `${name} changed` }[save.state];
+  return <Banner tone="warning" title={title}>
     <span className="flex flex-col gap-[var(--ds-space-base)]"><span>{save.message}</span>
       {save.state === "unconfirmed" && <span><Button size="sm" variant="secondary" onClick={retry}>Retry exact attempt</Button></span>}
     </span>

@@ -1,3 +1,4 @@
+import { reviewedIntakeFixture } from "../fixtures/intake-kernel-seams.js";
 import { insertImportedArtifact } from "../../src/infra/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../src/domain/intake/imported-artifact.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
@@ -209,16 +210,15 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
     return held;
   };
 
-  const send = (type: string, payload?: Record<string, unknown>) => kernel.execute({
-    commandId: commandId(),
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "intake",
-    type,
-    target: { intakeSessionId: UUID_7, expectedVersion: current().version },
-    ...(payload === undefined ? {} : { payload }),
-  });
+  const send = (type: string, payload?: Record<string, unknown>) => {
+    const reviewBinding = type === "enqueue-intake-manifest" ? reviewedIntakeFixture({ session: current(), parser: fixtureParser,
+      projection: intakeFixtureProjection, descriptor: current().workflow === INTAKE_SERIAL_WORKFLOW_ID ? intakeSerialFixtureDescriptor : intakeFixtureDescriptor,
+      manifests: database.authority.intakeManifests }) : undefined;
+    return kernel.execute({ commandId: commandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "intake", type,
+      target: { intakeSessionId: UUID_7, expectedVersion: current().version },
+      ...(payload === undefined ? {} : { payload: { ...payload, ...(reviewBinding === undefined ? {} : { reviewBinding }) } }),
+    });
+  };
 
   const bindEid = () => send("confirm-intake-mapping", {
     targetFieldId: "emplId",
