@@ -92,7 +92,11 @@ export function createArchiveQueries(transport: DashboardTransport): ArchiveQuer
       const requested = RunIdSchema.parse(runId);
       const path = `/api/v1/archive/reports/${encodeURIComponent(requested)}`;
       const report = parseOrThrow(SavedArchiveDetailWireSchema, `GET ${path}`, await transport.requestJson(path));
-      if (report.runId !== requested) throw archivedRunIdentityError(`GET ${path}`, requested);
+      if (report.runId !== requested || (report.state === "deleted" && (report.deletion.runId !== requested
+        || (report.deletion.command.state === "pending" && report.deletion.command.resumeRequest !== undefined
+          && report.deletion.command.resumeRequest.target.archivedRunId !== requested)))) {
+        throw archivedRunIdentityError(`GET ${path}`, requested);
+      }
       return report;
     },
 

@@ -58,12 +58,21 @@ test("honest loading, empty, error, missing, deleted, unavailable and attachment
   await page.route("**/api/v1/archive/reports?*", route => route.abort("failed"));
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.locator('[role="alert"]')).toBeVisible();
-  for (const state of ["missing", "deleted", "unavailable"]) {
+  for (const state of ["missing", "unavailable"]) {
     await page.route("**/api/v1/archive/reports/*", route => route.fulfill({ json: { state, runId: H_REPORT.runId, reason: "Served retained-state reason" } }));
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByText(`Report ${state}: Served retained-state reason`)).toBeVisible();
     await expect(page.getByRole("article")).toHaveCount(0);
   }
+  await page.route("**/api/v1/archive/reports/*", route => route.fulfill({ json: {
+    state: "deleted", runId: H_REPORT.runId, reason: "Served retained-state reason",
+    deletion: { state: "deleted", runId: H_REPORT.runId, deletedAt: "2026-09-10T00:00:00.000Z",
+      removed: [{ table: "workflow_runs", rows: 1 }], cleanup: { state: "pending", fileCount: 1 },
+      command: { state: "unavailable", reason: "Historical request metadata absent." } },
+  } }));
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved report deletion status" })).toContainText("Historical request metadata absent.");
+  await expect(page.getByRole("article")).toHaveCount(0);
   await routes(page);
   await page.route("**/api/v1/archive/reports/*/files/*", route => route.fulfill({ json: { runId: H_REPORT.runId, digest, resource: { state: "available", downloadUrl: "https://example.invalid/foreign" } } }));
   await page.getByRole("button", { name: "Refresh", exact: true }).click();

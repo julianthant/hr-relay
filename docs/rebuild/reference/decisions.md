@@ -2501,3 +2501,14 @@ archive transfer preserves notification metadata and delete removes associated m
 snapshots stay immutable. Applicable health concerns and numeric thresholds, ownership exceptions,
 negative proofs and focused gates are recorded in the normative contracts and the
 [single task owner](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).
+
+### 2026-09-16 — Archive deletion recovery and saved-report export
+
+The operator approved the narrow 3.1.9.7 backend recovery repair and complete AR1–AR5 brief.
+[Dashboard surfaces](dashboard-surfaces.md#archive-recovery-export-amendment-2026-09-16) owns the
+C0/D308/D223 amendment: retain authenticated Archive-delete request identity through interrupted
+cleanup, serve honest deletion progress, preserve historical records and exact replay, and export
+exactly the public saved report as `archive-<runId>.json` with truthful generic outcomes.
+The [task owner](../plans/phase-3/3.1-finish-the-dashboard/task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md#approved-execution-brief--2026-09-16)
+binds the bounded ownership extension and focused proofs. No DDL, schema-floor change, deletion-policy
+change, Archive execution door or operator-state action is admitted; implementation remains pending.

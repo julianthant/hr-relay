@@ -1,4 +1,5 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../domain/command-groups.js";
+import { bindArchiveDeleteRequest } from "./archive-deletion-binding.js";
 import { bindVersionApplyRequest } from "./version-review-binding.js";
 import type { VersionChange } from "../../../domain/archive/change-record.js";
 /**
@@ -31,6 +32,7 @@ import { z } from "zod";
 import {
   BulkRunCommandRequestSchema,
   BulkRunCommandResponseSchema,
+  AuthorityCommandRecordSchema,
   CommandRequestSchema,
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
@@ -39,11 +41,13 @@ import {
 import type { CommandKernel } from "../../../core/command-kernel.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
+import { lifecycleCommandId } from "../../../domain/identifiers.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
   readonly versionChanges?: { readVersionChange(changeId: string): VersionChange | undefined };
+  readonly archiveDeletionCommands?: { getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined };
 }
 
 export interface DashboardCommandService {
@@ -98,6 +102,18 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           if (bound === undefined) return { state: "rejected", commandId: parsed.data.commandId, code: "schema-mismatch", message: "Version review binding differs." };
           input = bound;
         }
+      }
+      if (parsed.success && parsed.data.family === "version-archive" && parsed.data.type === "delete-archived-run") {
+        if (deps.archiveDeletionCommands === undefined) throw new Error("archive-deletion-binding-unavailable");
+        const retained = deps.archiveDeletionCommands.getCommand(lifecycleCommandId("operator-delete-archive", parsed.data.commandId));
+        if (retained !== undefined && (!("kind" in retained) || retained.kind !== "run-lifecycle")) {
+          return { state: "rejected", commandId: parsed.data.commandId, code: "command-divergent", message: "Archive deletion identity belongs to another command." };
+        }
+        const bound = bindArchiveDeleteRequest(retained, parsed.data);
+        if (bound === undefined) {
+          return { state: "rejected", commandId: parsed.data.commandId, code: "command-divergent", message: "Archive deletion request differs from the accepted request." };
+        }
+        input = bound;
       }
       const result = deps.kernel.execute(input, parentCommandId);
       if (result.state !== "applied") return result;

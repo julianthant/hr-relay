@@ -737,7 +737,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     explorerEdits: explorerBoundary.executor,
   });
 
-  const commands = createDashboardCommandService({ kernel, projection, versionChanges: lifecycle.lifecycleStorage() });
+  const commands = createDashboardCommandService({
+    kernel,
+    projection,
+    versionChanges: lifecycle.lifecycleStorage(),
+    archiveDeletionCommands: database.authority.lifecycleJournal,
+  });
 
   const startPlans = createStartPlanService({
     protectedSecrets,
