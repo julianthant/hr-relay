@@ -1846,6 +1846,7 @@ needs:
 
 log:
 - 2026-09-16 | operator-approved 3.1.9.8 execution brief | F1–F5 combines seven surface candidates and fixes group interfaces, including narrow Run-dialog focus repair; one Astra/medium supervisor, no workers or independent review, focused group gates and explicit operator integration. Five candidates are already integrated and Intake is frozen; launch waits for Archive's exact frozen candidate and completed focused proof. Full acceptance remains 3.1.19; implementation unstarted.
+- 2026-09-17 | 3.1.9.8 prerequisites verified | Archive delivery `27bbbe74791fab7c4f7ec1485922dc2b485fd688` now contains completed AR1–AR5 and passing focused proof, including its approved Settings correction. Exact source/reference/log hashes and ancestry verified; Intake and the five accepted integrations unchanged. The approved finalizer is ready for a fresh supervisor after planning persistence checks; implementation and group release remain open.
 
 #### 10 · Repair date navigation and the date picker {#dash-date-navigation}
 status: planned

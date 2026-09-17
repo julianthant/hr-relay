@@ -67,7 +67,7 @@ This assignment adds no redesign or external-system verification.
 | Planning isolation | `/Users/julianhein/Projects/hr-worktree-surfaces-plan`, branch `codex/plan-3.1.9.8`, for approved documentation only. Remove this owned checkout after verifying the commit; retain its ref. Direct committed-ref delivery requires no planning merge into `master`. |
 | Capacity | Intake and Archive occupied two auxiliary worktrees at preflight; this planning checkout is the third. Recheck the four-auxiliary-worktree ceiling, physical paths, refs and ownership before creation. Both proposed implementation names were absent. |
 | Integration target / owner | Local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`; the finalizer prepares the focused release. Merge only after passing focused gates and the operator's explicit integration instruction. Plan approval alone grants no merge or push. |
-| Start condition | Every surface has an exact committed frozen candidate and passing assigned focused proof. The five accepted integrations must be present; Intake's receipt is available; Archive's final candidate/AR5 receipt is still required. |
+| Start condition | Every surface has an exact committed frozen candidate and passing assigned focused proof. The five accepted integrations are present; Intake and Archive are frozen and verified by the 2026-09-17 launch release below. Recheck their exact identities before implementation. |
 
 Before the first implementation edit, verify checkout, attached branch, approved-plan bytes, base
 ancestry, input receipts and clean owned starting state. Create an absent assigned checkout without
@@ -84,7 +84,7 @@ dependency symlink is permitted; indexes, build output, fixtures and evidence mu
 | 3.1.9.4 Explorer | `2ec017d992d74190d54a3af0cd052192294c5e7a` | Integrated by `931e283ab263a26a556aad33ac49c5eeca51a407`. See the [Explorer owner](task-9-4-finish-workflow-explorer-and-catalog-editing.md). |
 | 3.1.9.5 Notifications | `387836885d426db81dac63126adc28aea9f71ddd` | Integrated by `ac8c620b72ec47d9788909a4a52941a4c741f42a`. See the [Notifications owner](task-9-5-finish-notifications-and-delivery-behavior.md). |
 | 3.1.9.6 Intake | `45748dae4436537ab86585ffa03b95dbc6843caa`, including implementation `2a518d007695437697663dc36960dead783d4a01` | Frozen, unmerged, retained on `codex/3.1.9.6-intake`. Its committed [Intake owner](task-9-6-finish-intake-surfaces.md) contains the 2026-09-16 implementation receipt. Evidence: `/Users/julianhein/Projects/hr-intake-evidence-20260915-r4bjbjka`. |
-| 3.1.9.7 Archive | Observed `d971e598987f3eee2512f2ac3d5a08bd9d6cad93`, including `fc74b54cf`; **not a frozen intake claim** | Unmerged on `codex/3.1.9.7-archive`; no AR5 delivery receipt was present. Its approved plan is `76b2e1fc7809907010b2a1d0f7e117737815902c`, available on `codex/plan-3.1.9.7`. Read that commit's [Archive owner](task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md) and its eventual frozen successor. |
+| 3.1.9.7 Archive | Frozen delivery `27bbbe74791fab7c4f7ec1485922dc2b485fd688`, including implementation `96771ec69511da58e1b79f5b274795fa97c44621` | Unmerged on `codex/3.1.9.7-archive`; AR1–AR5 and assigned focused proof are complete. Its approved plan is `76b2e1fc7809907010b2a1d0f7e117737815902c`, available on `codex/plan-3.1.9.7`. Read the delivery commit's [Archive owner](task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md), including its approved narrow Settings amendment. Evidence: `/Users/julianhein/Projects/hr-worktree-archive/.artifacts/3.1.9.7/resume/`. |
 
 The first five full candidate SHAs exist and are ancestors of the discovery base. Intake and
 Archive observed SHAs exist but are not ancestors of `master`. Do not remerge, recreate or reopen
@@ -99,13 +99,11 @@ reference overlap, proved either-order production-source equality, and recorded 
 and exact-registration compatibility. These are inspected historical receipts, not new planner-run
 gates or whole-group acceptance. Reuse only after verifying their relevant input identities.
 
-**Readiness at approval: WAITING ON Archive.** Resolve its final full SHA from its committed AR5
-receipt and retained proof, verify the approved plan ancestry and every assigned focused result,
-then record that identity here before launch. Do not promote `d971e5989` merely because it contains
-implementation commits. Missing evidence, unfinished AR steps or failed focused checks remain with
-the Archive delivery owner; the planner must verify availability before issuing a READY prompt.
-An approved replacement candidate must carry its changed-input evidence; no moving ref is frozen
-implicitly. Archive's untracked `.artifacts/` is owned evidence, not cleanup permission.
+**Readiness history:** at approval, Archive was still observed at `d971e598987f3eee2512f2ac3d5a08bd9d6cad93`
+without a committed AR5 receipt; that observation was **not a frozen intake claim**. The 2026-09-17
+launch release below supersedes the WAITING state with the exact verified delivery above. Any later
+replacement candidate must carry its changed-input evidence; no moving ref is frozen implicitly.
+Archive's untracked `.artifacts/` is owned evidence, not cleanup permission.
 
 ### Feasibility, ownership and proof
 
@@ -299,6 +297,51 @@ against their checked hashes and the complete approved controls, verifies retain
 availability, then removes only the clean owned planning checkout and dependency symlink. The plan
 ref remains available as the implementation creation base; `master` and peer worktrees stay unchanged.
 `commit-verification.json` and `planning-cleanup.json` record those facts and the final readiness.
-Readiness remains **WAITING ON Archive's exact frozen candidate and completed focused proof** until
-that missing AR5 receipt is available and verified. No launch prompt or implementation is authorized
-by a merely observed unfinished Archive tip.
+At that verification, readiness was **WAITING ON Archive's exact frozen candidate and completed
+focused proof**. The release below records the subsequently completed prerequisite. No launch
+prompt or implementation is authorized by a merely observed unfinished candidate tip.
+
+### Verified launch release — 2026-09-17
+
+**READY for one fresh Astra/medium supervisor session.** Existing F1–F5 approval is unchanged;
+no product implementation, integration permission or broader gate claim is added. The final plan
+commit returned by this planner, on `codex/plan-3.1.9.8`, is the exact implementation creation base.
+It descends from approved plan `d95292814cbc05494dff4055899aa7ea36a0df3d` and the accepted primary
+base `ac8c620b72ec47d9788909a4a52941a4c741f42a`. Create the assigned implementation branch/worktree
+from that final plan commit, then F1 combines the exact Intake and Archive deliveries above.
+
+Archive's delivery commit `27bbbe74791fab7c4f7ec1485922dc2b485fd688` contains the committed AR1–AR5
+completion receipt. Its only change from implementation `96771ec69511da58e1b79f5b274795fa97c44621`
+is its owning Markdown evidence record. The planner verified its approved-plan/parent ancestry,
+all 70 changed source/reference hashes, seven runtime-log hashes and the committed delivery-owner
+hash against `candidate-inputs.json`, `document-checks.json` and `freeze-verification.json`.
+
+| Required Archive evidence | Verified result |
+| --- | --- |
+| Assigned service/report/storage selectors | 15 files / 135 tests, exit 0; `gate-1-final.log` |
+| Assigned delete/version/SQLite selectors | 4 files / 99 tests, exit 0; `gate-2.log` |
+| Assigned architecture selectors | 6 files / 62 tests, exit 0; `gate-3-final.log` |
+| Archive parity assert | 45 cases / four workers, exit 0; `parity-final.log` |
+| Approved Settings repair checks | 3 files / 35 tests and 22 browser cases, exit 0; `settings-fix.log`, `settings-parity.log` |
+| Scoped lint and delivery documentation | 28 changed TypeScript paths; committed receipt records exit 0 and expanded argv in `lint-final.log`. Roadmap binding passed 24 tests; freshness and document audit passed. |
+| Visual/reference and cleanup custody | Actual browser zoom 1.25, both themes, reference attribution and stopped owned resources are recorded in the child owner and retained evidence. The tracked checkout is clean; private untracked proof stays with Archive until accepted finalizer cleanup. |
+
+The Archive operator explicitly approved focused fixes in `settings-feedback.tsx`,
+`settings-protected-model.ts` and their tests to satisfy the required command-result architecture
+gate. Consume that child amendment and preserve its unchanged Settings semantics. This remains
+inside the finalizer's approved union of child scopes; the F4 selection already includes Settings
+protected/catalog and command-result checks. Reuse the child's additional Settings browser proof
+only with verified unchanged inputs, or rerun it when combination invalidates it.
+
+The five accepted surface candidates remain ancestors of the primary base. Intake remains frozen
+at `45748dae4436537ab86585ffa03b95dbc6843caa`; its implementation and evidence are unchanged.
+Two auxiliary worktrees remain before this planner temporarily reopens its own third checkout;
+the planned implementation branch/path remain absent. Recheck volatile ownership/capacity before
+creation. This verification grants no merge into `master`; F5's explicit operator integration
+condition still applies.
+
+Readiness evidence is retained at
+`/Users/julianhein/Projects/hr-surfaces-plan-ready-20260917-mlj4f315/`. `prerequisites.json` records
+the input verification; the documentation checks, exact committed-content verification and planning
+checkout cleanup are recorded there before the launch prompt is issued. Only this owner and the
+roadmap journal/generated page change. No runtime gates are rerun or claimed by the planner.
