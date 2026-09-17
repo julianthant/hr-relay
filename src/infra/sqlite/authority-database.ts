@@ -3316,7 +3316,11 @@ export class AuthorityDatabase implements Disposable {
     return this.withAuthorityReadSnapshot(() => {
       const receipt = this.authority.deletedRuns.get(runId);
       if (receipt === undefined) return undefined;
-      if (receipt.origin !== "archive") throw new Error("archive-deletion-origin-mismatch");
+      if (receipt.origin !== "archive") return {
+        receipt,
+        cleanup: { state: "unavailable" as const, reason: "This run was deleted from the live queue; no saved-report cleanup was recorded." },
+        command: { state: "unavailable" as const, reason: "This deletion has no Archive recovery request." },
+      };
 
       let cleanup: { state: "pending" | "complete"; fileCount: number } | { state: "unavailable"; reason: string };
       try {
@@ -3364,7 +3368,10 @@ export class AuthorityDatabase implements Disposable {
       }
       if (operatorCommand === undefined || operatorAudit === undefined
         || canonicalJsonStringify(operatorCommand) !== canonicalJsonStringify(request)
-        || canonicalJsonStringify(operatorAudit.request) !== canonicalJsonStringify(request)) {
+        || canonicalJsonStringify(operatorAudit.request) !== canonicalJsonStringify(request)
+        || operatorAudit.result.commandId !== request.commandId
+        || (operatorAudit.result.state !== "applied" && operatorAudit.result.state !== "already-applied")
+        || !operatorAudit.result.affectedTargets.some(target => target.family === "run" && target.runId === request.target.archivedRunId)) {
         return { receipt, cleanup, command: { state: "unavailable" as const, reason: "The final operator command audit does not match the accepted deletion request." } };
       }
       return { receipt, cleanup, command: { state: "complete" as const, commandId: request.commandId, completedAt: operatorAudit.completedAt } };

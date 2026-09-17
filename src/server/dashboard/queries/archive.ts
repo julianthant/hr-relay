@@ -940,6 +940,7 @@ export function savedArchiveDetail(deps: ArchiveQueryDeps, runIdInput: string) {
           reason: "Canonical deletion is recorded, but the final operator command audit is still pending.",
           ...(deletion.command.request.source === "dashboard"
             && deletion.command.request.requestedBy === LOCAL_OPERATOR_ACTOR_ID
+            && deletion.command.request.target.archivedRunId === runId
             ? { resumeRequest: deletion.command.request }
             : {}),
         }

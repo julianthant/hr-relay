@@ -64,3 +64,18 @@ it("exports exactly the served public report wire under the stable run filename"
     expect(href).not.toContain("sources");
   } finally { await act(async () => root.unmount()); }
 });
+it.each(["valid", "foreign status", "foreign resume"] as const)("binds deletion readback and recovery to the selected report: %s", async shape => {
+  const other = "00000000-0000-4000-8000-000000000084";
+  const report = { state: "deleted", runId: H_REPORT.runId, reason: "Deleted", deletion: {
+    state: "deleted", runId: shape === "foreign status" ? other : H_REPORT.runId, deletedAt: H_REPORT.completedAt,
+    removed: [], cleanup: { state: "pending", fileCount: 1 },
+    command: { state: "pending", reason: "Final audit pending", resumeRequest: {
+      commandId: other, requestedAt: H_REPORT.completedAt, requestedBy: "local-operator", source: "dashboard",
+      family: "version-archive", type: "delete-archived-run",
+      target: { archivedRunId: shape === "foreign resume" ? other : H_REPORT.runId, archiveFingerprint: H_REPORT.archiveFingerprint },
+    } },
+  } };
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async () => new Response(JSON.stringify(report), { headers: { "content-type": "application/json" } }) });
+  if (shape === "valid") await expect(client.savedArchiveReport(H_REPORT.runId)).resolves.toEqual(report);
+  else await expect(client.savedArchiveReport(H_REPORT.runId)).rejects.toThrow(/ARCHIVED_RUN_IDENTITY_MISMATCH/);
+});

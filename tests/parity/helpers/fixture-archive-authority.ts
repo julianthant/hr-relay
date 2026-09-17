@@ -20,6 +20,7 @@ import type { DashboardApp } from "../../../src/server/dashboard/routes/api-type
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
 import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
 import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
+import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { id } from "../../unit/database-foundation/fixtures.js";
 import { FIXTURE_ARCHIVE_EVIDENCE_BYTES } from "./fixture-archive-evidence.js";
 import { FIXTURE_DAY } from "./fixture-identity.js";
@@ -30,7 +31,7 @@ function unexpected(): never {
   throw new Error("Archive browser acceptance reached an unrelated effect");
 }
 
-export async function startArchiveAuthorityServer() {
+export async function startArchiveAuthorityServer(options: { seed?: "saved" | "live"; reportCount?: number } = {}) {
   const fixture = archiveFixture();
   const runId = fixture.base.run.envelope.runId;
   const bytes = Buffer.from(FIXTURE_ARCHIVE_EVIDENCE_BYTES);
@@ -70,89 +71,126 @@ export async function startArchiveAuthorityServer() {
     retention: { kind: "ordinary", purgeAfter: "2030-01-01T00:00:00.000Z" },
   });
   fixture.terminal();
-  const planned = fixture.plan();
-  const applied = fixture.kernel.execute(fixture.applyRequest(planned));
-  if (applied.state !== "applied") throw new Error("Archive browser seed did not transfer its report");
-
-  const storage = createRunLifecycleStorage(fixture.database);
-  const savedReport = readArchiveReport(storage, runId);
-  if (savedReport.state !== "available" || savedReport.files.length !== 1) {
-    throw new Error("Archive browser seed did not retain its exact image member");
+  const addRun = (sequence: number, terminal = true) => {
+    const run = fixture.base.createRun(id(sequence));
+    const presented = fixture.database.authority.runs.updatePresentation({ runId: run.envelope.runId,
+      expectedVersion: run.version, displayName: `Synthetic report ${sequence}`, now: fixture.base.clock.now().toISOString() });
+    if (presented.state !== "applied") throw new Error("fixture presentation refused");
+    if (terminal) {
+      const result = fixture.database.authority.runs.transition({ runId: run.envelope.runId,
+        expectedVersion: presented.run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: fixture.base.clock.now().toISOString() }, now: fixture.base.clock.now().toISOString() });
+      if (result.state !== "applied") throw new Error("fixture terminalization refused");
+    }
+    return run.envelope.runId;
+  };
+  for (let index = 1; index < (options.reportCount ?? 1); index += 1) addRun(91000 + index);
+  if (options.seed !== "live") {
+    const applied = fixture.kernel.execute(fixture.applyRequest(fixture.plan()));
+    if (applied.state !== "applied") throw new Error("Archive browser seed did not transfer its report");
   }
-  const savedFile = savedReport.files[0];
-  const commands = createDashboardCommandService({
-    kernel: fixture.kernel,
-    versionChanges: storage,
-    archiveDeletionCommands: fixture.database.authority.lifecycleJournal,
-    projection: { ingestFromTimeline: unexpected, refreshRun: unexpected },
-  });
-  const app: DashboardApp = new Hono();
-  const identity = createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" });
-  const exchanges: { method: string; path: string; status: number }[] = [];
-  app.onError((error, c) => {
-    const failure = failureStatus(error);
-    return c.json(failure.body, failure.status);
-  });
-  app.use("*", async (c, next) => {
-    c.set("requestActorId", identity.identify(c.req.raw));
-    await next();
-    exchanges.push({ method: c.req.method, path: c.req.path, status: c.res.status });
-  });
-  app.use("/api/v1/commands", operatorMutationIngressGuard);
-  app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
-  registerArchiveRoutes(app, {
-    archive: {
-      storage,
-      reader: new RunRecordService({
-        database: fixture.database,
-        clock: fixture.base.clock,
-        ids: { uuid: unexpected },
-        publishQueued: unexpected,
-      }),
-      clock: fixture.base.clock,
-      appVersion: "0.1.0",
-      descriptors: { list: () => [] },
-      get authority() { return unexpected(); },
-      get ledger() { return unexpected(); },
-    },
-  });
-  registerCommandsRoutes(app, {
-    clock: fixture.base.clock,
-    commands,
-    commandJournal: fixture.database.authority.commands,
-    bulkCommandAcceptances: { withTransaction: unexpected },
-    protectedCommandAcceptedAt: unexpected,
-    intake: { prepare: async () => {} },
-  });
 
+  const savedReport = readArchiveReport(createRunLifecycleStorage(fixture.database), runId);
+  const savedFile = savedReport.state === "available" ? savedReport.files[0] : file;
+  const exchanges: { method: string; path: string; status: number }[] = [];
+  const delays: { path: string; received: () => void; released: Promise<void>; release: () => void }[] = [];
+  const delayNextResponse = (path: string) => {
+    let received!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { received = resolve; });
+    const released = new Promise<void>(resolve => { release = resolve; });
+    delays.push({ path, received, released, release });
+    return { ready, release };
+  };
+  const makeApp = () => {
+    const storage = createRunLifecycleStorage(fixture.database);
+    const commands = createDashboardCommandService({
+      kernel: fixture.kernel,
+      versionChanges: storage,
+      archiveDeletionCommands: fixture.database.authority.lifecycleJournal,
+      projection: { ingestFromTimeline: unexpected, refreshRun: unexpected },
+    });
+    const app: DashboardApp = new Hono();
+    const identity = createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" });
+    app.onError((error, c) => {
+      const failure = failureStatus(error);
+      return c.json(failure.body, failure.status);
+    });
+    app.use("*", async (c, next) => {
+      c.set("requestActorId", identity.identify(c.req.raw));
+      await next();
+      const delayed = delays.findIndex(delay => delay.path === c.req.path + new URL(c.req.url).search);
+      if (delayed >= 0) {
+        const [delay] = delays.splice(delayed, 1);
+        delay.received();
+        await delay.released;
+      }
+      exchanges.push({ method: c.req.method, path: c.req.path, status: c.res.status });
+    });
+    app.use("/api/v1/commands", operatorMutationIngressGuard);
+    app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
+    registerArchiveRoutes(app, {
+      archive: {
+        storage,
+        reader: new RunRecordService({
+          get database() { return fixture.database; },
+          clock: fixture.base.clock,
+          ids: { uuid: unexpected },
+          publishQueued: unexpected,
+        }),
+        clock: fixture.base.clock,
+        appVersion: "0.1.0",
+        descriptors: { list: () => options.seed === "live" ? [{ id: personLookupDescriptor.id, label: personLookupDescriptor.label,
+          code: "PL", version: 2, contractFingerprint: "a".repeat(64) }] : [] },
+        get authority() { return unexpected(); },
+        get ledger() { return unexpected(); },
+      },
+    });
+    registerCommandsRoutes(app, {
+      clock: fixture.base.clock,
+      commands,
+      commandJournal: fixture.database.authority.commands,
+      bulkCommandAcceptances: { withTransaction: unexpected },
+      protectedCommandAcceptedAt: unexpected,
+      intake: { prepare: async () => {} },
+    });
+
+    return app;
+  };
+
+  let buildApp: () => DashboardApp;
   let shell: Awaited<ReturnType<typeof startFixtureServer>> | undefined;
   let http: Awaited<ReturnType<typeof startDashboardHttpServer>> | undefined;
   try {
     shell = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
-    app.get("/events/v1", c => {
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          for (const envelope of [fixtureHelloEnvelope(), fixtureSnapshotEnvelope(), fixtureHealthEnvelope()]) {
-            const cursor = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
-            controller.enqueue(new TextEncoder().encode(`${cursor}data: ${JSON.stringify(envelope)}\n\n`));
-          }
-        },
+    const createHostApp = () => {
+      const app = makeApp();
+      app.get("/events/v1", c => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const envelope of [fixtureHelloEnvelope(), fixtureSnapshotEnvelope(), fixtureHealthEnvelope()]) {
+              const cursor = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
+              controller.enqueue(new TextEncoder().encode(`${cursor}data: ${JSON.stringify(envelope)}\n\n`));
+            }
+          },
+        });
+        return c.body(body, 200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       });
-      return c.body(body, 200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-    });
-    const shellUrl = shell.baseUrl;
-    app.get("*", async c => {
-      const response = await fetch(new URL(`${c.req.path}${new URL(c.req.url).search}`, shellUrl));
-      return new Response(await response.arrayBuffer(), { status: response.status, headers: response.headers });
-    });
-    http = await startDashboardHttpServer({ app, port: 0 });
+      const shellUrl = shell.baseUrl;
+      app.get("*", async c => {
+        const response = await fetch(new URL(`${c.req.path}${new URL(c.req.url).search}`, shellUrl));
+        return new Response(await response.arrayBuffer(), { status: response.status, headers: response.headers });
+      });
+      return app;
+    };
+    buildApp = createHostApp;
+    http = await startDashboardHttpServer({ app: createHostApp(), port: 0 });
   } catch (error) {
     if (http !== undefined) await http.close();
     if (shell !== undefined) await shell.close();
     fixture.dispose();
     throw error;
   }
-  const server = http;
+  let server = http;
   const surroundings = shell;
   return {
     baseUrl: `http://127.0.0.1:${String(server.port)}`,
@@ -161,7 +199,17 @@ export async function startArchiveAuthorityServer() {
     runId,
     file: savedFile,
     bytes,
-    database: fixture.database,
+    get database() { return fixture.database; },
+    addRun,
+    delayNextResponse,
+    interruptTransfer: (step: string, occurrence = 1) => fixture.failAfter(step, occurrence),
+    async restart() {
+      const port = server.port;
+      await server.close();
+      fixture.reopen();
+      fixture.base.clock.advanceWall(60_000);
+      server = await startDashboardHttpServer({ app: buildApp(), port });
+    },
     interruptNextAudit: () => fixture.failAfter("audit"),
     exchanges: () => [...exchanges],
     async close() {

@@ -1,7 +1,7 @@
 import { expect, test, type Download, type Page, type TestInfo } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
-import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema } from "../../src/domain/dashboard/archive.js";
+import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, SavedVersionIndexWireSchema } from "../../src/domain/dashboard/archive.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme } from "./helpers/capture.js";
 import { startArchiveAuthorityServer } from "./helpers/fixture-archive-authority.js";
@@ -135,7 +135,9 @@ test("interrupted deletion survives reload and resumes the exact retained reques
       throw new Error("interrupted deletion retained no authenticated resume request");
     }
     const retained = pending.deletion.command.resumeRequest;
-    await page.reload();
+    await page.goto("about:blank");
+    await server.restart();
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: server.runId });
     await expect(status).toContainText("final operator command audit is still pending");
     await capture(page, info, "archive-delete-pending-reload");
     await page.getByRole("button", { name: "Resume deletion cleanup", exact: true }).click();
@@ -147,4 +149,142 @@ test("interrupted deletion survives reload and resumes the exact retained reques
   } finally {
     await server.close();
   }
+});
+
+test("real major review renews changed membership and resumes a partial transfer after restart",
+  evidence(["archive-major-resumed"]), async ({ page }, info) => {
+  const server = await startArchiveAuthorityServer({ seed: "live" });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  try {
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
+    await page.getByRole("textbox", { name: "What changed", exact: true }).fill("Synthetic changed-membership review");
+    await page.getByRole("textbox", { name: "Why", exact: true }).fill("Prove explicit confirmation and partial recovery");
+    await page.getByRole("button", { name: "Create review", exact: true }).click();
+    await expect(page.getByText("Progress: 1 reviewed runs · 0 archived.", { exact: true })).toBeVisible();
+    const added = server.addRun(91001);
+    await page.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
+    await expect(page.getByText("Progress: 2 reviewed runs · 0 archived.", { exact: true })).toBeVisible();
+    expect(server.database.savedReportOwner(server.runId).state).toBe("live");
+    expect(server.database.savedReportOwner(added).state).toBe("live");
+    server.interruptTransfer("transfer", 2);
+    await page.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: /injected|failed|500/i })).toBeVisible();
+    const before = server.database.historicalVersionChanges().find(row => "schemaVersion" in row && row.schemaVersion === 2 && row.state === "applying");
+    if (before === undefined || !("completedRunIds" in before)) throw new Error("partial apply claim missing");
+    expect(before.completedRunIds).toHaveLength(1);
+    const published = server.database.lifecycleArchive(true).readPublished(before.completedRunIds[0]);
+    expect(published).toBeDefined();
+    await page.goto("about:blank");
+    await server.restart();
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
+    await expect(page.getByText("Progress: 2 reviewed runs · 1 archived.", { exact: true })).toBeVisible();
+    const wire = SavedVersionIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/versions`)).json());
+    const applying = wire.changes.find(change => change.state === "applying");
+    if (applying?.resumeRequest === undefined) throw new Error("authenticated original request missing");
+    const competing = await page.request.post(`${server.baseUrl}/api/v1/commands`, { headers: { origin: server.baseUrl }, data: {
+      ...applying.resumeRequest, commandId: "00000000-0000-4000-8000-000000019999",
+    } });
+    expect(competing.status()).toBe(422);
+    expect(server.database.lifecycleArchive(true).readPublished(before.completedRunIds[0])).toEqual(published);
+    await page.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
+    await expect(page.getByText("Progress: 2 reviewed runs · 2 archived.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Version change saved" })).toBeVisible();
+    expect(server.database.authority.commands.get(applying.resumeRequest.commandId)?.requestedAt).toBe(applying.resumeRequest.requestedAt);
+    expect(server.database.lifecycleArchive(true).readPublished(before.completedRunIds[0])).toEqual(published);
+    await capture(page, info, "archive-major-resumed");
+    expect(errors).toEqual([]);
+  } finally { await server.close(); }
+});
+
+test("real minor review with active and terminal prior runs transfers none",
+  evidence(["archive-minor-no-transfer"]), async ({ page }, info) => {
+  const server = await startArchiveAuthorityServer({ seed: "live" });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  try {
+    const active = server.addRun(91002, false);
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
+    await page.getByRole("combobox", { name: "Change kind", exact: true }).selectOption("minor");
+    await page.getByRole("textbox", { name: "What changed", exact: true }).fill("Synthetic minor review");
+    await page.getByRole("textbox", { name: "Why", exact: true }).fill("Prove active runs do not become minor blockers");
+    await page.getByRole("button", { name: "Create review", exact: true }).click();
+    await expect(page.getByText("Progress: 0 reviewed runs · 0 archived.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
+    await expect(page.getByText(/Minor change · applied/)).toBeVisible();
+    expect(server.database.savedReportOwner(server.runId).state).toBe("live");
+    expect(server.database.savedReportOwner(active).state).toBe("live");
+    expect(SavedArchiveIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/reports?limit=50`)).json()).items).toEqual([]);
+    await capture(page, info, "archive-minor-no-transfer");
+    expect(errors).toEqual([]);
+  } finally { await server.close(); }
+});
+
+test("real bounded pages retain exact history selection outside the filtered page and ignore late list/detail replies", async ({ page }) => {
+  const server = await startArchiveAuthorityServer({ reportCount: 52 });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const releases: Array<() => void> = [];
+  try {
+    const query = `${server.baseUrl}/api/v1/archive/reports?limit=50`;
+    const first = SavedArchiveIndexWireSchema.parse(await (await page.request.get(query)).json());
+    expect(first.items).toHaveLength(50);
+    expect(first.next).not.toBeNull();
+    const next = SavedArchiveIndexWireSchema.parse(await (await page.request.get(`${query}&after=${encodeURIComponent(JSON.stringify(first.next))}`)).json());
+    expect(next.items).toHaveLength(2);
+    expect(new Set([...first.items, ...next.items].map(report => report.runId)).size).toBe(52);
+    const chosen = first.items[0];
+    const other = first.items[1];
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
+    const old = server.delayNextResponse(`/api/v1/archive/reports/${chosen.runId}`); releases.push(old.release);
+    await page.getByRole("button", { name: chosen.title, exact: true }).click();
+    await old.ready;
+    await page.getByRole("button", { name: other.title, exact: true }).click();
+    await expect(page.getByRole("article")).toContainText(other.title);
+    const oldResponse = page.waitForResponse(response => response.url().endsWith(`/reports/${chosen.runId}`));
+    old.release(); await oldResponse;
+    await expect(page.getByRole("article")).toContainText(other.title);
+    await page.getByRole("button", { name: "Next reports", exact: true }).click();
+    await expect(page.getByRole("article")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "First reports", exact: true })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("article")).toContainText(other.title);
+    // Route history restores the report while the workspace's page draft stays on page two.
+    await expect(page.getByRole("button", { name: other.title, exact: true })).toHaveCount(0);
+    const delayedList = server.delayNextResponse("/api/v1/archive/reports?limit=50&title=old-query"); releases.push(delayedList.release);
+    await page.getByRole("textbox", { name: "Title", exact: true }).fill("old-query");
+    await delayedList.ready;
+    await page.getByRole("textbox", { name: "Title", exact: true }).fill(other.title);
+    await expect(page.getByRole("button", { name: other.title, exact: true })).toBeVisible();
+    const listResponse = page.waitForResponse(response => response.url().endsWith("title=old-query"));
+    delayedList.release(); await listResponse;
+    await expect(page.getByRole("button", { name: other.title, exact: true })).toBeVisible();
+    await expect(page.getByText("No saved reports match this query.", { exact: true })).toHaveCount(0);
+    await page.getByText("Back", { exact: true }).click();
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
+    await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue("");
+    expect(errors).toEqual([]);
+  } finally { for (const release of releases) release(); await server.close(); }
+});
+
+test("late real deletion of A leaves B selected and history reads A's current disposition", async ({ page }) => {
+  const server = await startArchiveAuthorityServer({ reportCount: 2 });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const delayed = server.delayNextResponse("/api/v1/commands");
+  try {
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: server.runId });
+    await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
+    await expect(page.getByText(/permanent idempotency keys/)).toBeVisible();
+    await page.getByRole("button", { name: "Confirm deletion", exact: true }).click();
+    await delayed.ready;
+    await page.getByRole("button", { name: "Synthetic report 91001", exact: true }).click();
+    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
+    const reply = page.waitForResponse(response => response.url().endsWith("/api/v1/commands"));
+    delayed.release(); await reply;
+    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
+    await page.goBack();
+    await expect(page.getByRole("region", { name: "Saved report deletion status" })).toContainText("Command settlement: complete");
+    expect(errors).toEqual([]);
+  } finally { delayed.release(); await server.close(); }
 });
