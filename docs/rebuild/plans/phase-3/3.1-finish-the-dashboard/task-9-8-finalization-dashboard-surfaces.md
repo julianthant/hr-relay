@@ -345,3 +345,116 @@ Readiness evidence is retained at
 the input verification; the documentation checks, exact committed-content verification and planning
 checkout cleanup are recorded there before the launch prompt is issued. Only this owner and the
 roadmap journal/generated page change. No runtime gates are rerun or claimed by the planner.
+
+
+### Focused candidate delivery — 2026-09-17
+
+**Current state: F1–F4 passed; F5 candidate frozen, awaiting explicit operator instruction to
+integrate into local master.** The task/group and child completion checkboxes remain open until
+accepted integration and owned cleanup. No downstream task is released or dispatched by this receipt.
+There were zero workers and zero independent reviewers, as approved.
+
+The implementation is `752607c69bbfc8c425c7a3e1c9e7890b6cc88e84` on
+`codex/3.1.9.8-surfaces`, retained at `/Users/julianhein/Projects/hr-worktree-surfaces`.
+The documentation-only commit containing this receipt is the frozen delivery tip; its full SHA is
+reported externally to avoid a self-reference. The creation base was exactly
+`e7c722c687bc035e083841fbea9c339af75a8453`, verified against the committed owner and retained
+`codex/plan-3.1.9.8`. Master remains `ac8c620b72ec47d9788909a4a52941a4c741f42a`.
+
+Durable evidence is `/Users/julianhein/Projects/hr-surfaces-evidence-20260917-qy8rqtwg/`.
+Each gate has a `.json` command/exit/timing record, `.inputs.json` file hashes and full `.log`.
+`candidate-inputs.json` binds the implementation/tree, all 390 changed files since the accepted
+common parent, final proof/log hashes, 161-file lint census, bundle and effective browser workers.
+Child proof is preserved in `intake-child-evidence/` and `archive-child-evidence/`; original child
+locations and clean tracked worktrees are retained. `intake-input-verification.json` independently
+matches 2,300 product/proof/configuration inputs to its frozen delivery. Archive's 70 source/reference
+and seven runtime-log hashes were reverified at intake.
+
+| Step | Verified result |
+| --- | --- |
+| F1 | Preserved all five accepted candidate ancestors and their reference/schema corrections. Merged exact Intake `45748dae4436537ab86585ffa03b95dbc6843caa` at `8fd2bd3`, then exact Archive `27bbbe74791fab7c4f7ec1485922dc2b485fd688` at `0537903`. `src/domain/commands.ts` combined without a source conflict. Alternate-order merge-tree proof yields identical source/test/configuration/generated inputs. |
+| F1 conflicts | The acceptance matrix retains Archive's extended recovery row and the finalizer's focus row. The boundary owner retains both complete approved ownership amendments. `docs/roadmap/index.html` was regenerated from their union. No intent was dropped. `f1-combination.json` retains both trees and the exact resolutions. |
+| F2 | Combined command/restart/ingress, immutable Intake, notification publication, paired-store and shared-file custody checks passed: 16 files/369 cases. The final focused selection repeats these boundaries. Archive's approved Settings feedback/protected-command correction remains byte-identical to its delivery. |
+| F3 | `fb81c3f24` exposes Radix's close-focus callback through the existing DS/Run wrappers. The shell restores the external Run door on dismissal and suppresses that restoration for successful Intake handoff. The extracted uploader and ordinary Run/Rerun business logic remain unchanged. Six mounted red cases reproduced Cancel/Escape/Close failures for button and `r` launch; ten new mounted cases pass, including handoff, reopening after handoff and late accepted upload replies after each dismissal. |
+| F4 repairs | `752607c` captures the already-created Archive shell URL outside its restart closure, resolving TS18048 without changing its host behavior. The existing parity writer guard now registers five inspected disposable authority/evidence writers and pins their exact destinations, with redirected-reference and extra-write negative controls for each. Both directions of the writer inventory and the reference-update gate remain enforced. The guard inventory records the deciding evidence. |
+
+#### Focused verification
+
+Commands are the exact selections in the approved brief unless an additional focused selector is
+explicitly named below. Results describe actual executions; broad acceptance is not implied.
+
+| Gate | Result and evidence |
+| --- | --- |
+| `npm run typecheck` | Exit 0; `f4-typecheck-final.log`. Initial failure identified the Archive closure narrowing defect; corrected before freeze. |
+| Exact 29-path unit/architecture selection | Exit 0; **29 files / 522 tests**, `f4-focused-final.log`. Initial selection found the missing disposable-writer registrations; final complete selection passes after repair. |
+| Expanded scoped ESLint | Exit 0, zero warnings; **161 changed production/test/script/configuration files** since `3d4d8c0c64cf2e96096b193966a66741861d6f1c`; full argv in `f4-lint-final.log`. New focus and guard files were staged before the census. |
+| Exact 11-spec main browser selection | Exit 0; **138 cases / 4 workers**, `f4-parity.log`; report and attachments preserved in `f4-parity-output/`. |
+| Exact Start/Intake receipt selection | Exit 0; **3 cases**, three effective workers under the four-worker cap, `f4-start-parity.log`; `f4-start-output/`. The selector is `start-run spreadsheet handoff|intake-review accessibility receipt`. |
+| Archive fixture repair recheck | Exit 0; **7 cases / 4 workers**, `f4-archive-fixture-parity.log`; `f4-archive-fixture-output/`. This replaces the main selection's Archive helper inputs. All other main-selection production/reference/test/configuration/dependency inputs are unchanged, as recorded in `candidate-inputs.json`. |
+| F3 neighboring interactions | Exit 0; **4 mounted files / 60 cases** including ordinary Run dialog, uploader and takeover focus; `f3-expanded.log`. **10 browser cases** cover both themes, production spreadsheet journeys, dismissal and canceled accepted upload recovery; `f3-browser.log` and `f3-browser-output/`. |
+| Writer guard / inventory metadata | All 15 parity-reference-authority cases pass with live negative controls (`f4-registration-green.log`). The exact retirement/registration metadata selector passes two cases (`f4-inventory-metadata.log`); its other four cases are outside that selector. No guard was added or retired. |
+| Manifest, store catalog, roadmap freshness | All exit 0; `f4-manifest.log`, `f4-stores.log`, `f4-roadmap.log`. Manifest/catalog require no regeneration. Roadmap was regenerated after combination and after this recording. |
+| Whitespace | `git diff --check` and `git diff --cached --check`, exit 0 before exact-path commits. |
+
+Vitest retains the authoritative four-file-worker cap. Browser reports bind configured and observed
+worker identities. Builds/reference writers were serialized within this checkout. The only shared
+checkout dependency is the read-only `node_modules` symlink; build output, reports, fixtures and
+indexes are private. No whole-repository lint, coverage or broad parity pass is claimed.
+
+Documentation-only delivery checks passed: roadmap binding (24 tests), scoped test/generator
+ESLint with zero warnings, roadmap generation/freshness, whitespace, unchanged product inputs and
+completion controls, nine existing instruction twins and an 18,376-byte maximum instruction chain.
+`document-checks.json` binds the checked document hashes; `freeze-verification.json` verifies those
+same bytes after commit. These documentation checks reuse the unchanged runtime proof above.
+
+#### Visual, bundle and resource custody
+
+The built specimen and settled Run/Intake captures were inspected with `/ui` and `playwright-cli`.
+`zoom-receipts.json` records actual Chromium `chrome.tabs.getZoom` readback **1.25 and 2** for both
+themes, 24 button/shortcut dismissal checks and four successful Intake handoffs. At 125%, the
+1280×900 viewport yields the 1024×720 CSS canvas; at 200%, 1440×900 yields 720×450 CSS pixels
+while the application preserves its 1024×720 canvas and document scrolling. CSS zoom remains 1.
+Restored launch controls remain visible; Intake owns arrival focus and Tab reaches its Close control.
+Eight settled native PNGs and their accessibility trees are retained as `zoom-*.png` / `.a11y.yml`.
+Additional combined Explorer catalog, Archive image and Notification inbox captures were inspected.
+No reference triple changed after combining the approved children; their attribution files remain
+with their copied evidence. No reference update or tolerance change was needed.
+
+The production bundle stamp is input digest `b56dfadc453d3573587426d6c25b0b9305335172d16cfd069779912333fe90ec`,
+output digest `4df0ffa05447a76079b885614ddc873c9ef53055a41fce1d63ff212ac9b7ebc8`.
+Manual proof uses the real Intake routes/services over a fresh synthetic authority; surrounding
+shell/SSE services are explicitly `fixture-bff`. No HR worker executes. `manual-server.json`, proof
+scripts, native zoom extension source/configuration, source CSV/hash and bundle identity are retained.
+An initial native capture caught entry transitions; it was retained diagnostically and replaced
+by captures after finite animations and two rendered frames. CLI sandbox `Buffer`/`URL` diagnostic
+errors were repaired in the external proof script; neither changed production code.
+
+`resource-cleanup.json` verifies both owned browser sessions closed, the exact manual server exited,
+its ephemeral port closed, synthetic authority removed and owned zoom profile removed. Operator
+ports 3938/5174, authority, credentials and peer processes were untouched. Candidate/child worktrees,
+branches and ignored proof outputs remain for operator-authorized integration and cleanup.
+
+#### Delivery assessment and deferred acceptance
+
+Two within-scope proof defects were discovered by the required finalizer gates: Archive fixture
+TypeScript narrowing and unregistered disposable writers from consumed children. Both are inherited
+implementation/proof defects under the approved F1/F2 union, repaired together without a scope
+amendment or changed product contract. Earlier execution of the assigned combined checks would have
+exposed them; no additional review stage or broader child gate is inferred. The focus defect was
+already planned and reproduced before repair. A failed first red-test diagnostic compared DOM objects;
+using boolean identity preserved the assertion and produced six specific failures instead of a
+worker inspection failure. No independent review, worker, sibling or next-task dispatch occurred.
+
+One extra inventory invocation unintentionally selected the broad rebuild ratchet. It **failed** on
+13 `fail-loud-catch-default` findings across nine files, all verified byte-identical to combined child
+input `0537903`. This is not a passed or waived check. `deferred-broad-findings.json` and
+`f4-guard-inventory.log` retain exact paths and hashes for **3.1.19**, the already assigned broad
+architecture/acceptance owner. Only the inventory metadata selector was needed for this record.
+No broad assertion, guard exemption or inherited source was changed to hide those findings.
+
+Full coverage, whole-repository lint/architecture, broad desktop parity, production smoke,
+performance, recovery/live acceptance and the complete A01–A42/D01–D05 matrix remain **3.1.19**.
+The required focused release gates above pass. The next authorized boundary is an explicit operator
+instruction to integrate this frozen delivery into local master; then recheck target drift, verify
+accepted ancestry/content, rerun only invalidated checks, preserve durable evidence, clean accepted
+inactive owned worktrees/branches and close worker/group records. No push or downstream launch.
