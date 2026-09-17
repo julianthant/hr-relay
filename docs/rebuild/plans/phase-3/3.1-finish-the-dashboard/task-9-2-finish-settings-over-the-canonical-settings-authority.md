@@ -1,6 +1,12 @@
 # Task 3.1.9.2 · Finish Settings over the canonical settings authority
 <!-- roadmap: dash-settings -->
 
+**Current delivery: complete — 2026-09-17.** Accepted candidate
+`368496e0d55a259e8dd098c81a37bbcc9a966763` is incorporated into local master through
+`c634e900f9858cf63e6ffb093581141a92dd1ecd`. Required focused child/group gates, integration
+and owned cleanup are complete; see the [finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17).
+Full acceptance remains 3.1.19. Earlier dated plan/freeze receipts below retain their historical state.
+
 **Current assignment: 3.1.9.2.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -19,7 +25,7 @@ Consume the [3.1.9 B ownership and working-interface record](task-9-establish-in
 > Consume the existing catalog/revision/set-clear behavior and current settings activation through the service and protected
 > write-only input through its independent operation. The file-target wording below is superseded.
 
-- [ ] Render every catalog leaf and implement revisioned edit/conflict/draft-reset/persisted-clear flows; protected
+- [x] Render every catalog leaf and implement revisioned edit/conflict/draft-reset/persisted-clear flows; protected
   values remain write-only and prove persisted readback by presence/revision.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes `ref clock-config-secrets` §D331.10, the Settings/Setup edit

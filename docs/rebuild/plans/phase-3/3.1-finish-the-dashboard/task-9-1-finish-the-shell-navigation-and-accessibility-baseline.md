@@ -4,8 +4,8 @@
 **Current assignment: 3.1.9.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 
 **Current delivery: complete.** Shell integration and owned cleanup were accepted on local `master`
-at `251d471b27dcdb0d32027fc5dd9acffffe3c6449` under the operator amendment below. 3.1.9.8 remains
-responsible for combined surface acceptance and downstream release.
+at `251d471b27dcdb0d32027fc5dd9acffffe3c6449` under the operator amendment below. Combined surface acceptance and downstream release are complete; see the
+[finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17). Full acceptance remains 3.1.19.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
 Earlier labels and filenames are recorded in the [rename map](README.md#earlier-labels-and-filenames).

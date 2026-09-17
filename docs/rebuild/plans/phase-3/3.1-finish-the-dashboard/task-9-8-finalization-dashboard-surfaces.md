@@ -3,9 +3,9 @@
 
 **Current assignment: 3.1.9.8.** Intake: candidates with passing focused checks from 3.1.9.1–3.1.9.7.
 
-- [ ] combine every assigned worker candidate and verify the integrated group with focused checks
-- [ ] fix group defects; pass typecheck, focused integration tests, scoped lint and affected build/generated checks
-- [ ] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
+- [x] combine every assigned worker candidate and verify the integrated group with focused checks
+- [x] fix group defects; pass typecheck, focused integration tests, scoped lint and affected build/generated checks
+- [x] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
 
 Accepted output releases 3.1.10 Date, 3.1.11 Sessions and 3.1.12 Activity. Full repository gates and final repairs remain at 3.1.19; this is a focused development release.
 
@@ -349,24 +349,25 @@ roadmap journal/generated page change. No runtime gates are rerun or claimed by 
 
 ### Focused candidate delivery — 2026-09-17
 
-**Current state: F1–F4 passed; F5 candidate frozen, awaiting explicit operator instruction to
-integrate into local master.** The task/group and child completion checkboxes remain open until
-accepted integration and owned cleanup. No downstream task is released or dispatched by this receipt.
+**Current state: F1–F5 complete.** The operator authorized integration after the passing candidate
+was frozen. Local master accepted the exact delivery tree, and owned cleanup is verified.
+The [closure below](#accepted-integration-and-group-closure--2026-09-17) completes the seven children
+and releases 3.1.10–3.1.12 for operator-controlled planning/launch; no task was dispatched.
 There were zero workers and zero independent reviewers, as approved.
 
-The implementation is `752607c69bbfc8c425c7a3e1c9e7890b6cc88e84` on
-`codex/3.1.9.8-surfaces`, retained at `/Users/julianhein/Projects/hr-worktree-surfaces`.
-The documentation-only commit containing this receipt is the frozen delivery tip; its full SHA is
-reported externally to avoid a self-reference. The creation base was exactly
+The implementation was frozen at `752607c69bbfc8c425c7a3e1c9e7890b6cc88e84` on
+`codex/3.1.9.8-surfaces` in `/Users/julianhein/Projects/hr-worktree-surfaces`. The frozen delivery
+is `2109cab8fc6481e1aa2a4eceb9052953a76c6254`; both commits remain in master ancestry after
+removing the incorporated branch and worktree. The creation base was exactly
 `e7c722c687bc035e083841fbea9c339af75a8453`, verified against the committed owner and retained
-`codex/plan-3.1.9.8`. Master remains `ac8c620b72ec47d9788909a4a52941a4c741f42a`.
+`codex/plan-3.1.9.8`. At freeze, master remained `ac8c620b72ec47d9788909a4a52941a4c741f42a`.
 
 Durable evidence is `/Users/julianhein/Projects/hr-surfaces-evidence-20260917-qy8rqtwg/`.
 Each gate has a `.json` command/exit/timing record, `.inputs.json` file hashes and full `.log`.
 `candidate-inputs.json` binds the implementation/tree, all 390 changed files since the accepted
 common parent, final proof/log hashes, 161-file lint census, bundle and effective browser workers.
 Child proof is preserved in `intake-child-evidence/` and `archive-child-evidence/`; original child
-locations and clean tracked worktrees are retained. `intake-input-verification.json` independently
+locations were retained until accepted cleanup, which preserved their private files outside the worktrees. `intake-input-verification.json` independently
 matches 2,300 product/proof/configuration inputs to its frozen delivery. Archive's 70 source/reference
 and seven runtime-log hashes were reverified at intake.
 
@@ -431,8 +432,9 @@ errors were repaired in the external proof script; neither changed production co
 
 `resource-cleanup.json` verifies both owned browser sessions closed, the exact manual server exited,
 its ephemeral port closed, synthetic authority removed and owned zoom profile removed. Operator
-ports 3938/5174, authority, credentials and peer processes were untouched. Candidate/child worktrees,
-branches and ignored proof outputs remain for operator-authorized integration and cleanup.
+ports 3938/5174, authority, credentials and peer processes were untouched. At candidate freeze, child/finalizer worktrees,
+branches and ignored proof outputs remained for operator-authorized integration and cleanup; their
+verified final disposition is recorded below.
 
 #### Delivery assessment and deferred acceptance
 
@@ -454,7 +456,54 @@ No broad assertion, guard exemption or inherited source was changed to hide thos
 
 Full coverage, whole-repository lint/architecture, broad desktop parity, production smoke,
 performance, recovery/live acceptance and the complete A01–A42/D01–D05 matrix remain **3.1.19**.
-The required focused release gates above pass. The next authorized boundary is an explicit operator
-instruction to integrate this frozen delivery into local master; then recheck target drift, verify
-accepted ancestry/content, rerun only invalidated checks, preserve durable evidence, clean accepted
-inactive owned worktrees/branches and close worker/group records. No push or downstream launch.
+The required focused release gates above pass. At candidate freeze, explicit operator integration instruction was still required. The accepted
+integration and cleanup below satisfy that boundary. No push or downstream launch occurred.
+
+
+### Accepted integration and group closure — 2026-09-17
+
+After frozen delivery `2109cab8fc6481e1aa2a4eceb9052953a76c6254` was reported, the operator
+instructed **“do it”** at the explicit master-integration boundary. Master was reverified clean and
+unchanged at `ac8c620b72ec47d9788909a4a52941a4c741f42a`; candidate hashes, plan and child ancestry
+were rechecked before merging. Integration `801da4f3d1bfdf0a9ecc81c993289f70699aa140` has parents
+that master tip and the exact frozen delivery. Its complete tree is
+`27ef19a58b43235e13ff79842ff05a9e39932486`, identical to the frozen delivery. There were no merge
+conflicts or invalidated runtime inputs. The focused gate results above therefore remain applicable;
+no duplicate broad gate was run or claimed.
+
+| Child | Accepted candidate | Local integration and cleanup |
+| --- | --- | --- |
+| 3.1.9.1 Shell | `9056e236bf73024ab9649a73c5c6915633e23061` | `251d471b27dcdb0d32027fc5dd9acffffe3c6449`; prior accepted cleanup preserved. |
+| 3.1.9.2 Settings | `368496e0d55a259e8dd098c81a37bbcc9a966763` | `c634e900f9858cf63e6ffb093581141a92dd1ecd`; prior sweep cleanup preserved, including subsequent approved Archive correction. |
+| 3.1.9.3 Storage | `1514c27f069765cb62cf5bcf2b461ba5555eca92` | `b3f5904e28ca7c23f11a2a4d8d217cbdecafa5a8`; prior sweep cleanup/reference resolution preserved. |
+| 3.1.9.4 Explorer | `2ec017d992d74190d54a3af0cd052192294c5e7a` | `931e283ab263a26a556aad33ac49c5eeca51a407`; prior sweep cleanup preserved. |
+| 3.1.9.5 Notifications | `387836885d426db81dac63126adc28aea9f71ddd` | `ac8c620b72ec47d9788909a4a52941a4c741f42a`; prior sweep cleanup preserved. |
+| 3.1.9.6 Intake | `45748dae4436537ab86585ffa03b95dbc6843caa` | `801da4f3d1bfdf0a9ecc81c993289f70699aa140`; worktree and implementation branch removed after incorporation/custody verification. |
+| 3.1.9.7 Archive | `27bbbe74791fab7c4f7ec1485922dc2b485fd688` | `801da4f3d1bfdf0a9ecc81c993289f70699aa140`; worktree and implementation branch removed after incorporation/custody verification. |
+
+`integration-verification.json` binds the accepted tree and parents. `worktree-custody.json` records
+353 private files moved without loss from Intake, Archive and Surfaces into
+`retained-worktree-files/` under the durable evidence directory above; every file hash and symlink
+identity was checked after moving. This includes all untracked Archive proof and ignored browser,
+bundle, tracker and parity outputs. Existing `intake-child-evidence/`, `archive-child-evidence/`,
+`frozen-dashboard-bundle/` and the original external Intake evidence remain available.
+
+Before removal, all three incorporated worktrees were clean including untracked/ignored files,
+unlocked and inactive. The dependency symlinks were unlinked without touching the primary
+`node_modules`. Ordinary `git worktree remove` and `git branch -d` removed exactly
+`hr-worktree-intake` / `codex/3.1.9.6-intake`, `hr-worktree-archive` / `codex/3.1.9.7-archive`, and
+`hr-worktree-surfaces` / `codex/3.1.9.8-surfaces`. `repository-cleanup.json` verifies registrations,
+physical paths and refs absent, with only the primary worktree remaining and all unrelated/planning
+refs unchanged, including `codex/plan-3.1.9.8`. No exact separate task/host association was recorded;
+no task was guessed or archived. No owned repository resource remains to clean.
+
+This completion-only record changes no product, proof, dependency, configuration or acceptance
+contract input. The documentation gates cover roadmap binding, scoped test/generator lint,
+roadmap generation/freshness, touched links/fragments, instruction twins/chain limits and whitespace.
+Their exact command/exit/input receipts use the `f5-closure-` prefix; `closure-document-checks.json`
+and `completion-verification.json` bind the committed record and unchanged runtime inputs.
+
+**3.1.9.1–3.1.9.8 are complete under the approved focused cadence.** This releases 3.1.10 Date,
+3.1.11 Sessions and 3.1.12 Activity for operator-controlled planning/launch. Full acceptance and the
+retained 13 broad-ratchet findings remain assigned to **3.1.19**; they are neither passed nor waived.
+No push, sibling dispatch, next-task launch, production cutover or independent review occurred.

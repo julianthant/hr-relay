@@ -1,6 +1,12 @@
 # Task 3.1.9.7 · Finish Archive saved reports, version changes, and deletion
 <!-- roadmap: dash-archive -->
 
+**Current delivery: complete — 2026-09-17.** Accepted candidate
+`27bbbe74791fab7c4f7ec1485922dc2b485fd688` is incorporated into local master through
+`801da4f3d1bfdf0a9ecc81c993289f70699aa140`. Required focused child/group gates, integration
+and owned cleanup are complete; see the [finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17).
+Full acceptance remains 3.1.19. Earlier dated plan/freeze receipts below retain their historical state.
+
 **Current assignment: 3.1.9.7.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -10,17 +16,17 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. The approved execution brief below and the [Archive ownership amendment](task-9-establish-independent-dashboard-boundaries.md#archive-child-ownership-amendment-2026-09-16) add the narrow deletion-recovery repair. Other shared registration and generated outputs remain reserved.
 
-- [ ] Finish saved-report browsing, frozen values, version-change review/apply, report export,
+- [x] Finish saved-report browsing, frozen values, version-change review/apply, report export,
   terminal-only live deletion and exact saved-report deletion, with idempotence, honest storage
   deltas, shared-file custody and convergence.
-- [ ] Consume the separate `archive.sqlite` / `archive_records` authority without current workflow
+- [x] Consume the separate `archive.sqlite` / `archive_records` authority without current workflow
   descriptors or live failure/settings parsers. Version changes use `version_changes`; deletion
   retains canonical disposition, progress and permanent-key warning semantics.
-- [ ] Credit accepted indexed filters, safe attachment downloads and reference-aware deletion only
+- [x] Credit accepted indexed filters, safe attachment downloads and reference-aware deletion only
   within the 2.6 A/H proof. Complete the remaining UI/production-browser cases and whole-report
   export; test missing/corrupt bytes, stale selection/filter response, partial transfer/deletion,
   exact replay, changed review membership and truthful generic-outcome labels.
-- [ ] Verify Archive has no Relaunch/Rerun/Retry/Restart execution door. The C0 archive amendment
+- [x] Verify Archive has no Relaunch/Rerun/Retry/Restart execution door. The C0 archive amendment
   and 2.6.9 relaunch-history retirement supersede the former `archived_runs`, archive relaunch and
   `archive_relaunches` requirements; do not restore those tables or commands.
 

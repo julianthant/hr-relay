@@ -1679,6 +1679,7 @@ needs:
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `9056e236bf73024ab9649a73c5c6915633e23061` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-13 | 3.1.9.1 accepted | Operator-directed local integration `251d471b27dcdb0d32027fc5dd9acffffe3c6449` accepts corrected candidate `9056e236bf73024ab9649a73c5c6915633e23061`. Typecheck, 93 shell tests, 28 architecture checks, focused schema-fixture regression, scoped lint, 34 production-browser cases and actual 125%/200% zoom pass; exact candidate-tree equality and owned worktree/ref cleanup verified. No push or group release; 3.1.9.8 combined acceptance and 3.1.19 full gates remain open.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.1; former 3.1.9-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 frame seam in `phase-3-1-dashboard-c21194e18-r09-shell`, parallel with Tasks 11, 13 and 25 · left: Task 8 ownership freeze
@@ -1686,8 +1687,8 @@ log:
 
 
 ##### 2 · Finish Settings over the canonical settings authority {#dash-settings}
-status: planned
-date: D344 · former 3.1.9-2 · independent worktree after named prerequisites
+status: done
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-2-finish-settings-over-the-canonical-settings-authority §Task 3.1.9.2 · Finish Settings over the canonical settings authority · ref:clock-config-secrets §3 · ref:frontend-backend-integration §4 · ref:guards-and-tests §5.2
 
 > D336: ordinary settings are SQLite-owned; protected writes/readback are independent credential operations. Keep the catalog, revision/conflict, reset/clear behavior and accepted new-run settings activation.
@@ -1695,15 +1696,16 @@ doc: 3.1/task-9-2-finish-settings-over-the-canonical-settings-authority §Task 3
 > D341: consume the application-only 86-row catalog; test subjects, canaries, file paths and test data are excluded from Settings/Setup and credential operations.
 
 builds:
-- [ ] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and current activation scope
-- [ ] BOTH support revisioned edit/save/conflict/reset flows; protected values are write-only and display presence, never plaintext
-- [ ] PROOF invalid, stale, partial, interrupted, current/stale-plan, and redaction paths against persisted readback
+- [x] BOTH render every catalog leaf in one Settings information architecture with source, validity, editability, sensitivity, and current activation scope
+- [x] BOTH support revisioned edit/save/conflict/reset flows; protected values are write-only and display presence, never plaintext
+- [x] PROOF invalid, stale, partial, interrupted, current/stale-plan, and redaction paths against persisted readback
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `368496e0d55a259e8dd098c81a37bbcc9a966763` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.2; former 3.1.9-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 settings seam in `phase-3-1-dashboard-c21194e18-r11-settings`, parallel with Tasks 9, 13 and 25 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 edit contract, §D331.5's two CAS arms and §D331.6 presence readback (no redesign) · left: the deliberate P40/A8 parity re-freeze happens here
@@ -1711,22 +1713,23 @@ log:
 
 
 ##### 3 · Finish basic storage health and recovery access {#dash-storage}
-status: planned
-date: D344 · former 3.1.9-3 · independent worktree after named prerequisites
+status: done
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-3-finish-basic-storage-health-and-recovery-access §Task 3.1.9.3 · Finish basic storage health and recovery access · ref:operator-trust §1 · ref:frontend-backend-integration §10 · ref:dashboard-surfaces §2.5
 
 > D336 supplies the revised SQLite-settings recovery contract. D339 keeps basic health and access to recovery commands in release scope; new advanced recovery interfaces are deferred until needed.
 
 builds:
-- [ ] BOTH serve truthful health/doctor findings and actionable access/instructions for supported explicit backup, restore and upgrade commands
-- [ ] BOTH preserve working controls and stopped-system/revision admission without requiring new interactive restore, migration or repair UI for release
-- [ ] PROOF cover underlying corruption, interruption, stale, unknown and missing-credential states; show no inert recovery controls and record the advanced-interface deferral
+- [x] BOTH serve truthful health/doctor findings and actionable access/instructions for supported explicit backup, restore and upgrade commands
+- [x] BOTH preserve working controls and stopped-system/revision admission without requiring new interactive restore, migration or repair UI for release
+- [x] PROOF cover underlying corruption, interruption, stale, unknown and missing-credential states; show no inert recovery controls and record the advanced-interface deferral
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `1514c27f069765cb62cf5bcf2b461ba5555eca92` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.3; former 3.1.9-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 storage seam in `phase-3-1-dashboard-c21194e18-r13-storage`, parallel with Tasks 9, 11 and 25 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D332 §D332.1 (`cli storage upgrade` as a fourth subcommand), §D332.6 verdicts, §D332.5 journal and §D332.4 restore admission (no redesign) · left: D322 explicit-only backup stands
@@ -1735,20 +1738,21 @@ log:
 
 
 ##### 4 · Finish Workflow Explorer and catalog editing {#dash-explorer}
-status: planned
-date: D344 · former 3.1.9-4 · independent worktree after named prerequisites
+status: done
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-4-finish-workflow-explorer-and-catalog-editing §Task 3.1.9.4 · Finish Workflow Explorer and catalog editing · ref:operator-trust §5.4
 
 builds:
-- [ ] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
-- [ ] BOTH consume 3.1.9's accepted D337 SQLite authority through isolated editor/service ports; preserve label/icon/category editing, conflicts and hot readback
-- [ ] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases and exact replay through the accepted prerequisite; conversion/recovery and shared DDL/composition proof belong to 3.1.9
+- [x] BOTH preserve graph/catalog reads and validated presentation preview/diff/revision/hot-apply behavior; workflow code remains source-authored
+- [x] BOTH consume 3.1.9's accepted D337 SQLite authority through isolated editor/service ports; preserve label/icon/category editing, conflicts and hot readback
+- [x] PROOF validate invalid/cyclic/stale/manifest-drift/reload cases and exact replay through the accepted prerequisite; conversion/recovery and shared DDL/composition proof belong to 3.1.9
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `2ec017d992d74190d54a3af0cd052192294c5e7a` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.1; former 3.1.9-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 1 Explorer/catalog seam in `phase-3-1-dashboard-c21194e18-r25-explorer`, parallel with Tasks 9, 11 and 13 · left: Task 8 ownership freeze
 - 2026-09-06 | D337 approved simplification | same appearance editing, one SQLite commit instead of file/database coordination; implementation remains Task 9-4
@@ -1757,20 +1761,21 @@ log:
 
 
 ##### 5 · Finish notifications and delivery behavior {#dash-notifications}
-status: planned
-date: D344 · former 3.1.10-3 · independent worktree after named prerequisites
+status: done
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-5-finish-notifications-and-delivery-behavior §Task 3.1.9.5 · Finish notifications and delivery behavior · ref:operator-trust §6 · ref:dashboard-surfaces §2.6
 
 builds:
-- [ ] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
-- [ ] BOTH implement pinned/read/snooze/dismiss/filter/open-target behavior from durable actor-keyed rows
-- [ ] PROOF row-before-OS-delivery, dedupe, restart, reconnect-gap, permission-denied, stale command, and target-link cases
+- [x] BE publish every declared trigger, including run-failed, subject-mismatch, write-parked, repeating-failure, verified-done, storage, and backfill-gap
+- [x] BOTH implement pinned/read/snooze/dismiss/filter/open-target behavior from durable actor-keyed rows
+- [x] PROOF row-before-OS-delivery, dedupe, restart, reconnect-gap, permission-denied, stale command, and target-link cases
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `387836885d426db81dac63126adc28aea9f71ddd` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-14 | approved 3.1.9.5 execution brief | N1–N5, durable source identities, all eight production triggers, actionable inbox and explicit browser delivery; narrow shared ownership and contract amendments; focused candidate for 3.1.9.8, full acceptance at 3.1.19; implementation pending
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.2; former 3.1.10-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 notification seam in `phase-3-1-dashboard-c21194e18-r17-notifications`, parallel with Tasks 10, 14 and 26 · left: Task 8 ownership freeze
@@ -1778,21 +1783,22 @@ log:
 
 
 ##### 6 · Finish Intake surfaces {#dash-intake-edit}
-status: planned
-date: D344 · former 3.1.10-4 · independent worktree after named prerequisites
+status: done
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-6-finish-intake-surfaces §Task 3.1.9.6 · Finish Intake surfaces · ref:data-intake-and-edit-data · ref:frontend-backend-integration §5.1.7
 
 builds:
-- [ ] BOTH complete spreadsheet upload/map/validate/reject/prepare/manifest/rerun-diff flows over existing services; classification/OCR obligations retain their existing owners
-- [ ] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
-- [ ] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
-- [ ] PROOF preserve ordinary Run/Rerun and prior-run values; only the spreadsheet upload extraction/call site and Intake-specific comparison/confirmation changes use the approved narrow shared-file exception
+- [x] BOTH complete spreadsheet upload/map/validate/reject/prepare/manifest/rerun-diff flows over existing services; classification/OCR obligations retain their existing owners
+- [x] BOTH show producer progress, records, blocked reasons, mappings, validation, provenance, and exact workflow handoff availability
+- [x] PROOF real representative files plus malformed, partial, canceled, stale, redacted, duplicate, and archived cases
+- [x] PROOF preserve ordinary Run/Rerun and prior-run values; only the spreadsheet upload extraction/call site and Intake-specific comparison/confirmation changes use the approved narrow shared-file exception
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `45748dae4436537ab86585ffa03b95dbc6843caa` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-14 | operator-approved phase plan | I1–I5 completes spreadsheet Intake, with narrow upload extraction and Intake command/confirmation ownership; one Astra/medium supervisor, no workers/review, focused proof and 3.1.9.8 finalizer intake. Classification/OCR wording corrected; existing owners retained. Plan approval is complete, implementation unstarted; launch requires a free slot within the four-worktree ceiling.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.3; former 3.1.10-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 Intake/Edit Data seam in `phase-3-1-dashboard-c21194e18-r26-intake-edit`, parallel with Tasks 10, 14 and 17 · left: Task 8 ownership freeze
@@ -1801,21 +1807,22 @@ log:
 
 
 ##### 7 · Finish Archive saved reports, version changes, and deletion {#dash-archive}
-status: planned
-date: D344 · former 3.1.11-3 · independent worktree after named prerequisites
+status: done
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-7-finish-archive-saved-reports-version-changes-and-deletion §Task 3.1.9.7 · Finish Archive saved reports, version changes, and deletion · ref:dashboard-surfaces §9.5 · ref:operator-trust §5.7 · ref:dashboard-surfaces §9.2 · ref:dashboard-surfaces §2.5
 
 builds:
-- [ ] BOTH finish indexed saved-report browsing and frozen generic evidence without current descriptors; credit accepted A/H subfeatures only within their proof
-- [ ] BOTH complete version-change review/apply/resume, report export and exact terminal live/saved-report deletion with canonical disposition and shared-file custody
-- [ ] PROOF current/missing/corrupt/stale/partial/replay cases, minor-versus-major membership, redaction, truthful labels, storage deltas and convergence
-- [ ] PROOF archive execution doors remain absent; C0 and accepted 2.6.9 supersede archived_runs, relaunch and archive_relaunches obligations
+- [x] BOTH finish indexed saved-report browsing and frozen generic evidence without current descriptors; credit accepted A/H subfeatures only within their proof
+- [x] BOTH complete version-change review/apply/resume, report export and exact terminal live/saved-report deletion with canonical disposition and shared-file custody
+- [x] PROOF current/missing/corrupt/stale/partial/replay cases, minor-versus-major membership, redaction, truthful labels, storage deltas and convergence
+- [x] PROOF archive execution doors remain absent; C0 and accepted 2.6.9 supersede archived_runs, relaunch and archive_relaunches obligations
 
 needs:
 - dash-truth-reset
 - dash-boundary-foundation
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Candidate `27bbbe74791fab7c4f7ec1485922dc2b485fd688` and its accepted integration are retained in master ancestry. Combined focused gates and owned cleanup are verified in the finalizer owner; child complete. Full acceptance remains 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.4; former 3.1.11-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 Archive seam in `phase-3-1-dashboard-c21194e18-r23-archive`, parallel with Tasks 12 and 15 · left: Task 8 ownership freeze
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.8 (archive, `delete-archived-run` citing `contentDigest`), §D330.7 relaunch as a fresh run with archive lineage, and D332 §D332.7 item 7 (no redesign) · left: archive visibility is unchanged across the upgrade
@@ -1824,17 +1831,17 @@ log:
 
 
 ##### 8 · Finalization — dashboard surfaces {#dash-surfaces-finalizer}
-status: planned
+status: done
 size: M
-date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
+date: 2026-09-17 · focused group acceptance, directed local integration and owned cleanup
 doc: 3.1/task-9-8-finalization-dashboard-surfaces §Task 3.1.9.8 · Finalization — dashboard surfaces · ref:guards-and-tests §3.14
 
 > Combine worker candidates with passing focused checks: 3.1.9.1–3.1.9.7; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
-- [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
-- [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
+- [x] BOTH resolve combined defects and generated-output drift within the approved group
+- [x] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [x] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
 - dash-shell
@@ -1846,6 +1853,7 @@ needs:
 - dash-archive
 
 log:
+- 2026-09-17 | 3.1.9.8 group release accepted | Frozen delivery `2109cab8fc6481e1aa2a4eceb9052953a76c6254` integrated at `801da4f3d1bfdf0a9ecc81c993289f70699aa140` with exact tree equality. All seven children and finalizer cleanup complete; durable child proof retained. Releases 3.1.10–3.1.12 without dispatch. Documentation checks record unchanged runtime inputs; full acceptance and retained broad-ratchet findings remain 3.1.19.
 - 2026-09-16 | operator-approved 3.1.9.8 execution brief | F1–F5 combines seven surface candidates and fixes group interfaces, including narrow Run-dialog focus repair; one Astra/medium supervisor, no workers or independent review, focused group gates and explicit operator integration. Five candidates are already integrated and Intake is frozen; launch waits for Archive's exact frozen candidate and completed focused proof. Full acceptance remains 3.1.19; implementation unstarted.
 - 2026-09-17 | 3.1.9.8 prerequisites verified | Archive delivery `27bbbe74791fab7c4f7ec1485922dc2b485fd688` now contains completed AR1–AR5 and passing focused proof, including its approved Settings correction. Exact source/reference/log hashes and ancestry verified; Intake and the five accepted integrations unchanged. The approved finalizer is ready for a fresh supervisor after planning persistence checks; implementation and group release remain open.
 - 2026-09-17 | 3.1.9.8 focused candidate frozen | Exact Intake/Archive deliveries combined with five accepted ancestors; Run dismissal focus repaired; required 29-file/522-test selection, 138 browser cases plus exact Start selection, typecheck, scoped lint and generated checks pass. Implementation `752607c69bbfc8c425c7a3e1c9e7890b6cc88e84`; durable evidence and inherited broad-ratchet findings are recorded in the owner. Explicit master integration and cleanup remain pending; no downstream release or full acceptance claim.

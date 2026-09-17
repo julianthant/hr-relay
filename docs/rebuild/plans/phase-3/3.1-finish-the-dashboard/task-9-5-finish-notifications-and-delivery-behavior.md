@@ -1,6 +1,12 @@
 # Task 3.1.9.5 · Finish notifications and delivery behavior
 <!-- roadmap: dash-notifications -->
 
+**Current delivery: complete — 2026-09-17.** Accepted candidate
+`387836885d426db81dac63126adc28aea9f71ddd` is incorporated into local master through
+`ac8c620b72ec47d9788909a4a52941a4c741f42a`. Required focused child/group gates, integration
+and owned cleanup are complete; see the [finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17).
+Full acceptance remains 3.1.19. Earlier dated plan/freeze receipts below retain their historical state.
+
 **Current assignment: 3.1.9.5.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -8,9 +14,9 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration, together with the [approved Notifications ownership amendment](task-9-establish-independent-dashboard-boundaries.md#notifications-child-ownership-amendment--2026-09-14). The complete execution brief below is approved. N1–N5 focused candidate evidence is recorded below; group integration and full acceptance remain pending.
+Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration, together with the [approved Notifications ownership amendment](task-9-establish-independent-dashboard-boundaries.md#notifications-child-ownership-amendment--2026-09-14). The complete execution brief below is approved. N1–N5 focused candidate evidence is recorded below; group integration is accepted in the closure above; full acceptance remains 3.1.19.
 
-- [ ] Publish every declared trigger and prove durable row-before-delivery, dedupe, restart,
+- [x] Publish every declared trigger and prove durable row-before-delivery, dedupe, restart,
   reconnect-gap, permission-denied, lifecycle controls, and target navigation.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and

@@ -1,6 +1,12 @@
 # Task 3.1.9.3 · Finish basic storage health and recovery access
 <!-- roadmap: dash-storage -->
 
+**Current delivery: complete — 2026-09-17.** Accepted candidate
+`1514c27f069765cb62cf5bcf2b461ba5555eca92` is incorporated into local master through
+`b3f5904e28ca7c23f11a2a4d8d217cbdecafa5a8`. Required focused child/group gates, integration
+and owned cleanup are complete; see the [finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17).
+Full acceptance remains 3.1.19. Earlier dated plan/freeze receipts below retain their historical state.
+
 **Current assignment: 3.1.9.3.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -10,13 +16,13 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. The approved execution brief below and the [Storage ownership amendment](task-9-establish-independent-dashboard-boundaries.md#storage-child-ownership-amendment--2026-09-13) add the narrowly required read-only doctor correction. Other shared registration and generated outputs remain reserved.
 
-- [ ] Serve truthful storage health, doctor findings and actionable recovery instructions. Keep
+- [x] Serve truthful storage health, doctor findings and actionable recovery instructions. Keep
   supported explicit backup/restore/upgrade commands reachable through clear instructions; preserve
   working existing controls without requiring new interactive recovery UI for the first release.
-- [ ] Prove the surfaced corruption/interruption/stale/stopped-system cases against the underlying
+- [x] Prove the surfaced corruption/interruption/stale/stopped-system cases against the underlying
   recovery commands. D336's SQLite settings and independent credentials replace the old settings-file authority.
   The live/archive database pair and retained capture/report files still require authenticated recovery.
-- [ ] Record the D339 deferral of new interactive restore, migration and repair interfaces. Admit
+- [x] Record the D339 deferral of new interactive restore, migration and repair interfaces. Admit
   them only for a concrete workflow need or an explicit post-release request; core recovery and its
   tests remain mandatory. Do not present an unimplemented action as an available button.
 
@@ -324,7 +330,7 @@ Evidence and the proposed source patch are in `/Users/julianhein/Projects/hr-sto
 
 ### Execution delivery — 2026-09-14
 
-**Current state:** S1–S4 and P1–P5 are delivered as a tested, committed candidate frozen for
+**State at child freeze:** S1–S4 and P1–P5 are delivered as a tested, committed candidate frozen for
 operator-controlled 3.1.9.8 intake. The final recording commit is identified in the external receipt
 below. This task's completion checkboxes remain open until integration and assigned cleanup.
 No independent review is assigned under the Phase 3.1 cadence.

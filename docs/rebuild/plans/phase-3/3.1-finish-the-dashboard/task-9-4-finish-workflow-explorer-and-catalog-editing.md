@@ -1,6 +1,12 @@
 # Task 3.1.9.4 · Finish Workflow Explorer and catalog editing
 <!-- roadmap: dash-explorer -->
 
+**Current delivery: complete — 2026-09-17.** Accepted candidate
+`2ec017d992d74190d54a3af0cd052192294c5e7a` is incorporated into local master through
+`931e283ab263a26a556aad33ac49c5eeca51a407`. Required focused child/group gates, integration
+and owned cleanup are complete; see the [finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17).
+Full acceptance remains 3.1.19. Earlier dated plan/freeze receipts below retain their historical state.
+
 **Current assignment: 3.1.9.4.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -10,7 +16,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration. The approved execution brief below binds this child's surface, client and proof paths. Shared registration and generated outputs remain reserved.
 
-- [ ] Consume the accepted D337 SQLite authority from [3.1.9](task-9-establish-independent-dashboard-boundaries.md#approved-execution-brief--2026-09-13). Preserve label/icon/category editing, validation, conflicts, preview/diff, exact replay and hot readback through its isolated service ports.
+- [x] Consume the accepted D337 SQLite authority from [3.1.9](task-9-establish-independent-dashboard-boundaries.md#approved-execution-brief--2026-09-13). Preserve label/icon/category editing, validation, conflicts, preview/diff, exact replay and hot readback through its isolated service ports.
 
 **Operator allocation — 2026-09-13.** The complete persistence conversion, migration, command/audit
 transaction, reader/writer cutover, old-protocol retirement and conversion/recovery proof belong to
@@ -18,7 +24,7 @@ transaction, reader/writer cutover, old-protocol retirement and conversion/recov
 it does not reopen shared SQLite, kernel or composition ownership. Historical Task 9-4 conversion
 references describe the earlier allocation.
 
-- [ ] Complete graph/catalog reads and validated presentation preview/diff/revision/hot-apply;
+- [x] Complete graph/catalog reads and validated presentation preview/diff/revision/hot-apply;
   prove invalid, cyclic, stale, manifest-drift, reload, revisioned appearance restore and fresh-context
   existing-workflow cases. Preserve complete source-change briefs without adding new-workflow authoring.
 

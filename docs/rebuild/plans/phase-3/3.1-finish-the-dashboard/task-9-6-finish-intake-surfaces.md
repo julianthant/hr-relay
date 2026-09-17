@@ -1,6 +1,12 @@
 # Task 3.1.9.6 · Finish Intake surfaces
 <!-- roadmap: dash-intake-edit -->
 
+**Current delivery: complete — 2026-09-17.** Accepted candidate
+`45748dae4436537ab86585ffa03b95dbc6843caa` is incorporated into local master through
+`801da4f3d1bfdf0a9ecc81c993289f70699aa140`. Required focused child/group gates, integration
+and owned cleanup are complete; see the [finalizer closure](task-9-8-finalization-dashboard-surfaces.md#accepted-integration-and-group-closure--2026-09-17).
+Full acceptance remains 3.1.19. Earlier dated plan/freeze receipts below retain their historical state.
+
 **Current assignment: 3.1.9.6.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -10,10 +16,10 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 
 Consume the [3.1.9 B ownership and working-interface record](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13) at its accepted integration, together with its [Intake ownership amendment](task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14). The approved execution brief below owns this child's scope and narrow shared-file exceptions. Other shared registration and generated outputs remain reserved.
 
-- [ ] Complete upload-to-handoff, mapping, validation, reject review, manifest and rerun-diff flows
+- [x] Complete upload-to-handoff, mapping, validation, reject review, manifest and rerun-diff flows
   with progress/provenance/refusals; prove real, malformed, partial, canceled, stale, redacted,
   duplicate and archived cases.
-- [ ] Preserve ordinary Run/Rerun and prior-run value projection ownership in 3.1.11.2. The
+- [x] Preserve ordinary Run/Rerun and prior-run value projection ownership in 3.1.11.2. The
   approved exception extracts and repairs only the spreadsheet upload component and replaces its
   Run-modal call site; it does not change ordinary Run/Rerun behavior.
 
