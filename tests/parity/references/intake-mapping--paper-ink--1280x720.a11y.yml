@@ -75,7 +75,7 @@
               - text: Employee Name
               - button "Bind Employee Name": Use it
               - text: known header, its values parse (1.00)
-    - text: This mapping has not been validated, so nothing is known about its rows yet. header row 3fingerprint 55f5fb4b
+    - text: "Not ready — mapping has not been validated. Run is blocked: mapping has not been validated. header row 3fingerprint 55f5fb4b"
     - button "Show full layout fingerprint"
     - button "Validate"
     - button "Start runs" [disabled]

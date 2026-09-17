@@ -76,6 +76,8 @@ import {
   resolveInspectSelection,
   type IntakeLayout,
 } from "../domain/intake/parse.js";
+import type { IntakePlanManifest } from "../domain/intake/manifest.js";
+import { intakeReviewBinding, resolveIntakeComparison } from "../domain/intake/review.js";
 import { deriveIntakeEnqueuePlan } from "../domain/intake/enqueue.js";
 import { confirmBinding } from "../domain/intake/mapping.js";
 import type { IntakeProjection } from "../domain/intake/projection.js";
@@ -1299,15 +1301,25 @@ function executeIntake(
 
   switch (request.type) {
     case "inspect-intake": {
+      const comparisonManifestId = request.payload.comparisonManifestId ?? current.comparisonManifestId;
+      if (request.payload.comparisonManifestId !== undefined) {
+        if (current.version !== request.target.expectedVersion) conflict(request, current.version, "the comparison was selected from a stale Intake review");
+        try { resolveIntakeComparison({ ...current, comparisonManifestId }, repositories.intakeManifests); }
+        catch (error) { reject(request, "invalid-state", error instanceof Error ? error.message : String(error)); }
+      }
       const selection = resolveInspectSelection(current, request.payload);
       const parse = parseAt(selection.sheet, selection.headerRowIndex);
       // Discovery settles the header row when the operator has not chosen one,
       // so the settled index is the parse's, never the request's.
       const settled = parse.layout === null ? null : parse.layout.headerRowIndex;
-      if (selection.sheet === current.sheet && settled === current.headerRowIndex) return noOp();
+      if (selection.sheet === current.sheet && settled === current.headerRowIndex) {
+        if (comparisonManifestId === current.comparisonManifestId) return noOp();
+        return applyUpdate({ ...current, comparisonManifestId, updatedAt: now, version: current.version + 1 });
+      }
       return applyUpdate({
         ...current,
         sheet: selection.sheet,
+        ...(comparisonManifestId === undefined ? {} : { comparisonManifestId }),
         headerRowIndex: settled,
         bindings: [],
         corrections: [],
@@ -1555,6 +1567,17 @@ function executeIntake(
           "policy-refused",
           `${plan.readiness.message} [${plan.readiness.reason}${rows.length === 0 ? "" : `: source rows ${rows.join(", ")}`}]`,
         );
+      }
+
+      const assigned = new Set([...current.bindings.map(row => row.targetFieldId), ...current.constants.map(row => row.targetFieldId)]);
+      if (projection.targets.some(field => field.required && !assigned.has(field.targetFieldId))) {
+        reject(request, "policy-refused", "required intake fields are not bound; review the mapping before running");
+      }
+      let prior: IntakePlanManifest | undefined;
+      try { prior = resolveIntakeComparison(current, repositories.intakeManifests); }
+      catch (error) { reject(request, "invalid-state", error instanceof Error ? error.message : String(error)); }
+      if (request.payload.reviewBinding === undefined || request.payload.reviewBinding !== intakeReviewBinding(current, plan.manifest, prior)) {
+        reject(request, "policy-refused", "the exact current Intake review must be confirmed; reload and review before running");
       }
 
       // The stamped config identity must be a snapshot a reader can fetch back.

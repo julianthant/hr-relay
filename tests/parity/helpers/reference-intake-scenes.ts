@@ -22,7 +22,7 @@ export const ANCHORS: SceneAnchors = {
     await rerunTab.click();
     await expect(rerunTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText(
-      "This file has run before, and the plan has changed since. The exact changed axes and membership are below.",
+      "This plan differs from the selected earlier import. The changed file, mapping, schema and membership facts are below.",
       { exact: true },
     )).toBeVisible();
     await expect(page.getByRole("table", { name: "Changed input hashes" })).toBeVisible();

@@ -48,6 +48,7 @@ export function defineIntakeFixtureDescriptor(options: Readonly<{
    * one of its own runs, so the factory is exported rather than copied.
    */
   version?: number;
+  canonicalDepartmentMaxLength?: number;
 }>): AnyWorkflowDescriptor {
   return defineWorkflowDescriptor({
     id: options.id,
@@ -62,7 +63,7 @@ export function defineIntakeFixtureDescriptor(options: Readonly<{
       z.strictObject({
         emplId: CANONICAL_FIELDS.eid.schema,
         effectiveDate: CANONICAL_FIELDS.effectiveDate.schema,
-        department: CANONICAL_FIELDS.department.schema.optional(),
+        department: options.canonicalDepartmentMaxLength === undefined ? CANONICAL_FIELDS.department.schema.optional() : CANONICAL_FIELDS.department.schema.max(options.canonicalDepartmentMaxLength).optional(),
       }),
       [{ emplId: "10456712", effectiveDate: "2026-07-01" }],
     ),

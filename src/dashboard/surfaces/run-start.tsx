@@ -70,12 +70,10 @@ import {
   DialogBody,
   DialogContent,
   DialogFooter,
-  Dropzone,
   EmptyState,
   Field,
   KeyValueList,
   MetaLine,
-  Refusal,
   SectionLabel,
   Select,
   Textarea,
@@ -102,7 +100,7 @@ import {
 } from "../../domain/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
-import type { IntakeUploadResult, StartPlanResponse } from "../client/index.js";
+import type { StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
 import {
   groupWorkflowsByCategory,
@@ -122,7 +120,7 @@ import {
   StepOmissionFactsForm,
 } from "./run-start-kit.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
-import { INTAKE_ACCEPT, INTAKE_DROPZONE_HINT, intakeDropzoneLabel } from "./intake-model.js";
+import { SpreadsheetIntake } from "./intake-upload.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
@@ -791,104 +789,6 @@ function MethodTabs({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * The spreadsheet method's whole Input stage: the intake's own dropzone, moved
- * one screen earlier (D298).
- *
- * D296 drew a paragraph here and put `Open the intake…` in the footer, on the
- * reading that a picker in this dialog would land the operator "past the
- * mapping step". That was wrong about the workspace it was protecting — the
- * workspace's FIRST screen is this exact zone, and a file dropped on it skips
- * nothing: the upload opens a session and the mapping grid is what comes up.
- * So the panel is the zone, the drop IS the press, and the footer keeps
- * `Cancel` alone.
- *
- * What did NOT move: mapping, per-row review, the manifest and the enqueue all
- * stay in the workspace, because the session is durable and reviewing four
- * hundred rejections takes minutes a modal would trap (D170/D173).
- *
- * The three strings are the workspace's own (`intake-model.ts`), so the two
- * doors cannot disagree about what is accepted or how large it may be.
- *
- * Neither failure arm is swallowed. A REFUSAL is the server's typed answer —
- * its code and its sentence, verbatim, saying no session was opened — and a
- * transport failure says the upload never landed. Both leave the zone live so
- * the same file can be dropped again.
- */
-function SpreadsheetIntake({
-  workflowId,
-  workflowLabel,
-  onOpened,
-}: {
-  workflowId: string;
-  workflowLabel: string;
-  onOpened: (intakeSessionId: string) => void;
-}) {
-  const client = useDashboardClient();
-  const [busy, setBusy] = useState(false);
-  const [refusal, setRefusal] = useState<{ code: string; message: string } | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-
-  const upload = useCallback(
-    (file: File): void => {
-      setBusy(true);
-      setRefusal(null);
-      setFailure(null);
-      void file.arrayBuffer().then(
-        (bytes) => client.uploadIntakeFile({
-          workflowId,
-          fileName: file.name,
-          // A browser that cannot name the type sends nothing rather than a
-          // guess; the route reads magic bytes and refuses by name either way.
-          mediaType: file.type.length > 0 ? file.type : "application/octet-stream",
-          bytes,
-        }),
-      ).then(
-        (result: IntakeUploadResult) => {
-          setBusy(false);
-          if (result.state === "refused") {
-            setRefusal({ code: result.code, message: result.message });
-            return;
-          }
-          onOpened(result.session.intakeSessionId);
-        },
-        (caught: unknown) => {
-          setBusy(false);
-          setFailure(caught instanceof Error ? caught.message : String(caught));
-        },
-      );
-    },
-    [client, onOpened, workflowId],
-  );
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-base)]">
-      {refusal !== null && (
-        <Refusal title="That file could not be read" code={refusal.code} outcome="no session was opened">
-          {refusal.message}
-        </Refusal>
-      )}
-      {failure !== null && (
-        <Banner tone="danger" title="The file never reached the server">
-          {failure}
-        </Banner>
-      )}
-      {/* The zone GROWS to fill the stage, for the workspace's own reason: it
-          is the only act available on this arm, and a thin band floating in an
-          empty panel reads as a detail of a screen whose content failed. */}
-      <Dropzone
-        label={intakeDropzoneLabel(workflowLabel)}
-        accept={INTAKE_ACCEPT}
-        hint={INTAKE_DROPZONE_HINT}
-        busy={busy}
-        busyLabel="Reading the file…"
-        onFile={upload}
-        className="min-h-[var(--ds-h-dialog-dropzone)] flex-1"
-      />
     </div>
   );
 }

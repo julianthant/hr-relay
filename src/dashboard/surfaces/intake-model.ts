@@ -81,8 +81,8 @@ export const INTAKE_REVIEW_COPY = Object.freeze({
   excludeWithReason: "Exclude with this reason",
   corrections: "Corrections",
   exclusions: "Exclusions",
-  reviewDescription: "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen.",
-  unresolvedBlocker: "unresolved rejected rows have not been reviewed",
+  reviewDescription: "Rejection history includes corrected and excluded rows.",
+  unresolvedBlocker: "rejection history has not been reviewed",
 });
 
 /** Stable browser-form names for the two rejection-resolution values. */
@@ -613,4 +613,18 @@ function jsonValueText(value: JsonValue): string {
 
 function isJsonObject(value: JsonValue): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Reasons to withhold enqueue, derived only from current served review facts. */
+export function intakeReadinessBlockers(session: IntakeSessionWire): string[] {
+  const assigned = new Set([...session.bindings.map(row => row.targetFieldId), ...session.constants.map(row => row.targetFieldId)]);
+  const missing = session.targets.filter(target => target.required && !assigned.has(target.targetFieldId));
+  const blockers = missing.map(target => `${target.label} is not bound`);
+  if (session.headerRowIndex === null) blockers.push("no header row is settled");
+  if (session.validation.state === "none") blockers.push("mapping has not been validated");
+  else {
+    if (session.validation.unresolvedRows.length > 0) blockers.push(`${String(session.validation.unresolvedRows.length)} unresolved source rows`);
+    if (session.validation.validRows === 0) blockers.push("no valid rows");
+  }
+  return blockers;
 }

@@ -20,6 +20,7 @@ import {
   FingerprintSchema,
   GateIdSchema,
   IntakeSessionIdSchema,
+  IntakeManifestIdSchema,
   IntakeTargetFieldIdSchema,
   IsoInstantSchema,
   LOCAL_OPERATOR_ACTOR_ID,
@@ -198,12 +199,12 @@ export const StartCommandRequestSchema = z.strictObject({
 // `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
 // fan-out that silently chose whether to touch a real HR system.
 export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sheet: z.string().min(1).optional(), headerRowIndex: z.number().int().nonnegative().optional() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sheet: z.string().min(1).optional(), headerRowIndex: z.number().int().nonnegative().optional(), comparisonManifestId: IntakeManifestIdSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("confirm-intake-mapping"), target: IntakeVersionTargetSchema, payload: z.strictObject({ targetFieldId: IntakeTargetFieldIdSchema, sourceColumnId: SourceColumnIdSchema, headerFingerprint: FingerprintSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("correct-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sourceRow: PositiveIntSchema, field: IntakeTargetFieldIdSchema, correctedValue: z.string() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("exclude-intake-row"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sourceRow: PositiveIntSchema, reason: OperatorReasonSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("validate-intake"), target: IntakeVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: IntakeVersionTargetSchema, payload: z.strictObject({ dryRun: z.boolean() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: IntakeVersionTargetSchema, payload: z.strictObject({ dryRun: z.boolean(), reviewBinding: FingerprintSchema.optional() }) }),
 ]);
 
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [

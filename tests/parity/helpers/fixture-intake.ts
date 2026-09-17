@@ -155,6 +155,7 @@ function sessionWire(input: Readonly<{
         validatedAt: READ_AT,
         readAt: READ_AT,
         validRows: VALIDATION.valid.length,
+        unresolvedRows: [...VALIDATION.currentRejects].filter(([row, rejects]) => rejects.length > 0 && !VALIDATION.excluded.includes(row)).map(([row]) => row).sort((a, b) => a - b),
         rejected: VALIDATION.rejected,
         excluded: VALIDATION.excluded,
       }
