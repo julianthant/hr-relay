@@ -1874,6 +1874,7 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-18 | 3.1.10 focused candidate frozen | Implementation `7b98ba23dc9f5876dba927ad6cf02498c51e2d8c` completes DN1–DN5 locally. Exact 12-file/74-test gate, 62 focused architecture tests, typecheck, scoped lint, 42 browser cases and both-theme native 125%/200% zoom pass. Durable evidence is in the task owner. Explicit local master integration and cleanup remain pending; checkboxes stay open and full acceptance remains 3.1.19.
 - 2026-09-18 | operator-approved DN1–DN5 execution brief | One Astra/medium supervisor, no workers or independent review. Bounded canonical-summary calendar read and narrow shared date/API/fixture ownership; live Today versus pinned dates, visible invalid/future recovery, stale-response identity, accessible picker and production-service browser/zoom proof. Accepted 3.1.9.8 prerequisite verified; direct committed-ref plan delivery, operator-controlled master integration and cleanup. Implementation pending; full acceptance remains 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.4; former 3.1.10-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 date-state seam in `phase-3-1-dashboard-c21194e18-r10-date-navigation`, after the shell contract and parallel with Tasks 14, 17 and 26 · left: Tasks 8 and 9

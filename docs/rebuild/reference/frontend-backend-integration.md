@@ -397,10 +397,13 @@ under the amendment below; it must not replace selected-day counts with an indep
 
 The operator approved this D81 transport clarification for
 [3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18).
-It is required work, not a claim that a new route already exists. The implementation owns a strict,
-read-only calendar query for the requested month and selected day, returning bounded availability/counts
-and chronological navigation bounds. The source is published canonical run summaries behind the
-consistent authority-read boundary, preserving top-level/member, archive/delete and freshness rules.
+The 3.1.10 candidate implements `GET /api/v1/calendar?month=YYYY-MM&day=YYYY-MM-DD`;
+local master integration remains operator-controlled. Its strict response carries `month`, `day`,
+`today`, `authorityGeneration`, at most 31 ordered positive `monthCounts`, and nullable
+`firstDay`/`lastDay`/`previousDay`/`nextDay` bounds. The read scans only the requested month and
+uses indexed per-workflow seeks for bounds, without building a history of run records. The source is
+published canonical run summaries behind the consistent authority-read boundary, preserving
+top-level/member, archive/delete and freshness rules.
 It may not materialize the complete run history, read legacy state, write authority or create a new
 summary-publication path. Malformed inputs, unavailable/corrupt summaries and failed reads refuse
 explicitly rather than returning a plausible empty calendar.
@@ -416,9 +419,9 @@ The client schema-validates responses, rejects mismatched identities and discard
 including A→B→A and late failures. The day subscription additionally rejects a snapshot naming a day
 other than its subscribed day; the app retains its existing matching-day rendering guard. The route,
 Today/pinned-date behavior, invalid/future-link recovery, focus and history rules are owned by
-[dashboard surfaces](dashboard-surfaces.md#date-navigation-amendment-2026-09-18). Exact wire field and
-route naming are routine implementation choices within this bounded query; update the served-route
-inventory when it is actually implemented. No new DDL or migrations are authorized.
+[dashboard surfaces](dashboard-surfaces.md#date-navigation-amendment-2026-09-18). The calendar
+wire is owned by `src/domain/dashboard/calendar.ts`; the route inventory below records this
+read. No new DDL or migrations are introduced.
 
 **`WorkflowCountWire` carries its own status dimension** — `{ workflowId, count, statusCounts[] }`,
 the per-status counts summing to `count` by refinement (R2 D5–D12, R4-1). One `count` per workflow
@@ -885,6 +888,7 @@ compatibility layer):
 ```text
 GET  /api/v1/bootstrap
 GET  /api/v1/dashboard?day=YYYY-MM-DD          # selected-day snapshot, including selected-month counts
+GET  /api/v1/calendar?month=YYYY-MM&day=YYYY-MM-DD # bounded availability and chronological navigation
 GET  /api/v1/runs/:runId
 GET  /api/v1/runs/:runId/:section              # one lazy panel section, cursor-paged where it pages
 GET  /api/v1/diagnostic-bundles/:bundleId      # exact D137 readback; verified index and stored bytes

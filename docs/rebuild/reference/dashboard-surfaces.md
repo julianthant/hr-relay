@@ -6993,8 +6993,8 @@ wrong on every run an operator is actually watching.
 ##### Date navigation amendment — 2026-09-18
 
 Operator-approved for [3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18);
-implementation remains pending. This extends D256's single served-clock rule to calendar selection
-and states A19's date-navigation behavior:
+implemented in the focused candidate, awaiting explicit local master integration. This extends D256's
+single served-clock rule to calendar selection and states A19's date-navigation behavior:
 
 - An absent URL `day` follows server Today, derived from the one live served instant and served zone.
   A valid explicit day remains pinned; Today removes the explicit selection and resumes following

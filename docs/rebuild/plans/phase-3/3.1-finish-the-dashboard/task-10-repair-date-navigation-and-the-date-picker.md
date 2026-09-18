@@ -18,8 +18,8 @@ their mapped outcome/proof; historical subfeature credit does not complete this 
 ## Approved execution brief — 2026-09-18
 
 **Approval:** the operator approved the complete DN1–DN5 proposal with “approve” on 2026-09-18,
-including the narrow backend/shared-file allocation and interaction rules below. Implementation is
-unstarted. This is one standalone assignment, not a new parallel group. The frozen A19 outcome and
+including the narrow backend/shared-file allocation and interaction rules below. The current
+execution record below owns implementation and integration status. This is one standalone assignment, not a new parallel group. The frozen A19 outcome and
 D01/D02 requirements remain unchanged; full acceptance is still 3.1.19.
 
 ### Allocation, prerequisite and checkout binding
@@ -241,6 +241,68 @@ concrete reviewable result. No independent review step applies. After authorized
 verify ancestry/tree and required reuse/reruns, preserve proof outside the worktree, remove owned
 registered and physical worktree residue and branch, and close the task's checkbox/roadmap only then.
 Stop after 3.1.10; no push or downstream dispatch.
+
+### Current execution state — 2026-09-18
+
+**DN1–DN5 implemented and focused candidate frozen; awaiting explicit operator integration.**
+Implementation commit `7b98ba23dc9f5876dba927ad6cf02498c51e2d8c` is on `codex/3.1.10-date-navigation`, in
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-date-navigation`. Its direct
+base is the approved plan `92e4e86ccf20218a4c3af9bd6d4e813f3d6b9270`; all four prerequisite SHAs
+in the allocation table were verified as ancestors before editing. Branch/path were available before
+creation. Local master remains `faa8b2165fcd2232028f6436471393d6b9d87747`. No workers, independent
+review, integration, push or downstream dispatch occurred. This task's checkbox remains open until
+accepted integration and owned branch/worktree cleanup; full acceptance remains **3.1.19**.
+
+Retained proof is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.10/2026-09-18/`.
+`candidate.json` binds the implementation/tree, commands, selections, source/config/dependency/reference
+hashes and retained outputs; `gate-inputs.json` supports identical-input reuse. The subsequent recording
+commit changes only this owner, the implemented contract descriptions, roadmap journal and generated
+roadmap. Runtime gates remain reusable only while those inputs match.
+
+| Step | Verified outcome and retained proof |
+| --- | --- |
+| DN1 | Strict `GET /api/v1/calendar?month=&day=` over a consistent canonical-summary snapshot. At most 31 month counters; indexed chronological seeks; no complete-history reader or authority writes. Real valid SQLite fixtures compare calendar membership to the production projector, including operation-member exclusion, archived/deleted rows, empty history and unavailable/corrupt publication. `focused-unit.log`, calendar authority attachment in `parity-output/results.json`. |
+| DN2 | One existing live served clock drives Today. Missing day follows Today; explicit valid day stays pinned; Today removes the pin. Invalid/future links preserve the invalid URL and show recovery before day/run reads. Leap/DST/midnight/visibility, month/year, native/toolbar history, reload, same-place navigation and dirty Settings exits are covered. `focused-unit.log`, `parity.log`. |
+| DN3 | Calendar and day-hook request identities hide stale state on intermediate renders; old success/error after A→B→A, reconnect and unmount cannot paint the new request. Wrong-day/month payloads refuse explicitly. Browser transport negatives cover delayed month success/failure, visible current failure and retry. `focused-unit.log`, `parity.log`. |
+| DN4 | Independent month browsing, chronological stepping, gaps/future disabling, empty-month Today, usable roving focus, arrows/Home/End, Enter/Space and trigger focus after selection/Escape/outside click. Existing primitives and reference bytes are preserved. `focused-unit.log`, `parity.log`, screenshots and a11y. |
+| DN5 | Production-service SQLite/query/projector/SSE browser proof in both themes; URL/day/row/count correlation; 1440×900/1280×720 and 1024×768 → 1024×720 → 1024×768. Four native zoom/theme combinations verify 125%/200% readback, 1024×720 canvas, side-by-side panels, picker hit geometry, selection/focus and scroll access. `parity-output/`, `zoom-receipts.json`, four `zoom-*.png` screenshot pairs (eight PNG files), `zoom-console.txt`. |
+
+| Required gate | Final result |
+| --- | --- |
+| Exact 12-file unit command above | Exit 0; **74 tests**, four-file-worker cap; `focused-unit.log`. |
+| Exact five architecture files plus affected `redaction-surface-scan.test.ts` | Exit 0; **62 tests** (31 assigned + 31 redaction inventory), six files; `architecture-final.log`. Calendar wire is classified in the existing inventory; no guard was added or retired. |
+| `npm run typecheck` | Exit 0; `typecheck.log`. |
+| Exact derived implementation ESLint command above | Exit 0; **31 owned TS/TSX paths**, zero warnings; expanded command in `lint.log`. |
+| Exact five-spec parity command above | Exit 0; **42 passed**, zero skipped/flaky/unexpected, four workers, zero retries; required a11y digests validated. `parity.log`, `parity-output/results.json`. No reference refreeze. |
+| Native browser zoom via owned playwright-cli extension session | Exit 0; Chromium 149.0.7827.55, both themes at 1.25 and 2.0 with `chrome.tabs.getZoom` readback; visible screenshots inspected. `zoom-receipts.json`; console has zero errors/warnings. |
+| Recording checks | Roadmap binding, scoped generator/test lint, touched local links, existing instruction twins/chain cap, roadmap generation/freshness and whitespace checks are recorded in `recording-checks.json` and companion logs. |
+
+The manual zoom proof serves the same production bundle as the final parity run: input digest
+`6827b0a4728b32d7cb9286805e33a08c8d19ea87b50f23fe95db59ff0081bd75`, output digest
+`629ed071d80a2243557b66526d3d9f94b343ec8280ab1c3b4977bd84789e84d0`. Its source is `serve.mts` and
+`zoom-proof.js`; copied extension source and configuration retain the actual zoom mechanism. Fakes
+are synthetic run authorities, fixed server/monotonic clocks, seeded static/unrelated services and
+unwired HR services. Calendar queries, day projection and subscription transport are production
+implementations. This proves the assigned date seam, not external HR execution or broad acceptance.
+No operator state, credentials, legacy runtime, fixed ports 3938/5174, migrations or writes are involved.
+
+Owned proof servers and playwright-cli sessions are stopped; temporary zoom profile/loaded extension
+are removed, with source/receipts preserved. The implementation worktree, dependency symlink and branch
+remain deliberately retained for explicit integration. Recheck master ownership, ancestry and frozen
+inputs before integration; rerun affected checks if they change, then complete only owned cleanup.
+
+**Delivery assessment.** No planning-driven amendment, new operator scope or changed prerequisite was
+needed. Repairs were implementation/proof defects within the approved plan: strict summary-row parsing,
+canonical fixture validity and projector initialization, browser response synchronization/a11y digest
+registration, race-fixture TypeScript narrowing, outside-dismissal focus and capture-before-transition.
+The existing delayed-day fixture used a future date; it now uses the preceding historical date so its
+original stale-row assertions still reach the intended boundary under the new refusal rule. Retained
+iteration logs (`dn1-test.log`, `focused-early.log`, `parity-date.log`, `final-repair.log`) and the final
+receipts show repair rechecks; overwritten intermediate logs prevent a reliable total round count or
+elapsed-cost claim. Context was compacted during this coupled assignment without resizing/delegation.
+Earlier fixture startup/compiler checks and explicit visible-state screenshot waits would have avoided
+some proof rework. No assertion, timeout, reference tolerance or gate membership was weakened. Broad
+coverage, repository lint/architecture and complete A01–A42/D01–D05 remain assigned to 3.1.19.
 
 ### Planning verification — 2026-09-18
 
