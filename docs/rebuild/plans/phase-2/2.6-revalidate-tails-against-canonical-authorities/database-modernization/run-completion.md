@@ -592,15 +592,15 @@ The operator's approved exception assigns full gates and complete independent re
 | Runtime safety | original UNKNOWN refusal, terminal replay, ownership fences, D308 and frozen receipt/archive identities retain focused proof |
 
 Exact commands, exits, durations, tested input objects and one-worker configuration are in
-[release-results.json](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/release-results.json) and
-[tested-input-objects.json](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/tested-input-objects.json).
+[release-results.json](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-evidence-20260909-baad4b2f2/release-results.json) and
+[tested-input-objects.json](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-evidence-20260909-baad4b2f2/tested-input-objects.json).
 All release commands ran serially. Earlier repaired failures remain in their original logs,
 including the first candidate's fixture-only receipt guard failure. The complete affected set
 was rerun on the final committed candidate. No assertions, timeouts or suite membership were relaxed.
 
-[Closure receipt](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/closure.json) is the final integration, worktree registration/path,
-branch-ref and process verification record. [Evidence index](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/README.md) and
-[SHA-256 manifest](/Users/julianhein/Projects/hr-run-completion-evidence-20260909-baad4b2f2/SHA256SUMS) retain logs, capture recipe, runner config, synthetic
+[Closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-evidence-20260909-baad4b2f2/closure.json) is the final integration, worktree registration/path,
+branch-ref and process verification record. [Evidence index](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-evidence-20260909-baad4b2f2/README.md) and
+[SHA-256 manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-evidence-20260909-baad4b2f2/SHA256SUMS) retain logs, capture recipe, runner config, synthetic
 fixture provenance, parity report and build provenance outside the removable checkout.
 
 F (2.6.6) consumes actual master prerequisite `0dd02a89056bd4ccec1a2089bacd8bd7f6cf2645` with this candidate's source tree.
@@ -644,11 +644,11 @@ The repaired migration suite passes all twelve tests.
 | Filtered Storage Doctor | four cases, exit 0; current build and exact a11y evidence |
 | Integration | clean merge, tested source/test/script/config/package objects unchanged; concurrent F planning commits preserved |
 
-[Exact gate commands/results](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/release-results.json),
-[red/green and scope notes](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/README.md),
-[tested input objects](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/tested-input-objects.json),
-[integration receipt](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/integration.json) and
-[final closure receipt](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/closure.json) preserve the repaired release evidence outside the
+[Exact gate commands/results](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-repair-evidence-20260909/release-results.json),
+[red/green and scope notes](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-repair-evidence-20260909/README.md),
+[tested input objects](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-repair-evidence-20260909/tested-input-objects.json),
+[integration receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-repair-evidence-20260909/integration.json) and
+[final closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-repair-evidence-20260909/closure.json) preserve the repaired release evidence outside the
 owned worktree. The prior release's evidence remains unchanged as historical evidence. The
 recording-only documentation commit reuses the listed executable gates under D191 after object
 comparison; roadmap generation/freshness, document binding, links, instruction twins and whitespace

@@ -1025,7 +1025,7 @@ remain separate historical authorities; no new pseudonym/key authority is introd
 ### Gate and identity evidence
 
 Evidence is retained outside the removable worktree at
-`/Users/julianhein/Projects/hr-lifecycle-foundation-evidence-20260909/`.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-lifecycle-foundation-evidence-20260909/`.
 `migration-identities.json` records every live migration statement hash and archive identity;
 `release-inputs.json` records exact runtime/test/tooling inputs. Final gate/commit/merge identities
 are recorded below after verification. Each test invocation uses `VITEST_MAX_WORKERS=1` and
@@ -1129,7 +1129,7 @@ Implementation `a1d0c4a5c5f63a3d444b6a5c386fc56b2e2cef57`, tree
 Manifest and store catalog generation/freshness, roadmap generation/freshness, nine instruction
 pairs (maximum chain 17,333 bytes) and whitespace pass. Two effective file workers were observed,
 one per test project. Exact commands/exits and logs are in
-`/Users/julianhein/Projects/hr-lifecycle-repair-evidence-20260909/`; `tested-inputs.json` binds 2,088
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-lifecycle-repair-evidence-20260909/`; `tested-inputs.json` binds 2,088
 runtime/test/tooling hashes. Released migration source and archive DDL remain unchanged. No full
 typecheck, coverage, broad parity/build or independent review was run; those remain at 2.6.9.
 
@@ -1231,7 +1231,7 @@ controls remain. Historical mirror tests now explicitly use released schema 48 r
 current schema 49 admit retired writers. The source snapshot keeps its 23-group grammar.
 
 Evidence is preserved outside the owned checkout at
-`/Users/julianhein/Projects/hr-archive-retirement-evidence-20260909/README.md`.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-retirement-evidence-20260909/README.md`.
 `accepted-unit-gates.json`, `release-focused-gates.json` (architecture/lint entries only),
 `committed-checks-gates.json`, `generation-gates.json` and their command lists/logs
 record literal commands, exits and durations. `tested-inputs.json` freezes 2,133 runtime/test/tooling
@@ -1334,7 +1334,7 @@ L retirement follow-up has launched. Full acceptance/review remains 2.6.9. No pu
 
 V01–V06 execute under approved plan `c4beb7679b46e15c3aeeb06846ebc3a895469c70`, with one supervisor and zero workers/reviewers. Branch `codex/database-surfaces`, checkout `/Users/julianhein/Projects/hr-worktree-database-contracts`, exact base `9f853d60fd347a998eeacd86a014d1f71b31f391`, tree `7fd6a6f2be464668d11e9e4db84135cd93f995c8`. A/Q, repaired L, both archived transaction repairs and L integration `4591b263ed26d68af91b048a5cfae07f88400b38` are verified ancestors. The L committed closure and external release/cleanup receipts satisfy the older WAITING ON wording; V does not repeat retirement.
 
-This supervisor owns local master integration after complete focused PASS and target checks, followed by incorporated owned cleanup. All retained allocation boundaries and stop conditions apply. Full gates and independent review remain at 2.6.9. Evidence is preserved at `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910`. V remains in progress; U/H are not launched.
+This supervisor owns local master integration after complete focused PASS and target checks, followed by incorporated owned cleanup. All retained allocation boundaries and stop conditions apply. Full gates and independent review remain at 2.6.9. Evidence is preserved at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910`. V remains in progress; U/H are not launched.
 
 ### V shared custody-read blocker — 2026-09-10
 
@@ -1342,7 +1342,7 @@ V01's seven combination suites pass 53 tests. Initial V02 summary composition pa
 
 `RunRecordService.read -> AuthorityDatabase.transferredRun -> resolveRunEvidenceOwner -> ArchiveDatabase.verified` verifies every attachment before returning canonical ownership. The lifecycle report and file ports use that same path. Therefore V cannot authenticate an individual missing/foreign attachment independently of unrelated file availability, and cannot preserve the existing separation between frozen report metadata and per-file resource availability. Catching the error as the requested file's absence would assert membership that was never admitted; serving a raw report would bypass canonical integrity. Neither workaround is permitted.
 
-The approved V stop boundary applies: shared storage/custody repair needs an explicit scope amendment or an incorporated repair from its owner. The repair must separate canonical transfer/report integrity from per-file byte availability while preserving full verification for transfer, recovery and deletion. No storage/schema changes were made here. No release candidate, merge, U/H launch or owned cleanup occurred. The incomplete V work remains isolated on its assigned branch. Full 2.6.9 acceptance remains outstanding. Logs, exact commands, frozen working inputs and recovery state are in `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`.
+The approved V stop boundary applies: shared storage/custody repair needs an explicit scope amendment or an incorporated repair from its owner. The repair must separate canonical transfer/report integrity from per-file byte availability while preserving full verification for transfer, recovery and deletion. No storage/schema changes were made here. No release candidate, merge, U/H launch or owned cleanup occurred. The incomplete V work remains isolated on its assigned branch. Full 2.6.9 acceptance remains outstanding. Logs, exact commands, frozen working inputs and recovery state are in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/`.
 
 Final blocked-state validation: full lint and whitespace PASS. The three custody cases remain FAIL after the test-only lint repair. Ten upstream source/fixture/migration files match the exact base (`unchanged-blocker-inputs.json`). Recovery state is in `docs/handoffs/2026-09-10-v-custody-boundary.md`; no acceptance or integration is claimed.
 
@@ -1376,7 +1376,7 @@ The full named unit batch passes 338 tests in 14 suites. The combination batch p
 seven suites. The six named architecture selectors plus roadmap binding pass 101 tests, including
 new native saved-file sink observation and missing/foreign-sink negative controls. These are scoped
 V checks, not 2.6.9 acceptance. Exact final logs, input hashes, desktop fixtures/screenshots, release
-and cleanup receipts are retained at `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`.
+and cleanup receipts are retained at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/`.
 Candidate, integration and cleanup identities are recorded below only after verification.
 
 ### V05 focused candidate — 2026-09-10
@@ -1391,7 +1391,7 @@ V05 is complete. V06 integration and cleanup are recorded only after verificatio
 
 Local merge `4c9500bacc99fcccf96254b100a5f009acb666f0` incorporates candidate `5ed8c55941f9fb8ab4dc294d31df3cffdb461bd8` and implementation `1d434465c4cf8c82d52363df07264d11fea08f6e` over unchanged clean target `9f853d60fd347a998eeacd86a014d1f71b31f391`. Integrated tree `39e02c4842c6d8ac7c4b3bc1bca7a2b7b18e309c` exactly matches the focused candidate. All 2,345 non-receipt inputs match the focused proof; the receipt-only change repeated roadmap generation/freshness and 24 roadmap-binding tests. Integration reuses the input-identical focused unit, combination, architecture, lint, generation and desktop evidence.
 
-Ordinary worktree removal and merged branch deletion succeeded. Physical `/Users/julianhein/Projects/hr-worktree-database-contracts`, its registration and `refs/heads/codex/database-surfaces` are absent. Only the owned dependency symlink was unlinked; primary dependencies and other sessions remain. Owned browser sessions and the synthetic server are stopped. External evidence is preserved at `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`; `candidate.json`, `integration.json`, `cleanup.json` and immutable `release.json` bind the implementation, checked merge and final committed closure.
+Ordinary worktree removal and merged branch deletion succeeded. Physical `/Users/julianhein/Projects/hr-worktree-database-contracts`, its registration and `refs/heads/codex/database-surfaces` are absent. Only the owned dependency symlink was unlinked; primary dependencies and other sessions remain. Owned browser sessions and the synthetic server are stopped. External evidence is preserved at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/`; `candidate.json`, `integration.json`, `cleanup.json` and immutable `release.json` bind the implementation, checked merge and final committed closure.
 
 V01–V06 are complete. U and H use the single common closure SHA in `release.json`, preserving their C0 path/test ownership and either implementation order. Neither peer was launched. Shared files and both usable baselines are frozen at this release; their later dedicated feature/proof work remains theirs. Full typecheck, coverage, broad architecture/parity/build/performance, complete independent review and Phase 2.6 acceptance remain at 2.6.9. No push, operator database migration, HR submission or unrelated cleanup occurred.
 

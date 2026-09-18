@@ -22,6 +22,16 @@ docs/
 └── handoffs/             Temporary recovery state for interrupted work
 ```
 
+## Evidence location
+
+Retained rebuild evidence is grouped by task/date under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/`. New task evidence belongs there,
+outside disposable worktrees. On 2026-09-17, 45 existing folders moved into that parent; its
+`relocation.json` maps their original paths and verifies unchanged file hashes and symlink targets.
+Current documentation uses the new locations. Raw logs, command receipts, historical scripts and
+older Git revisions retain their original paths and bytes; use the map when resolving those records.
+These path updates do not rerun or change the historical gate results.
+
 ## Find the right document
 
 | Work | Start here |

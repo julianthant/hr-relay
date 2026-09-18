@@ -20,7 +20,7 @@ remain exclusively **2.6.9**. No push or live database action occurred.
 | Tested integration tree | `6e92b17290e64e8bbccd616c2bff582f0b082df1` |
 | Owned implementation lane | `codex/archive-viewer`, `/Users/julianhein/Projects/hr-worktree-database-other` |
 
-V's `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/release.json` matched the exact base,
+V's `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/release.json` matched the exact base,
 tree and integration ancestry before edits. H was created from that base with branch/path absent and
 capacity available. H changed only its two saved-report surface/model files, three new unit files,
 two named dashboard regressions, and its dedicated parity spec/fixture/eight reference triplets:
@@ -49,7 +49,7 @@ without changes. CSS zoom is recorded as CSS zoom, not a claim of browser chrome
 ## Commands and results
 
 Commands ran in the H checkout for candidate proof and the primary checkout for integration.
-Evidence logs and frozen manifest are in `/Users/julianhein/Projects/hr-h-archive-evidence-20260910/`.
+Evidence logs and frozen manifest are in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-h-archive-evidence-20260910/`.
 The original candidate manifest SHA256 is
 `69bf331d4daa81fa6320dee487446f8bd21d4773f8aab425249a14a44f72d5d9`; `release.json` records final identities.
 

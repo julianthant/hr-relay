@@ -21,7 +21,7 @@ Q changes its three production files, five unit files, performance script and th
 
 ## Gate results
 
-Logs, receipts, synthetic diagnostic scripts and input hashes live at `/Users/julianhein/Projects/hr-summary-evidence-20260909`.
+Logs, receipts, synthetic diagnostic scripts and input hashes live at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-summary-evidence-20260909`.
 
 | Gate | Result |
 | --- | --- |
@@ -91,7 +91,7 @@ Repair: the authority exposes source snapshots only for committed, non-deleted t
 
 The expanded projection guard also exposed two integrated-base proof defects, reproduced on an untouched export of `8e0ff7f9d`: its consumer set omitted the approved Q query port, and its failed-run fixture omitted the required completion. The narrow proof repair names that exact admitted consumer and supplies a valid claim-bound fixture. The producer bound and badge/status/row assertions remain intact. The active guard inventory records this scope and deciding evidence; no guard was retired. These findings did not justify changing transaction behavior or weakening a source schema.
 
-Evidence root: `/Users/julianhein/Projects/hr-archive-history-evidence-20260909`. `archive-history-red.log`, `archive-history-expanded.log` and `baseline-projection.log` retain red/green and baseline diagnosis. `gates.json` records the 18-file unit command (184 PASS), initial expanded guard failure, lint and generation/freshness results. `repaired-gates.json` records all six architecture files (47 PASS) and the renewed lint/whitespace checks. One effective file worker uses the unchanged Vitest configuration and explicit `VITEST_MAX_WORKERS=1 --maxWorkers=1`. Full typecheck/coverage/parity and independent review remain 2.6.9; no such PASS is claimed here.
+Evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-history-evidence-20260909`. `archive-history-red.log`, `archive-history-expanded.log` and `baseline-projection.log` retain red/green and baseline diagnosis. `gates.json` records the 18-file unit command (184 PASS), initial expanded guard failure, lint and generation/freshness results. `repaired-gates.json` records all six architecture files (47 PASS) and the renewed lint/whitespace checks. One effective file worker uses the unchanged Vitest configuration and explicit `VITEST_MAX_WORKERS=1 --maxWorkers=1`. Full typecheck/coverage/parity and independent review remain 2.6.9; no such PASS is claimed here.
 
 
 P1 implementation `6cec3e8b06ef4a802d8ef0e8ec68e529dd0d3492` has tree `745feacb40bf054f505e9c3a145fdcbe6f595e73`. Related proof repair `1ee4c42a0bd03cf0c5149b322b69d661bb63077a` has tree `7d2a64b0dad6289fa6a7ef6125d40784cb5d3776`. `candidate-inputs.json` freezes 2,129 non-document inputs; `input-reuse.json` proves the only change after the unit batch was the unimported architecture test, which then passed its six-file rerun and renewed lint. Manifest/catalog/roadmap generation and freshness all passed without changed output.

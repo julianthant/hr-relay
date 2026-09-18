@@ -83,7 +83,7 @@ dependency symlink is permitted; indexes, build output, fixtures and evidence mu
 | 3.1.9.3 Storage | `1514c27f069765cb62cf5bcf2b461ba5555eca92` | Integrated by `b3f5904e28ca7c23f11a2a4d8d217cbdecafa5a8`. See the [Storage owner](task-9-3-finish-basic-storage-health-and-recovery-access.md). |
 | 3.1.9.4 Explorer | `2ec017d992d74190d54a3af0cd052192294c5e7a` | Integrated by `931e283ab263a26a556aad33ac49c5eeca51a407`. See the [Explorer owner](task-9-4-finish-workflow-explorer-and-catalog-editing.md). |
 | 3.1.9.5 Notifications | `387836885d426db81dac63126adc28aea9f71ddd` | Integrated by `ac8c620b72ec47d9788909a4a52941a4c741f42a`. See the [Notifications owner](task-9-5-finish-notifications-and-delivery-behavior.md). |
-| 3.1.9.6 Intake | `45748dae4436537ab86585ffa03b95dbc6843caa`, including implementation `2a518d007695437697663dc36960dead783d4a01` | Frozen, unmerged, retained on `codex/3.1.9.6-intake`. Its committed [Intake owner](task-9-6-finish-intake-surfaces.md) contains the 2026-09-16 implementation receipt. Evidence: `/Users/julianhein/Projects/hr-intake-evidence-20260915-r4bjbjka`. |
+| 3.1.9.6 Intake | `45748dae4436537ab86585ffa03b95dbc6843caa`, including implementation `2a518d007695437697663dc36960dead783d4a01` | Frozen, unmerged, retained on `codex/3.1.9.6-intake`. Its committed [Intake owner](task-9-6-finish-intake-surfaces.md) contains the 2026-09-16 implementation receipt. Evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-intake-evidence-20260915-r4bjbjka`. |
 | 3.1.9.7 Archive | Frozen delivery `27bbbe74791fab7c4f7ec1485922dc2b485fd688`, including implementation `96771ec69511da58e1b79f5b274795fa97c44621` | Unmerged on `codex/3.1.9.7-archive`; AR1–AR5 and assigned focused proof are complete. Its approved plan is `76b2e1fc7809907010b2a1d0f7e117737815902c`, available on `codex/plan-3.1.9.7`. Read the delivery commit's [Archive owner](task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md), including its approved narrow Settings amendment. Evidence: `/Users/julianhein/Projects/hr-worktree-archive/.artifacts/3.1.9.7/resume/`. |
 
 The first five full candidate SHAs exist and are ancestors of the discovery base. Intake and
@@ -91,7 +91,7 @@ Archive observed SHAs exist but are not ancestors of `master`. Do not remerge, r
 the accepted five merely because their original delivery prose predates the separately authorized
 sweep. Preserve those commits, their corrections and cleanup evidence.
 
-The sweep evidence at `/Users/julianhein/Projects/hr-sweep-evidence-20260915-5xbxjnap` includes
+The sweep evidence at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-sweep-evidence-20260915-5xbxjnap` includes
 `settings-storage-either-order.json`, `storage-reference-resolution.json`, `combined-tests.json`,
 `combined-parity.json` and `repository-cleanup.json`. It resolved the Settings/Storage and Catalog
 reference overlap, proved either-order production-source equality, and recorded the final combined
@@ -232,7 +232,7 @@ workers. At most four file workers; serialize build/reference writers sharing on
 generators before their freshness checks. Do not alter root concurrency or gate policy for this task.
 
 Evidence for F1–F5 lives outside removable worktrees under an owned
-`/Users/julianhein/Projects/hr-surfaces-evidence-<date>-<unique>` directory, whose resolved absolute
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-surfaces-evidence-<date>-<unique>` directory, whose resolved absolute
 path is recorded here at execution. Retain full command/exit/input records and reports before a
 later parity run replaces its output. Preserve Intake/Archive child evidence before any cleanup.
 
@@ -280,7 +280,7 @@ documentation/generated paths only. No product source, test, configuration, depe
 migration or completion checkbox changes. The focus correction implements the existing frozen
 navigation/accessibility outcome; its allocation does not introduce a new product contract.
 
-Evidence is retained at `/Users/julianhein/Projects/hr-surfaces-plan-evidence-20260916-3pjtz1gt/`.
+Evidence is retained at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-surfaces-plan-evidence-20260916-3pjtz1gt/`.
 The final full plan SHA is supplied externally after commit verification, avoiding a self-reference.
 
 | Check | Result and retained evidence |
@@ -288,7 +288,7 @@ The final full plan SHA is supplied externally after commit verification, avoidi
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | Exit 0; one suite, 24 tests. `roadmap-binding.log`; repeated after this recording before commit. |
 | Scoped test/generator ESLint | Exit 0 with `--max-warnings 0`; exact command in `planning-gates.json`, output in `lint.log`. This recording changes no lint input, so that result is reused after verifying input equality. |
 | `npm run roadmap` then `npm run roadmap:check` | Exit 0; `roadmap-generation.log` and `roadmap-freshness.log`. Regenerated and rechecked after this receipt. |
-| `python3 /Users/julianhein/Projects/hr-surfaces-plan-evidence-20260916-3pjtz1gt/check-plan.py` | Exit 0; exact six-document scope, 15 introduced local links/fragments, nine existing instruction pairs equal, maximum complete chain 18,376 bytes, 74 approval controls, 40 existing proof paths and the one assigned new focus suite. All seven observed commits exist; accepted five and parent ancestry verified. Product checkboxes, roadmap graph/status and product inputs remain unchanged. `document-checks.json` binds final document hashes. |
+| `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-surfaces-plan-evidence-20260916-3pjtz1gt/check-plan.py` | Exit 0; exact six-document scope, 15 introduced local links/fragments, nine existing instruction pairs equal, maximum complete chain 18,376 bytes, 74 approval controls, 40 existing proof paths and the one assigned new focus suite. All seven observed commits exist; accepted five and parent ancestry verified. Product checkboxes, roadmap graph/status and product inputs remain unchanged. `document-checks.json` binds final document hashes. |
 | `git diff --check` | Exit 0; repeated with staged whitespace before the exact-path commit. |
 | Product verification | Not run or claimed during planning. Earlier leaf/sweep evidence was inspected for feasibility; it does not establish this group's acceptance. |
 
@@ -341,7 +341,7 @@ creation. This verification grants no merge into `master`; F5's explicit operato
 condition still applies.
 
 Readiness evidence is retained at
-`/Users/julianhein/Projects/hr-surfaces-plan-ready-20260917-mlj4f315/`. `prerequisites.json` records
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-surfaces-plan-ready-20260917-mlj4f315/`. `prerequisites.json` records
 the input verification; the documentation checks, exact committed-content verification and planning
 checkout cleanup are recorded there before the launch prompt is issued. Only this owner and the
 roadmap journal/generated page change. No runtime gates are rerun or claimed by the planner.
@@ -362,7 +362,7 @@ removing the incorporated branch and worktree. The creation base was exactly
 `e7c722c687bc035e083841fbea9c339af75a8453`, verified against the committed owner and retained
 `codex/plan-3.1.9.8`. At freeze, master remained `ac8c620b72ec47d9788909a4a52941a4c741f42a`.
 
-Durable evidence is `/Users/julianhein/Projects/hr-surfaces-evidence-20260917-qy8rqtwg/`.
+Durable evidence is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-surfaces-evidence-20260917-qy8rqtwg/`.
 Each gate has a `.json` command/exit/timing record, `.inputs.json` file hashes and full `.log`.
 `candidate-inputs.json` binds the implementation/tree, all 390 changed files since the accepted
 common parent, final proof/log hashes, 161-file lint census, bundle and effective browser workers.

@@ -303,7 +303,7 @@ No cleanup of peer worktrees or capacity increase is implied by plan approval.
 
 ### Planning validation — 2026-09-15
 
-Retained evidence: `/Users/julianhein/Projects/hr-intake-plan-evidence-20260915-bkUaFy`.
+Retained evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-intake-plan-evidence-20260915-bkUaFy`.
 This directory contains command logs and verification receipts, not another plan or worktree.
 
 | Check | Result / evidence |
@@ -336,13 +336,13 @@ with ordinary Run/Rerun and workflow activation reserved to their existing owner
 | Accepted prerequisite | `3d4d8c0c64cf2e96096b193966a66741861d6f1c`, verified ancestor before edits |
 | Implementation commit | `2a518d007695437697663dc36960dead783d4a01` |
 | Verified input identity | `d8bfce41b44f80a5c601b7815fae9ef67ba54cb2fb6d339491055613e2dfbfd0`, SHA-256 of the sorted path→content-hash map retained with each gate |
-| Evidence | `/Users/julianhein/Projects/hr-intake-evidence-20260915-r4bjbjka`; exact commands, exits, input hashes, browser reports and reproduction scripts retained there |
+| Evidence | `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-intake-evidence-20260915-r4bjbjka`; exact commands, exits, input hashes, browser reports and reproduction scripts retained there |
 | Execution | Local supervisor; zero implementation workers and zero independent reviewers under the Phase 3.1 cadence |
 
 The separately authorized worktree sweep integrated and cleaned the four existing candidates before
 Intake creation, leaving zero occupied auxiliary slots. Its primary-checkout tip is
 `ac8c620b72ec47d9788909a4a52941a4c741f42a`; evidence is
-`/Users/julianhein/Projects/hr-sweep-evidence-20260915-5xbxjnap`. The Intake worktree was then created
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-sweep-evidence-20260915-5xbxjnap`. The Intake worktree was then created
 from the exact approved base above, not the sweep tip. No Intake-owned production drift was present
 in that tip. Intake has not been merged or pushed.
 

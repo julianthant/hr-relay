@@ -349,7 +349,7 @@ The diagnostics path/ref and F's removed path/ref were absent. Names are proposa
 At most four auxiliary worktrees may exist; never borrow an active sibling's checkout.
 
 F's [repair and integrated release](foundation.md#f-prerequisite-repair--2026-09-09) and
-[complete cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json)
+[complete cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-repair-evidence-20260909/closure.json)
 are the prerequisite evidence: 961 unit tests, 199 affected architecture tests, 67 filtered UI cases,
 lint and freshness passed. These are F's focused evidence, not D's behavior proof or full gates.
 F repair changed the command kernel's settings branch and appended settings tests, but left D's
@@ -501,7 +501,7 @@ not require renewed approval.
 
 Run from the verified D worktree. Keep logs and the configuration below in an owned external
 `/tmp/diagnostics-*` directory during iteration; preserve final evidence outside the removed
-worktree in `/Users/julianhein/Projects/hr-diagnostics-evidence-20260909` without overwriting another
+worktree in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-diagnostics-evidence-20260909` without overwriting another
 owner's evidence. At most one effective D test file worker, within the four-worker batch budget.
 
 Create external `vitest-one.config.mts` by importing the actual D worktree `vitest.config.ts`,
@@ -630,7 +630,7 @@ check. Full gates and fresh independent review are explicitly unrun here and rem
 The superseding F repair is now integrated at `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`;
 final release record `e06a1c82e9983deb281c5400671f6ce330214000` contains D's approved planning
 commit `950c5b617d73d2e9d1f7e43b7e90f3eaf21c80be`. The
-[resolver cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+[resolver cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json)
 is complete: owned worktree/ref absent, no owned processes, earlier receipts preserved. This
 clears the temporary launch hold raised after the first D prompt; the earlier prompt's base is
 superseded. The final planner prompt binds the exact commit containing this rebind as implementation
@@ -666,7 +666,7 @@ worktrees existed. Shared master had unrelated documentation edits, which were p
 D01–D05 are complete. D04 candidate checks and D05 integration/cleanup are recorded below.
 Full gates and fresh independent review remain with 2.6.9. Iteration evidence is
 `/tmp/diagnostics-20260909/`; retained evidence is
-`/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/`.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-diagnostics-evidence-20260909/`.
 
 **Operator-approved bounded test ownership amendment:** the required focused guard
 `tests/unit/architecture/control-command-single-path.test.ts` omitted failure-resolution from its
@@ -770,9 +770,9 @@ Full independent review and phase acceptance remain at 2.6.9.
 | Later peer merge | P merged `4818223c9da0231481da6051f73f2c33ee16abf0` after D's successful integration checks. D's 31 non-shared implementation/test/reference paths are byte-identical and its shared database condition is unchanged. P's two database edits concern provider invariants only. P06 retains its later merge checks; no D claim of testing that later combined runtime is made. |
 | Final recording | This owner-only completion record changes no D runtime/test/configuration input. Documentation binding, links, instruction pairs/chains, roadmap freshness and whitespace are checked on the recording tree. D's runtime acceptance remains bound to the exact tested integration above. Final SHA/tree and cleanup checks are retained in `closure.json`. |
 
-The [D closure receipt](/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/closure.json),
-[candidate receipt](/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/candidate.json) and
-[integration receipt](/Users/julianhein/Projects/hr-diagnostics-evidence-20260909/integration.json)
+The [D closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-diagnostics-evidence-20260909/closure.json),
+[candidate receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-diagnostics-evidence-20260909/candidate.json) and
+[integration receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-diagnostics-evidence-20260909/integration.json)
 are the reachable release for L and 2.6.9. D kept all assigned implementation, gate, merge and cleanup
 duties; no worker, reviewer, peer message, responsibility transfer or successor dispatch occurred.
 No push, live database application, HR write or operator upgrade occurred.

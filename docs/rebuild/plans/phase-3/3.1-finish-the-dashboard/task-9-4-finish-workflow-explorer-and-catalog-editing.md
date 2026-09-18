@@ -255,7 +255,7 @@ absolute checkout, owning section, E1–E4, focused/no-review cadence and finali
 
 ### Planning validation — 2026-09-14
 
-Evidence namespace: `/Users/julianhein/Projects/hr-explorer-plan-evidence-20260914-et13427v`.
+Evidence namespace: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-explorer-plan-evidence-20260914-et13427v`.
 This is retained planning evidence, not a second plan or implementation checkout.
 
 | Check | Result / evidence |
@@ -303,7 +303,7 @@ candidate; it does not release the parallel group or close the roadmap task.
 | Accepted evidence identity | `accepted-inputs.json` hashes all 2,353 non-document tracked/added inputs. Hashes were rechecked after gates and before the implementation commit; the evidence-only recording must preserve them. `reference-audit.json` separately covers every existing reference file and scene membership. |
 | Remaining owner | Operator-directed 3.1.9.8 intake, combined focused checks/typecheck, integration into local `master`, and branch/worktree cleanup. No push, merge, independent reviewer or sibling dispatch occurred here. |
 
-Evidence is retained at `/Users/julianhein/Projects/hr-explorer-evidence-20260914-_eicf9z4`.
+Evidence is retained at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-explorer-evidence-20260914-_eicf9z4`.
 This private namespace contains logs, input identities, cleanup records and the browser-output
 archive, not another plan. The installed dependency symlink is read-only; this checkout owns its
 build and test outputs.
@@ -343,7 +343,7 @@ asserted in the new journey tests. Build/parity, compiler and lint ran sequentia
 | Exact focused unit/architecture set above | PASS, exit 0: 14 files, 186 tests; `focused-tests.log`. |
 | `npm run test:parity -- tests/parity/reference-explorer.spec.ts tests/parity/explorer-authority.spec.ts --workers=4` | PASS, exit 0: 34 cases, comprising 18 unchanged reference cases and 16 new service cases; `parity.log`. |
 | `npx eslint src/dashboard/surfaces/explorer.tsx tests/parity/explorer-authority.spec.ts tests/parity/helpers/fixture-explorer-authority.ts tests/unit/dashboard/explorer-edit-dialog.test.ts tests/unit/server/explorer-acceptance.test.ts --max-warnings 0` | PASS, exit 0; `lint.log`. |
-| `npx tsc --project /Users/julianhein/Projects/hr-explorer-evidence-20260914-_eicf9z4/iteration/tsconfig.json --noEmit` | PASS, exit 0; scoped check of the four changed test files and their imported production closure, using the repository compiler options and explicit dependency type roots. This is additional scoped evidence, not whole-repository typecheck. |
+| `npx tsc --project /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-explorer-evidence-20260914-_eicf9z4/iteration/tsconfig.json --noEmit` | PASS, exit 0; scoped check of the four changed test files and their imported production closure, using the repository compiler options and explicit dependency type roots. This is additional scoped evidence, not whole-repository typecheck. |
 | `npm run build:manifest:check` | PASS, exit 0; `manifest.log`. No manifest/catalog regeneration or source-authority change. |
 | `git diff --check` and `git diff --cached --check` | PASS, exit 0 before the implementation commit. |
 | Reference identity and runtime cleanup | PASS: 693 reference hashes and exact membership match the creation base. Successful runner roots were removed by the runner; five owned failed-run roots were archived then removed after exact owner and absent process-group checks. Browser session `explorer-3194`, private ports 61713/62204 and the manual synthetic database were closed/removed; `runner-cleanup.json` and `manual-runtime-cleanup.json`. Peer resources remain untouched. |
@@ -357,7 +357,7 @@ inputs. Source checks retain the implementation candidate's exact input identity
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS, exit 0: 1 file, 24 tests. |
 | `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap/parse-plan.ts scripts/roadmap/scan-docs.ts scripts/roadmap/schema.ts --max-warnings 0` | PASS, exit 0. |
 | `npm run roadmap` then `npm run roadmap:check` | PASS, both exit 0; generated roadmap bytes unchanged. |
-| `sh /Users/julianhein/Projects/hr-explorer-evidence-20260914-_eicf9z4/document-check.sh` | PASS, exit 0: 14 local links/fragments, nine byte-identical existing instruction pairs, largest project chain 18,376 bytes below 32,768, approved controls retained, only this owner differs from the implementation candidate, all 2,353 non-document input hashes unchanged. |
+| `sh /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-explorer-evidence-20260914-_eicf9z4/document-check.sh` | PASS, exit 0: 14 local links/fragments, nine byte-identical existing instruction pairs, largest project chain 18,376 bytes below 32,768, approved controls retained, only this owner differs from the implementation candidate, all 2,353 non-document input hashes unchanged. |
 | `git diff --check` and `git diff --cached --check` | PASS, exit 0 before recording commit. |
 
 Full repository typecheck/lint/coverage,

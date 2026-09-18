@@ -64,7 +64,7 @@ test files, in addition to A's original ownership. No Q implementation file chan
 
 ## Exact candidate gates
 
-External evidence root: `/Users/julianhein/Projects/hr-archive-transfer-evidence-20260909/`.
+External evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-transfer-evidence-20260909/`.
 `candidate-results.json` records exact commands, cwd, exits, duration and absence of mutated inputs.
 `candidate-inputs.json` records hashes; every input was checked unchanged before the implementation
 commit. The script extracted both exact selectors from the immutable approved plan; no test was skipped.

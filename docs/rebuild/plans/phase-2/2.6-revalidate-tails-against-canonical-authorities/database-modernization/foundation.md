@@ -522,7 +522,7 @@ The clean exclusive branch `codex/database-foundation` was created at that base 
 `/Users/julianhein/Projects/hr-worktree-database-foundation`; master was clean at admission.
 The original migration literals through schema41, floor40 and populated C fixtures were copied
 and hashed before edits. External proof root:
-`/Users/julianhein/Projects/hr-database-foundation-evidence-20260909` (`baseline.json`, `baseline/`).
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-evidence-20260909` (`baseline.json`, `baseline/`).
 
 ### Supplied storage and transaction contracts
 
@@ -747,8 +747,8 @@ inputs. The ten original copied baseline files were rehashed and matched before 
 Exact executed focused commands (the external resource-only adapter enforces one Vitest file worker):
 
 ```sh
-VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/advisory-zero-authority.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-retention.test.ts tests/unit/artifact-projection.test.ts tests/unit/command-kernel-restart.test.ts tests/unit/command-kernel.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/database-foundation/baseline-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/diagnostic-capture.test.ts tests/unit/diagnostic-safety-projection.test.ts tests/unit/evidence-receipt-repository.test.ts tests/unit/infra/server-verified-artifact-reader.test.ts tests/unit/intake-command-arms.test.ts tests/unit/intake-session.test.ts tests/unit/intake-validation.test.ts tests/unit/ocr-command.test.ts tests/unit/ocr-extraction-admission.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/provider-admission.test.ts tests/unit/receipt-derivation-binding.test.ts tests/unit/run-completion-migration.test.ts tests/unit/run-record-service/service.test.ts tests/unit/server/diagnostic-bundle-readback.test.ts tests/unit/server/intake-surface.test.ts tests/unit/server/operator-xlsx-export-service.test.ts tests/unit/server/settings-facts.test.ts tests/unit/server/settings-runtime-reader.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/sqlite-authority-database.test.ts tests/unit/sqlite-settings-authority.test.ts tests/unit/start-plan.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-diagnostic-redaction.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-upgrade.test.ts tests/unit/worker-composition.test.ts tests/unit/worker-loop.test.ts tests/unit/worker-sessions.test.ts
-VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/ai-advisory-no-authority.test.ts tests/unit/architecture/artifact-effect-boundary.test.ts tests/unit/architecture/guard-manifest.test.ts tests/unit/architecture/knowledge-fix-integrity.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/sqlite-settings-authority.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/advisory-zero-authority.test.ts tests/unit/archive-protected-identity.test.ts tests/unit/archive-retention.test.ts tests/unit/artifact-projection.test.ts tests/unit/command-kernel-restart.test.ts tests/unit/command-kernel.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/database-foundation/baseline-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/diagnostic-capture.test.ts tests/unit/diagnostic-safety-projection.test.ts tests/unit/evidence-receipt-repository.test.ts tests/unit/infra/server-verified-artifact-reader.test.ts tests/unit/intake-command-arms.test.ts tests/unit/intake-session.test.ts tests/unit/intake-validation.test.ts tests/unit/ocr-command.test.ts tests/unit/ocr-extraction-admission.test.ts tests/unit/operator-xlsx-export.test.ts tests/unit/provider-admission.test.ts tests/unit/receipt-derivation-binding.test.ts tests/unit/run-completion-migration.test.ts tests/unit/run-record-service/service.test.ts tests/unit/server/diagnostic-bundle-readback.test.ts tests/unit/server/intake-surface.test.ts tests/unit/server/operator-xlsx-export-service.test.ts tests/unit/server/settings-facts.test.ts tests/unit/server/settings-runtime-reader.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/sqlite-authority-database.test.ts tests/unit/sqlite-settings-authority.test.ts tests/unit/start-plan.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-diagnostic-redaction.test.ts tests/unit/storage-restore-drill.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-upgrade.test.ts tests/unit/worker-composition.test.ts tests/unit/worker-loop.test.ts tests/unit/worker-sessions.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/ai-advisory-no-authority.test.ts tests/unit/architecture/artifact-effect-boundary.test.ts tests/unit/architecture/guard-manifest.test.ts tests/unit/architecture/knowledge-fix-integrity.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts tests/unit/architecture/sqlite-settings-authority.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts
 npm run lint
 npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'intake-|settings|loaded storage doctor|diagnostic-'
 npm run test:parity -- tests/parity/intake-accessibility.spec.ts
@@ -803,7 +803,7 @@ at any later operator-started launch. No child or reviewer was launched. L still
 actual future candidates; 2.6.9 owns full gates, independent review and remaining final acceptance.
 
 Closure evidence is preserved outside the checkout at
-[the exact cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-evidence-20260909/closure.json).
+[the exact cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-evidence-20260909/closure.json).
 It is written as pending before resource removal and changed to `complete` only after master
 incorporation, focused-input identity, stopped owned processes, saved ignored evidence, ordinary
 worktree removal, `git branch -d`, registration/path/ref absence and clean final master are verified.
@@ -865,7 +865,7 @@ and the original F proof directory remain untouched.
 
 Candidate `a1e963445bc05d57f1eb9abbff95a9238300ab3a`, tree
 `6d97254e993d00621765704d04cb09d283fb8024`, passed every assigned/affected focused check.
-The [repair evidence directory](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909)
+The [repair evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-repair-evidence-20260909)
 retains `candidate.json`, the exact patch and tree objects, ancestry, worker configuration, all
 commands/selectors and hashed logs in `focused-pass.json`. The resource-only Vitest adapter keeps
 one file worker and preserves project membership and isolation. UI uses the repository's existing
@@ -911,7 +911,7 @@ all four owned paths and refs were verified absent. Their original product proof
 G's future brief includes focused tests, lint, local merge and owned cleanup as the operator directed;
 this records that boundary without launching G or approving its task-specific proposal here.
 
-The [repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json)
+The [repair cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-repair-evidence-20260909/closure.json)
 is initialized as pending and becomes complete only after final documentation checks, source-input
 reuse verification, preserved ignored outputs, stopped owned processes, ordinary worktree removal,
 local branch deletion and registration/path/ref absence checks. It binds the final master commit
@@ -959,7 +959,7 @@ cross-field rule; the corrected two-leaf patch isolates the missing return-contr
 ### Focused resolver repair proof
 
 Candidate `f917ffe7b2308b4746e2aba16719a68cbafdb56c`, tree `6d7a7e539e42c93fa395d7e7a69281f393d2dcdf`, includes the resolver repair and
-focused fixture repairs. The [resolver repair evidence directory](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909) retains exact patches,
+focused fixture repairs. The [resolver repair evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909) retains exact patches,
 commands, selectors, input-object comparisons, hashes, failed logs and the successful reruns.
 `focused-pass.json` and `gate-reuse.json` bind the combined result to this candidate.
 
@@ -1004,7 +1004,7 @@ S’s complete resolver-port blocker is repaired without expanding its ownership
 its focused gates. P/D/G retain their approved plans and rebind their exact implementation bases
 to a verified descendant containing those plans and this F release. No children were launched.
 
-The [resolver repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+The [resolver repair cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json)
 is pending until final documentation/freshness checks, unchanged-input verification, preservation
 of ignored outputs, stopped owned processes, ordinary worktree removal and branch deletion succeed.
 The completed receipt binds final master/tree, exact cleanup commands, registration/path/ref absence

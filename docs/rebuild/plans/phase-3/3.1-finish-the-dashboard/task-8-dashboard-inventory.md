@@ -475,7 +475,7 @@ Mutation routes use the loopback ingress guard and their registered canonical se
 
 ## Source and browser census
 
-The retained evidence root is `/Users/julianhein/Projects/hr-dashboard-baseline-evidence-20260912/`.
+The retained evidence root is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-dashboard-baseline-evidence-20260912/`.
 `source-census.json` records source SHA-256, exact line, JSX tag/attributes, schema field declaration,
 route/method and named functions for every dashboard app/surface/state/client/domain-wire/server
 module plus the additional I-row authority inputs. `census.cjs` is the exact TypeScript-AST recipe.
@@ -528,7 +528,7 @@ The census covers **199 files, 877 control/component declarations, 2449 field de
 
 Browser recipe: `launcher.mts` imports `ensureParityBundle`, `startFixtureServer` and
 `startSeededServer` from the assigned checkout, builds the current bundle and starts both on
-`127.0.0.1` port 0. Command: `node_modules/.bin/tsx /Users/julianhein/Projects/hr-dashboard-baseline-evidence-20260912/launcher.mts`.
+`127.0.0.1` port 0. Command: `node_modules/.bin/tsx /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-dashboard-baseline-evidence-20260912/launcher.mts`.
 `browser-inputs.json` binds the bundle input/output digests, URLs, process ID, synthetic identities
 and six declared seeded-coverage gaps. `browser-server.log` is the exit/build log; `browser-closed.json`
 records both servers closing, launcher exit 0. Only owned session `dashboard-baseline` was used and

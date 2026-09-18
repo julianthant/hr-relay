@@ -213,7 +213,7 @@ separately from any fixture technique; do not change tolerances, drop cases or i
 The in-flight Settings candidate has operator-approved changes to the same storage reference
 families: Settings navigation/body effects and eleven additional reference-only fixes, including
 inherited queue baselines. That candidate's exact evidence is retained at
-`/Users/julianhein/Projects/hr-settings-evidence-20260913/` and in its committed task record on
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-evidence-20260913/` and in its committed task record on
 `codex/3.1.9.2-settings`. Do not cherry-pick only its reference images into Storage, overwrite its
 candidate or silently treat its scope as unapproved. Each candidate proves its own source tree.
 3.1.9.8 is the sole combined reference/generated-output owner: preserve both source changes,
@@ -229,7 +229,7 @@ runner's private `/tmp/hrt-<uid>/run-*` roots and ephemeral HTTP/SSE ports, neve
 operator authority. Keep the test runner's at-most-four file workers; parity uses the explicit
 four-worker selector. Do not overlap build/parity writers within this checkout. Record effective
 worker counts, commands, input identities, exits and owned process handles. Evidence root:
-`/Users/julianhein/Projects/hr-storage-evidence-20260913/`; create only if absent or verify ownership.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-storage-evidence-20260913/`; create only if absent or verify ownership.
 No coverage run is assigned here; keep later coverage free of this task's compiler/linter contention.
 
 3.1.9.8 combines all worker candidates, runs typecheck, focused integration/regression tests,
@@ -292,10 +292,10 @@ implementation checkboxes are unchanged. This is planning validation, not produc
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS: 1 file / 24 tests, exit 0; `roadmap-binding.log`. |
 | Scoped ESLint over that test and `scripts/generate-roadmap.ts scripts/roadmap` | PASS, exit 0; `lint.log`. |
 | `npm run roadmap:check` | PASS, exit 0; generated index is fresh without regeneration; `roadmap-check.log`. |
-| `python3 /Users/julianhein/Projects/hr-storage-plan-evidence-20260913/audit.py` | PASS: 23 document links/fragments, nine identical instruction pairs, maximum complete instruction chain 22,199 UTF-8 bytes, 27 required execution controls, 17 existing unit-test paths and prerequisite ancestry. The two prospective unit paths are explicitly assigned to implementation. |
+| `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-storage-plan-evidence-20260913/audit.py` | PASS: 23 document links/fragments, nine identical instruction pairs, maximum complete instruction chain 22,199 UTF-8 bytes, 27 required execution controls, 17 existing unit-test paths and prerequisite ancestry. The two prospective unit paths are explicitly assigned to implementation. |
 | Source/whitespace boundary | PASS: exact two-document allowlist, 2,560 unchanged tracked inputs and `git diff --check`. |
 
-Evidence root: `/Users/julianhein/Projects/hr-storage-plan-evidence-20260913/`.
+Evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-storage-plan-evidence-20260913/`.
 `audit.py` is the reproducible audit; `audit.json` and `unchanged-inputs.json` bind checked document
 hashes, ownership, controls and unchanged baseline objects. The receipt adds no runtime/test or
 roadmap binding input; reuse the passed binding/lint results on that inspected basis. Recheck
@@ -325,7 +325,7 @@ new table and two native owners; no guard is added or retired.
 The seven queue states retained older no-run copy despite the already-integrated source correction.
 The Storage candidate regenerates and verifies its own output. The Settings candidate's approved
 reference changes remain untouched, and 3.1.9.8 retains sole combined-reference ownership.
-Evidence and the proposed source patch are in `/Users/julianhein/Projects/hr-storage-evidence-20260913/`.
+Evidence and the proposed source patch are in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-storage-evidence-20260913/`.
 
 
 ### Execution delivery — 2026-09-14
@@ -344,7 +344,7 @@ No independent review is assigned under the Phase 3.1 cadence.
 | Frozen input receipt | `frozen-inputs.json`: 2,566 tracked/new inputs excluding this evidence owner; receipt SHA-256 `8cf65c9e9e3ed12e2b434bfd55688db17d572bc2befc52262d993bca34fdd5cb` |
 | Built input / emitted bundle | `9bd0ab8020748a50de73f1cb460bfe07a6a1f1ac4c42b8eca3f1e71b05abd210` / `21626f1da779ddfbd4432727d72c7170891d8045fd6a750101230299e3a6363c` |
 
-Evidence files named here live in `/Users/julianhein/Projects/hr-storage-evidence-20260913/`.
+Evidence files named here live in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-storage-evidence-20260913/`.
 The final recording commit is bound externally by `frozen-candidate.json`, avoiding a self-referential
 commit hash. `preflight.json` records initial clean ownership and prerequisite ancestry; later
 checks retained the same base and Settings candidate. Two auxiliary worktrees stayed below the

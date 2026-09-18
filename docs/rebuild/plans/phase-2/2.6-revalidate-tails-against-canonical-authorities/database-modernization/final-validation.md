@@ -47,9 +47,9 @@ reviewers need no additional checkout. Other task status does not authorize alte
 | U / H | `1e2981f2ef8897612e7ca02deccea2e30386605e` / `f8ae343298647363808c2695e463d059a713d813` | [U evidence](07-activity-ui-evidence.md), [H evidence](08-archive-ui-evidence.md) |
 
 The committed release owners bind candidates, tested trees, commands, results and cleanup. V/U/H
-`release.json` receipts exist respectively under `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/`,
-`/Users/julianhein/Projects/hr-u-activity-views-evidence-20260910/` and
-`/Users/julianhein/Projects/hr-h-archive-evidence-20260910/`. Follow the other owners' exact links.
+`release.json` receipts exist respectively under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/`,
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-u-activity-views-evidence-20260910/` and
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-h-archive-evidence-20260910/`. Follow the other owners' exact links.
 Missing/divergent required evidence blocks its acceptance row. Do not re-merge incorporated
 candidates or recreate removed peer branches as prerequisites.
 
@@ -280,14 +280,14 @@ inferred. Its source/test/configuration inputs are unchanged from product input 
 | Prerequisites | All tabled integration SHAs are ancestors of the exact product input. V/U/H release receipts parse and remain available. |
 
 Command logs, individual exits, changed-input classification and exact commit/tree verification are
-retained under `/Users/julianhein/Projects/hr-final-plan-evidence-20260910/`. The launch registry binds
+retained under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-plan-evidence-20260910/`. The launch registry binds
 the substantive plan commit after commitment; it does not mark F01–F07 implemented.
 
 ## Current execution state — 2026-09-10
 
 Supervisor: one Astra session, zero implementation workers. Checkout `/Users/julianhein/Projects/hr-worktree-database-contracts`, branch `codex/database-validation`, exact base `7f77978716319c4329392a19e7a971f18af37362`. All cited prerequisite commits, including U/H and L retirement, are ancestors. Primary master last verified is `80d38635cd3455c2e8c7c4525e0470e4f60ce1d8`; its unrelated instruction/reference edits remain untouched. Integration requires all F01–F07 gates and R1–R5 PASS.
 
-Evidence root: `/Users/julianhein/Projects/hr-final-validation-evidence-20260910/`. Each gate JSON records literal command, input HEAD and exit; logs retain failures. `F02-preserved-identities.json` binds fresh/v29 source, migrated copies and verified backups retained in private synthetic fixture directories. Initial preservation script failed on a missing explicit column list; its failed fixtures/log remain separate from the successful verified fixtures.
+Evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-validation-evidence-20260910/`. Each gate JSON records literal command, input HEAD and exit; logs retain failures. `F02-preserved-identities.json` binds fresh/v29 source, migrated copies and verified backups retained in private synthetic fixture directories. Initial preservation script failed on a missing explicit column list; its failed fixtures/log remain separate from the successful verified fixtures.
 
 | Step | Current evidence / unfinished work |
 | --- | --- |
@@ -445,7 +445,7 @@ Fresh and supported 46/47/48/49 conversions all match the physical catalog and c
 The store catalog generator describes task-store capabilities, not SQL tables; its required freshness
 check remains F05. Complete production-consumer classification and final acceptance remain open.
 
-| Evidence in `/Users/julianhein/Projects/hr-final-validation-evidence-20260910/` | Verified outcome |
+| Evidence in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-validation-evidence-20260910/` | Verified outcome |
 | --- | --- |
 | `F04-retirement-50-final` | 4 unit files / 73 tests PASS: exact inventories, supported recovery, populated conversion, six archive interruption boundaries, three restored-backup boundaries, files/download bytes, explicit deletion and descendant survival. Architecture selector in this unit command was excluded and is not counted. |
 | `F04-retirement-migration-history` | 2 architecture files / 9 tests PASS: immutable migrations 1–50 and historical archive invariants. |
@@ -710,7 +710,7 @@ configs after removing exactly those fields and writes `two-worker-config-proof.
 excludes, isolation, timeouts, assertions and floors remain equal. The initial npm test:coverage
 argument attempt was stopped (exit130) because npm passed --config to the second compound command;
 no adapter loaded, so it is not counted. Correct invocation is `node --import tsx scripts/test-runner.ts
-run --coverage --config /Users/julianhein/Projects/hr-final-validation-evidence-20260910/vitest-two-workers.config.mts`,
+run --coverage --config /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-validation-evidence-20260910/vitest-two-workers.config.mts`,
 followed by `node --import tsx scripts/suite-size.ts`. `F05-coverage-two-worker-valid` has loaded the
 verified 2/2/2/2 configuration. Record actual observed workers with its final receipt.
 
@@ -764,7 +764,7 @@ No implementation worker was used. The supervisor is repairing the findings loca
 | R2-RETRY | Applying-version UI creates a new apply command envelope; durable claim requires the original ID/fingerprint. Exact request recovery across lost responses/reload remains open. R4 overlap. |
 | R3-NOTE | Production capture of a resolved protected run exposes arbitrary free-text notes in public sections/wire although live trust output withholds them. External probe completed with private source bytes retained. Regression observed red; public capture scrubbing repair passes focused cases. Broader proof and review remain open. |
 
-Evidence is retained under `/Users/julianhein/Projects/hr-final-validation-evidence-20260910/`,
+Evidence is retained under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-validation-evidence-20260910/`,
 including `R1-missing-custody`, `R2-interrupted-attachment`, `R2-tombstone-pagination`,
 `R2-interrupted-annotation`, `R3-protected-note` harnesses and `R-fixes-red`/`R-fixes-focused`
 gate receipts. The initial repair typecheck/lint failed on a missing ArchiveReport type import;
@@ -1361,7 +1361,7 @@ intermediate pending/unstarted statements in dated records; their failures and a
 | Cleanup | `F07-cleanup.json`: exact worktree registration/path and `codex/database-validation` ref absent; 118 owned inactive scratch roots removed, six already absent, zero retained scratch. Both exact completed review tasks archived; calling supervisor retained. |
 
 All receipts and immutable review/proof assets remain in
-`/Users/julianhein/Projects/hr-final-validation-evidence-20260910/`. The original six F02 databases/
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-validation-evidence-20260910/`. The original six F02 databases/
 backups and all 16 migrated fixtures were rehashed again at integration. The final coverage, build
 and parity outputs (882 files) were copied and independently hash-compared before checkout removal;
 `retained-final-validation-output-manifest.json` binds the preserved copy. No original proof adapter

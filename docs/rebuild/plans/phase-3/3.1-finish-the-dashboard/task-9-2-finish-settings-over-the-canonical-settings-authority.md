@@ -248,7 +248,7 @@ link; do not install into or mutate that shared directory. Use the runner's priv
 `/tmp/hrt-<uid>/run-*` roots and ephemeral HTTP/SSE ports, never 3938/5174 or operator state.
 Do not overlap build/parity writers in one checkout. Keep test/provider/credential values synthetic;
 no external HR action or operator credential change is assigned. Retain implementation evidence at
-`/Users/julianhein/Projects/hr-settings-evidence-20260913/`, creating it only if absent or verifying
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-evidence-20260913/`, creating it only if absent or verifying
 this assignment owns it. Record commands, effective workers, tested inputs, exit status and artifact
 hashes; preserve required evidence before releasing scratch/worktrees.
 
@@ -283,7 +283,7 @@ mark this task implemented during planning or claim group release before 3.1.9.8
 
 ### Planning validation and delivery
 
-Planning evidence is retained at `/Users/julianhein/Projects/hr-settings-plan-evidence-20260913/`.
+Planning evidence is retained at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-plan-evidence-20260913/`.
 The planner validates doc binding, scoped lint for any executed documentation test, generated roadmap
 freshness, local links, existing instruction twins/chains, exact changed-path scope, complete approved
 controls and Git ancestry. Read back this entire section from the final plan commit, verify named-ref
@@ -296,7 +296,7 @@ Record the scoped results here before handoff; no product gate reuse or new runt
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS: 24 tests, exit 0; `roadmap-binding.log` and its command JSON. The runner removed successful private scratch. |
 | `npx --no-install eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap --max-warnings 0` | PASS, zero warnings, exit 0; `scoped-lint.log` and command JSON. |
 | `npm run roadmap`; `npm run roadmap:check` | PASS, exit 0. Generation produces the same `docs/roadmap/index.html` bytes as the planning base; `roadmap-check.log` records freshness. |
-| `python3 /Users/julianhein/Projects/hr-settings-plan-evidence-20260913/audit.py /Users/julianhein/Projects/hr-worktree-settings-plan` | PASS: exactly two approved documentation paths, 17 links/fragments, 19 existing/planned test paths, nine byte-identical instruction pairs, maximum chain 18,376 bytes below 32,768, all execution-control sections and prerequisite ancestries. `document-audit.json` records inputs/hashes. The first audit run's literal label check was corrected from `Settings-only dependency construction` to the actual `Settings dependency construction`; no plan scope was changed to satisfy it. |
+| `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-plan-evidence-20260913/audit.py /Users/julianhein/Projects/hr-worktree-settings-plan` | PASS: exactly two approved documentation paths, 17 links/fragments, 19 existing/planned test paths, nine byte-identical instruction pairs, maximum chain 18,376 bytes below 32,768, all execution-control sections and prerequisite ancestries. `document-audit.json` records inputs/hashes. The first audit run's literal label check was corrected from `Settings-only dependency construction` to the actual `Settings dependency construction`; no plan scope was changed to satisfy it. |
 | Source and whitespace boundary | PASS: `git diff --check`; no product/test/config/dependency/instruction/reference or generated-roadmap changes from `07221394ece638d5de9f38407654ad2b305f1f9f`. No implementation or broad acceptance gates were run or claimed. |
 
 The recording table changes no source, test, tool/configuration input, links, requirement, task
@@ -317,7 +317,7 @@ capacity and all three prerequisite ancestries. The retained plan ref still name
 One supervisor executes locally; zero workers and no independent review under the Phase 3.1 cadence.
 
 At the first S4 checkpoint, S1–S3 were implemented in the allocated Settings projection,
-ordinary/protected editor and tests. The passing candidate record below supersedes that checkpoint. Evidence lives at `/Users/julianhein/Projects/hr-settings-evidence-20260913/`.
+ordinary/protected editor and tests. The passing candidate record below supersedes that checkpoint. Evidence lives at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-evidence-20260913/`.
 The exact ten-file unit gate passed 91 tests. The first real HTTP browser proof passed in both
 themes, including independent saves, conflicts, explicit clear, response loss after effect, failed
 readback, exact retry, privacy, cancelled/confirmed dirty exits and focus restoration. Actual

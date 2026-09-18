@@ -47,7 +47,7 @@ no additional checkout. Revalidate volatile state at start/resume rather than tr
 as a reservation or permission to modify another session's resources.
 
 The accepted 2.6 evidence root is
-`/Users/julianhein/Projects/hr-final-validation-evidence-20260910/`. Planning verified presence of
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-validation-evidence-20260910/`. Planning verified presence of
 `F07-integration-inputs.json`, `R-custody-table-handover.json`, `R5-handover-assets.json`,
 `R5-recording-reuse.json` and both final standalone verdicts. Execution checks their relevant
 identities before relying on them. Missing evidence prevents that claim from being marked proven;
@@ -246,7 +246,7 @@ verification and the exact committed launch identity are supplied after scoped v
 commit does not mark the dashboard baseline complete.
 
 Planning verification is retained at
-`/Users/julianhein/Projects/hr-dashboard-plan-evidence-20260912-i7_6gpg_/`:
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-dashboard-plan-evidence-20260912-i7_6gpg_/`:
 
 | Check | Observed result |
 | --- | --- |
@@ -279,7 +279,7 @@ One supervisor performed the work; no implementation workers were used.
 | B05 · Acceptance | [A01–A42 and D01–D05](task-8-acceptance-matrix.md) freeze required outcomes, forbidden results, source authority, owner, existing/missing proof, desktop/browser/live need and release. Every inventory row has one acceptance row. 3.1.19 must execute the full matrix unchanged unless explicitly amended. |
 | B06 · Review/release | R2’s complete Astra/ultra review and bounded repair recheck accept `baeed585dcefb3883deffac0e6b725dfb1381b80` with no unresolved finding. Local master integration `45df7f7de4bf54c7cee952b3b3909778f74b8b85` includes the approved planning commit. All scoped integration gates passed; both owned worktrees and integrated delivery refs are removed, and the exact R2 task is archived. No future task is complete or dispatched. |
 
-Evidence root: `/Users/julianhein/Projects/hr-dashboard-baseline-evidence-20260912/`.
+Evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-dashboard-baseline-evidence-20260912/`.
 `evidence-manifest-r3.json` and `candidate-freeze-r3.json` bind the accepted repair candidate,
 source census, complete obligation map, browser artifacts, audit recipes and scoped gate receipts.
 The original manifests/freezes remain immutable historical records. The source of truth remains the committed companions

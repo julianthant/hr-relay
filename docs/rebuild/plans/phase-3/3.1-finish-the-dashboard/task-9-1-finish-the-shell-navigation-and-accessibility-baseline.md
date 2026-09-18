@@ -218,7 +218,7 @@ mutate shared dependencies. Tests use the runner's private `/tmp/hrt-<uid>/run-*
 HTTP/SSE ports, never 3938/5174 or operator state. Do not overlap bundle/parity writers in one
 checkout. Use at most four file workers and record effective concurrency. Repair owned failures
 without terminating another session's processes. Retain durable implementation evidence under
-`/Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/`; create it only if absent or verify
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-shell-baseline-evidence-20260913/`; create it only if absent or verify
 this assignment owns it. Copy/hash required artifacts before releasing their worktree or scratch.
 
 3.1.9.8 combines seven exact candidates in either permitted order, resolves shared/generated outputs,
@@ -256,7 +256,7 @@ The planner stops after verified prompt delivery and does not launch S1.
 
 ### Planning validation and delivery
 
-Planning evidence: `/Users/julianhein/Projects/hr-shell-plan-evidence-20260913/`.
+Planning evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-shell-plan-evidence-20260913/`.
 The planner records scoped documentation results here, verifies committed owner bytes against
 S1–S5, confirms named-ref reachability and accepted prerequisite ancestry, then delivers the resolved
 supervisor prompt. Product code, tests and reference images remain unchanged during planning.
@@ -267,7 +267,7 @@ supervisor prompt. Product code, tests and reference images remain unchanged dur
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | PASS: 24 tests, exit 0; `roadmap-binding.log`. The private runner scratch was removed after success. |
 | `npx --no-install eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap --max-warnings 0` | PASS, exit 0; `lint.log`. |
 | `npm run roadmap` and `npm run roadmap:check` | PASS, exit 0; the generator output is unchanged from the planning base, and `roadmap-check.log` records freshness. |
-| `python3 /Users/julianhein/Projects/hr-shell-plan-evidence-20260913/audit.py` | PASS: exactly three approved documentation paths, 12 owner/introduced links and fragments, nine byte-identical instruction pairs, maximum chain 18,376 bytes below 32,768, required control/test-path checks and both prerequisite ancestries. `document-audit.json` records inputs and results. |
+| `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-shell-plan-evidence-20260913/audit.py` | PASS: exactly three approved documentation paths, 12 owner/introduced links and fragments, nine byte-identical instruction pairs, maximum chain 18,376 bytes below 32,768, required control/test-path checks and both prerequisite ancestries. `document-audit.json` records inputs and results. |
 | `git diff --check` | PASS. |
 
 Only this task, the parent's bounded ownership amendment and the acceptance matrix's matching
@@ -317,7 +317,7 @@ families remain unchanged. `reference-attribution.json` records every before/aft
 ### Final focused checks and artifact custody
 
 All paths below are relative to the retained evidence root
-`/Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/`. `commands-and-results.json`
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-shell-baseline-evidence-20260913/`. `commands-and-results.json`
 records exact commands, tested implementation/tree and exits; `lint-final.log` records the exact
 13-file ESLint argv. Final unit and architecture runs were serialized, with at most four file
 workers; parity used `--workers=4`. No broad gate is represented as passed.
@@ -330,7 +330,7 @@ workers; parity used `--workers=4`. No broad gate is represented as passed.
 | Scoped ESLint and implementation whitespace | PASS, zero warnings; `lint-final.log`; `git diff --check` and cached check, exit 0. |
 | Actual Chromium zoom | PASS, Chromium `149.0.7827.55`, both themes. Tab-scoped extension `chrome.tabs.setZoom/getZoom` read back 1.25 at 1280×720 (1024×576 CSS, DPR 1.25) and 2 at 1440×900 (720×450 CSS, DPR 2). Every case retained the 1024×720 side-by-side canvas, keyboard access/return to Settings and document-scroll access to the footer. `zoom-receipts.json`, four top and four scrolled viewport PNGs, `zoom-proof.js`, config and extension source retain the mechanism and assertions. |
 | Narrow controls and contrast | PASS, both themes at 1024 CSS pixels: date/search/status/notification/session controls, selected detail and theme destination names; `narrow-receipts.json`. Search Escape clears a term, then closes on the second Escape. Contrast sampled 17 text/status controls per theme; minimum ratios 6.91 Graphite Warm and 6.87 Paper Ink. |
-| Recording-only checks | PASS: `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` (24 tests), `npx --no-install eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap --max-warnings 0`, `npm run roadmap:check`, and `python3 /Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/audit-docs.py`; all exit 0. Audit verifies 13 local links/fragments, nine identical instruction pairs, 18,376-byte maximum chain, ancestry, unchanged implementation inputs and all frozen evidence hashes. Logs: `roadmap-binding-final.log`, `docs-lint-final.log`, `roadmap-check-final.log`, `document-audit.json`. |
+| Recording-only checks | PASS: `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` (24 tests), `npx --no-install eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap --max-warnings 0`, `npm run roadmap:check`, and `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-shell-baseline-evidence-20260913/audit-docs.py`; all exit 0. Audit verifies 13 local links/fragments, nine identical instruction pairs, 18,376-byte maximum chain, ancestry, unchanged implementation inputs and all frozen evidence hashes. Logs: `roadmap-binding-final.log`, `docs-lint-final.log`, `roadmap-check-final.log`, `document-audit.json`. |
 
 The final result-table addition changes no checked heading, binding, status, link target or gate
 input. Binding/lint results are reused on that basis; document audit, freshness and whitespace
@@ -457,7 +457,7 @@ checks. This record changes no implementation, fixture, dependency or gate-scrip
 
 Completion checks pass: `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts`
 (24 tests), scoped test/generator ESLint, `npm run roadmap` / `npm run roadmap:check`, and
-`python3 /Users/julianhein/Projects/hr-shell-baseline-evidence-20260913/audit-closure.py`.
+`python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-shell-baseline-evidence-20260913/audit-closure.py`.
 The audit checks the three exact documentation paths, 13 owner links/fragments, nine identical
 instruction pairs, the 18,376-byte maximum instruction chain, every frozen evidence hash, unchanged
 implementation inputs, removed worktree/refs, and all roadmap nodes outside `dash-shell` unchanged.

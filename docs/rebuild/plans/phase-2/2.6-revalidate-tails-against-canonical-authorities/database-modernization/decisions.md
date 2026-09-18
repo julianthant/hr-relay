@@ -682,7 +682,7 @@ A scoped S release is not final Phase 2.6 acceptance.
 The common runtime prerequisite is **`2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`**, containing F's
 complete resolver-port repair. Its tested candidate is `f917ffe7b2308b4746e2aba16719a68cbafdb56c`.
 The [F repair record](foundation.md#f-resolver-port-repair--2026-09-09) and
-[complete cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+[complete cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json)
 bind focused proof and removal of F's branch/worktree. Planning inspected master
 `d3a4d121b2611bdd277663fabb953ea29f6dfa13`, a documentation-only descendant; no S runtime proof
 is inferred from F's 1,195 unit cases, 199 guards and 67 filtered UI cases.
@@ -917,7 +917,7 @@ mandatory volatile recheck at launch, not a promised reservation.
 The documentation-only plan passed 24 roadmap-binding tests, lint, roadmap generation/freshness,
 210 local links, nine instruction-pair comparisons, the 17,333-byte maximum project instruction
 chain and whitespace. Logs, exact changed paths, plan hash and command exits are retained in
-`/Users/julianhein/Projects/hr-settings-plan-evidence-20260909/`. Full runtime gates and review
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-plan-evidence-20260909/`. Full runtime gates and review
 were not run and are not claimed; they remain in 2.6.9.
 
 The resolved prompt in PROMPTS uses this exact plan/base, the isolated branch/path, updated
@@ -981,9 +981,9 @@ production files changed; the other five retain F's real composition hooks.
 | Existing settings/start + dedicated accessibility evidence | PASS, 34 cases; `candidate-filtered-desktop.log` |
 | Documentation checks | PASS, local links, nine instruction twins, longest chain 17,333 bytes; `git diff --check` PASS |
 
-[Preserved freeze receipt](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/freeze.json),
-[exact commands/exits/log hashes](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/candidate-gates.json),
-and [complete tested input hashes](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/candidate-inputs.json)
+[Preserved freeze receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/freeze.json),
+[exact commands/exits/log hashes](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/candidate-gates.json),
+and [complete tested input hashes](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/candidate-inputs.json)
 bind this candidate. The final run reported no changed inputs. The adapter's object comparison
 proves only root/project `maxWorkers` changed; each project resolves to one. Observed effective
 Vitest concurrency was two including peers, below four. At creation S was the fourth auxiliary;
@@ -1045,10 +1045,10 @@ combined proof, repairs and independent review; no new acceptance handshake or s
 | Final resource proof | PASS, four cases; six guards / 49 tests and lint rerun after the test-only strengthening |
 | Cleanup | Ordinary worktree removal and `git branch -d` PASS; physical path, registration and branch ref absent |
 
-[Integration commands and log hashes](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/integration-gates.json),
-[final resource proof](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/provider-final-gates.json),
-[input-identical reuse](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/provider-reuse.json), and
-[complete closure receipt](/Users/julianhein/Projects/hr-settings-activation-evidence-20260909/closure.json)
+[Integration commands and log hashes](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/integration-gates.json),
+[final resource proof](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/provider-final-gates.json),
+[input-identical reuse](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/provider-reuse.json), and
+[complete closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-settings-activation-evidence-20260909/closure.json)
 retain the exact candidate/tree, final master/tree, input/log hashes and cleanup commands. The
 integration run observed no changing inputs. Final strengthening changed only the owned resource
 test: actual OCR adapters now prove both ordered retained model chains with fixed synthetic process
@@ -1108,7 +1108,7 @@ retain their complete product requirements. This brief changes allocation and pr
 
 Repaired release incorporation was verified at local master `b679d9b76ac8e16a53015b98f1af7a2d68b016fb`:
 common base, implementation and merge `6b453df208c30c7c3e863507fc2630a00dc73bab` are ancestors.
-All 2,088 hashes in `/Users/julianhein/Projects/hr-lifecycle-repair-evidence-20260909/tested-inputs.json`
+All 2,088 hashes in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-lifecycle-repair-evidence-20260909/tested-inputs.json`
 match. L recorded 266 unit tests, 139 architecture tests and lint PASS, with commands/exits in
 `candidate-gates.json`; planning verified evidence/input identity, not rerun those gates. L's owned
 repair branch/worktree are removed. Recheck incorporation, evidence and changed shared inputs before
@@ -1239,7 +1239,7 @@ acceptance and fresh complete independent review remain **2.6.9**. Do not run th
 or merge A. V/H retain desktop rendering/accessibility and served preview/viewer proof; L retains
 its approved retirement/upgrade follow-up. A retains meaningful focused recovery, concurrency,
 privacy and query proof here. Preserve logs/input manifests outside the removable checkout, for
-example `/Users/julianhein/Projects/hr-archive-transfer-evidence-20260909/`, without overwriting another
+example `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-transfer-evidence-20260909/`, without overwriting another
 owner. The A evidence file records exact actual paths, candidate/base/tree/integration SHA, exits,
 proof rows, failure repairs, delivery assessment, remaining owners and cleanup receipt.
 
@@ -1293,7 +1293,7 @@ pairs, maximum instruction chain 17,333 bytes, and whitespace. The explicit gate
 23 suites: four required new owned suites and 19 existing suites verified present. Q and every
 following section remain byte-identical to planning base b679d9b76.
 
-Evidence is `/Users/julianhein/Projects/hr-archive-plan-evidence-20260909/` (plan-binding.log,
+Evidence is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-plan-evidence-20260909/` (plan-binding.log,
 plan-lint.log and verify-docs.py). All 2,088 repaired runtime/test/tooling inputs match L's recorded
 hashes; no implementation or full runtime gate is claimed by these planning checks. The planner
 verifies the committed full section, exact plan/product-base separation, local incorporation and
@@ -1466,7 +1466,7 @@ Verified integrated ancestry: repaired implementation
 `a77f6aa99b70ce9e7c2244c2945d17c6758bae54`, common execution base, local merge
 `6b453df208c30c7c3e863507fc2630a00dc73bab` and cleanup receipt
 `b679d9b76ac8e16a53015b98f1af7a2d68b016fb`. All 2,088 hashes from
-`/Users/julianhein/Projects/hr-lifecycle-repair-evidence-20260909/tested-inputs.json` match the
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-lifecycle-repair-evidence-20260909/tested-inputs.json` match the
 inspected tree. Retained candidate logs/gate receipt establish 266 unit tests, 139 architecture
 tests and lint PASS. This is verified prerequisite evidence, not a new execution of Q's tests.
 
@@ -1537,7 +1537,7 @@ independent review, remaining combined repairs, H integration, handover, or fina
 | U / 2.6.8.1 | `codex/activity-views` | `/Users/julianhein/Projects/hr-worktree-database-peer` | `ea83e77d378d2b8c000c425205f44887c65a9a94`, V's committed closure | the five exclusive U surface/model paths, the three named tests, and `07-activity-ui-evidence.md` | named unit and architecture proof, lint, affected freshness, and Components-route desktop/accessibility evidence | U alone merges locally into clean verified `master`, records the integrated release, preserves evidence outside the worktree, then removes only its own incorporated worktree/ref |
 
 V's external `release.json`, `integration.json`, and `cleanup.json` at
-`/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/` are the immutable common release
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/` are the immutable common release
 evidence. Before U01, verify their availability, V ancestry, U branch/path absence, capacity, and
 the `master` target's clean ownership. A missing or contradictory receipt is **WAITING ON V
 release evidence**; do not substitute a later checkout or fabricate a base.
@@ -1589,7 +1589,7 @@ coverage floors, memberships, assertions, and timeouts. Use `/ui`'s Components r
 access, 125% zoom, filtering, grouping, pagination, loading/stale/unavailable states, and unchanged
 action semantics. Record commands, tested tree, screenshots, exits, input identity, and coverage
 limits in `07-activity-ui-evidence.md`; preserve any external artifacts under
-`/Users/julianhein/Projects/hr-u-activity-views-evidence-20260910/` before cleanup.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-u-activity-views-evidence-20260910/` before cleanup.
 
 #### U06 — release, local integration, and owned cleanup
 
@@ -1685,7 +1685,7 @@ independent review, a U launch, a 2.6.9 launch, a live database application, or 
 | --- | --- |
 | Assignment | 2.6.8.2 H; one GPT-6 Astra/high supervisor; zero implementation workers and zero reviewers in this task. `/ui` uses the Components lead locally for the established Archive surface, with focused browser verification. |
 | Approved plan owner | This section, retaining the preceding C0 H allocation and all inherited archive-report/deletion decisions. |
-| Exact immutable implementation base | `ea83e77d378d2b8c000c425205f44887c65a9a94`, V's common U/H release in `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/release.json`; its tree is `79bc84b857740a9ad2bcc06e5b8e7eec5495e40b`. It includes V integration `4c9500bacc99fcccf96254b100a5f009acb666f0`; H must verify both ancestry and the release receipt before edits. |
+| Exact immutable implementation base | `ea83e77d378d2b8c000c425205f44887c65a9a94`, V's common U/H release in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/release.json`; its tree is `79bc84b857740a9ad2bcc06e5b8e7eec5495e40b`. It includes V integration `4c9500bacc99fcccf96254b100a5f009acb666f0`; H must verify both ancestry and the release receipt before edits. |
 | Checkout | Create `codex/archive-viewer` at `/Users/julianhein/Projects/hr-worktree-database-other` from that exact base after rechecking branch/path/worktree capacity and ownership. The inspection found the ref and path absent; those are proposals until H starts. Never implement on `master`, the U lane, or this planning checkout. |
 | Independent peer boundary | U and H consume the identical V base and own disjoint production/test/parity paths. Either local integration order is valid. H does not edit U, V, server, client, route, domain, shared fixture/registry, generated, or planning files; a required shared edit is a stop condition for its named owner/amendment. |
 | Integration and cleanup | H alone verifies the clean local `master` target and candidate/plan/base identities, merges its focused-PASS candidate there, reruns invalidated scoped integration checks (or proves input-identical reuse), records `08-archive-ui-evidence.md`, and from a safe checkout removes only its incorporated worktree/ref. Verify the physical path, Git registration, branch ref, owned synthetic server, browser session, and temporary output roots are absent. No push. |

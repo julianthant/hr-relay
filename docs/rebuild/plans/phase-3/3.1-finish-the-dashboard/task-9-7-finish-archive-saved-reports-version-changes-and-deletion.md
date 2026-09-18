@@ -284,14 +284,14 @@ Planning changes are limited to this task, its parent ownership record, the acce
 ownership pointer, the Archive contract amendment/decision pointer, roadmap journal and generated
 roadmap page. No runtime code, tests, dependencies, configuration, instruction file, migration or
 product checkbox changes. Evidence is retained outside the temporary planning checkout at
-`/Users/julianhein/Projects/hr-archive-plan-evidence-20260916-9VWO0W/`.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-plan-evidence-20260916-9VWO0W/`.
 
 | Planning check | Verified result |
 | --- | --- |
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | Exit 0; 1 suite / 24 tests. `roadmap-binding.log`; repeated on the final recorded document tree before commit. |
 | `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap/parse-plan.ts scripts/roadmap/scan-docs.ts scripts/roadmap/schema.ts --max-warnings 0` | Exit 0; `lint.log`. These code/test/config inputs remain unchanged for the recording-only update, so lint evidence is reused. |
 | `npm run roadmap` then `npm run roadmap:check` | Both exit 0; `roadmap-generation.log` and `roadmap-freshness.log`. Regenerated/rechecked after recording. |
-| `python3 /Users/julianhein/Projects/hr-archive-plan-evidence-20260916-9VWO0W/check-plan.py` | Exit 0; exact seven-document scope, 14 touched local links/fragments, 9 existing instruction pairs equal, maximum instruction chain 18,376 bytes, 48 retained approval controls, 2 required ancestors, unchanged product checkboxes. `document-checks.json` binds document hashes; repeated before commit. |
+| `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-archive-plan-evidence-20260916-9VWO0W/check-plan.py` | Exit 0; exact seven-document scope, 14 touched local links/fragments, 9 existing instruction pairs equal, maximum instruction chain 18,376 bytes, 48 retained approval controls, 2 required ancestors, unchanged product checkboxes. `document-checks.json` binds document hashes; repeated before commit. |
 | `git diff --check` | Exit 0; repeated before exact-path staging and commit. |
 | Runtime acceptance | Not run or reused for this documentation candidate. The executed diagnostic is recorded above; AR1–AR5 implementation and product acceptance remain pending. |
 

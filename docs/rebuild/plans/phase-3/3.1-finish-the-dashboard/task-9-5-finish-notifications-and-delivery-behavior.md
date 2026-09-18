@@ -290,12 +290,12 @@ in the feasibility, approved-decision and proof rows above; these requirements s
 | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` | Exit 0; one suite, 24 tests passed. Re-run on the final recorded document tree before commit. |
 | `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts scripts/generate-roadmap.ts scripts/roadmap/parse-plan.ts scripts/roadmap/scan-docs.ts scripts/roadmap/schema.ts --max-warnings 0` | Exit 0. Recording changes only documentation; these lint inputs and their dependencies remain byte-identical, so that result is reused for recording. |
 | `npm run roadmap` and `npm run roadmap:check` | Exit 0; generated output is fresh. The corrected notification contract binding now points to operator-trust §6. Check again after recording. |
-| `python3 /Users/julianhein/Projects/hr-notifications-plan-evidence-20260914-29fw66q4/check-plan.py` | Exit 0; exact eight-path documentation scope, 22 added/changed local links, 9 existing instruction pairs equal, largest complete project chain 18,376 bytes, 50 explicit approval controls and four prerequisite ancestors. Recheck the recorded tree. |
+| `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-notifications-plan-evidence-20260914-29fw66q4/check-plan.py` | Exit 0; exact eight-path documentation scope, 22 added/changed local links, 9 existing instruction pairs equal, largest complete project chain 18,376 bytes, 50 explicit approval controls and four prerequisite ancestors. Recheck the recorded tree. |
 | `git diff --check` | Exit 0 before recording; required again before commit. |
 | Runtime acceptance | Not run or reused for this documentation-only candidate. New publication, migration, producer, wire and delivery behavior remain pending N1–N5. |
 
 Logs, the validation script and exact checked document blob identities are retained outside the
-owned checkout at `/Users/julianhein/Projects/hr-notifications-plan-evidence-20260914-29fw66q4/`.
+owned checkout at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-notifications-plan-evidence-20260914-29fw66q4/`.
 The planner must verify the full committed owner with `git show`, compare it to this approved
 assignment, check named-ref reachability/prerequisite ancestry and available execution resources,
 then remove only `/Users/julianhein/Projects/hr-worktree-notify-plan` while retaining
@@ -341,7 +341,7 @@ No general recovery behavior changed.
 | N4 — UI | `/ui` Components executed locally using existing primitives; specimen inspected with playwright-cli. Authoritative filtered parity passes both Paper Ink and Graphite Warm, 1024×720 and 1440×900 at 125% zoom, keyboard opening/Escape focus restoration, bounded scrolling and pins under every filter. Four final PNGs inspected/retained; existing reference images unchanged. |
 | N5 — candidate | Implementation split into the two exact-path commits above; this evidence-only record preserves focused outcomes and deferred ownership. No required focused failure is deferred. |
 
-Evidence root: `/Users/julianhein/Projects/hr-notifications-evidence-20260914/`. Full logs, expanded
+Evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-notifications-evidence-20260914/`. Full logs, expanded
 argv, final non-documentation SHA-256 input map (`final-inputs.json`) and retained browser artifacts
 are outside the checkout. Source/test/build/config/dependency inputs match the implementation
 candidate; the final commit changes only this owner. No code-gate result is attributed to unrun
@@ -356,7 +356,7 @@ removed after verification.
 | Scoped lint | Expanded command below — exit 0 over **49 paths**, `n5-lint-final.log` / `n5-lint-argv.json`. The later strict pinned expectation change was separately rechecked with `npx eslint tests/unit/notification-inbox.test.ts --max-warnings 0`, exit 0, `n5-lint-pinned-expectation.log`. |
 | Browser / build | `npm run test:parity -- tests/parity/backfill-gap.spec.ts tests/parity/notifications.spec.ts --workers=4` — exit 0, **8 scenarios**, authoritative global build/setup and signed a11y evidence; `n5-parity-final.log`, `browser-final/`. No reference refreeze. |
 | Manifest | `npm run build:manifest` then `npm run build:manifest:check` — both exit 0; `n5-manifest.log`, `n5-manifest-check.log`; no generated source diff. |
-| Documentation | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` — exit 0, **1 file / 24 tests**; `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts --max-warnings 0` and `npm run roadmap:check` — exit 0. `python3 /Users/julianhein/Projects/hr-notifications-evidence-20260914/check-candidate.py` and `git diff --check` — exit 0: 13 owner links valid, nine instruction pairs equal, largest chain 18,376 bytes, four prerequisite ancestors, approved brief unchanged, 2,366 non-documentation inputs identical to the implementation commit. Logs: `n5-roadmap-binding.log`, `n5-doc-lint.log`, `n5-roadmap-check.log`; receipt: `candidate-validation.json`. |
+| Documentation | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts` — exit 0, **1 file / 24 tests**; `npx eslint tests/unit/architecture/roadmap-doc-binding.test.ts --max-warnings 0` and `npm run roadmap:check` — exit 0. `python3 /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-notifications-evidence-20260914/check-candidate.py` and `git diff --check` — exit 0: 13 owner links valid, nine instruction pairs equal, largest chain 18,376 bytes, four prerequisite ancestors, approved brief unchanged, 2,366 non-documentation inputs identical to the implementation commit. Logs: `n5-roadmap-binding.log`, `n5-doc-lint.log`, `n5-roadmap-check.log`; receipt: `candidate-validation.json`. |
 | Deferred | Full coverage, broad parity, performance and live acceptance were not run or claimed. 3.1.9.8 runs its focused combined integration schedule; 3.1.19 owns full acceptance and repairs. |
 
 Expanded lint argv also enumerates the exact 49 implementation/proof paths. The only additional

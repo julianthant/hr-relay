@@ -101,7 +101,7 @@ Branch/worktree: codex/activity-views at /Users/julianhein/Projects/hr-worktree-
 
 READY only after reading the committed U brief, verifying its plan commit is reachable from local master,
 and checking V's immutable release, integration, and cleanup records under
-/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/. Recheck V ancestry; branch/path absence,
+/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/. Recheck V ancestry; branch/path absence,
 the four-auxiliary-worktree capacity, no conflicting owner, and clean master target. Create the U branch
 and worktree from the exact base above; never implement on master. If V evidence is missing or contradictory,
 report WAITING ON V release evidence and stop without a candidate.
@@ -119,7 +119,7 @@ manifest/catalog/roadmap generation plus freshness checks, and the committed 102
 desktop proof via playwright-cli, including keyboard, 125% zoom, filters, grouping, pagination, loading,
 stale/unavailable states, and unchanged action semantics. Record exact commands, exits, candidate/tree,
 input identity, screenshots, and limitations in U's owned evidence plus
-/Users/julianhein/Projects/hr-u-activity-views-evidence-20260910/ before cleanup. Do not run full gates,
+/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-u-activity-views-evidence-20260910/ before cleanup. Do not run full gates,
 broad parity/build/performance, full coverage, or independent review here: those remain 2.6.9.
 
 After focused PASS, commit exact U paths and freeze the candidate. Recheck clean target ownership, target HEAD,
@@ -185,7 +185,7 @@ sentence inside the plan commit is superseded by this verified receipt, not an u
 
 Planning checks passed: 24 roadmap-binding tests, lint, roadmap generation/freshness, changed links,
 instruction twins/chain cap and diff checks. Logs and committed input verification are in
-`/Users/julianhein/Projects/hr-final-plan-evidence-20260910/`. At that planning boundary the implementation branch/path were absent and available, and finalizer
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-final-plan-evidence-20260910/`. At that planning boundary the implementation branch/path were absent and available, and finalizer
 gates/reviews/product work were unstarted. That historical state is superseded by completion above.
 This receipt changes no implementation or review scope; it adds the verified launch binding.
 
@@ -314,14 +314,14 @@ Keep Done / Now / Remaining visible, including integration, cleanup and deferred
 
 ## Next prerequisite record — 2.6.6 F
 
-C is locally integrated at `e43a8d8515486c73c276fa319bbe06d196b309e3`. Its [focused release](run-completion.md#c-schema-39-upgrade-repair--2026-09-09) supplies F's actual master source prerequisite. The [closure receipt](/Users/julianhein/Projects/hr-run-completion-repair-evidence-20260909/closure.json) verifies C's owned branch/path removal. F is not dispatched, planned anew or implemented by C. The operator opens F's next session and its committed brief must pin a descendant of this integration. No removed C/T branch is required. Full phase gates and complete independent review remain 2.6.9.
+C is locally integrated at `e43a8d8515486c73c276fa319bbe06d196b309e3`. Its [focused release](run-completion.md#c-schema-39-upgrade-repair--2026-09-09) supplies F's actual master source prerequisite. The [closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-run-completion-repair-evidence-20260909/closure.json) verifies C's owned branch/path removal. F is not dispatched, planned anew or implemented by C. The operator opens F's next session and its committed brief must pin a descendant of this integration. No removed C/T branch is required. Full phase gates and complete independent review remain 2.6.9.
 
 ## Resolved F child prerequisite — 2026-09-09
 
 These are operator-started prompts, not dispatches. Every child uses F integration
 `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, the C0 allocation approved in
 `b5ba39efbca023b673be3c4aac509ca42b2a751c`, and F's frozen 27-path production/test manifest.
-Require F's [repair closure receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json) to be complete. Recheck ancestry, path/ref availability and
+Require F's [repair closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json) to be complete. Recheck ancestry, path/ref availability and
 capacity; consume the current F release record from master. Do not recreate F's removed branch.
 Each child has one Astra/high supervisor and zero workers. Full gates/review stay with 2.6.9.
 The repaired F callers remove the proposed G/S shared-file scope expansion: preserve the existing
@@ -351,7 +351,7 @@ Do not relaunch this completed assignment from the historical binding below. Ful
 G’s operator-approved [G01–G06 brief](artifacts.md#approved-execution-brief--2026-09-09) supersedes
 its earlier C0-only launch prompt. The planner retains the immutable approved-plan SHA and returns a verified committed descendant
 containing both that plan and the current F resolver-port integration `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc` as G’s execution base.
-Require the complete [F resolver cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json) before releasing
+Require the complete [F resolver cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json) before releasing
 the F dependency. Do not substitute the old C0 plan SHA or an unverified later master.
 Create `codex/artifact-outputs` at `/Users/julianhein/Projects/hr-worktree-artifact-outputs` from
 the returned plan commit. One Astra/high supervisor, zero workers/reviewers here. Execute G01–G06,

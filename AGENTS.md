@@ -13,6 +13,10 @@ asset until the single all-at-once cutover (D89/D93). This rebuild is not produc
   After accepted integration, sweeps must remove both the Git registration and the physical task
   folder, including verified leftovers at previous locations. Preserve evidence and unknown files
   before removal; keep the shared worktree parent directory.
+- Store retained task evidence inside `/Users/julianhein/Projects/hr-automation-rebuild-evidence/`
+  in separate task/date folders. Keep accepted proof outside disposable worktrees, without creating
+  evidence folders directly in `Projects/`. Historical raw receipts retain their original paths;
+  resolve moved evidence through the parent directory's `relocation.json`.
 - Phase/task implementation uses a dedicated branch, never `master`. Sequential work can use an
   exclusively available checkout; parallel tasks each need a branch and worktree. Shared, dirty or
   integration-only checkouts require a worktree even for sequential work. Preserve stricter phase

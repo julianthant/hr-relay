@@ -413,7 +413,7 @@ or final phase acceptance. Preserve all T2 product requirements and proof rows a
 | Review | Fresh complete read-only `sup_review` on Astra/high belongs to 2.6.9, covering G’s publication, replay, exports and cross-domain retention with the combined candidate. G claims only a scoped development release. |
 
 The [F repair and closure](foundation.md#f-prerequisite-repair--2026-09-09) and its
-[complete cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-repair-evidence-20260909/closure.json)
+[complete cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-repair-evidence-20260909/closure.json)
 were inspected. They bind 961 unit tests, 199 guard tests, lint/freshness and 67 filtered UI cases
 to the repaired candidate. These are prerequisite evidence, not G test results. Schema47/floor46
 and released migrations remain unchanged. G needs no sibling code, provider, live system, or actual
@@ -597,7 +597,7 @@ full-phase gate or independent review. Command logs are at `/tmp/g-plan-20260909
 F’s complete resolver-port repair is locally integrated at `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`. It supersedes
 `51e4c087a0d455619ca93a3bbddc5c8fb5a24a48` as the common P/D/G/S runtime prerequisite. The
 [F resolver release](foundation.md#f-resolver-port-repair--2026-09-09) and its
-[cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json), required to be complete, resolve this F dependency.
+[cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json), required to be complete, resolve this F dependency.
 G’s six-file ownership, product requirements and focused/merge/cleanup schedule remain unchanged.
 The planner retains approved G plan `4e84dbcb1b696c5d4d1f99f8a73a5bf25d085dd3`, verifies a final
 committed descendant containing that plan and this F release against F’s tested runtime inputs,
@@ -657,7 +657,7 @@ launched. No peer messages or transfers were needed.
 | Runtime comparison | All non-document inputs at the execution base equal F's tested `f917ffe7b2308b4746e2aba16719a68cbafdb56c`; schema47/floor46 and released migrations remain unchanged |
 | Owned lane | `codex/artifact-outputs`, `/Users/julianhein/Projects/hr-worktree-artifact-outputs`; created from the exact base with one existing auxiliary checkout, under the then-available cap |
 | Integration owner/condition | This G supervisor retains local master integration, invalidated focused checks, release recording and owned cleanup after committed focused PASS |
-| Evidence | `/Users/julianhein/Projects/hr-artifact-outputs-evidence-20260909/`; `preflight.json`, `config-proof.json`, command logs and `sensitivity.json` preserve actual results |
+| Evidence | `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-artifact-outputs-evidence-20260909/`; `preflight.json`, `config-proof.json`, command logs and `sensitivity.json` preserve actual results |
 
 ### Implementation and proof
 
@@ -718,8 +718,8 @@ provider wiring or HR submission. No push or operator-database upgrade occurred.
 | Cleanup | Owned process audit empty; dependency symlink removed without touching its target; `git worktree remove` and `git branch -d` exit 0. Registration, physical path and ref absence verified. Other worktrees preserved. All command logs and retained-failure-root identities remain outside the checkout. |
 | Final recording | Only this G evidence/status and its shared launch/roadmap pointers change. Re-run documentation/link/instruction/freshness checks; reuse candidate lint and code tests only after exact non-document input equality. Final SHA/tree and command results are bound by the external receipt. |
 
-The [complete G closure receipt](/Users/julianhein/Projects/hr-artifact-outputs-evidence-20260909/closure.json)
-and [integration evidence](/Users/julianhein/Projects/hr-artifact-outputs-evidence-20260909/integration.json)
+The [complete G closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-artifact-outputs-evidence-20260909/closure.json)
+and [integration evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-artifact-outputs-evidence-20260909/integration.json)
 are the release for L and 2.6.9. G retained and finished all duties; no transfer or acceptance handshake
 occurred. Shared mutations used inspected Git/worktree/plan ownership and Git's actual index/ref
 locking, with no conflicting mutation observed, no invented reservation queue and no peer messages.

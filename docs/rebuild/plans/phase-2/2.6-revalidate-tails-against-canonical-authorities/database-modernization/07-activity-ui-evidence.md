@@ -23,13 +23,13 @@ independent reviewers. Full acceptance and independent review remain **2.6.9**.
 
 All observations are from 2026-09-10; revalidate volatile git state before integration.
 External evidence is retained at
-`/Users/julianhein/Projects/hr-u-activity-views-evidence-20260910/`.
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-u-activity-views-evidence-20260910/`.
 
 ## U01 — prerequisite admission
 
 V's immutable receipts were present and verified before implementation and again at freeze:
 
-| Receipt under `/Users/julianhein/Projects/hr-v-surfaces-evidence-20260910/` | SHA-256 |
+| Receipt under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-v-surfaces-evidence-20260910/` | SHA-256 |
 | --- | --- |
 | `release.json` | `af4cac6612d484eb1edd07488cf51a30ecd941ecf16c4b5aaf6b68b81682a734` |
 | `integration.json` | `7a31662c2772f18779164224ac14bc6830cfaf8bd8cb82be4c60c512e832df3f` |

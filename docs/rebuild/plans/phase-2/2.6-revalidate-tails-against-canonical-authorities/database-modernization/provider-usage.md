@@ -436,7 +436,7 @@ P must extend missing lifecycle/boundary cases rather than claim all historical 
 
 Use one effective file worker and at most four across active tasks. Independent connection races
 must still be real; file-worker limits do not replace concurrency proof. Recreate the F resource-only
-adapter at `/Users/julianhein/Projects/hr-provider-usage-evidence-20260909/vitest-one.config.mts`
+adapter at `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-provider-usage-evidence-20260909/vitest-one.config.mts`
 (after checking that evidence path is free or owned; use a unique suffix if occupied):
 
 ```typescript
@@ -455,8 +455,8 @@ reporters and coverage floors. Store the adapter, comparison and exact actual pa
 Run commands from the P worktree; substitute the recorded path only if the evidence directory changed.
 
 ```sh
-VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-provider-usage-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/provider-admission.test.ts tests/unit/provider-pool.test.ts tests/unit/advisory-provider-exhaustion.test.ts tests/unit/provider-accounting/accounting.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts
-VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-provider-usage-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/secrets-single-source.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-provider-usage-evidence-20260909/vitest-one.config.mts --project unit --maxWorkers=1 tests/unit/provider-admission.test.ts tests/unit/provider-pool.test.ts tests/unit/advisory-provider-exhaustion.test.ts tests/unit/provider-accounting/accounting.test.ts tests/unit/database-foundation/transaction-contracts.test.ts tests/unit/database-foundation/four-way-independence.test.ts tests/unit/database-foundation/mixed-history.test.ts tests/unit/storage-upgrade.test.ts tests/unit/storage-upgrade-tombstones.test.ts tests/unit/storage-backup.test.ts tests/unit/storage-restore-drill.test.ts
+VITEST_MAX_WORKERS=1 npm run test -- --config /Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-provider-usage-evidence-20260909/vitest-one.config.mts --project architecture --maxWorkers=1 tests/unit/architecture/provider-capability-boundary.test.ts tests/unit/architecture/migration-history-immutability.test.ts tests/unit/architecture/storage-recovery.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/secrets-single-source.test.ts tests/unit/architecture/roadmap-doc-binding.test.ts
 npm run lint
 npm run build:manifest
 npm run build:manifest:check
@@ -500,7 +500,7 @@ The unchanged roadmap generator/freshness and all 24 roadmap-binding tests passe
 lint passed with zero warnings. Local-link, nine instruction-pair, 17,333-byte maximum project
 chain and whitespace checks passed. No runtime, tests, configuration, dependencies or released
 migrations changed. Full gates and independent review remain deferred to 2.6.9. Exact candidate
-verification and logs are retained in [planning evidence](/Users/julianhein/Projects/hr-provider-plan-evidence-20260909-81pg5uis); the handoff supplies the committed
+verification and logs are retained in [planning evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-provider-plan-evidence-20260909-81pg5uis); the handoff supplies the committed
 plan SHA only after staged-content, prerequisite and reachability verification. No implementation
 checkout was created and no product completion is claimed.
 
@@ -511,7 +511,7 @@ The launch hold recorded during persistence is resolved. The common integrated F
 `2bb25b6efbe62ca88d64a429f01dc567a76ecfbc`, with final release record
 `e06a1c82e9983deb281c5400671f6ce330214000` and tested candidate
 `f917ffe7b2308b4746e2aba16719a68cbafdb56c`. The
-[resolver repair cleanup receipt](/Users/julianhein/Projects/hr-database-foundation-resolver-evidence-20260909/closure.json)
+[resolver repair cleanup receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-database-foundation-resolver-evidence-20260909/closure.json)
 is complete; F's registered worktree, physical path and branch are absent. P's approved plan commit
 `c6b481773c799f9ef801a5fbacd083fe2a4b01d9` is preserved in master ancestry.
 
@@ -546,7 +546,7 @@ ancestry were verified, including absence of F's path/registration/ref. P occupi
 auxiliary slot; unrelated separation, D and G worktrees are preserved. Only this owner was
 restored from the approved plan. Production inputs match F before implementation.
 
-Evidence root: `/Users/julianhein/Projects/hr-provider-usage-evidence-20260909`.
+Evidence root: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-provider-usage-evidence-20260909`.
 The one-file-worker adapter imports the real configuration; `config-comparison.log` proves
 only root/project maxWorkers differ. Dependency installation is reused through an owned
 node_modules symlink; no secrets or operator database were accessed. No resource collision
@@ -656,7 +656,7 @@ rechecks roadmap bindings, local links, instruction pairs/chains, freshness and 
 A completion-roadmap formatting error was corrected by keeping its new log entry inside the
 existing contiguous `log:` block; the corrected generator/freshness checks pass.
 
-The source-bound [closure receipt](/Users/julianhein/Projects/hr-provider-usage-evidence-20260909/closure.json)
+The source-bound [closure receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/hr-provider-usage-evidence-20260909/closure.json)
 records final release/master/tree identities, integration results, actual branch/worktree/path
 removal and process cleanup. Its state is set to complete only after those checks. All proof and
 failed logs remain outside the removed worktree in the evidence root; committed tests and
