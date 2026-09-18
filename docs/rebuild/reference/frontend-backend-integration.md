@@ -379,13 +379,46 @@ interface DashboardDayWire {
 }
 ```
 
-`monthCounts` rides this payload rather than a calendar route: the calendar and the queue below it
-are the same fold, so a second endpoint is the second count path D81 forbids.
+`monthCounts` remains in the selected-day payload. The approved
+[3.1.10 calendar read amendment](#calendar-navigation-read-amendment-2026-09-18) below supersedes the
+former blanket prohibition on a calendar route: production month counts cover only the selected
+month, so they cannot also declare the tracker's complete navigation bounds. The new read supplements
+calendar browsing, not selected-day queue/status/count authority.
 
 `QueueSurfaceWire` remains flat. Group/member relationships use ids and `parentRunId`; the client
 may join those ids for layout but may not reinterpret containment or status. Counts and rows are
-folded from the same projection transaction/generation. The calendar, Workflow Panel, Status Bar,
-queue header, and Activity query can therefore never disagree because of different source paths.
+folded from the same projection transaction/generation. Workflow Panel, Status Bar and queue-header
+counts remain tied to that snapshot. Calendar navigation reads the same canonical summary membership
+under the amendment below; it must not replace selected-day counts with an independently timed result.
+
+<a id="calendar-navigation-read-amendment-2026-09-18"></a>
+
+#### Bounded calendar navigation read — 2026-09-18
+
+The operator approved this D81 transport clarification for
+[3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18).
+It is required work, not a claim that a new route already exists. The implementation owns a strict,
+read-only calendar query for the requested month and selected day, returning bounded availability/counts
+and chronological navigation bounds. The source is published canonical run summaries behind the
+consistent authority-read boundary, preserving top-level/member, archive/delete and freshness rules.
+It may not materialize the complete run history, read legacy state, write authority or create a new
+summary-publication path. Malformed inputs, unavailable/corrupt summaries and failed reads refuse
+explicitly rather than returning a plausible empty calendar.
+
+Selected-day rows/status/badges continue to consume their matching day snapshot. Calendar browsing
+has its own explicit requested-month/day identity and loading/error state; it cannot overwrite that
+snapshot's counts or imply that an old month response describes the current request. Count membership
+must agree with the production day projection at the same authority state, including operation-member
+exclusion and archived/deleted runs. Invalidate/refetch obsolete calendar availability when relevant
+served facts change; a failed refresh must not silently claim current availability.
+
+The client schema-validates responses, rejects mismatched identities and discards superseded requests,
+including A→B→A and late failures. The day subscription additionally rejects a snapshot naming a day
+other than its subscribed day; the app retains its existing matching-day rendering guard. The route,
+Today/pinned-date behavior, invalid/future-link recovery, focus and history rules are owned by
+[dashboard surfaces](dashboard-surfaces.md#date-navigation-amendment-2026-09-18). Exact wire field and
+route naming are routine implementation choices within this bounded query; update the served-route
+inventory when it is actually implemented. No new DDL or migrations are authorized.
 
 **`WorkflowCountWire` carries its own status dimension** — `{ workflowId, count, statusCounts[] }`,
 the per-status counts summing to `count` by refinement (R2 D5–D12, R4-1). One `count` per workflow
@@ -851,7 +884,7 @@ compatibility layer):
 
 ```text
 GET  /api/v1/bootstrap
-GET  /api/v1/dashboard?day=YYYY-MM-DD          # includes monthCounts — there is no calendar route
+GET  /api/v1/dashboard?day=YYYY-MM-DD          # selected-day snapshot, including selected-month counts
 GET  /api/v1/runs/:runId
 GET  /api/v1/runs/:runId/:section              # one lazy panel section, cursor-paged where it pages
 GET  /api/v1/diagnostic-bundles/:bundleId      # exact D137 readback; verified index and stored bytes
@@ -961,6 +994,12 @@ builder or literal, is the proof required for route connectivity. No new produce
 
 ---
 ## 4. State ownership
+
+**3.1.10 date amendment (approved 2026-09-18; implementation pending):** URL date selection is client
+state; available dates/counts and the served clock/zone are server facts. Missing `day` follows Today,
+explicit valid dates stay pinned, and invalid/future dates have a visible recovery state. The
+[date contract](dashboard-surfaces.md#date-navigation-amendment-2026-09-18) and
+[calendar read contract](#calendar-navigation-read-amendment-2026-09-18) own the exact boundary.
 
 **D338 — agent/human API capability parity (operator decision, 2026-09-06).** Agents acting for the
 operator can invoke every action a human can invoke through the same BFF API, including queue/start,
