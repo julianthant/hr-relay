@@ -1,3 +1,4 @@
+import { resolveDateSelection, routeForDay } from "./date-state-model.js";
 import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
@@ -162,8 +163,6 @@ export function DashboardApp() {
   const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
-  const today = boot === undefined ? undefined : serverLocalDay(boot.serverClock);
-  const day = route.day ?? today;
 
   // Radix tooltips need their provider ABOVE every surface that draws one, and
   // the panel draws several. Mounting it here rather than per-surface is also
@@ -194,13 +193,11 @@ export function DashboardApp() {
     >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
-      {day === undefined || boot === undefined ? (
+      {boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
         <LoadedApp
           boot={boot}
-          today={today ?? day}
-          day={day}
           route={route}
           setRoute={setRoute}
           onPopstateRef={onPopstate}
@@ -265,8 +262,6 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 
 interface LoadedAppProps {
   boot: FrontendBootstrapWire;
-  today: string;
-  day: string;
   route: AppRouteState;
   setRoute: (next: AppRouteState) => void;
   onPopstateRef: { current: PopstateRouteHandler | undefined };
@@ -299,8 +294,6 @@ interface LoadedAppProps {
 
 function LoadedApp({
   boot,
-  today,
-  day,
   route,
   setRoute,
   onPopstateRef,
@@ -323,7 +316,6 @@ function LoadedApp({
   checkedIds,
   onCheckedIds,
 }: LoadedAppProps) {
-  const { day: dayResource, connection } = useDashboardDay(day);
   /**
    * THE clock (D256). The server's instant is the authority; the browser
    * contributes only the monotonic time since that instant arrived, and every
@@ -333,6 +325,13 @@ function LoadedApp({
    * page load and a parked run read `0s` for over two minutes.
    */
   const nowIso = useServedNow(boot.serverClock.now);
+  const today = serverLocalDay({ ...boot.serverClock, now: nowIso });
+  const dateSelection = resolveDateSelection(route.day, today);
+  const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
+  const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
+    ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
+  const { day: dayResource, connection } = useDashboardDay(dateSelection.state === "valid" ? day : undefined);
+
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   // Bumped by an applied Data correction: the save moved the run version, so
   // the open detail (and, through its rowRevision, every fetched section)
@@ -355,7 +354,7 @@ function LoadedApp({
    */
   const servedRowRevision = dayWire?.queueSurfaces
     .find((row) => String(row.runId) === route.run)?.rowRevision;
-  const detail = useRunDetail(route.run, detailNonce, servedRowRevision);
+  const detail = useRunDetail(dateSelection.state === "valid" ? route.run : undefined, detailNonce, servedRowRevision);
   const selection = shellSelection(route, day, dayWire, detail);
   const detailValue = selection.state === "ready" ? selection.detail : undefined;
   const offered = detailValue === undefined ? [] : tabsFor(detailValue);
@@ -1139,9 +1138,11 @@ function LoadedApp({
     [workflows],
   );
   const onSelectDay = useCallback(
-    (next: string): void => { if (next !== day) setRoute({ ...route, day: next, run: undefined, section: undefined }); },
-    [day, route, setRoute],
+    (next: string): void => { if (next !== day) leaveSettings(() => setRoute(routeForDay(route, next))); },
+    [day, route, setRoute, leaveSettings],
   );
+
+  const onToday = useCallback(() => leaveSettings(() => setRoute(routeForDay(route, undefined))), [leaveSettings, route, setRoute]);
 
   /**
    * The open panel's ROW and its served controls, resolved ONCE.
@@ -1246,6 +1247,11 @@ function LoadedApp({
         onOpenSettings={openSettings}
         day={day}
         today={today}
+        dateError={dateError}
+        followingToday={route.day === undefined}
+        onToday={onToday}
+        calendarRevision={dayWire}
+        dayState={dayResource.state === "loaded" ? "loaded" : dayResource.state === "failed" ? "failed" : "loading"}
         monthCounts={dayMonthCounts}
         onDay={onSelectDay}
         theme={theme}
@@ -1441,8 +1447,8 @@ function LoadedApp({
             <div className="grid h-full grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)] gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)]">
               {dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
-                  <EmptyState title={dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
-                    description={dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`} />
+                  <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
+                    description={dateError ?? (dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
                 </PanelBody></Panel>
               ) : <QueuePanel
                 surfaces={surfaces}

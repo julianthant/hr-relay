@@ -476,3 +476,22 @@ describe("dashboard day subscription — stream failure classification", () => {
     assert.equal(h.streams.length, 1);
   });
 });
+
+it("rejects a wrong-day snapshot and ignores callbacks from superseded handles", async () => {
+  const h = liveAtCursorTwo();
+  const prior = h.days.length;
+  h.streams[0].eof(); await tick(); h.runScheduled();
+  h.streams[0].push(snapshotEnvelope("pc:9", [surfaceOf(99)]));
+  assert.equal(h.days.length, prior);
+  h.streams[1].push(hello("pc:2"));
+  h.streams[1].push(snapshotEnvelope("pc:3", [surfaceOf(3)]));
+  assert.equal(h.days.length, prior + 1);
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:4",
+    payload: { ...dayOf([surfaceOf(4)], "pc:4"), day: "2026-08-02" } });
+  assert.equal(h.days.length, prior + 1);
+  const state = h.states.at(-1); assert.equal(state?.state, "stopped");
+  if (state?.state !== "stopped") assert.fail("expected refusal");
+  assert.match(state.error?.message ?? "", /day-request-identity-mismatch/u);
+  h.close(); h.streams[1].push(snapshotEnvelope("pc:5", [surfaceOf(5)]));
+  assert.equal(h.days.length, prior + 1);
+});

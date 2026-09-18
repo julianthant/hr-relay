@@ -41,6 +41,7 @@
 export interface NavPlace {
   /** the day partition the queue was reading */
   day: string;
+  followToday?: boolean;
   /** the Workflow Panel entry that owned the queue */
   workflow: string;
   /** the selected run; `null` = the panel with nothing open */
@@ -67,7 +68,7 @@ export function initNavHistory(place: NavPlace): NavHistory {
 
 export function samePlace(a: NavPlace | undefined, b: NavPlace | undefined): boolean {
   if (a === undefined || b === undefined) return false;
-  return a.day === b.day && a.workflow === b.workflow && a.runId === b.runId && a.tab === b.tab;
+  return a.followToday === b.followToday && (a.followToday === true || a.day === b.day) && a.workflow === b.workflow && a.runId === b.runId && a.tab === b.tab;
 }
 
 export function currentPlace(history: NavHistory): NavPlace | undefined {

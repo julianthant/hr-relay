@@ -24,7 +24,7 @@ export type ServerClockWire = z.infer<typeof ServerClockWireSchema>;
  * browser in another zone must not disagree with the tracker about which day
  * "today" is.
  */
-export function serverLocalDay(clock: ServerClockWire): string {
+export function serverLocalDay(clock: { readonly now: string; readonly zone: string }): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: clock.zone,
     year: "numeric",
@@ -60,8 +60,7 @@ export function monthOfDay(day: string): string {
 
 /** `2026-08` → `August 2026` */
 export function monthLabel(month: string): string {
-  const [year, monthNumber] = month.split("-").map(Number);
-  return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString("en-US", {
+  return new Date(`${month}-01T00:00:00.000Z`).toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -71,31 +70,36 @@ export function monthLabel(month: string): string {
 
 /** `2026-08` shifted by whole months, staying a `YYYY-MM` */
 export function shiftMonth(month: string, delta: number): string {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const shifted = new Date(Date.UTC(year, monthNumber - 1 + delta, 1));
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+  const shifted = new Date(`${month}-01T00:00:00.000Z`);
+  shifted.setUTCMonth(shifted.getUTCMonth() + delta);
+  return shifted.toISOString().slice(0, 7);
 }
 
 
-/**
- * Arrow-key movement inside the grid, clamped to the 42 cells it holds.
- *
- * Pure, so the keyboard contract is a test rather than something somebody
- * checks by pressing keys — and it is a CLAMP, not a wrap: running off the
- * right edge of the last week stops, it does not teleport to the first.
- */
-export function moveCalendarFocus(index: number, key: string): number | null {
-  const delta =
-    key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : key === "ArrowDown" ? 7 : key === "ArrowUp" ? -7 : null;
-  if (delta === null) {
-    if (key === "Home") return index - (index % 7);
-    if (key === "End") return index - (index % 7) + 6;
-    return null;
+/** Skip disabled cells, retaining the closest usable cell in the requested direction. */
+export function moveCalendarFocus(cells: readonly CalendarCell[], index: number, key: string): number | null {
+  const delta = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : key === "ArrowDown" ? 7 : key === "ArrowUp" ? -7 : null;
+  if (key === "Home" || key === "End") {
+    const start = index - (index % 7);
+    const candidates = cells.map((cell, i) => cell.available && i >= start && i < start + 7 ? i : -1).filter(i => i >= 0);
+    return (key === "Home" ? candidates.at(0) : candidates.at(-1)) ?? index;
   }
-  const next = index + delta;
-  return next < 0 || next > 41 ? index : next;
+  if (delta === null) return null;
+  const target = index + delta;
+  const direction = Math.sign(delta);
+  for (let next = target; next >= 0 && next < cells.length; next += direction) {
+    if (cells[next].available) return next;
+  }
+  return index;
 }
 
+export function calendarTabStop(cells: readonly CalendarCell[], focusedDay: string | undefined, selectedDay: string): number {
+  for (const day of [focusedDay, selectedDay]) {
+    const index = cells.findIndex(cell => cell.day === day && cell.available);
+    if (index >= 0) return index;
+  }
+  return cells.findIndex(cell => cell.available);
+}
 
 export interface CalendarCell {
   readonly day: string;
@@ -124,8 +128,7 @@ export function buildCalendarMonth(
   counts: readonly DayCountWire[],
   today: string,
 ): CalendarCell[] {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const first = Date.UTC(year, monthNumber - 1, 1);
+  const first = Date.parse(`${month}-01T00:00:00.000Z`);
   const start = first - new Date(first).getUTCDay() * MS_DAY;
   const served = new Map(counts.map((entry) => [String(entry.day), entry.count]));
   const cells: CalendarCell[] = [];
@@ -138,7 +141,7 @@ export function buildCalendarMonth(
       dayOfMonth: new Date(ms).getUTCDate(),
       inMonth: day.slice(0, 7) === month,
       count: count ?? 0,
-      available: count !== undefined,
+      available: day <= today && (day === today || (count !== undefined && count > 0)),
       isToday: day === today,
     });
   }

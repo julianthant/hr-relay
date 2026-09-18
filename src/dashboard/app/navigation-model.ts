@@ -28,7 +28,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
  onPopstateRef: {current: PopstateRouteHandler | undefined}; nativeHistory: NativeRouteHistory;
 }) {
   const [navHistory, setNavHistory] = useState<NavHistory>(() =>
-    initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
+    initNavHistory({ day, followToday: route.day === undefined, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
   );
   const applyingNav = useRef(false);
   const observedInitialPlace = useRef(false);
@@ -62,7 +62,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
     if (!observedInitialPlace.current) {
       if (dayWire === undefined) return;
       observedInitialPlace.current = true;
-      setNavHistory(initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
+      setNavHistory(initNavHistory({ day, followToday: route.day === undefined, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
       return;
     }
     if (applyingNav.current) {
@@ -70,8 +70,8 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
       return;
     }
     setNavHistory((prev) =>
-      pushPlace(prev, { day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
-  }, [day, activeWorkflowId, route.run, tab, dayWire]);
+      pushPlace(prev, { day, followToday: route.day === undefined, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
+  }, [day, activeWorkflowId, route.day, route.run, tab, dayWire]);
 
   const travel = useCallback(
     (direction: "back" | "forward"): void => {
@@ -100,7 +100,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
           catalog: undefined,
           catalogView: undefined,
           settings: undefined,
-          day: place.day,
+          day: place.followToday === true ? undefined : place.day,
           run: place.runId ?? undefined,
           section: place.tab ?? undefined,
         });

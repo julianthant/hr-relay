@@ -216,13 +216,13 @@ it("failed and delayed day snapshots never render an empty or stale queue",async
     subscribeDay(input){old=current;current=input;if(input.day===FIXTURE_DAY_WIRE.day) input.onDay(FIXTURE_DAY_WIRE);return{close(){}};},
   });
   await act(async()=>{
-    window.history.pushState({hrDashboardRouteCursor:1},"","/?day=2026-08-04");
+    window.history.pushState({hrDashboardRouteCursor:1},"","/?day=2026-08-02");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   assert.match(document.body.textContent??"",/Loading queue/);
   await act(async()=>old?.onDay(FIXTURE_DAY_WIRE));
   assert.equal(document.querySelector(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`),null);
-  await act(async()=>current?.onDay({...FIXTURE_DAY_WIRE,day:LocalDateSchema.parse("2026-08-04"),queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
+  await act(async()=>current?.onDay({...FIXTURE_DAY_WIRE,day:LocalDateSchema.parse("2026-08-02"),queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
   assert.doesNotMatch(document.body.textContent??"",/Loading queue/);
 });
 it("a served detail failure stays a failure and an empty workflow catalog states absence",async()=>{
@@ -265,4 +265,29 @@ it("a failed day displays its error, with no zero-count status controls",async()
   assert.match(document.body.textContent??"",/Could not load queue/);
   assert.match(document.body.textContent??"",/Queue transport failed/);
   assert.equal(document.querySelector('[aria-label="Filter the queue by status"]'),null);
+});
+
+it("native date history preserves a dirty Settings draft, then restores the accepted date", async () => {
+  await mount("?day=2026-08-02", {
+    subscribeDay(input) {
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: [], statusCounts: [], workflowCounts: [], monthCounts: [] });
+      input.onState({ state: "live" }); return { close() {} };
+    },
+  });
+  await click(button("Settings"));
+  const display = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Display"); assert.ok(display);
+  await click(display);
+  const width = document.querySelector<HTMLInputElement>('input[type="number"]'); assert.ok(width);
+  await act(async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value"); if (descriptor?.set === undefined) throw new Error("input value setter missing");
+    descriptor.set.call(width, "1777"); width.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await historyMove("back"); // Settings root retains its editor.
+  await historyMove("back"); // The queued destination is the historical day.
+  await click(button("Keep editing"));
+  assert.equal(width.value, "1777");
+  assert.equal(new URLSearchParams(location.search).has("settings"), true);
+  await historyMove("back"); await click(button("Discard changes")); await settle();
+  assert.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");
+  assert.equal(new URLSearchParams(location.search).has("settings"), false);
 });
