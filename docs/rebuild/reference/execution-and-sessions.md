@@ -1295,6 +1295,63 @@ controls only durably proven children; every other live member is reported as **
 and is not controlled. B's PID adoption and C's false stopped state were rejected. D269's
 authority/pool distinction and D181/D200 recovery/identity rules remain unchanged.
 
+<a id="session-controls-amendment-2026-09-18"></a>
+
+### Session controls amendment — 2026-09-18
+
+**Operator-approved requirements; implementation pending in
+[3.1.11](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18).**
+Choices 1 A and 2 A amend the existing worker-control basis and browser-control semantics. D269's
+pool declaration, D271's process ownership and stop policy, and the session manager's exclusive
+resource/transaction rules remain binding.
+
+**Worker selection survives a heartbeat, but not another instruction or worker lifetime.**
+Pause, Resume and Stop carry the selected worker's `leaseGeneration` and a separate durable
+control revision. Browser Refresh and Reopen carry the same basis plus the exact browser session
+id. Compare that basis before admitting an effect and revalidate it where the owner takes the
+effect. Heartbeat/lifecycle-only changes to the lease row version do not invalidate the control
+basis. An intervening accepted instruction or replacement lifetime does; concurrent instructions
+cannot both consume one basis. The selected worker must still be a durably proven owned child.
+Pool Plan and Spawn retain strict pool-version CAS; this amendment does not relax pool admission.
+Missing historical fields are explicit unavailable evidence, never invented generation/revision
+values that make an old request executable. Preserve original command bytes and journaled replay;
+a reused command identity with different contents is refused.
+
+**Browser commands have durable identity and observed outcomes across processes.** The authenticated
+command id, worker lifetime/control basis, exact session and admission are retained in SQLite before
+the child takes an effect. The child consumes only its own admitted request, and records what it
+observed. Delivery and acknowledgement are bounded. Distinguish a refusal before effects, a pending
+operation, an uncertain/partial effect and observed completion. A request that expired without
+beginning cannot execute later. Duplicate delivery, a lost response and BFF/worker restart consult
+the same retained evidence; they cannot repeat a browser effect or turn uncertainty into success.
+A crash after an effect began may leave an uncertain outcome. Neither replay nor a new command may
+erase that uncertainty by silently choosing a replacement session. The channel stays behind existing
+authenticated command admission and does not expose another mutation route.
+
+**Refresh and Reopen refuse while the worker executes any run**, including the gaps between steps.
+That refusal does not enqueue an operation for later idleness. Recheck idleness and exact identity
+at execution, and exclude a new run claim while the browser operation is in progress. Never interrupt
+a transaction, use an arbitrary page reload, or bypass the worker's resource manager.
+
+- Refresh resets the selected session to its neutral entry and verifies authentication, retaining
+  its session identity. Completion requires the real reset/authentication outcome.
+- Reopen first proves closure of the selected session, then creates and authenticates a replacement
+  using that resource's retained configuration, system instance, browser mode, profile and launch
+  properties. A newer settings snapshot is not a substitute. The replacement has a new session id;
+  credentials are not cleared. Failed closure cannot be treated as permission to open another owner.
+
+All seven controls—Plan, Spawn, Pause, Resume, Stop, Refresh and Reopen—must retain exact
+effect/refusal/uncertainty evidence. A requested directive remains distinct from observed lifecycle.
+The cap of three, explicit member selection on scale-down, 120s graceful stop then SIGTERM/30s/
+SIGKILL, visible crash and explicit replacement, and refusal to adopt external workers remain
+unchanged. Stop keeps its existing bounded escalation; the browser busy refusal does not replace it.
+
+Control records join the next additive schema migration (current schema 52 at the planning base),
+strict registration and supported stopped conversion, boot, backup/restore and doctor handling.
+Keep floor 46 and released migrations unchanged. Historical audits remain readable. The task's
+focused real-process/browser proof establishes these effects; current external HR dry-run acceptance
+still belongs to the phase's 3.1.18 harness and 3.1.19 execution.
+
 ## Provider storage foundation
 
 **2026-09-08 — approved, pending implementation.**

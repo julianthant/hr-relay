@@ -6931,6 +6931,39 @@ recorded in `docs/rebuild/findings/dashboard-projection.md` ("The worker card's 
 health have no producer") with the fold that would serve it. The tally vocabulary is the served
 lease state (`starting`, not the demo's `authenticating` — R7's ruling).
 
+<a id="session-controls-presentation-2026-09-18"></a>
+
+#### Session controls presentation — 2026-09-18
+
+**Operator-approved requirements; implementation pending in
+[3.1.11](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18).**
+The [session-controls amendment](execution-and-sessions.md#session-controls-amendment-2026-09-18)
+owns effects, identity and recovery. D305's strip, cards, identity facts and Add-workers dialog
+remain the presentation boundary. Add Pause/Resume and exact-session Refresh/Reopen there; do not
+restore pool bands or a second session-membership list.
+
+Serve each control's actual basis: strict pool version for Plan/Spawn; selected worker lifetime
+and durable control revision for Pause/Resume/Stop; that worker basis plus selected browser session
+id for Refresh/Reopen. Do not use heartbeat-driven row versions as the worker's control basis.
+Show producer-backed ownership, requested directive, observed lifecycle, current claim, session
+membership, browser/profile instance and operation outcome without conflating them. An externally
+running worker remains visible with its refusal reason and cannot become an owned child by UI choice.
+Retain safe identity metadata, not credentials or private profile paths.
+
+An open span or live process does not prove browser health. Real reset/authentication and reopen
+outcomes supply dated observations tied to the exact session; display their observation time and
+meaning, not an indefinitely inferred `Ready`. Historical or missing observations remain explicitly
+unavailable/`Not checked`. Pending, refused, failed and uncertain outcomes must be distinguishable,
+survive refresh through retained readback and never acquire success styling without observed
+completion. A disconnected request is not proof of either failure-before-effect or success.
+
+When a worker is executing a run, explain that Refresh/Reopen is unavailable; server admission also
+refuses races, including between steps. Do not show a queued-for-idle promise after that refusal.
+On successful Reopen, show the observed replacement session identity. Keep focus, keyboard access,
+both themes, calibrated elapsed time, accessibility and desktop resize/zoom behavior. This amendment
+supersedes the historical absence of health/control producers only as those producers are built;
+it does not fabricate the still-unserved step or pipeline fields.
+
 #### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
 
 **What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE

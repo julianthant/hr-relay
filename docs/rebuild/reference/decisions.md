@@ -2512,3 +2512,21 @@ exactly the public saved report as `archive-<runId>.json` with truthful generic 
 The [task owner](../plans/phase-3/3.1-finish-the-dashboard/task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md#approved-execution-brief--2026-09-16)
 binds the bounded ownership extension and focused proofs. No DDL, schema-floor change, deletion-policy
 change, Archive execution door or operator-state action is admitted; implementation remains pending.
+
+### 2026-09-18 — Session control identity and idle browser operations
+
+The operator approved choices **1 A / 2 A** and the complete 3.1.11 S1–S6 brief. These are dated
+amendments to existing session/pool decisions; requirements are approved and implementation remains
+pending. [Execution and sessions](execution-and-sessions.md#session-controls-amendment-2026-09-18)
+owns worker lifetime plus durable control-revision admission, unchanged strict pool CAS, the durable
+cross-process browser command/outcome channel, and refusal of Refresh/Reopen during any executing
+run. Refresh resets/authenticates the same session; Reopen proves closure and authenticates a new
+session using the selected resource's retained configuration/profile without clearing credentials.
+D271 ownership, cap and stop escalation remain binding. Historical commands stay readable and
+replayable only under their retained evidence; missing new fields cannot authorize new effects.
+
+[Dashboard surfaces](dashboard-surfaces.md#session-controls-presentation-2026-09-18) owns D305's
+additional controls and truthful, dated observation/outcome presentation. The
+[single task owner](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18)
+binds the additive migration, recovery compatibility, child-interface boundary, focused proofs and
+operator-directed integration. No schema or runtime change is made by this planning amendment.

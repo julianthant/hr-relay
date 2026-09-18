@@ -1899,6 +1899,7 @@ log:
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.1; former 3.1.10-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11; standalone prerequisite or individual task; acceptance and historical execution anchor retained
+- 2026-09-18 | operator-approved 3.1.11 execution brief | Complete S1–S6 plan: worker lifetime/control-revision fencing, strict pool CAS, durable browser command/outcome channel, idle-only Refresh/Reopen, truthful controls and completed shared child APIs. Choices 1 A / 2 A ratified at execution/session and dashboard contracts. One Astra/medium supervisor, no workers or independent review; focused gates now, broad acceptance at 3.1.19. Accepted 3.1.9.8 is available; product implementation and operator-directed integration remain unstarted.
 
 
 ##### 1 · Finish Setup and preflight {#dash-setup}
