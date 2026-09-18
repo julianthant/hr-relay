@@ -149,7 +149,9 @@ and the last numbered child **Finalization**, requiring every worker. Sequential
 require that child's release; do not create a detached finalizer or an empty container. See D344's
 “Parallel group shape for future plans” amendment; preserve already admitted/in-flight identities.
 Use current identity maps and the owning plan's D191 gate cadence, including explicit scoped exceptions.
-At start/resume and after every verified task/step completion, send Done / Now / Remaining in chat
-before the next tool call: completed work with evidence, current action, and all unfinished items.
-Keep review, integration and cleanup visible; tool logs or plan UI never replace this update.
+For planning and supervision, send Done / Now / Remaining once at session start or genuine resume.
+Later updates report only newly verified completions with concise evidence; do not repeat the plan,
+previous completions or remaining list. Track review, integration and cleanup internally and surface
+new blockers or decisions promptly. Automatic compaction does not restart this cadence. This rule
+supersedes repeated-summary wording in older task briefs; completion and evidence requirements remain.
 Routine stage transfers use the existing phase record; interrupted unique state uses `/handoff`.

@@ -3791,12 +3791,15 @@ independent candidate freezes, and live-write/cutover approvals remain binding.
 
 Transfer only task, phase path/section, plan commit, checkout/branch, candidate range, gate evidence
 bound to tested state, and unresolved issues. The phase record and commits are durable authority;
-no coordinator board, dispatch envelope or routine handoff/report file is required. Progress updates
-are mandatory: at start/resume and after every verified task/step completion, before the next tool
-call, send Done (completed item and evidence), Now (current action or wait/blocker), and Remaining
-(every unfinished item including active work, gates, review, fixes, integration and cleanup). Use
-stable IDs and readable labels. Tool output and native plan UI do not replace this chat update.
-During long steps update the current action at least every 60 seconds using bounded waits.
+no coordinator board, dispatch envelope or routine handoff/report file is required. **Progress cadence
+(operator amendment 2026-09-17):** planning and supervision send Done (verified completed work), Now
+(current action or blocker), and Remaining (unfinished steps) once at session start or genuine resume.
+After each verified step, report only newly completed work and concise evidence before proceeding;
+do not repeat earlier completions, the plan or remaining list. Keep gates, review, fixes, integration
+and cleanup in working state; surface new blockers or decisions promptly. During long steps give a
+brief meaningful status at least every 60 seconds using bounded waits. Automatic compaction does not
+restart the cadence. Tool output and plan UI do not replace these updates. This cadence supersedes
+repeated-summary wording in earlier task briefs without changing completion or acceptance requirements.
 Use `/handoff` only for interrupted work whose unique state is not already preserved.
 Keep exact ids, scopes, bases, worktrees and integration order for owned workers; historical
 coordination records do not enroll new work. This amendment supersedes D325/D326 and older direct-
