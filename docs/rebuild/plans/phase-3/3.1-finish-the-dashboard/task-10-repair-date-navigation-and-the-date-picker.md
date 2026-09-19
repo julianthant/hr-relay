@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Make URL, selected date, timezone, loaded snapshot, controls, focus, races, DST, and browser
+- [x] Make URL, selected date, timezone, loaded snapshot, controls, focus, races, DST, and browser
   history one tested state machine.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
@@ -242,22 +242,37 @@ verify ancestry/tree and required reuse/reruns, preserve proof outside the workt
 registered and physical worktree residue and branch, and close the task's checkbox/roadmap only then.
 Stop after 3.1.10; no push or downstream dispatch.
 
-### Current execution state — 2026-09-18
+### Current execution state — 2026-09-19
 
-**DN1–DN5 implemented and focused candidate frozen; awaiting explicit operator integration.**
-Implementation commit `7b98ba23dc9f5876dba927ad6cf02498c51e2d8c` is on `codex/3.1.10-date-navigation`, in
-`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-date-navigation`. Its direct
-base is the approved plan `92e4e86ccf20218a4c3af9bd6d4e813f3d6b9270`; all four prerequisite SHAs
-in the allocation table were verified as ancestors before editing. Branch/path were available before
-creation. Local master remains `faa8b2165fcd2232028f6436471393d6b9d87747`. No workers, independent
-review, integration, push or downstream dispatch occurred. This task's checkbox remains open until
-accepted integration and owned branch/worktree cleanup; full acceptance remains **3.1.19**.
+**3.1.10 complete: DN1–DN5 accepted, integrated locally and owned cleanup verified.**
+The operator's “is it done? finish it” on 2026-09-19 authorized the previously requested integration
+and cleanup. Frozen delivery `4235dbcaf3c48a9e24f435dde5069fd04e51903c` (implementation
+`7b98ba23dc9f5876dba927ad6cf02498c51e2d8c`, approved plan
+`92e4e86ccf20218a4c3af9bd6d4e813f3d6b9270`) is an ancestor of accepted local master integration
+`517f7319fdcd771aee8356e664f1e8a885032ba0`. All four prerequisite SHAs in the allocation table were
+verified before implementation and integration. No workers or independent reviewer were dispatched.
+No push or downstream task dispatch occurred; full Phase 3.1 acceptance remains **3.1.19**.
+
+Master had advanced to `f02eb7f837677eef210d305635f6a2d84f0516b4` with the approved 3.1.11 planning
+documents. Both tasks' owning sources were retained. The sole conflict was generated
+`docs/roadmap/index.html`, resolved by the existing generator over the combined sources. There was
+no runtime or behavioral conflict. All 2,440 frozen source/test/config/dependency/reference inputs
+match the integrated checkout, so the focused unit/architecture, compiler, implementation lint,
+browser and zoom receipts below are reused for their identical inputs. Documentation binding,
+scoped generator/test lint, generation/freshness, links/twins/chain cap and whitespace checks were
+rerun for integration and completion recording.
+
+Integration evidence is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.10/2026-09-19/`:
+`integration-precommit.json` records the target drift, source equality and conflict disposition;
+`closure-checks.json`, `closure-roadmap-binding.log`, `closure-lint.log`,
+`closure-roadmap-generation.log` and `closure-roadmap-freshness.log` bind the recording checks.
+`integration.json` records the final commit/tree, gate reuse and cleanup. The task checkbox and
+only its three roadmap builds are now complete.
 
 Retained proof is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.10/2026-09-18/`.
 `candidate.json` binds the implementation/tree, commands, selections, source/config/dependency/reference
-hashes and retained outputs; `gate-inputs.json` supports identical-input reuse. The subsequent recording
-commit changes only this owner, the implemented contract descriptions, roadmap journal and generated
-roadmap. Runtime gates remain reusable only while those inputs match.
+hashes and retained outputs; `gate-inputs.json` supports identical-input reuse. The freeze recording commit changed only this owner, the implemented contract descriptions, roadmap
+journal and generated roadmap. Runtime gates remain reusable only while those inputs match.
 
 | Step | Verified outcome and retained proof |
 | --- | --- |
@@ -286,10 +301,16 @@ unwired HR services. Calendar queries, day projection and subscription transport
 implementations. This proves the assigned date seam, not external HR execution or broad acceptance.
 No operator state, credentials, legacy runtime, fixed ports 3938/5174, migrations or writes are involved.
 
-Owned proof servers and playwright-cli sessions are stopped; temporary zoom profile/loaded extension
-are removed, with source/receipts preserved. The implementation worktree, dependency symlink and branch
-remain deliberately retained for explicit integration. Recheck master ownership, ancestry and frozen
-inputs before integration; rerun affected checks if they change, then complete only owned cleanup.
+Owned proof servers and playwright-cli sessions are stopped. Temporary zoom profile/loaded extension
+were removed while source/receipts were retained. Cleanup archived and hash-verified all 103 ignored
+generated files (bundle, parity output, browser logs and empty proof lock) in
+`2026-09-19/owned-generated-residue.tar.gz`, then removed the owned dependency symlink, ordinary Git
+worktree registration and physical directory
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-date-navigation`.
+`codex/3.1.10-date-navigation` and `codex/plan-3.1.10` were deleted with normal ancestry-checked
+branch deletion. The former planning directory is also absent. The shared worktree parent and
+active `hr-worktree-sessions` checkout were preserved. This is the calling task, so no sidebar task
+was archived. No owned cleanup remains.
 
 **Delivery assessment.** No planning-driven amendment, new operator scope or changed prerequisite was
 needed. Repairs were implementation/proof defects within the approved plan: strict summary-row parsing,
@@ -301,7 +322,9 @@ iteration logs (`dn1-test.log`, `focused-early.log`, `parity-date.log`, `final-r
 receipts show repair rechecks; overwritten intermediate logs prevent a reliable total round count or
 elapsed-cost claim. Context was compacted during this coupled assignment without resizing/delegation.
 Earlier fixture startup/compiler checks and explicit visible-state screenshot waits would have avoided
-some proof rework. No assertion, timeout, reference tolerance or gate membership was weakened. Broad
+some proof rework. Integration required only generated-roadmap conflict resolution; no additional
+implementation repair or assignment amendment was needed. No assertion, timeout, reference tolerance
+or gate membership was weakened. Broad
 coverage, repository lint/architecture and complete A01–A42/D01–D05 remain assigned to 3.1.19.
 
 ### Planning verification — 2026-09-18

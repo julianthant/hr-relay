@@ -397,8 +397,8 @@ under the amendment below; it must not replace selected-day counts with an indep
 
 The operator approved this D81 transport clarification for
 [3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18).
-The 3.1.10 candidate implements `GET /api/v1/calendar?month=YYYY-MM&day=YYYY-MM-DD`;
-local master integration remains operator-controlled. Its strict response carries `month`, `day`,
+The accepted 3.1.10 implementation serves `GET /api/v1/calendar?month=YYYY-MM&day=YYYY-MM-DD`
+(integrated into local master on 2026-09-19). Its strict response carries `month`, `day`,
 `today`, `authorityGeneration`, at most 31 ordered positive `monthCounts`, and nullable
 `firstDay`/`lastDay`/`previousDay`/`nextDay` bounds. The read scans only the requested month and
 uses indexed per-workflow seeks for bounds, without building a history of run records. The source is

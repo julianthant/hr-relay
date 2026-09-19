@@ -1859,14 +1859,14 @@ log:
 - 2026-09-17 | 3.1.9.8 focused candidate frozen | Exact Intake/Archive deliveries combined with five accepted ancestors; Run dismissal focus repaired; required 29-file/522-test selection, 138 browser cases plus exact Start selection, typecheck, scoped lint and generated checks pass. Implementation `752607c69bbfc8c425c7a3e1c9e7890b6cc88e84`; durable evidence and inherited broad-ratchet findings are recorded in the owner. Explicit master integration and cleanup remain pending; no downstream release or full acceptance claim.
 
 #### 10 · Repair date navigation and the date picker {#dash-date-navigation}
-status: planned
+status: done
 date: D344 · former 3.1.10-1 · independent worktree after named prerequisites
 doc: 3.1/task-10-repair-date-navigation-and-the-date-picker §Task 3.1.10 · Repair date navigation and the date picker · ref:clock-config-secrets §1 · ref:dashboard-surfaces §3
 
 builds:
-- [ ] BOTH make selected date, URL, loaded day snapshot, timezone, Today, next/previous, keyboard input, and browser history one coherent state machine
-- [ ] FE handle month/year boundaries, invalid input, loading races, disabled dates, focus/escape/outside-click, and desktop resize/zoom geometry
-- [ ] PROOF timezone/DST matrix plus browser tests for direct links, rapid changes, refresh, Back/Forward, and stale-response rejection
+- [x] BOTH make selected date, URL, loaded day snapshot, timezone, Today, next/previous, keyboard input, and browser history one coherent state machine
+- [x] FE handle month/year boundaries, invalid input, loading races, disabled dates, focus/escape/outside-click, and desktop resize/zoom geometry
+- [x] PROOF timezone/DST matrix plus browser tests for direct links, rapid changes, refresh, Back/Forward, and stale-response rejection
 
 needs:
 - dash-shell
@@ -1874,6 +1874,7 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-19 | 3.1.10 accepted and cleaned | Frozen delivery `4235dbcaf3c48a9e24f435dde5069fd04e51903c` integrated at `517f7319fdcd771aee8356e664f1e8a885032ba0` after explicit operator instruction. Runtime inputs match all focused passing receipts; combined documentation checks pass. Owned worktree registration/folder and implementation/planning refs are removed, evidence retained. Sessions planning/worktree preserved; no push or downstream dispatch. Full acceptance remains 3.1.19.
 - 2026-09-18 | 3.1.10 focused candidate frozen | Implementation `7b98ba23dc9f5876dba927ad6cf02498c51e2d8c` completes DN1–DN5 locally. Exact 12-file/74-test gate, 62 focused architecture tests, typecheck, scoped lint, 42 browser cases and both-theme native 125%/200% zoom pass. Durable evidence is in the task owner. Explicit local master integration and cleanup remain pending; checkboxes stay open and full acceptance remains 3.1.19.
 - 2026-09-18 | operator-approved DN1–DN5 execution brief | One Astra/medium supervisor, no workers or independent review. Bounded canonical-summary calendar read and narrow shared date/API/fixture ownership; live Today versus pinned dates, visible invalid/future recovery, stale-response identity, accessible picker and production-service browser/zoom proof. Accepted 3.1.9.8 prerequisite verified; direct committed-ref plan delivery, operator-controlled master integration and cleanup. Implementation pending; full acceptance remains 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.4; former 3.1.10-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
