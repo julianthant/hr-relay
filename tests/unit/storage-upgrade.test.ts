@@ -171,6 +171,7 @@ describe("D336 stopped SQLite upgrade", () => {
     try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM database_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
     finally { source.close(); }
     delete pending.timelineImport; // This historical receipt predates timeline conversion.
+    delete pending.explorerImport; // It also predates the v51 Explorer importer.
     const f = fixture(version);
     const raw = new DatabaseSync(f.path);
     try { raw.prepare("INSERT INTO authority_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)").run(String(pending.recordKey), String(pending.upgradeId), "committed", canonicalJsonStringify({ ...pending, fromSchemaVersion: 29, toSchemaVersion: version }), now); }

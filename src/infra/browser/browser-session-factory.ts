@@ -293,6 +293,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         ...(input.instance === undefined ? {} : { instance: input.instance }),
         configFingerprint,
         browserMode,
+        profileDirectory,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
         driver: binding.createDriver(page, this.#options.clock),

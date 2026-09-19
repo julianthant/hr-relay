@@ -1,3 +1,4 @@
+import type { RerunPlanRefusalCode } from "../../domain/run/rerun.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../domain/protected-input.js";
 import { TransactionOutcomeSchema } from "../../domain/write-safety-primitives.js";
@@ -12,7 +13,7 @@ import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../domain/w
 import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
 
 export class RerunRefusedError extends Error {
-  constructor(readonly code: "target-deleted" | "target-not-found" | "source-stale" | "invalid-state" | "schema-mismatch" | "invalid-value", message: string) {
+  constructor(readonly code: RerunPlanRefusalCode, message: string) {
     super(message); this.name = "RerunRefusedError";
   }
 }

@@ -1322,8 +1322,8 @@ describe("browser session arms", () => {
     const browserSessionId = BrowserSessionIdSchema.parse("11111111-2222-4333-8444-555555555555");
 
     await expect(harness.supervisor.execute({ command: "refresh-browser", member: target, browserSessionId }))
-      .rejects.toThrow(/refresh-browser .* no cross-process channel into a live worker's browser sessions/);
+      .rejects.toThrow(/worker-browser-channel-unavailable/);
     await expect(harness.supervisor.execute({ command: "reopen-browser", member: target, browserSessionId }))
-      .rejects.toThrow(/reopen-browser .* no cross-process channel into a live worker's browser sessions/);
+      .rejects.toThrow(/worker-browser-channel-unavailable/);
   });
 });

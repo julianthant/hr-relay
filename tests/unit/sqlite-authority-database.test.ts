@@ -441,7 +441,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50 | 51 | 52): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50 | 51 | 52 | 53): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -2032,6 +2032,11 @@ describe("authority generation accounting", () => {
       const storage=createRunLifecycleStorage(db), report=storage.readPendingReport(RUN_ID,UUID_7);assert.ok(report);
       db.transferLifecycleSources({runId:RUN_ID,digest:report.report.digest,expectedVersion:storage.capture(RUN_ID).run.version});
     } },
+    { table: "worker_controls", mutate: db => { db.authority.workerControls.admit({ commandId: UUID_1,
+      request: { commandId: UUID_1, family: "worker-browser", type: "plan-worker-count", target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers: 1 }, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard" },
+      scope: "worker-pool:person-lookup", executorId: UUID_2, admittedAt: NOW, expiresAt: LATER, basisVersion: 0, phase: { state: "admitted" } }); } },
+    { table: "worker_browsers", mutate: db => { db.authority.workerControls.observe({ workerId: WORKER_ID, leaseGeneration: 1,
+      sessionId: UUID_1, system: "crm", configFingerprint: HASH_A, browserMode: "headless", acceptDownloads: false, exclusive: false, health: "authenticated", observedAt: NOW }); } },
     { table: "checkpoint_payloads", mutate: (db) => { db.authority.gateResults.insert(GATE_RESULT); } },
     { table: "run_checkpoints", prepare: (db) => {
       db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,

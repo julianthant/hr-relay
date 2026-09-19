@@ -1,3 +1,4 @@
+import { WorkerControlRefusal, WorkerBrowserObservationSchema, type WorkerBrowserObservation } from "../domain/worker-control.js";
 /**
  * Worker-local browser ownership (ref execution-and-sessions §§2,4,6.1).
  *
@@ -129,6 +130,7 @@ export interface WorkerSessionManagerOptions {
    */
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
+  readonly onObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
   /** Production persistence seam for explicit per-run browser screenshots. */
   readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
 }
@@ -396,6 +398,9 @@ export class WorkerSessionManager {
   readonly #onEvent: (event: WorkerSessionEvent) => void;
   #defaultBrowserMode: BrowserPresentationMode;
   readonly #browserScreenshotCapture: RunBrowserScreenshotCapture | undefined;
+  readonly #onObservation: WorkerSessionManagerOptions["onObservation"];
+  #controlInFlight = false;
+  readonly #retained = new Map<string, Readonly<{ openedAt: string; factory: WorkerBrowserSessionFactory; acquireMs: number; duo: DuoCeremonyGateFactory; defaultMode: BrowserPresentationMode }>>();
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
@@ -413,6 +418,7 @@ export class WorkerSessionManager {
     this.#workerId = WorkerIdSchema.parse(options.workerId);
     this.#workflowId = WorkflowIdSchema.parse(options.workflowId);
     this.#stores = options.stores;
+    this.#onObservation = options.onObservation;
     this.#factory = options.factory;
     this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(options.defaultBrowserMode ?? "headless");
     this.#browserScreenshotCapture = options.browserScreenshotCapture;
@@ -424,7 +430,7 @@ export class WorkerSessionManager {
   }
 
   configureRunResources(resources: Readonly<{sessionFactory:WorkerBrowserSessionFactory;sessionAcquireMs:number;duoCeremony:DuoCeremonyGateFactory;defaultBrowserMode:BrowserPresentationMode}>): void {
-    if (this.#runConfigFingerprint !== undefined || this.#starting.size > 0) throw new Error("run-resources-cannot-change-during-execution");
+    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#starting.size > 0) throw new Error("run-resources-cannot-change-during-execution");
     this.#factory = resources.sessionFactory;
     this.#acquireDeadlineMs = z.number().int().positive().parse(resources.sessionAcquireMs);
     this.#duoCeremony = resources.duoCeremony;
@@ -433,6 +439,68 @@ export class WorkerSessionManager {
 
   activeSystems(): readonly BrowserSystemId[] {
     return Object.freeze([...this.#resources.keys()]);
+  }
+
+  /** Refuse synchronously; no wait-for-idle action survives a busy target. */
+  assertControlTarget(sessionId: string): WorkerBrowserResource {
+    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#starting.size > 0 || this.#tails.size > 0 || this.#closingReason !== undefined) throw new WorkerControlRefusal("worker-browser-busy");
+    const resource = [...this.#resources.values()].find(value => value.sessionId === sessionId);
+    if (resource === undefined) throw new WorkerControlRefusal("worker-browser-session-unavailable");
+    if (this.#poisoned.has(resource.system)) throw new WorkerControlRefusal("worker-browser-unproven-close");
+    if (resource.browserMode === undefined || !this.#retained.has(resource.sessionId)) throw new WorkerControlRefusal("worker-browser-retained-settings-unavailable");
+    return resource;
+  }
+
+  async controlBrowser(type: "refresh-browser" | "reopen-browser", sessionId: string, signal: AbortSignal): Promise<WorkerBrowserResource> {
+    const resource = this.assertControlTarget(sessionId);
+    const retained = this.#retained.get(resource.sessionId);
+    if (retained === undefined) throw new WorkerControlRefusal("worker-browser-retained-settings-unavailable");
+    this.#controlInFlight = true;
+    const current = { factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode };
+    try {
+      return await this.#withSystemTurn(resource.system, signal, async () => {
+      this.#observe(resource, "unknown");
+      if (type === "refresh-browser") {
+        // The resource factory's neutral reset includes content-level authentication proof.
+        await resource.reset({ signal });
+        this.#observe(resource, "authenticated");
+        this.#emit({ type: "browser-session:reset", system: resource.system, sessionId: resource.sessionId });
+        return resource;
+      }
+      await this.#closeSystem(resource.system, "operator-reopen");
+      this.#factory = retained.factory;
+      this.#acquireDeadlineMs = retained.acquireMs;
+      this.#duoCeremony = retained.duo;
+      this.#defaultBrowserMode = retained.defaultMode;
+      const replacement = await this.#acquireBounded(SessionNeedSchema.parse({ system: resource.system, session: "reuse-worker", access: "read", ...(resource.acceptDownloads ? { acceptDownloads: true } : {}), ...(resource.exclusive ? { exclusive: true } : {}) }), resource.instance, resource.configFingerprint, BrowserPresentationModeSchema.parse(resource.browserMode), signal);
+      if (replacement.sessionId === resource.sessionId || replacement.profileDirectory !== resource.profileDirectory) {
+        await this.#closeSystem(replacement.system, "poisoned");
+        throw new Error("worker-browser-replacement-identity-mismatch");
+      }
+      return replacement;
+      });
+    } catch (error) {
+      const remaining = this.#resources.get(resource.system);
+      if (remaining !== undefined) {
+        this.#poisoned.add(remaining.system);
+        this.#observe(remaining, "failed");
+      }
+      throw error;
+    } finally {
+      this.#factory = current.factory;
+      this.#acquireDeadlineMs = current.acquireMs;
+      this.#duoCeremony = current.duo;
+      this.#defaultBrowserMode = current.defaultMode;
+      this.#controlInFlight = false;
+    }
+  }
+
+  #observe(resource: WorkerBrowserResource, health: WorkerBrowserObservation["health"]): void {
+    this.#onObservation?.(WorkerBrowserObservationSchema.omit({ leaseGeneration: true }).parse({ ...(this.#retained.get(resource.sessionId) === undefined ? {} : { openedAt: this.#retained.get(resource.sessionId)?.openedAt }), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
+      ...(resource.instance === undefined ? {} : { instance: resource.instance }), configFingerprint: resource.configFingerprint,
+      browserMode: effectiveResourceBrowserMode(resource, this.#defaultBrowserMode),
+      ...(resource.profileDirectory === undefined ? {} : { profileDirectory: resource.profileDirectory }),
+      acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive, health, observedAt: this.#clock.now().toISOString() }));
   }
 
   /**
@@ -452,6 +520,7 @@ export class WorkerSessionManager {
     }>,
   ): void {
     const parsed = FingerprintSchema.parse(fingerprint);
+    if (this.#controlInFlight) throw new WorkerControlRefusal("worker-browser-control-in-progress");
     if (this.#runConfigFingerprint !== undefined) {
       throw new Error(
         `worker ${this.#workerId} already has a bound run config fingerprint; one worker owns one active run`,
@@ -539,10 +608,12 @@ export class WorkerSessionManager {
       const screenshotFailures: unknown[] = [];
       const poisonCloseFailures: unknown[] = [];
       try {
+        this.#observe(resource, "unknown");
         const result = await use(resource.driver);
         operationCompleted = true;
         await this.#captureLeaseScreenshot(resource, "succeeded", configFingerprint);
         await resource.reset({ signal });
+        this.#observe(resource, "authenticated");
         this.#emit({
           type: "browser-session:reset",
           system: resource.system,
@@ -839,7 +910,7 @@ export class WorkerSessionManager {
       try {
         value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
       } catch (error) {
-        if (!(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
+        if (this.#controlInFlight || !(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
         const discardProfile = this.#factory.discardProfile;
         if (discardProfile === undefined) {
           throw new Error(
@@ -948,6 +1019,8 @@ export class WorkerSessionManager {
       throw loginError;
     }
     this.#resources.set(need.system, resource);
+    this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
+    this.#observe(resource, "authenticated");
     this.#emit({
       type: "browser-session:start",
       system: resource.system,
@@ -982,6 +1055,8 @@ export class WorkerSessionManager {
     if (exclusive && proof.exclusiveLeaseReleased !== true) {
       throw new Error(`${resource.system} close proof is missing exclusive identity-lease release`);
     }
+    this.#observe(resource, "closed");
+    this.#retained.delete(resource.sessionId);
     this.#emit({
       type: "browser-session:close",
       system: resource.system,

@@ -523,6 +523,7 @@ export const WorkerLifecycleRequestSchema = z.strictObject({
 });
 
 export const WorkerControlRequestSchema = z.strictObject({
+  commandId: z.uuid().optional(),
   workerId: WorkerIdSchema,
   expectedVersion: PositiveIntSchema,
   control: WorkerControlSchema,

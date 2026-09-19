@@ -1162,7 +1162,7 @@ describe("dashboard-composed worker-browser command arms", () => {
     const paused = harness.kernel.execute({
       ...envelope(),
       type: "pause-worker",
-      target: { workerId, expectedVersion: 1 },
+      target: { workerId, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } },
     });
     assert.equal(paused.state, "applied");
     assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "pause");
@@ -1170,7 +1170,7 @@ describe("dashboard-composed worker-browser command arms", () => {
     const stopped = harness.kernel.execute({
       ...envelope(),
       type: "stop-worker",
-      target: { workerId, expectedVersion: 2 },
+      target: { workerId, expectedVersion: 2, controlBasis: { leaseGeneration: 1, controlRevision: 2 } },
     });
     assert.equal(stopped.state, "applied");
     assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "stop");
@@ -1225,7 +1225,7 @@ describe("dashboard-composed worker-browser command arms", () => {
         () => harness.kernel.execute({
           ...envelope(commandId),
           type,
-          target: { workerId, browserSessionId: UUID_7, expectedVersion: 1 },
+          target: { workerId, controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_7, expectedVersion: 1 },
         }),
         /requires the 1g browser supervisor/,
       );

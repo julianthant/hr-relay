@@ -35,6 +35,7 @@ export type BrowserSessionCloseReason =
   | "poisoned"
   | "parked"
   | "worker-stop"
+  | "operator-reopen"
   | "login-failed";
 
 /**
@@ -50,6 +51,7 @@ export interface WorkerBrowserResource {
   readonly configFingerprint: Fingerprint;
   /** Optional only for legacy fixture/session ports; real Playwright resources always report it. */
   readonly browserMode?: BrowserPresentationMode;
+  readonly profileDirectory?: string;
   readonly acceptDownloads: boolean;
   readonly exclusive: boolean;
   readonly authentication: BrowserAuthenticationHandle;
