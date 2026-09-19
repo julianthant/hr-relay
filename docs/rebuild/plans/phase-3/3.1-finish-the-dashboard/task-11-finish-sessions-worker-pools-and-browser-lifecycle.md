@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Make plan/spawn/pause/resume/stop/refresh/reopen each execute a real supervisor effect and prove durable membership,
+- [x] Make plan/spawn/pause/resume/stop/refresh/reopen each execute a real supervisor effect and prove durable membership,
   claims, browser instances, crash/restart, CAS, resize, parallel runs, and orphan cleanup.
 
 Before closing this prerequisite, bind disjoint Setup and Run/Rerun paths, fixtures, generated
@@ -258,11 +258,11 @@ do not re-ask choices 1 A / 2 A.
 | State | Record |
 | --- | --- |
 | Approval | Complete S1–S6 plan approved 2026-09-18; 1 A / 2 A already settled. |
-| Implementation | S1–S5 and candidate portion of S6 verified on `codex/3.1.11-sessions`, from `f02eb7f837677eef210d305635f6a2d84f0516b4`. Implementation `e726d102f15fc9a1d45e5693f01951188dc67e56`; passing candidate frozen by the evidence-only commit containing the record below. No standing operator state changed. |
+| Implementation | S1–S6 complete under the focused cadence. Frozen `c0f8c45d8e426dd5c99529c91982d0eb425c740f` integrated at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`; owned cleanup verified. No standing operator state changed. |
 | Prerequisites | Accepted 3.1.9.8 and its required inputs present at the inspected baseline. |
 | Planning persistence | This owner plus normative amendments, decision pointer, A22 clarification and roadmap record; scoped documentation validation and local documentation integration authorized. |
-| Product merge / cleanup | Await future operator instruction after a passing frozen implementation candidate. |
-| Child/group release | Waiting on this task's accepted implementation and cleanup; no child is launched by planning. |
+| Product merge / cleanup | Operator “do it” authorized integration and owned cleanup on 2026-09-19. Accepted merge `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`; see the integration record below. |
+| Child/group release | Sessions prerequisite released at accepted integration `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`, with cleanup verified. Each child still requires its approved brief and operator launch; none dispatched. |
 
 Maintain this compact state table during execution and retain linked dated evidence. Send
 Done / Now / Remaining once at supervisor start or genuine resume; later updates report only
@@ -390,3 +390,62 @@ and schema availability; preserve both import groups and Date's calendar method,
 invalidated combined focused checks, scoped lint/build and generated checks. Record the accepted
 integration, verify ancestry, remove only this task's registered and physical worktree/branch and
 owned runtime residue, and only then mark 3.1.11 complete and release child planning/launch.
+
+
+### Accepted local integration and completion — 2026-09-19
+
+**3.1.11 complete under its focused cadence; owned cleanup verified.**
+
+The operator's **“do it”**, replying to the frozen-candidate report, authorized local `master`
+integration and owned cleanup. Accepted merge **`c90da4ffc45ddfe6486192b8df68816dc6fe34a3`** has
+parents `f93994501f69ff04a8114311fee7630c34b529e4` and frozen candidate
+`c0f8c45d8e426dd5c99529c91982d0eb425c740f`. Both prerequisites and candidate ancestry were rechecked;
+target and candidate were clean. Zero workers, independent reviewers, push or child dispatch.
+
+The one conflict at `src/dashboard/app/dashboard-app.tsx:1` combined Date's
+`resolveDateSelection`/`routeForDay` import with all Sessions launch/dispatch imports. Neither intent
+was dropped; Date body changes and `AuthorityDatabase.queryRunCalendar` were retained automatically.
+Integration added one inspected disposable-write registration to the existing parity guard:
+`session-runtime.ts` may write exactly `join(root, "release-drivers")`. Existing redirected-reference
+and extra-write negative controls now execute for that writer. No guard addition/retirement,
+assertion reduction, exemption, reference refresh or inventory membership change occurred.
+
+| Integration check | Result / retained evidence |
+| --- | --- |
+| Sessions G1 effects/storage/architecture | **330 + 211 + 23 passed**, exits 0; `integration-g1-*.log`, `integration-g1-exits.json`. |
+| Sessions G2 plus Date units | **151 passed in 22 files**, exit 0; `integration-g2-date-units.log`. |
+| Date architecture, including exact writer controls | **31 passed in 5 files**, exit 0; `integration-date-architecture-final.log`. The first run failed on the missing Sessions fixture registration; the targeted registration repair is in the merge. |
+| Assigned Sessions browser selector plus Date/history interaction specs | **27 passed**, exit 0; `integration-focused-parity.log`, `integration-focused-parity/`. All four approved Sessions specs retained; Date navigation and shell navigation added. Both themes, focus, controls, readback, date/history and desktop geometry pass. |
+| Lint / scoped semantics | 90 combined changed TS/TSX paths plus two recording inputs passed scoped ESLint; the added guard path separately passed after repair. **91 changed files, zero TypeScript diagnostics**. `integration-lint.json`, `integration-registration-lint.log`, `integration-scoped-types.log`. This is not a full repository typecheck. |
+| Build / generated | Web build, manifest generation/check and store catalog generation/check passed. `integration-build-final.log`, `integration-generated.json`. Closure documentation binding, roadmap generation/check and whitespace results are recorded separately. |
+| Final inputs / reuse | `integration-final-inputs.json` binds 2,401 input hashes and the tested merge tree. Only the writer-registration test changed after the initial integration snapshot; its architecture/lint checks and final browser gate reran. Runtime implementation was unchanged after passing G1/G2. |
+
+**Additional broad reference sample failed; retained for 3.1.19, not passed or waived.** Expanding the
+browser selection to include `dashboard-reference.spec.ts` and `cross-date-search.spec.ts` ran 47
+cases: 29 passed and 18 reference cases failed. The regenerated descriptor manifest changes
+`71b1674f…` to `a14b8216…`: all 18 provenance headers differ and two run-detail scenes display the
+new short hash. Their semantic comparisons stop before pixel comparison, so no pixel pass is
+claimed. Exact names, hashes, command/exit and outputs are in `deferred-reference-findings.json`,
+`integration-combined-parity-final.log` and `integration-expanded-parity/`. These queue/search/detail
+references are outside this task's explicit Sessions-only reference-update allowance; their deliberate
+refresh and broad acceptance stay with 3.1.19. The assigned Sessions selector was not narrowed or
+weakened. Complete live HR, broad coverage/lint/architecture/parity and Phase 3.1 acceptance remain open.
+
+**Integration delivery assessment:** one additional implementation/proof defect, not a plan omission,
+was found: the Sessions disposable writer had not been registered despite the explicit preflight
+lesson. It was repaired in one local integration round with existing negative controls intact.
+Selecting this focused guard before candidate freeze would have prevented that rework. The broader
+reference sample exposed manifest-coupled reference work outside the assigned update allowance;
+its failure is retained separately from the passing integration gates. No new product scope or
+contract decision was introduced. Original iteration totals remain unknown; this adds one observed
+integration repair round, not an estimated overall count.
+
+**Cleanup verified:** the exact `hr-worktree-sessions` registration and physical folder plus
+`codex/3.1.11-sessions` ref are absent. All 105 generated files were archived and hash-verified;
+the task-local dependency install was removed. Sixteen inactive, task-owned failed-test roots were
+matched to retained command logs, checked against owner identity and live process groups, archived
+with 6,108 regular-file hashes, verified, and removed. `cleanup.json`, `owned-residue.json`,
+`owned-scratch-audit.json`, `owned-scratch-hashes.json` and both retained archives record custody.
+The shared worktree parent and all three peer planning checkouts remain. This calling task stays
+visible; no other task was archived. The accepted Sessions prerequisite is released; children still
+need their approved briefs and explicit operator launch. No push or child dispatch occurred.

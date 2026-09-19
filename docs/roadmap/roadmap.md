@@ -1883,14 +1883,14 @@ log:
 
 
 #### 11 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
-status: planned
+status: done
 date: D344 · former 3.1.10-2 · independent worktree after named prerequisites
 doc: 3.1/task-11-finish-sessions-worker-pools-and-browser-lifecycle §Task 3.1.11 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
 
 builds:
-- [ ] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
-- [ ] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
-- [ ] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
+- [x] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
+- [x] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
+- [x] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
 
 needs:
 - dash-settings
@@ -1899,6 +1899,7 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-19 | 3.1.11 accepted and cleaned | Frozen `c0f8c45d8e426dd5c99529c91982d0eb425c740f` integrated locally at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3` after operator instruction. Date imports/body preserved; missing disposable-writer registration repaired with existing negative controls. 746 focused tests, 27 browser journeys, scoped lint/semantic and build/generated checks pass. Branch/worktree and owned runtime/scratch residue removed with evidence retained. Extra broad reference sampling failed 18 manifest-hash expectations; exact failures remain assigned to 3.1.19, not passed or waived. Sessions prerequisite released; no push or child dispatch.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.1; former 3.1.10-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11; standalone prerequisite or individual task; acceptance and historical execution anchor retained
