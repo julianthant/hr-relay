@@ -229,7 +229,7 @@ fixes remain the supervisor's choices. Do not re-ask settled choice 1 A or the a
 | --- | --- |
 | Approval | Choice 1 A and complete S1–S5 plan approved 2026-09-19. |
 | Implementation | Unstarted; this planning task changes documentation only. |
-| Parent release | **WAITING ON 3.1.11** accepted admission amendment, implementation, focused proof, integration and cleanup. |
+| Parent release | Sessions accepted at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`, cleanup recorded at `191ce8b1cb79d0930d89d60cb5501914c3fa4b09`. **WAITING ON the approved preflight admission amendment:** it was not incorporated in that release; see the verification below. |
 | Plan availability | Isolated documentation candidate on `codex/plan-3.1.11.1`; shared-target documentation integration has not been assigned/authorized by this brief. |
 | Child/group release | No supervisor launch prompt until plan availability and all start prerequisites are verified. 3.1.11.3 remains responsible for combined intake and later accepted integration/cleanup under operator direction. |
 | Broad proof | Deferred to 3.1.19; no runtime acceptance executed by planning. |
@@ -265,3 +265,39 @@ for that recording-only addition; generated freshness, added links, scope and di
 re-established on the final candidate. Commit verification must read this complete owner and the
 parent amendment from the actual commit, verify the branch reaches it, and recompute start
 prerequisites. A committed planning candidate does not satisfy missing parent integration.
+
+### Parent release verification — 2026-09-19
+
+After the operator reported 3.1.11 done, inspection of clean local `master` at
+`191ce8b1cb79d0930d89d60cb5501914c3fa4b09` confirmed accepted Sessions merge
+`c90da4ffc45ddfe6486192b8df68816dc6fe34a3` and its completion record. The Sessions implementation
+branch, worktree registration and physical folder are absent. Schema 53/floor 46 and the accepted
+session/control work are available. Those accomplishments are not reopened by this record.
+
+The separate approved planning commit `15ccbbadeb91bc3faa02f6516faa6985c1529cec` is not in
+`master` ancestry. Its preflight admission amendment was not part of the completed parent scope.
+The actual released `src/dashboard/client/preflight-queries.ts` exports `readiness()` and
+`rerunPreflight()`: the first reads bootstrap checks; the second invokes the existing rerun route.
+`src/server/dashboard/compose.ts:617` still composes only `dashboard.serve`. The new
+`tests/unit/dashboard/setup-boundary.test.ts` exercises that dashboard-only report/replay path;
+it does not assert pre-enqueue or worker/browser admission effects.
+
+The core authority, dashboard runners, start-plan service and enqueue service are byte-identical
+to the inspected planning baseline. No production preflight caller exists in worker/start/enqueue
+composition beyond the dashboard authority. The amendment's two assigned proof files,
+`tests/unit/server/preflight-admission-boundary.test.ts` and
+`tests/unit/dashboard/preflight-readiness-boundary.test.ts`, are absent from the accepted tree.
+These are inspected code/test facts, not failed executed tests or a claim that the accepted Sessions
+proof failed.
+
+**Resolution remains the approved choice 1 A:** incorporate the committed documentation amendment
+and complete its bounded shared admission/freshness hooks and focused proof as a parent follow-up,
+then verify that accepted integration before launching Setup. Do not silently transfer those shared
+files to this child, make it depend on Run/Rerun, or waive the no-launch-on-required-failure proof.
+This is outstanding previously approved work, not a new product choice. No implementation or
+supervisor launch is authorized by this verification-only continuation.
+
+This recording-only update changes no code, test, dependency, configuration, binding or roadmap
+status. The earlier 24-test documentation binding and scoped lint evidence remains applicable;
+roadmap freshness, instruction/link/scope checks and whitespace are rechecked. The plan remains
+**WAITING ON documentation integration and the approved parent admission amendment**.
