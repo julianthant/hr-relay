@@ -1,51 +1,40 @@
-
-import { useState } from "react";
 import { systemClock } from "../../domain/clock.js";
-import { usePreflightClient as useDashboardClient } from "../state/preflight-client.js";
+import { usePreflightReadiness } from "../state/preflight-readiness.js";
 import type { EditableSettingsState } from "./settings-editor-model.js";
 import type { PreflightCheckWire } from "./settings-model.js";
 export function useSettingsPreflight(editor: EditableSettingsState, input: { actorId: string; descriptorFingerprint: string }) {
-  const client = useDashboardClient();
-  const [preflight, setPreflight] = useState<PreflightRerunState>({ state: "idle" });
-  const rerunPreflight = (): void => {
-    if (editor.state !== "loaded") return;
-    if (editor.document.runtimeStatus.state === "restart-required") {
-      setPreflight({ state: "refused", message: "Restart is required before rerunning preflight; the current runtime still has the previous settings." });
-      return;
+  const document = editor.state === "loaded" ? editor.document : undefined;
+  const readiness = usePreflightReadiness({
+    configFingerprint: document?.activeConfigFingerprint ?? "unavailable",
+    descriptorFingerprint: input.descriptorFingerprint,
+    settingsRevision: document === undefined ? editor.state : JSON.stringify([document.revision, document.runtimeStatus, document.protectedSettings.state === "available" ? document.protectedSettings.readback.revision : "unavailable"]),
+  });
+  let preflight: PreflightRerunState;
+  switch (readiness.state.state) {
+    case "idle": preflight = { state: "idle" }; break;
+    case "running": preflight = { state: "running" }; break;
+    case "unavailable": preflight = { state: "refused", message: readiness.state.reason }; break;
+    case "present": {
+      const report = readiness.state.report;
+      preflight = { state: "completed", checks: report.results.map(check => ({
+        id: check.check, label: check.check, verdict: check.status, detail: check.summary,
+        blocks: check.status === "fail" ? check.blocks : [],
+        ...(check.status === "pass" ? {} : { remediation: check.remediation }), checkedAt: report.checkedAt,
+      })) };
+      break;
     }
-    setPreflight({ state: "running" });
-    client.rerunPreflight({
-      commandId: crypto.randomUUID(),
-      requestedAt: systemClock.now().toISOString(),
-      requestedBy: input.actorId,
-      source: "settings-surface",
-      type: "rerun-preflight",
-      target: {
-        expectedConfigFingerprint: editor.document.activeConfigFingerprint,
-        expectedDescriptorFingerprint: input.descriptorFingerprint,
-      },
-    }).then(
-      (result) => setPreflight({
-        state: "completed",
-        checks: result.report.results.map((check) => ({
-          id: check.check,
-          label: check.check,
-          verdict: check.status === "pass" ? "pass" : check.status,
-          detail: check.summary,
-          blocks: check.status === "fail" ? check.blocks : [],
-          ...(check.status === "pass" ? {} : { remediation: check.status === "warning" ? check.remediation : check.remediation }),
-          checkedAt: result.report.checkedAt,
-        })),
-      }),
-      (caught: unknown) => setPreflight({ state: "refused", message: caught instanceof Error ? caught.message : String(caught) }),
-    );
+  }
+  const rerunPreflight = (): void => {
+    if (document === undefined) return;
+    if (document.runtimeStatus.state === "restart-required") { readiness.invalidate(); return; }
+    void readiness.rerun({
+      commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: input.actorId,
+      source: "settings-surface", type: "rerun-preflight",
+      target: { expectedConfigFingerprint: document.activeConfigFingerprint, expectedDescriptorFingerprint: input.descriptorFingerprint },
+    });
   };
   return { preflight, rerunPreflight };
 }
-
-
-
-
 export type PreflightRerunState =
   | { readonly state: "idle" }
   | { readonly state: "running" }

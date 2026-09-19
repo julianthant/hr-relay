@@ -1,3 +1,7 @@
+import { createPreflightReportService } from "../preflight/report-service.js";
+import { composeRuntimePreflight, type RuntimePreflight } from "../preflight/runtime-admission.js";
+import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
+import { PreflightAdmissionRefusal } from "../../domain/preflight-admission.js";
 import { createWorkerBrowserChannel } from "./worker-browser-channel.js";
 import { WorkerControlRefusal } from "../../domain/worker-control.js";
 import { notificationWireOf } from "../../domain/dashboard/projection.js";
@@ -182,6 +186,7 @@ export interface DashboardComposeInput {
    * Production omits it and binds the isolation port.
    */
   readonly backendPortOverride?: 0;
+  readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   /** Test-only preflight probe override; production always checks the isolated frontend port. */
   readonly frontendPortOverride?: 0;
   /**
@@ -272,6 +277,7 @@ export interface WorkerProcessControlInput {
   readonly spawn: WorkerProcessSpawner;
   readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
   readonly onFault: (error: Error) => void;
+  readonly preflight?: RuntimePreflight;
 }
 
 /**
@@ -299,7 +305,21 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
     launch: input.launch,
     spawn: input.spawn,
     browserControl: createWorkerBrowserChannel(input),
+    prepareAdmission: async request => {
+      if (request.command !== "spawn-worker" || input.preflight === undefined) return;
+      try {
+        const scope = input.preflight.currentScope();
+        await input.preflight.admission.prepare(scope, new AbortController().signal);
+        input.preflight.admission.assertReady(input.preflight.currentScope());
+      } catch (error) {
+        throw new WorkerControlRefusal(error instanceof PreflightAdmissionRefusal ? error.message : "Worker preflight could not verify readiness.");
+      }
+    },
     admission: request => input.database.withAuthorityTransaction(repositories => {
+      if (request.command === "spawn-worker" && input.preflight !== undefined) {
+        try { input.preflight.admission.assertReady(input.preflight.currentScope()); }
+        catch (error) { if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message); throw error; }
+      }
       if (request.commandId === undefined) throw new WorkerControlRefusal("worker-control-command-identity-unavailable");
       const record = repositories.workerControls.get(request.commandId);
       if (record === undefined || record.request.type !== request.command) throw new WorkerControlRefusal("worker-control-command-not-admitted");
@@ -574,7 +594,15 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   };
 
   const spanWriter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
+  const descriptors = {
+    resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
+  };
+  const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
+  const runtimePreflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: input.isolation,
+    descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
+    ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   const lifecycle = new RunRecordService({ database, clock, ids,
+    admitQueuedRun: run => runtimePreflight.admission.assertReady(runtimePreflight.runScope(run.envelope)),
     publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("queued run is missing its publication context");
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -586,10 +614,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   // Start only after startup acceptance; stop drains the exact owned observation.
 
-  const descriptors = {
-    resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
-  };
-  const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
   const dashboardPreflightRunners = createDashboardPreflightRunners({
     repoRoot,
     config: resolved.config,
@@ -701,6 +725,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
+    preflight: runtimePreflight,
   });
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
@@ -741,6 +766,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
   const kernel = createCommandKernel({
+    preflight: runtimePreflight.admission,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -771,6 +797,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   });
 
   const startPlans = createStartPlanService({
+    preflight: runtimePreflight.admission,
     protectedSecrets,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: database,
@@ -882,7 +909,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs()))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },
     ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
-    preflight: preflightAuthority,
+    preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),
     ...shell,
     projection,
     runDetail: runDetailDeps,

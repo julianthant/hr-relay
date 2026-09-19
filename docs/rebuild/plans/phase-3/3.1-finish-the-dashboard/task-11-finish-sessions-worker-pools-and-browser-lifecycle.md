@@ -114,6 +114,8 @@ ratchet findings stay with 3.1.19 unless a changed, owned seam invalidates their
    upload extraction and takeover/dismissal focus. Publish the disjoint child ownership below and
    independent consumer fixtures. Leave full fault-corpus repair UI, ordinary/Rerun interaction,
    `supersede-active` journey completion and source-customization acceptance to their existing child.
+   The [2026-09-19 admission amendment](#preflight-admission-ownership-amendment--2026-09-19)
+   explicitly adds shared preflight admission and freshness wiring to this step before child release.
 6. **S6 — Proof, freeze and release.** Execute P1–P6 and the focused gate schedule, repair failures
    within scope, commit by logical category using exact paths and record tested inputs/results.
    Freeze a reviewable candidate. Await operator-directed product integration; after authorization,
@@ -248,7 +250,8 @@ combined typecheck and focused integration gates. No independent review applies 
 ### Exclusions, stops and current state
 
 Do not implement the children's full Setup/Run/Rerun surfaces, Queue or Detail work, workflow
-admission, auto-restart/adoption, more than three pool workers, credential clearing, new recovery
+admission beyond the bounded preflight hooks in the 2026-09-19 amendment, auto-restart/adoption,
+more than three pool workers, credential clearing, new recovery
 policy, mobile variants, production cutover or real HR transactions. Do not touch legacy live state.
 Stop dependent work for changed contract intent, required edits outside this ownership, unavailable
 required proof or unresolved effect identity/uncertainty. Preserve completed independent work and
@@ -284,6 +287,80 @@ planning documents. The documentation candidate is isolated on `codex/plan-3.1.1
 | Links / instructions / diff | Changed-link and complete brief-link targets/fragments resolve; all 9 existing instruction pairs match; all 18 project chains remain below 32,768 bytes (maximum 19,308); `git diff --check` passes. |
 | Scope / gate preflight | Exactly 7 planning/contract/roadmap paths changed. All 28 existing focused test selectors resolve; 6 additional selectors name explicitly assigned future proof files. No code, test, dependency, configuration or runtime artifact changes. |
 | Runtime acceptance | Not run or reused. New behavior remains unimplemented; the planning checks do not certify it. Full repository gates and complete live acceptance remain 3.1.19. |
+
+### Preflight admission ownership amendment — 2026-09-19
+
+During `/phase-plan 3.1.11.1`, the operator selected **1 A**: extend parent **3.1.11** with shared
+preflight admission hooks, while **3.1.11.1** owns detectors, the executed fault corpus and Setup UI.
+The operator then approved that child's complete S1–S5 plan and documentation persistence.
+This is an explicit amendment to the parent S5 allocation and the earlier workflow-admission
+exclusion. It does not alter session control choices 1 A / 2 A, create a new task, or dispatch work.
+The [approved child brief](task-11-1-finish-setup-and-preflight.md#approved-execution-brief--2026-09-19)
+owns child delivery. Existing A07 outcomes and preflight contracts are unchanged.
+
+**Reason.** At inspected master `517f7319fdcd771aee8356e664f1e8a885032ba0`, the sole composed
+preflight authority selects `dashboard.serve`; no preflight authority call exists at enqueue/worker
+composition. Readiness cannot be inferred from the six dashboard checks. The child cannot achieve
+A07's no-launch-on-required-failure boundary while shared registrations/admission are excluded.
+The parent was already in progress on its existing branch/worktree; this amendment is committed
+separately and must be incorporated there without overwriting its active changes before release.
+
+**S5 admission obligations.** Complete actual shared callable operations and their registrations:
+
+1. Derive the workflow/system/feature subset from admitted descriptor/start scope and selected
+   instance, using the existing registry. Bind readiness to the applicable active or retained
+   configuration and descriptor identity; historical runs must not silently use current settings.
+2. Supply the registered runner-factory boundary and shared report/read/rerun/freshness operations
+   needed by Settings Setup, the doctor and start/worker consumers. Preserve strict report semantics,
+   safe absence/unavailable/refusal handling, fingerprint checks and existing read-only replay/timeout
+   bounds. Expose only permitted protected-name/presence facts and served runtime/session observations.
+3. Invoke readiness at the real start/enqueue and worker/browser launch boundaries before effects.
+   A required failed, missing or unavailable check cannot authorize enqueue/spawn/browser work.
+   Optional/unselected capability failure does not block unrelated valid work. Preserve existing
+   authentication, settings-current, source/run identity and transaction admission checks.
+4. Complete shared UI/action hooks and invalidation so Setup and doctor consume one served report
+   and can invoke existing explicit Settings/Storage/Sessions remedies followed by re-check. The
+   child must not edit a shared app/client/BFF switch to connect its detectors or presentation.
+5. Publish exact operations, exported names, inputs/refusals, owner paths and independently executable
+   child fixtures. The Setup child extends isolated detector implementations through that fixed
+   boundary; Run/Rerun consumes it without an unmerged Setup dependency. Missing detector support
+   remains an explicit refusal, never a fabricated successful readiness result. Parent release
+   proves the working admission mechanism; full non-dashboard detector acceptance remains child work.
+
+**Bounded parent files.** In addition to the original S5 allocation, parent ownership includes
+`src/domain/preflight.ts`, `preflight-contract.ts`, `preflight-semantics.ts`,
+`runtime-dependencies.ts`, affected shared dashboard/bootstrap contracts;
+`src/server/dashboard/compose.ts`, `queries/bootstrap.ts`, `routes/api.ts`, `routes/api-types.ts`;
+`src/server/dashboard/commands/start-plan-service.ts`, `src/services/start/plan.ts`,
+`src/services/runs/enqueue.ts`, `src/core/command-kernel.ts`, `worker-loop.ts`,
+`src/server/dashboard/worker-supervisor.ts`, `src/server/worker/compose.ts`, `run-resources.ts`, and
+shared app/client/state composition only for these admission, report and registration operations.
+Extract shared readiness policy into a dedicated module rather than duplicating it at each caller.
+The parent may establish the stable factory/registration skeleton in `src/server/preflight/` before
+handoff; the child owns subsequent detector implementations there. Publish the exact final map.
+No new CLI doctor/test-login, provider adapter, workflow behavior, recovery policy or automatic repair
+is admitted by this amendment. No migration is prescribed for read-only preflight replay.
+
+**P5 admission extension and focused gates.** Add
+`tests/unit/server/preflight-admission-boundary.test.ts` and
+`tests/unit/dashboard/preflight-readiness-boundary.test.ts` to the parent's owned proof. Exercise the
+real admission/report services: valid configured positive control, selected required fault, missing
+runner/support, optional unrelated fault, wrong/stale config or descriptor/scope, changed settings,
+and late obsolete UI response. Assert detector/effect counts and zero enqueue/worker/browser effects
+where refused, not merely an error string. Preserve exact/failed/in-flight/divergent replay and
+actual timeout settlement. A supplied type, no-op callback or mocked successful gate cannot release
+the children. Use controlled detector inputs without claiming the child's full corpus passed.
+
+```sh
+npm run test -- tests/unit/server/preflight-admission-boundary.test.ts tests/unit/dashboard/preflight-readiness-boundary.test.ts tests/unit/preflight-runtime-dependencies.test.ts tests/unit/dashboard/preflight-client.test.ts tests/unit/worker-composition.test.ts tests/unit/start-plan.test.ts
+```
+
+Run scoped ESLint for every affected source/test path under existing G3. Retain existing G1–G3
+checks affected by these changes, the four-worker ceiling and source-bound generated/build checks.
+The original Phase 3.1 no-independent-review/focused cadence and 3.1.19 full-gate boundary remain.
+Record the amendment's committed identity, implementation proof and accepted integration in the
+parent release; **neither child launches before those obligations are met**. Product integration
+still requires operator direction. This planning commit does not certify implementation or gates.
 
 Exact command logs, exits, file hashes, check script and final commit/integration/cleanup receipt are
 retained in the [planning evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11-plan-2026-09-18/).

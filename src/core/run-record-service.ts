@@ -156,6 +156,8 @@ export type RunRecordServiceDependencies = Readonly<{
   ids: IdFactory;
   /** Composition supplies the shared runQueuedSpanEvent builder and emitter. */
   publishQueued: (run: RunRecord, publication?: RunQueuedPublication) => void;
+  /** Synchronous readiness assertion; runs after replay, before enqueue. */
+  admitQueuedRun?: (run: RunRecord) => void;
 }>;
 
 /** D330: one lifecycle authority; projections never enter this service. */
@@ -285,6 +287,7 @@ export class RunRecordService {
         version: 1, createdAt: now, updatedAt: now,
       });
       this.hooks?.afterCreateReservation?.();
+      this.dependencies.admitQueuedRun?.(run);
       repositories.runs.enqueue(run);
       this.recordJournal(repositories, journal.command, journalRun(run));
       this.dependencies.publishQueued(run, publication);
@@ -293,7 +296,7 @@ export class RunRecordService {
     return outcome;
   }
 
-  claimNext(input: unknown): RunMutationOutcome {
+  claimNext(input: unknown, admit?: (run: RunRecord) => void): RunMutationOutcome {
     const raw = z.record(z.string(), z.unknown()).parse(input);
     if (raw.runtimeConfig === undefined) return refused({ reason: "runtime-stale" });
     const request = CanonicalClaimNextRequestSchema.parse(input);
@@ -308,7 +311,7 @@ export class RunRecordService {
       const outcome = repositories.runs.claimEligible({
         workflow, workerId, runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
         now: this.dependencies.clock.now().toISOString(),
-      });
+      }, admit);
       if (outcome.state === "refused") return outcome;
       if (outcome.state === "idle") return refused({ reason: "none-eligible" });
       if (outcome.state === "deferred") return refused({ reason: "none-eligible", notBefore: outcome.nextEligibleAt });
@@ -831,6 +834,7 @@ export class RunRecordService {
         ...(request.appVersion === undefined ? {} : { appVersion: request.appVersion }),
         version: 1, createdAt: now, updatedAt: now,
       });
+      this.dependencies.admitQueuedRun?.(next);
       repositories.runs.enqueue(next);
       this.recordJournal(repositories, journal.command, journalRun(next));
       this.dependencies.publishQueued(next, publication);

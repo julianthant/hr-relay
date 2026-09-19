@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 /** Private 3.1.11 runtime: real BFF, child and Chromium, synthetic transaction-free drivers. */
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
@@ -60,7 +61,7 @@ export async function sessionRuntime() {
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
     mkdirSync(join(root, "dist")); cpSync(PARITY_DIST_DIR, join(root, "dist/dashboard"), { recursive: true });
     writeFileSync(join(root, "release-drivers"), "released\n");
-    runtime = await composeDashboardRuntime({ repoRoot: root, isolation: rebuildRuntimeIsolation, frontend: "built-bundle", backendPortOverride: 0, frontendPortOverride: 0, env: {},
+    runtime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, frontend: "built-bundle", backendPortOverride: 0, frontendPortOverride: 0, env: {},
       workerProcess: { launch: { environment: {}, command: process.execPath,
         prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/fixtures/worker-browser-control-cli.ts"), root], cwd: process.cwd() },
       spawn: (request) => {

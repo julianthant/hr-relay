@@ -1,3 +1,5 @@
+import { routeWithoutTakeovers } from "./url-state.js";
+import { PreflightActionsProvider } from "../state/preflight-actions.js";
 import { resolveDateSelection, routeForDay } from "./date-state-model.js";
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
@@ -1071,6 +1073,7 @@ function LoadedApp({
    * value is the page's first section; every other takeover key clears for the
    * same reason the switcher clears them.
    */
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const openSettings = useCallback((): void => {
     setRoute({
       ...route,
@@ -1091,6 +1094,10 @@ function LoadedApp({
     // fills it. `min-w-0` + `overflow-hidden` live up there with the root
     // classes the demo has (`min-h-0` was this tree's own addition and is what
     // a flex CHILD needs, which is exactly what this element now is).
+    <PreflightActionsProvider actions={{ actorId: boot.actor.id, descriptorFingerprint: boot.descriptorHash,
+      showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
+      showSessions: () => setSessionsOpen(true),
+    }}>
     <div
       data-parity-ready={ready ? "true" : "loading"}
       className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
@@ -1402,6 +1409,8 @@ function LoadedApp({
       </main>
 
       <SessionPanel
+        open={sessionsOpen}
+        onOpenChange={setSessionsOpen}
         workerCards={dayWire?.workerCards ?? []}
         queueSurfaces={dayWire?.queueSurfaces ?? []}
         workerPools={dayWire?.workerPools ?? []}
@@ -1473,5 +1482,6 @@ function LoadedApp({
         }}
       />
     </div>
+    </PreflightActionsProvider>
   );
 }

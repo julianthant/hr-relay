@@ -14,14 +14,13 @@ import type { CommandRequest } from "../../../domain/commands.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
-import type { createPreflightAuthority } from "../../../domain/preflight.js";
 import type { RequestIdentityCheckpoint } from "../request-identity.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
 export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, ArchiveRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
   readonly notifications?: { snapshot(actor: string): readonly import("../../../domain/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../services/notifications/observation.js").NotificationObservationStatus };
   readonly requestIdentity: RequestIdentityCheckpoint;
-  readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
+  readonly preflight: import("./settings-preflight-types.js").SettingsPreflightRouteDeps["preflight"];
   readonly projection: RunQueueProjection;
   readonly activity?: import("./activity-types.js").ActivityRouteDeps["activity"];
   readonly data?: ReturnType<typeof composeDataQueries>;

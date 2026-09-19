@@ -1,3 +1,4 @@
+import { PreflightAdmissionRefusal } from "../../../domain/preflight-admission.js";
 import { RerunRefusedError } from "../../../services/start/rerun.js";
 /**
  * The ONE place a throw becomes an HTTP status and a `WireError` body
@@ -68,6 +69,7 @@ export function failureStatus(
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
+  if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
   }

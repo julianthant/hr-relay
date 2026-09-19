@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /**
  * D318 — the transaction-free `live-read` T1b arm, proved deterministically
  * through the REAL dry-run scenario runtime (real start-plan service, real
@@ -96,6 +97,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     });
     let acquiringFailedAttempt = true;
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
@@ -235,6 +237,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     );
     database.close();
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
@@ -288,6 +291,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     );
     database.close();
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},

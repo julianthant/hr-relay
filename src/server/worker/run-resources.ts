@@ -1,3 +1,5 @@
+import { preflightSessionFactory } from "../preflight/worker-admission.js";
+import type { RuntimePreflight } from "../preflight/runtime-admission.js";
 import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
 import type { Clock } from "../../domain/clock.js";
 import type { IdFactory } from "../../domain/identifiers.js";
@@ -23,6 +25,7 @@ import type { WorkerRunResources } from "../../core/worker-loop.js";
 import { selectRunSettings } from "../../core/run-settings.js";
 
 export function createRunResourcesFactory(input:Readonly<{
+ preflight?:RuntimePreflight;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
@@ -46,9 +49,10 @@ export function createRunResourcesFactory(input:Readonly<{
   forRun(run:RunRecord):WorkerRunResources {
    const snapshot=ConfigSnapshotRecordSchema.parse(selectRunSettings(input.authority,run.envelope));
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint||configSnapshotAbsentLeaves(snapshot.config).length>0)throw new Error("run-resources-retained-snapshot-unavailable");
-   const previous=cache.get(snapshot.fingerprint);if(previous!==undefined)return previous;
+   const previous=cache.get(snapshot.fingerprint);
    const {capture:_capture,operator:_operator,...current}=snapshot.config as typeof snapshot.config & {capture?:unknown;operator?:unknown};
-   const resources=compose(ConfigSchema.parse(current));cache.set(snapshot.fingerprint,resources);return resources;
+   const resources=previous??compose(ConfigSchema.parse(current));cache.set(snapshot.fingerprint,resources);
+   return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});
   },
  });
 }

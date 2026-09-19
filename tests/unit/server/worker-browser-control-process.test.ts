@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -44,7 +45,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: [1,2].flatMap(index => database?.authority.runs.listByWorker(worker(index)) ?? []) });
-  const boot = () => composeDashboardRuntime({isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
+  const boot = () => composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
     workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/fixtures/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:20_000},faultSink:line=>faults.push(line)}});
   const failures: unknown[]=[];
   try {
@@ -131,8 +132,20 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     await runtime.stop(); runtime=undefined;
     // Freeze only these owned fixture processes while the read-only boot doctor
     // verifies a stable authority generation. Resume before any control request.
-    for (const child of children) child.kill("SIGSTOP");
-    try { runtime=await boot(); } finally { for (const child of children) child.kill("SIGCONT"); }
+    // Own the write lock while stopping children so none can be frozen inside a write transaction.
+    try {
+      db.withAuthorityTransaction(() => {
+        for (const child of children) child.kill("SIGSTOP");
+        const deadline = systemClock.monotonicMs() + 5_000;
+        for (const child of children) {
+          assert.ok(child.pid);
+          while (!execFileSync("ps", ["-o", "stat=", "-p", String(child.pid)], { encoding: "utf8" }).includes("T")) {
+            if (systemClock.monotonicMs() >= deadline) throw new Error("fixture worker did not stop before restart");
+          }
+        }
+      });
+      runtime=await boot();
+    } finally { for (const child of children) child.kill("SIGCONT"); }
     assert.equal((await reopen.send()).state,"already-applied");
     assert.equal((await post("pause-worker",target(1))).result.state,"rejected");
     const firstChild=children[0]; assert.ok(firstChild); firstChild.kill("SIGTERM");
