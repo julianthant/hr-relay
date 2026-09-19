@@ -99,8 +99,10 @@ acceptance and closure. This replaces the earlier per-group full-gate and audit-
 There is no independent review step for remaining Phase 3.1 prerequisites, workers, standalone
 tasks, corrections, group finalizers or final acceptance. This exception supersedes conflicting
 D191/D344, root/module and personal-skill gate/review instructions for 3.1. Completed evidence
-remains historical; other phases keep their rules. All Codex subagents use `gpt-6-astra` with
-`ultra` reasoning; role names retain their duties and restrictions.
+remains historical; other phases keep their rules. Model selection follows roadmap Governance's
+2026-09-19 update: focused Codex workers use Luna xhigh; independent reviewers, where required
+outside this exception, use Sol xhigh. Planning and supervisor models remain operator-selected;
+skills and launch prompts do not recommend them. Role duties and restrictions remain unchanged.
 
 | Stage | Required before release | Deferred proof |
 | --- | --- | --- |

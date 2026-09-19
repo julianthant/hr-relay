@@ -3679,7 +3679,8 @@ or changed contract decisions remain outside this authorization. Integration and
 the assigned permission; Phase 3.2 still waits for accepted 3.1.19.
 
 This explicitly supersedes earlier Phase 3.1 per-group full-gate and audit-only/no-repair rules,
-including D191/D344 and personal skills. All no-independent-review and Astra/ultra settings remain.
+including D191/D344 and personal skills. The no-independent-review policy remains; model selection
+follows the current operator policy below.
 Keep every existing task ID, dependency edge, product outcome, assertion, floor, timeout and live-
 write boundary. Reuse valid unchanged evidence; rerun invalidated gates after corrections. Group
 numbers and independent-worker ownership remain; other phases keep their gate/freeze policies.
@@ -3708,11 +3709,12 @@ changes. The focused-check/no-independent-review cadence below remains binding.
 
 ### Phase 3.1 execution cadence and Codex subagents (operator amendment, 2026-09-13)
 
-All Codex subagents use `gpt-6-astra` with `ultra` reasoning, including supporting workers,
-researchers, analysts and reviewers when review is assigned. Native role names retain their duties,
-context limits and read/write restrictions; they no longer choose Sol/Terra model tiers. This
-supersedes older Codex subagent model/effort selections in plans, repository and personal guidance.
-The operator still chooses the parent planning/supervisor session; Claude model choices are unchanged.
+**Model-policy update (operator-approved, 2026-09-19).** Codex focused workers use `gpt-5.6-luna`
+with `xhigh` reasoning; independent reviewers use `gpt-5.6-sol` with `xhigh`. Native roles retain
+their duties, context limits and tool restrictions; the dormant analyst remains explicit-comparison
+only. The operator selects planning and supervisor models/effort, without skill or prompt
+recommendations. This supersedes older model selections in plans and guidance; historical evidence
+keeps the models that actually ran. Claude native worker/reviewer definitions are unchanged.
 
 For **all remaining Phase 3.1 work**, the operator removes the independent-review step and moves
 broad gates to final task 3.1.19. The [phase execution cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
@@ -3736,12 +3738,12 @@ launch a successor or change operator integration permission.
 
 ### Plan, implement, review (operator amendment, 2026-09-04)
 
-For remaining Phase 3.1 work, the 2026-09-13 exception above replaces this section’s review and gate cadence. All Codex subagent model selections below are superseded by Astra/ultra.
+For remaining Phase 3.1 work, the 2026-09-13 exception above replaces this section’s review and gate
+cadence. The 2026-09-19 model policy above supersedes older model/effort selections.
 
-The operator opens planning and supervisor sessions for an exact roadmap task. Codex uses GPT-5.6
-Sol (high) to plan and GPT-6 Astra (high) to supervise; Claude uses Opus 5 (high) and Fable 5.1 (high).
-The supervisor dispatches one fresh read-only reviewer subagent at the end of implementation:
-Codex `sup_review` (Sol, high) or Claude `sup-review` (Opus, high). Review, fixes and finalization
+The operator opens planning and supervisor sessions for an exact roadmap task and selects their
+models and effort. Where review is required, the supervisor dispatches one fresh read-only reviewer
+at the end of implementation: Codex `sup_review` (Sol, xhigh) or Claude `sup-review` (Opus, high). Review, fixes and finalization
 continue in the same supervisor session. Skills do not switch the current session model or start
 the next task. A separately opened review session is an explicit operator option.
 Explicit operator overrides take precedence. This rule governs future task execution, not a

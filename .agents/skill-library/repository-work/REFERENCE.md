@@ -343,12 +343,12 @@ open until the assigned gates, integration and cleanup pass, plus independent re
 
 Before authorized worker dispatch, read the active platform's
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
-`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Every Codex subagent, including
-`sup_scout`, `sup_analyst`, `sup_terra`, `sup_sol` and `sup_review`, uses `gpt-6-astra` with `ultra`
-reasoning. Native names retain their duties, context limits and read/write restrictions; this
-operator choice supersedes older Sol/Terra model tiers. Codex planning uses Astra high and parent
-supervision uses Astra low or medium as classified by `/phase-plan`; the operator chooses sessions.
-Claude role/model choices are unchanged. Validate saved native role definitions before dispatch.
+`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Codex focused workers use
+`gpt-5.6-luna` at `xhigh`; independent reviewers use `gpt-5.6-sol` at `xhigh`. Native roles retain
+their responsibilities, context limits and tool restrictions. The operator chooses planning and
+supervisor models/effort; skills and launch prompts do not recommend or assign them. This supersedes
+older model/effort directions. Claude native worker/reviewer definitions are unchanged. Validate
+saved native role definitions before dispatch.
 
 Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve
