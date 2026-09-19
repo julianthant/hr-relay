@@ -1902,6 +1902,7 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11; standalone prerequisite or individual task; acceptance and historical execution anchor retained
 - 2026-09-18 | operator-approved 3.1.11 execution brief | Complete S1–S6 plan: worker lifetime/control-revision fencing, strict pool CAS, durable browser command/outcome channel, idle-only Refresh/Reopen, truthful controls and completed shared child APIs. Choices 1 A / 2 A ratified at execution/session and dashboard contracts. One Astra/medium supervisor, no workers or independent review; focused gates now, broad acceptance at 3.1.19. Accepted 3.1.9.8 is available; product implementation and operator-directed integration remain unstarted.
+- 2026-09-19 | operator-approved preflight admission ownership amendment | Choice 1 A during 3.1.11.1 planning adds shared descriptor-derived readiness, report/freshness and pre-effect start/enqueue/worker/browser admission hooks to parent S5, with focused positive/refusal proof before child release. Setup owns detectors/corpus/UI; Run/Rerun remains independent. Existing session choices, integration permission and Phase 3.1 gate cadence are unchanged; implementation proof remains open.
 
 
 ##### 1 · Finish Setup and preflight {#dash-setup}
@@ -1926,6 +1927,7 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11.1; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
+- 2026-09-19 | operator-approved 3.1.11.1 execution brief | Complete S1–S5 plan: verify accepted parent admission interfaces, complete registry-selected detectors, finish shared-report Setup/doctor presentation, execute all 14 fault manifests plus healthy/dependency controls, and freeze focused proof for 3.1.11.3. One Astra/medium supervisor, zero workers/reviewers; no automatic repair or new CLI doctor/test-login. WAITING ON accepted 3.1.11 including the admission amendment and committed plan availability; no implementation or runtime acceptance claimed.
 
 
 ##### 2 · Make Run and Rerun enqueue real work {#dash-run-modal}

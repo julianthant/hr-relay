@@ -585,6 +585,13 @@ in its approved brief, with attribution and assert proof; shared membership rema
 
 The accepted 3.1.9 B release publishes [exact module ownership, working ports, fixture/reference names and gate resources](task-9-establish-independent-dashboard-boundaries.md#b-implementation-and-child-release-contract--2026-09-13). Its directed integration and owned cleanup are complete; the baseline allocations below do not independently admit children.
 
+The operator-approved [3.1.11 preflight admission amendment](task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#preflight-admission-ownership-amendment--2026-09-19)
+assigns shared report/freshness, descriptor-derived readiness and pre-effect start/worker/browser
+admission wiring to that parent before release. [3.1.11.1's approved S1–S5 brief](task-11-1-finish-setup-and-preflight.md#approved-execution-brief--2026-09-19)
+owns the detectors, full executed fault corpus and isolated Setup/doctor presentation. Run/Rerun
+remains independent of unmerged Setup work; both consume the accepted parent and 3.1.11.3 may take
+their candidates in either order. A07 and the existing dependency edges are unchanged.
+
 These baseline allocations retain the planned responsibilities. The accepted A/B records above now own the actual implemented modules and working interfaces. A later focused plan must name the actual accepted prerequisite commit, resulting exports/paths, exact focused commands, fixture/output roots and either-order merge proof. A child may not edit the reserved shared file because it finds a missing hook. Resolve that requirement in its prerequisite before launch. The operator-approved [3.1.9.1 shell amendment](task-9-establish-independent-dashboard-boundaries.md#shell-child-ownership-amendment--2026-09-13) now grants that child bounded route/selection/focus/empty-state edits in the two app files; other reservations and A01–A42/D01–D05 outcomes are unchanged. No unfinished sibling dependency is permitted.
 
 | Shared seam now | Sole prerequisite owner and required operation | Independent consumers after acceptance |

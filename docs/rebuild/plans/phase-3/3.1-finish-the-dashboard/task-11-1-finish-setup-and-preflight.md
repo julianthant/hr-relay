@@ -17,8 +17,251 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 > `migrated-refused { key }` refusal is a SETUP fault, not an outage: it is presented with the same
 > `.env` remove-list the upgrade plan printed (`ref clock-config-secrets` §D332.S5). No redesign.
 
-Consume schema 50/floor 46 and the current catalog/preflight contract. The dated migrated-refused/environment-import wording is historical: it does not authorize retired imports or below-floor upgrade. Display the current named admission/refusal and explicit compatible-release remedy. Full declared fault-corpus execution remains open despite the six existing dashboard runners.
+Consume the accepted parent release's current schema, retaining floor 46, and the current catalog/preflight contract. The earlier schema-50 and migrated-refused/environment-import wording is historical: it does not authorize retired imports or below-floor upgrade. Display the current named admission/refusal and explicit compatible-release remedy. Full declared fault-corpus execution remains open despite the six existing dashboard runners.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
 their mapped outcome/proof; historical subfeature credit does not complete this task.
+
+## Approved execution brief — 2026-09-19
+
+The operator selected **1 A** (parent 3.1.11 owns shared preflight admission hooks; Setup owns
+detectors and its UI), then approved the complete S1–S5 proposal and documentation persistence
+in this planning session on 2026-09-19. This is the single implementation plan for **3.1.11.1**.
+Approval does not complete implementation, authorize product integration, or release this child
+before its parent. The [parent admission amendment](task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#preflight-admission-ownership-amendment--2026-09-19)
+preserves independent Setup and Run/Rerun children; neither requires the other's unmerged work.
+
+Requirements remain at [A07](task-8-acceptance-matrix.md#a07),
+[the one preflight authority](../../../reference/clock-config-secrets.md#62-one-environment-doctor-replaces-scattered-startup-surprises),
+[D331.10 and D331.11](../../../reference/clock-config-secrets.md#d33110--the-settingssetup-interface-edit-contract-31-consumes),
+[scenario corpus](../../../reference/operator-trust.md#31-example-is-not-a-scenario), and
+[the coverage guard](../../../reference/guards-and-tests.md#311-old-capability-closure-and-advisory-ai).
+The linked contracts govern; this brief assigns delivery and proof rather than copying them.
+
+### Assignment and checkout binding
+
+| Binding | Approved value |
+| --- | --- |
+| Supervisor | One operator-opened Codex supervisor, **GPT-6 Astra / medium**. Detector composition, admission evidence, report freshness and UI readback are coupled, consequential work. |
+| Allocation / review | **Zero implementation workers and zero independent reviewers.** Phase 3.1's focused cadence applies. No sibling or next-task dispatch. |
+| Mode | New dedicated implementation worktree; never implement in the integration checkout or the planning worktree. |
+| Branch | `codex/3.1.11.1-setup` |
+| Absolute checkout | `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-setup` |
+| Inspected baseline | Local `master` at `517f7319fdcd771aee8356e664f1e8a885032ba0`; 3.1.9.8 integration `801da4f3d1bfdf0a9ecc81c993289f70699aa140` and closure `cda383062` are ancestors. This baseline does not contain accepted 3.1.11 implementation. |
+| Start prerequisites | Accepted and integrated 3.1.11 including the admission amendment, actual exported interface/file map, focused proof and owned cleanup; accepted Settings, Storage, dashboard boundaries and 3.1.9.8 remain required. The complete approved child plan must be committed and available from the execution base. |
+| Implementation base | Resolve the parent's actual accepted integration SHA from its release record, verify it in local `master` ancestry, and choose the verified descendant containing this approved plan. Record the full base SHA before checkout creation. No future SHA is assumed. |
+| Integration target / owner | 3.1.11.3 consumes the exact passing Setup and Run/Rerun candidates in either order. The operator chooses integration into local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`; this child does not merge itself. |
+| Development completion | S1–S5 focused proof and committed candidate/evidence ready for finalizer intake. Roadmap completion additionally requires accepted integration and owned cleanup. |
+| Evidence | `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.1-setup-2026-09-19/`; retain logs, command receipts, tested inputs, browser proof and cleanup identities outside the disposable worktree. |
+
+The implementation ref/path were absent at planning; names are proposals, not reservations.
+Parent `codex/3.1.11-sessions` occupies
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-sessions` and was actively
+modified. Planning uses `codex/plan-3.1.11.1` at
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-setup-plan`, from the
+inspected baseline. Recheck ownership, refs, clean/owned changes and worktree capacity before launch.
+Follow [parallel coordination](/Users/julianhein/.agents/skill-library/focused-sessions/REFERENCE.md#parallel-coordination):
+independent work by default, no shared-index queue or unsolicited peer polling/messages.
+
+### Feasibility and proof bindings
+
+These are inspected mechanisms, not executed acceptance results.
+
+| Question / current evidence | Necessary change and owner | Required proof / exclusion effect |
+| --- | --- | --- |
+| `createDashboardPreflightRunners` supplies six checks; `createPreflightAuthority` is composed only for `dashboard.serve`. Enqueue/worker composition has no caller of that authority. | Parent owns real shared admission and registration; S2 owns remaining detector implementations under the released port. | P1 proves refusal before enqueue/spawn/browser effects and a valid positive control. Parent hook readiness is not completion of this child's full detector corpus. No shared-entrypoint edits by the child. |
+| `PREFLIGHT_SCENARIO_MANIFESTS` declares 14 faults; its fixture contains only healthy/unhealthy labels, and no executor runs the manifests. The prose's fifteenth mode is the separate healthy control. | S4 owns an executed, manifest-bound corpus and `preflight-coverage` activation. | P2 exercises each declared fault and its actual dependencies, plus healthy restoration. A label, fabricated observation or declared-but-unexecuted scenario cannot establish detector coverage. |
+| The retained authority already rejects missing/extra runners, validates fingerprints, retains successful/failed replay identities, serializes actual settlement and bounds identities at 256. | Consume those semantics; parent owns any necessary shared contract/authority changes before release. | P3 preserves exact/divergent/in-flight/failed replay, timeouts, cancellation, capacity and ingress bounds; do not add durable mutation journaling to read-only reruns. |
+| Settings currently shows retained count; its rerun hook stores a local result. The doctor renders a separate supplied list and folds an empty list to pass. | S3 consumes the released shared report/freshness state and updates only isolated presentation/state modules. | P4 proves consistent Setup/doctor facts, no green absent report, explicit failed/stale/unavailable states and rejection of obsolete late results. |
+| Protected settings inspection has present/missing/unknown arms; provider declarations include key-only providers without production adapters. Run resources are selected from retained configuration. | S2 consumes authoritative presence, provider availability, selected instance and configuration facts. Parent supplies the shared input/readback ports. | P5 proves name/presence-only public output, no secret/path leakage and no executable-readiness claim from keys alone. Do not implement new adapters or replace a retained run's settings with current settings. |
+| Accepted Settings, Storage and Sessions own writes and recovery controls. Ordinary settings can require restart; protected updates take effect at their defined next use. | S3 links existing explicit actions and authoritative re-check; no independent repair engine. | P6 proves repeated explicit actions/re-checks are truthful, attributable and idempotent through the owning services, including restart and supported recovery on disposable roots. |
+
+The 3.1.9.8 [delivery assessment](task-9-8-finalization-dashboard-surfaces.md#delivery-assessment-and-deferred-acceptance)
+found unregistered disposable writers and a fixture narrowing defect. Register any new proof
+writers under the existing parity guard and run that focused check before freezing the candidate;
+do not repeat a broad ratchet invocation merely to validate guard membership.
+
+### Ordered implementation
+
+1. **S1 — Verify parent release.** Read the accepted parent map and admission proof. Verify actual
+   readiness/report operations, descriptor-derived selection, freshness/refusal semantics and hooks
+   before enqueue, worker and browser effects. Verify that both children independently consume this
+   base, and record actual exported names and paths here. Reconcile changed inputs before edits.
+   An unfinished shared hook returns to the parent; do not take over its files or silently use a
+   sibling API. Use the parent's accepted schema, retaining floor 46.
+2. **S2 — Complete detectors.** Extend the registry-selected production runner factory for browser
+   assets, fiscal dates, protected-secret presence, selected prod/test endpoints and provider/feature
+   availability. Reuse the existing six detectors and authoritative Settings, Storage, worker/session
+   and runtime inputs. Registry selection owns membership and capability blocking. Read-only probes
+   do not authenticate, launch an HR browser, call a provider to infer health or mutate authorities.
+   Unreadable/missing evidence remains a named refusal or unavailable state. Selected mandatory
+   failures block; optional failures do not block unrelated capabilities.
+3. **S3 — Finish Setup and doctor UI.** Use the existing Settings preflight slot and doctor popover,
+   with `/ui` Components as the local lead. Render the shared served report, affected capabilities,
+   timestamps and freshness; distinguish running, failed, unavailable and stale results. Preserve
+   served restart-required behavior and reject late results for obsolete inputs. Offer existing
+   explicit Settings, Storage and Sessions operations followed by authoritative re-check; otherwise
+   show the exact supported remedy. No unsupported repair button, new Setup route, client health
+   inference or independent settings editor. Inspect the specimen before choosing primitives.
+4. **S4 — Execute the fault corpus.** Replace the placeholder fixture evidence with a runner that
+   parses every declared manifest, injects controlled boundary inputs and executes the production
+   detector/authority. Cover all 14 declared faults plus a healthy control; expand families over
+   every mapped dependency rather than proving one endpoint/secret/provider and claiming all.
+   Add negative controls for absent/unexecuted/unknown scenarios, mismatched evidence and a detector
+   that incorrectly reports healthy. Activate `preflight-coverage` and its inventory row only with
+   this executed evidence. Exercise restart/recovery on fresh private roots and preserve zero
+   unauthorized write/launch effects. Do not mutate the operator's existing installation.
+5. **S5 — Verify and freeze.** Run P1–P6 and G1–G4, repair within-scope failures, record exact
+   candidate/tested inputs and commit logical categories with exact paths. Freeze the passing
+   candidate for 3.1.11.3; record development completion separately from finalizer acceptance.
+   Retain evidence, close owned browsers/processes and remove disposable proof roots. The operator
+   controls later integration; the finalizer owns combined checks and task-worktree cleanup after
+   accepted integration. No push or next-task dispatch.
+
+### File and interface allocation
+
+Paths below are repository-relative. New filenames are assigned outputs, not claims they exist.
+Adjacent helpers must retain the listed owner and purpose and be recorded in the final map.
+
+| Owner | Exclusive paths and responsibility |
+| --- | --- |
+| Setup supervisor, S2 | `src/server/preflight/` runner implementations and isolated composition helpers, including new `workflow-runners.ts`; consume the parent's fixed factory/import boundary. No second registry. |
+| Setup supervisor, S3 | `src/dashboard/surfaces/settings-preflight.tsx`, `settings-preflight-model.ts`, `preflight-popover.tsx`, `preflight-popover-model.ts`; `src/dashboard/client/preflight-queries.ts`, `src/dashboard/state/preflight-client.ts`; `src/server/dashboard/routes/settings-preflight.ts`, `settings-preflight-types.ts`, subject to the parent's released map. |
+| Setup supervisor, S4 proof | `src/domain/trust/preflight-scenarios.ts`; `tests/fixtures/preflight/`; existing preflight/protected-settings tests selected below; new `tests/unit/server/preflight-corpus.test.ts`, `preflight-workflow-runners.test.ts`, `preflight-recovery.test.ts`, `preflight-admission-consumer.test.ts`; `tests/unit/dashboard/setup-preflight.test.ts`; `tests/unit/architecture/preflight-coverage.test.ts`. |
+| Setup supervisor, browser proof | New `tests/parity/setup-preflight.spec.ts`, `tests/parity/helpers/fixture-setup-preflight.ts`, `tests/parity/helpers/reference-setup-preflight-scenes.ts`, `tests/parity/references/setup-preflight--*`; only affected existing Settings reference pairs with deliberate attribution. Use accepted shared harnesses unchanged. |
+| Setup supervisor, evidence/docs | This task owner; `docs/rebuild/guard-inventory.json` solely for `preflight-coverage` activation/deciding proof and exact owned disposable-writer registration if required; scoped guard-owner as-built text in `operator-trust.md` and `guards-and-tests.md`. The finalizer reconciles shared documentation/generated output. |
+| Parent 3.1.11 before release | Shared preflight schemas/semantics/authority, descriptor-to-capability mapping, app/client/BFF/bootstrap registrations, settings/session readback and action hooks, start/enqueue/worker/browser admission, shared fixture registration and writer-inventory ports. Full ownership is in the linked admission amendment. |
+| Run/Rerun 3.1.11.2 | Run modal, launch state, start-plan service behavior and prior-value transport after parent acceptance. Setup may not edit these or require an unmerged sibling change. |
+| Finalizer 3.1.11.3 | Combine both child commits in either order; reconcile shared generated artifacts/contracts and repair cross-child integration. Required shared operations must already work at parent release. |
+
+The preflight guard activation is the child's bounded manifest responsibility; no sibling writes
+that row or the Setup proof names. If a necessary new writer registration reaches an unallocated
+shared test helper, resolve that exact owner before editing rather than widening the allowlist.
+No SQL migration, settings catalog redesign, provider adapter, root test configuration or broad
+fixture rewrite is assigned to Setup.
+
+### Proof matrix
+
+| Proof | Required result and meaningful negative controls |
+| --- | --- |
+| P1 — real admission consumers | Against the accepted parent services, a selected mandatory fault prevents enqueue and worker/browser launch. An optional/unselected failure leaves an unrelated valid capability usable. Include a healthy positive control so tests cannot pass through unrelated setup failure. Stale scope/config/descriptor input refuses before detector/effect work where the parent contract requires it; no new universal refusal order is invented. |
+| P2 — executed corpus | Execute runtime mismatch, missing browser, invalid config, low disk, corrupt DB, busy port, stale fiscal dates, missing workflow secret, orphan process, OCR exhaustion, AI exhaustion, bad prod endpoint, bad test endpoint and optional provider unavailable. Match manifest terminal/evidence/failure expectations and zero external commits; registry-derived dependency expansion closes all members. Missing runner/scenario, extra scenario, incorrect evidence or false healthy observation must fail. |
+| P3 — bounded re-check | Exact successful, failed and in-flight replay does not execute another detector pass; divergent reuse refuses. Preserve 256-identity capacity without eviction, config/descriptor binding, loopback/body/rate/single-flight ingress, registered deadlines and cancellation through actual settlement. A timed-out late healthy return never becomes a pass; restart does not pretend process-local replay survived. |
+| P4 — presentation/freshness | Setup and doctor agree on served scope/checks/blocks/time. Absent or empty report, request failure, stale retained result and unavailable check never look current/healthy. Settings restart requirement and changed protected presence cause the correct re-check/readback. Late old responses cannot overwrite current state; reload reads authoritative current status. Keyboard reaches re-check/remedies and focus returns correctly at desktop sizes and real zoom. |
+| P5 — privacy and capability truth | Inject synthetic secret/person/private-path markers into source failures and assert none escapes through UI, HTTP, safe logs or corpus output. Only protected names/presence and permitted root basenames appear. Unknown secret source, missing required endpoint, selected test/prod mismatch and key-only unavailable provider are truthful. No raw exception echo, hash/value comparator or new external probe. |
+| P6 — remedies/restart/recovery | Explicit existing actions retain owning-service identity and refusal semantics; report repaired only after authoritative re-check. Repeat requests preserve idempotency. Fresh-root, restart-required/current, supported recovered root, corrupt root, wrong/newer schema and below-floor cases retain named outcomes; no automatic backup/restore/upgrade, substitute database, process kill or change to the standing runtime. |
+
+This is synthetic/local production-service proof. Current HR/browser/provider state correlation is
+not inferred from it: 3.1.18 supplies the harness and 3.1.19 executes required A07 live dry-run
+acceptance with zero external writes. No actual-target migration or deployment is assigned here.
+
+### Gate and resource schedule
+
+Run from the absolute implementation checkout. New selectors below must be authored before their
+gate runs. Inspect the parent's final map for an explicitly moved selector; preserve the same proof
+and record any path correction. Changed scope or missing shared mechanism returns for amendment.
+
+**G1 — detectors, corpus, admission and recovery**, after S2/S4 and invalidating fixes:
+
+```sh
+npm run test -- tests/unit/preflight-dashboard-runners.test.ts tests/unit/server/preflight-runners.test.ts tests/unit/preflight-runtime-dependencies.test.ts tests/unit/protected-settings-doctor.test.ts tests/unit/storage-diagnostic-redaction.test.ts tests/unit/server/preflight-workflow-runners.test.ts tests/unit/server/preflight-corpus.test.ts tests/unit/server/preflight-recovery.test.ts tests/unit/server/preflight-admission-consumer.test.ts
+npm run test -- tests/unit/architecture/preflight-coverage.test.ts tests/unit/architecture/runtime-dependency-coverage.test.ts tests/unit/architecture/runtime-environment-coverage.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/parity-reference-authority.test.ts
+npm run test -- tests/unit/architecture/guard-manifest.test.ts -t 'recursively registers every guard file exactly once and every active entry exists'
+```
+
+**G2 — client, UI and desktop proof**, after S3/S4 and invalidating fixes:
+
+```sh
+npm run test -- tests/unit/dashboard/preflight-client.test.ts tests/unit/dashboard/setup-preflight.test.ts tests/unit/dashboard/settings-editor-surface.test.ts tests/unit/dashboard/settings-storage-doctor.test.ts
+npm run web:build
+npm run test:parity -- tests/parity/setup-preflight.spec.ts tests/parity/reference-settings.spec.ts --workers=4
+```
+
+The Setup spec owns both-theme screenshots/a11y/provenance for relevant states at 1280×720 and
+1440×900, plus 1024×720 minimum-canvas resizing. Use the prescribed `playwright-cli` playbook for
+specimen inspection and targeted keyboard/focus proof. D04 additionally requires actual 125% browser
+zoom at 1280×720 and actual 200% at 1440×900, recording effective CSS viewport, browser/version and
+zoom mechanism. CSS zoom/device scale factor/resizing do not substitute. Attribute new/changed
+reference pairs, deliberately update only owned affected scenes with `test:parity:update`, then run
+the same assert gate. Do not weaken thresholds or broadly refreeze.
+
+**G3 — scoped lint and affected quick checks.** Freeze the exact changed `.ts`/`.tsx` paths from
+`git diff --name-only --diff-filter=ACMR <verified-base> -- '*.ts' '*.tsx'`, record the actual base
+and path list, and pass that list as an argument array to `npx eslint` with `--max-warnings 0`.
+Include new fixtures/helpers, not only production files. All selected tests require this lint gate.
+If an owned edit changes a descriptor import closure, run `npm run build:manifest` followed by
+`npm run build:manifest:check` locally; retain the source-bound result as evidence for finalizer
+combined regeneration rather than making one child depend on another's generated artifact.
+Do not claim untouched catalog/build outputs were regenerated. Documentation changes use G4.
+
+**G4 — record/candidate boundary.** Run applicable roadmap binding, changed-link, instruction-pair/
+chain-size and `git diff --check` validation. The finalizer owns combined generated roadmap output.
+Record commands, exit status, actual tested tree, evidence paths, candidate SHA and deferred proof
+here. Reuse only evidence with unchanged relevant source/test/config/dependency inputs; rerun after
+invalidating changes, failures or uncertain results. Do not rerun all focused gates solely to add a
+recording-only commit. At candidate freeze, all assigned focused checks must pass.
+
+Use at most four file workers. Tests and browser servers use task-private temporary state, artifact,
+auth/profile and process-lock roots with ephemeral loopback ports; never operator ports 3938/5174 or
+the standing authority. Serialize writers to the same build/reference output within this checkout;
+separate checkouts with isolated outputs do not require a blanket queue. Retain exact process/session
+identities and close only owned resources. No coverage run is assigned to this child.
+
+3.1.11.3 runs combined typecheck, focused integration/regression tests, scoped lint and affected
+build/generated checks. Full repository coverage/lint/architecture, broad parity, production,
+performance, recovery and live acceptance remain **3.1.19**; none is credited here as passed.
+
+### Exclusions, stops and current state
+
+Do not add a broad CLI doctor or `test-login`, new provider adapters, a parallel preflight registry,
+automatic repair, workflow/Run/Rerun redesign, new Setup navigation, protected-value readback,
+mobile variants, live HR writes, production cutover or legacy runtime access. Do not change schema
+floor, retired imports, supported recovery policy, gate membership/assertions/floors/timeouts, or
+the parent/sibling's owned implementation. Existing current contracts remain normative.
+
+Stop dependent work for missing parent integration/exports/proof, required edits outside ownership,
+changed capability/report intent, unavailable required proof or an unresolved secret/effect boundary.
+Routine detector helpers, layout within the existing design system, fixture construction and tactical
+fixes remain the supervisor's choices. Do not re-ask settled choice 1 A or the approved S1–S5 scope.
+
+| State | Record |
+| --- | --- |
+| Approval | Choice 1 A and complete S1–S5 plan approved 2026-09-19. |
+| Implementation | Unstarted; this planning task changes documentation only. |
+| Parent release | **WAITING ON 3.1.11** accepted admission amendment, implementation, focused proof, integration and cleanup. |
+| Plan availability | Isolated documentation candidate on `codex/plan-3.1.11.1`; shared-target documentation integration has not been assigned/authorized by this brief. |
+| Child/group release | No supervisor launch prompt until plan availability and all start prerequisites are verified. 3.1.11.3 remains responsible for combined intake and later accepted integration/cleanup under operator direction. |
+| Broad proof | Deferred to 3.1.19; no runtime acceptance executed by planning. |
+
+Maintain this compact state in place during execution, linking dated evidence. Send Done / Now /
+Remaining once at start or genuine resume; later updates report only new verified completions and
+material blockers. Routine transfers use this owner; interrupted unique state uses `/handoff`.
+
+### Planning validation — 2026-09-19
+
+The approved documentation candidate is isolated on `codex/plan-3.1.11.1` at
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-setup-plan`, based on
+`517f7319fdcd771aee8356e664f1e8a885032ba0`. Only this child owner, the parent admission amendment,
+the acceptance ownership pointer, the roadmap journal and generated roadmap are changed.
+Active shared-checkout date-navigation edits and parent implementation edits are not part of this
+candidate. Documentation integration has not been assigned; preserve the candidate for that step.
+
+Evidence is retained under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.1-setup-2026-09-19/planning/`.
+
+| Check | Result / evidence |
+| --- | --- |
+| Roadmap binding | `npm run test -- tests/unit/architecture/roadmap-doc-binding.test.ts`: exit 0, 1 file / 24 tests; `roadmap-binding.log`. |
+| Scoped lint | `npx eslint scripts/generate-roadmap.ts tests/unit/architecture/roadmap-doc-binding.test.ts --max-warnings 0`: exit 0; `scoped-lint.log`. |
+| Generated roadmap | `npm run roadmap` and `npm run roadmap:check`: exit 0; `roadmap-generate.log`, `roadmap-check.log`. Generation/freshness is repeated after this recording-only addition. |
+| Links / instructions / diff | All 12 added links and fragments resolve; all 9 existing instruction pairs match; all 18 complete instruction chains are below 32,768 bytes (maximum 23,221); `git diff --check` passes. Reproducible checks and source digests: `verify-plan.py`, `plan-validation.json`, `instruction-chains.json`. |
+| Selector availability | 16 existing focused gate selectors resolve. Nine additional selectors are explicitly assigned future proof files (seven child, two parent); no absent file is claimed as an executed test. |
+| Scope / acceptance | Exactly five documentation/generated-document paths. No code, test, dependency, configuration or runtime-state changes. No runtime gates run or reused, no independent review or agent dispatch. Implementation acceptance remains open. |
+
+The tested source/test/config/dependency inputs are unchanged by this validation record; its plain
+text introduces no roadmap binding or status. The 24-test binding result and scoped lint are reused
+for that recording-only addition; generated freshness, added links, scope and diff checks are
+re-established on the final candidate. Commit verification must read this complete owner and the
+parent amendment from the actual commit, verify the branch reaches it, and recompute start
+prerequisites. A committed planning candidate does not satisfy missing parent integration.
