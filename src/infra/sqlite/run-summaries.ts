@@ -1,3 +1,4 @@
+import { CalendarQuerySchema, CalendarWireSchema } from "../../domain/dashboard/calendar.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -129,6 +130,51 @@ export function createRunSummaries(database: DatabaseSync) {
     workflows(sourceGeneration:number) {
       assertCurrent(sourceGeneration);
       return database.prepare("SELECT DISTINCT workflow FROM run_summaries ORDER BY workflow").all().map(row=>z.object({workflow:z.string()}).parse(row).workflow);
+    },
+    /** Scan only the requested month, keeping at most 31 counters; seek bounds per workflow. */
+    calendar(sourceGeneration: number, input: { month: string; day: string; today: string }) {
+      const { month, day, today } = CalendarQuerySchema.extend({ today: z.iso.date() }).parse(input);
+      if (day > today) throw new Error("calendar-future-day");
+      assertCurrent(sourceGeneration);
+      const last = new Date(`${month}-01T00:00:00.000Z`);
+      last.setUTCMonth(last.getUTCMonth() + 1);
+      last.setUTCDate(0);
+      const end = last.toISOString().slice(0, 10);
+      const counts = new Map<string, number>();
+      const firstDays: string[] = [], lastDays: string[] = [], previousDays: string[] = [], nextDays: string[] = [];
+      const workflows = database.prepare("SELECT DISTINCT workflow FROM run_summaries ORDER BY workflow").all();
+      const validate = (row: unknown) => {
+        const summary = parseSummary({ record_json: z.object({ record_json: z.string() }).parse(row).record_json });
+        const columns = z.object({ record_key: z.string(), workflow: z.string(), local_day: z.string() }).parse(row);
+        if (summary.sourceGeneration > sourceGeneration || summary.runId !== columns.record_key
+          || summary.workflow !== columns.workflow || summary.localDay !== columns.local_day) {
+          throw new Error("run-summary-generation-corrupt");
+        }
+        return summary;
+      };
+      for (const row of workflows) {
+        const { workflow } = z.object({ workflow: z.string() }).parse(row);
+        // Includes member rows in validation, excludes them from the one top-level count.
+        for (const row of database.prepare("SELECT record_key,workflow,local_day,record_json FROM run_summaries WHERE workflow=? AND local_day>=? AND local_day<=?")
+          .iterate(workflow, `${month}-01`, end < today ? end : today)) {
+          const summary = validate(row);
+          if (summary.shape !== "operation-member") counts.set(summary.localDay, (counts.get(summary.localDay) ?? 0) + 1);
+        }
+        const seek = (predicate: string, parameters: string[], order: "ASC" | "DESC"): string | undefined => {
+          const found = database.prepare(`SELECT record_key,workflow,local_day,record_json FROM run_summaries WHERE workflow=? AND local_day<=? AND ${predicate} AND json_extract(record_json,'$.shape')!='operation-member' ORDER BY local_day ${order} LIMIT 1`)
+            .get(workflow, today, ...parameters);
+          return found === undefined ? undefined : validate(found).localDay;
+        };
+        for (const [target, found] of [
+          [firstDays, seek("1", [], "ASC")], [lastDays, seek("1", [], "DESC")],
+          [previousDays, seek("local_day<?", [day], "DESC")], [nextDays, seek("local_day>?", [day], "ASC")],
+        ] as const) if (found !== undefined) target.push(found);
+      }
+      if (day < today) nextDays.push(today);
+      return CalendarWireSchema.parse({ month, day, today, authorityGeneration: sourceGeneration,
+        monthCounts: [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count })),
+        firstDay: firstDays.sort().at(0) ?? null, lastDay: lastDays.sort().at(-1) ?? null,
+        previousDay: previousDays.sort().at(-1) ?? null, nextDay: nextDays.sort().at(0) ?? null });
     },
     query(sourceGeneration:number,input:RunSummaryQuery) {
       const query=RunSummaryQuerySchema.parse(input);assertCurrent(sourceGeneration);

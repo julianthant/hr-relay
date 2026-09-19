@@ -7021,9 +7021,40 @@ wrong on every run an operator is actually watching.
   over 139 references × 3 files, so the interim number is superseded and only the clock finding it
   supported still stands.
 
-**Wire.** The shell reads the bootstrap document and the SSE day stream and issues no commands of its
-own; `ref frontend-backend-integration` §4 owns the bootstrap's shape (including D219's `role` leaf and
-D264's moved declaration fields) and §7 the parity lane.
+<a id="date-navigation-amendment-2026-09-18"></a>
+
+##### Date navigation amendment — 2026-09-18
+
+Operator-approved for [3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18);
+implemented in the focused candidate, awaiting explicit local master integration. This extends D256's
+single served-clock rule to calendar selection and states A19's date-navigation behavior:
+
+- An absent URL `day` follows server Today, derived from the one live served instant and served zone.
+  A valid explicit day remains pinned; Today removes the explicit selection and resumes following
+  Today. Midnight and tab visibility refresh do not substitute browser wall time or browser timezone.
+- Previous/next select chronological available days, with Today reachable even when empty. They
+  cannot pass served Today or jump from an unserved date to the oldest available partition.
+- Empty historical dates are disabled in the picker, but valid historical direct links render an
+  honest empty queue. Invalid calendar dates and future links show a recoverable date error with a
+  Today action; no silent date substitution, invalid stream request or wrong-date run display.
+- Browsing months changes the calendar view only until a date is selected. Keyboard navigation must
+  keep a reachable usable tab stop, handle disabled dates and month/year boundaries, and restore focus
+  after Escape, outside-click dismissal or selection using the existing primitives.
+- Selected date, URL, loaded day snapshot and navigation controls form one state machine. Superseded
+  responses/errors cannot paint the current date; a wrong-day stream payload is a protocol failure.
+  Loading/failure are distinct from zero rows. Preserve native/toolbar history, no-op navigation,
+  dirty Settings guards and exact run/day joins; date changes clear incompatible run/section selection.
+- Preserve the desktop 1024×720 canvas, both themes, resize, zoom and keyboard access. No mobile
+  variants or design-system redesign are introduced.
+
+The [bounded calendar read amendment](frontend-backend-integration.md#calendar-navigation-read-amendment-2026-09-18)
+owns the transport and count-coherence boundary. No new wall-clock source, heartbeat recalibration,
+summary-publication authority, database migration or external HR action is admitted.
+
+**Wire.** The shell reads bootstrap, the SSE day stream and, under the approved 3.1.10 amendment,
+the bounded calendar query; date navigation issues no commands. `ref frontend-backend-integration`
+§4 owns bootstrap state (including D219's `role` leaf and D264's moved declaration fields), §3 the
+read contract and §7 the parity lane.
 
 <!-- roadmap-status: track-c -->
 - [x] D256 — one served-clock calibration, monotonic elapsed, every consumer including the keyboard sort key; a backwards elapsed is drawn, not clamped

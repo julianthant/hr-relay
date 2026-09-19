@@ -4,6 +4,7 @@ import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 
 export interface ShellRouteDeps {
+  readonly calendar?: import("../queries/calendar.js").CalendarQueryService;
   readonly bootstrap: BootstrapQueryDeps;
   readonly search: CrossDateSearchQueryService;
   readonly xlsxExports?: OperatorXlsxExportService;

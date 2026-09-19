@@ -1,3 +1,4 @@
+import { CalendarWireSchema } from "../../../../src/domain/dashboard/calendar.js";
 import { ExplorerOverrideImportReceiptSchema } from "../../../../src/domain/dashboard/explorer-override.js";
 /**
  * Ref guards-and-tests §3.15 / D183 — the redaction surface scan's declaration half.
@@ -869,6 +870,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/bootstrap", egress: "operator-loopback", module: "src/domain/dashboard/bootstrap.ts", schema: FrontendBootstrapWireSchema },
   { id: "wire/diagnostic-bundle", egress: "operator-loopback", module: "src/domain/dashboard/diagnostic-bundle.ts", schema: DiagnosticBundleWireSchema },
   { id: "wire/activity-report", egress: "operator-loopback", module: "src/domain/dashboard/activity.ts", schema: ActivityReportWireSchema },
+  { id: "wire/calendar", egress: "operator-loopback", module: "src/domain/dashboard/calendar.ts", schema: CalendarWireSchema },
   { id: "wire/cross-date-search", egress: "operator-loopback", module: "src/domain/dashboard/search.ts", schema: CrossDateSearchPageSchema },
   { id: "wire/run-advisory", egress: "operator-loopback", module: "src/domain/dashboard/advisory.ts", schema: RunAdvisoryWireSchema },
   { id: "wire/action-descriptor", egress: "operator-loopback", module: "src/domain/dashboard/actions.ts", schema: ActionDescriptorWireSchema },
@@ -1876,6 +1878,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
+    { module: "src/domain/dashboard/calendar.ts", state: "audited", reason: "bounded dates, counts and generation only; no run or person data" },
     { module: "src/domain/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
     { module: "src/domain/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
     { module: "src/domain/dashboard/settings-catalog.ts", state: "audited", reason: "catalog-derived Settings controls and classifications are embedded by the audited editable Settings wire" },

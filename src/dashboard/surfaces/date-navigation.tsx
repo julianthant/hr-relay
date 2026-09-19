@@ -1,12 +1,15 @@
+import type { CalendarWire } from "../../domain/dashboard/calendar.js";
+import type { AsyncResource } from "../state/async-resource.js";
+import { useCalendar } from "../state/use-calendar.js";
 import {
 Calendar,
 ChevronLeft,
 ChevronRight
 } from "lucide-react";
-import { type ReactElement,useMemo,useRef,useState } from "react";
+import { type ReactElement,useLayoutEffect,useMemo,useRef,useState } from "react";
 import { Button,CountBadge,IconButton,Popover,PopoverContent,PopoverTrigger,Tooltip,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
-import { type DayCountWire,WEEKDAY_HEADS,buildCalendarMonth,monthLabel,monthOfDay,moveCalendarFocus,servedDays,shiftMonth } from "./date-navigation-model.js";
+import { type DayCountWire,WEEKDAY_HEADS,buildCalendarMonth,monthLabel,monthOfDay,moveCalendarFocus,calendarTabStop,shiftMonth } from "./date-navigation-model.js";
 import {
 dayLabelWithToday,
 plural
@@ -17,32 +20,44 @@ import { SEGMENTED_FRAME } from "./top-bar-layout-model.js";
 function DateCalendar({
   day,
   today,
-  counts,
+  month,
+  setMonth,
+  resource,
+  followingToday,
+  onRetry,
+  onToday,
   onPick,
 }: {
   day: string;
   today: string;
-  counts: readonly DayCountWire[];
+  month: string;
+  setMonth: (month: string) => void;
+  resource: AsyncResource<CalendarWire>;
+  followingToday: boolean;
+  onRetry: () => void;
+  onToday: () => void;
   onPick: (day: string) => void;
 }) {
-  const [month, setMonth] = useState(() => monthOfDay(day));
+  const counts = resource.state === "loaded" ? resource.value.monthCounts : NO_COUNTS;
   const cells = useMemo(() => buildCalendarMonth(month, counts, today), [month, counts, today]);
-  const days = useMemo(() => servedDays(counts), [counts]);
-  const firstMonth = days.length > 0 ? monthOfDay(days[0]) : month;
-  const lastMonth = days.length > 0 ? monthOfDay(days[days.length - 1]) : month;
-  const previous = month > firstMonth ? shiftMonth(month, -1) : undefined;
-  const next = month < lastMonth ? shiftMonth(month, 1) : undefined;
-
-  // The roving tab stop starts on the selected day when it is in view, and on
-  // the first selectable cell otherwise — never on a disabled one, which would
-  // put the caret somewhere Enter does nothing.
-  const initial = cells.findIndex((cell) => cell.day === day);
-  const [focus, setFocus] = useState(initial >= 0 ? initial : cells.findIndex((cell) => cell.available));
+  const previous = month > "0000-01" ? shiftMonth(month, -1) : undefined;
+  const next = month < monthOfDay(today) ? shiftMonth(month, 1) : undefined;
+  const [focusedDay, setFocusedDay] = useState<string>();
+  const focus = calendarTabStop(cells, focusedDay, day);
   const gridRef = useRef<HTMLDivElement>(null);
-
+  const todayRef = useRef<HTMLButtonElement>(null);
+  const gridOwnedFocus = useRef(false);
+  // Restore the roving stop when new availability disables the focused cell.
+  useLayoutEffect(() => {
+    if (gridOwnedFocus.current) {
+      const button = gridRef.current?.querySelector<HTMLButtonElement>('[tabindex="0"]');
+      (button ?? todayRef.current)?.focus();
+    }
+  }, [cells, focus]);
   const moveTo = (index: number): void => {
-    setFocus(index);
-    // The cells are real buttons in DOM order, so the nth button IS the nth cell.
+    const cell = cells[index];
+    if (cell === undefined || !cell.available) return;
+    setFocusedDay(cell.day);
     gridRef.current?.querySelectorAll<HTMLButtonElement>("button[data-demo-day]")[index]?.focus();
   };
 
@@ -54,7 +69,7 @@ function DateCalendar({
           disabled={previous === undefined}
           label={
             previous === undefined
-              ? `The tracker holds nothing before ${monthLabel(firstMonth)}`
+              ? `The tracker holds nothing before ${monthLabel(month)}`
               : `Previous month — ${monthLabel(previous)}`
           }
           onClick={() => {
@@ -70,7 +85,7 @@ function DateCalendar({
           disabled={next === undefined}
           label={
             next === undefined
-              ? `The tracker holds nothing after ${monthLabel(lastMonth)}`
+              ? `The tracker holds nothing after ${monthLabel(month)}`
               : `Next month — ${monthLabel(next)}`
           }
           onClick={() => {
@@ -91,9 +106,11 @@ function DateCalendar({
       <div
         ref={gridRef}
         role="grid"
+        onFocusCapture={() => { gridOwnedFocus.current = true; }}
+        onBlurCapture={(event) => { if (event.relatedTarget !== null && !event.currentTarget.contains(event.relatedTarget)) gridOwnedFocus.current = false; }}
         aria-label="Pick a day"
         onKeyDown={(event) => {
-          const to = moveCalendarFocus(focus, event.key);
+          const to = moveCalendarFocus(cells, focus, event.key);
           if (to === null) return;
           event.preventDefault();
           moveTo(to);
@@ -112,7 +129,7 @@ function DateCalendar({
               aria-current={cell.isToday ? "date" : undefined}
               disabled={!cell.available}
               tabIndex={index === focus ? 0 : -1}
-              onFocus={() => setFocus(index)}
+              onFocus={() => setFocusedDay(cell.day)}
               onClick={() => onPick(cell.day)}
               aria-label={`${dayLabelWithToday(cell.day, today)}${
                 cell.available ? ` — ${plural(cell.count, "row")}` : " — the tracker holds no rows"
@@ -157,20 +174,22 @@ function DateCalendar({
       {/* TODAY IN ONE ACTION, from anywhere in the calendar. It moves the month
           AND the day, so a picker parked three months out is one press from
           live rather than three. */}
+      {resource.state === "failed" && <div role="alert" className={dsText.meta}>{resource.error.message} <Button size="sm" variant="secondary" onClick={onRetry}>Retry calendar</Button></div>}
       <div className={cn("flex items-center border-t pt-[var(--ds-space-snug)]", dsBorder.subtle)}>
         <Button
           size="sm"
           variant="secondary"
-          disabled={day === today}
+          ref={todayRef}
+          disabled={followingToday && day === today && month === monthOfDay(today)}
           onClick={() => {
             setMonth(monthOfDay(today));
-            onPick(today);
+            onToday();
           }}
         >
           Today
         </Button>
         <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-muted)]")}>
-          <span className={dsText.nums}>{days.length}</span> days on disk
+          {resource.state === "failed" ? "Calendar unavailable" : resource.state === "loaded" ? `${counts.length} days this month` : "Loading calendar…"}
         </span>
       </div>
     </div>
@@ -223,44 +242,31 @@ function DateStep({
 }
 
 
-/**
- * ‹ 📅 Mon, Aug 3 · today [38] ›. The date is not decoration: it selects the
- * day partition the whole app reads. The rail badges, the Status Bar pills and
- * the rows all move with it, because all of them read the ONE projection for
- * whichever day this control names.
- */
-export function DateNav({
-  day,
-  today,
-  monthCounts,
-  onDay,
-}: {
-  day: string;
-  today: string;
-  monthCounts: readonly DayCountWire[];
-  onDay: (day: string) => void;
+const NO_COUNTS: readonly DayCountWire[] = Object.freeze([]);
+
+/** Chronological navigation comes from the calendar; the badge comes from the matching day stream. */
+export function DateNav({ day, today, monthCounts, onDay, onToday, followingToday = false,
+  dateError, calendarRevision, dayState = "loaded" }: {
+  day: string; today: string; monthCounts: readonly DayCountWire[]; onDay: (day: string) => void;
+  onToday: () => void; followingToday?: boolean; dateError?: string; calendarRevision?: object;
+  dayState?: "loaded" | "loading" | "failed";
 }) {
-  const days = useMemo(() => servedDays(monthCounts), [monthCounts]);
-  /**
-   * THE UNSERVED DAY IS A REAL POSITION, and the demo's indexing is what makes
-   * it navigable. `indexOf` answers `-1` for a day the tracker holds no
-   * partition for — a link, a typed `?day=`, a calendar cell that lost its
-   * file — so `days[index - 1]` is `undefined` (there is nothing to step back
-   * to) while `days[index + 1]` is `days[0]`, THE EARLIEST SERVED DAY. Stepping
-   * forward from nowhere lands on the oldest thing that exists, which is the
-   * only move that gets the operator out. Disabling both arrows, as this
-   * control used to, strands them on a day with no rows and no way off it.
-   */
-  const index = days.indexOf(day);
-  const older: string | undefined = days[index - 1];
-  const newer: string | undefined = days[index + 1];
-  const count = monthCounts.find((entry) => String(entry.day) === day)?.count ?? 0;
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [viewedMonth, setViewedMonth] = useState(() => monthOfDay(dateError === undefined ? day : today));
+  const month = open ? viewedMonth : monthOfDay(dateError === undefined ? day : today);
+  const [attempt, setAttempt] = useState(0);
+  const resource = useCalendar(month, dateError === undefined ? day : undefined, today, calendarRevision, attempt);
+  const older = resource.state === "loaded" ? resource.value.previousDay ?? undefined : undefined;
+  const newer = resource.state === "loaded" ? resource.value.nextDay ?? undefined : undefined;
+  const count = dayState === "loaded" ? monthCounts.find(entry => entry.day === day)?.count ?? 0 : undefined;
+  const countLabel = count === undefined ? dayState === "failed" ? "queue unavailable" : "loading queue" : plural(count, "row");
+  if (dateError !== undefined) return <Button size="sm" variant="secondary" onClick={onToday} title={dateError}>Today</Button>;
 
   return (
     <span className={cn(DATE_NAV_FRAME, dsMotion.base, "hover:border-[color:var(--ds-border-strong)]")}>
       <DateStep
-        label={older === undefined ? "No earlier day in the tracker" : `Previous day — ${dayLabelWithToday(older, today)}`}
+        label={resource.state !== "loaded" ? resource.state === "failed" ? "Calendar unavailable" : "Loading calendar" : older === undefined ? "No earlier day in the tracker" : `Previous day — ${dayLabelWithToday(older, today)}`}
         disabled={older === undefined}
         onClick={() => {
           if (older !== undefined) onDay(older);
@@ -278,15 +284,21 @@ export function DateNav({
         It wraps the Popover TRIGGER rather than the Popover, so the hint
         belongs to the button the pointer is actually over.
       */}
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(next) => {
+        if (next) setViewedMonth(monthOfDay(day));
+        setOpen(next);
+        // Outside pointer dismissal runs before the browser's default focus action.
+        if (!next) requestAnimationFrame(() => triggerRef.current?.focus());
+      }}>
         <Tooltip
-          content={`${plural(count, "row")} on this day · the tracker holds ${plural(days.length, "day")}`}
+          content={`${countLabel} on this day${resource.state === "failed" ? " · Calendar unavailable" : resource.state === "loading" ? " · Loading calendar" : ""}`}
           side="bottom"
         >
         <PopoverTrigger asChild>
           <button
+            ref={triggerRef}
             type="button"
-            aria-label={`Pick a day — showing ${dayLabelWithToday(day, today)}, ${plural(count, "row")}`}
+            aria-label={`Pick a day — showing ${dayLabelWithToday(day, today)}, ${countLabel}`}
             className={cn(
               // The middle segment. `h-full` and no border of its own: the frame
               // above owns the height and the hairline, which is the rule a
@@ -303,7 +315,7 @@ export function DateNav({
           >
             <Calendar aria-hidden className={cn(dsIcon.sm, "text-[color:var(--ds-fg-muted)]")} />
             {dayLabelWithToday(day, today)}
-            <CountBadge value={count} tone={day === today ? "info" : "neutral"} />
+            {count === undefined ? <span className={dsText.meta}>{dayState === "failed" ? "Unavailable" : "Loading…"}</span> : <CountBadge value={count} tone={day === today ? "info" : "neutral"} />}
           </button>
         </PopoverTrigger>
         </Tooltip>
@@ -311,7 +323,12 @@ export function DateNav({
           <DateCalendar
             day={day}
             today={today}
-            counts={monthCounts}
+            month={month}
+            setMonth={setViewedMonth}
+            resource={resource}
+            followingToday={followingToday}
+            onRetry={() => setAttempt(value => value + 1)}
+            onToday={() => { setOpen(false); onToday(); }}
             onPick={(next) => {
               setOpen(false);
               if (next !== day) onDay(next);
@@ -320,7 +337,7 @@ export function DateNav({
         </PopoverContent>
       </Popover>
       <DateStep
-        label={newer === undefined ? "Today is the newest day" : `Next day — ${dayLabelWithToday(newer, today)}`}
+        label={resource.state !== "loaded" ? resource.state === "failed" ? "Calendar unavailable" : "Loading calendar" : newer === undefined ? "Today is the newest day" : `Next day — ${dayLabelWithToday(newer, today)}`}
         disabled={newer === undefined}
         onClick={() => {
           if (newer !== undefined) onDay(newer);

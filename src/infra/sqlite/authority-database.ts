@@ -3569,6 +3569,10 @@ export class AuthorityDatabase implements Disposable {
     return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).query(this.getMeta().authorityGeneration,query));
   }
 
+  queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
+    return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).calendar(this.getMeta().authorityGeneration, query));
+  }
+
   readRunSummaries() {
     return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).read(this.getMeta().authorityGeneration));
   }

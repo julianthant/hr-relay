@@ -1,3 +1,4 @@
+import { CalendarQuerySchema } from "../../../domain/dashboard/calendar.js";
 import { z } from "zod";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { buildBootstrap } from "../queries/bootstrap.js";
@@ -23,6 +24,14 @@ import type { ShellRouteDeps } from "./shell-types.js";
 
 export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): void {
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
+
+  app.get("/api/v1/calendar", (c) => {
+    const entries = [...new URL(c.req.url).searchParams];
+    if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("calendar-duplicate-query");
+    const query = CalendarQuerySchema.parse(Object.fromEntries(entries));
+    if (deps.calendar === undefined) throw new SectionUnavailableError("calendar authority is unavailable");
+    return c.json(deps.calendar.read(query));
+  });
 
   app.get("/api/v1/search", (c) =>
     c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));

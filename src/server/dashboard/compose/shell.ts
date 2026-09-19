@@ -1,3 +1,4 @@
+import { createCalendarQuery } from "../queries/calendar.js";
 import { randomBytes } from "node:crypto";
 import { WORKFLOW_MODULES } from "../../../control/workflow-registry.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../domain/config/settings.js";
@@ -30,6 +31,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
       advisoryAvailability: input.advisoryAvailability, backupSummary: input.backupSummary },
     search,
+    calendar: createCalendarQuery(database, clock),
     xlsxExports: composeGeneratedExports({ clock, ids, sourceIdentity: database.getSourceDatabaseIdentity(),
       artifacts, authority: database.authority.operatorXlsxExports, search,
       activityReport: (from, to) => projection.buildActivityReportWire(from, to) }),

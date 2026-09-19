@@ -99,6 +99,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
   const reconnectDelayMs = deps.reconnectDelayMs ?? 1000;
 
   let closed = false;
+  let streamIdentity = 0;
   let stream: StreamHandle | undefined;
   let cancelTimer: (() => void) | undefined;
   let snapshot: DashboardDayWire | undefined;
@@ -180,6 +181,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       if (envelope.topic !== "dashboard-day") {
         throw protocolError(`unexpected snapshot topic ${envelope.topic}; this subscription serves dashboard-day`);
       }
+      if (envelope.payload.day !== day) throw protocolError("day-request-identity-mismatch");
       snapshot = envelope.payload;
       lastCursorNumber = cursorNumber;
       lastCursorId = envelope.cursor;
@@ -218,11 +220,12 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     if (closed) return;
     const lastEventId = withResume ? lastCursorId : undefined;
     const lastProjectionGeneration = lastEventId === undefined ? undefined : generation;
+    const identity = ++streamIdentity;
     const handle = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),
       onMessage: (message) => {
-        if (closed) return;
+        if (closed || identity !== streamIdentity) return;
         let envelope: DashboardStreamEnvelope;
         try {
           envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(message.data));
@@ -270,6 +273,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
   function reconnect(withResume: boolean, nextState: "connecting" | "reconnecting"): void {
     if (closed) return;
+    ++streamIdentity;
     const previous = stream;
     stream = undefined;
     previous?.close();

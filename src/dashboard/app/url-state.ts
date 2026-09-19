@@ -103,15 +103,7 @@ export interface AppRouteState {
   readonly settings?: string;
 }
 
-const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
-
-/**
- * Parses a query string into route state. A malformed day is DROPPED rather
- * than passed to the server: `?day=yesterday` should fall back to the server's
- * today, not produce a wire error the operator cannot act on. A malformed run
- * id is likewise dropped — the projection would refuse it anyway, and an empty
- * panel with a legible day beats an error page.
- */
+/** Preserve the raw date identity so the date boundary can explain and recover invalid links. */
 export function parseRoute(search: string): AppRouteState {
   const params = new URLSearchParams(search);
   const day = params.get("day");
@@ -139,7 +131,7 @@ export function parseRoute(search: string): AppRouteState {
     activity?: string;
     settings?: string;
   } = { start: params.get("start") === "1" };
-  if (day !== null && DAY_PATTERN.test(day)) route.day = day;
+  if (day !== null) route.day = day;
   if (run !== null && run.length > 0) route.run = run;
   if (section !== null && section.length > 0) route.section = section;
   if (intake !== null && intake.length > 0) route.intake = intake;

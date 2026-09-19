@@ -1,3 +1,4 @@
+import { dateNavigationReader, seedDateNavigation } from "./date-navigation-server.js";
 import { mkdtempSync,rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer,type IncomingMessage,type Server,type ServerResponse } from "node:http";
@@ -121,7 +122,7 @@ export interface SeededServer {
 
 
 export async function startSeededServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean }>,
 ): Promise<SeededServer> {
   // Ref frontend-backend-integration §7: the same working-tree proof the fixture adapter demands —
   // asserted before any temp root, database or port exists.
@@ -140,7 +141,7 @@ export async function startSeededServer(
   };
   const projection = createRunQueueProjection({
     timeline: database.authority.timelineEvents,
-    reader: sqliteRunReader(database, clock),
+    reader: input.dateNavigation === true ? dateNavigationReader(database, clock) : sqliteRunReader(database, clock),
     stateRoot,
     clock,
     appVersion: SEEDED_APP_VERSION,
@@ -177,6 +178,11 @@ export async function startSeededServer(
   const notes = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
 
   const runIds = seed({ database, spans, notes });
+  if (input.dateNavigation === true) {
+    const source = runIds.runningRun;
+    if (source === undefined) throw new Error("date-proof-source-run-missing");
+    seedDateNavigation(database, source);
+  }
 
   const { app, hub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds});
 

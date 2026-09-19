@@ -1,3 +1,4 @@
+import { createCalendarQuery } from "../../../src/server/dashboard/queries/calendar.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
 import { join } from "node:path";
@@ -168,6 +169,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       }),
     },
     projection,
+    calendar: createCalendarQuery(database, clock),
     search: createCrossDateSearchService({
       clock,
       sourceIdentity: database.getSourceDatabaseIdentity(),

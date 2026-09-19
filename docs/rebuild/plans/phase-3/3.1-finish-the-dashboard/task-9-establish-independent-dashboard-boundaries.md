@@ -911,3 +911,24 @@ supervisor creates `codex/3.1.9.7-archive` at `/Users/julianhein/Projects/hr-wor
 verified plan commit, which contains the integrated prerequisites. Direct committed-ref delivery
 does not require or authorize a planning merge into master. The operator controls integration
 through 3.1.9.8. The Phase 3.1 focused/no-review cadence and final 3.1.19 acceptance stay unchanged.
+
+
+<a id="date-navigation-ownership-amendment-2026-09-18"></a>
+
+### Date navigation ownership amendment — 2026-09-18
+
+The operator approved [3.1.10 DN1–DN5](task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18)
+after accepted 3.1.9.8. Production serves only the selected month's counts, so the former allocation
+to an isolated picker cannot supply cross-month A19 navigation. Task 3.1.10 owns the bounded calendar
+read over canonical summaries, strict transport, request/day identity and the date state machine.
+Its approved brief grants narrow date-only edits to app/route/history/top-bar/clock/resource wiring,
+client subscription, shell API/composition, read-only summary adapter/facade and matching fixtures.
+This explicitly releases those seams from the baseline shared-file reservation for this standalone
+assignment. It does not reopen completed prerequisites or grant unrelated shell/service changes.
+
+The [date interaction rules](../../../reference/dashboard-surfaces.md#date-navigation-amendment-2026-09-18)
+and [bounded read/coherence contract](../../../reference/frontend-backend-integration.md#calendar-navigation-read-amendment-2026-09-18)
+are ratified with their decision-index pointers. No DDL, summary-publication redesign, worker/workflow
+change, shared DS redesign or unapproved reference refreeze. One Astra/medium supervisor, no workers
+or independent review; targeted production-service browser proof and focused checks, operator-directed
+local integration and cleanup. Full acceptance remains 3.1.19. Approval does not claim implementation.
