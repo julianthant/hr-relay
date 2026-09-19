@@ -472,6 +472,11 @@ function readProtectedStore(
   }
 }
 
+/** Value-free revision for invalidating observations after a protected-settings edit. */
+export function protectedSecretRevision(source: ProtectedSecretSource): number {
+  return readProtectedStore("protected-settings", source).revision;
+}
+
 function resolveSecretValue(name: SecretName, source: ProtectedSecretSource): string | undefined {
   registeredSecretSpec(name);
   return readProtectedStore(name, source).entries[name]?.value;

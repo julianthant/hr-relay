@@ -1,3 +1,5 @@
+import { composeRuntimePreflight, type RuntimePreflight } from "../preflight/runtime-admission.js";
+import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { assertNoMigratedEnvironmentKeys } from "../../domain/secrets.js";
 import { RunRecordService, type RunRecordServiceDependencies } from "../../core/run-record-service.js";
@@ -45,6 +47,7 @@ import { composeWorkerRuntime } from "../worker/compose.js";
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
 export interface ProductionDryRunScenarioRuntimeInput {
+  readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   readonly isolation: RuntimeIsolation;
   readonly repoRoot: string;
   readonly env: NodeJS.ProcessEnv;
@@ -74,6 +77,7 @@ function descriptorFor(workflow: string) {
 
 function createScenarioKernel(input: Readonly<{
   publishQueued: RunRecordServiceDependencies["publishQueued"];
+  preflight?: RuntimePreflight;
   database: AuthorityDatabase;
   clock: Clock;
   ids: IdFactory;
@@ -82,7 +86,9 @@ function createScenarioKernel(input: Readonly<{
   configSnapshotId: string;
 }>): CommandKernel {
   return createCommandKernel({
-    lifecycle: new RunRecordService({ database: input.database, clock: input.clock, ids: input.ids, publishQueued: input.publishQueued }),
+    ...(input.preflight === undefined ? {} : { preflight: input.preflight.admission }),
+    lifecycle: new RunRecordService({ database: input.database, clock: input.clock, ids: input.ids, publishQueued: input.publishQueued,
+      ...(input.preflight === undefined ? {} : { admitQueuedRun: run => input.preflight?.admission.assertReady(input.preflight.runScope(run.envelope)) }) }),
     authority: { withAuthorityTransaction: (work) => input.database.withAuthorityTransaction(work) },
     clock: input.clock,
     ids: input.ids,
@@ -234,6 +240,7 @@ export function createProductionDryRunScenarioRuntime(
 
   const drain = input.drainWorker ?? (async (workflow: string): Promise<void> => {
     await composeWorkerRuntime({
+      ...(input.preflightRunnerFactory === undefined ? {} : { preflightRunnerFactory: input.preflightRunnerFactory }),
       isolation: input.isolation,
       // The scenario runner owns one explicit ephemeral worker identity. It
       // may restart that same member for the post-gate drain, but it never
@@ -312,6 +319,17 @@ export function createProductionDryRunScenarioRuntime(
           readSettings(repositories));
         input.afterSettingsRead?.();
         const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, input.clock);
+        database.withAuthorityTransaction(repositories => {
+          withCurrentSettings(repositories, { revision: persistedSettings.revision, settingsFingerprint: persistedSettings.settingsFingerprint }, () => requireCurrentSettings(persistedSettings, repositories));
+          repositories.runtimeConfig.requireActive({ settingsRevision: persistedSettings.revision, settingsFingerprint: persistedSettings.settingsFingerprint, configFingerprint: resolved.fingerprint });
+        });
+        const preflight = composeRuntimePreflight({ database, clock: input.clock, repoRoot: input.repoRoot, isolation: input.isolation,
+          descriptors: { resolve: descriptorFor }, descriptorSetHash: descriptor.contractFingerprint,
+          protectedSecrets: createCredentialSecretSource(createCredentialStore({ stateRoot })), environment: input.env,
+          ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
+        const preflightScope = preflight.currentScope(request.manifest.workflow);
+        await preflight.admission.prepare(preflightScope, new AbortController().signal);
+        preflight.admission.assertReady(preflightScope);
         admitted = database.withAuthorityTransaction((repositories) => {
           // SQLite excludes ordinary settings changes throughout start admission.
           // Credential availability is read independently at its next-use boundary.
@@ -329,6 +347,7 @@ export function createProductionDryRunScenarioRuntime(
           const configSnapshotId = active.configSnapshotId;
           const identity = { fingerprint: active.configFingerprint, snapshotId: configSnapshotId };
           const plans = createStartPlanService({
+            preflight: preflight.admission,
             ...(request.protectedBindings === undefined ? {} : { protectedSubmissionBindings: request.protectedBindings }),
             protectedSecrets: createCredentialSecretSource(createCredentialStore({ stateRoot })),
             authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -362,6 +381,7 @@ export function createProductionDryRunScenarioRuntime(
             settingsFingerprint: persistedSettings.settingsFingerprint }, () => {
           requireCurrentSettings(persistedSettings, repositories);
           const kernel = createScenarioKernel({
+            preflight,
             publishQueued: (run, publication) => {
               if (publication === undefined) throw new Error("scenario queued publication context missing");
               createTimelineEmitter({ repository: database.authority.timelineEvents, clock: input.clock,

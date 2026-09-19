@@ -1,3 +1,5 @@
+import type { WorkerCommandDispatch, WorkerControlAction } from "../app/worker-command-dispatch.js";
+import { browserHealthLabel, useSessionControl, workerControlRefusal } from "../app/session-control-model.js";
 import {
 AlertTriangle,
 ChevronDown,
@@ -19,39 +21,21 @@ import { statusCount,workflowStatusCounts,type QueueSurfaceWire,type WorkflowBoo
 import { SYSTEM_LABEL } from "./system-chip-model.js";
 
 
-/**
- * ONE browser session this worker holds (D248, R7-3).
- *
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `DemoShell.tsx:1436-1516` (`BrowserTile`), with two deliberate divergences,
- * both of them the demo's own honest arm rather than a reduction of it:
- *
- * - **Every tile reads `Not checked`**, which is the demo's `unknown` tone and
- *   carries its comment verbatim — *it must NOT read as healthy.* Nothing in
- *   this build probes a live session, so any other word would be a health
- *   claim nobody made.
- * - **The second line is the tone word alone, and the session's AGE is a
- *   popover fact — never a URL.** No span, checkpoint or lease records a page
- *   address; composing one from the system id would put a plausible-looking
- *   string where an observation belongs. How long a session has been open is
- *   a fact the wire actually carries, reachable behind the tile's control.
- *
- * The demo's right-click menu (Peek / Check now / Bring to front / Refresh /
- * Reopen / Pause auto-recovery) is NOT ported. `refresh-browser` and
- * `reopen-browser` are real kernel verbs whose process effects the dashboard
- * supervisor refuses BY NAME (`server/dashboard/compose.ts` —
- * `refreshBrowser`/`reopenBrowser` are undefined on purpose, ref execution-and-sessions's live
- * lane), so every item would open a menu that 500s on click.
- */
+/** Exact-session identity and dated owner observation, with controls in the existing tile. */
 function BrowserTile({
   browser,
   span,
   nowIso,
+  control,
+  refusal,
 }: {
+  control?: (type: WorkerControlAction, sessionId: string) => void;
+  refusal?: string;
   browser: WorkerCardWire["browsers"][number];
   span: boolean;
   nowIso: string;
 }) {
+  const health = browserHealthLabel(browser);
   const openFor = fmtElapsed(elapsedSecondsBetween(browser.openedAt, nowIso));
   return (
     <div
@@ -73,7 +57,13 @@ function BrowserTile({
           title={`${SYSTEM_LABEL[browser.system]} browser session`}
           facts={[
             { label: "Session ID", value: String(browser.sessionId) },
-            { label: "Browser status", value: "Not checked" },
+            { label: "Browser status", value: health },
+            ...(browser.observation?.state === "present" ? [
+              { label: "Observed at", value: browser.observation.observedAt },
+              { label: "Instance", value: browser.observation.instance ?? "Not recorded" },
+              { label: "Browser mode", value: browser.observation.browserMode },
+              { label: "Configuration", value: browser.observation.configFingerprint },
+            ] : []),
             { label: "Open for", value: openFor },
           ]}
         />
@@ -81,7 +71,11 @@ function BrowserTile({
       {/* The tone word alone, as the demo's tile prints it (`tone.label`); the
           session's age is a popover fact, because `Not checked · open 55m 4s`
           truncated to `Not checked · open 5…` in a two-column tile. */}
-      <span className={cn(dsText.micro, "truncate opacity-80")}>Not checked</span>
+      <span className={cn(dsText.micro, "truncate opacity-80")} title={browser.observation?.state === "present" ? `Observed ${browser.observation.observedAt}` : "No owner observation"}>{health}</span>
+      {control !== undefined && <div className="flex flex-wrap gap-[var(--ds-space-tight)]">
+        <Button size="sm" variant="ghost" aria-label={`Refresh ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Reset this session and verify authentication"} disabled={refusal !== undefined} onClick={() => control("refresh-browser", browser.sessionId)}>Refresh</Button>
+        <Button size="sm" variant="ghost" aria-label={`Reopen ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Close and reopen this exact session"} disabled={refusal !== undefined} onClick={() => control("reopen-browser", browser.sessionId)}>Reopen</Button>
+      </div>}
     </div>
   );
 }
@@ -246,7 +240,9 @@ function WorkerCard({
   nowIso,
   membership,
   onStop,
+  workerCommands,
 }: {
+  workerCommands?: WorkerCommandDispatch;
   card: WorkerCardWire;
   workflowLabel: string;
   queued: number;
@@ -254,6 +250,9 @@ function WorkerCard({
   membership: WorkerSessionMembership;
   onStop?: (card: WorkerCardWire) => void;
 }) {
+  const control = useSessionControl(card, workerCommands);
+  const refusal = control.busy ? "Command unresolved." : workerControlRefusal(card);
+  const browserRefusal = control.busy ? "Command unresolved." : workerControlRefusal(card, true);
   const tone = WORKER_TONE[card.state];
   const directive = workerDirectiveNote(card);
   const elapsed = workerElapsedSeconds(card, nowIso);
@@ -271,6 +270,8 @@ function WorkerCard({
   if (card.state === "failed") {
     return (
       <article
+        ref={control.cardElement}
+        tabIndex={-1}
         title={`Worker ${String(card.workerId)}`}
         className={cn(
           "flex shrink-0 flex-col border",
@@ -300,6 +301,8 @@ function WorkerCard({
 
   return (
     <article
+      ref={control.cardElement}
+      tabIndex={-1}
       title={`Worker ${String(card.workerId)}`}
       className={cn(
         // No explicit height: `align-items: stretch` only stretches an item
@@ -378,6 +381,17 @@ function WorkerCard({
             // none, so since D305 the fact rides here, and each arm keeps its
             // served reason rather than collapsing to "no session".
             ...workerSessionFacts(membership),
+            { label: "Ownership", value: card.controls?.ownership.state === "owned" ? "Owned by this dashboard" : card.controls?.ownership.reason ?? "Not available" },
+            { label: "Directive", value: card.directive },
+            ...(card.controls?.basis.state === "present" ? [
+              { label: "Worker lifetime", value: String(card.controls.basis.value.leaseGeneration) },
+              { label: "Control revision", value: String(card.controls.basis.value.controlRevision) },
+            ] : []),
+            ...(card.controls?.operation === undefined ? [] : [
+              { label: "Command ID", value: card.controls.operation.commandId },
+              { label: "Command outcome", value: card.controls.operation.state },
+              { label: "Outcome at", value: card.controls.operation.at },
+            ]),
           ]}
           touchAlign="up"
         />
@@ -400,10 +414,11 @@ function WorkerCard({
             const span = browserView.slots.length % 2 === 1 && index === browserView.slots.length - 1;
             return slot.state === "open" ? (
               <BrowserTile
-                key={`open:${String(slot.browser.sessionId)}`}
+                key={`open:${slot.browser.system}`}
                 browser={slot.browser}
                 nowIso={nowIso}
                 span={span}
+                {...(workerCommands === undefined ? {} : { control: control.invoke, refusal: browserRefusal })}
               />
             ) : (
               <RequiredBrowserTile key={`required:${slot.system}`} system={slot.system} span={span} />
@@ -412,6 +427,8 @@ function WorkerCard({
         </div>
       )}
 
+      {workerCommands !== undefined && control.message !== undefined && <div role="status" className={cn(dsText.micro, "text-[color:var(--ds-status-waiting-fg)]")}>{control.message}{control.retry !== undefined && <Button size="sm" variant="ghost" onClick={control.retry}>Check outcome</Button>}</div>}
+      {workerCommands !== undefined && browserRefusal !== undefined && <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{browserRefusal}</span>}
       {/*
         THE BASE — pipeline then footer, pinned to the bottom as ONE block
         (ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -450,16 +467,17 @@ function WorkerCard({
           <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
             {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
           </span>
+          {workerCommands !== undefined && <Button size="sm" variant="outline" disabled={refusal !== undefined} title={refusal} onClick={() => control.invoke(card.directive === "pause" ? "resume-worker" : "pause-worker")}>{card.directive === "pause" ? "Resume" : "Pause"}</Button>}
           {/* The worker card's stop control. */}
           <Button
             size="sm"
             variant="outline"
             className="shrink-0"
-            disabled={onStop === undefined || !canStopWorker(card)}
+            disabled={workerCommands === undefined ? onStop === undefined || !canStopWorker(card) : refusal !== undefined}
             title={canStopWorker(card)
               ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
               : `Worker ${String(card.workerId)} is already ${card.directive === "stop" ? "stopping" : "settled"}`}
-            onClick={() => onStop?.(card)}
+            onClick={() => workerCommands === undefined ? onStop?.(card) : control.invoke("stop-worker")}
           >
             Stop
           </Button>
@@ -930,6 +948,7 @@ function AddWorkersDialog({
  * version carries its own, which is a fact about the run and stays on the run.
  */
 export function SessionPanel({
+  open: controlledOpen, onOpenChange,
   workerCards,
   queueSurfaces,
   workerPools,
@@ -939,9 +958,12 @@ export function SessionPanel({
   connection,
   appVersion,
   onStopWorker,
+  workerCommands,
   onPlanWorkerCount,
   onSpawnWorker,
 }: {
+  open?: boolean;
+  onOpenChange?: React.Dispatch<React.SetStateAction<boolean>>;
   workerCards: readonly WorkerCardWire[];
   queueSurfaces: readonly QueueSurfaceWire[];
   workerPools: readonly WorkerPoolWire[];
@@ -958,6 +980,7 @@ export function SessionPanel({
   connection: SubscriptionState;
   appVersion: string;
   onStopWorker?: (card: WorkerCardWire) => void;
+  workerCommands?: WorkerCommandDispatch;
   /**
    * D271's two pool controls. Both RETURN the folded settlement rather than
    * reporting it themselves: a CAS refusal is about the pool version this
@@ -972,7 +995,9 @@ export function SessionPanel({
     member: Readonly<{ workflowId: string; workerId: string; expectedVersion: number }>,
   ) => Promise<CommandSettlement>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [addOpen, setAddOpen] = useState(false);
   const [outcomes, setOutcomes] = useState<Readonly<Record<string, PoolControlOutcome>>>({});
   const sessionPanelView = useMemo(
@@ -1235,6 +1260,7 @@ export function SessionPanel({
               nowIso={nowIso}
               membership={membershipOf(card)}
               {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
+              {...(workerCommands === undefined ? {} : { workerCommands })}
             />
           ))}
         </div>

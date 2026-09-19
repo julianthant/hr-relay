@@ -11,6 +11,17 @@ D329 replaces the old assumption that Separations could close before the final w
 and acceptance work. Any source, manifest, fingerprint, runtime-schema, or load-bearing configuration
 change invalidates admission and returns the defect to a newly numbered Phase 3.2 remediation task.
 
+
+## Task shape and verification
+
+Each task delivers a specific admission, controlled-proof or accepted-release outcome. This phase
+has no implementation feature work. Under the [2026-09-19 cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2), Tasks 1–3 run their focused evidence,
+target/rehearsal checks and applicable lint/generated checks; Task 4 owns full typecheck, lint,
+coverage and all phase-wide acceptance gates at the end. Frozen-candidate evidence may be reused
+only under D191's unchanged-input rules, with its actual command/result and tested identity recorded.
+No full-suite rerun per controlled-proof task. Any software defect returns to 3.2; the candidate
+cannot be repaired here. No check required before an external effect moves after that effect.
+
 ## Phase summary
 <!-- roadmap: workflow-live-acceptance -->
 
@@ -101,11 +112,11 @@ Task 3 can discharge the controlled-commit criterion for the frozen candidate.
 |---|---|
 | former 3.2 Task 10 A2–A5 | Tasks 1–3 |
 | former 3.2 Task 10 A8 | Task 4 |
-| former 3.2 Task 12 strict live remainder | Phase 3.2 Task 5, then Task 1 confirmation |
+| former 3.2 Task 12 strict live remainder | Phase 3.2 Task 8.2, then Task 1 confirmation |
 | former 3.2 Task 13 | Tasks 1–4 |
-| former 3.3 Task 4 close evidence | Task 4, after Phase 3.2 Task 4.1 accepts Person Lookup |
+| former 3.3 Task 4 close evidence | Task 4, after Phase 3.2 Task 7 accepts Person Lookup |
 | former 3.3 Task 5 controlled-write exclusion | Tasks 2–3 now own the real proof explicitly |
-| former 3.3 Task 6 lifecycle close | Phase 3.2 Task 6 for freeze; Task 4 for final acceptance close |
+| former 3.3 Task 6 lifecycle close | Phase 3.2 Task 9 for freeze; Task 4 for final acceptance close |
 
 ## Exit criteria
 

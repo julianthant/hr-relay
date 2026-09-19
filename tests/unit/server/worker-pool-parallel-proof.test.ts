@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * W5 (ref execution-and-sessions §7.1 / §11, D271): the automated two-child
@@ -68,6 +69,12 @@ import {
   UNWIRED_INTAKE_PARSER,
 } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
+
+function servedControlBasis(database: AuthorityDatabase, workerId: string) {
+  const lease = database.authority.workerLeases.get(workerId);
+  assert.ok(lease?.controlRevision, "the fixture must serve a real control basis");
+  return { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision };
+}
 
 const NOW = "2026-08-26T09:00:00.000Z";
 const PL = WorkflowIdSchema.parse("person-lookup");
@@ -467,7 +474,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       const pausePl1 = harness.kernel.executeWorkerPool({
         ...envelope(harness.clock, pausePl1Id),
         type: "pause-worker",
-        target: { workerId: PL_1.workerId, expectedVersion: 1 },
+        target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
         reason: "w5 soak pause",
       });
       await settleMicrotasks();
@@ -491,7 +498,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       assert.equal((await harness.kernel.executeWorkerPool({
         ...envelope(harness.clock, resumePl1Id),
         type: "resume-worker",
-        target: { workerId: PL_1.workerId, expectedVersion: 2 },
+        target: { workerId: PL_1.workerId, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
       })).state, "applied");
       assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "run");
 
@@ -510,7 +517,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       const stopSep = harness.kernel.executeWorkerPool({
         ...envelope(harness.clock, stopSepId),
         type: "stop-worker",
-        target: { workerId: SEP_1.workerId, expectedVersion: 1 },
+        target: { workerId: SEP_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, SEP_1.workerId) },
         reason: "sep teardown",
       });
       const [shrinkResult, stopSepResult] = await Promise.all([shrinkPl, stopSep]);
@@ -535,7 +542,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       assert.equal((await harness.kernel.executeWorkerPool({
         ...envelope(harness.clock, stopPl1Id),
         type: "stop-worker",
-        target: { workerId: PL_1.workerId, expectedVersion: 3 },
+        target: { workerId: PL_1.workerId, expectedVersion: 3, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
         reason: "pl teardown",
       })).state, "applied");
       required(harness.children[0], "PL-1 child").emitExit(0, null);
@@ -549,15 +556,13 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
         assert.equal(evidence.reportedBy, "os", member.workerId);
       }
       assert.deepEqual(harness.control.supervisor.close(), []);
-      await assert.rejects(
-        () => harness.kernel.executeWorkerPool({
-          ...envelope(harness.clock),
-          type: "spawn-worker",
-          target: { workflowId: PL, expectedVersion: 2 },
-          payload: { workerId: PL_3.workerId },
-        }),
-        /this worker supervisor is closed; a closed supervisor acknowledges nothing/,
-      );
+      const closedCommand = { ...envelope(harness.clock), type: "spawn-worker",
+        target: { workflowId: PL, expectedVersion: 2 }, payload: { workerId: PL_3.workerId } };
+      const closed = await harness.kernel.executeWorkerPool(closedCommand);
+      assert.equal(closed.state, "rejected");
+      if (closed.state === "rejected") assert.match(closed.message, /this worker supervisor is closed; a closed supervisor acknowledges nothing/);
+      assert.equal(harness.database.authority.workerControls.get(closedCommand.commandId)?.phase.state, "refused");
+      assert.equal(harness.database.authority.commandAudits.findByCommand(closedCommand.commandId)?.result.state, "rejected");
 
       // ── truthfulness sweep: every applied command journaled + audited ────
       for (const commandId of [
@@ -625,7 +630,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
     assert.equal((await harness.kernel.executeWorkerPool({
       ...envelope(harness.clock, stopId),
       type: "stop-worker",
-      target: { workerId: PL_1.workerId, expectedVersion: 1 },
+      target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
       reason: "w5 wedge",
     })).state, "applied");
 
@@ -646,7 +651,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
     assertJournaled(harness.database, stopId);
   });
 
-  it("a durable stop-channel throw surfaces UNCERTAIN — no applied ack, no journal row, plans refuse the member", async () => {
+  it("a worker that dies before supervisor admission is durably refused without a stop effect", async () => {
     const harness = openSoakHarness({
       interceptPool: (pool, edges) => ({
         ...pool,
@@ -681,30 +686,18 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
     assert.equal((await spawn).state, "applied");
 
     const stopId = nextCommandId();
-    await assert.rejects(
-      () => harness.kernel.executeWorkerPool({
-        ...envelope(harness.clock, stopId),
-        type: "stop-worker",
-        target: { workerId: PL_1.workerId, expectedVersion: 1 },
-        reason: "w5 uncertain",
-      }),
-      /is UNCERTAIN: the durable stop channel threw \(graceful stop for person-lookup-worker-1 found the lease stopped/,
-    );
-    assertUnjournaled(harness.database, stopId);
-    const evidence = harness.control.supervisor.memberEvidence(PL_1);
-    assert.equal(evidence?.state, "stop-uncertain");
-    // A plan can no longer attest the member whose stop may have landed.
-    const planId = nextCommandId();
-    await assert.rejects(
-      () => harness.kernel.executeWorkerPool({
-        ...envelope(harness.clock, planId),
-        type: "plan-worker-count",
-        target: { workflowId: PL, expectedVersion: 0 },
-        payload: { desiredWorkers: 1 },
-      }),
-      /durable stop directive is UNCERTAIN .*a plan cannot attest a member whose stop may have landed/,
-    );
-    assertUnjournaled(harness.database, planId);
+    const result = await harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, stopId), type: "stop-worker",
+      target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) }, reason: "w5 refused",
+    });
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.match(result.message, /worker-control-basis-changed-before-effect/);
+    assert.equal(harness.database.authority.workerControls.get(stopId)?.phase.state, "refused");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId)?.result.state, "rejected");
+    assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.lifecycle.state, "stopped");
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(stopId)?.versionChanges, []);
+    assert.equal(harness.control.supervisor.memberEvidence(PL_1)?.state, "running");
+
   });
 });
 
@@ -960,13 +953,13 @@ describe("W5 real processes: two children supervised concurrently through the co
         harness.kernel.executeWorkerPool({
           ...envelope(systemClock, stop1Id),
           type: "stop-worker",
-          target: { workerId: PL_1.workerId, expectedVersion: lease1.version },
+          target: { workerId: PL_1.workerId, expectedVersion: lease1.version, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
           reason: "w5 stop",
         }),
         harness.kernel.executeWorkerPool({
           ...envelope(systemClock, stop2Id),
           type: "stop-worker",
-          target: { workerId: PL_2.workerId, expectedVersion: lease2.version },
+          target: { workerId: PL_2.workerId, expectedVersion: lease2.version, controlBasis: servedControlBasis(harness.database, PL_2.workerId) },
           reason: "w5 stop",
         }),
       ]);
@@ -1071,7 +1064,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       const childOutput = (): string => records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
-      const runtime: DashboardRuntime = await composeDashboardRuntime({
+      const runtime: DashboardRuntime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         frontendPortOverride: 0,
@@ -1143,8 +1136,10 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
         systemClock,
       );
       let plLeaseVersion: number;
+      let plControlBasis: ReturnType<typeof servedControlBasis>;
       try {
         plLeaseVersion = required(sideDoor.authority.workerLeases.get(PL_1.workerId), "PL lease").version;
+        plControlBasis = servedControlBasis(sideDoor, PL_1.workerId);
       } finally {
         sideDoor.close();
       }
@@ -1152,7 +1147,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
         await post({
           ...envelope(systemClock),
           type: "stop-worker",
-          target: { workerId: PL_1.workerId, expectedVersion: plLeaseVersion },
+          target: { workerId: PL_1.workerId, expectedVersion: plLeaseVersion, controlBasis: plControlBasis },
           reason: "w5 runtime stop",
         }),
         { status: 200, state: "applied" },

@@ -31,9 +31,13 @@ describe("roadmap desktop interaction", () => {
     expect(code("dash-detail-foundation")).toBe("3.1.14");
     expect(code("dash-gates")).toBe("3.1.14.5");
     expect(code("workflow-authoring-core")).toBe("3.2.1");
-    expect(code("workflow-guide-proof")).toBe("3.2.3.2");
-    expect(code("workflow-acceptance-foundation")).toBe("3.2.4");
-    expect(code("separations-compiled-acceptance")).toBe("3.2.4.2");
+    expect(code("workflow-guide-proof")).toBe("3.2.5");
+    expect(code("workflow-acceptance-foundation")).toBe("3.2.6");
+    expect(code("separations-compiled-acceptance")).toBe("3.2.8");
+    expect(code("workflow-proof-finalizer")).toBe("3.2.5.1");
+    expect(code("workflow-acceptance-finalizer")).toBe("3.2.8.1");
+    expect(code("separations-readonly-acceptance")).toBe("3.2.8.2");
+    expect(code("workflow-candidate-freeze")).toBe("3.2.9");
     expect(code("claude-mcp")).toBe("3.5.2");
     expect(code("claude-monitor")).toBe("3.5.2.1");
     expect(code("claude-clients")).toBe("3.5.2.2");
@@ -46,6 +50,25 @@ describe("roadmap desktop interaction", () => {
     node?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(document.querySelector("#drawer-title")?.textContent).toBe("3.1.1 · Build the shared dashboard surfaces");
     document.querySelector("#canvas-wrap")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+
+  it("labels intended parallel peers without labelling sequential integration", async () => {
+    await renderRoadmap();
+    for (const [key, group] of [
+      ["workflow-runtime-inheritance", "authoring"],
+      ["workflow-guide-proof", "authoring"],
+      ["person-lookup-acceptance", "workflows"],
+      ["separations-compiled-acceptance", "workflows"],
+      ["claude-monitor", "agent clients"],
+      ["claude-clients", "agent clients"],
+    ]) {
+      expect(document.querySelector(`.nd[data-key="${key}"]`)?.textContent).toContain(`Parallel · ${group}`);
+    }
+    for (const key of ["workflow-proof-finalizer", "workflow-acceptance-finalizer", "separations-readonly-acceptance", "workflow-candidate-freeze"]) {
+      expect(document.querySelector(`.nd[data-key="${key}"]`)?.textContent).not.toContain("Parallel");
+    }
+    expect(document.querySelector("#drawer-body")?.textContent).toContain("its subtasks may be sequential");
+    expect(document.querySelector("#drawer-body")?.textContent).toContain("full tests at its end");
   });
 
   it("leaves node detail by clicking blank canvas space", async () => {

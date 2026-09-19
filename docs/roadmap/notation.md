@@ -164,6 +164,9 @@ Three standing rules for this class:
 
 ## D344 decimal prerequisite tasks
 
+**Phase 3.2 onward:** use the newer task shape below. This older prerequisite-only shape remains
+for Phase 3.1 and preserved earlier assignments.
+
 For Phase 3, `#### N` is an actual task (`3.P.N`); `##### 1`, `##### 2`, etc. are its
 independent parallel children (`3.P.N.1`, `3.P.N.2`). The parent completes its own acceptance
 before children start. Each child explicitly names the parent in `needs:`. Siblings must not
@@ -172,3 +175,18 @@ Sequential consumers have separate numbers. Named dependencies determine readine
 Use existing task/topic `doc:` bindings and stable execution IDs; historical headings remain aliases.
 Phase 0–2 and in-flight briefs retain their prior notation. See
 [roadmap D344](roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08).
+
+## Tangible tasks from Phase 3.2 (2026-09-19)
+
+`#### N` names one concrete feature/outcome in a phase; `##### N` names a tangible subtask.
+Both sequential and parallel subtasks are valid. Use `needs:` for all actual dependencies; a
+sequential child may require a sibling. An enclosing feature may deliver a usable base before
+its children extend it, but the full feature is not complete until its required subtasks finish.
+Bind the usable base explicitly when a child depends on its parent; never create a dependency cycle.
+
+Every intended parallel peer has an explicit visible `chip: Parallel · <group>` using the same
+group name for its peers. Preserve any important existing status information in `date:` or the
+summary. No chip means sequential, not implicitly parallel because of nesting or missing edges.
+No approved parallel arrangement means no Parallel chip. Capacity and operator launch/integration
+permissions still apply. Read the [governance amendment](roadmap.md#tangible-tasks-and-phase-exit-gates)
+for focused checks during the phase and full tests at phase exit. Earlier labels retain their history.

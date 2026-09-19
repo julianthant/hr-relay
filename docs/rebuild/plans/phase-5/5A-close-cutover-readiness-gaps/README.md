@@ -12,6 +12,17 @@ Contracts these items belong to live in `reference/`.
 is Phase 5A. Phase 4 is the workflow-migration program; Phase 5A closes or assigns readiness gaps
 before Phase 5B switches production authority.
 
+
+## Task shape and verification
+
+Each remaining task finishes a named operator capability or resolves a specific readiness gap.
+Existing completed, retired and deferred rows retain their evidence and dispositions. New subtasks
+must name concrete feature outcomes; they are sequential unless explicitly labelled Parallel under
+an admitted ownership plan. Use focused tests, lint and affected checks throughout this part under
+the [2026-09-19 cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2). The final readiness outcome owns full typecheck, lint, coverage and all applicable
+readiness gates, required repairs and review before 5A closes and 5B can switch production authority.
+No unselected optional deferral becomes a release requirement.
+
 ## Shelf summary
 <!-- roadmap: deferred -->
 <!-- roadmap: cutover-readiness -->

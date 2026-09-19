@@ -14,6 +14,17 @@ Tasks 2.1/2.2 (independent parallel children) → Task 3. This part closes Phase
 before Phase 4. Desktop attachment remains Phase 6. Existing D75 solo request admission is built;
 the agent capability and attribution changes below are not yet implemented.
 
+
+## Task shape and verification
+
+Each task delivers a concrete capability: caller attribution, a usable agent API, or proven
+cooperation. Monitoring/inbox and actor-aware client presentation are tangible API subtasks,
+labelled **Parallel · agent clients**. Their accepted API base and disjoint ownership remain
+prerequisites; the label grants no dispatch or merge authority. Under the [2026-09-19 cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2), Tasks 1,
+2, 2.1 and 2.2 use focused tests, lint and affected static/generated checks, including prerequisite
+and intermediate integration. Task 3 owns full typecheck, lint, coverage, applicable phase-wide gates
+and repairs at this phase's end. Independent review and the existing dry-run-only proof remain.
+
 ## Current assignment names (D344)
 
 | Current task | Outcome | Historical task alias |

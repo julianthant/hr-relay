@@ -1387,15 +1387,15 @@ describe("D113 worker-browser arms", () => {
     const started = harness.database.authority.workerLeases.start(WORKER_START);
     assert.equal(started.state, "started");
 
-    const paused = harness.kernel.execute(workerCommand("pause-worker", { workerId: "worker-1", expectedVersion: 999 }));
+    const paused = harness.kernel.execute(workerCommand("pause-worker", { workerId: "worker-1", expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }));
     assert.equal(paused.state, "applied");
     assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "pause");
 
-    const resumed = harness.kernel.execute(workerCommand("resume-worker", { workerId: "worker-1", expectedVersion: 999 }));
+    const resumed = harness.kernel.execute(workerCommand("resume-worker", { workerId: "worker-1", expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 2 } }));
     assert.equal(resumed.state, "applied");
     assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "run");
 
-    const stopped = harness.kernel.execute(workerCommand("stop-worker", { workerId: "worker-1", expectedVersion: 999 }));
+    const stopped = harness.kernel.execute(workerCommand("stop-worker", { workerId: "worker-1", expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 3 } }));
     assert.equal(stopped.state, "applied");
     assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "stop");
 
@@ -1442,7 +1442,7 @@ describe("D113 worker-browser arms", () => {
     assert.ok(lease !== undefined);
     const refreshed = harness.kernel.execute(workerCommand(
       "refresh-browser",
-      { workerId: "worker-1", browserSessionId: UUID_4, expectedVersion: lease.version },
+      { workerId: "worker-1", controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_4, expectedVersion: lease.version },
     ));
     assert.equal(refreshed.state, "applied");
     const unknownWorkflow = harness.kernel.execute(workerCommand(

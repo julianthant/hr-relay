@@ -25,6 +25,7 @@
  * no lease is NOT a card, because authority is what says a worker exists.
  */
 import { z } from "zod";
+import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../domain/worker-control.js";
 import {
   WorkerBrowserWireSchema,
   WorkerCardWireSchema,
@@ -72,14 +73,7 @@ function workerCardState(lease: WorkerLeaseRecord): WorkerCardWire["state"] {
   }
   if (lease.lifecycle.state === "busy") return "working";
   if (lease.lifecycle.state === "starting") return "starting";
-  /*
-   * `paused` and `stopping` are legal lifecycle states that NOTHING reports:
-   * the worker's maintenance ticker writes `idle` or `busy` and its exit writes
-   * `stopped` (`src/server/worker/compose.ts`), so a pause is carried by the
-   * directive and not by the phase. They land on `idle` here — which is what
-   * such a lease would mean, a live worker claiming nothing — and if a producer
-   * ever writes one, its own arm belongs on the wire enum at that moment.
-   */
+  if (lease.lifecycle.state === "paused") return "paused";
   return "idle";
 }
 
@@ -122,15 +116,35 @@ export function workerCardOf(input: Readonly<{
   lease: WorkerLeaseRecord;
   fold: WorkerSpanFold | undefined;
   resolveTrace: (runId: string) => string | undefined;
+  observations?: readonly WorkerBrowserObservation[];
+  operations?: readonly WorkerControlRecord[];
+  owned?: boolean;
 }>): WorkerCardWire {
   const { lease, fold } = input;
   const state = workerCardState(lease);
   const terminal = state === "stopped" || state === "failed";
+  const observations = input.observations?.filter(value => value.leaseGeneration === lease.leaseGeneration);
+  const operation = input.operations?.filter(value => "workerId" in value.request.target && value.request.target.workerId === lease.workerId).at(-1);
+  const browsers = new Map((fold?.browsers ?? []).map(value => [value.sessionId, value]));
+  for (const value of observations ?? []) {
+    if (value.health === "closed") browsers.delete(value.sessionId);
+    else if (value.openedAt !== undefined) browsers.set(value.sessionId, { sessionId: value.sessionId, system: value.system, openedAt: value.openedAt });
+  }
   return WorkerCardWireSchema.parse({
     workerId: lease.workerId,
     workflowId: lease.workflow,
     state,
     directive: lease.control.directive,
+    controls: {
+      basis: lease.controlRevision === undefined ? { state: "unavailable", reason: "Worker predates control identity; start a new lifetime." } : { state: "present", value: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
+      ownership: input.owned === true && !terminal ? { state: "owned" } : { state: "unavailable", reason: terminal ? "Worker has stopped." : "This dashboard does not own the worker process." },
+      ...(operation === undefined ? {} : { operation: { commandId: operation.commandId, type: operation.request.type, state: operation.phase.state,
+        at: "completedAt" in operation.phase ? operation.phase.completedAt : "observedAt" in operation.phase ? operation.phase.observedAt : "startedAt" in operation.phase ? operation.phase.startedAt : operation.admittedAt,
+        unresolved: operation.auditedAt === undefined,
+        ...("browserSessionId" in operation.request.target ? { browserSessionId: operation.request.target.browserSessionId } : {}),
+        ...("message" in operation.phase ? { message: operation.phase.message } : {}),
+      } }),
+    },
     startedAt: lease.lifecycle.startedAt,
     ...(lease.lifecycle.state === "stopped"
       ? { endedAt: lease.lifecycle.stoppedAt, stopReason: lease.lifecycle.reason }
@@ -151,7 +165,13 @@ export function workerCardOf(input: Readonly<{
      */
     browsers: terminal
       ? []
-      : (fold?.browsers ?? []).map((browser) => WorkerBrowserWireSchema.parse(browser)),
+      : [...browsers.values()].map((browser) => {
+        const observed = observations?.find(value => value.sessionId === browser.sessionId);
+        return WorkerBrowserWireSchema.parse({ ...browser, observation: observed === undefined || observed.health === "closed"
+          ? { state: "unavailable", reason: "No current owner observation." }
+          : { state: "present", health: observed.health, observedAt: observed.observedAt, instance: observed.instance,
+            browserMode: observed.browserMode, configFingerprint: observed.configFingerprint } });
+      }),
     leaseVersion: lease.version,
     // A worker whose lease exists and whose stream has never named it has
     // folded nothing; `1` is the wire's minimum revision, not a count of

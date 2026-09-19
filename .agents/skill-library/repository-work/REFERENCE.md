@@ -30,6 +30,9 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
   Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
   prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
+  From Phase 3.2 onward, the roadmap’s 2026-09-19 amendment supersedes this prerequisite-only
+  shape: tangible tasks/subtasks, explicit Parallel chips, focused checks within a phase and full
+  gates at its exit. The following older shape applies to preserved earlier assignments only.
   Parents complete before workers launch; new plans place **Finalization** as the last numbered
   child, requiring every worker. That sequential child combines the group, runs
   full gates and fixes failures before downstream consumers start. Workers use D191 focused checks; explicit scoped batch exceptions retain their gate timing. The
@@ -111,6 +114,10 @@ CPU-derived ten-fork default on an 18 GiB host; the same 388 files / 4,795 tests
 Keep per-file isolation, in-test concurrency, test membership, coverage floors and the 30-second
 limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
 before treating a full-suite timeout as permission to weaken a check.
+
+Phase 3.2 onward uses [D191's 2026-09-19 cadence](../../../docs/rebuild/reference/guards-and-tests.md#phase-exit-gates-from-3-2):
+focused tests/lint/affected checks for all within-phase work, full gates and repairs at phase exit.
+This overrides the older default/group schedule below; Phase 3.1 retains its own exception.
 
 D191 in `docs/rebuild/reference/guards-and-tests.md` §3.14 owns documentation-only checks,
 unchanged-input evidence reuse and concurrent gate scheduling. Its 2026-09-09 amendment assigns
@@ -343,12 +350,12 @@ open until the assigned gates, integration and cleanup pass, plus independent re
 
 Before authorized worker dispatch, read the active platform's
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
-`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Every Codex subagent, including
-`sup_scout`, `sup_analyst`, `sup_terra`, `sup_sol` and `sup_review`, uses `gpt-6-astra` with `ultra`
-reasoning. Native names retain their duties, context limits and read/write restrictions; this
-operator choice supersedes older Sol/Terra model tiers. Codex planning uses Astra high and parent
-supervision uses Astra low or medium as classified by `/phase-plan`; the operator chooses sessions.
-Claude role/model choices are unchanged. Validate saved native role definitions before dispatch.
+`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Codex focused workers use
+`gpt-5.6-luna` at `xhigh`; independent reviewers use `gpt-5.6-sol` at `xhigh`. Native roles retain
+their responsibilities, context limits and tool restrictions. The operator chooses planning and
+supervisor models/effort; skills and launch prompts do not recommend or assign them. This supersedes
+older model/effort directions. Claude native worker/reviewer definitions are unchanged. Validate
+saved native role definitions before dispatch.
 
 Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve

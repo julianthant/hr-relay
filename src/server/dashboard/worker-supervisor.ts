@@ -1,3 +1,4 @@
+import { WorkerControlRefusal } from "../../domain/worker-control.js";
 /**
  * The dashboard-owned child-process worker supervisor (ref execution-and-sessions
  * §11, D271) — the REAL process effect behind the W1 pool contract's awaitable
@@ -129,6 +130,9 @@ export interface WorkerCliLaunchSpec {
 
 export interface DashboardWorkerSupervisorDependencies {
   readonly launch: WorkerCliLaunchSpec;
+  readonly admission?: (request: WorkerSupervisorRequest) => void;
+  readonly prepareAdmission?: (request: WorkerSupervisorRequest) => Promise<void>;
+  readonly browserControl?: Readonly<{ request(commandId: string): Promise<string> }>;
   readonly spawn: WorkerProcessSpawner;
   readonly leases: WorkerLeaseProbe;
   readonly gracefulStop: WorkerGracefulStopChannel;
@@ -272,6 +276,7 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
   execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement>;
   /** Evidence about a member THIS supervisor spawned; undefined = never spawned here. */
   memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined;
+  ownsWorker(workerId: string, processId: number, startedAt: string): boolean;
   /**
    * The teardown seam (W3 composition): cancels every armed escalation timer,
    * refuses all further commands, and returns the evidence of every child
@@ -535,26 +540,26 @@ export function createDashboardWorkerProcessSupervisor(
   ): MemberRecord => {
     const record = records.get(member.workerId);
     if (record === undefined) {
-      throw new Error(
+      throw new WorkerControlRefusal(
         `${command} refused: this supervisor never spawned ${member.workerId}; an externally started `
         + "worker is never adopted or controlled",
       );
     }
     if (record.state === "awaiting-birth") {
-      throw new Error(
+      throw new WorkerControlRefusal(
         `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved its `
         + "lease birth yet",
       );
     }
     if (record.state === "kill-undelivered") {
-      throw new Error(
+      throw new WorkerControlRefusal(
         `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) may still be alive — `
         + "its spawn-abort SIGKILL was not delivered and no exit has been observed; no command is honest "
         + "until its real exit lands",
       );
     }
     if (record.state === "stop-uncertain") {
-      throw new Error(
+      throw new WorkerControlRefusal(
         `${command} refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN — the stop `
         + `channel threw mid-request (${stopUncertainCause(record)}); the directive may `
         + "have landed, so nothing is re-initiated until the child's exit is observed",
@@ -562,12 +567,14 @@ export function createDashboardWorkerProcessSupervisor(
     }
     if (record.state === "exited") {
       const exit = record.exit;
-      throw new Error(
+      throw new WorkerControlRefusal(
         `${command} refused: worker ${member.workerId} already exited `
         + `(${exit?.outcome ?? "unknown"}, code ${String(exit?.exitCode)}, signal ${String(exit?.signal)}) `
         + `at ${exit?.at ?? "unknown"}; there is no live child to control`,
       );
     }
+    const current = deps.leases.observe(member.workerId);
+    if (current === undefined || current.processId !== record.pid || current.startedAt !== record.leaseStartedAt) throw new WorkerControlRefusal("worker-control-owned-lifetime-changed");
     return record;
   };
 
@@ -849,7 +856,11 @@ export function createDashboardWorkerProcessSupervisor(
     }
     for (const member of roster) {
       const record = records.get(member.workerId);
-      if (record === undefined) continue;
+      if (record === undefined) {
+        if (deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal(`plan-worker-count refused: ${member.workerId} is externally owned; no worker was adopted`);
+        continue;
+      }
+      if (record.state === "running" || record.state === "stopping") requireLiveOwnedChild("plan-worker-count", member);
       if (record.state === "awaiting-birth") {
         throw new Error(
           `plan-worker-count refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved `
@@ -991,11 +1002,13 @@ export function createDashboardWorkerProcessSupervisor(
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
       if (closed) {
-        throw new Error(
+        throw new WorkerControlRefusal(
           `${request.command} refused: this worker supervisor is closed; a closed supervisor `
           + "acknowledges nothing",
         );
       }
+      if (deps.prepareAdmission !== undefined) await deps.prepareAdmission(request);
+      deps.admission?.(request);
       switch (request.command) {
         case "plan-worker-count":
           return planWorkerCount(request);
@@ -1012,20 +1025,24 @@ export function createDashboardWorkerProcessSupervisor(
         case "resume-worker":
           return attestDirective("resume-worker", WorkerPoolMemberSchema.parse(request.member), "resume-requested");
         case "refresh-browser":
-        case "reopen-browser":
-          // Ref execution-and-sessions's live worker lane: a worker-owned
-          // browser session lives in the CHILD process, and this supervisor
-          // has no cross-process channel to reach it. Refusing is the only
-          // honest answer — acknowledging would claim an effect that cannot
-          // have happened.
-          throw new Error(
-            `${request.command} refused for ${request.member.workerId} session ${request.browserSessionId}: `
-            + "the dashboard supervisor has no cross-process channel into a live worker's browser sessions yet",
-          );
+        case "reopen-browser": {
+          const member = WorkerPoolMemberSchema.parse(request.member);
+          const owned = requireLiveOwnedChild(request.command, member);
+          if (owned.state !== "running" || owned.stopInFlight) throw new WorkerControlRefusal("worker-browser-worker-stopping");
+          if (deps.browserControl === undefined || request.commandId === undefined) throw new WorkerControlRefusal("worker-browser-channel-unavailable: no admitted cross-process command");
+          await deps.browserControl.request(request.commandId);
+          return WorkerSupervisorAcknowledgementSchema.parse({ command: request.command, state: "acknowledged", member,
+            ownership: "supervised", browserSessionId: request.browserSessionId,
+            stage: request.command === "refresh-browser" ? "refreshed" : "reopened" });
+        }
       }
       throw new Error(
         `worker supervisor received an unknown request: ${JSON.stringify(request)}`,
       );
+    },
+    ownsWorker(workerId: string, processId: number, startedAt: string): boolean {
+      const record = records.get(workerId);
+      return !closed && record !== undefined && (record.state === "running" || record.state === "stopping") && record.pid === processId && record.leaseStartedAt === startedAt;
     },
     memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined {
       const record = records.get(member.workerId);

@@ -1,3 +1,7 @@
+import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
+import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
+import { claimWithPreflight } from "../preflight/worker-admission.js";
+import { createWorkerBrowserControl } from "./worker-browser-control.js";
 import { selectRunRuntime } from "../../core/run-settings.js";
 import { createRunResourcesFactory } from "./run-resources.js";
 import { bindFailureCapture } from "../../core/failure-resolution.js";
@@ -199,6 +203,7 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
 }
 
 export interface WorkerComposeInput {
+  readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   readonly isolation: RuntimeIsolation;
   /** Raw CLI args after `worker` — see `parseWorkerArguments`. */
   readonly args: readonly string[];
@@ -343,7 +348,9 @@ function startWorkerMaintenance(input: Readonly<{
         workerId: input.workerId,
         leaseGeneration: input.leaseGeneration,
         lifecycle: active === undefined
-          ? { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: now }
+          ? lease.control.directive === "pause"
+            ? { state: "paused", startedAt: lease.lifecycle.startedAt, heartbeatAt: now, pausedAt: lease.lifecycle.state === "paused" ? lease.lifecycle.pausedAt : now }
+            : { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: now }
           : {
             state: "busy",
             startedAt: lease.lifecycle.startedAt,
@@ -450,6 +457,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const lifecycle = workerRunLifecyclePort(new RunRecordService({ database, clock, ids,
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
   }));
+  const runtimePreflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: input.isolation,
+    descriptors: { resolve: id => SERVER_REGISTRY[id]?.descriptor }, descriptorSetHash: descriptor.contractFingerprint,
+    protectedSecrets, environment: env,
+    ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
   try {
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
@@ -469,6 +480,9 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
           configFingerprint: resolved.fingerprint,
         });
       }));
+    const scope = runtimePreflight.currentScope();
+    await runtimePreflight.admission.prepare(scope, input.stopSignal ?? new AbortController().signal);
+    runtimePreflight.admission.assertReady(runtimePreflight.currentScope());
   } catch (bootError) {
     const bootAndCleanupErrors: unknown[] = [bootError];
     let databaseClosure: "unproven" | "proven" = "unproven";
@@ -514,7 +528,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
-  const resources = createRunResourcesFactory({authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  const resources = createRunResourcesFactory({preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
   const baselineResources = resources.baseline(resolved.config);
@@ -697,21 +711,28 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
+        browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal }),
+        browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
         // claimNext owns the one SQLite write transaction that compares the active
         // runtime token, settings epoch and queued snapshot before changing the run.
         // The filesystem authority is needed at boot and apply, not on every poll.
-        claimNext: (request) => database.withAuthorityTransaction((repositories) => {
+        claimNext: (request) => claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          claim: admit => database.withAuthorityTransaction((repositories) => {
           const directive = controlPoll();
-          if (directive !== "run") {
-            throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
-          }
+          // A directive can arrive from another process after the loop's poll.
+          // Refuse this claim and let the next loop turn observe pause/stop.
+          if (directive !== "run") return { state: "refused" as const, refusal: { reason: "none-eligible" as const } };
           input.afterClaimAdmissionCheck?.();
+          const control = repositories.workerControls.list().find(record => record.auditedAt === undefined
+            && (record.request.type === "refresh-browser" || record.request.type === "reopen-browser")
+            && record.request.target.workerId === workerId && record.request.target.controlBasis?.leaseGeneration === leaseGeneration);
+          if (control !== undefined) return { state: "refused" as const, refusal: { reason: "none-eligible" as const } };
           const outcome = lifecycle.claimNext({ commandId: request.commandId,
-            workflow: request.workflow, workerId: request.workerId, runtimeConfig: selectRunRuntime(repositories) });
+            workflow: request.workflow, workerId: request.workerId, runtimeConfig: selectRunRuntime(repositories) }, admit);
           if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);
           return outcome;
-        }),
+        }) }),
         providers: baselineResources.providers,
         resourcesForRun: resources.forRun,
         idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock).config.daemon.idleRepollMs,

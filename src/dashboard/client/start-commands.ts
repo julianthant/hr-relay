@@ -1,5 +1,7 @@
+import { z } from "zod";
+import { RerunPlanRefusalCodeSchema } from "../../domain/run/rerun.js";
 import { StartPlanRequestSchema,StartPlanWireSchema,type StartPlanWire } from "../../domain/dashboard/start-plan.js";
-import { schemaError } from "./errors.js";
+import { DashboardClientError, httpError, schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
 
@@ -10,6 +12,16 @@ import type { DashboardTransport } from "./transport.js";
 export type StartPlanResponse = StartPlanWire;
 
 
+const RerunRefusalSchema = z.strictObject({ state: z.literal("error"), code: z.literal("RERUN_REFUSED"), message: z.string().min(1),
+  retryable: z.literal(false), refusalCode: RerunPlanRefusalCodeSchema });
+export class StartPlanRefusalError extends DashboardClientError {
+  readonly refusalCode: z.infer<typeof RerunPlanRefusalCodeSchema>;
+  constructor(status: number, body: z.infer<typeof RerunRefusalSchema>) {
+    super({ kind: "http", status, code: body.code, message: body.message });
+    this.refusalCode = body.refusalCode;
+  }
+}
+
 export interface StartCommands {
 
   submitStartPlan(input: unknown): Promise<StartPlanResponse>;
@@ -19,12 +31,17 @@ export function createStartCommands(transport: DashboardTransport): StartCommand
 
     async submitStartPlan(input: unknown): Promise<StartPlanResponse> {
       const body = StartPlanRequestSchema.parse(input);
-      const response = await transport.requestJson("/api/v1/start-plans", {
+      const response = await transport.requestJsonResponse("/api/v1/start-plans", {
         method: "POST",
         body: JSON.stringify(body),
       });
+      if (!response.ok) {
+        const refusal = RerunRefusalSchema.safeParse(response.body);
+        if (refusal.success && (response.status === 404 || response.status === 409)) throw new StartPlanRefusalError(response.status, refusal.data);
+        throw httpError(response.status, response.body);
+      }
       try {
-        return StartPlanWireSchema.parse(response);
+        return StartPlanWireSchema.parse(response.body);
       } catch (error) {
         throw schemaError("POST /api/v1/start-plans", error);
       }

@@ -3,6 +3,17 @@
 Read the [phase overview](../README.md) for sequencing. This subphase creates a reusable dashboard
 workflow; its tasks are implementation outcomes, not steps or results from an individual hiring batch.
 
+
+## Task shape and verification
+
+Tasks 4.1.1–4.1.5 already name concrete contract, workbook, preview, submission and usable-workflow
+outcomes. Subtasks in their focused plans must also deliver observable pieces of those features.
+They are sequential; no parallel group is admitted. Under the [2026-09-19 cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2), Tasks 1–4 run focused tests,
+lint and affected static/generated checks. Task 5 finishes registration and owns full typecheck,
+lint, coverage and the applicable phase-wide acceptance gates, repairs and required review before
+phase completion. D319 admission still precedes implementation; controlled submission still needs
+its complete candidate/target proof and bounded authorization before the effect.
+
 ## Admission
 <!-- roadmap: workflow-admission -->
 

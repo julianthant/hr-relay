@@ -79,43 +79,72 @@ the [Phase 3.1 cadence](README.md#execution-cadence--operator-amendment-2026-09-
 
 | Binding | Approved value |
 | --- | --- |
-| Supervisor | One operator-opened **GPT-6 Astra / medium** supervisor. Modal state, immutable source values, transactional preview validation and replay/reload form one consequential coupled assignment. |
+| Supervisor | One operator-opened supervisor, using the operator-selected model and effort. Modal state, immutable source values, transactional preview validation and replay/reload form one consequential coupled assignment. |
 | Allocation / review | **Zero implementation workers; zero reviewer assignments.** No independent review under Phase 3.1's exception; no new sibling, coordinator or automatic dispatch. |
 | Mode / branch | Dedicated implementation worktree on `codex/3.1.11.2-run-rerun`. |
 | Absolute checkout | `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-run-rerun` |
-| Inspected integration baseline | `824521fac8795aa37f1bf66a34bfaa011bae4713` on local `master`; accepted 3.1.9.8 and 3.1.10 are ancestors. The earlier code discovery used `f02eb7f837677eef210d305635f6a2d84f0516b4`; the intervening Date work is preserved. |
-| Required implementation base | Parent integration is verified at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`, with cleanup recorded at `191ce8b1cb79d0930d89d60cb5501914c3fa4b09`. **WAITING ON the release reconciliation below and planning-document integration.** The planner supplies a concrete base containing the accepted parent and the complete approved plan only after the two missing launch operations have an approved, feasible owner. |
+| Inspected integration baseline | `c2d44e187a4fe56994a6ca2b1c4d63471bd058f2` on local `master`, including accepted Sessions integration `c90da4ffc45ddfe6486192b8df68816dc6fe34a3` and accepted preflight follow-up `ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`; preserve Date, Intake and current instruction/governance changes. |
+| Required implementation base | The integrated approved-plan commit or a verified local `master` descendant containing it and both accepted parent releases. The planner supplies its full SHA in the launch prompt after validation/integration. The two missing launch operations are now explicit R2/R3 child work under the approved ownership amendment below; no unmerged sibling is required. |
 | Finalizer / integration | 3.1.11.3 consumes this exact passing candidate and 3.1.11.1's candidate in either order. Its existing proposed binding is `codex/3.1.11.3-operations` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-operations`; its operator-opened session rechecks availability and resolves the combined base. Target: local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`. The operator chooses integration; this brief does not authorize a product merge. |
 | Completion | This supervisor freezes a committed candidate with focused proof for finalizer intake. Worker roadmap completion follows 3.1.11.3's accepted integration and owned cleanup; downstream release and full Phase 3.1 acceptance remain separate. |
 | Evidence | `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-run-rerun-2026-09-19/`; retain tested identities, command receipts, screenshots, authority comparisons and cleanup receipts outside disposable worktrees. |
 
-The implementation ref/path were absent at planning. Only the Sessions implementation worktree
-was registered beside the integration checkout when documentation persistence began. This planner
-uses `codex/plan-3.1.11.2` at
-`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-run-plan`, based on the
-inspected integration baseline. Names are proposals, not reservations; execution rechecks actual
-ownership and the four-auxiliary-worktree ceiling, including capacity for the finalizer.
+The implementation branch/path remain proposed and must be checked before creation. Documentation
+persistence uses `codex/plan-3.1.11.2` at
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-run-plan`. This planner owns
+its authorized local integration and cleanup; removing that incorporated documentation checkout
+releases capacity for the implementation checkout. Preserve active Setup/UI checkouts. Recheck the
+four-auxiliary-worktree ceiling at launch and before finalizer creation; do not allocate extra capacity
+or delete peer resources. The implementation supervisor creates the proposed branch/worktree from
+the prompt's verified base; this planning session does not launch it.
 
 ### Release check owned by planning
 
-R1 below is a prerequisite verification, not permission to discover unfinished shared behavior
-during implementation. At approval, the parent's worktree recorded S1–S3 implementation in
-progress with uncommitted changes; shared S5 launch extraction and accepted release were unavailable.
-Planning may persist this approved scope now, but **no READY supervisor prompt is issued yet**.
+Accepted Sessions integration `c90da4ffc45ddfe6486192b8df68816dc6fe34a3` and its cleanup record
+`191ce8b1cb79d0930d89d60cb5501914c3fa4b09` are verified. The later accepted preflight follow-up
+`ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`, recorded in `dac7528a12be884542d36355492fafcdffb63a30`,
+is also part of the implementation base. Consume its real start-plan prepare/assert admission and
+preserve source-bound execution, Settings currentness, Date navigation and Intake/focus behavior.
 
-Before that prompt, this planner reads the parent's committed release and actual export/file map,
-verifies integrated focused proof and cleanup, and reconciles the concrete leaf paths in this brief.
-The released operations must support exact-source opening/prefill, preview, warning acknowledgment,
-final submission and exact replay, with completed app/client/BFF registrations. Steps must be able
-to obtain server-authored warning facts before the operator has finished the editable Values page;
-missing omission values cannot create a warning/Values navigation deadlock. The full final plan
-still validates all submitted values and omissions. Parent S5 owns this shared callable boundary.
+The actual launch exports exist: `RunLaunchHost`, `useRunLaunch`, `launchWorkflows`, `prefillRerun`,
+`createRunLaunchService`, `rerunValues` and `StartPlanRefusalError`. Parent consumer proof covers
+valid complete-input planning, acknowledgment and replay. It does not cover a served row opening
+the modal or warning navigation with incomplete Values. The historical reconciliation below
+records those gaps; the approved ownership amendment makes them bounded child implementation,
+not missing start prerequisites. R1 verifies this accepted base and allocation rather than reopening
+settled ownership. Other missing or materially changed shared mechanisms still require amendment.
 
-Verify separately that Setup and Run/Rerun consumers work from the same parent base and neither
-needs an unmerged sibling API, shared switch edit or generated input. Shared action vocabulary and
-dispatch must permit the one Rerun launcher without restoring direct dashboard retry/restart.
-An unfinished shared operation stays with 3.1.11; do not transfer it silently to this child or
-3.1.11.1. Material ownership changes return for amendment. Settled recommendation 1 A is not re-asked.
+### Approved launch ownership amendment — 2026-09-19
+
+The operator's **“do it”** approved assigning these two launch gaps to 3.1.11.2 and integrating the
+validated planning documents locally. The six outcomes, mandatory-step defaults, source/write
+safety, focused cadence and finalizer remain unchanged. This is planning authorization only.
+
+- **Row Rerun entry, R2:** own the narrow action-schema and app-dispatch registration that opens
+  the existing modal with the served source identity/revision. Remove direct dashboard Retry/Restart,
+  including stale single/bulk dispatch routes. Keep non-dashboard kernel command semantics and
+  unrelated actions unchanged. Use a typed served Rerun action; do not infer it from display text.
+- **Warning before Values, R3:** own a read-only source-bound warning-preview operation and its
+  client/BFF registration. It admits source identity/revision, descriptor and selected steps, reads
+  retained source canonical input and the relevant source completion/write evidence on the server,
+  and returns only redacted warning facts plus their binding. It must not require new Values or
+  omission facts, fabricate missing values, allocate run/trace IDs, consume a start plan, enqueue
+  work or invoke an external transaction. Reuse the authoritative source/selection/warning validation in
+  `services/start/rerun.ts`; do not build an independent consent authority. Missing evidence or an
+  invalid source is explicit. Final planning still validates all edited input/omission facts and
+  recomputes the warning binding; changed facts require renewal, and execution retains its existing
+  fresh-key/UNKNOWN fences. Any new browser POST receives the existing ingress guard and guard proof.
+- **Boundaries:** own only the exact registration portions listed below. Setup keeps its accepted
+  preflight contracts, detectors, query/state/presentation and routes. Preserve the parent's current
+  start-plan preflight hook when extending launch services. Neither child depends on the other's
+  unmerged changes; either candidate can be integrated first. Shared fixture builders and combined
+  generated output remain finalizer-owned. Use private launch fixtures and existing composition
+  ports; mechanical launch-contract test doubles may change only where required by this API.
+
+The [parent release](task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#runrerun-child-ownership-release--2026-09-19)
+and [finalizer allocation](task-11-3-finalization-run-operations.md#runrerun-ownership-amendment--2026-09-19)
+point here. These two exceptions supersede earlier blanket parent ownership of shared launch
+registration. No broader ownership transfer or new product requirement is approved.
 
 ### Feasibility and change ownership
 
@@ -126,7 +155,7 @@ after the parent's accepted release, rather than treating its promised interface
 | --- | --- | --- |
 | `run-start.tsx` opens at Input, uses ordinary submissions, and has no source-bound Rerun interaction. `readRerunValues` already validates source/version/descriptor and reports completion plus declared value coordinates. | R2 owns the modal, released launch leaves and prior-value transport. Consume the read service; never infer mappings or fetch another attempt as fallback. | P1 tests failed/interrupted/successful defaults, mandatory completed steps, editable copies and named invalid/unavailable cases. |
 | `applyStartStepSelection` rejects omitted required steps; the earlier failed-source wording selected only unfinished steps. | The approved 1 A amendment selects descriptor-required steps too and visibly explains completed mandatory selections. R2 consumes the existing requirement/cascade projection unchanged. | Required steps remain selected; eligible optional steps remain customizable. No implicit omission capability, automatic checkpoint replay or completion-based disable. |
-| `buildRerunPlan` binds source/version, selection, business keys and completion evidence; final `executeStartRun` revalidates consent. The prior-value query grants no consent. | R3 owns the complete interaction over the released adapters. Preserve server authority and optional `copiedFrom` attribution; clear attribution when a copied field is edited or cleared. | P2 separates warning navigation from final consumption and distinguishes edits that preserve warning facts from changes requiring renewed consent. |
+| `buildRerunPlan` binds source/version, selection, business keys and completion evidence; final `executeStartRun` revalidates consent. The prior-value query grants no consent. | R3 owns warning preview and the complete interaction under the approved launch ownership amendment. Preserve server authority and optional `copiedFrom` attribution; clear attribution when a copied field is edited or cleared. | P2 separates warning navigation from final consumption and distinguishes edits that preserve warning facts from changes requiring renewed consent. |
 | `services/start/plan.ts` checks `reject-active`; `run-fan-out.ts` implements `supersede-active` against the then-current active set. The preview contains no affected-generation basis. | R4 owns a strict start-specific persisted/wire preview basis and its fingerprint, plus the narrow start-command check inside the existing authority transaction. Keep Intake's separate fan-out contract unchanged. | P3 binds exact affected run identities/generations and revisions, including an empty set, and rejects added/removed/changed active targets before any replacement or creation. |
 | Plans are strict JSON in `workflow_run_requests`; `startPlans.consume` binds immutable fingerprints and the original confirmation revision. Kernel replay revalidates the consumed plan and returns the stored result. | R4 may extend launch-specific JSON and hashing without SQL DDL. Historical unconsumed supersede plans lacking the new review basis require replanning; already consumed historical commands retain exact replay. | P3/P4 exercise historical readable plans, restart, divergent reuse and successful replay after later settings/source changes. No released migration or write-safety occurrence changes. |
 | `confirmStart` currently creates a new UUID and timestamp on each click. In-flight result checks cover form changes but do not provide reload-safe exact submission identity. | R5 retains one exact final envelope before dispatch through the released launch/replay boundary and restores it across reload. Retain only the identity/binding needed for replay, not raw input, private values or source outputs. | P4 covers rapid duplicate clicks, response loss, remount/reload, delayed replies after close/edit/reopen, and exact result identity. Unknown transport is not a rejected enqueue. |
@@ -135,10 +164,10 @@ after the parent's accepted release, rather than treating its promised interface
 ### Ordered implementation
 
 1. **R1 — Verify the released base.** Use the concrete planner-verified parent release and plan
-   commit. Verify branch/path/base ancestry, released leaf ownership, start/prefill/warning/replay
-   consumer proof and sibling independence before edits. Preserve accepted Date navigation,
+   commit. Verify branch/path/base ancestry, released leaf ownership, existing start/prefill/replay
+   consumer proof and the approved R2/R3 registration/warning work before edits. Preserve accepted Date navigation,
    Intake upload and dialog focus. If the recorded release is absent or changed materially, stop
-   dependent work and report the exact missing prerequisite; do not build the parent's promised API.
+   dependent work and report the exact changed prerequisite; the two approved launch gaps are owned work.
 2. **R2 — One source-bound Run/Rerun modal.** Ordinary Run and eligible Rerun share the existing
    plan/confirm/enqueue path. Rerun begins at Steps. Failed/interrupted defaults select failed and
    unfinished steps plus descriptor-required completed steps with a visible reason; successful
@@ -148,9 +177,10 @@ after the parent's accepted release, rather than treating its promised interface
    Missing/protected/invalid values remain explicit, and provenance never becomes replay authority.
    Changing an identity-bearing value uses ordinary schema admission and new item derivation.
    Keep one Rerun label for both outcomes and remove direct retry/restart entry paths through the
-   released launch allocation, including stale bulk-command paths; do not introduce batch source
+   amended launch allocation, including stale bulk-command paths; do not introduce batch source
    merging or rewrite unrelated Queue/Detail behavior.
-3. **R3 — Warning, Values and final review.** Proceed from Steps through a server-authored
+3. **R3 — Warning, Values and final review.** Implement the source-bound warning preview above,
+   with production client/BFF wiring and incomplete-Values/omission proof. Proceed from Steps through a server-authored
    Cancel/Confirm warning when selected transactions have prior submission evidence. Cancel
    returns to Steps; Confirm acknowledges the exact set and advances only to Values. Without a
    warning, advance directly. Neither action consumes the plan, mints run/trace identities,
@@ -183,16 +213,17 @@ after the parent's accepted release, rather than treating its promised interface
 
 ### File, interface and resource allocation
 
-All paths below are repository-relative. Parent release validation resolves extraction names before
-launch; it does not widen ownership. New adjacent leaves may serve only these approved outcomes.
+All paths below are repository-relative and were resolved against the accepted parent. The approved
+amendment grants only the named launch portions. New adjacent leaves serve only these outcomes.
 
 | Owner | Permitted scope |
 | --- | --- |
 | R2/R3/R5 modal and launch | `src/dashboard/surfaces/run-start*.ts*`; parent's extracted `src/dashboard/app/run-launch.tsx`, `run-launch-model.ts`; `src/dashboard/client/start-commands.ts`, `rerun-queries.ts`, and adjacent launch-only recovery/value helpers. Use `/ui`, Components lead, local implementation; use existing primitives/tokens and the prescribed playwright-cli route. |
-| R4 launch authority | `src/services/start/plan.ts`, `rerun.ts`, `step-selection.ts` only for launch admission/projection; `src/domain/run/start-plan.ts`, `src/domain/dashboard/start-plan.ts` and browser-safe launch-only contracts; `src/server/dashboard/commands/start-plan-service.ts`; the `executeStartRun`/start replay arm of `src/core/command-kernel.ts` and a start-specific helper in `run-fan-out.ts` if necessary. No worker-control or other command-family redesign. |
-| R2 launcher eligibility | `src/server/dashboard/projectors/queue-row-actions.ts` and a released launch-specific eligibility leaf, only the Rerun action/eligibility portion and matching tests. Shared app/dispatch/action-union registrations must already be complete in the parent. Read-only source projection remains the accepted input; a defect needing broader changes requires an ownership amendment. |
+| R3/R4 launch authority | `src/services/start/plan.ts`, `rerun.ts`, `step-selection.ts` only for launch admission/projection; `src/domain/run/start-plan.ts`, `src/domain/run/rerun.ts`, `src/domain/dashboard/start-plan.ts` and browser-safe launch-only warning contracts; `src/server/dashboard/commands/start-plan-service.ts`; the `executeStartRun`/start replay arm of `src/core/command-kernel.ts` and a start-specific helper in `run-fan-out.ts` if necessary. No worker-control or other command-family redesign. |
+| R2 launcher eligibility | `src/server/dashboard/projectors/queue-row-actions.ts` and a released launch-specific eligibility leaf, only the Rerun action/eligibility portion and matching tests. Own the Rerun action-schema portion of `src/domain/dashboard/actions.ts`, the Run/Rerun registration portion of `src/dashboard/app/dashboard-app.tsx`, and the direct Retry/Restart retirement portions of `command-dispatch.ts` and `bulk-dispatch.ts`. Read-only source projection remains the accepted input; a defect needing broader changes requires an ownership amendment. |
+| R3 warning transport | `src/dashboard/client/start-commands.ts` (inherited through the existing client composition), `src/server/dashboard/routes/queue.ts` and its start-plan service port, plus only the new warning endpoint ingress-guard registration in `routes/api.ts`. A launch-only schema/helper may be added beside the existing owners; no general BFF/client composition redesign. |
 | R6 tests/references/docs | Existing focused tests below; new launch-only unit/server/browser tests and private fixtures. Own `tests/parity/helpers/fixture-start.ts`, `fixture-start-routes.ts`, `reference-start-scenes.ts`, `tests/parity/reference-start.spec.ts`, and Run/Rerun reference names. Preserve unrelated reference identities. Update this task's evidence record and the approved normative amendment only as required by verified facts. |
-| Parent / peer / finalizer exclusions | 3.1.11 completes common session/launch registration; 3.1.11.1 owns Setup/preflight leaves. Shared schema unions, root composition, common fixture builders and combined generated outputs remain parent/finalizer-owned. Settings, Storage and Intake are accepted APIs. 3.1.11.3 reconciles exact candidates and combined output. |
+| Parent / peer / finalizer exclusions | 3.1.11 supplies accepted session/preflight/launch foundations; 3.1.11.1 owns Setup/preflight leaves. Other shared schema/root composition, common fixture builders and combined generated outputs remain parent/finalizer-owned; only the R2/R3 portions above transfer. Settings, Storage and Intake are accepted APIs. 3.1.11.3 reconciles exact candidates and combined output. |
 
 Either child can pass against the common accepted parent and integrate first. This child does not
 depend on Setup's new fault-corpus behavior. Test reads of accepted Setup/Settings APIs do not grant
@@ -229,17 +260,18 @@ checkpoint, expectation or identity merely to obtain passing evidence.
 
 Run commands from the absolute implementation checkout. Existing selectors were located during
 planning; the five explicitly new files below are assigned proof outputs, not pre-existing tests.
-The parent may add more launch-specific checks; its release validation records those selectors.
+The accepted parent launch/preflight and ingress-guard regressions below also protect the amended registration.
 
 **G1 — focused logic, authority and mounted interaction.** Run affected groups while implementing;
 before candidate freeze all rows below must pass on the final relevant inputs. Do not repeat
 unchanged groups for documentation-only recording.
 
 ```sh
-npm run test -- tests/unit/dashboard/run-start-model.test.ts tests/unit/dashboard/run-start-dialog.test.ts tests/unit/dashboard/run-start-focus.test.ts tests/unit/dashboard/run-start-timeline.test.ts tests/unit/dashboard/run-start-kit-render.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/dashboard/run-rerun.test.ts tests/unit/dashboard/run-launch-recovery.test.ts
+npm run test -- tests/unit/dashboard/run-start-model.test.ts tests/unit/dashboard/run-start-dialog.test.ts tests/unit/dashboard/run-start-focus.test.ts tests/unit/dashboard/run-start-timeline.test.ts tests/unit/dashboard/run-start-kit-render.test.ts tests/unit/dashboard/start-plan-contract.test.ts tests/unit/dashboard/run-rerun.test.ts tests/unit/dashboard/run-launch-recovery.test.ts tests/unit/dashboard/launch-boundary.test.ts
 npm run test -- tests/unit/start-plan.test.ts tests/unit/server/start-plan-omissions.test.ts tests/unit/server/start-plan-supersede.test.ts tests/unit/server/queue-row-actions.test.ts tests/unit/dashboard/bulk-dispatch.test.ts tests/unit/command-kernel.test.ts tests/unit/command-kernel-step-omission-carry.test.ts
 npm run test -- tests/unit/rerun-values.test.ts tests/unit/server/rerun-values.test.ts tests/unit/rerun-source-eligibility.test.ts tests/unit/rerun-protected-identity.test.ts tests/unit/source-bound-repeat.test.ts tests/unit/architecture/rerun-prefill-boundary.test.ts
 npm run test -- tests/unit/settings-activation/save-create.test.ts tests/unit/settings-activation/stale-plan.test.ts tests/unit/settings-activation/mixed-execution.test.ts tests/unit/settings-activation/retry-child.test.ts
+npm run test -- tests/unit/architecture/operator-mutation-admission.test.ts tests/unit/server/preflight-admission-boundary.test.ts tests/unit/dashboard/preflight-readiness-boundary.test.ts
 ```
 
 The new unit files are `tests/unit/dashboard/run-rerun.test.ts`,
@@ -308,18 +340,18 @@ owner change, new contract choice, unprovable acceptance or uncertain effect; su
 
 | State | Record |
 | --- | --- |
-| Approval | Six-step scope and recommended 1 A approved by the operator on 2026-09-19. |
+| Approval | Six-step scope and recommended 1 A approved on 2026-09-19; subsequent “do it” approved the two bounded launch ownership transfers and local planning-document integration. |
 | Implementation | Unstarted; no product/runtime edits or runtime acceptance during planning. |
-| Parent prerequisite | Accepted integration and cleanup verified at `191ce8b1cb79d0930d89d60cb5501914c3fa4b09`. Actual export/consumer inspection found two incomplete operations under the currently excluded shared ownership; see release reconciliation below. |
-| Planning persistence | Authorized complete plan/contract/decision-index/matrix/roadmap documentation and scoped validation/commit on `codex/plan-3.1.11.2`. Local documentation integration is not yet instructed; retain the committed candidate for operator-directed integration. |
-| Child/group release | No launch prompt yet. This candidate, later 3.1.11.3 intake, operator-directed product integration and cleanup remain distinct. |
+| Parent prerequisite | Accepted Sessions integration/cleanup and later preflight release `ef050d0a8cb99aa39b54f726b2bdd5269f125dfa` verified. The two discovered launch gaps are approved R2/R3 work, with no dependency on Setup’s unmerged candidate. |
+| Planning persistence | This planner is authorized to validate/commit the full amended documentation, integrate it locally, verify the committed plan and remove only its incorporated planning branch/worktree. Product implementation/integration and task dispatch are not authorized here. |
+| Child/group release | Issue the READY prompt only after this amended plan passes documentation checks, is integrated and its planning checkout is cleaned up. Implementation then starts in an operator-opened session; later finalizer intake, product integration and cleanup remain distinct. |
 
 Maintain this compact record in place during execution, with linked dated evidence. Send Done /
 Now / Remaining once at supervisor start or genuine resume; later updates report only newly
 verified completions and material blockers. Routine transfer uses this owner. Use `/handoff` only
 for interrupted unique execution state; no sibling launch or push is implied.
 
-### Planning validation — 2026-09-19
+### Historical initial planning validation — 2026-09-19
 
 The approved scope, recommendation 1 A, ownership, R1–R6 sequence, P1–P5 proof and G1–G4 schedule
 are persisted here. Normative default-selection wording and the decision pointer are updated in
@@ -340,7 +372,7 @@ are retained in the [planning evidence directory](/Users/julianhein/Projects/hr-
 The documentation-only recording change reruns generation/freshness and document-binding checks;
 unchanged code/test/configuration/dependency inputs preserve the scoped lint result.
 
-### Accepted-parent release reconciliation — 2026-09-19
+### Historical accepted-parent release reconciliation — 2026-09-19
 
 The operator reported 3.1.11 complete. Read-only verification confirms accepted merge
 `c90da4ffc45ddfe6486192b8df68816dc6fe34a3` and its completion/cleanup record at
@@ -369,9 +401,39 @@ At this reconciliation, no ownership transfer, product implementation, integrati
 launch has occurred. The original six-step approval and mandatory-step default decision remain
 valid. The operator has been asked whether to assign the two bounded launch gaps to this child
 and authorize local planning-document integration, or retain the existing prerequisite ownership.
-The pending choice is kept in chat; no replacement plan or decision-sheet file is created.
+That historical pending choice is now resolved by the approved launch ownership amendment above.
 
 This reconciliation passed the roadmap binding suite (1 file / 24 tests), scoped generator/binding
 lint, roadmap freshness and the documentation checker (23 links; 9 identical instruction pairs;
 18 instruction chains, maximum 19,308 bytes; 28 gate selectors). No runtime gates were rerun or
 claimed. Receipts remain in the linked planning evidence directory.
+
+### Amended planning validation and integration — 2026-09-19
+
+The operator approved the narrow ownership transfer and local documentation integration. This
+candidate contains the complete six-step plan, mandatory-step contract clarification, corrected
+parent/finalizer ownership pointers and launch-specific regression additions. It incorporates
+`c2d44e187a4fe56994a6ca2b1c4d63471bd058f2`; changes relative to that accepted base are documentation
+and generated roadmap only. The roadmap continues to mark product implementation planned.
+
+The only merge conflict was `docs/roadmap/index.html`: both sides had generated output from
+independent accepted source updates. Regeneration from the combined Markdown preserves the
+Sessions/preflight releases, current governance, Setup plan and this Run/Rerun plan. No authored
+source intent was dropped. The operator chooses the supervisor model and effort; the earlier
+model prescription is removed under current instructions.
+
+After documentation checks pass, this planner integrates the exact candidate locally and verifies
+ancestry/content, then removes only the incorporated planning worktree/ref. The final evidence
+receipt records the actual candidate/integration SHAs, checks and cleanup. The prompt uses that
+verified integrated base and the committed full-plan SHA. Product implementation, group acceptance,
+full 3.1.19 gates, product integration and push remain outside this completed planning stage.
+
+| Documentation check | Result on the amended candidate |
+| --- | --- |
+| Roadmap binding | 1 file / 24 tests passed; final command output retained in the amendment evidence. |
+| Scoped lint | Generator and binding-test ESLint passed with zero warnings; runtime/test/config/dependency inputs are unchanged relative to the accepted base. |
+| Generation / integrity | Combined roadmap generated and freshness passed; ten documentation/generated paths, 29 links, 9 identical instruction pairs, 18 chains (maximum 14,346 bytes), clean whitespace. |
+| Implementation selectors | 32 selectors: 27 existing checks and 5 explicitly assigned new proof files. Runtime gates are assigned, not claimed as passed. |
+
+Detailed amendment receipts are in
+[the amendment evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-plan-2026-09-19/amendment/).

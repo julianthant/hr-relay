@@ -241,7 +241,7 @@ export const TopBar = memo(function TopBar({
             glyph carries the worst verdict. Only an older producer's honest
             absence removes it, because an indicator over no report would
             invent a pass. */}
-        {preflight !== undefined && <PreflightPopover checks={preflight} onRerun={onPreflightRerun} />}
+        <PreflightPopover checks={preflight} onRerun={onPreflightRerun} />
         <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenNotification={onOpenNotification} connected={notificationConnected} />
         {/* THE KEYBOARD GLYPH IS GONE. Operator, on the demo: *"the keyboard
             icon will be removed from there since we already have help in

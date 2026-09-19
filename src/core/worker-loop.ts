@@ -1,3 +1,4 @@
+import type { WorkerBrowserObservation } from "../domain/worker-control.js";
 import type { RunRecord } from "../domain/run/record.js";
 /**
  * The Phase-1 worker run loop (ref execution-and-sessions §3): one workflow-scoped worker, one
@@ -160,6 +161,8 @@ export interface WorkerLoopDependencies {
    * throws aborts the loop loudly — an unreadable directive is never "run".
    */
   readonly controlPoll?: () => WorkerDirective;
+  readonly browserControl?: (sessions: WorkerSessionManager) => Promise<void>;
+  readonly browserObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
   /**
    * Production composition's resolved boot config. Optional only for focused
    * loop fixtures that exercise lifecycle mechanics without composing config.
@@ -168,7 +171,7 @@ export interface WorkerLoopDependencies {
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext: (
     input: WorkerClaimRequest,
-  ) => RunMutationOutcome;
+  ) => RunMutationOutcome | Promise<RunMutationOutcome>;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -263,6 +266,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ...(deps.browserScreenshotCapture === undefined
       ? {}
       : { browserScreenshotCapture: deps.browserScreenshotCapture }),
+    ...(deps.browserObservation === undefined ? {} : { onObservation: deps.browserObservation }),
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {
@@ -273,7 +277,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         return;
       }
       if (event.type === "browser-session:close") {
-        const clean = event.reason === "fresh-boundary"
+        const clean = event.reason === "operator-reopen"
+          || event.reason === "fresh-boundary"
           || event.reason === "parked"
           || event.reason === "worker-stop";
         emit({
@@ -304,6 +309,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
   try {
     while (!deps.stopSignal.aborted) {
+      await deps.browserControl?.(sessions);
       // Between items only: the active run always settles before the next poll.
       const directive = deps.controlPoll === undefined
         ? "run"
@@ -325,7 +331,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         now: instant(),
         ...(configFingerprint === undefined ? {} : { configFingerprint }),
       };
-      const claimed = deps.claimNext(claimRequest);
+      const claimed = await deps.claimNext(claimRequest);
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible"
         && claimed.refusal.notBefore === undefined) {
         if (deps.exitWhenIdle) {
@@ -696,6 +702,7 @@ export type WorkerSupervisorAcknowledgement = z.infer<typeof WorkerSupervisorAck
  * never carries a fabricated actor.
  */
 export const WorkerStopDirectiveContextSchema = z.strictObject({
+  commandId: z.uuid().optional(),
   requestedAt: IsoInstantSchema,
   requestedBy: ActorIdSchema,
   reason: z.string().min(1).optional(),
@@ -703,6 +710,7 @@ export const WorkerStopDirectiveContextSchema = z.strictObject({
 export type WorkerStopDirectiveContext = z.infer<typeof WorkerStopDirectiveContextSchema>;
 
 export interface WorkerPoolPlanRequest {
+  readonly commandId?: string;
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
   readonly desiredWorkers: PositiveInt;
@@ -720,11 +728,13 @@ export interface WorkerPoolPlanRequest {
 }
 
 export interface WorkerPoolSpawnRequest {
+  readonly commandId?: string;
   readonly command: "spawn-worker";
   readonly member: WorkerPoolMember;
 }
 
 export interface WorkerPoolStopRequest {
+  readonly commandId?: string;
   readonly command: "stop-worker";
   readonly member: WorkerPoolMember;
   readonly escalation: WorkerStopEscalationPolicy;
@@ -733,22 +743,26 @@ export interface WorkerPoolStopRequest {
 }
 
 export interface WorkerPoolPauseRequest {
+  readonly commandId?: string;
   readonly command: "pause-worker";
   readonly member: WorkerPoolMember;
 }
 
 export interface WorkerPoolResumeRequest {
+  readonly commandId?: string;
   readonly command: "resume-worker";
   readonly member: WorkerPoolMember;
 }
 
 export interface WorkerPoolRefreshRequest {
+  readonly commandId?: string;
   readonly command: "refresh-browser";
   readonly member: WorkerPoolMember;
   readonly browserSessionId: BrowserSessionId;
 }
 
 export interface WorkerPoolReopenRequest {
+  readonly commandId?: string;
   readonly command: "reopen-browser";
   readonly member: WorkerPoolMember;
   readonly browserSessionId: BrowserSessionId;
@@ -858,6 +872,7 @@ function stopDirectiveContext(context: WorkerRuntimeContext): WorkerStopDirectiv
     );
   }
   return WorkerStopDirectiveContextSchema.parse({
+    commandId: command.commandId,
     requestedAt: now.data,
     requestedBy: command.requestedBy,
     ...(command.reason === undefined ? {} : { reason: command.reason }),
@@ -1004,6 +1019,7 @@ export function createWorkerPoolRuntimeExecutor(
       const plannedWorkerIds = Object.freeze(members.map(({ workerId }) => workerId));
       const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "plan-worker-count",
+        commandId: command.commandId,
         workflowId: command.target.workflowId,
         desiredWorkers,
         members,
@@ -1066,6 +1082,7 @@ export function createWorkerPoolRuntimeExecutor(
       const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
       const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "spawn-worker",
+        commandId: command.commandId,
         member,
       })));
       requireSameMember("spawn-worker", member, acknowledgement.member);
@@ -1084,6 +1101,7 @@ export function createWorkerPoolRuntimeExecutor(
       const escalation = workerStopEscalation();
       const acknowledgement = WorkerStopAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "stop-worker",
+        commandId: command.commandId,
         member,
         escalation,
         directive: stopDirectiveContext(context),
@@ -1106,6 +1124,7 @@ export function createWorkerPoolRuntimeExecutor(
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerPauseAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "pause-worker",
+        commandId: command.commandId,
         member,
       })));
       requireSameMember("pause-worker", member, acknowledgement.member);
@@ -1120,6 +1139,7 @@ export function createWorkerPoolRuntimeExecutor(
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerResumeAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "resume-worker",
+        commandId: command.commandId,
         member,
       })));
       requireSameMember("resume-worker", member, acknowledgement.member);
@@ -1134,6 +1154,7 @@ export function createWorkerPoolRuntimeExecutor(
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "refresh-browser",
+        commandId: command.commandId,
         member,
         browserSessionId: command.target.browserSessionId,
       })));
@@ -1155,6 +1176,7 @@ export function createWorkerPoolRuntimeExecutor(
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerReopenAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "reopen-browser",
+        commandId: command.commandId,
         member,
         browserSessionId: command.target.browserSessionId,
       })));

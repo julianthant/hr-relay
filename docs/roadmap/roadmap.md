@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-13
-head: 1ed231932
+asOf: 2026-09-19
+head: 438bd311f
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
@@ -13,7 +13,7 @@ tiles:
 - Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
 - Complete | Phase 2.6 | final candidate independently accepted, integrated locally and cleaned up
 - Next | Phase 3.1.9 · dashboard boundaries | 3.1.8 accepted; numbered task order includes each group finalization
-- Decisions | D1–D344 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D344 uses decimal prerequisite tasks and independent parallel children · D131 retired, never reused
+- Decisions | D1–D344 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D344 uses tangible tasks and explicit Parallel labels from 3.2; full gates at phase exit · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | D329 holds every write behind 3.2's independent candidate audit and 3.3's exact-candidate admission. Historical 4589 remains inspection-only; the bounded authorization must name the candidate, fingerprints, disposable targets, disposition, and sequence, and expires on drift, failure, or UNKNOWN
 
@@ -1883,14 +1883,14 @@ log:
 
 
 #### 11 · Finish sessions, worker pools, and browser lifecycle {#dash-sessions}
-status: planned
+status: done
 date: D344 · former 3.1.10-2 · independent worktree after named prerequisites
 doc: 3.1/task-11-finish-sessions-worker-pools-and-browser-lifecycle §Task 3.1.11 · Finish sessions, worker pools, and browser lifecycle · ref:execution-and-sessions §3 · ref:execution-and-sessions §11
 
 builds:
-- [ ] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
-- [ ] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
-- [ ] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
+- [x] BOTH make plan/spawn/pause/resume/stop/refresh/reopen controls execute real worker-supervisor effects
+- [x] BOTH show durable session membership, worker state, current claim, browser profile instance, health, and refusal reason without inference
+- [x] PROOF crash/restart, stale CAS, duplicate ownership, pool resize, orphan cleanup, and two-run parallel dry-run behavior
 
 needs:
 - dash-settings
@@ -1899,10 +1899,13 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-19 | 3.1.11 accepted and cleaned | Frozen `c0f8c45d8e426dd5c99529c91982d0eb425c740f` integrated locally at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3` after operator instruction. Date imports/body preserved; missing disposable-writer registration repaired with existing negative controls. 746 focused tests, 27 browser journeys, scoped lint/semantic and build/generated checks pass. Branch/worktree and owned runtime/scratch residue removed with evidence retained. Extra broad reference sampling failed 18 manifest-hash expectations; exact failures remain assigned to 3.1.19, not passed or waived. Sessions prerequisite released; no push or child dispatch.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.1; former 3.1.10-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 2 session/runtime seam in `phase-3-1-dashboard-c21194e18-r14-sessions`, after Tasks 11 and 13 and parallel with Tasks 10, 17 and 26 · left: wave 1 integration
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11; standalone prerequisite or individual task; acceptance and historical execution anchor retained
 - 2026-09-18 | operator-approved 3.1.11 execution brief | Complete S1–S6 plan: worker lifetime/control-revision fencing, strict pool CAS, durable browser command/outcome channel, idle-only Refresh/Reopen, truthful controls and completed shared child APIs. Choices 1 A / 2 A ratified at execution/session and dashboard contracts. One Astra/medium supervisor, no workers or independent review; focused gates now, broad acceptance at 3.1.19. Accepted 3.1.9.8 is available; product implementation and operator-directed integration remain unstarted.
+- 2026-09-19 | operator-approved preflight admission ownership amendment | Choice 1 A during 3.1.11.1 planning adds shared descriptor-derived readiness, report/freshness and pre-effect start/enqueue/worker/browser admission hooks to parent S5, with focused positive/refusal proof before child release. Setup owns detectors/corpus/UI; Run/Rerun remains independent. Existing session choices, integration permission and Phase 3.1 gate cadence are unchanged; implementation proof remains open.
+- 2026-09-19 | accepted preflight admission amendment | Shared readiness and effect boundaries implemented in 549a70186 and integrated at ef050d0a8. Parent release publishes exact ports, focused positive/refusal proof and baseline-only deferred failures. Operator authorized owned cleanup and launch of 3.1.11.1; complete detector/corpus/UI acceptance remains the child. No push or finalizer dispatch.
 
 
 ##### 1 · Finish Setup and preflight {#dash-setup}
@@ -1927,6 +1930,8 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11.1; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
+- 2026-09-19 | operator-approved 3.1.11.1 execution brief | Complete S1–S5 plan: verify accepted parent admission interfaces, complete registry-selected detectors, finish shared-report Setup/doctor presentation, execute all 14 fault manifests plus healthy/dependency controls, and freeze focused proof for 3.1.11.3. One Astra/medium supervisor, zero workers/reviewers; no automatic repair or new CLI doctor/test-login. WAITING ON accepted 3.1.11 including the admission amendment and committed plan availability; no implementation or runtime acceptance claimed.
+- 2026-09-19 | Setup launch prerequisite released | Complete approved plan and actual parent admission ports are integrated at ef050d0a8; launch explicitly authorized after verified owned cleanup. Assigned branch/path and exact launch base are in the owning release/receipt. Operator selects supervisor model; zero workers/reviewers remain. Earlier WAITING ON and model assignment are superseded; implementation and finalizer acceptance remain open.
 
 
 ##### 2 · Make Run and Rerun enqueue real work {#dash-run-modal}
@@ -1951,7 +1956,8 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
 - 2026-09-05 | D334 operator correction | Rerun is the launcher for the ordinary Run modal, not direct recovery commands. This task consumes 2.6 Task 1-2's read-only prefill projection; Task 10-4 retains Intake only · left: implementation after 2.6
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11.2; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
-- 2026-09-19 | operator-approved 3.1.11.2 plan | One Astra/medium supervisor, no workers/reviewer; one source-bound Run/Rerun modal, editable declared prefill, warning-to-Values navigation, exact supersede preview and singular final-submit/reload replay. Decision 1 A includes required completed steps with a visible explanation. Focused child gates; 3.1.11.3 group integration; full acceptance at 3.1.19. Planning approved; implementation waits for accepted 3.1.11 and planner verification of its released launch interfaces. No launch or product integration authorized.
+- 2026-09-19 | operator-approved 3.1.11.2 plan | One operator-opened supervisor, operator-selected model/effort, no workers/reviewer; one source-bound Run/Rerun modal, editable declared prefill, warning-to-Values navigation, exact supersede preview and singular final-submit/reload replay. Decision 1 A includes required completed steps with a visible explanation. Focused child gates; 3.1.11.3 group integration; full acceptance at 3.1.19. Planning approved; accepted Sessions/preflight releases verified and the bounded launch ownership amendment resolves the two gaps. Implementation remains unstarted; no task launch or product integration authorized.
+- 2026-09-19 | approved launch ownership amendment | child owns narrow Rerun dispatch and pre-Values warning preview; accepted parent/preflight release verified; planning integration authorized, implementation unstarted
 
 
 ##### 3 · Finalization — run operations {#dash-operations-finalizer}
@@ -1970,6 +1976,9 @@ builds:
 needs:
 - dash-setup
 - dash-run-modal
+
+log:
+- 2026-09-19 | operator-approved 3.1.11.3 execution brief | Complete F1–F6 plan: exact child intake, either-order combination, bounded group repairs, production-service/browser proof, focused gates and operator-directed integration/cleanup. One Astra/medium supervisor, no workers or independent review. Full acceptance remains 3.1.19. Planning persistence is authorized; implementation waits for accepted Sessions and both committed, focused-green child candidates.
 
 #### 12 · Finish Activity, search, and export {#dash-activity}
 status: planned
@@ -2386,22 +2395,23 @@ open: yes
 
 builds:
 - [~] BOTH Tasks 1–3 revalidate the workflow compiler, Separations read substrate, and write-safety mechanics
-- [ ] PROOF wave 4 proves runtime inheritance and the clean-context author guide
-- [ ] BOTH wave 5 accepts Person Lookup and the final compiled Separations workflow without real writes
-- [ ] PROOF Task 6 records a current-source Separations dry-run preview with exact 0/0/0 write authority
-- [ ] PROOF Task 7 independently audits and freezes the exact acceptance candidate
+- [ ] PROOF Tasks 4 and 5 connect the inherited runtime and finish the author guide; Task 5.1 reconciles runnable examples
+- [ ] BOTH Tasks 7 and 8 finish Person Lookup and compiled Separations without real writes; Task 8.1 connects dashboard evidence
+- [ ] PROOF Task 8.2 records a current-source Separations dry-run preview with exact 0/0/0 write authority
+- [ ] PROOF Task 9 independently audits and freezes the exact acceptance candidate
 
 needs:
 - dash-defaults
 
 log:
+- 2026-09-19 | tangible tasks | concrete deliverables and explicit Parallel labels; focused checks during the phase and full gates at its end; implementation remains open
 - 2026-09-04 | D329 chronology correction | the former 03b/03c order is retired; authoring and read-only acceptance now precede every controlled write, with an exact old-to-new crosswalk in doc 03.2
 
-#### 1 · Verify the workflow-definition platform {#workflow-authoring-core}
+#### 1 · Finish the workflow compiler {#workflow-authoring-core}
 status: active
 size: M
 chip: historical implementation · current proof pending
-doc: 3.2 §Task 1 · Verify the workflow-definition platform · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
+doc: 3.2 §Task 1 · Finish the workflow compiler · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
 
 > Verify the final `workflow.ts` authoring seam, direct-entry algebra, omissions, recovery, compiled products, four-artifact enforcement, and deletion of the retired descriptor/module/fragment path. Repair only defects contained within this seam.
 
@@ -2410,11 +2420,14 @@ builds:
 - [ ] PROOF current-source inspection, red-capable guards, generated products, and retired-path absence
 - [ ] DOCS exact current-HEAD result and any in-seam correction
 
-#### 2 · Revalidate the Separations read and task-store substrate {#workflow-task-substrate}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.1; previous 3.2.1; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 2 · Finish Separations data reads {#workflow-task-substrate}
 status: active
 size: M
 chip: historical implementation · current proof pending
-doc: 3.2 §Task 2 · Revalidate the Separations read and task-store substrate · ref:task-contract §9 · ref:workflow-model §8
+doc: 3.2 §Task 2 · Finish Separations data reads · ref:task-contract §9 · ref:workflow-model §8
 
 > Reverify Kuali, UCPath, and New Kronos reads plus every Separations mini-store leaf, task registration, selector/provenance boundary, and production provenance-recording point.
 
@@ -2425,11 +2438,14 @@ builds:
 needs:
 - workflow-authoring-core
 
-#### 3 · Revalidate Separations transaction and safety mechanics {#workflow-write-mechanics}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.2; previous 3.2.2; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 3 · Finish safe Separations transactions {#workflow-write-mechanics}
 status: active
 size: L
 chip: mechanics landed · no live write here
-doc: 3.2 §Task 3 · Revalidate Separations transaction and safety mechanics · ref:write-safety §3.2 · ref:write-safety §14.11
+doc: 3.2 §Task 3 · Finish safe Separations transactions · ref:write-safety §3.2 · ref:write-safety §14.11
 
 > Reprove termination, pending sweep, Kuali finalization, conditional identity authority, exact-set deletion, and filing-survival mechanics against fake external systems. This task creates no controlled-write evidence.
 
@@ -2440,11 +2456,15 @@ builds:
 needs:
 - workflow-task-substrate
 
-##### 1 · Prove automatic runtime inheritance {#workflow-runtime-inheritance}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.3; previous 3.2.3; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 4 · Connect workflows to the shared runtime {#workflow-runtime-inheritance}
+chip: Parallel · authoring
 status: planned
-date: independent parallel child after its accepted parent prerequisite
+date: 2026-09-19 · tangible feature task · shared prerequisite required
 size: S
-doc: 3.2 §Task 4-1 · Prove automatic runtime inheritance · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
+doc: 3.2 §Task 4 · Connect workflows to the shared runtime · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
 
 > Prove that a compiled workflow inherits worker/session acquisition, authentication, checkpoints, semantic logs, screenshots, receipts, notifications, and Archive without workflow-specific glue.
 
@@ -2454,11 +2474,15 @@ builds:
 needs:
 - workflow-write-mechanics
 
-##### 2 · Prove the workflow-author guide from clean contexts {#workflow-guide-proof}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.4; previous 3.2.3.1; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 5 · Finish the workflow author guide {#workflow-guide-proof}
+chip: Parallel · authoring
 status: planned
-date: independent parallel child after its accepted parent prerequisite
+date: 2026-09-19 · tangible feature task · shared prerequisite required
 size: S
-doc: 3.2 §Task 4-2 · Prove the workflow-author guide from clean contexts · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
+doc: 3.2 §Task 5 · Finish the workflow author guide · ref:workflow-model §1.6 · ref:guards-and-tests §10.11
 
 > Follow the canonical guide for Person Lookup and Separations with no undocumented step, extra authored file, or escape hatch. Correct and re-prove any mismatch.
 
@@ -2468,15 +2492,38 @@ builds:
 needs:
 - workflow-write-mechanics
 
-#### 4 · Establish the independent workflow acceptance base {#workflow-acceptance-foundation}
-status: planned
-size: S
-doc: 3.2 §Task 4 · Establish the independent workflow acceptance base
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.5; previous 3.2.3.2; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
 
-> Accept the combined runtime/guide proof base and complete any shared registration, fixture, generated-product or contract changes needed before the two workflow acceptance writers start independently.
+##### 1 · Make guide examples reproduce runtime behavior {#workflow-proof-finalizer}
+status: planned
+size: M
+date: 2026-09-19 · sequential feature integration
+doc: 3.2 §Task 5.1 · Make guide examples reproduce runtime behavior · ref:guards-and-tests §3.14
+
+> Make author-guide examples reproduce inherited runtime behavior on the combined reviewed candidates. Repair integration mismatches, reconcile generated products and pass focused checks before workflow fixture work.
 
 builds:
-- [ ] PROOF exact integrated base, resolved shared ownership and independently passing gates for both workflow assignments
+- [ ] BOTH runnable guide examples use shared runtime behavior without undocumented wiring; repair combination defects and reconcile generated products
+- [ ] PROOF affected tests, lint, static/generated checks and required independent review; full gates deferred to Task 9 at phase exit
+- [ ] DOCS exact reviewed candidates, accepted integration, gate evidence and owned cleanup
+
+needs:
+- workflow-runtime-inheritance
+- workflow-guide-proof
+
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.5.1; previous 3.2.7; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 6 · Finish shared workflow registration and test fixtures {#workflow-acceptance-foundation}
+status: planned
+size: S
+doc: 3.2 §Task 6 · Finish shared workflow registration and test fixtures
+
+> Deliver reusable workflow registration and test fixtures against the integrated runtime and guide. Complete the shared generated-product and contract changes needed by Person Lookup and Separations.
+
+builds:
+- [ ] BOTH shared workflow registration, reusable fixtures and current generated products; independently passing focused checks for both consumers
 - [ ] DOCS exact disjoint paths, private runtime/live-session resources, generated-output ownership and either-order merge evidence; targeted coordination when necessary under D344
 
 needs:
@@ -2485,15 +2532,15 @@ needs:
 - workflow-proof-finalizer
 
 log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.6; previous 3.2.4; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
 - 2026-09-08 | D344 decimal naming amendment | real prerequisite for 3.2.4.1 and 3.2.4.2; no workflow acceptance or candidate freeze claimed here
 
-
-##### 1 · Complete and accept Person Lookup {#person-lookup-acceptance}
+#### 7 · Finish Person Lookup {#person-lookup-acceptance}
 status: active
-date: independent parallel child after its accepted parent prerequisite
+date: 2026-09-19 · tangible feature task · shared prerequisite required
 size: M
-chip: conversion landed · current live-read pending
-doc: 3.2 §Task 5-1 · Complete and accept Person Lookup · ref:workflow-model §8 · ref:task-contract §9.1
+chip: Parallel · workflows
+doc: 3.2 §Task 7 · Finish Person Lookup · ref:workflow-model §8 · ref:task-contract §9.1
 
 > Reconcile Search/Match, the final compiled definition, generic projections, structural T1, justified T2/T3 cases, and a current transaction-free `live-read` with exact 0/0/0 write-authority deltas.
 
@@ -2507,12 +2554,15 @@ needs:
 - workflow-guide-proof
 - workflow-proof-finalizer
 
-##### 2 · Accept the final compiled Separations workflow without writes {#separations-compiled-acceptance}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.7; previous 3.2.4.1; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 8 · Finish the compiled Separations workflow {#separations-compiled-acceptance}
 status: active
-date: independent parallel child after its accepted parent prerequisite
+date: 2026-09-19 · tangible feature task · shared prerequisite required
 size: L
-chip: composition landed · current proof pending
-doc: 3.2 §Task 5-2 · Accept the final compiled Separations workflow without writes · ref:workflow-model §8 · ref:write-safety §14.11
+chip: Parallel · workflows
+doc: 3.2 §Task 8 · Finish the compiled Separations workflow · ref:workflow-model §8 · ref:write-safety §14.11
 
 > Verify the nineteen-node behavior, omissions, identity authority, transaction fences, checkpoints, diagnostics, receipts, generic projections, structural T1, and only justified T2/T3 cases from the final compiler.
 
@@ -2526,11 +2576,34 @@ needs:
 - workflow-guide-proof
 - workflow-proof-finalizer
 
-#### 5 · Record current-source Separations read-only acceptance {#separations-readonly-acceptance}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.8; previous 3.2.4.2; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+##### 1 · Connect compiled workflows to dashboard evidence {#workflow-acceptance-finalizer}
+status: planned
+size: M
+date: 2026-09-19 · sequential feature integration
+doc: 3.2 §Task 8.1 · Connect compiled workflows to dashboard evidence · ref:guards-and-tests §3.14
+
+> Connect the compiled Person Lookup and Separations workflows to shared registration, dashboard projections and durable evidence. Repair integration mismatches and pass focused checks before the live dry-run preview.
+
+builds:
+- [ ] BOTH both registered workflows produce their required dashboard projections and evidence; reconcile generated products and repair combination defects
+- [ ] PROOF affected tests, lint, static/generated checks and required independent review; full gates deferred to Task 9 at phase exit
+- [ ] DOCS exact reviewed candidates, accepted integration, gate evidence and owned cleanup
+
+needs:
+- person-lookup-acceptance
+- separations-compiled-acceptance
+
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.8.1; previous 3.2.8; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+##### 2 · Finish the Separations dry-run preview {#separations-readonly-acceptance}
 status: planned
 size: M
 chip: fresh strict T1b required
-doc: 3.2 §Task 6 · Record current-source Separations read-only acceptance · ref:guards-and-tests §10.4 · ref:write-safety §14.11
+doc: 3.2 §Task 8.2 · Finish the Separations dry-run preview · ref:guards-and-tests §10.4 · ref:write-safety §14.11
 
 > Reverify the selected closed Kuali document through the integrated compiled workflow and reach the declared dry-run preview terminal with a fresh `met` T1b result and exact-run 0/0/0 intents, attempts, and outbox.
 
@@ -2544,11 +2617,14 @@ needs:
 - separations-compiled-acceptance
 - workflow-acceptance-finalizer
 
-#### 6 · Audit and freeze the acceptance candidate {#workflow-candidate-freeze}
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.8.2; previous 3.2.5; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
+
+#### 9 · Freeze the tested acceptance candidate {#workflow-candidate-freeze}
 status: planned
 size: M
 chip: independent · audit only
-doc: 3.2 §Task 7 · Audit and freeze the acceptance candidate · ref:workflow-model §1.6 · ref:write-safety §14
+doc: 3.2 §Task 9 · Freeze the tested acceptance candidate · ref:workflow-model §1.6 · ref:write-safety §14
 
 > Independently verify all prerequisite, parallel and read-only acceptance tasks, run every integrated gate, and freeze the exact commit, generated manifest, workflow fingerprints, runtime/configuration schema, and focused evidence. A failure creates a focused 3.2 remediation task and restarts this audit.
 
@@ -2563,39 +2639,8 @@ needs:
 - separations-readonly-acceptance
 - workflow-acceptance-finalizer
 
-#### 7 · Finalize runtime and guide proofs {#workflow-proof-finalizer}
-status: planned
-size: M
-date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
-doc: 3.2 §Task 7 · Finalize runtime and guide proofs · ref:guards-and-tests §3.14
-
-> Combine exact reviewed candidates, run full gates and deferred proofs, fix failures and obtain independent review of the corrected result before accepted integration. Preserve the separate audit-only candidate freeze and all transaction boundaries.
-
-builds:
-- [ ] BOTH repair combination defects and reconcile generated products within the approved group
-- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS exact reviewed candidates, accepted integration, gate evidence and owned cleanup
-
-needs:
-- workflow-runtime-inheritance
-- workflow-guide-proof
-
-#### 8 · Finalize workflow acceptance {#workflow-acceptance-finalizer}
-status: planned
-size: M
-date: D344 · 2026-09-09 · sequential finalizer after reviewed worker intake
-doc: 3.2 §Task 8 · Finalize workflow acceptance · ref:guards-and-tests §3.14
-
-> Combine exact reviewed candidates, run full gates and deferred proofs, fix failures and obtain independent review of the corrected result before accepted integration. Preserve the separate audit-only candidate freeze and all transaction boundaries.
-
-builds:
-- [ ] BOTH repair combination defects and reconcile generated products within the approved group
-- [ ] PROOF typecheck, lint, full coverage and every applicable acceptance gate on the final corrected tree
-- [ ] DOCS exact reviewed candidates, accepted integration, gate evidence and owned cleanup
-
-needs:
-- person-lookup-acceptance
-- separations-compiled-acceptance
+log:
+- 2026-09-19 | tangible tasks | current assignment 3.2.9; previous 3.2.6; focused checks within the phase, full gates at Task 9; implementation and current acceptance remain open
 
 ### 3.3 · Controlled acceptance {#workflow-live-acceptance}
 status: planned
@@ -2607,6 +2652,7 @@ open: yes
 > Consume one immutable Phase 3.2 candidate: admit it and the exact targets, prove pending sweep independently, perform the coupled UCPath filing and Kuali finalization, then reconcile acceptance and close. This part performs no software development.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] PROOF Task 1 admits the candidate, targets, disposition, final rehearsal, and bounded authorization
 - [ ] PROOF Task 2 records the independent pending-sweep witness on a disposable target
 - [ ] PROOF Task 3 records the coupled UCPath filing and Kuali finalization on the real target
@@ -2617,6 +2663,7 @@ needs:
 - workflow-authoring-model
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-09-04 | D329 chronology correction | controlled writes can start only after the final authoring candidate freezes; drift, failure, or UNKNOWN expires authorization and returns software defects to a new 3.2 remediation task
 
 #### 1 · Admit the frozen candidate and controlled run {#acceptance-admission}
@@ -2689,10 +2736,14 @@ doc: 3.4 §Phase summary
 
 > An opt-in menu for local OCR, PDF tools, search and focused assistance. Every feature can be deferred or skipped; none blocks Phase 3.5, migrations or cutover. Existing mandatory intake obligations remain with their current owners.
 
+builds:
+- [?] PROOF for each selected feature batch: focused task/subtask checks, then full gates and repairs at batch completion; unselected features never block release
+
 needs:
 - workflow-live-acceptance
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-09-07 | D342 optional documents | recorded optional scope; all implementation remains unselected and unbuilt
 
 #### 1 · Evaluate and serve local OCR {#optional-local-ocr}
@@ -2914,10 +2965,14 @@ doc: 3.5 §Track summary · ref:frontend-backend-integration §3.4 · ref:write-
 
 > After 3.3 closes, without waiting for optional 3.4, Claude Code becomes the second attributed actor on the one local BFF. Task 1 establishes truthful actor identity with full capability parity; Task 2 makes the existing API usable directly by agents (MCP optional); Tasks 2.1 and 2.2 independently add monitoring and actor-aware clients after Task 2 completes the shared prerequisite; Task 3 records the attributed dry-run/T4 proof and closes Phase 3. Desktop attachment remains Phase 6.
 
+builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
+
 needs:
 - workflow-live-acceptance
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-09-04 | D329 chronology correction | 3.4 starts after controlled acceptance closes in 3.3; old 03d filename retired in favor of decimal doc 03.4
 - 2026-09-03 | D326 decimal hierarchy | 3.4 starts after closed 3.3; Tasks 3 and 4 are parallel-capable only through the coordinator plan, and Task 5 owns the T4 journey plus Phase 3 close · desktop attachment remains Phase 6
@@ -2969,6 +3024,7 @@ log:
 - 2026-09-06 | D338 operator correction | direct HTTP is sufficient for agent operation and acceptance; MCP is optional, stable node id retained
 
 ##### 1 · Add cursor-based monitoring and the actor inbox {#claude-monitor}
+chip: Parallel · agent clients
 status: planned
 date: independent parallel child after its accepted parent prerequisite
 size: M
@@ -2989,10 +3045,12 @@ needs:
 - observed-logs
 
 log:
+- 2026-09-19 | tangible tasks | concrete deliverables and explicit Parallel labels; focused checks during the phase and full gates at its end; implementation remains open
 - 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
 ##### 2 · Make existing clients actor-aware {#claude-clients}
+chip: Parallel · agent clients
 status: planned
 date: independent parallel child after its accepted parent prerequisite
 size: M
@@ -3011,6 +3069,7 @@ needs:
 - claude-mcp
 
 log:
+- 2026-09-19 | tangible tasks | concrete deliverables and explicit Parallel labels; focused checks during the phase and full gates at its end; implementation remains open
 - 2026-09-07 | D342 optional documents | optional 3.4 added; cooperation bindings move to 3.5 with stable IDs and unchanged D338 scope; optional work never blocks required completion
 - 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
@@ -3075,12 +3134,14 @@ open: yes
 > Build a reusable dashboard workflow that selects applicants from a roster, generates a background-check workbook, gates the reviewed request, submits through UCSD Human Resources and retains verified receipt/recovery evidence. Counts, names, dates and request settings belong to each run. The initial path is multiple applicants; Task 4.1.1 resolves remaining scope before implementation.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] DOCS approve the workflow contract, request identity and proof targets
 - [ ] BOTH deliver roster intake, workbook generation and dashboard review
 - [ ] BE deliver verified ServiceNow submission, receipt and no-repeat-write recovery
 - [ ] PROOF prove and enable the registered workflow through the dashboard
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-09-08 | Background Check discovery | operator demonstrated the multiple-applicant form and template-copy workflow; reusable requirements captured in the internal workflow resource; manual preparation is not automated acceptance
 - 2026-09-08 | Operator scope correction | 4.1 is a new dashboard workflow; replace individual-run tracking with implementation tasks and remove run-specific detail from the roadmap
 
@@ -3195,6 +3256,12 @@ chip: every gap has a disposition
 doc: 5A §Shelf summary
 
 > Resolve, retire, or explicitly carry forward each remaining cross-cutting item before the authority switch.
+
+builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
+
+log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 
 #### Run the built dashboard without the dev server {#def-byte-path}
 status: planned
@@ -3350,6 +3417,7 @@ doc: 5B §Stage summary · 5B §Exit criteria · 5B/legacy-vs-rebuild-as-of-2026
 > D89 / D93. No workflow flips individually, no mixed-engine production, ever. The entire legacy repo is preserved as the rollback asset; nothing in it is deleted until rollback-window closure with separate explicit authorization.
 
 builds:
+- [ ] PROOF focused preparation checks; full candidate/readiness gates before the authorized authority switch, then required post-switch observations before closure
 - [ ] BE the ledger's serialized writer composed in production — `createLedgerProjector` has no caller outside `tests/` while the read-through IS composed, so the dashboard reads a corpus nothing writes (doc 05 §Exit criteria 6)
 - [ ] PROOF the §7.4 performance and resilience budgets MEASURED on the local production build, and the numbers adopted as the non-regression gates (Track D D4/D5, D264)
 - [ ] PROOF the recovery drill rehearsed against the REAL authority database — the unit lane drills a real-shaped copy every commit, and D181 is what made `cli storage restore` reachable at all
@@ -3369,6 +3437,7 @@ needs:
 - fact: doc 05 §Exit criteria — the definition of done + the program-wide integration criteria (ref frontend-backend-integration §10) green in the real built app
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-08-21 | docs-cohesion 05 | doc 05 rewritten as-built — the register recount (47, not 48), five build items added for the definition-of-done conditions the tree lacked, and one FINDING: the ledger's serialized writer is built, tested and composed by nothing (`createLedgerProjector` is called only from `tests/`), so exit criterion 6 is open rather than met
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
@@ -3429,6 +3498,7 @@ doc: 6A §Controlled desktop updates · 6E §Packaging — signed installers for
 > D297. One installed machine updates v1 by running the newer signed installer IN PLACE, without uninstalling or clearing app data. A later updater may discover/download a signed release while open, but installation waits behind one fail-loud quiescence verdict and ordered shutdown.
 
 builds:
+- [ ] PROOF if the optional updater is selected: focused feature checks, then full gates at its phase exit; initial desktop release remains manual
 - [ ] PROOF a signed older→newer manual upgrade on macOS and Windows preserves authority rows, artifacts, browser profiles, settings and OS-keychain credentials
 - [ ] BE one desktop quiescence verdict that names active work and refuses, or proves there is no non-terminal run and no active worker/browser child
 - [ ] BE ordered shutdown after that verdict — stop workers and browsers, stop the BFF, close storage handles and release locks before installer handoff
@@ -3439,6 +3509,7 @@ needs:
 - fact: the signed manual older→newer upgrade is proved on real macOS and Windows installations
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-09-01 | D297 | policy and trigger ratified; the manual upgrade proof and controlled update channel remain unbuilt
 
 ### 6B · Application shell {#desk-shell}
@@ -3450,6 +3521,7 @@ doc: 6B §Electron shell — the main process, the window, the single instance �
 > The main process boots the BFF as a managed CHILD process (recommended over in-process: D181's role lock is per-PID and `cli storage restore` composes its stopped-system proof from those files, a BFF crash must not take the window, and `src/cli.ts` is a command entry rather than a library). The window loads `dist/dashboard` from app resources; every runtime root resolves under `app.getPath("userData")` with `runtime-isolation.json`'s NAMES unchanged; a second launch focuses the open window; the app holds a power save blocker while any run is in flight.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] BE the Electron main process boots the BFF as a managed child under the single-instance lock, and a BFF that finds D181's `server` role lock held refuses by name
 - [ ] BE every runtime root resolved under `app.getPath("userData")` instead of `process.cwd()` — `compose.ts:336-337` computes them repo-relative, and `operational-isolation` pins the names, not the resolution
 - [ ] BE the app-version stamp `RunRecord` carries (D179) read from a source that survives packaging — `compose.ts:337-340` reads `join(repoRoot, "package.json")`, which is inside the asar
@@ -3461,6 +3533,7 @@ needs:
 - desktop-app
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; the child-process recommendation and the four obstacles are read out of the code at HEAD (`src/server/dashboard/compose.ts`, `src/domain/config/schema.ts:8`, `src/dashboard/app/main.tsx:21`)
 
 ### 6C · Worker lifecycle {#desk-worker}
@@ -3472,6 +3545,7 @@ doc: 6C §Worker lifecycle — the pool the app owns · ref:execution-and-sessio
 > Workers become managed child processes started and stopped from the dashboard, which IS `{#parallel-runs}`' pool rather than a second scheduler. Playwright's full bundled Chromium and the vendored Duo Autopilot extension are shipped with the app or installed on first run into app data; profiles keep doc 05's `(worker, system, instance, configFingerprint)` partition with the root moved under app data; the Windows half is verified on real hardware.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] BE workers as managed child processes, started and stopped from the dashboard — `createDashboardWorkerSupervisor` refuses spawn by name today and tells the operator to run `npm run cli worker` (`src/server/dashboard/compose.ts:322-331`), which a packaged app cannot offer
 - [ ] BE Playwright's FULL bundled Chromium available to a packaged app — shipped inside the installer or installed on first run into app data (the headless shell cannot load an extension, so there is no smaller option)
 - [ ] BE the vendored `duo-autopilot/` extension placed under app data with `paths.duoExtensionDir` pointed at it — a hard runtime dependency of every authenticated login (D244)
@@ -3484,6 +3558,7 @@ needs:
 - parallel-runs
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; this node CONSUMES `{#parallel-runs}`' pool — a second supervisor over one authority table is the shape D200 warned about
 
 ### 6D · Credentials and keychain {#desk-secrets}
@@ -3495,6 +3570,7 @@ doc: 6D §Credentials — the OS keychain behind the one reader · ref:clock-con
 > `.env` becomes the macOS Keychain and the Windows Credential Manager, reached through `src/domain/secrets.ts` and nowhere else — the `secrets-single-source` guard does not move. The open design question is HOW a keychain (async, prompting) reaches a synchronous reader: populate each child's environment block at spawn, or give the reader a source seam. They differ in exposure, so it is a decision with a D-number. A first-run setup screen collects what is missing and names each credential it refuses without.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] BE the OS keychain as the credential source for a packaged app — macOS Keychain, Windows Credential Manager
 - [ ] BE `src/domain/secrets.ts` stays the ONLY reader; `secrets-single-source.test.ts` unchanged
 - [ ] BE the Duo credential (`paths.duoCredential`) moved into the same store, or its file placed under app data with the app's own protection — never plaintext inside the shipped bundle
@@ -3506,6 +3582,7 @@ needs:
 - desktop-app
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; the POSIX-only path schema is a verified blocker for the Windows half and is filed here because it is what the keychain and the extension paths both trip over
 
 ### 6E · Signed installers {#desk-package}
@@ -3517,6 +3594,7 @@ doc: 6E §Packaging — signed installers for both operating systems · ref:fron
 > electron-builder, with the dashboard bundle and `duo-autopilot/` as app resources. macOS: a signed and NOTARIZED dmg. Windows: a signed nsis or msix installer. The release version is D179's app-version stamp. D297: v1 updates are signed manual installers run IN PLACE; mutable state stays under the stable app-data/keychain roots; controlled update is LATER under `{#def-desktop-update}`.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] BE electron-builder configured, with `dist/dashboard` and `duo-autopilot/` as app resources
 - [ ] BE macOS — a signed and notarized dmg
 - [ ] BE Windows — a signed installer (nsis or msix)
@@ -3532,6 +3610,7 @@ needs:
 - desk-secrets
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-09-01 | D297 | Electron and the v1 manual update lane ratified; controlled update indexed at `{#def-desktop-update}`
 - 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; signing is not optional on either OS because the app launches a second browser with an unpacked extension
 
@@ -3546,6 +3625,7 @@ doc: 6F §Proof — a dry run from the packaged app on both operating systems ·
 > D341: explicitly provision private test inputs per proof machine; consume shared fixtures, ship no private assets/values, and add no test-data controls to user Settings.
 
 builds:
+- [ ] PROOF focused task/subtask checks; full typecheck, lint, coverage and applicable acceptance gates at this phase’s final outcome, with required repairs
 - [ ] PROOF T1 — a full workflow dry run driven from the installed app on macOS, checkpoints asserted over authority and the result recorded durably
 - [ ] PROOF T1 — the same on Windows, on real hardware
 - [ ] PROOF T3 — a dashboard condition attached to that dry run and driven through the app's own window
@@ -3558,6 +3638,7 @@ needs:
 - workflow-acceptance-close
 
 log:
+- 2026-09-19 | phase-exit cadence | tangible tasks and focused checks during the phase; full gates and repairs at its final acceptance; existing scope and authorization unchanged
 - 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; D329 routes the former `{#test-tiers}` dependency through `{#workflow-acceptance-close}` before packaged-app proof
 
 <!-- roadmap:end -->
@@ -3576,6 +3657,51 @@ and read-only acceptance before the immutable-candidate controlled proof.
 The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
+
+<a id="tangible-tasks-and-phase-exit-gates"></a>
+
+### Tangible tasks and phase-exit gates — operator amendment, 2026-09-19
+
+Starting with Phase 3.2, each numbered task delivers one concrete feature or observable outcome.
+Name it for what will work when it finishes, such as “Finish the Run modal”, “Build applicant
+workbook generation” or “Freeze the tested acceptance candidate”. Subtasks deliver concrete parts
+of that outcome. Avoid standalone scheduling wrappers, generic “prepare independent tasks”,
+or “finalization” cards when that work can live under the feature it finishes. Required admission,
+controlled proof and release/freeze outcomes remain real deliverables; do not invent software
+changes for evidence-only phases. Existing feature scope, stable node IDs and dated evidence survive.
+
+Subtasks may be sequential. Decimal nesting does not imply parallel execution. Every admitted
+parallel node displays `chip: Parallel · <group>`; the same group label identifies work intended
+for concurrent execution once its explicit prerequisites are met. Unlabelled nodes are sequential.
+A label is a scheduling instruction, not launch permission or extra capacity. Parallel admission
+still requires stable inputs, disjoint ownership, independently passing focused checks, capacity,
+and a named integration/cleanup owner. Shared integration is a sequential subtask of the feature
+or part of its acceptance, with explicit dependency edges. No automatic sibling dispatch or merge.
+Existing Phase 3.1 assignments and their cadence remain unchanged.
+
+**Gate cadence applies to sequential tasks, prerequisites, parallel workers and intermediate
+integration alike.** During a phase run affected tests, lint and selected static/generated checks;
+repair focused failures before handing off or continuing dependent work. Do not run the whole
+suite/full coverage at each task or group. Each delivery phase (3.2, 3.3, a selected 3.4 batch,
+3.5, each admitted 4.x, 5A, 5B and each scheduled 6A–6F part) ends with typecheck, lint,
+full coverage and all applicable phase-wide acceptance gates. Its final outcome owns gate-found
+repairs and invalidated reruns. A focused pass never establishes full phase acceptance.
+[Guards and tests §3.14](../rebuild/reference/guards-and-tests.md#phase-exit-gates-from-3-2)
+owns exact commands and reuse rules. Existing independent review requirements remain unchanged.
+
+Phase 3.2 runs full gates at its final independent audit/freeze; that audit remains read-only,
+returns failures to bounded 3.2 remediation, and restarts on the corrected candidate. Phase 3.3
+consumes that candidate unchanged and returns software defects to 3.2. Required target checks,
+no-write rehearsals and bounded write authorization still happen before their controlled action.
+Cutover readiness gates still pass before the production switch; phase-end testing never means
+performing a write or switch first and checking its safety afterward. D319 workflow admission,
+D342 optionality, UNKNOWN refusal and Phase 5 cutover authority remain binding.
+
+This amendment supersedes the future-work hierarchy and per-prerequisite/group full-gate rules
+in D344/D191 below for Phase 3.2 onward. It changes task shape and verification timing, not product
+requirements, completed history, review authority, test membership, assertions, floors or timeouts.
+Exact implementation briefs still belong to the operator-opened planning/supervision sessions.
+
 
 ### Phase 4 decimal naming amendment — 2026-09-08
 
@@ -3672,7 +3798,8 @@ or changed contract decisions remain outside this authorization. Integration and
 the assigned permission; Phase 3.2 still waits for accepted 3.1.19.
 
 This explicitly supersedes earlier Phase 3.1 per-group full-gate and audit-only/no-repair rules,
-including D191/D344 and personal skills. All no-independent-review and Astra/ultra settings remain.
+including D191/D344 and personal skills. The no-independent-review policy remains; model selection
+follows the current operator policy below.
 Keep every existing task ID, dependency edge, product outcome, assertion, floor, timeout and live-
 write boundary. Reuse valid unchanged evidence; rerun invalidated gates after corrections. Group
 numbers and independent-worker ownership remain; other phases keep their gate/freeze policies.
@@ -3701,11 +3828,12 @@ changes. The focused-check/no-independent-review cadence below remains binding.
 
 ### Phase 3.1 execution cadence and Codex subagents (operator amendment, 2026-09-13)
 
-All Codex subagents use `gpt-6-astra` with `ultra` reasoning, including supporting workers,
-researchers, analysts and reviewers when review is assigned. Native role names retain their duties,
-context limits and read/write restrictions; they no longer choose Sol/Terra model tiers. This
-supersedes older Codex subagent model/effort selections in plans, repository and personal guidance.
-The operator still chooses the parent planning/supervisor session; Claude model choices are unchanged.
+**Model-policy update (operator-approved, 2026-09-19).** Codex focused workers use `gpt-5.6-luna`
+with `xhigh` reasoning; independent reviewers use `gpt-5.6-sol` with `xhigh`. Native roles retain
+their duties, context limits and tool restrictions; the dormant analyst remains explicit-comparison
+only. The operator selects planning and supervisor models/effort, without skill or prompt
+recommendations. This supersedes older model selections in plans and guidance; historical evidence
+keeps the models that actually ran. Claude native worker/reviewer definitions are unchanged.
 
 For **all remaining Phase 3.1 work**, the operator removes the independent-review step and moves
 broad gates to final task 3.1.19. The [phase execution cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
@@ -3729,12 +3857,12 @@ launch a successor or change operator integration permission.
 
 ### Plan, implement, review (operator amendment, 2026-09-04)
 
-For remaining Phase 3.1 work, the 2026-09-13 exception above replaces this section’s review and gate cadence. All Codex subagent model selections below are superseded by Astra/ultra.
+For remaining Phase 3.1 work, the 2026-09-13 exception above replaces this section’s review and gate
+cadence. The 2026-09-19 model policy above supersedes older model/effort selections.
 
-The operator opens planning and supervisor sessions for an exact roadmap task. Codex uses GPT-5.6
-Sol (high) to plan and GPT-6 Astra (high) to supervise; Claude uses Opus 5 (high) and Fable 5.1 (high).
-The supervisor dispatches one fresh read-only reviewer subagent at the end of implementation:
-Codex `sup_review` (Sol, high) or Claude `sup-review` (Opus, high). Review, fixes and finalization
+The operator opens planning and supervisor sessions for an exact roadmap task and selects their
+models and effort. Where review is required, the supervisor dispatches one fresh read-only reviewer
+at the end of implementation: Codex `sup_review` (Sol, xhigh) or Claude `sup-review` (Opus, high). Review, fixes and finalization
 continue in the same supervisor session. Skills do not switch the current session model or start
 the next task. A separately opened review session is an explicit operator option.
 Explicit operator overrides take precedence. This rule governs future task execution, not a
@@ -3899,6 +4027,8 @@ implementation, sibling launch, live upgrade or push is authorized by planning.
 
 ### Parallel group shape for future plans (2026-09-09)
 
+**Phase 3.2 onward:** the [2026-09-19 amendment](#tangible-tasks-and-phase-exit-gates) takes precedence: tangible tasks and subtasks, explicit Parallel chips, focused checks within a phase and full gates at its exit. Earlier and in-flight Phase 3.1 assignments retain their own cadence.
+
 Except for the explicit Phase 2.6-only single-finalization trial above, for every newly planned
 parallel workflow, the **task node is the actual prerequisite**, not a
 container. Its independently implementable workers are numbered child nodes. The **last numbered
@@ -3928,6 +4058,8 @@ automatic rewrite of every existing task. Preserve Astra/high planning, supervis
 authorized supporting workers follow current native role policy.
 
 ### D344 — Operator-coordinated prerequisite groups (2026-09-08)
+
+**Phase 3.2 onward:** the [2026-09-19 amendment](#tangible-tasks-and-phase-exit-gates) takes precedence: tangible tasks and subtasks, explicit Parallel chips, focused checks within a phase and full gates at its exit. Earlier and in-flight Phase 3.1 assignments retain their own cadence.
 
 For remaining Phase 3.1 work, apply the [2026-09-13 cadence](#phase-31-execution-cadence-and-codex-subagents-operator-amendment-2026-09-13): focused prerequisites/tasks and group integration, full gates and repairs only at 3.1.19, no independent review.
 
@@ -4010,6 +4142,8 @@ this roadmap amendment does not declare leaf briefs launch-ready or dispatch any
 
 #### 2026-09-09 amendment — prerequisite, parallel workers, finalizer
 
+**Phase 3.2 onward:** the [2026-09-19 amendment](#tangible-tasks-and-phase-exit-gates) takes precedence: tangible tasks and subtasks, explicit Parallel chips, focused checks within a phase and full gates at its exit. Earlier and in-flight Phase 3.1 assignments retain their own cadence.
+
 **Phase 3.1 exception:** the 2026-09-13 final-gates correction above removes independent review, uses focused prerequisite/task/group checks and assigns full repository gates plus same-session repairs only to 3.1.19. The general rules below continue to govern other phases.
 
 For Phase 3 and future parallel work, every group has three explicit stages. This amendment
@@ -4045,7 +4179,9 @@ standalone tasks retain normal D191 gates. No automatic dispatch, push, live wri
 implied. Existing audit-only/frozen-candidate tasks remain independent: finalizers repair first;
 those audits still return later defects to remediation and restart against the corrected candidate.
 
-Phase 3 uses the explicit finalizers in its current maps: 3.1.9.8, 3.1.11.3, 3.1.14.6, 3.2.7–3.2.8 and 3.5.3.
+Phase 3.1 retains its mapped integration nodes. The 2026-09-19 map moves former 3.2.7/3.2.8
+into concrete subtasks 3.2.5.1/3.2.8.1 with focused checks; 3.2.9 owns full gates and freeze.
+Task 3.5.3 remains that part’s full phase-exit proof.
 Numbers preserve existing task identities; `needs:` edges define their actual execution order.
 Finalizer intake is the explicit exception to requiring completed dependency nodes: all listed
 workers must have independently reviewed, green focused candidates recorded in their owning tasks.
@@ -4055,7 +4191,7 @@ worktree ceiling, a stopped worker may release its own clean worktree after veri
 is committed and its review/evidence is durable; do not delete its candidate branch or mark it
 complete. Groups may finish workers in capacity-sized batches, and must leave room for the
 finalizer. Never remove an active session’s worktree or increase capacity implicitly.
-Optional 3.4 groups must bind this same three-stage model when planned and never block 3.5.
+Optional 3.4 groups follow the 2026-09-19 tangible-task and selected-batch exit rules and never block 3.5.
 This policy and roadmap scope are approved; exact implementation bindings still belong to the
 focused phase plan before launch. No task is launched or declared implemented by this amendment.
 

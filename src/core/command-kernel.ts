@@ -1,3 +1,6 @@
+import { PreflightAdmissionRefusal, type PreflightAdmission } from "../domain/preflight-admission.js";
+import { workflowPreflightScope } from "../services/start/preflight-scope.js";
+import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../domain/worker-control.js";
 import { CommandRefusal } from "./command-refusal.js";
 import type { CommandApplication } from "./command-application.js";
 export type { CommandApplication } from "./command-application.js";
@@ -394,6 +397,7 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
+  readonly preflight?: PreflightAdmission;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;
   readonly clock: Clock;
@@ -654,6 +658,7 @@ function executeStartRun(
     }
   }
 
+  dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
     expectedVersion: request.target.expectedVersion,
@@ -1967,6 +1972,24 @@ function checkWorkerPoolVersion(
   return current;
 }
 
+function requireWorkerControlBasis(repositories: AuthorityRepositories, request: WorkerBrowserCommand): void {
+  if (!("workerId" in request.target)) return;
+  const lease = repositories.workerLeases.get(request.target.workerId);
+  if (lease === undefined) reject(request, "target-not-found", "worker-control-target-not-found");
+  if (request.target.controlBasis === undefined || lease.controlRevision === undefined) reject(request, "invalid-state", "worker-control-basis-unavailable: historical evidence cannot authorize a new instruction");
+  if (request.target.controlBasis.leaseGeneration !== lease.leaseGeneration || request.target.controlBasis.controlRevision !== lease.controlRevision) conflict(request, lease.controlRevision, "worker-control-basis-conflict: worker lifetime or control revision changed");
+}
+
+function requireReservedWorkerControl(repositories: AuthorityRepositories, request: WorkerBrowserCommand): void {
+  if (!("workerId" in request.target)) return;
+  const lease = repositories.workerLeases.get(request.target.workerId);
+  const basis = request.target.controlBasis;
+  if (lease === undefined || basis === undefined || lease.leaseGeneration !== basis.leaseGeneration
+    || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== request.commandId) {
+    throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
+  }
+}
+
 function executeWorkerBrowser(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
@@ -1975,6 +1998,7 @@ function executeWorkerBrowser(
 ): CommandApplication {
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now });
   const workerRuntime = syncWorkerRuntime(dependencies);
+  requireWorkerControlBasis(repositories, request);
   const checkPoolVersion = (workflowId: string, expectedVersion: number): number =>
     checkWorkerPoolVersion(repositories, request, workflowId, expectedVersion);
   switch (request.type) {
@@ -2110,6 +2134,7 @@ function validateWorkerPoolCommand(
   repositories: AuthorityRepositories,
   request: WorkerBrowserCommand,
 ): number {
+  requireWorkerControlBasis(repositories, request);
   switch (request.type) {
     case "plan-worker-count": {
       resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
@@ -2162,20 +2187,20 @@ function validateWorkerPoolCommand(
           + "it owns no live browser session to act on",
         );
       }
+      if (lease.lifecycle.state === "busy" || repositories.runs.listByWorker(lease.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))) reject(request, "invalid-state", "worker-browser-busy: no deferred control is queued");
+      const selected = repositories.workerControls.browsers(lease.workerId).find(value => value.sessionId === request.target.browserSessionId && value.leaseGeneration === lease.leaseGeneration && value.health !== "closed");
+      if (selected === undefined) reject(request, "invalid-state", "worker-browser-session-unavailable");
       return lease.version;
     }
   }
 }
 
-type WorkerPoolSettledAcknowledgement =
-  | Readonly<{ kind: "plan"; workerIds: readonly string[] }>
-  | Readonly<{ kind: "stop"; directiveLeaseVersions: Readonly<{ before: number; after: number }> }>
-  | Readonly<{ kind: "control" }>;
+type WorkerPoolSettledAcknowledgement = WorkerEffectAcknowledgement;
 
 /**
  * Await the pool effect and zod-parse the SETTLED value — never a pending
- * promise, never an unparsed shape. A thrown effect propagates and unwinds
- * the command before any authority fact is written.
+ * promise, never an unparsed shape. Durable admission already exists; an
+ * unproved effect retains uncertainty before the error reaches the caller.
  */
 async function settleWorkerPoolEffect(
   pool: WorkerPoolRuntimeSeam,
@@ -2192,7 +2217,7 @@ async function settleWorkerPoolEffect(
       return { kind: "control" };
     case "stop-worker": {
       const acknowledgement = WorkerStopPoolAcknowledgementSchema.parse(await pool.stopPoolWorker(context));
-      return { kind: "stop", directiveLeaseVersions: acknowledgement.directiveLeaseVersions };
+      return WorkerEffectAcknowledgementSchema.parse({ kind: "stop", directiveLeaseVersions: acknowledgement.directiveLeaseVersions });
     }
     case "pause-worker":
       WorkerRuntimeAcknowledgementSchema.parse(await pool.pausePoolWorker(context));
@@ -2292,6 +2317,7 @@ function applyWorkerPoolCommand(
     }
     case "pause-worker":
     case "resume-worker": {
+      requireReservedWorkerControl(repositories, request);
       const lease = repositories.workerLeases.get(request.target.workerId);
       if (lease === undefined) {
         throw new Error(
@@ -2311,6 +2337,7 @@ function applyWorkerPoolCommand(
       const outcome = repositories.workerLeases.control({
         workerId: request.target.workerId,
         expectedVersion: lease.version,
+        commandId: request.commandId,
         control: {
           directive,
           requestedAt: now,
@@ -2332,155 +2359,91 @@ function applyWorkerPoolCommand(
   }
 }
 
-/**
- * The B→C crash window's honest recovery (a stop only): the crashed delivery's
- * effect is DURABLE — the lease's `control` carries the stop directive the
- * command initiated — but no journal row was written, so without this arm
- * every re-delivery re-consults the supervisor, which rightly refuses (a stop
- * already in flight, or, after a BFF restart, a child it never spawned), and
- * command authority never records a stop that in fact happened.
- *
- * A lease whose control already carries THIS command's stop identity —
- * directive `stop`, the command's exact `requestedBy` and `reason`, an
- * instant not after this delivery's `now` — is replayable evidence of that
- * effect, and the command settles FROM it: journaled and audited applied,
- * with no version change claimed (this delivery wrote nothing, and the
- * original write's versions died with the crashed process). The directive's
- * `requestedAt` cannot be matched to anything this delivery knows — it was
- * minted from the crashed delivery's phase-A clock — so the identity match is
- * actor + reason, exact.
- *
- * The evidence binds only while the target is still live (`isLiveWorker` —
- * a crashed B→C delivery's target is still live, at worst `stopping`): a
- * DEAD lease's directive is the record of a stop that already completed, not
- * of this command's effect, and converging on it would journal "applied" for
- * a command that stopped nothing. A dead lease falls through to the sync
- * path's own typed stopped-worker refusal.
- *
- * On a live lease the directive is a stop IN FLIGHT, so an identity
- * near-miss has exactly one honest answer: a typed refusal NAMING the
- * drifted field (actor, reason, or a postdated `requestedAt`). Falling
- * through instead would hand the command to the supervisor, whose refusal
- * ("a stop is already in flight", or after a restart "never spawned") names
- * none of the mismatch and leaves the drift illegible.
- */
-function settleStopFromDurableEvidence(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<WorkerBrowserCommand, { type: "stop-worker" | "pause-worker" | "resume-worker" }>,
-  now: string,
-): CommandResult | undefined {
-  if (request.type !== "stop-worker") {
-    throw new Error(`settleStopFromDurableEvidence received a ${request.type} command; only a stop has durable directive evidence`);
-  }
-  const lease = repositories.workerLeases.get(request.target.workerId);
-  if (lease === undefined) return undefined;
-  const { control } = lease;
-  if (control.directive !== "stop") return undefined;
-  if (!isLiveWorker(lease)) return undefined;
-  const describeReason = (reason: string | undefined): string =>
-    reason === undefined ? "no reason" : `reason "${reason}"`;
-  if (control.requestedBy !== request.requestedBy) {
-    reject(
-      request,
-      "invalid-state",
-      `worker ${request.target.workerId}'s durable stop directive was `
-      + `requested by ${control.requestedBy}, not ${request.requestedBy}; `
-      + "a stop is already in flight under a different actor",
-    );
-  }
-  if (control.reason !== request.reason) {
-    reject(
-      request,
-      "invalid-state",
-      `worker ${request.target.workerId}'s durable stop directive names `
-      + `${describeReason(control.reason)}, not ${describeReason(request.reason)}; `
-      + "a stop is already in flight for a different reason",
-    );
-  }
-  if (Date.parse(control.requestedAt) > Date.parse(now)) {
-    reject(
-      request,
-      "invalid-state",
-      `worker ${request.target.workerId}'s durable stop directive is postdated: `
-      + `its requestedAt ${control.requestedAt} is after this delivery's now ${now}, `
-      + "so it cannot be this command's own crashed effect",
-    );
-  }
-  const journal = repositories.commands.insert(request);
-  if (journal.state === "existing") {
-    throw new Error(
-      `stop-worker ${request.commandId} was journaled while its own settle transaction held the authority `
-      + "store; the journal is inconsistent",
-    );
-  }
-  const application = applied(request, [workerTarget(request.target.workerId)], []);
-  repositories.commandAudits.insert({
-    auditId: dependencies.ids.uuid(),
-    request,
-    result: application.result,
-    completedAt: now,
-    versionChanges: application.versionChanges,
-    affectedDependencyIds: application.affectedDependencyIds,
-  });
-  return application.result;
-}
-
-/**
- * The three-phase pool flow. The authority transaction is synchronous and the
- * pool effect is not, so the flow splits: (A) a read-only transaction settles
- * replay (and, for a stop, the crashed-delivery evidence settle above) and
- * validates the target — a refusal here reaches no target; (B) the effect is
- * awaited OUTSIDE any transaction and its settled value parsed; (C) one
- * transaction journals the command, writes the authority facts the
- * acknowledged effect justifies, and audits the result. The caller holds the
- * per-workflow serialization across all three phases.
- */
+/** Durable admission precedes every async effect; settlement precedes the final audit. */
 async function executeWorkerPoolCommand(
   dependencies: CommandKernelDependencies,
   pool: WorkerPoolRuntimeSeam,
   request: WorkerBrowserCommand,
 ): Promise<CommandResult> {
+  const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+  const browser = request.type === "refresh-browser" || request.type === "reopen-browser";
+  const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
     repositories.commands.assertIdentity(request);
-    const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
     if (repositories.commands.get(request.commandId) !== undefined) {
       return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
     }
-    if (request.type === "stop-worker") {
-      const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
-      if (settled !== undefined) return { kind: "settled" as const, result: settled };
-    }
-    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
-      repositories.runtimeConfig.requireSettingsCurrent();
-    }
-    return {
-      kind: "proceed" as const,
-      now,
-      basisVersion: validateWorkerPoolCommand(dependencies, repositories, request),
-    };
+    const prior = repositories.workerControls.get(request.commandId);
+    if (prior !== undefined) return { kind: "retained" as const, record: prior };
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
+    const basisVersion = validateWorkerPoolCommand(dependencies, repositories, request);
+    const scope = workerPoolSerializationKey(request);
+    if (repositories.workerControls.pending(scope).length > 0) reject(request, "invalid-state", "worker-control-unresolved-effect: reconcile the exact previous command before another effect");
+    if ("workerId" in request.target) repositories.workerLeases.reserveControl(request.target.workerId, request.target.controlBasis, request.commandId, now);
+    const record = repositories.workerControls.admit({ commandId: request.commandId, request, scope,
+      executorId: dependencies.ids.uuid(), admittedAt: now,
+      expiresAt: new Date(Date.parse(now) + 180_000).toISOString(), basisVersion, phase: { state: "admitted" } });
+    return { kind: "admitted" as const, record };
   });
-  if (pre.kind !== "proceed") return pre.result;
-  const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
-  const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
-  return dependencies.authority.withAuthorityTransaction((repositories) => {
-    repositories.commands.assertIdentity(request);
-    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
-      repositories.runtimeConfig.requireSettingsCurrent();
+  if (pre.kind === "replay") return pre.result;
+  let record: WorkerControlRecord = pre.record;
+  if (pre.kind === "admitted") {
+    try {
+      if (!browser) record = controls.transition(request.commandId, "admitted", { state: "executing", startedAt: now });
+      const context: WorkerRuntimeContext = Object.freeze({ command: request, now });
+      const acknowledgement = WorkerEffectAcknowledgementSchema.parse(await settleWorkerPoolEffect(pool, request, context));
+      if (!browser) record = dependencies.authority.withAuthorityTransaction(repositories => {
+        if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
+        const application = applyWorkerPoolCommand(repositories, request, now, pre.record.basisVersion, acknowledgement);
+        return repositories.workerControls.transition(request.commandId, "executing", {
+          state: "succeeded", startedAt: now, completedAt: dependencies.clock.now().toISOString(), acknowledgement, application,
+        });
+      });
+      else {
+        const observed = controls.get(request.commandId);
+        if (observed === undefined || observed.phase.state !== "succeeded") throw new Error("worker-browser-outcome-not-observed");
+        record = observed;
+      }
+    } catch (error) {
+      const current = controls.get(request.commandId);
+      if (current === undefined) throw new Error("worker-control-evidence-missing", { cause: error });
+      const observedAt = dependencies.clock.now().toISOString();
+      if (current.phase.state === "admitted" || current.phase.state === "ready" || current.phase.state === "executing") {
+        const phase = error instanceof WorkerControlRefusal
+          ? { state: "refused", completedAt: observedAt, message: error.message }
+          : current.phase.state === "executing"
+            ? { state: "uncertain", startedAt: current.phase.startedAt, observedAt, message: "worker-control-effect-uncertain" }
+            : { state: "refused", completedAt: observedAt, message: "worker-control-delivery-refused" };
+        record = controls.transition(request.commandId, current.phase.state, phase);
+      } else record = current;
+      if (record.phase.state !== "succeeded" && !(error instanceof WorkerControlRefusal)) throw error;
     }
+  }
+  return dependencies.authority.withAuthorityTransaction((repositories) => {
+    const retained = repositories.workerControls.get(request.commandId);
+    if (retained === undefined) throw new Error("worker-control-evidence-missing");
+    record = retained;
+    if ((record.phase.state === "admitted" || record.phase.state === "ready") && Date.parse(record.expiresAt) <= dependencies.clock.nowMs()) {
+      record = repositories.workerControls.transition(request.commandId, record.phase.state,
+        { state: "refused", completedAt: dependencies.clock.now().toISOString(), message: "worker-control-expired-before-effect" });
+    }
+    if (record.phase.state === "executing" && Date.parse(record.expiresAt) <= dependencies.clock.nowMs()) {
+      record = repositories.workerControls.transition(request.commandId, "executing", { state: "uncertain", startedAt: record.phase.startedAt,
+        observedAt: dependencies.clock.now().toISOString(), message: "worker-control-effect-uncertain: owner did not retain an outcome before expiry" });
+    }
+    if (record.phase.state !== "succeeded" && record.phase.state !== "refused") {
+      return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state",
+        message: `worker-control-${record.phase.state}: no repeated effect is authorized; retain this command identity` });
+    }
+    repositories.commands.assertIdentity(request);
     const journal = repositories.commands.insert(request);
-    if (journal.state === "existing") return replay(dependencies, repositories, request, pre.now);
-    const application = applyWorkerPoolCommand(
-      repositories, request, pre.now, pre.basisVersion, acknowledgement,
-    );
-    repositories.commandAudits.insert({
-      auditId: dependencies.ids.uuid(),
-      request,
-      result: application.result,
-      completedAt: pre.now,
-      versionChanges: application.versionChanges,
-      affectedDependencyIds: application.affectedDependencyIds,
-    });
+    if (journal.state === "existing") return replay(dependencies, repositories, request, now);
+    const application = record.phase.state === "succeeded"
+      ? record.phase.application ?? applyWorkerPoolCommand(repositories, request, record.admittedAt, record.basisVersion, record.phase.acknowledgement)
+      : { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: record.phase.message }), versionChanges: [], affectedDependencyIds: [] };
+    repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result: application.result,
+      completedAt: dependencies.clock.now().toISOString(), versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
+    repositories.workerControls.audit(request.commandId, dependencies.clock.now().toISOString());
     return application.result;
   });
 }
@@ -2494,24 +2457,7 @@ async function executeWorkerPoolCommand(
  * its own key, which is provably sufficient: a plan's roster only ever names
  * canonical pool members, so no workflow-scoped command can touch it.
  */
-function workerPoolSerializationKey(request: WorkerBrowserCommand): string {
-  switch (request.type) {
-    case "plan-worker-count":
-    case "spawn-worker":
-      return `worker-pool:${request.target.workflowId}`;
-    case "stop-worker":
-    case "pause-worker":
-    case "resume-worker":
-    case "refresh-browser":
-    case "reopen-browser": {
-      const match = /^(?<workflowId>.+)-worker-[1-9]\d*$/.exec(request.target.workerId);
-      const workflowId = match?.groups?.["workflowId"];
-      return workflowId === undefined
-        ? `worker-browser:${request.target.workerId}`
-        : `worker-pool:${workflowId}`;
-    }
-  }
-}
+const workerPoolSerializationKey = workerControlScope;
 
 
 export type { ArchiveCommandTools } from "./archive-version-changes.js";
@@ -2701,6 +2647,7 @@ function replay(
       `command ${request.commandId} is journaled but has no recorded outcome; refusing to guess what it did`,
     );
   }
+  if (request.family === "worker-browser" && audit.result.state === "rejected") return audit.result;
   if (audit.result.state !== "applied") {
     throw new Error(
       `command ${request.commandId} recorded outcome ${audit.result.state}; only applied commands are journaled`,
@@ -2941,6 +2888,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
           state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
         });
+        if (error instanceof PreflightAdmissionRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message });
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }

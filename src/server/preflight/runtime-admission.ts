@@ -1,0 +1,82 @@
+import { requiredPreflightChecks } from "../../domain/preflight.js";
+import { join } from "node:path";
+import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
+import { selectActiveRunSettings, selectRunSettings } from "../../core/run-settings.js";
+import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
+import type { Clock } from "../../domain/clock.js";
+import { ConfigSchema } from "../../domain/config/schema.js";
+import { configSnapshotAbsentLeaves } from "../../domain/config/snapshot-generations.js";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { sha256Hex } from "../../domain/sha256.js";
+import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, type PreflightAdmissionScope } from "../../domain/preflight-admission.js";
+import { optionalSecretFamily, providerModelChain, protectedSecretRevision, type ProtectedSecretSource } from "../../domain/secrets.js";
+import type { InstanceSelection, RunEnvelope } from "../../domain/run/envelope.js";
+import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { workflowPreflightScope } from "../../services/start/preflight-scope.js";
+import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
+import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } from "./runtime-runners.js";
+
+export function composeRuntimePreflight(input: Readonly<{
+  database: AuthorityDatabase; clock: Clock; repoRoot: string; isolation: RuntimeIsolation;
+  descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
+  descriptorSetHash: string; protectedSecrets: ProtectedSecretSource;
+  environment: Readonly<Record<string, string | undefined>>;
+  runnerFactory?: RuntimePreflightRunnerFactory;
+}>) {
+  const { database, clock } = input;
+  const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
+  const readConfig = (scope: PreflightAdmissionScope) => {
+    const snapshot = selectRunSettings(database.authority, scope);
+    if (sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint || configSnapshotAbsentLeaves(snapshot.config).length > 0) {
+      throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight retained configuration is unavailable.");
+    }
+    const { capture: _capture, operator: _operator, ...config } = snapshot.config as typeof snapshot.config & { capture?: unknown; operator?: unknown };
+    return ConfigSchema.parse(config);
+  };
+  const admission = createPreflightAdmission({
+    clock, scheduler: createTimeoutDeadlineScheduler(clock),
+    validate: scope => { readConfig(scope); },
+    observationIdentity: scope => {
+      if (!requiredPreflightChecks(scope.requestedCapabilities).some(check => check.startsWith("secrets."))) return "no-protected-dependency";
+      try { return String(protectedSecretRevision(input.protectedSecrets)); }
+      catch { throw new PreflightAdmissionRefusal("unavailable", "Protected settings presence could not be verified."); }
+    },
+    runners: scope => {
+      const config = readConfig(scope);
+      const gemini = optionalSecretFamily("geminiApiKeys", input.environment).length > 0 && providerModelChain("geminiApiKeys", config).length > 0;
+      return (input.runnerFactory ?? createRuntimePreflightRunners)({
+        scope, config, protectedSecrets: input.protectedSecrets,
+        providerAvailability: { "gemini/ocr.extract": gemini, "gemini/ai.advisory": false, "census/geocode.census": true, "nominatim/geocode.nominatim": true },
+        dashboard: {
+          repoRoot: input.repoRoot, stateRoot, artifactRoot: join(input.repoRoot, input.isolation.artifactRoot),
+          backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,
+          processLockRoot: join(input.repoRoot, input.isolation.processLockRoot), clock,
+          authorityHealth: new AuthorityHealthPreflightRunner({ stateRootTrustAnchor: input.repoRoot, stateRoot,
+            authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock),
+          listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map(lease => ({ workerId: lease.workerId, processId: lease.processId })),
+        },
+      });
+    },
+  });
+  const descriptor = (workflowId: string): AnyWorkflowDescriptor => {
+    const found = input.descriptors.resolve(workflowId);
+    if (found === undefined) throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight workflow is not registered.");
+    return found;
+  };
+  const currentScope = (workflowId?: string, requestedInstance?: InstanceSelection): PreflightAdmissionScope => {
+    const snapshot = database.withAuthorityTransaction(repositories => {
+      repositories.runtimeConfig.requireSettingsCurrent();
+      return selectActiveRunSettings(repositories);
+    });
+    const identity = { configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint };
+    return workflowId === undefined
+      ? PreflightAdmissionScopeSchema.parse({ ...identity, descriptorFingerprint: input.descriptorSetHash, requestedCapabilities: ["executor.run"] })
+      : workflowPreflightScope(descriptor(workflowId), { ...identity, ...(requestedInstance === undefined ? {} : { resolvedInstance: requestedInstance }) });
+  };
+  const runScope = (envelope: RunEnvelope): PreflightAdmissionScope => workflowPreflightScope(descriptor(envelope.workflow), {
+    configSnapshotId: envelope.configSnapshotId, configFingerprint: envelope.configFingerprint,
+    descriptorFingerprint: envelope.contractFingerprint, resolvedInstance: envelope.resolvedInstance,
+  });
+  return Object.freeze({ admission, currentScope, runScope, descriptor });
+}
+export type RuntimePreflight = ReturnType<typeof composeRuntimePreflight>;

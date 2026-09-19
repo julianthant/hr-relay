@@ -1,4 +1,9 @@
+import { routeWithoutTakeovers } from "./url-state.js";
+import { PreflightActionsProvider } from "../state/preflight-actions.js";
 import { resolveDateSelection, routeForDay } from "./date-state-model.js";
+import { RunLaunchHost } from "./run-launch.js";
+import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
+import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
 import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
@@ -51,9 +56,7 @@ type PendingBulkCommand,
 import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue.js";
 import { useRunCaptures } from "../surfaces/run-captures-model.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js";
-import { START_DOOR_ABSENCE } from "../surfaces/run-start-model.js";
-import { RunStartButton,RunStartSurfaces,type RunStartWorkflow } from "../surfaces/run-start.js";
-import { type WorkerCardWire } from "../surfaces/session-panel-model.js";
+import { RunStartButton } from "../surfaces/run-start.js";
 import { SessionPanel } from "../surfaces/session-panel.js";
 import {
 DASHBOARD_MAIN_REGION_ID
@@ -74,15 +77,11 @@ type BulkVerbPlan,
 } from "./bulk-dispatch.js";
 import {
 composeCommandRequest,
-composePlanWorkerCountCommand,
-composeSpawnWorkerCommand,
-composeStopWorkerCommand,
 type CommandAction,
 } from "./command-dispatch.js";
-import { commandFailureToast,settleCommandResult,type CommandSettlement } from "./command-result.js";
+import { commandFailureToast,settleCommandResult } from "./command-result.js";
 import {
-RUN_START_DOOR_ID,
-restoreDashboardTakeoverFocus
+RUN_START_DOOR_ID
 } from "./dashboard-app-model.js";
 import { DashboardTakeovers } from "./dashboard-takeovers.js";
 import { useGlobalKeys } from "./global-keys.js";
@@ -373,20 +372,8 @@ function LoadedApp({
   const [chosenWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
   const selectedRow = dayWire?.queueSurfaces.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
-  const [startOpen, setStartOpen] = useState(route.start);
-  const startIntakeHandoff = useRef(false);
-  const openStart = useCallback(() => {
-    startIntakeHandoff.current = false;
-    setStartOpen(true);
-  }, []);
-  const closeStartFocus = useCallback((event: Event) => {
-    // The toolbar door is outside Radix's root. Restore it only on dismissal;
-    // Intake replaces that toolbar and its frame already owns arrival focus.
-    event.preventDefault();
-    if (!startIntakeHandoff.current) {
-      restoreDashboardTakeoverFocus(document, RUN_START_DOOR_ID, DASHBOARD_MAIN_REGION_ID);
-    }
-  }, []);
+  const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
+  const openStart = launch.openStart;
   /**
    * The command waiting on the operator's confirmation. A descriptor that
    * carries a server-authored `confirm` block goes here first; everything else
@@ -535,59 +522,7 @@ function LoadedApp({
       : CapabilityAvailabilitySchema.parse(entry.availability);
   }, [boot.featureAvailability]);
 
-  /**
-   * The Run Modal's WHOLE catalogue, not just the panel's workflow: its picker
-   * is a served addition composed right here from the boot document's workflow
-   * list and each descriptor's declared input surface, so "any workflow, from
-   * anywhere" needs no new wire (R8 finding 12).
-   */
-  const startWorkflows = useMemo((): readonly RunStartWorkflow[] => {
-    return workflows.map((entry): RunStartWorkflow => {
-      const workflowId = String(entry.id);
-      /**
-       * D264/D285 (amending D251) — the modal facts, SERVED.
-       *
-       * They used to be read off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple
-       * right here, on the argument that serving a fact the bundle already
-       * carries would give this surface two sources for one value. The argument
-       * was right about the two sources and wrong about the price: holding that
-       * tuple is what put every registered workflow's whole descriptor closure
-       * in the browser bundle, for three plain-data fields. They now ride on the
-       * boot document's own workflow entry, projected at the composition root
-       * from the same descriptor the daemon plans with — one source still, and
-       * `dashboard-wire-boundary`'s registry-reach arm holds the tuple out.
-       *
-       * Nothing is re-parsed and nothing is defaulted: `parseWorkflows` already
-       * put this whole block through `WorkflowBootstrapPrimitiveSchema`, and the
-       * old `?? "reject-active"` stood in for a fact the server always had, so
-       * a served `enqueue` is now simply required.
-       */
-      const start = entry.start;
-      return {
-        workflowId,
-        label: entry.label,
-        categoryId: entry.categoryId,
-        // D219's served taxonomy fact, carried through verbatim: the picker
-        // groups by the same rule the rail does, and neither infers it.
-        role: entry.role,
-        code: entry.code,
-        ...(start.summary === undefined ? {} : { summary: start.summary }),
-        enqueue: start.enqueue,
-        // C96 — the footer's `{label} v{n}`. Served for D264's reason: reading
-        // it off a descriptor is what used to put the registry in this bundle.
-        version: start.version,
-        steps: start.steps,
-        // D296 — the served spreadsheet-capability fact, carried through
-        // verbatim like `role`: the modal draws its second start method from
-        // the module's own intake declaration, never from a workflow id.
-        spreadsheetIntake: start.spreadsheetIntake,
-        inputRun:
-          start.inputRun === undefined
-            ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
-            : { state: "present", surface: start.inputRun },
-      };
-    });
-  }, [workflows]);
+  const startWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
 
   const startWorkflow = useMemo(
     () => startWorkflows.find((entry) => entry.workflowId === activeWorkflowId),
@@ -865,77 +800,9 @@ function LoadedApp({
     [boot.actor.id, client, toast],
   );
 
-  /**
-   * The Session Panel's `Stop` (D249). It posts through the SAME one command
-   * route and reads the answer the same way — `conflict` and `rejected` are
-   * values the server owns and this app prints verbatim, because a stop the
-   * kernel refused (the lease settled while the drawer was open) must never
-   * look like one that landed.
-   */
-  const stopWorker = useCallback(
-    (card: WorkerCardWire): void => {
-      client.executeCommand(composeStopWorkerCommand(
-        { workerId: String(card.workerId), leaseVersion: Number(card.leaseVersion) },
-        { actorId: boot.actor.id, source: "session-panel" },
-      )).then(
-        (result) => {
-          // The same ONE fold (D253) — a stop the kernel refused must never
-          // look like one that landed, and "did it land" has exactly one
-          // implementation in this bundle.
-          const settlement = settleCommandResult(result);
-          if (settlement.kind === "refused") {
-            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
-            return;
-          }
-          toast({
-            tone: "success",
-            title: `Stop ${String(card.workerId)}`,
-            description: "Recorded. The worker finishes its current item, then stops claiming.",
-          });
-        },
-        (caught: unknown) => {
-          // NOT "Nothing was recorded": the envelope is already on the wire by
-          // the time anything can land here, so whether the kernel wrote the
-          // row is a fact this tab does not hold (`commandFailureToast`).
-          toast(commandFailureToast({ stage: "after-dispatch", caught }));
-        },
-      );
-    },
-    [boot.actor.id, client, toast],
-  );
-
-  /**
-   * The Session Panel's POOL controls (D271) — `plan-worker-count` and
-   * `spawn-worker`, posted through the same one command route.
-   *
-   * They differ from `stopWorker` above in where the answer lands, and
-   * deliberately so. A stop is about one worker and a toast can carry its
-   * whole verdict; a pool refusal is about a NUMBER the operator was looking
-   * at — a CAS `conflict` names the version the pool actually holds, and that
-   * sentence belongs beside the control that used the stale one, not in a
-   * corner that dismisses. So these two RETURN the settlement (folded here,
-   * once, through `settleCommandResult` — D253) and the panel draws both
-   * refusal arms verbatim in the group they were issued for. A transport
-   * failure is not folded into a settlement: it rejects, and the panel says
-   * the request never reached the kernel, because "the server refused" and
-   * "nothing was sent" are different things an operator does different things
-   * about.
-   */
-  const planWorkerCount = useCallback(
-    (plan: Readonly<{ workflowId: string; desiredWorkers: number; expectedVersion: number }>): Promise<CommandSettlement> =>
-      client
-        .executeCommand(composePlanWorkerCountCommand(plan, { actorId: boot.actor.id, source: "session-panel" }))
-        .then((result) => settleCommandResult(result)),
-    [boot.actor.id, client],
-  );
-
-  const spawnWorker = useCallback(
-    (member: Readonly<{ workflowId: string; workerId: string; expectedVersion: number }>): Promise<CommandSettlement> =>
-      client
-        .executeCommand(composeSpawnWorkerCommand(member, { actorId: boot.actor.id, source: "session-panel" }))
-        .then((result) => settleCommandResult(result)),
-    [boot.actor.id, client],
-  );
+  const workerCommands = useMemo(() => createWorkerCommandDispatch(client, { actorId: boot.actor.id, source: "session-panel" }), [client, boot.actor.id]);
+  const planWorkerCount = workerCommands.plan;
+  const spawnWorker = workerCommands.spawn;
 
   /**
    * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -1206,6 +1073,7 @@ function LoadedApp({
    * value is the page's first section; every other takeover key clears for the
    * same reason the switcher clears them.
    */
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const openSettings = useCallback((): void => {
     setRoute({
       ...route,
@@ -1226,6 +1094,10 @@ function LoadedApp({
     // fills it. `min-w-0` + `overflow-hidden` live up there with the root
     // classes the demo has (`min-h-0` was this tree's own addition and is what
     // a flex CHILD needs, which is exactly what this element now is).
+    <PreflightActionsProvider actions={{ actorId: boot.actor.id, descriptorFingerprint: boot.descriptorHash,
+      showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
+      showSessions: () => setSessionsOpen(true),
+    }}>
     <div
       data-parity-ready={ready ? "true" : "loading"}
       className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
@@ -1537,6 +1409,8 @@ function LoadedApp({
       </main>
 
       <SessionPanel
+        open={sessionsOpen}
+        onOpenChange={setSessionsOpen}
         workerCards={dayWire?.workerCards ?? []}
         queueSurfaces={dayWire?.queueSurfaces ?? []}
         workerPools={dayWire?.workerPools ?? []}
@@ -1545,15 +1419,13 @@ function LoadedApp({
         nowIso={nowIso}
         connection={connection}
         appVersion={boot.appVersion}
-        onStopWorker={stopWorker}
+        workerCommands={workerCommands}
         onPlanWorkerCount={planWorkerCount}
         onSpawnWorker={spawnWorker}
       />
 
-      <RunStartSurfaces
-        open={startOpen}
-        onOpenChange={setStartOpen}
-        onCloseAutoFocus={closeStartFocus}
+      <RunLaunchHost
+        controller={launch}
         workflows={startWorkflows}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
@@ -1564,7 +1436,6 @@ function LoadedApp({
            the panel would map the file onto whatever workflow the operator
            happened to be standing in. */
         onOpenIntake={(intakeWorkflowId, intakeSessionId) => {
-          startIntakeHandoff.current = true;
           setActiveWorkflowId(intakeWorkflowId);
           setRoute({ ...route, intake: intakeSessionId });
         }}
@@ -1611,5 +1482,6 @@ function LoadedApp({
         }}
       />
     </div>
+    </PreflightActionsProvider>
   );
 }

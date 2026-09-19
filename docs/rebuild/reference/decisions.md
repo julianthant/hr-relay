@@ -4,10 +4,15 @@
 sources select failed/unfinished steps plus descriptor-required completed steps, explaining the
 completed required selections visibly. Successful sources still select all eligible steps.
 Required-step/omission rules and D335 warning/final-submit/replay fences are unchanged. Approved
-scope; implementation and accepted parent release remain outstanding. Owners:
+scope; parent release is accepted and child implementation remains outstanding. Owners:
 [presentation contract](dashboard-surfaces.md#rerun-required-step-defaults--2026-09-19),
 [source-bound values](data-intake-and-edit-data.md#65-rerun-is-the-source-bound-start-plan-path),
 [approved 3.1.11.2 plan](../plans/phase-3/3.1-finish-the-dashboard/task-11-2-make-run-and-rerun-enqueue-real-work.md#approved-execution-brief--2026-09-19).
+
+**2026-09-19 Run/Rerun launch ownership amendment (operator approved):** 3.1.11.2 now owns the
+bounded served-action/root-dispatch registration and source-bound warning preview needed before
+Values are complete. Source/consent/write-safety requirements are unchanged; accepted Sessions and
+preflight completion remain intact. Owner: [approved child allocation](../plans/phase-3/3.1-finish-the-dashboard/task-11-2-make-run-and-rerun-enqueue-real-work.md#approved-launch-ownership-amendment--2026-09-19).
 
 **2026-09-14 Intake scope and confirmation amendment (D170/D171/D173/D298):** 3.1.9.6 remains
 spreadsheet-only and owns the narrow extraction/repair of its upload component inside the Run
@@ -2539,3 +2544,14 @@ additional controls and truthful, dated observation/outcome presentation. The
 [single task owner](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18)
 binds the additive migration, recovery compatibility, child-interface boundary, focused proofs and
 operator-directed integration. No schema or runtime change is made by this planning amendment.
+
+### 2026-09-19 — Tangible tasks and phase-end testing from Phase 3.2
+
+The operator approved concrete feature/outcome tasks and tangible subtasks from Phase 3.2 onward,
+with sequential work allowed and a visible Parallel group label only on intended concurrent nodes.
+[Roadmap governance](../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates) owns the D344
+hierarchy amendment; [guards and tests §3.14](guards-and-tests.md#phase-exit-gates-from-3-2) owns the
+D191 amendment: focused tests/lint/affected checks throughout each phase, full gates and required
+repairs at its end. Phase 3.1, independent review, candidate freeze, controlled authorization,
+workflow admission and cutover boundaries remain unchanged. This is approved scheduling policy,
+not implementation or runtime acceptance evidence.

@@ -16,6 +16,18 @@ by design — every item is an act performed once, on a day the operator chooses
 What exists today is the *design* of the switch (ratified in Phase 0, D88–D94) and the *conditions*
 that must hold before it happens. This doc's job is to keep those conditions honest.
 
+
+## Task shape and verification
+
+The deliverable is one verified production-authority switch with a usable rollback asset. Its
+subtasks produce concrete readiness, backup/import, launcher and rollback outcomes; the switch
+sequence remains serial. Use focused checks while preparing the procedure under the [2026-09-19 cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2).
+Full typecheck, lint, coverage and applicable readiness gates must pass on the final candidate
+before the switch is authorized; this is the phase's release gate, not a test run repeated after
+every preparation task. After the switch, run the required cutover/rollback observations before
+phase closure. Rerun invalidated full gates if the candidate changes. No live switch, import,
+legacy deletion or rollback policy change is authorized by this scheduling amendment.
+
 ## Stage summary
 <!-- roadmap: cutover -->
 

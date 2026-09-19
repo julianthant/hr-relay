@@ -1,3 +1,4 @@
+import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../domain/worker-control.js";
 import { NotificationPublicationSchema, NotificationHealthSchema } from "./notification-publications.js";
 import { ExplorerWorkflowOverrideSchema } from "../../domain/dashboard/explorer.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
@@ -226,6 +227,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   notifications: NotificationRecordSchema,
   notification_publications: NotificationPublicationSchema,
   notification_health: NotificationHealthSchema,
+  worker_controls: WorkerControlRecordSchema,
+  worker_browsers: WorkerBrowserObservationSchema,
   settings_snapshots: ConfigSnapshotRecordSchema,
   app_settings: AppSettingsSchema,
   version_plans: VersionPlanStorageRecordSchema,

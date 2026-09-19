@@ -1,3 +1,4 @@
+import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
 import { RunRecordService } from "../../../core/run-record-service.js";
 
 import {
@@ -6,7 +7,7 @@ import {
 
 import { createRunQueueProjection } from "../projectors/run-queue-projection.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }) {
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; ownsWorker?: (lease: WorkerLeaseRecord) => boolean; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
     timeline: database.authority.timelineEvents,
@@ -20,6 +21,9 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
+      workerBrowsers: workerId => database.authority.workerControls.browsers(workerId),
+      workerControls: () => database.authority.workerControls.list(),
+      ownsWorker: lease => input.ownsWorker?.(lease) === true,
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),

@@ -55,6 +55,7 @@ const FIXTURE_WRITE_DESTINATIONS: Readonly<Record<string, readonly string[]>> = 
   "tests/parity/explorer-authority.spec.ts": ["info.outputPath(`${name}.a11y.yaml`)", 'info.outputPath("service-evidence.json")'],
   "tests/parity/helpers/fixture-archive-authority.ts": ['join(fixture.base.root, "artifacts", `${digest}.artifact`)'],
   "tests/parity/helpers/storage-recovery-server.ts": ['join(repoRoot, "package.json")'],
+  "tests/parity/helpers/session-runtime.ts": ['join(root, "release-drivers")'],
   "tests/parity/storage-recovery.spec.ts": ["authorityPath", 'join(target.root, ".lifecycle-restore.json")'],
 };
 

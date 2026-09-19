@@ -1,3 +1,4 @@
+import { invalidatePreflightReadiness } from "./preflight-state.js";
 /**
  * The ONE typed dashboard client (ref frontend-backend-integration §0.2/§2): query, subscription,
  * command, error normalization, schema parsing, and reconnect all live behind
@@ -39,12 +40,25 @@ export function createDashboardClient(input: Readonly<{
   const transport = createDashboardTransport(input);
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
-  return Object.freeze({
+  const client: DashboardClient = Object.freeze({
     ...queries,
     ...commands,
+    async applySettings(request: unknown) {
+      try { return await commands.applySettings(request); }
+      finally { invalidatePreflightReadiness(client); }
+    },
+    async executeCommand(request: unknown) {
+      try { return await commands.executeCommand(request); }
+      finally { invalidatePreflightReadiness(client); }
+    },
     subscribeDay: (subscriptionInput: Omit<DashboardDaySubscriptionDeps, "transport">): DashboardDaySubscription =>
       subscribeDashboardDay({ ...subscriptionInput, transport }),
   });
+  return client;
 }
 
 export type { NotificationQueries } from "./notification-queries.js";
+
+export type { RerunQueries } from "./rerun-queries.js";
+
+export { StartPlanRefusalError } from "./start-commands.js";
