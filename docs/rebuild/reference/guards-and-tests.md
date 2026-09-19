@@ -659,8 +659,8 @@ new readers, any other audit method, or any write outside the kernel fails the g
 
 <!-- roadmap-status: p2-2i -->
 - [x] `ai-advisory-no-authority` is active; D294 retires `capture-durability-and-scope`; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
-- [ ] `preflight-coverage` stays PLANNED: DCC2 now composes six dashboard-scoped runners, but the declared `preflight-scenarios.ts` fault corpus still has no executor; the declaration side remains held by `runtime-dependency-coverage`
-> 2026-08-28 | DCC6 closure | verified the six-runner dashboard composition and the still-unexecuted declared fault corpus
+- [x] `preflight-coverage` is active in 3.1.11.1: the manifest executor injects registry-derived faults through production detectors; `runtime-dependency-coverage` continues to hold declaration closure.
+> 2026-09-19 | 3.1.11.1 | executed fault coverage supplements the existing declaration and dashboard checks.
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: cross-cutting -->
@@ -696,19 +696,15 @@ new readers, any other audit method, or any write outside the kernel fails the g
   subject matching, completion confidence, or mutation capability. Fixtures inject missing keys,
   quota exhaustion, provider errors, malformed output, and prompt injection text; deterministic
   evidence/rules remain unchanged and no empty result is interpreted as “safe” or “no issue.”
-- **`preflight-coverage` — PLANNED, and honestly so.** D188's declaration side is already held
-  (`runtime-dependency-coverage` audits the closed secret/config/endpoint registries in both
-  directions). DCC2 composes six dashboard-scoped runners — `runtime.compatibility`,
-  `config.valid`, `filesystem.health`, `authority.health`, `ports.available`, and
-  `process.orphans` — but the declared `src/domain/trust/preflight-scenarios.ts` fault corpus still
-  has no executor. It stays `planned` in the inventory for that missing executed-fault coverage.
-  Its contract:
-  every descriptor-derived secret/system/feature prerequisite and
-  every blocking runtime capability resolves to one registered preflight check; every check has a
-  consumer and scenario. Dashboard boot, workflow enqueue, Settings health, CLI doctor, and
-  `test-login` project the same report contract. Fixtures prove optional-feature failure cannot
-  block an unrelated workflow and required failure cannot launch a browser/worker. Direct scattered
-  prerequisite checks and auto-repair side effects outside the registry fail the architecture scan.
+- **`preflight-coverage.test.ts` — active (3.1.11.1).** Executes all fourteen manifests through
+  the production runtime detector factory and strict authority. Registry expansion covers every
+  dependency member, with positive controls, real input faults, restoration, exact terminal/evidence/
+  failure expectations, digest-bound reports and zero intercepted effects. Missing/extra/duplicate
+  cases and mismatched evidence fail; the companion unit suite injects a false-healthy runner.
+  `preflight-admission-consumer.test.ts` separately exercises the released plan/kernel/lifecycle,
+  worker spawn, claim and browser consumers against production detectors. Setup and doctor share
+  served reports. This activation does not introduce CLI doctor/test-login commands or claim live
+  system acceptance, which remains with 3.1.19.
 - **`provider-capability-boundary.test.ts`.** Every service task with remote I/O declares a D63
   capability and receives only its narrowed injected client. Direct provider SDK/raw network imports
   are allowed only in registered `infra/providers/**` adapters. Every capability has timeout/abort,
@@ -1686,9 +1682,8 @@ the real tree and against its own violating fixture.
   `runtime-environment-coverage`, `runtime-dependency-coverage`.
 - **Authentication ceremony:** `duo-ceremony-lease`.
 
-**Planned — two, each with a concrete missing executor/input:** `preflight-coverage` (six DCC2
-dashboard runners exist, but the declared fault corpus has no executor) and `one-time-import-offline`
-(the cutover data migration, doc 05 §Exit criteria). D332's adapter deletion tests are planned entries
+**Planned — cutover input remains:** `one-time-import-offline`
+(the cutover data migration, doc 05 §Exit criteria). `preflight-coverage` is active under 3.1.11.1. D332's adapter deletion tests are planned entries
 too; §5.2 lists them.
 
 **Retired — nine, each naming its successor or disposition in the inventory:** `runtime-isolation` → `operational-isolation`

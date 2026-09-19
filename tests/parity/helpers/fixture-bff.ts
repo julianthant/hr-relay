@@ -104,6 +104,9 @@ export function createFixtureBff(
 
   registerFixtureSettingsRoutes({ app });
 
+  // This surrounding-shell fixture intentionally has no runtime readiness authority.
+  app.get("/api/v1/preflight", c => c.json({ state: "unavailable", reason: "This shell fixture does not compose runtime readiness." }));
+
   registerFixtureStorageRoutes({ app });
 
   registerFixtureExplorerRoutes({ app });
