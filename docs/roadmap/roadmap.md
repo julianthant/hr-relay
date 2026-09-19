@@ -1970,6 +1970,9 @@ needs:
 - dash-setup
 - dash-run-modal
 
+log:
+- 2026-09-19 | operator-approved 3.1.11.3 execution brief | Complete F1–F6 plan: exact child intake, either-order combination, bounded group repairs, production-service/browser proof, focused gates and operator-directed integration/cleanup. One Astra/medium supervisor, no workers or independent review. Full acceptance remains 3.1.19. Planning persistence is authorized; implementation waits for accepted Sessions and both committed, focused-green child candidates.
+
 #### 12 · Finish Activity, search, and export {#dash-activity}
 status: planned
 date: D344 · former 3.1.12-3 · independent worktree after named prerequisites
