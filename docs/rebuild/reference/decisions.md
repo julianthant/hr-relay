@@ -1,5 +1,14 @@
 # `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
 
+**2026-09-19 D334 Rerun default-selection clarification (operator-approved 1 A):** failed/interrupted
+sources select failed/unfinished steps plus descriptor-required completed steps, explaining the
+completed required selections visibly. Successful sources still select all eligible steps.
+Required-step/omission rules and D335 warning/final-submit/replay fences are unchanged. Approved
+scope; implementation and accepted parent release remain outstanding. Owners:
+[presentation contract](dashboard-surfaces.md#rerun-required-step-defaults--2026-09-19),
+[source-bound values](data-intake-and-edit-data.md#65-rerun-is-the-source-bound-start-plan-path),
+[approved 3.1.11.2 plan](../plans/phase-3/3.1-finish-the-dashboard/task-11-2-make-run-and-rerun-enqueue-real-work.md#approved-execution-brief--2026-09-19).
+
 **2026-09-14 Intake scope and confirmation amendment (D170/D171/D173/D298):** 3.1.9.6 remains
 spreadsheet-only and owns the narrow extraction/repair of its upload component inside the Run
 modal. It completes current readiness, explicit prior-import comparison and confirmation checked

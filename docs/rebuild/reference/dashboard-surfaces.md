@@ -3601,7 +3601,8 @@ the conversion lands.
 
 **D334/D335 — one Rerun action opens this same modal (2026-09-05, operator approved).** Failed,
 interrupted and successful runs all offer **Rerun**; there is no separate operator Retry action.
-Rerun opens at Steps. A failed/interrupted source defaults to failed and unfinished steps; a
+Rerun opens at Steps. A failed/interrupted source defaults to failed and unfinished steps plus
+descriptor-required completed steps, as clarified below; a
 successful source defaults to ALL steps, including steps the source omitted. These are defaults,
 never restrictions: the operator may select or omit any eligible step and copy, change or clear any
 completed-step value the source offers. The source supplies prefill and coordinates only. On submit,
@@ -3610,6 +3611,21 @@ is an operator assertion, while optional `copiedFrom` provenance may cite the so
 without turning that old value into authority or a replayed checkpoint. An omitted transaction runs
 no prepare/commit and contributes no new write proof. Unknown/parked writes still expose only their
 evidence-resolution actions.
+
+<a id="rerun-required-step-defaults--2026-09-19"></a>
+
+**Rerun required-step defaults — 2026-09-19 (operator-approved 1 A).** A failed/interrupted
+source selects failed and unfinished steps plus every step the current descriptor still requires.
+When such a required step is already completed, keep it selected and show a visible explanation
+that this workflow requires it to run again. This reconciles the default with the existing
+server-side required-step and omission-cascade rules; it does not make a required step omittable.
+Successful sources still default to all eligible steps, including previously omitted steps.
+The operator may change eligible optional selections and copy, edit or clear offered values.
+Completion never supplies an implicit checkpoint replay or repeat consent: a selected completed
+transaction still follows D335's exact warning acknowledgment and final-submit rules. The rejected
+alternative left required completed steps unchecked and required manual correction before submit.
+Implementation belongs to [3.1.11.2](../plans/phase-3/3.1-finish-the-dashboard/task-11-2-make-run-and-rerun-enqueue-real-work.md#approved-execution-brief--2026-09-19);
+this amendment is approved scope, not a runtime completion claim.
 
 **D335 — warning acknowledgment precedes Values; final submission starts the run (2026-09-05).**
 Completion history does not disable a step or veto an explicit selection. After the operator selects

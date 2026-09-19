@@ -1935,7 +1935,7 @@ date: D344 · former 3.1.11-2 · independent worktree after named prerequisites
 doc: 3.1/task-11-2-make-run-and-rerun-enqueue-real-work §Task 3.1.11.2 · Make Run and Rerun enqueue real work · ref:workflow-model §5.6 · ref:frontend-backend-integration §5.1.1 · ref:data-intake-and-edit-data §6 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] FE use one Rerun action: failed/interrupted sources default to remaining steps, successful sources to all steps; allow freely changed selections. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values only, and final submission carries 1.6.4's D335 acknowledgment
+- [ ] FE use one Rerun action: failed/interrupted sources default to remaining steps plus descriptor-required completed steps with a visible explanation, successful sources to all eligible steps; allow freely changed eligible optional selections. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values only, and final submission carries 1.6.4's D335 acknowledgment
 - [ ] BOTH make ordinary Run and Rerun use one modal and one source-bound server plan/confirm/enqueue path; Rerun opens at Steps, optional warning Confirm advances to Values, and only final modal submission consumes the plan and queues work
 - [ ] BOTH offer descriptor-allowed completed-step values as optional editable prefill and let the operator independently copy/change/clear values and select/omit eligible steps; submitted values/omissions alone are authoritative
 - [ ] BOTH create and reveal a new queued run identity only on final modal submission; keep the source byte-identical, never replay an unselected step, and never fabricate proof for an omitted transaction
@@ -1951,6 +1951,7 @@ log:
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
 - 2026-09-05 | D334 operator correction | Rerun is the launcher for the ordinary Run modal, not direct recovery commands. This task consumes 2.6 Task 1-2's read-only prefill projection; Task 10-4 retains Intake only · left: implementation after 2.6
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.11.2; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
+- 2026-09-19 | operator-approved 3.1.11.2 plan | One Astra/medium supervisor, no workers/reviewer; one source-bound Run/Rerun modal, editable declared prefill, warning-to-Values navigation, exact supersede preview and singular final-submit/reload replay. Decision 1 A includes required completed steps with a visible explanation. Focused child gates; 3.1.11.3 group integration; full acceptance at 3.1.19. Planning approved; implementation waits for accepted 3.1.11 and planner verification of its released launch interfaces. No launch or product integration authorized.
 
 
 ##### 3 · Finalization — run operations {#dash-operations-finalizer}

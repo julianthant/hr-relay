@@ -2265,8 +2265,10 @@ The proposal carries no run identity. Confirmation consumes it once and the serv
 newly committed identity.
 
 The action is always Rerun. The source outcome chooses only the defaults: failed/interrupted runs
-select failed and unfinished steps; successful runs select all steps, including previously omitted
-steps. The operator may change any selection, acknowledge the submitted-transaction warning to
+select failed and unfinished steps plus descriptor-required completed steps with a visible explanation,
+under the [approved mandatory-step clarification](dashboard-surfaces.md#rerun-required-step-defaults--2026-09-19);
+successful runs select all eligible steps, including previously omitted steps. The operator may
+change any eligible optional selection, acknowledge the submitted-transaction warning to
 advance to Values, and change any offered value before the final modal submission. Unselected
 steps do not replay automatically. Changing an identity-bearing value is legal when the ordinary
 workflow input schema accepts it; the planner derives the resulting item rather than forcing the
