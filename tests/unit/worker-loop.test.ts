@@ -396,6 +396,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
     assert.deepEqual(requests, [{
       command: "plan-worker-count",
+      commandId: "77777777-7777-4777-8777-777777777777",
       workflowId: WORKFLOW_ID,
       desiredWorkers: 3,
       members: [
@@ -404,7 +405,7 @@ describe("pool-capable worker runtime executor seam", () => {
         { workflowId: WORKFLOW_ID, poolIndex: 3, workerId: "person-lookup-worker-3" },
       ],
       excessMembers: [],
-      directive: { requestedAt: NOW, requestedBy: "local-operator" },
+      directive: { commandId: "77777777-7777-4777-8777-777777777777", requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 
@@ -494,6 +495,7 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.spawnPoolWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "spawn-worker",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: {
         workflowId: WORKFLOW_ID,
         poolIndex: 2,
@@ -531,13 +533,14 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.stopPoolWorker({ command: stop, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "stop-worker",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: {
         workflowId: WORKFLOW_ID,
         poolIndex: 2,
         workerId: "person-lookup-worker-2",
       },
       escalation: STOP_ESCALATION,
-      directive: { requestedAt: NOW, requestedBy: "local-operator" },
+      directive: { commandId: "77777777-7777-4777-8777-777777777777", requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 
@@ -569,6 +572,7 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.pausePoolWorker({ command: pause, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "pause-worker",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: {
         workflowId: WORKFLOW_ID,
         poolIndex: 1,
@@ -605,6 +609,7 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.resumePoolWorker({ command: resume, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "resume-worker",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: {
         workflowId: WORKFLOW_ID,
         poolIndex: 3,
@@ -642,6 +647,7 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.refreshPoolBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "refresh-browser",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: {
         workflowId: WORKFLOW_ID,
         poolIndex: 2,
@@ -680,6 +686,7 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.reopenPoolBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "reopen-browser",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: {
         workflowId: WORKFLOW_ID,
         poolIndex: 3,
@@ -714,9 +721,10 @@ describe("pool-capable worker runtime executor seam", () => {
     assert.deepEqual(await executor.stopPoolWorker({ command: stop, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "stop-worker",
+      commandId: "77777777-7777-4777-8777-777777777777",
       member: poolMemberFixture(2),
       escalation: STOP_ESCALATION,
-      directive: { requestedAt: NOW, requestedBy: "local-operator" },
+      directive: { commandId: "77777777-7777-4777-8777-777777777777", requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 
@@ -1416,11 +1424,12 @@ describe("pool-capable worker runtime executor seam", () => {
     });
     assert.deepEqual(requests, [{
       command: "plan-worker-count",
+      commandId: "77777777-7777-4777-8777-777777777777",
       workflowId: WORKFLOW_ID,
       desiredWorkers: 1,
       members: [poolMemberFixture(1)],
       excessMembers: [poolMemberFixture(2), poolMemberFixture(3)],
-      directive: { requestedAt: NOW, requestedBy: "local-operator" },
+      directive: { commandId: "77777777-7777-4777-8777-777777777777", requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 

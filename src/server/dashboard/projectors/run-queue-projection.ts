@@ -1,3 +1,4 @@
+import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../domain/worker-control.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
@@ -200,6 +201,9 @@ export interface RunQueueProjectionDeps {
      */
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
+    workerBrowsers?(workerId: string): readonly WorkerBrowserObservation[];
+    workerControls?(): readonly WorkerControlRecord[];
+    ownsWorker?(lease: WorkerLeaseRecord): boolean;
     /** D269: every workflow's pool declaration — the spawn control's CAS basis, served from authority. */
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -416,6 +420,7 @@ function workerLeaseFingerprintOf(leases: ReadonlyMap<string, WorkerLeaseRecord>
       workerId: lease.workerId,
       workflow: lease.workflow,
       leaseGeneration: lease.leaseGeneration,
+      controlRevision: lease.controlRevision,
       processId: lease.processId,
       browserSystems: lease.browserSystems ?? null,
       directive: lease.control.directive,
@@ -1039,7 +1044,9 @@ export class RunQueueProjection {
         ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
       cancelRequested: run.cancelRequested,
     }));
-    const fingerprint = JSON.stringify({ leases: workerLeaseFingerprintOf(this.#cardLeases()), pools, batches, runs });
+    const leases = this.#cardLeases();
+    const controlFacts = [...leases.values()].map(lease => ({ workerId: lease.workerId, owned: this.#deps.authority.ownsWorker?.(lease), browsers: this.#deps.authority.workerBrowsers?.(lease.workerId) }));
+    const fingerprint = JSON.stringify({ leases: workerLeaseFingerprintOf(leases), pools, batches, runs, controlFacts, controls: this.#deps.authority.workerControls?.() });
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
@@ -1684,6 +1691,9 @@ export class RunQueueProjection {
         const fold = this.#workers.get(lease.workerId);
         return workerCardOf({
           lease,
+          observations: this.#deps.authority.workerBrowsers?.(lease.workerId),
+          operations: this.#deps.authority.workerControls?.(),
+          owned: this.#deps.authority.ownsWorker?.(lease),
           fold: fold === undefined
             ? undefined
             : {

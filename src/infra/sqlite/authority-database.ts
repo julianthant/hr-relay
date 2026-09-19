@@ -1,3 +1,5 @@
+import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
+import { WorkerControlBasisSchema } from "../../domain/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
@@ -798,6 +800,7 @@ type WorkerLeaseRepository = Readonly<{
   listLive(workflow?: string): readonly WorkerLeaseRecord[];
   reportLifecycle(input: unknown): WorkerUpdateOutcome;
   control(input: unknown): WorkerUpdateOutcome;
+  reserveControl(workerId: string, basis: unknown, commandId: string, now: string): WorkerLeaseRecord;
   sweepExpired(input: unknown): readonly WorkerLeaseRecord[];
 }>;
 
@@ -927,6 +930,7 @@ export type AuthorityRepositories = Readonly<{
   providerAccounting: ProviderAccountingStorage;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
+  workerControls: WorkerControlRepository;
   duoCeremonyLeases: DuoCeremonyLeaseRepository;
   workerPools: WorkerPoolRepository;
   runSessions: RunSessionRepository;
@@ -2107,7 +2111,8 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   hash.update("[");
   for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => (hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name))
     && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)
-    && (!["notification_publications", "notification_health"].includes(name) || readIntPragma(database, "user_version") >= 52)).entries()) {
+    && (!["notification_publications", "notification_health"].includes(name) || readIntPragma(database, "user_version") >= 52)
+    && (!["worker_controls", "worker_browsers"].includes(name) || readIntPragma(database, "user_version") >= 53)).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "database_state") {
@@ -2178,6 +2183,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   validateAuthorityRecordSchemas(database);
   if (schemaVersion >= 51) validateExplorerOverrides(database);
   if (schemaVersion >= 52) validateNotificationMetadata(database);
+  if (schemaVersion >= 53) validateWorkerControls(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
@@ -3585,6 +3591,10 @@ export class AuthorityDatabase implements Disposable {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
     }
+    if (this.getMeta().schemaVersion >= 53) {
+      const control = this.authority.workerControls.get(record.commandId);
+      if (control !== undefined && canonicalJsonStringify(control.request) !== canonicalJsonStringify(record)) throw new CommandIdentityConflictError();
+    }
     const deletion = this.authority.lifecycleJournal.getCommand(lifecycleCommandId("operator-delete-archive", record.commandId));
     if (deletion !== undefined && (!("kind" in deletion) || deletion.kind !== "run-lifecycle"
       || deletion.operation !== "delete-archived" || !("family" in record) || record.family !== "version-archive" || record.type !== "delete-archived-run"
@@ -4340,6 +4350,7 @@ export class AuthorityDatabase implements Disposable {
     }
     validateAuthorityRecordSchemas(this.#database, new Set(names));
     if (schemaVersion >= 52) validateNotificationMetadata(this.#database);
+    if (schemaVersion >= 53) validateWorkerControls(this.#database);
     if (schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
       inspectHistoricalAuthorityInvariants(this.#database, schemaVersion);
       return;
@@ -5055,6 +5066,9 @@ export class AuthorityDatabase implements Disposable {
       providerAccounting: provider.accounting(),
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
+      workerControls: createWorkerControlRepository({ database: this.#database, mutate: (table, work) => {
+        return this.withAuthorityTransaction(() => this.#authorityWrite(table, work));
+      } }),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       workerPools: this.#buildWorkerPoolRepository(),
       runSessions: this.#buildRunSessionRepository(),
@@ -7123,6 +7137,7 @@ export class AuthorityDatabase implements Disposable {
             browserSystems: request.browserSystems,
             processId: request.processId,
             leaseGeneration: (existing?.leaseGeneration ?? 0) + 1,
+            controlRevision: 1,
             lifecycle: { state: "starting", startedAt: request.now },
             control: { directive: "run", requestedAt: request.now, requestedBy: request.requestedBy },
             version: (existing?.version ?? 0) + 1,
@@ -7174,6 +7189,16 @@ export class AuthorityDatabase implements Disposable {
           return WorkerUpdateOutcomeSchema.parse({ state: "applied", lease: updated });
         });
       },
+      reserveControl: (workerId, input, commandId, now) => this.withAuthorityTransaction(() => {
+        const basis = WorkerControlBasisSchema.parse(input);
+        const current = this.#readWorkerLease(workerId);
+        if (current === undefined || !isLiveWorker(current)) throw new Error("worker-control-target-unavailable");
+        if (current.leaseGeneration !== basis.leaseGeneration || current.controlRevision !== basis.controlRevision) throw new Error("worker-control-basis-conflict");
+        const updated = WorkerLeaseRecordSchema.parse({ ...current, controlRevision: basis.controlRevision + 1,
+          controlCommandId: commandId, version: current.version + 1, updatedAt: now });
+        this.#writeWorkerLease(updated, "update");
+        return updated;
+      }),
       control: (input: unknown) => {
         const request = WorkerControlRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
@@ -7189,6 +7214,9 @@ export class AuthorityDatabase implements Disposable {
           const updated = WorkerLeaseRecordSchema.parse({
             ...current,
             control: request.control,
+            ...(current.controlRevision === undefined ? {} : {
+              controlRevision: request.commandId !== undefined && request.commandId === current.controlCommandId ? current.controlRevision : current.controlRevision + 1,
+            }),
             version: current.version + 1,
             updatedAt: request.now,
           });

@@ -408,13 +408,12 @@ export type WorkerState = WorkerCardWire["state"];
  * worker `idle` misreads capacity — and the terminal lifecycle splits by its
  * recorded reason: asked to stop is `Stopped`, died is `Failed`.
  *
- * Two arms LEFT this table rather than staying unreachable. `waiting` was the
+ * `waiting` was the
  * demo's "blocked on a lease another worker holds", and this platform gives
  * every worker its own browser session per system (ref execution-and-sessions §1), so there is no
  * cross-worker lease to wait on and nothing that could record a holder.
- * `paused` left because a pause is a DIRECTIVE, not a phase — see
- * `workerDirectiveNote` below, and the durable record's own header for why the
- * two must not be folded into one word.
+ * `paused` is observed between whole runs. A pending pause remains a separate
+ * directive note until that producer reports the lifecycle change.
  */
 export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text: string }> = {
   // `Running`, not `Working` — the demo's word and the ratified status
@@ -427,13 +426,14 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
     label: "Starting",
     text: "text-[color:var(--ds-status-waiting-fg)]",
   },
+  paused: { dot: "bg-[var(--ds-fg-faint)]", label: "Paused", text: "text-[color:var(--ds-fg-muted)]" },
   idle: { dot: "bg-[var(--ds-fg-faint)]", label: "Idle", text: "text-[color:var(--ds-fg-muted)]" },
   stopped: { dot: "bg-[var(--ds-fg-faint)] opacity-60", label: "Stopped", text: "text-[color:var(--ds-fg-muted)]" },
   failed: { dot: "bg-[var(--ds-danger)]", label: "Failed", text: "text-[color:var(--ds-danger)]" },
 };
 
 
-export const WORKER_STATE_ORDER: WorkerState[] = ["working", "starting", "idle", "failed", "stopped"];
+export const WORKER_STATE_ORDER: WorkerState[] = ["working", "starting", "idle", "paused", "failed", "stopped"];
 
 
 /** How a settled lease ended, in the operator's words rather than the enum's. */
@@ -456,7 +456,8 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
  */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "stopped" || card.state === "failed") return undefined;
-  if (card.directive === "pause") return "Pausing after this item";
+  if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
+  if (card.directive === "run" && card.state === "paused") return "Resume requested";
   if (card.directive === "stop") return "Stopping after this item";
   return undefined;
 }

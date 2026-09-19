@@ -138,7 +138,7 @@ describe("start-plan wire contract (one shared owner)", () => {
   });
 
   it("neither the client nor the server declares its own start-plan schema any more", () => {
-    for (const path of ["src/dashboard/client/commands.ts", "src/server/dashboard/commands/start-plan-service.ts"]) {
+    for (const path of ["src/dashboard/client/start-commands.ts", "src/server/dashboard/commands/start-plan-service.ts"]) {
       const source = readFileSync(join(REPO_ROOT, path), "utf8");
       assert.doesNotMatch(source, /const StartPlan\w*Schema\s*=/u, `${path} must import the shared owner, not redeclare it`);
       assert.match(source, /from "[./]*domain\/dashboard\/start-plan\.js"/u, `${path} must import domain/dashboard/start-plan.ts`);

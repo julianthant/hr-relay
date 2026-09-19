@@ -1,3 +1,4 @@
+import { WorkerControlBasisSchema } from "./run/worker.js";
 import { FailureResolutionTargetSchema, FailureResolutionActionSchema } from "./trust/failure-resolution.js";
 import { z } from "zod";
 
@@ -166,6 +167,7 @@ const WorkerPoolVersionTargetSchema = z.strictObject({
 const WorkerVersionTargetSchema = z.strictObject({
   workerId: WorkerIdSchema,
   expectedVersion: PositiveIntSchema,
+  controlBasis: WorkerControlBasisSchema.optional(),
 });
 
 export const StartCommandRequestSchema = z.strictObject({
@@ -212,7 +214,7 @@ export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: PositiveIntSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["stop-worker", "pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
 ]);
 
 export const SettingsCommandRequestSchema = z.strictObject({

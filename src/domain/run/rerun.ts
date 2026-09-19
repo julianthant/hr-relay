@@ -7,6 +7,10 @@ import { sha256Hex } from "../sha256.js";
 import type { SchemaBoundCanonicalValue } from "../schema-bound-value.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 
+/** Refusals of the source-bound plan service, shared with its HTTP consumer. */
+export const RerunPlanRefusalCodeSchema = z.enum(["target-deleted", "target-not-found", "source-stale", "invalid-state", "schema-mismatch", "invalid-value"]);
+export type RerunPlanRefusalCode = z.infer<typeof RerunPlanRefusalCodeSchema>;
+
 /** Coordinates are optional attribution, never permission to replay a checkpoint. */
 export const RerunSourceSchema = z.strictObject({
   runId: RunIdSchema,

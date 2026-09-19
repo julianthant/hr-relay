@@ -258,7 +258,7 @@ do not re-ask choices 1 A / 2 A.
 | State | Record |
 | --- | --- |
 | Approval | Complete S1–S6 plan approved 2026-09-18; 1 A / 2 A already settled. |
-| Implementation | Unstarted. No product code or operator state changed by planning. |
+| Implementation | S1–S5 and candidate portion of S6 verified on `codex/3.1.11-sessions`, from `f02eb7f837677eef210d305635f6a2d84f0516b4`. Implementation `e726d102f15fc9a1d45e5693f01951188dc67e56`; passing candidate frozen by the evidence-only commit containing the record below. No standing operator state changed. |
 | Prerequisites | Accepted 3.1.9.8 and its required inputs present at the inspected baseline. |
 | Planning persistence | This owner plus normative amendments, decision pointer, A22 clarification and roadmap record; scoped documentation validation and local documentation integration authorized. |
 | Product merge / cleanup | Await future operator instruction after a passing frozen implementation candidate. |
@@ -289,3 +289,104 @@ Exact command logs, exits, file hashes, check script and final commit/integratio
 retained in the [planning evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11-plan-2026-09-18/).
 The launch prompt is issued only after reading the committed brief, verifying local integration and
 accepted prerequisite ancestry, and rechecking the proposed implementation branch/path and capacity.
+
+
+### Candidate evidence — 2026-09-19
+
+**Passing candidate; awaiting explicit operator instruction for local `master` integration.**
+The task checkbox and child release remain open. No workers, independent reviewers, child dispatch,
+push, live HR transaction or product integration occurred. Broad acceptance remains 3.1.19.
+
+| Identity | Verified record |
+| --- | --- |
+| Approved base / prerequisite | `f02eb7f837677eef210d305635f6a2d84f0516b4`; committed plan blob `1ff87f9321807262d8f0b8fd0ace691065513fc6`; accepted `801da4f3d1bfdf0a9ecc81c993289f70699aa140` is an ancestor. Ref/path availability, clean integration checkout and auxiliary capacity verified before edits in `preflight.json`. |
+| Backend commit | `ca1c10866184db68b80f4bc1f2d8cc8961ee299e` — durable controls, retained browser effects, additive schema and process/storage proofs. |
+| Implementation commit | `e726d102f15fc9a1d45e5693f01951188dc67e56` — dashboard controls, shared launch boundaries and browser/consumer proofs. The two category commits form one tested candidate. |
+| Actual integration target | Clean local `master` at `f93994501f69ff04a8114311fee7630c34b529e4`. Date integration and later planning/status records are present. Schema remains 52, so additive 53 does not collide; floor remains 46. |
+| Actual overlap | `dashboard-app.tsx` and `authority-database.ts`. Read-only `git merge-tree --write-tree` finds one conflict at the app's leading imports; retain Date's `resolveDateSelection`/`routeForDay` and all three Sessions launch/dispatch imports. All Date body changes combine automatically. The database's calendar method combines cleanly with control storage. This simulation is not an integration or combined gate pass. |
+| Runtime cleanup | Real-child process fixtures verify exit/group disappearance, zero browser contexts and released worker locks even on assertion failure. Final parity and manual CLI roots were removed by the registered runner. Owned CLI session closed; specimen port 41871 has no listener. Branch/worktree remain intentionally available for operator integration. |
+
+Logs, exact input hashes, screenshots, authority correlation, cleanup receipts and commit identities
+are retained in the [implementation evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11-sessions-2026-09-18/).
+`candidate-code-inputs.json` freezes source/test/script/config/dependency bytes;
+`scoped-lint-paths.json` freezes the exact 61 changed TypeScript paths and hashes;
+`actual-target.json` and `merge-simulation.txt` record the target comparison.
+`freeze.json` records the final evidence-only commit after it exists.
+
+| Proof | Completed candidate evidence |
+| --- | --- |
+| P1 / S1 | Kernel/composition/supervisor tests exercise all seven verbs, strict pool CAS, distinct lifetime/control revision, harmless heartbeat, stale/replaced/unavailable/unowned targets and competing SQLite admission. Historical missing control basis remains unavailable. |
+| P2 / S2 | `worker-browser-control-process.test.ts` crosses real HTTP, SQLite, child runtime and Chromium. The seven-operation uncertainty/replay table retains effect-start uncertainty; duplicate/lost-response replay is singular, divergent reuse refuses, and another command cannot conceal an unresolved outcome. Tests distinguish never-started expiry, executing/crash uncertainty, retained outcome and failed audit. BFF restart refuses PID adoption; generation 2 rejects generation 1 requests. |
+| P3 / S3 | Manager/control tests prove whole-run exclusion, exact-session admission/effect recheck, held transaction and poison handling, mixed retained settings, failed reset/auth/close and no replacement without proven closure. Real Chromium Refresh preserves identity; Reopen closes the old session and authenticates a new ID under the same profile/configuration/mode without credential clearing. |
+| P4 / S4 | Mounted controls exercise all UI verbs, heartbeat/tick stability, unavailable/busy/unowned bases, refused/uncertain state and exact lost-response retry. Built-browser journeys cover both themes at 1440×900, 1280×720 and 1024×720, reload/readback, keyboard/focus and terminal Stop focus. New screenshots/a11y/authority pairs are in `parity-final/`; no unrelated references were refrozen. Prescribed CLI specimen inspection and manual Pause/Refresh/Reopen proof are retained as `specimen-actions.png`, `manual-*.png`, `manual-cli/`, `manual-authority.json` and `manual-proof.json`. Only the fixture favicon request returned 404. |
+| P5 / S5 | Independent `setup-boundary.test.ts` and `launch-boundary.test.ts` consumers use production bootstrap/preflight and rerun-values/planner/kernel routes respectively. Setup proves readiness, failed checks, replay and stale configuration refusal. Run proves exact source/version, malformed/substituted/deleted/archived/unknown-write refusal, explicit prefill, warning acknowledgment without enqueue, and singular final-submit replay after response loss. All 10 existing Intake/launch focus cases pass. These are shared-interface proofs, not the children's full interaction acceptance. |
+| P6 / S1–S3 | Fresh and populated versions 46–52 upgrade through additive 53; interrupted reopen, retained audit bytes, missing historical basis and backup/restore uncertainty pass. Released migration hashes and floor are unchanged. Two real workers execute two isolated synthetic `dryRun=true` runs, with durable membership, claims, browser resources, resize, restart/replacement and teardown assertions. `run_operations` and `run_operation_attempts` stay empty; retired `operation_outbox` remains absent. This is not live HR acceptance. |
+
+#### Released interfaces and disjoint consumer ownership
+
+Paths below are repository-relative. All shared registrations are completed in this candidate;
+neither consumer needs a sibling implementation or a shared root switch edit.
+
+| Operation / actual owner | Callable contract and refusal boundary | Independent consumer / future owner |
+| --- | --- | --- |
+| Pool read/plan/spawn | Existing day/worker projections; `app/worker-command-dispatch.ts` exports `composePlanWorkerCountCommand`, `composeSpawnWorkerCommand`, `createWorkerCommandDispatch().plan/spawn`. Pool version and three-worker capacity remain authoritative. | Existing pool tests plus process proof. Shared runtime remains parent/finalizer owned. |
+| Pause/resume/stop/refresh/reopen | `composeWorkerControlCommand` and dispatch `prepare/send` retain an exact envelope. Served lifetime/revision and owned target required; browser actions include exact session ID. Missing basis/ownership refuses locally; durable command authority owns final refusal/pending/uncertain/result. `session-control-model.ts` waits for changed authority basis before another action. | `session-controls.test.ts`, process and parity proofs. Children consume without editing session protocol/storage. |
+| Readiness / preflight rerun | `client/preflight-queries.ts`: `readiness()` returns present checks or explicit unavailable; `rerunPreflight()` calls the registered route with expected configuration. Existing detector/authority owns admission and replay. | Setup: `setup-boundary.test.ts`; `server/preflight/`, `domain/trust/preflight-scenarios.ts`, preflight-only client/route/state and `settings-preflight*`/`preflight-popover*`. Private Setup fixtures/evidence/roots/ports. |
+| Launch host / exact source prefill | `app/run-launch-model.ts`: `useRunLaunch`, `launchWorkflows`, `prefillRerun`; `app/run-launch.tsx`: `RunLaunchHost`. `client/rerun-queries.ts`: `rerunValues`, bound to exact run/version and strict status/identity. Prefill copies explicitly selected available values only and refuses unsafe/conflicting paths or unknown steps. | Run/Rerun: `launch-boundary.test.ts`, existing `run-start-focus.test.ts`; extracted launch files, `run-start*`, separated prior-value transport and launch-only service/contracts. Private Run fixtures/evidence/roots/ports. |
+| Preview / acknowledgment / final / replay | `createRunLaunchService`: `openRerun`, `prefill`, `preview`, `acknowledge`, `prepareFinal`, `submit`, `replay`. Acknowledgment checks source and re-previews through the server. Final/replay reuse one command identity; `StartPlanRefusalError` preserves the production named refusal. No warning action enqueues. | Run/Rerun owns its leaves and `commands/start-plan-service.ts`. Shared `client/index.ts`, `queries.ts`, domain unions, root app/BFF composition, common fixtures and generated outputs remain parent/finalizer owned. |
+
+The two consumer suites import no sibling test fixture and pass in the same parent gate with private
+state. Separate invocations also pass from the exact implementation: Setup **1/1**, Run **4/4**,
+both exit 0 with scratch removed (`setup-independent.log`, `run-independent.log`). Setup writes only its preflight leaves; Run writes only its launch leaves. Their production
+and proof write sets are disjoint, so either consumer can be developed and merged first without an
+unmerged sibling API or generated-output dependency. The finalizer owns shared registration and
+combined generated outputs after both children. Their approved launch bindings and accepted base
+must still be verified after this task's integration/cleanup; no child is released here.
+
+Adjacent files needed by the assigned contracts are explicit: `infra/compat/backup-inspection.ts`
+and SQLite `recovery-contracts.ts`, `run-store-contracts.ts` keep schema 53 and directive command
+identity compatible with historical backups and retained control state; `domain/run/rerun.ts` owns
+the existing refusal-code schema and `services/start/rerun.ts` consumes that same type. Snapshot
+invalidation is in `server/dashboard/compose/queue.ts`. These changes do not add new workflow,
+recovery or login semantics. `commit-paths.json` records the complete actual file map by category.
+
+| Gate | Final result / exact receipt |
+| --- | --- |
+| G1 effects | Prescribed 12 suites, **330 passed**, exit 0 — `g1-effects-final.log`. |
+| G1 storage | Prescribed 4 suites, **211 passed**, exit 0 — `g1-storage-final.log`. |
+| G1 architecture | Prescribed 5 suites, **23 passed**, exit 0 — `g1-architecture-final.log`. |
+| G2 unit/consumer | Prescribed 9 suites plus independent Setup consumer, **77 passed in 10 files**, exit 0 — `g2-unit.log`. |
+| G2 build/browser | `npm run web:build`, exit 0; prescribed four parity specs, **13 passed**, exit 0 — `g2-build-final.log`, `g2-parity-final.log`. |
+| G3 lint | Exact changed 61 `.ts`/`.tsx` paths passed `npx eslint` with argument array and `--max-warnings 0`, exit 0 — `scoped-lint-paths.json`, `g3-lint-final.log`. |
+| G3 generated | Manifest and store catalog generation/check passed, exit 0; `npm run roadmap`, `npm run roadmap:check` and `git diff --check` passed, exit 0 (`roadmap-generate.log`, `roadmap-check.log`, `recording-checks.json`). Manifest regenerated from changed import closure; store catalog and generated roadmap content unchanged. |
+| Additional scoped diagnostic | TypeScript semantic diagnostics on changed files: **0 across 61 files** — `scoped-types-final.log`. This is not the deferred full repository typecheck. |
+| G4 unchanged-input reuse | `g1-tested-inputs.json` retains the earlier snapshot. Subsequent differences are dashboard readback/focus presentation, one dispatch trailing blank and the parity Stop-focus assertion; G2 build/unit/parity and lint ran after those changes. G1 source/test/config/dependency inputs are unchanged. Evidence-only recording does not invalidate code gates. Effective Vitest configuration retains four workers, forks and isolation; no test membership, assertion strength, coverage floor or timeout reduction. |
+| Deferred | Full repository typecheck/lint/coverage/architecture, broad parity/performance, full production/recovery/live matrix: 3.1.19. Combined Date/Sessions integration checks await operator instruction. No independent review by the approved exception. |
+
+#### Delivery assessment and integration obligations
+
+The approved plan covered the observed repairs. **Implementation defects:** a pause arriving between
+loop read and claim could crash the worker; the claim now returns none-eligible and the next loop
+consumes the directive. Browser proof exposed a stale control basis before SSE readback and native
+focus loss while controls disabled/replaced; authority-basis gating and explicit focus restoration
+now pass real browser checks, including terminal Stop. **Existing fixture/guard drift:** the old
+start-plan contract assertion still read the aggregator after transport extraction; its identical
+assertion now reads the actual client owner. Historical upgrade receipt fixtures now match the
+pre-51 absence of explorer import metadata. No guard was added or retired and inventory is unchanged.
+The initial standalone manual fixture failed private-root admission; using the existing registered
+test runner satisfied the same checks without changing production admission.
+
+**External/prerequisite change:** Date was integrated while this candidate was built. Actual-target
+inspection confines conflict resolution to preserving both app import groups; the Date clock,
+history and dirty-Settings behavior must remain intact. No plan amendment or new operator scope
+was needed. Zero implementation/review assignments were created. Retained iteration logs prove
+multiple local repair rounds (at least three); complete round/elapsed-cost telemetry is unavailable,
+so no exact total or efficiency claim is made. Running the built-browser proof earlier in S4 would
+have exposed readback/focus defects before final gate preparation. Automatic compactions did not
+change allocation, ownership or the approved gate schedule.
+
+After explicit integration instruction: recheck both refs, target cleanliness, prerequisite ancestry
+and schema availability; preserve both import groups and Date's calendar method, then run the
+invalidated combined focused checks, scoped lint/build and generated checks. Record the accepted
+integration, verify ancestry, remove only this task's registered and physical worktree/branch and
+owned runtime residue, and only then mark 3.1.11 complete and release child planning/launch.

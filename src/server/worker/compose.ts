@@ -1,3 +1,4 @@
+import { createWorkerBrowserControl } from "./worker-browser-control.js";
 import { selectRunRuntime } from "../../core/run-settings.js";
 import { createRunResourcesFactory } from "./run-resources.js";
 import { bindFailureCapture } from "../../core/failure-resolution.js";
@@ -343,7 +344,9 @@ function startWorkerMaintenance(input: Readonly<{
         workerId: input.workerId,
         leaseGeneration: input.leaseGeneration,
         lifecycle: active === undefined
-          ? { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: now }
+          ? lease.control.directive === "pause"
+            ? { state: "paused", startedAt: lease.lifecycle.startedAt, heartbeatAt: now, pausedAt: lease.lifecycle.state === "paused" ? lease.lifecycle.pausedAt : now }
+            : { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: now }
           : {
             state: "busy",
             startedAt: lease.lifecycle.startedAt,
@@ -697,16 +700,22 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
+        browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal }),
+        browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
         // claimNext owns the one SQLite write transaction that compares the active
         // runtime token, settings epoch and queued snapshot before changing the run.
         // The filesystem authority is needed at boot and apply, not on every poll.
         claimNext: (request) => database.withAuthorityTransaction((repositories) => {
           const directive = controlPoll();
-          if (directive !== "run") {
-            throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
-          }
+          // A directive can arrive from another process after the loop's poll.
+          // Refuse this claim and let the next loop turn observe pause/stop.
+          if (directive !== "run") return { state: "refused" as const, refusal: { reason: "none-eligible" as const } };
           input.afterClaimAdmissionCheck?.();
+          const control = repositories.workerControls.list().find(record => record.auditedAt === undefined
+            && (record.request.type === "refresh-browser" || record.request.type === "reopen-browser")
+            && record.request.target.workerId === workerId && record.request.target.controlBasis?.leaseGeneration === leaseGeneration);
+          if (control !== undefined) return { state: "refused" as const, refusal: { reason: "none-eligible" as const } };
           const outcome = lifecycle.claimNext({ commandId: request.commandId,
             workflow: request.workflow, workerId: request.workerId, runtimeConfig: selectRunRuntime(repositories) });
           if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);

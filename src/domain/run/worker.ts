@@ -21,6 +21,7 @@ import { z } from "zod";
 import {
   ActorIdSchema,
   BrowserSystemIdSchema,
+  CommandIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   RunIdSchema,
@@ -73,6 +74,12 @@ export type WorkerLifecycle = z.infer<typeof WorkerLifecycleSchema>;
 
 export const LIVE_WORKER_STATES = Object.freeze(["starting", "idle", "busy", "paused", "stopping"] as const);
 
+export const WorkerControlBasisSchema = z.strictObject({
+  leaseGeneration: PositiveIntSchema,
+  controlRevision: PositiveIntSchema,
+});
+export type WorkerControlBasis = z.infer<typeof WorkerControlBasisSchema>;
+
 export const WorkerLeaseRecordSchema = z.strictObject({
   workerId: WorkerIdSchema,
   /** A worker claims only its own workflow's rows (ref execution-and-sessions §3.1). */
@@ -85,6 +92,9 @@ export const WorkerLeaseRecordSchema = z.strictObject({
   processId: PositiveIntSchema,
   /** Bumped every time this worker id is (re)started; fences a zombie process. */
   leaseGeneration: PositiveIntSchema,
+  /** Missing only on historical leases; never synthesized into mutation authority. */
+  controlRevision: PositiveIntSchema.optional(),
+  controlCommandId: CommandIdSchema.optional(),
   lifecycle: WorkerLifecycleSchema,
   control: WorkerControlSchema,
   version: PositiveIntSchema,

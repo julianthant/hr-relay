@@ -8,10 +8,11 @@ import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifica
  * `run/envelope.ts`, which reaches `workflow/checkpoint.js` and is why the
  * queue's priority enum has to be a copy.
  */
-import { WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
+import { WorkerControlBasisSchema, WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import {
   ActorIdSchema,
+  CommandIdSchema,
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
   FailureIdSchema,
@@ -662,22 +663,17 @@ export const WorkflowCountWireSchema = z.strictObject({
     });
   }
 });
-/**
- * ONE browser session a worker currently holds (D248).
- *
- * There is no `health` and no `url`, and both absences are the point. Nothing
- * in this build probes a live session — the only verdict a health field could
- * carry is the demo's own `unknown` ("never probed"), and a closed enum whose
- * other five arms nothing can emit is exactly the orphan §8.8 exists to catch.
- * No span, checkpoint or lease records a page address either, so a `url` would
- * have to be composed from the system id, which is a plausible-looking value
- * nobody observed. The tile therefore states what IS known: which system this
- * session speaks to, and how long it has been open.
- */
+/** Current session identity plus dated resource-owner observation. Historical spans
+ * without an observation remain explicitly unverified; URLs and private profile paths are not served. */
 export const WorkerBrowserWireSchema = z.strictObject({
   sessionId: BrowserSessionIdSchema,
   system: BrowserSystemIdSchema,
   openedAt: IsoInstantSchema,
+  observation: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), health: z.enum(["authenticated", "unknown", "failed"]), observedAt: IsoInstantSchema,
+      instance: z.string().optional(), browserMode: z.enum(["headed", "headless"]), configFingerprint: FingerprintSchema }),
+    z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+  ]).optional(),
 });
 
 /**
@@ -715,25 +711,31 @@ export const WorkerBrowserRequirementsWireSchema = z.discriminatedUnion("state",
  * the worker writes what is actually TRUE, so folding a pending `pause` into
  * the state word would let a card read `Paused` while it is mid-transaction on
  * a real HR system. Every arm of both has a producer: `starting`/`idle`/
- * `working` are lifecycle states the worker's own heartbeat reports,
+ * `working`/`paused` are lifecycle states the worker's own heartbeat reports,
  * `stopped`/`failed` split the terminal lifecycle by its recorded reason
  * (`operator`/`shutdown` versus `crashed`/`lease-expired`, the latter written
  * by the recovery sweep), and `directive` is written only by the
- * `stop-worker`/`pause-worker`/`resume-worker` commands. The lifecycle's own
- * `paused` and `stopping` arms are NOT mirrored here: no code path reports
- * them, so a wire arm for either would be unreachable by construction.
+ * `stop-worker`/`pause-worker`/`resume-worker` commands. `stopping` remains a
+ * requested directive until observed terminal closure.
  *
- * `leaseVersion` is the lease's row version — the basis a `stop-worker` command
- * cites. It is distinct from `revision`, which counts the span events folded
- * for this worker and is a patch cursor, never a CAS token; binding the Stop
- * control to `revision` would have fabricated the exact fact a version check
- * exists to check.
+ * `leaseVersion` retains row-version evidence. Mutations use the distinct
+ * lifetime/control revision in `controls.basis`, which heartbeats cannot stale.
+ * The span `revision` remains a projection cursor, never a control token.
  */
+export const WorkerControlWireSchema = z.strictObject({
+  basis: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("present"), value: WorkerControlBasisSchema }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
+  ownership: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("owned") }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
+  operation: z.strictObject({ commandId: CommandIdSchema, type: z.enum(["plan-worker-count", "spawn-worker", "pause-worker", "resume-worker", "stop-worker", "refresh-browser", "reopen-browser"]),
+    state: z.enum(["admitted", "ready", "executing", "succeeded", "refused", "uncertain"]), at: IsoInstantSchema,
+    browserSessionId: BrowserSessionIdSchema.optional(), message: z.string().optional(), unresolved: z.boolean() }).optional(),
+});
+
 export const WorkerCardWireSchema = z.strictObject({
   workerId: WorkerIdSchema,
   /** The one workflow this worker claims for (ref execution-and-sessions §3.1) — from the lease, never guessed. */
   workflowId: WorkflowIdSchema,
-  state: z.enum(["starting", "idle", "working", "stopped", "failed"]),
+  state: z.enum(["starting", "idle", "paused", "working", "stopped", "failed"]),
+  controls: WorkerControlWireSchema.optional(),
   /** What the operator last ASKED of this worker; `run` is the un-directed state. */
   directive: WorkerDirectiveSchema,
   startedAt: IsoInstantSchema,

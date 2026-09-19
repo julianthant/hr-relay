@@ -1,3 +1,5 @@
+import { createWorkerBrowserChannel } from "./worker-browser-channel.js";
+import { WorkerControlRefusal } from "../../domain/worker-control.js";
 import { notificationWireOf } from "../../domain/dashboard/projection.js";
 import { createNotificationTargetQuery } from "./queries/notifications.js";
 import { composeShell } from "./compose/shell.js";
@@ -296,6 +298,19 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   const supervisor = createDashboardWorkerProcessSupervisor({
     launch: input.launch,
     spawn: input.spawn,
+    browserControl: createWorkerBrowserChannel(input),
+    admission: request => input.database.withAuthorityTransaction(repositories => {
+      if (request.commandId === undefined) throw new WorkerControlRefusal("worker-control-command-identity-unavailable");
+      const record = repositories.workerControls.get(request.commandId);
+      if (record === undefined || record.request.type !== request.command) throw new WorkerControlRefusal("worker-control-command-not-admitted");
+      if (input.clock.nowMs() >= Date.parse(record.expiresAt)) throw new WorkerControlRefusal("worker-control-expired-before-effect");
+      if ("workerId" in record.request.target) {
+        const lease = repositories.workerLeases.get(record.request.target.workerId);
+        const basis = record.request.target.controlBasis;
+        if (lease === undefined || !isLiveWorker(lease) || basis === undefined || lease.leaseGeneration !== basis.leaseGeneration
+          || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
+      } else if ((repositories.workerPools.get(record.request.target.workflowId)?.version ?? 0) !== record.request.target.expectedVersion) throw new WorkerControlRefusal("worker-pool-version-changed-before-effect");
+    }),
     leases: {
       observe: (workerId) => {
         const lease = input.database.authority.workerLeases.get(workerId);
@@ -317,7 +332,16 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
             + "a stopped lease takes no directive",
           );
         }
+        if (directive.commandId !== undefined) {
+          const record = repositories.workerControls.get(directive.commandId);
+          if (record === undefined) throw new WorkerControlRefusal("worker-control-command-not-admitted");
+          if ("workerId" in record.request.target) {
+            const basis = record.request.target.controlBasis;
+            if (basis === undefined || lease.leaseGeneration !== basis.leaseGeneration || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
+          }
+        }
         const outcome = repositories.workerLeases.control({
+          ...(directive.commandId === undefined ? {} : { commandId: directive.commandId }),
           workerId: member.workerId,
           expectedVersion: lease.version,
           control: {
@@ -611,7 +635,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const activity = composeActivity({ database, clock, descriptors, ledger });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), summaries };
-  const projection = createOperatorProjection({ stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
+  let ownsWorker: (lease: import("../../domain/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
+  const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
 
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
 
@@ -677,6 +702,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
   });
+  ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
 
