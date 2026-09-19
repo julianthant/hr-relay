@@ -48,3 +48,7 @@ export function createDashboardClient(input: Readonly<{
 }
 
 export type { NotificationQueries } from "./notification-queries.js";
+
+export type { RerunQueries } from "./rerun-queries.js";
+
+export { StartPlanRefusalError } from "./start-commands.js";

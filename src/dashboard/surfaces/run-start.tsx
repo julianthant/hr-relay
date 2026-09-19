@@ -1,3 +1,4 @@
+import { createRunLaunchService } from "../app/run-launch-model.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx — and re-ported
@@ -86,7 +87,6 @@ import {
   dsRadius,
   dsText,
 } from "../ds/ui.js";
-import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
 import { settleCommandResult } from "../app/command-result.js";
 import {
@@ -149,7 +149,6 @@ import { versionTag } from "./format.js";
 import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
-const SOURCE_SURFACE = "run-start";
 
 /**
  * What the app composes from the descriptor and bootstrap projections. The
@@ -860,6 +859,8 @@ export function RunStartDialog({
   onCloseAutoFocus?: (event: Event) => void;
 }) {
   const client = useDashboardClient();
+  const launchService = useMemo(() => createRunLaunchService(client, actorId), [client, actorId]);
+  const finalRequest = useRef<ReturnType<typeof launchService.prepareFinal> | null>(null);
 
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
   const [currentStage, setCurrentStage] = useState<RunStartStage>("Input");
@@ -1059,7 +1060,7 @@ export function RunStartDialog({
     setBusy(true);
     setError(null);
     try {
-      const next = await client.submitStartPlan({
+      const next = await launchService.preview({
         workflowId,
         submissions: preview.entries.map((entry) => toRawSubmission(entry)),
         dryRun,
@@ -1091,7 +1092,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [browserMode, captureBrowserScreenshots, client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId]);
+  }, [browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
@@ -1099,20 +1100,10 @@ export function RunStartDialog({
     setBusy(true);
     setError(null);
     try {
-      const next = await client.executeCommand({
-        commandId: crypto.randomUUID(),
-        requestedAt: systemClock.now().toISOString(),
-        requestedBy: actorId,
-        source: SOURCE_SURFACE,
-        family: "start",
-        type: "start-run",
-        target: {
-          workflowId: plan.workflowId,
-          startPlanId: plan.startPlanId,
-          expectedVersion: plan.expectedVersion,
-        },
-        payload: plan.fingerprints,
-      });
+      if (finalRequest.current === null || finalRequest.current.family !== "start" || finalRequest.current.target.startPlanId !== plan.startPlanId) {
+        finalRequest.current = launchService.prepareFinal(plan);
+      }
+      const next = await launchService.submit(finalRequest.current);
       // Same rule one stage later, and it costs no record: `applied` is a
       // RECEIPT for a request that was accepted, not the row itself — the
       // queue changes only from the authoritative projection
@@ -1128,7 +1119,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [actorId, client, plan, requestFingerprint]);
+  }, [launchService, plan, requestFingerprint]);
 
   // D253 / Track D row D3 — "did the start land" is the ONE fold's question,
   // and a replay of the same landing IS a landing: the plan token is single-use,
