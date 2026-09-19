@@ -84,7 +84,7 @@ the [Phase 3.1 cadence](README.md#execution-cadence--operator-amendment-2026-09-
 | Mode / branch | Dedicated implementation worktree on `codex/3.1.11.2-run-rerun`. |
 | Absolute checkout | `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-run-rerun` |
 | Inspected integration baseline | `824521fac8795aa37f1bf66a34bfaa011bae4713` on local `master`; accepted 3.1.9.8 and 3.1.10 are ancestors. The earlier code discovery used `f02eb7f837677eef210d305635f6a2d84f0516b4`; the intervening Date work is preserved. |
-| Required implementation base | **WAITING ON accepted, integrated 3.1.11.** Resolve its actual release SHA from the parent record, verify ancestry and completed shared operations, then use a base containing that release and this committed approved plan. Neither the inspected baseline nor the parent's planning SHA is an implementation release. The planner verifies and supplies the concrete base before issuing a launch prompt. |
+| Required implementation base | Parent integration is verified at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`, with cleanup recorded at `191ce8b1cb79d0930d89d60cb5501914c3fa4b09`. **WAITING ON the release reconciliation below and planning-document integration.** The planner supplies a concrete base containing the accepted parent and the complete approved plan only after the two missing launch operations have an approved, feasible owner. |
 | Finalizer / integration | 3.1.11.3 consumes this exact passing candidate and 3.1.11.1's candidate in either order. Its existing proposed binding is `codex/3.1.11.3-operations` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-operations`; its operator-opened session rechecks availability and resolves the combined base. Target: local `master` at `/Users/julianhein/Projects/hr-automation-rebuild`. The operator chooses integration; this brief does not authorize a product merge. |
 | Completion | This supervisor freezes a committed candidate with focused proof for finalizer intake. Worker roadmap completion follows 3.1.11.3's accepted integration and owned cleanup; downstream release and full Phase 3.1 acceptance remain separate. |
 | Evidence | `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-run-rerun-2026-09-19/`; retain tested identities, command receipts, screenshots, authority comparisons and cleanup receipts outside disposable worktrees. |
@@ -310,7 +310,7 @@ owner change, new contract choice, unprovable acceptance or uncertain effect; su
 | --- | --- |
 | Approval | Six-step scope and recommended 1 A approved by the operator on 2026-09-19. |
 | Implementation | Unstarted; no product/runtime edits or runtime acceptance during planning. |
-| Parent prerequisite | WAITING ON 3.1.11 accepted integration, cleanup, actual launch export/file map and independent consumer proof. Planner retains the release/reconciliation check before a READY prompt. |
+| Parent prerequisite | Accepted integration and cleanup verified at `191ce8b1cb79d0930d89d60cb5501914c3fa4b09`. Actual export/consumer inspection found two incomplete operations under the currently excluded shared ownership; see release reconciliation below. |
 | Planning persistence | Authorized complete plan/contract/decision-index/matrix/roadmap documentation and scoped validation/commit on `codex/plan-3.1.11.2`. Local documentation integration is not yet instructed; retain the committed candidate for operator-directed integration. |
 | Child/group release | No launch prompt yet. This candidate, later 3.1.11.3 intake, operator-directed product integration and cleanup remain distinct. |
 
@@ -333,9 +333,45 @@ result is reused to claim acceptance of this changed default.
 | Generated roadmap | `npm run roadmap` and `npm run roadmap:check`: exit 0; generated output only. |
 | Documentation checks | Eight approved documentation/generated paths; complete brief and changed links resolve; 9 existing instruction pairs match; 18 project chains remain below 32,768 bytes (maximum 19,308); `git diff --check` passes. |
 | Gate selector preflight | 28 selectors resolve to 23 existing tests/specs plus 5 explicitly assigned future proof files. No product, test, dependency or configuration input changes in this planning candidate. |
-| Readiness | WAITING ON accepted 3.1.11 and planner verification of its actual launch interfaces/ownership, plus operator-directed integration of the planning documentation. No READY supervisor prompt issued. |
+| Readiness | Initial persistence waited for accepted 3.1.11. The subsequent release reconciliation below verifies integration and cleanup but identifies an ownership decision still required before launch; planning-document integration also remains unassigned. No READY supervisor prompt issued. |
 
 Logs, exits, changed-file hashes, the reproducible documentation checker and commit verification
 are retained in the [planning evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-plan-2026-09-19/).
 The documentation-only recording change reruns generation/freshness and document-binding checks;
 unchanged code/test/configuration/dependency inputs preserve the scoped lint result.
+
+### Accepted-parent release reconciliation — 2026-09-19
+
+The operator reported 3.1.11 complete. Read-only verification confirms accepted merge
+`c90da4ffc45ddfe6486192b8df68816dc6fe34a3` and its completion/cleanup record at
+`191ce8b1cb79d0930d89d60cb5501914c3fa4b09` on clean local `master`. The Sessions
+implementation branch, worktree registration and physical task folder were removed. This records
+the accepted parent; it does not reopen its completed status or claim the child is ready.
+
+The released `RunLaunchHost`, `useRunLaunch`, `launchWorkflows`, `prefillRerun`,
+`createRunLaunchService`, `rerunValues` and `StartPlanRefusalError` exist at the allocated paths.
+The parent's independent Setup and Run/Rerun consumer proof is recorded in its release. Reading
+the actual consumer and production paths establishes two narrower gaps that those tests do not
+cover:
+
+| Required child behavior | Verified released behavior | Ownership consequence |
+| --- | --- | --- |
+| A served row action opens the source-bound Rerun modal without sending Retry/Restart. | `domain/dashboard/actions.ts` permits command actions and navigation to self/panel/drill. `dashboard-app.tsx` handles navigation by selecting a run; `queue-row-actions.ts` still serves Retry/Restart and the command dispatcher sends them directly. `useRunLaunch` holds ordinary open/focus state, with no source-action dispatch hook. | The approved child excludes shared action-union/root-dispatch registration. A narrow ownership amendment or prerequisite correction is required. |
+| Steps obtains server-authored warnings before the operator completes Values or omission facts. | `createRunLaunchService.preview` and `acknowledge` call full `submitStartPlan`. `start-plan-service.ts` resolves required omission facts before planning; `buildRerunPlan` requires exactly one accepted submission. The parent's warning consumer test supplies valid complete inputs, so it does not prove incomplete-Values navigation. | A source-bound warning-preview operation needs a feasible service/transport owner. The current plan assigns that shared operation to the parent and cannot silently move it to the child. |
+
+The released `prefillRerun` also currently writes every selected value to ordinary submission
+fields even when its coordinate names `targetStepKey`. Correct omission-fact routing remains
+within this child's already approved launch-leaf ownership and P1 proof; it requires no scope
+decision. Protected values, unavailable evidence, exact source revisions and final warning renewal
+remain governed by the linked contracts.
+
+At this reconciliation, no ownership transfer, product implementation, integration or supervisor
+launch has occurred. The original six-step approval and mandatory-step default decision remain
+valid. The operator has been asked whether to assign the two bounded launch gaps to this child
+and authorize local planning-document integration, or retain the existing prerequisite ownership.
+The pending choice is kept in chat; no replacement plan or decision-sheet file is created.
+
+This reconciliation passed the roadmap binding suite (1 file / 24 tests), scoped generator/binding
+lint, roadmap freshness and the documentation checker (23 links; 9 identical instruction pairs;
+18 instruction chains, maximum 19,308 bytes; 28 gate selectors). No runtime gates were rerun or
+claimed. Receipts remain in the linked planning evidence directory.
