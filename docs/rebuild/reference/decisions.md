@@ -2530,3 +2530,14 @@ additional controls and truthful, dated observation/outcome presentation. The
 [single task owner](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18)
 binds the additive migration, recovery compatibility, child-interface boundary, focused proofs and
 operator-directed integration. No schema or runtime change is made by this planning amendment.
+
+### 2026-09-19 — Tangible tasks and phase-end testing from Phase 3.2
+
+The operator approved concrete feature/outcome tasks and tangible subtasks from Phase 3.2 onward,
+with sequential work allowed and a visible Parallel group label only on intended concurrent nodes.
+[Roadmap governance](../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates) owns the D344
+hierarchy amendment; [guards and tests §3.14](guards-and-tests.md#phase-exit-gates-from-3-2) owns the
+D191 amendment: focused tests/lint/affected checks throughout each phase, full gates and required
+repairs at its end. Phase 3.1, independent review, candidate freeze, controlled authorization,
+workflow admission and cutover boundaries remain unchanged. This is approved scheduling policy,
+not implementation or runtime acceptance evidence.

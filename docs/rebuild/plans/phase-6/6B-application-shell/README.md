@@ -2,6 +2,16 @@
 
 Read the [phase overview](../README.md) for shared context, decisions and phase-wide exit criteria.
 
+
+## Task shape and verification
+
+This part delivers the named desktop capability. Its focused plan must split implementation into
+concrete feature subtasks, sequential by default; only approved independent peers carry a visible
+Parallel group label. Use focused tests, lint and affected static/generated checks during the part.
+Its final acceptance owns full typecheck, lint, coverage and all applicable platform/phase gates,
+required repairs and review under the [2026-09-19 cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2). Phase 6F additionally owns the complete packaged-app proof on both operating systems.
+No full-suite run is required at each subtask or intermediate integration.
+
 ## Electron shell — the main process, the window, the single instance
 <!-- roadmap: desk-shell -->
 

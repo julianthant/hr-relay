@@ -30,6 +30,9 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
   Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
   prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
+  From Phase 3.2 onward, the roadmap’s 2026-09-19 amendment supersedes this prerequisite-only
+  shape: tangible tasks/subtasks, explicit Parallel chips, focused checks within a phase and full
+  gates at its exit. The following older shape applies to preserved earlier assignments only.
   Parents complete before workers launch; new plans place **Finalization** as the last numbered
   child, requiring every worker. That sequential child combines the group, runs
   full gates and fixes failures before downstream consumers start. Workers use D191 focused checks; explicit scoped batch exceptions retain their gate timing. The
@@ -111,6 +114,10 @@ CPU-derived ten-fork default on an 18 GiB host; the same 388 files / 4,795 tests
 Keep per-file isolation, in-test concurrency, test membership, coverage floors and the 30-second
 limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
 before treating a full-suite timeout as permission to weaken a check.
+
+Phase 3.2 onward uses [D191's 2026-09-19 cadence](../../../docs/rebuild/reference/guards-and-tests.md#phase-exit-gates-from-3-2):
+focused tests/lint/affected checks for all within-phase work, full gates and repairs at phase exit.
+This overrides the older default/group schedule below; Phase 3.1 retains its own exception.
 
 D191 in `docs/rebuild/reference/guards-and-tests.md` §3.14 owns documentation-only checks,
 unchanged-input evidence reuse and concurrent gate scheduling. Its 2026-09-09 amendment assigns

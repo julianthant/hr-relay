@@ -15,3 +15,11 @@ The roadmap owns current status and prerequisites; migration records stay in `do
 ## Subphase plans
 
 - [Phase 4.1 · Background Check](4.1-background-check/README.md) — tasks 4.1.1–4.1.5
+
+## Delivery cadence from Phase 3.2
+
+The [2026-09-19 roadmap amendment](../../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates)
+requires concrete feature/outcome tasks and tangible subtasks, sequential unless labelled Parallel.
+Each delivery part runs focused checks throughout and full gates at its end under
+[the gate owner](../../reference/guards-and-tests.md#phase-exit-gates-from-3-2).
+Phase 3.1 retains its existing cadence. Proof, admission, freeze and cutover boundaries remain.

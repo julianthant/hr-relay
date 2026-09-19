@@ -1138,7 +1138,38 @@ else. **The change is NOT applied here.** What runs before every commit is a rul
 program works, so it is recorded as a named, measured recommendation for the operator rather than
 slipped in behind a coverage fix.
 
+<a id="phase-exit-gates-from-3-2"></a>
+
+#### Phase 3.2 onward — focused tasks, full phase-exit gates (2026-09-19)
+
+The operator-approved [task/cadence amendment](../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates)
+overrides D191's default per-candidate and prerequisite/group full-gate cadence for Phase 3.2
+and later delivery phases. It applies equally to sequential tasks, prerequisites, parallel workers
+and intermediate integration. Phase 3.1 and earlier admitted assignments keep their own schedules.
+
+| Stage | Required verification |
+| --- | --- |
+| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite, full coverage or broad parity run per task/group. |
+| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes unit, architecture and scenario projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide parity, generated-freshness, build, performance, recovery and live acceptance gate. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
+| Documentation/evidence only | Use the existing documentation-only and unchanged-input rules below; a recording-only commit is not another full test cycle. |
+
+A phase here is an executable delivery part: 3.2, 3.3, 3.5, each admitted 4.x, 5A/5B and each
+scheduled 6A–6F part. Optional 3.4 binds a selected feature batch and one end-of-batch full gate;
+unselected features are never release prerequisites. A later batch gets its own exit evidence.
+The owning plan names the final gate outcome and carries an explicit list of deferred broad checks.
+Focused PASS is task evidence, not proof that those deferred checks passed.
+
+Independent reviews remain as required by the owning phase. Phase 3.2's final audit/freeze remains
+read-only: a defect returns to bounded remediation and restarts the audit. Phase 3.3 may not repair
+its immutable candidate. Pre-write authorization, target checks and no-write rehearsal still precede
+every controlled action, and cutover readiness gates still precede switching production authority.
+No safety proof is moved after the effect it authorizes. Preserve test membership, assertions,
+isolation, coverage floors and timeouts; use at most four test-file workers, without this task's
+compiler/linter contention during coverage. This amendment changes scheduling, not the gate family.
+
 #### D191 — the recommendation is adopted: `test:coverage` becomes the per-commit gate (operator decision, 2026-08-12)
+
+For Phase 3.2 onward, the [2026-09-19 phase-exit cadence](#phase-exit-gates-from-3-2) takes precedence over the default and group-finalizer rules below.
 
 For remaining Phase 3.1 work, the [2026-09-13 exception](#phase-3-1-focused-finalization) below takes precedence: focused tasks/prerequisites and group integration, full gates and repairs only at 3.1.19, no independent review.
 
@@ -1234,7 +1265,7 @@ free of compiler/linter contention, use the demonstrated worker count within the
 and serialize only evidenced resource conflicts. Preserve membership, assertions, coverage floors,
 isolation, deadlines and every required acceptance proof.
 
-**2026-09-09 parallel-finalizer amendment (operator-approved).** Phase 3 parallel groups and
+**2026-09-09 parallel-finalizer amendment (operator-approved).** For Phase 3.2 onward, use the newer [phase-exit cadence](#phase-exit-gates-from-3-2); intermediate finalizers run focused checks. Phase 3 parallel groups and
 future parallel implementation plans use prerequisite → independent workers → finalizer, as owned
 by [roadmap D344](../../roadmap/roadmap.md#parallel-finalizer-cadence). This explicitly replaces
 per-worker full-suite gates for those groups, including candidate commits and review corrections.

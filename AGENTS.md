@@ -30,8 +30,9 @@ production authority and rollback asset until the approved all-at-once cutover (
 - Keep existing AGENTS.md / CLAUDE.md twins byte-identical. Change instructions for changed rules;
   record lessons in the linked module ledger. Keep complete project instruction chains below 32,768 bytes.
 - The operator launches tasks and chooses integration. No automatic sibling/next-task dispatch or
-  merge. New parallel plans follow roadmap D344: prerequisite, independent children, finalization
-  as the last child. Preserve admitted identities/ownership; downstream work waits for its finalizer.
+  merge. Phase 3.2 onward uses tangible feature tasks and subtasks; only explicitly labelled Parallel
+  nodes run concurrently. Follow the roadmap’s 2026-09-19 amendment; preserve admitted ownership
+  and dependencies. Earlier assignments retain their owning cadence.
 - Complete only after assigned checks, authorized integration and cleanup, plus review where required.
   Report compact evidence and any remaining obligations. Use the existing record for routine transfers;
   use `/handoff` for interrupted unique state. Personal rules own style and worker/reviewer models.
@@ -44,10 +45,15 @@ which repairs final acceptance failures in the same session. The
 [approved cadence](docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
 overrides conflicting module/personal review and per-candidate gate rules. Never claim deferred gates passed.
 
-**Other work:** follow `ref guards-and-tests` §3.14 D191. Default implementation candidates/finalizers
-require typecheck, lint and full coverage; Phase 3/future parallel workers use focused checks and
-their named finalizer runs full gates. Documentation-only changes use affected checks and verified
-unchanged-input reuse. Classify by affected inputs, not extension.
+**Phase 3.2 onward:** focused tests, lint and affected static/generated checks throughout each phase,
+including prerequisites and intermediate integration. Full typecheck, lint, coverage and applicable
+acceptance gates run at phase exit, with required repairs; see `ref guards-and-tests` §3.14
+[phase-exit cadence](docs/rebuild/reference/guards-and-tests.md#phase-exit-gates-from-3-2).
+Freeze audits and controlled-write/cutover admission retain their existing boundaries.
+
+**Other work:** follow `ref guards-and-tests` §3.14 D191 and the owning assignment.
+Documentation-only changes use affected checks and verified unchanged-input reuse. Classify by
+affected inputs, not extension.
 
 Update relevant tests for behavior changes; say when none exist. Lint failures are task failures.
 Preserve assertions, test membership, isolation, floors and timeouts. Use at most four test-file workers;

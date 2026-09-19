@@ -17,7 +17,7 @@ OCR/intake obligations owned elsewhere are not waived or duplicated by this opti
 ## Selection and execution
 
 The slot follows closed Phase 3.3; it never modifies the candidate during 3.3's controlled proof.
-If selected later, a feature uses the then-current implementation gates and records the candidate
+If selected later, a feature uses the [phase-exit cadence](../../../reference/guards-and-tests.md#phase-exit-gates-from-3-2) and records the candidate
 it actually verifies; it cannot relabel old controlled-write evidence as proof of changed code.
 Task numbers identify features, not a mandatory execution chain or an approved parallel plan.
 A focused /phase-plan → /supervise assignment must bind each selected task's current scope,
@@ -198,7 +198,14 @@ compatibility must be verified at implementation time. No credentials belong in 
 
 ## Completion policy
 
-This part has no all-features release gate. For each selected feature, record the actual provider
+This part has no all-features release gate. Before starting selected work, bind one selected feature
+batch and its final acceptance owner. Each feature and its tangible subtasks run focused tests,
+lint and affected static/generated checks. At the end of that batch, run full typecheck, lint,
+coverage and applicable acceptance gates, repair failures and complete required review. A later
+batch has its own final gate; unselected features never block this gate or Phase 3.5. No parallel
+work is implied by the menu: only approved independent nodes gain a `Parallel · <group>` chip.
+
+For each selected feature, record the actual provider
 and artifact boundaries, accuracy/retrieval evidence where applicable, required checks, independent
 implementation review and cleanup. Deferred or skipped features stay visibly unbuilt; skipping is
 never reported as implementation success. Existing functionality remains usable with all optional

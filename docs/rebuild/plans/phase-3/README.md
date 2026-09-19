@@ -37,3 +37,11 @@ review requirements. All Codex subagents use Astra/ultra under the current nativ
 Phase 3.1 now places Finalization at 3.1.9.8, 3.1.11.3 and 3.1.14.6, immediately after each
 group’s workers. Its numbered plans form a valid sequential path through final acceptance 3.1.19;
 optional 3.1.20–3.1.22 remain outside that required sequence.
+
+## Delivery cadence from Phase 3.2
+
+The [2026-09-19 roadmap amendment](../../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates)
+requires concrete feature/outcome tasks and tangible subtasks, sequential unless labelled Parallel.
+Each delivery part runs focused checks throughout and full gates at its end under
+[the gate owner](../../reference/guards-and-tests.md#phase-exit-gates-from-3-2).
+Phase 3.1 retains its existing cadence. Proof, admission, freeze and cutover boundaries remain.
