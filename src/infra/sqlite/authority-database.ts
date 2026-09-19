@@ -632,7 +632,7 @@ type RunRepository = Readonly<{
   listWorkflows(): readonly string[];
   claimNext(input: unknown): RunClaimOutcome;
   /** D330 service path: dependency and disposition eligibility are mandatory. */
-  claimEligible(input: unknown): CanonicalRunClaimOutcome;
+  claimEligible(input: unknown, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
   requeue(input: unknown): RunUpdateOutcome;
@@ -6033,8 +6033,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #claimNextRun(input: unknown, canonical: false): RunClaimOutcome;
-  #claimNextRun(input: unknown, canonical: true): CanonicalRunClaimOutcome;
-  #claimNextRun(input: unknown, canonical: boolean): CanonicalRunClaimOutcome {
+  #claimNextRun(input: unknown, canonical: true, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome;
+  #claimNextRun(input: unknown, canonical: boolean, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome {
     const request = RunClaimRequestSchema.parse(input);
     if (canonical && request.runtimeConfig === undefined) {
       return { state: "refused", refusal: { reason: "runtime-stale" } };
@@ -6114,6 +6114,7 @@ export class AuthorityDatabase implements Disposable {
         }
       }
       if (canonical) this.#lifecycleHooks?.afterClaimSelection?.();
+      admit?.(current);
       const claimed = RunRecordSchema.parse({
         ...current,
         lifecycle: {
@@ -6485,7 +6486,7 @@ export class AuthorityDatabase implements Disposable {
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
       claimNext: (input: unknown) => this.#claimNextRun(input, false),
-      claimEligible: (input: unknown) => this.#claimNextRun(input, true),
+      claimEligible: (input: unknown, admit?: (run: RunRecord) => void) => this.#claimNextRun(input, true, admit),
       renewClaim: (input: unknown) => {
         const request = RunHeartbeatRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {

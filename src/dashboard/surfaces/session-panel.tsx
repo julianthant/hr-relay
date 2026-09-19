@@ -948,6 +948,7 @@ function AddWorkersDialog({
  * version carries its own, which is a fact about the run and stays on the run.
  */
 export function SessionPanel({
+  open: controlledOpen, onOpenChange,
   workerCards,
   queueSurfaces,
   workerPools,
@@ -961,6 +962,8 @@ export function SessionPanel({
   onPlanWorkerCount,
   onSpawnWorker,
 }: {
+  open?: boolean;
+  onOpenChange?: React.Dispatch<React.SetStateAction<boolean>>;
   workerCards: readonly WorkerCardWire[];
   queueSurfaces: readonly QueueSurfaceWire[];
   workerPools: readonly WorkerPoolWire[];
@@ -992,7 +995,9 @@ export function SessionPanel({
     member: Readonly<{ workflowId: string; workerId: string; expectedVersion: number }>,
   ) => Promise<CommandSettlement>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [addOpen, setAddOpen] = useState(false);
   const [outcomes, setOutcomes] = useState<Readonly<Record<string, PoolControlOutcome>>>({});
   const sessionPanelView = useMemo(

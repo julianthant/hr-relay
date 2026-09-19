@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import { deriveBulkChildCommandId } from "../../../src/domain/command-groups.js";
 import { createOperatorCommandIngress } from "../../../src/server/dashboard/commands/operator-command-ingress.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
@@ -970,7 +971,7 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     // Port 0: the OS assigns an ephemeral port, so this test never contends
     // with a concurrently running rebuild dashboard on the machine-wide
     // isolation port — and never silently passes vacuous because of one.
-    const runtime: DashboardRuntime = await composeDashboardRuntime({
+    const runtime: DashboardRuntime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       frontendPortOverride: 0,

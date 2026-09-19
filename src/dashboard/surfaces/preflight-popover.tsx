@@ -47,9 +47,10 @@ export function PreflightPopover({
   checks,
   onRerun,
 }: {
-  checks: readonly PreflightCheckWire[];
+  checks?: readonly PreflightCheckWire[];
   onRerun?: () => void;
 }) {
+  if (checks === undefined || checks.length === 0) return null;
   const verdict = preflightVerdict(checks);
   const failing = checks.filter((check) => check.verdict === "fail").length;
   const warning = checks.filter((check) => check.verdict === "warning").length;

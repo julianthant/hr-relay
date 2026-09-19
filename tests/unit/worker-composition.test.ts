@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { SettingsFactsWireSchema } from "../../src/domain/dashboard/settings.js";
@@ -274,6 +275,7 @@ function composeInput(options: Readonly<{
 }>) {
   ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
   return {
+    preflightRunnerFactory: healthyRuntimePreflightRunners,
     isolation: rebuildRuntimeIsolation,
     args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
     env: {},

@@ -131,6 +131,7 @@ export interface WorkerCliLaunchSpec {
 export interface DashboardWorkerSupervisorDependencies {
   readonly launch: WorkerCliLaunchSpec;
   readonly admission?: (request: WorkerSupervisorRequest) => void;
+  readonly prepareAdmission?: (request: WorkerSupervisorRequest) => Promise<void>;
   readonly browserControl?: Readonly<{ request(commandId: string): Promise<string> }>;
   readonly spawn: WorkerProcessSpawner;
   readonly leases: WorkerLeaseProbe;
@@ -1006,6 +1007,7 @@ export function createDashboardWorkerProcessSupervisor(
           + "acknowledges nothing",
         );
       }
+      if (deps.prepareAdmission !== undefined) await deps.prepareAdmission(request);
       deps.admission?.(request);
       switch (request.command) {
         case "plan-worker-count":

@@ -1,3 +1,5 @@
+import { workflowPreflightScope } from "../../../services/start/preflight-scope.js";
+import type { PreflightAdmission } from "../../../domain/preflight-admission.js";
 import { selectNewRunIdentity } from "../../../core/run-settings.js";
 import type { ProtectedInputBinding } from "../../../domain/protected-input.js";
 import type { ProtectedSecretSource } from "../../../domain/secrets.js";
@@ -29,6 +31,7 @@ import { TargetNotFoundError } from "../../failures.js";
 export type { StartPlanWire } from "../../../domain/dashboard/start-plan.js";
 
 export interface StartPlanServiceDeps {
+  readonly preflight?: PreflightAdmission;
   readonly protectedSecrets?: ProtectedSecretSource;
   /** Internal test admission only; never accepted by the public ingress schema. */
   readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
@@ -46,13 +49,31 @@ export interface StartPlanServiceDeps {
 }
 
 export interface StartPlanService {
+  prepare?(input: unknown, signal: AbortSignal): Promise<void>;
   plan(input: unknown): StartPlanWire;
 }
 
 export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanService {
+  const scopeFor = (input: unknown) => {
+    const ingress = StartPlanIngressSchema.parse(input);
+    const descriptor = deps.descriptors.resolve(ingress.workflowId);
+    if (descriptor === undefined) throw new TargetNotFoundError("Preflight workflow is not registered.");
+    const identity = deps.authority.withAuthorityTransaction(repositories => {
+      repositories.runtimeConfig.requireSettingsCurrent();
+      return selectNewRunIdentity(repositories, deps);
+    });
+    return workflowPreflightScope(descriptor, { ...identity, ...(ingress.requestedInstance === undefined ? {} : { resolvedInstance: ingress.requestedInstance }) });
+  };
   return Object.freeze({
+    async prepare(input: unknown, signal: AbortSignal): Promise<void> {
+      if (deps.preflight === undefined) return;
+      const scope = scopeFor(input);
+      await deps.preflight.prepare(scope, signal);
+      deps.preflight.assertReady(scope);
+    },
     plan(input: unknown): StartPlanWire {
       const ingress = StartPlanIngressSchema.parse(input);
+      if (deps.preflight !== undefined) deps.preflight.assertReady(scopeFor(input));
       const descriptor = deps.descriptors.resolve(ingress.workflowId);
       if (descriptor === undefined) {
         throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
@@ -115,6 +136,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const selected=selectNewRunIdentity(repositories,record);
         record=StartPlanRecordSchema.parse({...record,...selected});
         repositories.runtimeConfig.requireSettingsCurrent();
+        deps.preflight?.assertReady(workflowPreflightScope(descriptor, { ...record, resolvedInstance: record.resolvedInstance }));
         if (ingress.rerunSource !== undefined) {
           const rerun = buildRerunPlan(repositories, descriptor, ingress.rerunSource, record.planned, ingress.warningAcknowledgment, record.stepOmissions);
           record = StartPlanRecordSchema.parse({ ...record, rerun, inputFingerprint: derivePlannedInputFingerprint(

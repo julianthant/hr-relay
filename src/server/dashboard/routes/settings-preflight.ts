@@ -1,4 +1,4 @@
-import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
+import { PreflightSelectionSchema, PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
 import { assertRequestActor } from "../request-identity.js";
 import { inspectLoopbackOrigin, isLoopbackHost } from "./loopback.js";
 import { wireError } from "./failure-status.js";
@@ -70,6 +70,11 @@ import type { DashboardApp } from "./api-types.js";
 import type { SettingsPreflightRouteDeps } from "./settings-preflight-types.js";
 
 export function registerSettingsPreflightRoutes(app: DashboardApp, deps: SettingsPreflightRouteDeps): void {
+  app.get("/api/v1/preflight", c => {
+    const raw = c.req.query("selection");
+    const selection = raw === undefined ? undefined : PreflightSelectionSchema.parse(JSON.parse(raw) as unknown);
+    return c.json(deps.preflight.read?.(selection) ?? { state: "unavailable", reason: "Preflight report reader is unavailable." });
+  });
   const preflightStarts: number[] = [];
   let preflightActive = false;
   app.post("/api/v1/preflight/rerun", async (c) => {

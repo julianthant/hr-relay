@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
  * W5 (ref execution-and-sessions §7.1 / §11, D271): the automated two-child
@@ -1063,7 +1064,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       const childOutput = (): string => records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
-      const runtime: DashboardRuntime = await composeDashboardRuntime({
+      const runtime: DashboardRuntime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         frontendPortOverride: 0,

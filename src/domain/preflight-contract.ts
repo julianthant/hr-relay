@@ -5,12 +5,14 @@
  * environment, secret, or filesystem inspectors.
  */
 import { z } from "zod";
+import { InstanceSelectionSchema } from "./run/envelope.js";
 import {
   ActorIdSchema,
   CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   SourceSurfaceIdSchema,
+  WorkflowIdSchema,
 } from "./ids.js";
 import {
   PreflightCheckIdSchema,
@@ -84,6 +86,17 @@ export const PreflightReportWireSchema = z.strictObject({
   validatePreflightReportSemantics(report, context);
 });
 
+export const PreflightSelectionSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  requestedInstance: InstanceSelectionSchema.optional(),
+});
+export type PreflightSelection = z.infer<typeof PreflightSelectionSchema>;
+export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), report: PreflightReportWireSchema }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+]);
+export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
+
 export const PreflightRerunCommandRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
   requestedAt: IsoInstantSchema,
@@ -93,6 +106,7 @@ export const PreflightRerunCommandRequestSchema = z.strictObject({
   target: z.strictObject({
     expectedConfigFingerprint: FingerprintSchema,
     expectedDescriptorFingerprint: FingerprintSchema.optional(),
+    selection: PreflightSelectionSchema.optional(),
   }),
 });
 

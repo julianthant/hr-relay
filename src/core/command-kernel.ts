@@ -1,3 +1,5 @@
+import { PreflightAdmissionRefusal, type PreflightAdmission } from "../domain/preflight-admission.js";
+import { workflowPreflightScope } from "../services/start/preflight-scope.js";
 import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../domain/worker-control.js";
 import { CommandRefusal } from "./command-refusal.js";
 import type { CommandApplication } from "./command-application.js";
@@ -395,6 +397,7 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
+  readonly preflight?: PreflightAdmission;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;
   readonly clock: Clock;
@@ -655,6 +658,7 @@ function executeStartRun(
     }
   }
 
+  dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
     expectedVersion: request.target.expectedVersion,
@@ -2884,6 +2888,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
           state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
         });
+        if (error instanceof PreflightAdmissionRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message });
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }

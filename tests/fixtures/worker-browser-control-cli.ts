@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "./preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -70,7 +71,7 @@ const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildR
   } },
 });
 try {
-  const report = await composeWorkerRuntime({ repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
+  const report = await composeWorkerRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
     sessionFactory: factory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
 } finally {

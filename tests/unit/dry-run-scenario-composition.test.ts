@@ -1,3 +1,4 @@
+import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import { createCredentialStore } from "../../src/infra/config/credential-store.js";
 import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
 import assert from "node:assert/strict";
@@ -221,6 +222,7 @@ function admissionFixture(env: NodeJS.ProcessEnv = {}, afterSettingsRead?: () =>
   const scenarioCase = TEST_MANIFEST.cases[0];
   assert.ok(scenarioCase);
   const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
     ...(afterSettingsRead === undefined ? {} : { afterSettingsRead }),
     isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock,
     ids: sequentialIdFactory("d"),
@@ -371,6 +373,7 @@ describe("dry-run scenario production composition boundary", () => {
       observedExistingComments: "",
     });
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
@@ -561,6 +564,7 @@ describe("dry-run scenario production composition boundary", () => {
     const { active, snapshot } = fixture.activate();
     const { sessions } = composedSessions(fixture.clock);
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation, repoRoot: fixture.root, env, clock: fixture.clock,
       ids: sequentialIdFactory("e"),
       sessionFactory: sessions.factory,
@@ -736,6 +740,7 @@ describe("dry-run scenario production composition boundary", () => {
     const { sessions } = composedSessions(clock);
     selectedSettingsFixture(root, clock).activate();
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
@@ -809,6 +814,7 @@ describe("dry-run scenario production composition boundary", () => {
     const { sessions, world, filingWorld } = composedSessions(clock);
     settings.activate();
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
@@ -873,6 +879,7 @@ describe("dry-run scenario production composition boundary", () => {
     selectedSettingsFixture(root, clock).activate();
     const lines: string[] = [];
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
@@ -962,6 +969,7 @@ describe("dry-run scenario production composition boundary", () => {
     const scenarioCase = unsupported.cases[0];
     if (scenarioCase === undefined) throw new Error("unsupported fixture has no case");
     const runtime = createProductionDryRunScenarioRuntime({
+      preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: {},
