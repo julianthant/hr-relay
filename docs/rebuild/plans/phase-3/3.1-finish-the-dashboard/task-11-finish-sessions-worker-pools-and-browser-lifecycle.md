@@ -526,3 +526,71 @@ with 6,108 regular-file hashes, verified, and removed. `cleanup.json`, `owned-re
 The shared worktree parent and all three peer planning checkouts remain. This calling task stays
 visible; no other task was archived. The accepted Sessions prerequisite is released; children still
 need their approved briefs and explicit operator launch. No push or child dispatch occurred.
+
+
+### Accepted preflight admission amendment — 2026-09-19
+
+The operator's **“do that and launch 3.1.11.1”** authorized this previously approved parent
+follow-up, local integration, owned cleanup and the Setup task launch. Choice 1 A and the child's
+S1–S5 scope are unchanged. The original Sessions completion remains accepted.
+
+Implementation **`549a701863720adb40ed2263a454cbeb44b0cf6c`** was built on clean
+`191ce8b1cb79d0930d89d60cb5501914c3fa4b09`, in `codex/3.1.11-preflight` at
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-preflight-hooks`.
+Approved plan `ac060faaf2a9f7cf9bc04f14335121cad0392e67` was incorporated at
+`96d9df6f51a0913b97a1548daca92a70cdae3d29`. Local integration
+**`ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`** is tree-identical to the tested implementation;
+no product conflict or new migration occurred. Schema 53/floor 46 remain unchanged. No push,
+independent review, external HR transaction, provider adapter or new CLI command occurred.
+
+#### Exact preflight interface release
+
+All paths below are repository-relative. Setup implements detectors and presentation through these
+registered operations; Run/Rerun can consume the same parent independently.
+
+| Owner / operation | Inputs, semantics and actual registration |
+| --- | --- |
+| `src/domain/preflight-admission.ts`: `PreflightAdmissionScopeSchema`, `createPreflightAdmission`, `PreflightAdmissionRefusal` | Exact retained snapshot/config/descriptor/capability identity; asynchronous `prepare(scope, signal)`, synchronous `read` and `assertReady`. Required failures block; unavailable, stale and scope mismatch refuse by name. Evidence expires after 60 seconds of monotonic time and protected revision changes invalidate it. Detector settlement never runs inside a SQLite transaction. |
+| `src/services/start/preflight-scope.ts`: `workflowPreflightScope` | Derives systems, selected prod/test instances and declared provider/workflow dependencies from the admitted descriptor graph. It conservatively covers the declared graph, not runtime branch prediction. Wrong descriptor identity refuses; unrelated capabilities and unselected instances are absent. |
+| `src/server/preflight/runtime-admission.ts`: `composeRuntimePreflight` | `currentScope` checks current settings; `runScope` selects the run's retained settings and descriptor. Supplies authority, isolated roots, worker observations, protected source and executable-provider facts. No current-settings fallback for historical runs. |
+| **Setup detector owner:** `src/server/preflight/runtime-runners.ts`: `RuntimePreflightRunnerInput`, `RuntimePreflightRunnerFactory`, `createRuntimePreflightRunners` | Factory receives exact scope/config, existing dashboard detector inputs, the canonical protected source and provider availability. It reuses the six implemented detectors. Remaining registered detectors explicitly report unavailable; required ones refuse admission. Setup replaces these isolated missing implementations and may extract private detector modules here, without editing shared composition roots. Key-only providers do not acquire executable readiness. |
+| `src/server/preflight/report-service.ts`: `createPreflightReportService` | Strict read/read-only rerun operations, one bounded 256-command replay namespace, exact/divergent/in-flight/failed replay and identity checks before probes. `GET /api/v1/preflight` supports optional workflow/instance selection; the existing guarded rerun route supports the same selection. Expired replay results retain history, while current readback remains unavailable. |
+| `createStartPlanService.prepare/plan`, command kernel and `RunRecordService` | Real BFF and scenario producers prepare before planning; kernel asserts before consuming a plan; lifecycle asserts before both initial and retry enqueue. Replay remains before admission and creates no additional effects. This extends the bounded file map to `src/core/run-record-service.ts` and the actual scenario producer `src/server/dry-run-scenario/runtime.ts`; the unused enqueue helper alone cannot prove admission. |
+| `claimWithPreflight`, `preflightSessionFactory` in `src/server/preflight/worker-admission.ts` | SQLite's existing selector calls the synchronous assertion before its claim write. Preparation unwinds the transaction, probes, then reselects atomically. This necessarily extends `src/infra/sqlite/authority-database.ts` with that callback. Worker boot/spawn check infrastructure before effects; selected-run claim and per-run browser opening check retained scope. No SQL duplication or schema change. |
+| `src/dashboard/client/preflight-state.ts`, `src/dashboard/state/preflight-readiness.ts` | `preflightReadinessResource`, `invalidatePreflightReadiness`, `usePreflightReadiness`: one client resource per exact settings/config/descriptor/selection identity. Epoch invalidation rejects late responses, including uncertain mutations. Rerun reads current served evidence after historical command replay. Setup and doctor subscribe through the same port. |
+| `src/dashboard/state/preflight-actions.tsx`: `PreflightActionsProvider`, `usePreflightActions` | Shell-registered actor/descriptor identity, `showSettings(section?: "storage")` and `showSessions()` connect existing remedies. TopBar mounts the isolated doctor component; absent checks do not render a false pass. Setup may extend its isolated popover/model, Settings preflight model/view and released preflight client/route leaf modules. Shared shell/client registrations are complete. |
+| `src/domain/secrets.ts`: `protectedSecretRevision` | Value-free revision read through the existing sole credential reader. Secret values do not enter public reports. |
+| `tests/fixtures/preflight-seams.ts`: `healthyRuntimePreflightRunners` | Controlled detector observations for independently executable composition fixtures; real production selection, report authority, admission and effect boundaries remain in place. This fixture is not detector acceptance or a production bypass. |
+
+#### Focused proof and retained limits
+
+Evidence: [amendment receipts](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11-preflight-2026-09-19/).
+`validate.py`, `checks.json`, `implementation-paths.json` and `tested-inputs.json` bind exact commands,
+44 implementation paths and 2,410 source/test/config/script inputs to the candidate. Recording and
+integration reuse only unchanged inputs; the integration tree equals the tested candidate tree.
+
+| Check | Actual result |
+| --- | --- |
+| Assigned admission plus CLI composition | **147 tests / 8 files passed.** Includes required/missing detector refusal, healthy enqueue/spawn/browser controls, optional/unselected scope, retained config, protected revision, expiry, replay/effect counts and obsolete UI responses. Full 14-fault detector corpus is not claimed. |
+| Expanded effect checks | **456 passed, 4 pre-existing failures** across the final results of 14 files. The real worker/Chromium process test passed separately after repairing its restart fixture's write-lock race; all other implementation inputs were unchanged. Four run-record deletion tests fail `no such table: notification_publications` identically on untouched baseline `191ce8b1…`; both logs are retained. The assigned Sessions effect tests pass. |
+| Expanded architecture checks | **78 passed, 46 pre-existing failures** across 13 files. All 46 wire-connectivity failures reproduce with identical test names on unchanged baseline; calendar fixture/native saved-file sink assertions prevent that broad guard from completing. No pass is claimed for it. The new preflight client/route pair additionally passes the same mechanical connectivity checker in isolation. |
+| UI units | **75 tests / 9 files passed.** Existing Setup/report and Sessions/launch boundaries retained. |
+| Assigned browser gate | **13 tests passed**, all four assigned specs, both themes, real controls/readback and cleanup; `assigned-parity-final.log`. Existing visuals/primitives unchanged; no reference refreshed. |
+| Additional Settings browser sample | Two real-authority interaction cases passed; ten reference cases fail the pre-existing `71b1674f…` versus `a14b8216…` descriptor provenance drift. No pixel pass or reference waiver is claimed. Deliberate broad reference acceptance remains 3.1.19. |
+| Lint, build and generated checks | Exact changed TS/TSX ESLint, web build, manifest generation/check and store catalog generation/check passed. No generated manifest/catalog content changed. Diagnostic `tsc --noEmit --pretty false` passed. Full coverage and repository-wide lint were not run. |
+| Release and cleanup | Integration `ef050d0a8…` verified; planning worktree/ref removed. Final recording and implementation-worktree removal are bound in external `cleanup.json` and `launch.json`; launch verifies both before dispatch. Peer Run/Rerun and active UI planning worktrees are preserved. |
+
+The supplemental baseline failures remain explicit 3.1.19 obligations. They do not replace, narrow
+or waive the amendment's passing admission proof or the assigned Sessions selectors. Setup still
+owns real missing detectors, every fault-manifest/dependency expansion, final doctor/Setup rendering,
+remedies and fresh served readback. Missing production detectors continue to refuse until implemented.
+
+**Delivery assessment.** The planning amendment was omitted from the original parent handoff; this
+follow-up completes that approved ownership rather than transferring shared-root work to Setup.
+Actual production tracing found that enqueue bypassed the nominal helper and that claim selection
+was private to SQLite. The final map records the necessary lifecycle/selector/CLI seams. Earlier
+process fixtures needed controlled detector inputs after admission became real. One restart fixture
+could stop a child inside a write transaction; it now holds the write lock while confirming children
+are stopped, preserving the real restart/replay assertions. Shared rerun state now uses fresh readback
+so old replay cannot look current. No expectation, guard membership or timeout was weakened. Full
+iteration totals are unavailable; exact observed commands and failures remain in the receipts.

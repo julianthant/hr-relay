@@ -43,7 +43,7 @@ The linked contracts govern; this brief assigns delivery and proof rather than c
 
 | Binding | Approved value |
 | --- | --- |
-| Supervisor | One operator-opened Codex supervisor, **GPT-6 Astra / medium**. Detector composition, admission evidence, report freshness and UI readback are coupled, consequential work. |
+| Supervisor | One operator-opened Codex supervisor; **model and effort are selected by the operator**. This supersedes the earlier model assignment. Detector composition, admission evidence, report freshness and UI readback remain one coupled assignment. |
 | Allocation / review | **Zero implementation workers and zero independent reviewers.** Phase 3.1's focused cadence applies. No sibling or next-task dispatch. |
 | Mode | New dedicated implementation worktree; never implement in the integration checkout or the planning worktree. |
 | Branch | `codex/3.1.11.1-setup` |
@@ -66,7 +66,7 @@ independent work by default, no shared-index queue or unsolicited peer polling/m
 
 ### Feasibility and proof bindings
 
-These are inspected mechanisms, not executed acceptance results.
+These are historical planning observations. The accepted parent amendment below supplies the shared mechanisms; child detector/UI acceptance remains unexecuted.
 
 | Question / current evidence | Necessary change and owner | Required proof / exclusion effect |
 | --- | --- | --- |
@@ -228,10 +228,10 @@ fixes remain the supervisor's choices. Do not re-ask settled choice 1 A or the a
 | State | Record |
 | --- | --- |
 | Approval | Choice 1 A and complete S1–S5 plan approved 2026-09-19. |
-| Implementation | Unstarted; this planning task changes documentation only. |
-| Parent release | Sessions accepted at `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`, cleanup recorded at `191ce8b1cb79d0930d89d60cb5501914c3fa4b09`. **WAITING ON the approved preflight admission amendment:** it was not incorporated in that release; see the verification below. |
-| Plan availability | Isolated documentation candidate on `codex/plan-3.1.11.1`; shared-target documentation integration has not been assigned/authorized by this brief. |
-| Child/group release | No supervisor launch prompt until plan availability and all start prerequisites are verified. 3.1.11.3 remains responsible for combined intake and later accepted integration/cleanup under operator direction. |
+| Implementation | Approved for launch by “do that and launch 3.1.11.1”; child implementation remains open. |
+| Parent release | Sessions plus the preflight amendment accepted in local `master` at `ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`; exact interface/proof map in the parent release. Verify external cleanup receipt before launch. |
+| Plan availability | Complete approved S1–S5 plan `ac060faaf2a9f7cf9bc04f14335121cad0392e67` is integrated. This release record accompanies it; planning worktree and branch removed. |
+| Child/group release | READY after verifying the accepted integration and owned-cleanup receipt. Operator explicitly authorized this launch. 3.1.11.3 still owns combined intake and later accepted integration/cleanup; this child does not merge itself or launch peers. |
 | Broad proof | Deferred to 3.1.19; no runtime acceptance executed by planning. |
 
 Maintain this compact state in place during execution, linking dated evidence. Send Done / Now /
@@ -266,7 +266,7 @@ re-established on the final candidate. Commit verification must read this comple
 parent amendment from the actual commit, verify the branch reaches it, and recompute start
 prerequisites. A committed planning candidate does not satisfy missing parent integration.
 
-### Parent release verification — 2026-09-19
+### Historical parent release verification — 2026-09-19
 
 After the operator reported 3.1.11 done, inspection of clean local `master` at
 `191ce8b1cb79d0930d89d60cb5501914c3fa4b09` confirmed accepted Sessions merge
@@ -300,4 +300,38 @@ supervisor launch is authorized by this verification-only continuation.
 This recording-only update changes no code, test, dependency, configuration, binding or roadmap
 status. The earlier 24-test documentation binding and scoped lint evidence remains applicable;
 roadmap freshness, instruction/link/scope checks and whitespace are rechecked. The plan remains
-**WAITING ON documentation integration and the approved parent admission amendment**.
+**WAITING ON documentation integration and the approved parent admission amendment** at that inspection. The following accepted release supersedes that status.
+
+
+### Accepted parent release and launch — 2026-09-19
+
+The operator then directed **“do that and launch 3.1.11.1”**. Parent implementation
+`549a701863720adb40ed2263a454cbeb44b0cf6c` and the approved plan are integrated at
+**`ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`**, a verified descendant of the accepted Sessions
+and Settings/Storage prerequisites. The [parent's exact release map](task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#exact-preflight-interface-release)
+is the S1 input: production plan/enqueue/worker/claim/browser assertions, retained identity, protected
+revision and 60-second freshness, registered detector factory, scoped served read/rerun operations,
+shared UI state and explicit remedy navigation all exist and have focused positive/refusal proof.
+
+Setup owns subsequent implementation of `createRuntimePreflightRunners` and private detector modules,
+its assigned views/models, released preflight query/route leaves and the manifest-bound fault corpus.
+The parent shared composition roots, lifecycle/SQLite admission, domain authority and shell provider
+are released inputs, not child edit assignments. The six existing detectors remain; unavailable
+non-dashboard detectors honestly refuse required scopes until S2 implements them. Controlled healthy
+fixtures prove the parent gate, not the child's real detector or complete fault-corpus acceptance.
+
+Use the exact approved branch `codex/3.1.11.1-setup` and checkout
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-setup`. Launch creates it from
+the verified local `master` descendant containing this release record, records the full base in
+[the launch receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11-preflight-2026-09-19/),
+and requires reuse of that owned checkout. The same directory retains `cleanup.json`, `integration.json`
+and `tested-inputs.json`; verify release ancestry and cleanup before the first edit. The operator
+selects the session model; no override is assigned by this handoff. Zero implementation workers and
+zero independent reviewers remain approved. Follow S1–S5 and P1–P6/G1–G4 in this complete brief;
+freeze a passing candidate for 3.1.11.3, with no push, self-integration or sibling dispatch.
+
+Parent supplemental checks identified baseline run-record deletion and wire-connectivity fixture
+failures and existing Settings descriptor-reference drift. Their exact comparisons are retained in
+the parent receipt. Full repository repair/acceptance remains 3.1.19; none is silently marked passed.
+Reproduce any relevant child failure before assigning it to that baseline. The child's own selected
+checks, detector corpus, presentation and remedy proof remain mandatory.
