@@ -1,0 +1,11 @@
+{
+  "stateId": "run-rerun-values",
+  "viewport": "1440x900",
+  "theme": "graphite-warm",
+  "adapter": "seeded",
+  "fixtureId": "run-rerun-authority",
+  "descriptorHash": "f1bf5319befbd7faff9ec51b54efee6ecfe80487f01ab9a90d0ae107148ae0f9",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-07-31",
+  "variant": "default"
+}
