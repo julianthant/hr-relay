@@ -1961,7 +1961,7 @@ log:
 
 
 ##### 3 · Finalization — run operations {#dash-operations-finalizer}
-status: planned
+status: active
 size: M
 date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
 doc: 3.1/task-11-3-finalization-run-operations §Task 3.1.11.3 · Finalization — run operations · ref:guards-and-tests §3.14
@@ -1969,8 +1969,8 @@ doc: 3.1/task-11-3-finalization-run-operations §Task 3.1.11.3 · Finalization �
 > Combine worker candidates with passing focused checks: 3.1.11.1–3.1.11.2; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
-- [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [x] BOTH resolve combined defects and generated-output drift within the approved group
+- [x] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
 - [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
@@ -1980,6 +1980,7 @@ needs:
 log:
 - 2026-09-19 | operator-approved 3.1.11.3 execution brief | Complete F1–F6 plan: exact child intake, either-order combination, bounded group repairs, production-service/browser proof, focused gates and operator-directed integration/cleanup. One Astra/medium supervisor, no workers or independent review. Full acceptance remains 3.1.19. Planning persistence is authorized; implementation waits for accepted Sessions and both committed, focused-green child candidates.
 - 2026-09-21 | verified finalizer intake | Accepted Sessions/preflight ancestors plus Setup `9ac176dd77198c29c33134de3d43f45f00f18ebb` and Run/Rerun `9e3060d3ef73fba127fc945dd80398e1bc3bd0a0` verified against focused receipts and 2,570/148 committed-input hashes. Disjoint child changes produce the same object tree in either order. Ready for operator-opened 3.1.11.3; combined gates, product integration and cleanup remain unstarted. Current personal instructions reserve model/effort selection to the operator.
+- 2026-09-21 | F1–F5 focused candidate frozen | Both full child candidates and approved ownership exceptions consumed from db8433c83; either-order composition verified. Repairs 176c6e0fc and attributed references 46f4d355f pass full typecheck, 819 focused tests, 69 built-browser cases, scoped lint and affected generated checks, with native 125%/200% zoom proof. Exact recording tip, inputs and retained limits are in the owner/evidence receipt. F6 product integration, child/group closure, owned worktree cleanup and downstream release await operator instruction. No workers, independent review, push or successor dispatch; full acceptance remains 3.1.19.
 
 #### 12 · Finish Activity, search, and export {#dash-activity}
 status: planned
