@@ -1988,7 +1988,7 @@ log:
 #### 12 · Finish Activity, search, and export {#dash-activity}
 status: planned
 date: D344 · former 3.1.12-3 · independent worktree after named prerequisites
-doc: 3.1/task-12-finish-activity-search-and-export §Task 3.1.12 · Finish Activity, search, and export · ref:operator-trust §5.8 · ref:dashboard-surfaces §9.8
+doc: 3.1/task-12-finish-activity-search-and-export §Task 3.1.12 · Finish Activity, search, and export · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §9.5.2
 
 builds:
 - [ ] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
@@ -2001,6 +2001,7 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-21 | operator-approved 3.1.12 plan | Full S1–S7 scope and choices 1 A / 2 A / 3 A approved: bounded metadata search across all roadmap dimensions, necessary shared/database contracts and indexed publication/rebuild/compatibility, one Activity/page/export snapshot, spreadsheet-safe CSV and redacted diagnostic metadata manifest; full bundles remain 3.1.14.4. One operator-selected supervisor, zero workers/reviewers; focused proof and gates here, full acceptance 3.1.19. Required releases verified; documentation candidate validated and local integration/cleanup explicitly approved; the owning release receipt binds the verified READY handoff. Product implementation remains unstarted.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.5; former 3.1.12-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 Activity/search/export seam in `phase-3-1-dashboard-c21194e18-r24-activity`, parallel with Tasks 16, 18 and 30 after Archive freezes history identity · left: Task 23
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.12; standalone prerequisite or individual task; acceptance and historical execution anchor retained
