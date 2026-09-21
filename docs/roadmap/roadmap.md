@@ -1986,14 +1986,14 @@ log:
 - 2026-09-21 | F1–F5 focused candidate frozen | Both full child candidates and approved ownership exceptions consumed from db8433c83; either-order composition verified. Repairs 176c6e0fc and attributed references 46f4d355f pass full typecheck, 819 focused tests, 69 built-browser cases, scoped lint and affected generated checks, with native 125%/200% zoom proof. Exact recording tip, inputs and retained limits are in the owner/evidence receipt. F6 product integration, child/group closure, owned worktree cleanup and downstream release await operator instruction. No workers, independent review, push or successor dispatch; full acceptance remains 3.1.19.
 
 #### 12 · Finish Activity, search, and export {#dash-activity}
-status: planned
-date: D344 · former 3.1.12-3 · independent worktree after named prerequisites
+status: done
+date: 2026-09-21 · integrated focused acceptance; full repository gates remain 3.1.19
 doc: 3.1/task-12-finish-activity-search-and-export §Task 3.1.12 · Finish Activity, search, and export · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §9.5.2
 
 builds:
-- [ ] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
-- [ ] BOTH produce truthful summaries and spreadsheet/diagnostic exports from stable result snapshots
-- [ ] PROOF pagination, cancellation, stale responses, redaction, large history, empty/error cases, and exported-row reconciliation
+- [x] BOTH search/filter across dates, workflows, subjects, statuses, actors, versions, failures, and evidence without scanning unbounded state
+- [x] BOTH produce truthful summaries and spreadsheet/diagnostic exports from stable result snapshots
+- [x] PROOF pagination, cancellation, stale responses, redaction, large history, empty/error cases, and exported-row reconciliation
 
 needs:
 - dash-archive
@@ -2001,6 +2001,7 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-21 | accepted local 3.1.12 release | Candidate 6d42b66fd133 integrated into local master as b77def9af67b after operator instruction; exact merged tree and all 143 changed-file hashes match the focused-green candidate. Reused unchanged 659-test, 25-browser-case, scoped lint/type, generated and native 125%/200% zoom evidence; fresh recording gates pass. Schema 54 preserves historical compatibility and recovery floor 46. Guard/fixture-only scope amendment completed. Owned worktree, physical folder and branch removed with proof artifacts retained; dirty UI planning and integrated Operations preserved. No push, standing database migration, HR writes or next-task dispatch. Full diagnostic bundles remain 3.1.14.4 and full acceptance remains 3.1.19.
 - 2026-09-21 | operator-approved 3.1.12 plan | Full S1–S7 scope and choices 1 A / 2 A / 3 A approved: bounded metadata search across all roadmap dimensions, necessary shared/database contracts and indexed publication/rebuild/compatibility, one Activity/page/export snapshot, spreadsheet-safe CSV and redacted diagnostic metadata manifest; full bundles remain 3.1.14.4. One operator-selected supervisor, zero workers/reviewers; focused proof and gates here, full acceptance 3.1.19. Required releases verified; documentation candidate validated and local integration/cleanup explicitly approved; the owning release receipt binds the verified READY handoff. Product implementation remains unstarted.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-4.5; former 3.1.12-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 Activity/search/export seam in `phase-3-1-dashboard-c21194e18-r24-activity`, parallel with Tasks 16, 18 and 30 after Archive freezes history identity · left: Task 23

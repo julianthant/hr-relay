@@ -8,10 +8,10 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Implement bounded cross-date filters and stable redacted exports; prove pagination,
+- [x] Implement bounded cross-date filters and stable redacted exports; prove pagination,
   cancellation, stale responses, large history, errors, and exported-row reconciliation.
 
-Accepted U supplies summary-backed Activity, current range/group metrics and the separate confirmed transaction-history query. Preserve unavailable distinct-person facts, privacy and archived confirmed totals until explicit deletion. Remaining search/export, pagination/cancellation, stale response and exported-row reconciliation proof stays open; no generic all-time archive Activity population is added.
+Accepted U supplied summary-backed Activity, current range/group metrics and the separate confirmed transaction-history query. Task 3.1.12 now closes the assigned search/export, pagination/cancellation, stale response and exported-row reconciliation proof. Unavailable distinct-person facts, privacy and archived confirmed totals until explicit deletion are preserved; no generic all-time archive Activity population is added.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
@@ -322,16 +322,19 @@ open under this assignment and 3.1.19.
 
 S1 admission passed. The committed approved plan `8d1e6acc30ac469311dc507f0021aa3711a3fb40`
 and prerequisite `801da4f3d1bfdf0a9ecc81c993289f70699aa140` are ancestors of the exact clean
-implementation base `e82e32f5007e5a7f3b4b0f62a86565f223932cf8`. The assigned branch
-`codex/3.1.12-activity-search` owns
-`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-activity-search`.
+implementation base `e82e32f5007e5a7f3b4b0f62a86565f223932cf8`. Implementation used branch
+`codex/3.1.12-activity-search` in
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-activity-search`;
+both were removed after accepted integration.
 The existing UI planning checkout and Operations release are preserved. Admission hashes and
 peer state are retained in the task evidence directory's `admission.json`.
 
-S1–S6 and their focused P1–P6 proof pass. S7 is at candidate freeze; product integration requires
-operator instruction. The task checkbox remains open until integration checks, records and owned
-worktree/branch cleanup are complete. One supervisor performed implementation and verification;
-no workers or independent reviewer participated.
+S1–S7 are complete. Focused P1–P6 proof passes; the operator's “do it” authorized integration of
+frozen candidate `6d42b66fd133bb9cef59e26a43b7b5fd86028911` into local master as
+`b77def9af67bc73e4a15b0fb4f09427d32d19688`. The merged tree exactly matches the frozen candidate.
+Integration input checks, completion records and owned worktree/branch cleanup are complete.
+One supervisor performed implementation and verification; no workers or independent reviewer
+participated. The final local-master recording SHA is retained in `final-receipt.json`.
 
 Implementation commit: `cefb7064ffeb5dfafd8c622f63cb07250ce7520a`, after the authorized guard/fixture
 repair commit `aac9e94a0933cf7832a1abd4ecd9f694b414275b`. The final recording commit is identified
@@ -400,22 +403,59 @@ and passes. An initial reference update omitted the wrapper's required accessibi
 returned exit 1 despite 18 scene passes; the complete 25-test update and assertion lanes pass.
 None of these failed attempts is represented as a passing receipt.
 
-### Freeze boundary and retained resources
+### Accepted local integration and cleanup — 2026-09-21
 
-Owned Vite and composed-browser servers and both playwright-cli sessions are closed. Synthetic
-evidence and the owned Chrome profile remain under the evidence root. Browser report attachments
-are copied out of the checkout before later cleanup. The branch, worktree and dependency symlink
-remain assigned until instructed integration; no peer checkout or process is repurposed.
+`product-integration.json` records operator authorization, the clean unchanged target, prerequisite
+ancestry and conflict-free integration. The merge tree is
+`c60b456500016f9a62b2c5dc09d196321638c9a1`, identical to the accepted candidate. All 143 changed-file
+hashes and 17 passing gate receipt/log hashes were verified; the worktree used the same dependency
+installation as the primary checkout. No runtime, test, configuration or dependency change
+invalidated the 659 focused tests, 25 browser cases, scoped lint/types, generated checks or native
+zoom proof. Those results are reused under the assigned cadence, not represented as fresh runs.
 
-`target-and-peer-preservation.json` verifies local master is still clean at the admitted base and
-the dirty UI planning checkout's tracked bytes/status are preserved. At integration, verify target
-and peer state again, compare final receipt inputs and rerun invalidated focused checks. Then close
-this task/roadmap record and remove only incorporated owned worktree/branch resources. No product
-merge, push or sibling/next-task dispatch has occurred.
+The recording-only closeout passes fresh `integration-roadmap-generate`, `integration-roadmap-check`,
+`integration-doc-binding` (24 tests), `integration-doc-lint`, link/instruction checks and
+`git diff --check`. Only this task's owner, roadmap entry and generated roadmap change after the
+product merge. `final-receipt.json` binds the final committed state to those checks and confirms
+that all other merged inputs remain unchanged.
+
+`owned-cleanup.json` verifies ordinary worktree removal, absence of its physical folder and deletion
+of the incorporated branch. All ignored browser output, bundle and lock-file bytes were retained
+with hashes under `worktree-residue/`; the dependency symlink was removed and its target preserved.
+Owned Vite/composed-browser servers and playwright-cli sessions are closed. Synthetic evidence and
+the owned Chrome profile remain deliberately retained. No owned checkout/branch/process residue
+remains. The calling task is not archived, and there are no dispatched child tasks to close.
+
+The dirty UI planning checkout remains at `f93994501f69ff04a8114311fee7630c34b529e4`; its status,
+tracked changes and four untracked planning files match their recorded hashes. Integrated Operations
+work is preserved. No push or sibling/next-task dispatch occurred.
 
 Full repository typecheck/lint/coverage/architecture, broad parity and complete A01–A42/D01–D05
 acceptance remain 3.1.19. This evidence does not clear the integrated Operations release's separate
 documented limitations. No standing database migration, live HR write or deployment is claimed.
+
+### Delivery assessment
+
+The approved plan and operator amendment governed the same coupled assignment throughout. One
+planning omission was exposed: the assigned baseline guards had not been run during feasibility,
+so necessary reconciliation of already-integrated Calendar/Operations/Archive fixtures was not
+included in the initial ownership. `base-guards.json` reproduced 50 failures in four files on the
+exact admitted base. The operator authorized guard/fixture repairs only; this added no product
+scope. Running those assigned guards before the implementation brief would have exposed the
+ownership need earlier.
+
+Implementation/proof repairs included historical stopped-conversion compatibility, native-zoom
+filter scrolling and test setup. The first large-history fixture used unnecessarily slow sequential
+admission; the final fixture uses valid bulk synthetic data and the real bounded rebuild without
+changing the timeout. The first reference update omitted the required accessibility lane; the
+complete update and assertion runs repaired that proof. These were covered by the approved plan,
+not new operator requirements. Earlier logs retain the repair attempts; they do not establish a
+reliable count of independent repair rounds or avoidable elapsed time.
+
+No allocation change or independent review occurred, as required by Phase 3.1. Context compaction
+did not lose the recorded acceptance state. Product integration introduced no conflicts or repairs;
+exact-tree verification permitted reuse of unchanged runtime evidence, followed by fresh recording
+checks. No broader quality or time-savings claim is made.
 
 ### Operator scope amendment — 2026-09-21
 
