@@ -227,6 +227,7 @@ export function composeCommandRequest(
   switch (action.command) {
     case "retry":
     case "restart":
+      return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "cancel":
     case "bump":
     case "delete":

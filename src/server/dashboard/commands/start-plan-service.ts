@@ -20,7 +20,8 @@ import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
-import { buildRerunPlan, RerunRefusedError } from "../../../services/start/rerun.js";
+import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../../../services/start/rerun.js";
+import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../../domain/dashboard/rerun-warning.js";
 import { projectRerunPlanForOperator } from "../../../domain/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../domain/run/start-plan.js";
 import { planStart } from "../../../services/start/plan.js";
@@ -49,6 +50,7 @@ export interface StartPlanServiceDeps {
 }
 
 export interface StartPlanService {
+  previewWarnings(input: unknown): RerunWarningWire;
   prepare?(input: unknown, signal: AbortSignal): Promise<void>;
   plan(input: unknown): StartPlanWire;
 }
@@ -65,6 +67,15 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
     return workflowPreflightScope(descriptor, { ...identity, ...(ingress.requestedInstance === undefined ? {} : { resolvedInstance: ingress.requestedInstance }) });
   };
   return Object.freeze({
+    previewWarnings(input: unknown): RerunWarningWire {
+      const request = RerunWarningRequestSchema.parse(input);
+      const descriptor = deps.descriptors.resolve(request.workflowId);
+      if (descriptor === undefined) throw new TargetNotFoundError("Rerun workflow is not registered.");
+      return deps.authority.withAuthorityTransaction((repositories) => RerunWarningWireSchema.parse({
+        workflowId: descriptor.id,
+        rerun: projectRerunPlanForOperator(previewRerunWarnings(repositories, descriptor, request.source)),
+      }));
+    },
     async prepare(input: unknown, signal: AbortSignal): Promise<void> {
       if (deps.preflight === undefined) return;
       const scope = scopeFor(input);
@@ -175,6 +186,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         },
         ...(record.rerun === undefined ? {} : { rerun: projectRerunPlanForOperator(record.rerun) }),
         planned: record.planned.map((planned) => ({
+          ...(planned.supersedeTargets === undefined ? {} : { supersedeTargets: planned.supersedeTargets }),
           logicalKey: planned.itemId,
           title: planned.title,
           ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),

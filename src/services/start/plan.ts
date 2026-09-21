@@ -33,6 +33,7 @@ import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape 
 import type { StepOmissions } from "../../domain/workflow/step-omission.js";
 import { InstanceSelectionSchema } from "../../domain/run/envelope.js";
 import { isTerminalRunState, type RunRecord } from "../../domain/run/record.js";
+import { startSupersedeTargets } from "../../domain/run/start-supersede.js";
 import {
   deriveCanonicalInputDigest,
   derivePlannedInputFingerprint,
@@ -220,6 +221,8 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     const subtitle = protectedSubject ? undefined : planning.subtitle(parsed);
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
+      ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
+        deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),
       itemId,
       title: protectedSubject ? "Protected test subject" : planning.title(parsed),
       ...(subtitle === undefined ? {} : { subtitle }),

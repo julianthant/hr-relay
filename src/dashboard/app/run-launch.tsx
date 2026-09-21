@@ -6,6 +6,6 @@ import type { useRunLaunch } from "./run-launch-model.js";
 export function RunLaunchHost({ controller, ...props }: Omit<ComponentProps<typeof RunStartSurfaces>, "open" | "onOpenChange" | "onCloseAutoFocus"> & {
   readonly controller: ReturnType<typeof useRunLaunch>;
 }) {
-  return <RunStartSurfaces {...props} open={controller.open} onOpenChange={controller.setOpen} onCloseAutoFocus={controller.closeFocus}
+  return <RunStartSurfaces {...props} rerunSource={controller.rerunSource} open={controller.open} onOpenChange={controller.setOpen} onCloseAutoFocus={controller.closeFocus}
     onOpenIntake={(workflowId, sessionId) => { controller.handOffToIntake(); props.onOpenIntake?.(workflowId, sessionId); }} />;
 }

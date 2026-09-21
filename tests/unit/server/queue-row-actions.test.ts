@@ -130,12 +130,11 @@ describe("queue-row action descriptors — the per-status set", () => {
     // Terminal: nothing to cancel, nothing to bump, a re-run is possible — and
     // since D308, the run can be DELETED. `delete` is last in `SERVED_ORDER`
     // so its 🗑 sits at the right end of the footer, after the ✕.
-    // D314: both ordinary recovery choices — Resume from checkpoints (`retry`)
-    // and Restart from start (`restart`) — are served on every terminal row.
-    done: ["retry", "restart", "rename", "delete"],
-    failed: ["retry", "restart", "rename", "delete"],
-    cancelled: ["retry", "restart", "rename", "delete"],
-    partial: ["retry", "restart", "rename", "delete"],
+    // D335: eligible sources open Rerun; cancelled sources are not eligible.
+    done: ["rerun", "rename", "delete"],
+    failed: ["rerun", "rename", "delete"],
+    cancelled: ["rename", "delete"],
+    partial: ["rerun", "rename", "delete"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -169,10 +168,7 @@ describe("queue-row action descriptors — the per-status set", () => {
       rename: ["menu"],
     });
     assert.deepEqual(placements("done"), {
-      retry: ["footer", "menu"],
-      // D314: the deliberate, less frequent recovery choice is menu-only; the
-      // footer keeps Resume as the one-click recovery.
-      restart: ["menu"],
+      rerun: ["footer", "menu"],
       rename: ["menu"],
       // D308's 🗑, back in the footer slot D234 emptied.
       delete: ["footer", "menu"],
@@ -192,9 +188,9 @@ describe("queue-row action descriptors — the per-status set", () => {
    * through their delegation edge policy, not generic retry"), so a member row
    * that drew a `↺` would be drawing a button that always refuses.
    */
-  it("drops retry for a delegated child, and keeps rename", () => {
+  it("drops Rerun for a delegated child, and keeps rename", () => {
     assert.deepEqual(keysFor("failed", { isChild: true }), ["rename"]);
-    assert.deepEqual(keysFor("failed"), ["retry", "restart", "rename", "delete"]);
+    assert.deepEqual(keysFor("failed"), ["rerun", "rename", "delete"]);
   });
 
   /**
@@ -301,13 +297,13 @@ describe("queue-row action descriptors — the per-status set", () => {
    * The one difference a rehearsal makes to a control: a dry run's re-run
    * cannot file anything, and the dialog's tone is the last place that shows.
    */
-  it("softens the re-run confirmation for a rehearsal and names the park for a parked write", () => {
+  it("opens the source-bound modal for live and rehearsal sources; blocks uncertain writes", () => {
     const real = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed"))[0];
     const rehearsal = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { dryRun: true }))[0];
-    assert.ok(real?.kind === "command" && rehearsal?.kind === "command");
-    assert.equal(real.confirm?.tone, "destructive");
-    assert.equal(rehearsal.confirm?.tone, "neutral");
-    assert.match(rehearsal.confirm?.body ?? "", /rehearsal performs no real/);
+    assert.ok(real?.kind === "navigation" && real.navigate.kind === "rerun");
+    assert.ok(rehearsal?.kind === "navigation" && rehearsal.navigate.kind === "rerun");
+    assert.equal(real.navigate.expectedVersion, 7); assert.equal(rehearsal.navigate.expectedVersion, 7);
+    assert.equal(keysFor("failed", { parkedWrite: true }).includes("rerun"), false);
 
     /*
      * D246: the parked-write body used to warn that cancelling "does not answer
@@ -370,8 +366,11 @@ describe("queue-row action descriptors — the CAS binding", () => {
         const served = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status, { rowRevision: revision }));
         assert.ok(served.length > 0, `${status} served no action to bind`);
         for (const action of served) {
-          assert.ok(action.kind === "command");
-          assert.equal(action.expectedVersion, revision, `${status}/${action.key}`);
+          if (action.kind === "navigation") {
+            assert.equal(action.navigate.kind, "rerun");
+            if (action.navigate.kind !== "rerun") throw new Error("unexpected navigation");
+            assert.equal(action.navigate.expectedVersion, revision);
+          } else { assert.ok(action.kind === "command"); assert.equal(action.expectedVersion, revision, `${status}/${action.key}`); }
         }
       }
       // And the wire itself refuses any other binding — the surface below is
@@ -403,6 +402,7 @@ describe("queue-row action descriptors — every served verb has a command behin
     assert.ok(served.length > 0, "the sweep collected no descriptors at all");
     const active: readonly string[] = PHASE1_ACTIVE_COMMAND_ARMS.run;
     for (const action of served) {
+      if (action.kind === "navigation") { assert.equal(action.key, "rerun"); assert.equal(action.navigate.kind, "rerun"); continue; }
       assert.ok(action.kind === "command", `${action.key} is not a command descriptor`);
       assert.ok(
         (ActionCommandKeySchema.options as readonly string[]).includes(action.command),
@@ -426,6 +426,11 @@ describe("queue-row action descriptors — every served verb has a command behin
    */
   it("composes every served descriptor into a request the kernel's own union parses", () => {
     for (const action of served) {
+      if (action.kind === "navigation") {
+        assert.equal(ActionDescriptorWireSchema.parse(action).kind, "navigation");
+        assert.equal("command" in action, false);
+        continue;
+      }
       assert.ok(action.kind === "command");
       const composed = composeCommandRequest(
         action,

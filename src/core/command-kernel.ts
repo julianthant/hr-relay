@@ -1,5 +1,6 @@
 import { PreflightAdmissionRefusal, type PreflightAdmission } from "../domain/preflight-admission.js";
 import { workflowPreflightScope } from "../services/start/preflight-scope.js";
+import { startSupersedeTargets } from "../domain/run/start-supersede.js";
 import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../domain/worker-control.js";
 import { CommandRefusal } from "./command-refusal.js";
 import type { CommandApplication } from "./command-application.js";
@@ -658,6 +659,14 @@ function executeStartRun(
     }
   }
 
+  if (descriptor.enqueue === "supersede-active") {
+    for (const entry of plan.planned) {
+      const current = startSupersedeTargets(repositories.runs.listByItem({ workflow: plan.workflowId, itemId: entry.itemId }));
+      if (entry.supersedeTargets === undefined || canonicalJsonStringify(entry.supersedeTargets) !== canonicalJsonStringify(current)) {
+        reject(request, "replan-required", "Active runs changed after the supersede preview; review a fresh plan before starting");
+      }
+    }
+  }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,

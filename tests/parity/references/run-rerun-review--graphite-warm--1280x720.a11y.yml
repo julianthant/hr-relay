@@ -1,0 +1,45 @@
+# run-rerun-review--graphite-warm--1280x720
+# adapter: seeded
+# fixture: run-rerun-authority
+# descriptorHash: f1bf5319befbd7faff9ec51b54efee6ecfe80487f01ab9a90d0ae107148ae0f9
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-07-31
+
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - list "Run configuration path":
+    - listitem: Steps
+    - listitem: Values
+    - listitem: Options
+    - listitem: Confirm
+  - heading "Launch proof" [level=3]
+  - region "Confirm":
+    - heading "Confirm" [level=4]
+    - text: dry run
+    - term: Workflow
+    - definition: Launch proof
+    - term: Input
+    - definition: Entered values
+    - term: Creates
+    - definition: 1 run
+    - term: Steps
+    - definition: 3 of 3 included
+    - term: Values
+    - definition: "eid: 10812345 · memo: Reviewed memo"
+    - term: Options
+    - definition: "Dry run: On · Browser: Headed · Browser screenshots: On"
+    - term: Safety
+    - definition: Refuse overlapping subject runs
+    - text: 1 run dry run
+    - list "Runs this start will create":
+      - listitem: 10812345 match key 10812345
+    - text: plan bbbbbbbb-0002-4000-8000-000200000000planned by local-operatorexpires 10:10 AM
+  - contentinfo:
+    - text: Launch proof v11 to create
+    - button "Back"
+    - button "Cancel"
+    - button "Start dry run"
