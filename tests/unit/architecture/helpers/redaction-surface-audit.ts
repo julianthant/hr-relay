@@ -78,7 +78,8 @@ import {
 import {
   ActionDescriptorWireSchema,
 } from "../../../../src/domain/dashboard/actions.js";
-import { ActivityReportWireSchema } from "../../../../src/domain/dashboard/activity.js";
+import { ActivityReportSelectionSchema } from "../../../../src/domain/dashboard/activity-selection.js";
+import { RunSearchIndexRecordSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../../../src/domain/dashboard/search-index.js";
 import { RunAdvisoryWireSchema } from "../../../../src/domain/dashboard/advisory.js";
 import {
   SavedArchiveDeletionStatusWireSchema, SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, SavedVersionIndexWireSchema,
@@ -871,7 +872,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/stream-envelope", egress: "operator-loopback", module: "src/domain/dashboard/subscription.ts", schema: DashboardStreamEnvelopeSchema },
   { id: "wire/bootstrap", egress: "operator-loopback", module: "src/domain/dashboard/bootstrap.ts", schema: FrontendBootstrapWireSchema },
   { id: "wire/diagnostic-bundle", egress: "operator-loopback", module: "src/domain/dashboard/diagnostic-bundle.ts", schema: DiagnosticBundleWireSchema },
-  { id: "wire/activity-report", egress: "operator-loopback", module: "src/domain/dashboard/activity.ts", schema: ActivityReportWireSchema },
+  { id: "wire/activity-report", egress: "operator-loopback", module: "src/domain/dashboard/activity.ts", schema: ActivityReportSelectionSchema },
   { id: "wire/calendar", egress: "operator-loopback", module: "src/domain/dashboard/calendar.ts", schema: CalendarWireSchema },
   { id: "wire/cross-date-search", egress: "operator-loopback", module: "src/domain/dashboard/search.ts", schema: CrossDateSearchPageSchema },
   { id: "wire/run-advisory", egress: "operator-loopback", module: "src/domain/dashboard/advisory.ts", schema: RunAdvisoryWireSchema },
@@ -901,6 +902,10 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "durable/evidence-receipt", egress: "durable-authority", module: "src/domain/trust/evidence.ts", schema: RunEvidenceReceiptSchema },
   { id: "durable/notification-record", egress: "durable-authority", module: "src/domain/notifications.ts", schema: NotificationRecordSchema },
   { id: "durable/diagnostic-bundle", egress: "durable-authority", module: "src/domain/trust/diagnostic.ts", schema: DiagnosticBundleSchema },
+  { id: "durable/run-search-index", egress: "durable-authority", module: "src/domain/dashboard/search-index.ts", schema: RunSearchIndexRecordSchema },
+  { id: "durable/run-search-declaration", egress: "durable-authority", module: "src/domain/dashboard/search-index.ts", schema: RunSearchDeclarationSchema },
+  { id: "durable/run-search-gram", egress: "durable-authority", module: "src/domain/dashboard/search-index.ts", schema: RunSearchGramSchema },
+  { id: "durable/run-search-actor-link", egress: "durable-authority", module: "src/domain/dashboard/search-index.ts", schema: RunSearchActorLinkSchema },
   { id: "durable/operator-xlsx-export", egress: "durable-authority", module: "src/domain/dashboard/xlsx-export.ts", schema: OperatorXlsxExportEvidenceSchema },
   { id: "wire/start-plan", egress: "operator-loopback", module: "src/domain/dashboard/start-plan.ts", schema: StartPlanWireSchema },
   { id: "file/ledger-entry", egress: "durable-file", module: "src/domain/ledger.ts", schema: LedgerEntrySchema },
@@ -1397,6 +1402,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/cross-date-search", path: "nextCursor.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "nextCursor.value", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "snapshot.token", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].metadata.actor.value", origin: "captured-hr-value" },
+  { surface: "wire/cross-date-search", path: "results[].metadata.subject.value", origin: "captured-hr-value" },
+  { surface: "wire/cross-date-search", path: "results[].registration.categoryId", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].registration.code", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].registration.label", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].registration.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].endedAt.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].retryOf.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].runNumber.reason", origin: "repository-authored" },
@@ -1862,8 +1873,15 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // DCR5 retains the exact operator query only in insert-only evidence; it is
   // deliberately absent from workbook cells because it may itself be an
   // identifier. Attachment syntax and sheet names are closed composition facts.
+  { surface: "durable/run-search-index", path: "metadata.actor.value", origin: "captured-hr-value" },
+  { surface: "durable/run-search-index", path: "metadata.subject.value", origin: "captured-hr-value" },
+  { surface: "durable/run-search-declaration", path: "subjectProjection.nodeId", origin: "repository-authored" },
+  { surface: "durable/run-search-declaration", path: "subjectProjection.fieldPath", origin: "repository-authored" },
+  { surface: "durable/run-search-gram", path: "token", origin: "captured-hr-value" },
+  { surface: "durable/run-search-actor-link", path: "sourceId", origin: "repository-authored" },
   { surface: "durable/operator-xlsx-export", path: "download.contentDisposition", origin: "repository-authored" },
   { surface: "durable/operator-xlsx-export", path: "selection.query.q", origin: "captured-hr-value" },
+  { surface: "durable/operator-xlsx-export", path: "selection.query.facets.subject", origin: "captured-hr-value" },
   { surface: "durable/operator-xlsx-export", path: "workbook.sheetNames[]", origin: "repository-authored" },
 
   { surface: "file/ledger-entry", path: "payload.idempotencyKey", origin: "captured-hr-value",
@@ -1897,6 +1915,12 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
     { module: "src/domain/dashboard/calendar.ts", state: "audited", reason: "bounded dates, counts and generation only; no run or person data" },
+    { module: "src/domain/dashboard/activity-selection.ts", state: "audited", reason: "The served Activity report embeds a signed range/generation/digest token; strings are authored tokens only." },
+    { module: "src/domain/dashboard/search-calendar.ts", state: "audited", reason: "Pure local-day arithmetic with no new wire or stored values." },
+    { module: "src/domain/dashboard/search-export.ts", state: "audited", reason: "The request reuses the strict reviewed XLSX selection; diagnostic and CSV producers explicitly omit values and identifiers." },
+    { module: "src/domain/dashboard/search-history.ts", state: "audited", reason: "Frozen historical search schema is embedded by the audited durable XLSX evidence union." },
+    { module: "src/domain/dashboard/search-index.ts", state: "audited", reason: "Private durable metadata, declared subject projection addresses, grams and authentic actor links; only approved public projection values are indexed." },
+    { module: "src/domain/dashboard/xlsx-export-history.ts", state: "audited", reason: "Frozen workbook v1/v2 schemas are embedded by the audited durable XLSX evidence union." },
     { module: "src/domain/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
     { module: "src/domain/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
     { module: "src/domain/dashboard/settings-catalog.ts", state: "audited", reason: "catalog-derived Settings controls and classifications are embedded by the audited editable Settings wire" },

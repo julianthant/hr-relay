@@ -7,6 +7,7 @@ export interface ShellRouteDeps {
   readonly calendar?: import("../queries/calendar.js").CalendarQueryService;
   readonly bootstrap: BootstrapQueryDeps;
   readonly search: CrossDateSearchQueryService;
+  readonly searchMetadataExports?: { export(input: unknown): Response };
   readonly xlsxExports?: OperatorXlsxExportService;
   readonly hub: DashboardStreamHub;
 }

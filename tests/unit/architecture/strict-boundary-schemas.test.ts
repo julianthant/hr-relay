@@ -1530,6 +1530,8 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/preflight.ts:PreflightDeadlineHandle",
   "src/domain/preflight.ts:PreflightDeadlineScheduler",
   "src/domain/preflight.ts:PreflightRunner",
+  // In-process admission capability consumes a strict retained preflight report.
+  "src/domain/preflight-admission.ts:PreflightAdmission",
   "src/domain/preflight.ts:PreflightRunnerContext",
   // D228 — the AUTHORED faces of `NodeConditionSchema`, exactly as
   // `WorkflowCapabilitiesSpec` is the authored face of its runtime schema. They

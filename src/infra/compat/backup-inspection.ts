@@ -38,7 +38,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -49,6 +49,7 @@ const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
  * singleton that are absent from the v32 runtime registry.
  */
 const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
+  "transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors",
   "run_summaries", "summary_publication", "archive_transfers", "version_changes",
   "authority_meta",
   "database_state",

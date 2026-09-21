@@ -1,3 +1,4 @@
+import { exportSearchMetadata } from "../exports/search-metadata-export.js";
 import { createCalendarQuery } from "../queries/calendar.js";
 import { randomBytes } from "node:crypto";
 import { WORKFLOW_MODULES } from "../../../control/workflow-registry.js";
@@ -15,9 +16,13 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   "appVersion" | "clock" | "descriptorSetHash" | "preflightReport" | "advisoryAvailability" | "backupSummary">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
+  & { activity: import("../queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { database, projection, clock, ids, artifacts, descriptors } = input;
+  database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
+    workflow: descriptor.id, version: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+    subjectProjection: descriptor.subjectProjection ?? null,
+  })));
   const search = createCrossDateSearchService({ clock,
     sourceIdentity: database.getSourceDatabaseIdentity(), cursorSigningKey: randomBytes(32), descriptors,
     authority: { readSnapshot: read => database.withAuthorityReadSnapshot(() => read({
@@ -31,10 +36,11 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
       advisoryAvailability: input.advisoryAvailability, backupSummary: input.backupSummary },
     search,
+    searchMetadataExports: {export: request=>exportSearchMetadata({search,sourceIdentity:database.getSourceDatabaseIdentity()},request)},
     calendar: createCalendarQuery(database, clock),
     xlsxExports: composeGeneratedExports({ clock, ids, sourceIdentity: database.getSourceDatabaseIdentity(),
       artifacts, authority: database.authority.operatorXlsxExports, search,
-      activityReport: (from, to) => projection.buildActivityReportWire(from, to) }),
+      activityReport: (from, to, token) => input.activity.readSelected(from, to, token) }),
     hub: createDashboardStreamHub(input),
   };
 }

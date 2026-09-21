@@ -1,3 +1,4 @@
+import { REVIEWED_CATCH_DEFAULTS } from "./helpers/reviewed-catch-defaults.js";
 import { createHash } from "node:crypto";
 import { existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -398,6 +399,43 @@ describe("reviewed architecture guard manifest", () => {
         rmSync(root, { recursive: true, force: true });
       }
     }
+  });
+
+  it("pins reviewed catch behavior and rejects any changed source with the original scanner",()=>{
+    const root=join(tmpdir(),`hrauto-reviewed-catches-${process.pid}-${Date.now()}`);
+    try {
+      for(const entry of REVIEWED_CATCH_DEFAULTS) {
+        const source=readFileSync(join(REPO_ROOT,entry.path),"utf8");
+        assert.equal(createHash("sha256").update(source).digest("hex"),entry.sha256);
+        assert.ok(auditFailLoudCatchDefaults(entry.path,source).length>0);
+        const target=join(root,entry.path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,source);
+      }
+      assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default",root).violations,[]);
+      for(const entry of REVIEWED_CATCH_DEFAULTS) {
+        const target=join(root,entry.path),source=readFileSync(target,"utf8");
+        writeFileSync(target,source+"\ntry { broken(); } catch { return []; }\n");
+        const violations=auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
+        assert.ok(violations.some(value=>value.includes("catch returns a bare default")));
+        assert.ok(violations.some(value=>value.includes("re-review required")));
+        writeFileSync(target,source);
+      }
+    } finally {rmSync(root,{recursive:true,force:true});}
+  });
+
+  it("distinguishes erased type dependencies from runtime cycles without relaxing layering",()=>{
+    const root=join(tmpdir(),`hrauto-runtime-cycles-${process.pid}-${Date.now()}`);
+    const target=join(root,"src/domain");mkdirSync(target,{recursive:true});
+    try {
+      for(const declaration of ['import type {B} from "./b.js";', 'import {type B} from "./b.js";', 'export type {B} from "./b.js";', 'export {type B} from "./b.js";']) {
+        writeFileSync(join(target,"a.ts"),declaration+' export const A=1;');
+        writeFileSync(join(target,"b.ts"),'import {A} from "./a.js"; export const B=A;');
+        assert.deepEqual(auditRebuildRatchetArm("import-cycles",root).violations,[]);
+      }
+      for(const declaration of ['import {B} from "./b.js";', 'import "./b.js";', 'export {B} from "./b.js";', 'export * from "./b.js";']) {
+        writeFileSync(join(target,"a.ts"),declaration+' export const A=1;');
+        assert.ok(auditRebuildRatchetArm("import-cycles",root).violations.length>0);
+      }
+    } finally {rmSync(root,{recursive:true,force:true});}
   });
 
   it("keeps fail-loud catch scanning semantic across multi-statement and nested handlers", () => {

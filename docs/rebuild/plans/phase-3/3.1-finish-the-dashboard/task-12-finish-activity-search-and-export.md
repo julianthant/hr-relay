@@ -317,3 +317,112 @@ uses the verified integrated SHA as its implementation base. The supervisor crea
 `codex/3.1.12-activity-search` branch/worktree only after checking that exact release and capacity;
 no existing UI draft checkout or integration checkout is repurposed. Full product acceptance remains
 open under this assignment and 3.1.19.
+
+## Execution state — 2026-09-21
+
+S1 admission passed. The committed approved plan `8d1e6acc30ac469311dc507f0021aa3711a3fb40`
+and prerequisite `801da4f3d1bfdf0a9ecc81c993289f70699aa140` are ancestors of the exact clean
+implementation base `e82e32f5007e5a7f3b4b0f62a86565f223932cf8`. The assigned branch
+`codex/3.1.12-activity-search` owns
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-activity-search`.
+The existing UI planning checkout and Operations release are preserved. Admission hashes and
+peer state are retained in the task evidence directory's `admission.json`.
+
+S1–S6 and their focused P1–P6 proof pass. S7 is at candidate freeze; product integration requires
+operator instruction. The task checkbox remains open until integration checks, records and owned
+worktree/branch cleanup are complete. One supervisor performed implementation and verification;
+no workers or independent reviewer participated.
+
+Implementation commit: `cefb7064ffeb5dfafd8c622f63cb07250ce7520a`, after the authorized guard/fixture
+repair commit `aac9e94a0933cf7832a1abd4ecd9f694b414275b`. The final recording commit is identified
+by `candidate-freeze.json`; both product and guard inputs remain fixed during that recording step.
+
+Schema 54 publishes bounded searchable metadata and transaction selection. Released migrations
+1–53 remain immutable; the recovery floor remains 46. Current XLSX requests use version 3, while
+versions 1/2 retain separate historical schemas and exact issued-byte readback. Activity page,
+CSV and XLSX share one authenticated report selection. Search exports reconcile the whole ordered
+selection; CSV protects spreadsheet text and diagnostic JSON contains only redacted metadata.
+Full diagnostic bundles remain 3.1.14.4. No standing database or external HR system was altered.
+
+Search limits are explicit: 160-character query, 50-row pages, 10,000 selected metadata candidates
+before ranking and raw run materialization, and 5,000 export rows. Over-limit selections refuse.
+Empty text permits bounded filter-only search. Missing historical actor/subject facts remain
+unavailable. Metadata repair uses the explicit `rebuildRunSearchIndex({ restart, limit })` storage
+API with chunks of at most 500, durable progress and resume checks. No interactive fallback or new
+maintenance CLI is added. Large descriptor changes invalidate publication until explicit rebuild;
+unrelated ordinary authority writes remain available. Transaction metadata selection also caps at
+10,000 before reading canonical evidence. Evidence within an admitted selected run can still be
+large; this proof bounds unrelated history, not every selected report's byte size.
+
+### Candidate proof and gate results
+
+All named receipts below live in
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.12-activity-search-2026-09-21/`.
+Each gate JSON records its exact command, exit, timestamp and input hashes; the paired log retains
+the full output, including failed attempts. `candidate-freeze.json` binds the final committed tree
+to these receipts and records actual commit SHAs without a self-referential documentation commit.
+
+| Proof | Verified result and retained evidence |
+| --- | --- |
+| P1 · metadata/privacy | Real SQLite tests cover registered and retained unregistered workflows, all four shapes and all 12 lifecycle states across the focused tests/browser fixture; independent/combined filters, safe declared subjects, recorded actors, retained versions, failures, receipts and missing-history coverage. Corrupt metadata, stale declarations, protected values and invented attribution are rejected. `final-search`, `final-additional`, `bounded-evidence-final`; redaction-surface audit includes the new durable index tables. |
+| P2 · bounded work | `bounded-query-proof.json` records actual raw-row observations and indexed SQL plans. Cold search among 504 runs reads three raw rows for a two-row page and two for the next; after mutation, 505 historical runs still require three raw reads. Deliberately widening the reader exposes all 504 rows. Range/run transaction selection among 120 confirmations and 40 archives reads only the selected archive twice for ownership/source verification; the widened negative control reads all 40. Post-mutation evidence adds only the selected live row. A 10,001-match selection refuses before any raw run read. Rebuild interruption/reopen/resume, chunk limits and ordinary-write availability pass. Counts do not claim SQLite internal rows visited or constant-cost whole-database boot admission. |
+| P3 · selection/races | Signed query/source/generation/order snapshots, expiry/restart/tamper rejection, ordered pages, exact result callback, AbortSignal delivery and independent stale-response fencing pass. UI tests cover delayed query/page/export, close/reopen and changed filters; built browser exercises refresh, paging and keyboard focus. `final-search`, `final-additional`, `final-parity`. |
+| P4 · report/history | Summary-backed report, CSV and XLSX reconcile exact range, counts, unavailable people and selection digest. Existing distinct-union/lower-median tests remain. Archive interruption at each phase, reopen, replay, tombstone and explicit deletion preserve confirmed totals without counting archived runs or unconfirmed effects. Historical stopped conversion uses its explicit pre-54 path. `final-report`, `final-storage`, `final-parity`. |
+| P5 · export trust | CSV formula/control/whitespace defense preserves typed numbers. Redacted metadata excludes query text, subject/actor values, run/trace/retry IDs and private payloads. Full-selection order/count/coverage, row caps, snapshot identity and download type/name/length/SHA-256 validation pass, including wrong/missing/truncated responses, cancellation and durable XLSX response-loss/replay behavior. Built browser correlates 23 search rows, CSV/JSON/XLSX and persisted artifact digest, then refuses the stale selection after XLSX publication. `final-search`, `final-additional`, `final-parity-output/results.json`. |
+| P6 · compatibility/browser | Real reopen, supported stopped upgrades, verified backup custody, frozen old requests and immutable bytes pass. Production-composed browser journeys use private synthetic authority and retain six output correlations, screenshots and body accessibility evidence. Native zoom proof covers both themes at 125% and 200%. `final-storage`, `final-parity`, `browser-evidence-retention.json`, `native-zoom-evidence.json`. |
+
+| Assigned gate | Result |
+| --- | --- |
+| Search/export group | `final-search`: 8 files, 72 tests passed. |
+| Activity/history group | `final-report`: 11 files, 81 tests passed. |
+| Storage/compatibility group | `final-storage`: 7 files, 298 tests passed. |
+| Assigned boundary guards | `final-guards`: 6 files, 72 tests passed. |
+| Additional affected proof | `final-additional`: 6 files, 136 tests passed: `run-search-index`, `server/activity-search-export`, `dashboard/client-transport`, `architecture/redaction-surface-scan`, `architecture/guard-manifest`, `storage-diagnostic-redaction`. Total focused runtime/guard proof: **659 tests across 38 files**. |
+| Final cost observations | `bounded-evidence-final`: search-index, transaction-history-archive and guard-manifest, 24 tests passed after adding observation output and updating inventory. Assertions and membership are preserved. |
+| Scoped static checks | `final-scoped-lint`: exact 107 TypeScript/TSX paths passed; the two later observation-only test changes pass `bounded-proof-scoped-lint`. `bounded-proof-scoped-types`: affected TypeScript dependency closure passed. These are scoped checks, not full repository lint/typecheck. |
+| Generated inputs | `generated-manifest-check` and `store-catalog-check` passed. `generated-inputs.json` verifies unchanged descriptor manifest and all 214 store-catalog closure inputs; no unrelated regeneration. |
+| Built browser/reference gate | `final-parity`: all four assigned specs, **25 tests passed**, including the source-bound production bundle and required accessibility evidence. Six new composed journeys preserve both themes at all three assigned viewports and resize to 1024×720 and back. |
+| Reference attribution | Eighteen existing search/Activity scenes (54 PNG/accessibility/metadata files) deliberately refreshed with unchanged membership and tolerances. Original bytes/hashes remain under `references-before`; `reference-attribution.json` binds before/after hashes. Complete update lane passed, followed by the independent assertion run above. |
+| Native browser zoom | Four playwright-cli cases passed in HeadlessChrome/153.0.0.0 using the native Chrome Settings → Appearance → Page zoom combobox in an owned persistent profile. At 125%, physical 1440×900 yields 1152×720 CSS; at 200%, physical 2048×1440 yields 1024×720 CSS. CSS zoom and visual viewport scale remain 1. Filters, scroll, result focus, close/focus return and report/export controls are exercised with keyboard downloads. The additional 1440×900/200% probe yields 720×450 CSS over the existing 1024px desktop canvas; keyboard/scroll reachability was checked, and unclipped visual proof uses the larger physical window. |
+| Recording checks | `freeze-roadmap-generate`, `freeze-roadmap-check`, `freeze-doc-binding` (24 tests), `freeze-doc-lint` and `freeze-record-checks.json`: passed. All 39 assigned selectors exist; 12 local links resolve, nine instruction pairs match and 18 chains remain below 32,768 bytes. The approved plan and frozen acceptance matrix remain unchanged. `git diff --check` passes. |
+
+The only production-source change after the grouped runtime gates corrects comments in the search
+contract. `source-comment-reuse.json` verifies identical TypeScript output with comments removed;
+the final browser/static checks include those comments. The later query observations only add
+test output; their affected files were rerun and linted. No unchanged runtime group is rerun solely
+for documentation or commit SHA changes.
+
+Early failures remain in the evidence directory. In particular, the exact admitted base reproduced
+50 guard failures; the authorized amendment below permits only their guard/fixture repairs.
+The initial 10,001-row cost fixture was stopped during slow sequential setup; the final fixture
+uses valid bulk synthetic rows and the real bounded rebuild, preserves the 30-second timeout,
+and passes. An initial reference update omitted the wrapper's required accessibility lane and
+returned exit 1 despite 18 scene passes; the complete 25-test update and assertion lanes pass.
+None of these failed attempts is represented as a passing receipt.
+
+### Freeze boundary and retained resources
+
+Owned Vite and composed-browser servers and both playwright-cli sessions are closed. Synthetic
+evidence and the owned Chrome profile remain under the evidence root. Browser report attachments
+are copied out of the checkout before later cleanup. The branch, worktree and dependency symlink
+remain assigned until instructed integration; no peer checkout or process is repurposed.
+
+`target-and-peer-preservation.json` verifies local master is still clean at the admitted base and
+the dirty UI planning checkout's tracked bytes/status are preserved. At integration, verify target
+and peer state again, compare final receipt inputs and rerun invalidated focused checks. Then close
+this task/roadmap record and remove only incorporated owned worktree/branch resources. No product
+merge, push or sibling/next-task dispatch has occurred.
+
+Full repository typecheck/lint/coverage/architecture, broad parity and complete A01–A42/D01–D05
+acceptance remain 3.1.19. This evidence does not clear the integrated Operations release's separate
+documented limitations. No standing database migration, live HR write or deployment is claimed.
+
+### Operator scope amendment — 2026-09-21
+
+The operator approved “Include guard/fixture repairs only” after the exact admitted base reproduced
+50 failures in four assigned guard files. This permits reconciling the Calendar projection guard,
+Operations operational-port/command accounting, Archive native-download fixture, and reviewed
+fail-loud catch classifications with the integrated product behavior. Assertions, negative controls,
+test membership, product behavior and all existing task exclusions remain unchanged. The baseline
+comparison and exact input hashes are retained in `base-guards.json` and its log in this task's
+evidence directory. This amendment does not authorize integration, push or unrelated product edits.

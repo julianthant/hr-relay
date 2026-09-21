@@ -1,36 +1,23 @@
-import { ActivityReportWireSchema,type ActivityReportWire } from "../../domain/dashboard/activity.js";
+import { ActivityReportSelectionSchema,type ActivityReportSelection } from "../../domain/dashboard/activity-selection.js";
 import { parseOrThrow } from "./query-parse.js";
+import { protocolError } from "./errors.js";
+import { verifySelectionDownload,type SelectionDownload } from "./selection-download.js";
 import type { DashboardTransport } from "./transport.js";
 
-
 export interface ActivityQueries {
-
-  /**
-   * The Activity report over an explicit range (2i-G, D180). Both bounds are
-   * required — an aggregate over a window the caller never named is a number
-   * nobody asked for.
-   */
-  activityReport(from: string, to: string): Promise<ActivityReportWire>;
-
-  /**
-   * Where the same report's CSV lives (D240). A URL rather than a promise of
-   * bytes: the browser downloads it from a link, so nothing here holds the
-   * artifact in memory, and the export refuses a missing bound exactly as the
-   * report route does — which is why both bounds are required here too.
-   */
-  activityExportUrl(from: string, to: string): string;
+  activityReport(from:string,to:string,signal?:AbortSignal):Promise<ActivityReportSelection>;
+  exportActivityCsv(report:ActivityReportSelection,signal?:AbortSignal):Promise<SelectionDownload>;
 }
-
-export function createActivityQueries(transport: DashboardTransport): ActivityQueries { return Object.freeze({
-
-    async activityReport(from: string, to: string): Promise<ActivityReportWire> {
-      const path = `/api/v1/reports/activity?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-      return parseOrThrow(ActivityReportWireSchema, `GET ${path}`, await transport.requestJson(path));
-    },
-
-    activityExportUrl(from: string, to: string): string {
-      return transport.resolveUrl(
-        `/api/v1/reports/activity.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      );
-    }
-}); }
+export function createActivityQueries(transport:DashboardTransport):ActivityQueries {return Object.freeze({
+  async activityReport(from:string,to:string,signal?:AbortSignal) {
+    const path=`/api/v1/reports/activity?${new URLSearchParams({from,to})}`;
+    const report=parseOrThrow(ActivityReportSelectionSchema,"GET /api/v1/reports/activity",await transport.requestJson(path,{signal}));
+    if(report.from!==from||report.to!==to)throw protocolError("activity-request-identity-mismatch");
+    return report;
+  },
+  async exportActivityCsv(input:ActivityReportSelection,signal?:AbortSignal) {
+    const report=ActivityReportSelectionSchema.parse(input);
+    const path=`/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`;
+    return verifySelectionDownload(await transport.requestBinary(path,{signal}),{path,filename:`activity-${report.from}_${report.to}.csv`,mediaType:"text/csv; charset=utf-8",token:report.snapshot.token});
+  },
+});}

@@ -1,3 +1,5 @@
+import { TransactionSelectionRecordSchema } from "../../domain/transaction-selection.js";
+import { RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../domain/dashboard/search-index.js";
 import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../domain/worker-control.js";
 import { NotificationPublicationSchema, NotificationHealthSchema } from "./notification-publications.js";
 import { ExplorerWorkflowOverrideSchema } from "../../domain/dashboard/explorer.js";
@@ -202,6 +204,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   explorer_overrides: ExplorerWorkflowOverrideSchema,
   archive_transfers: ArchiveTransferIdentitySchema,
   version_changes: RetainedVersionChangeSchema,
+  transaction_selection: TransactionSelectionRecordSchema,
+  run_search_index: RunSearchIndexRecordSchema, run_search_grams: RunSearchGramSchema, run_search_publication: RunSearchPublicationSchema, run_search_declarations: RunSearchDeclarationSchema, run_search_actors: RunSearchActorLinkSchema,
   run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,
   // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
   // both their typed columns, so neither is an opaque payload any more: a row

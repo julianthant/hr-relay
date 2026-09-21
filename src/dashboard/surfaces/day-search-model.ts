@@ -59,6 +59,9 @@ export function appendCorpusSearchPage(
     previous.snapshot.authorityGeneration !== next.snapshot.authorityGeneration
     || previous.snapshot.order !== next.snapshot.order
     || previous.totalMatches !== next.totalMatches
+    || previous.snapshot.token !== next.snapshot.token
+    || previous.generatedAt !== next.generatedAt
+    || JSON.stringify(previous.coverage) !== JSON.stringify(next.coverage)
   ) {
     throw new Error("cross-date search continuation does not match the initial authority snapshot");
   }

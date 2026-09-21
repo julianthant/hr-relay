@@ -584,8 +584,8 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
     + "and reported separately as still open, so a busy span cannot read "
     + "as a finished one.",
     `${runWord} still open in this span, and that work is represented in no total on this page except its own.`,
-    "Every total here is a rendering of the one run/queue projection the Queue Panel reads. Archived "
-    + "runs are excluded once, inside it, so this report and the day it summarises cannot disagree.",
+    "Run totals use the validated summary snapshot shared by Activity and its exports. Archived "
+    + "runs are excluded by that authority.",
     "A finished run's warnings come from its evidence receipt. A run with no derived receipt is "
     + "counted as UNREAD in its own column rather than as read back — the report says how many it "
     + "could not check instead of reporting them as clean.",
@@ -600,8 +600,7 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
     // D236's seam, stated where the reader is: the ledger block is the one
     // total on this artifact that does not come from the run projection.
     "The write-ledger block is a SECOND authority, reported beside these totals and never derived "
-    + "from them. Ledger entries are what was actually filed in a real HR system; they are never "
-    + "pruned and never archived, which is why they can outlive the runs that filed them — a system "
-    + "can show entries here over a span whose runs have all left the live surfaces.",
+    + "from them. Confirmed entries survive Archive transfer and remain until explicit owner deletion. "
+    + "They can appear here after their runs have left the live surfaces.",
   ]);
 }

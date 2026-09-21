@@ -63,8 +63,9 @@ export class ArchiveDatabase {
   readonly #database: DatabaseSync;
   readonly #readOnly: boolean;
   #memoryFiles: Map<string, Buffer> | undefined;
-  constructor(readonly path: string, options: Readonly<{readOnly?:boolean}> = {}) {
+  constructor(readonly path: string, options: Readonly<{readOnly?:boolean; validation?:"all"|"selected"}> = {}) {
     const existed=existsSync(path); this.#readOnly=options.readOnly===true;
+    if(options.validation==="selected"&&!this.#readOnly)throw new Error("archive-selected-validation-requires-read-only");
     if ((!existed && this.#readOnly) || (existed && (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).size===0))) throw new Error("archive-database-invalid-path");
     this.#database=new DatabaseSync(path,{readOnly:this.#readOnly,enableForeignKeyConstraints:true,enableDoubleQuotedStringLiterals:false,allowExtension:false,timeout:5000,defensive:true});
     try {
@@ -75,8 +76,12 @@ export class ArchiveDatabase {
       const check=z.strictObject({integrity_check:z.literal("ok")}).safeParse(this.#database.prepare("PRAGMA integrity_check").get());
       if(!check.success)throw new Error("archive-database-integrity-failed");
       if(!this.#readOnly)this.#database.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL");
-      for(const raw of this.#database.prepare("SELECT run_id FROM archive_records").all())this.read(z.strictObject({run_id:z.string()}).parse(raw).run_id);
-      for(const raw of this.#database.prepare("SELECT * FROM archive_deletions").all())this.parseDeletion(raw);
+      // Lifecycle admission validates all custody. Bounded report queries validate each selected
+      // immutable report in read()/verifiedReport(), after SQL membership selection.
+      if(options.validation!=="selected") {
+        for(const raw of this.#database.prepare("SELECT run_id FROM archive_records").all())this.read(z.strictObject({run_id:z.string()}).parse(raw).run_id);
+        for(const raw of this.#database.prepare("SELECT * FROM archive_deletions").all())this.parseDeletion(raw);
+      }
     } catch(error) {this.#database.close();throw error;}
   }
   /** Disposable preflight snapshot; neither database nor retained files write to disk. */

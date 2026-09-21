@@ -1,7 +1,8 @@
 /**
  * Cross-date run search: the strict browser/server contract over durable run
- * authority. Search never receives row titles, person identifiers, or
- * artifact content; its closed scopes are identifiers and workflow identity.
+ * authority. Public declared subject names and authentic recorded actors are
+ * explicit metadata. Raw inputs, private person IDs, row titles and artifact
+ * content never enter the index or matching surface.
  */
 import { z } from "zod";
 import {
@@ -10,33 +11,44 @@ import {
   PositiveIntSchema,
   RunIdSchema,
   TraceIdSchema,
+  WorkflowIdSchema,
+  ActorIdSchema,
+  BrowserSystemIdSchema,
+  ErrorCodeSchema,
 } from "../ids.js";
-import { RunPrioritySchema } from "../run/envelope.js";
+import { RunPrioritySchema, RunShapeSchema } from "../run/envelope.js";
 import { deepFreeze } from "../immutability.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
-export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workflow"]);
+export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workflow", "subject", "actor"]);
 export const CROSS_DATE_SEARCH_PAGE_LIMIT = 50;
 export const CROSS_DATE_SEARCH_QUERY_LIMIT = 160;
 
-/** D283: the exact facet vocabulary measured in the current separations run corpus. */
-export const CrossDateSearchWorkflowFacetSchema = z.literal("separations");
-export const CrossDateSearchStateFacetSchema = z.enum(["done", "failed", "parked-gate"]);
-export const CrossDateSearchShapeFacetSchema = z.literal("single");
-export const CrossDateSearchDryRunFacetSchema = z.literal(true);
-export const CrossDateSearchSystemFacetSchema = z.enum(["kuali", "new-kronos", "ucpath"]);
+/** Task 3.1.12: all registered/historical workflows and the closed supported metadata vocabulary. */
+export const CrossDateSearchWorkflowFacetSchema = WorkflowIdSchema;
+export const CrossDateSearchStateFacetSchema = z.enum(["queued", "claimed", "validating", "running", "parked-gate", "parked-write", "done", "failed", "cancelled", "discarded", "superseded", "interrupted"]);
+export const CrossDateSearchShapeFacetSchema = RunShapeSchema;
+export const CrossDateSearchDryRunFacetSchema = z.boolean();
+export const CrossDateSearchSystemFacetSchema = BrowserSystemIdSchema;
 
 export const CrossDateSearchFacetsSchema = z.strictObject({
   workflow: CrossDateSearchWorkflowFacetSchema.optional(),
   day: z.iso.date().optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  subject: z.string().trim().min(1).max(160).optional(),
+  actor: ActorIdSchema.optional(),
+  version: PositiveIntSchema.optional(),
+  failure: ErrorCodeSchema.optional(),
+  evidence: z.enum(["receipt", "failure", "diagnostic", "none"]).optional(),
   state: CrossDateSearchStateFacetSchema.optional(),
   shape: CrossDateSearchShapeFacetSchema.optional(),
   dryRun: CrossDateSearchDryRunFacetSchema.optional(),
   system: CrossDateSearchSystemFacetSchema.optional(),
-});
+}).refine(facets => facets.from === undefined || facets.to === undefined || facets.from <= facets.to, { message: "search range ends before it starts" });
 
 export const CrossDateSearchQuerySchema = z.strictObject({
-  q: z.string().trim().min(1)
+  q: z.string().trim()
     .max(CROSS_DATE_SEARCH_QUERY_LIMIT, "query must be at most 160 characters"),
   scope: CrossDateSearchScopeSchema.default("all"),
   facets: CrossDateSearchFacetsSchema.default({}),
@@ -58,16 +70,12 @@ export function currentCorpusSearchQuery(query: string): CrossDateSearchQueryInp
   return {
     q: query.trim(),
     scope: "all",
-    facets: {
-      workflow: CrossDateSearchWorkflowFacetSchema.value,
-      shape: CrossDateSearchShapeFacetSchema.value,
-      dryRun: CrossDateSearchDryRunFacetSchema.value,
-    },
+    facets: {},
     limit: 20,
   };
 }
 
-export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v1" as const;
+export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v2" as const;
 export const CrossDateSearchSnapshotTokenSchema = z.string().min(1).max(2_048);
 
 const CrossDateSearchCursorStateSchema = z.discriminatedUnion("state", [
@@ -90,46 +98,42 @@ const CrossDateSearchEndSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
-const CrossDateSearchSystemsSchema = z.array(CrossDateSearchSystemFacetSchema)
-  .length(CrossDateSearchSystemFacetSchema.options.length)
-  .superRefine((systems, context) => {
-    for (const [index, expected] of CrossDateSearchSystemFacetSchema.options.entries()) {
-      if (systems[index] !== expected) {
-        context.addIssue({
-          code: "custom",
-          path: [index],
-          message: "resolved systems must exactly match the measured separations registration",
-        });
-        return;
-      }
-    }
-  });
+const CrossDateSearchSystemsSchema = z.array(CrossDateSearchSystemFacetSchema).max(BrowserSystemIdSchema.options.length);
 
-export const CrossDateSearchRegistrationSchema = z.strictObject({
-  state: z.literal("registered"),
-  label: z.literal("Separations"),
-  code: z.literal("sp"),
-  categoryId: z.literal("separation"),
+export const CrossDateSearchRegistrationSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("registered"), label: z.string().min(1), code: z.string().min(1), categoryId: z.string().min(1) }),
+  z.strictObject({ state: z.literal("unregistered"), reason: z.string().min(1) }),
+]);
+
+export const SearchTextFactSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), value: z.string().min(1).max(500) }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["not-recorded", "declaration-unavailable", "subject-unavailable", "withheld"]) }),
+]);
+export const SearchMetadataSchema = z.strictObject({
+  subject: SearchTextFactSchema,
+  actor: SearchTextFactSchema,
+  version: PositiveIntSchema,
+  failureCode: ErrorCodeSchema.nullable(),
+  evidence: z.strictObject({ receipt: z.boolean(), failure: z.boolean(), diagnostic: z.boolean() }),
+});
+export const SearchCoverageSchema = z.strictObject({
+  matched: NonNegativeIntSchema,
+  subjectUnavailable: NonNegativeIntSchema,
+  actorUnavailable: NonNegativeIntSchema,
+  candidateLimit: z.literal(10000),
 });
 
 export const CrossDateSearchMatchSchema = z.strictObject({
-  field: z.enum(["run", "trace", "workflow"]),
+  field: z.enum(["run", "trace", "workflow", "subject", "actor"]),
   strength: z.enum(["exact", "prefix", "contains"]),
 });
 export type CrossDateSearchMatch = z.infer<typeof CrossDateSearchMatchSchema>;
 
 /** The one rank vocabulary shared by authority selection and wire validation. */
-export const CROSS_DATE_SEARCH_MATCH_ORDER: readonly CrossDateSearchMatch[] = deepFreeze([
-  { field: "run", strength: "exact" },
-  { field: "trace", strength: "exact" },
-  { field: "workflow", strength: "exact" },
-  { field: "run", strength: "prefix" },
-  { field: "trace", strength: "prefix" },
-  { field: "workflow", strength: "prefix" },
-  { field: "run", strength: "contains" },
-  { field: "trace", strength: "contains" },
-  { field: "workflow", strength: "contains" },
-] satisfies readonly CrossDateSearchMatch[]);
+export const CROSS_DATE_SEARCH_MATCH_ORDER: readonly CrossDateSearchMatch[] = deepFreeze(
+  (["exact", "prefix", "contains"] as const).flatMap(strength =>
+    (["run", "trace", "workflow", "subject", "actor"] as const).map(field => ({ field, strength }))),
+);
 export const CROSS_DATE_SEARCH_MAX_MATCH_RANK = CROSS_DATE_SEARCH_MATCH_ORDER.length - 1;
 
 export const CrossDateSearchResultSchema = z.strictObject({
@@ -148,6 +152,7 @@ export const CrossDateSearchResultSchema = z.strictObject({
   enqueuedAt: IsoInstantSchema,
   endedAt: CrossDateSearchEndSchema,
   match: CrossDateSearchMatchSchema,
+  metadata: SearchMetadataSchema,
 });
 
 export type CrossDateSearchResult = z.infer<typeof CrossDateSearchResultSchema>;
@@ -178,6 +183,7 @@ export const CrossDateSearchPageSchema = z.strictObject({
     token: CrossDateSearchSnapshotTokenSchema,
   }),
   totalMatches: NonNegativeIntSchema,
+  coverage: SearchCoverageSchema,
   results: z.array(CrossDateSearchResultSchema).max(CROSS_DATE_SEARCH_PAGE_LIMIT),
   nextCursor: CrossDateSearchCursorStateSchema,
 }).superRefine((page, context) => {

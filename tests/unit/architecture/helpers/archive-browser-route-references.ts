@@ -174,7 +174,7 @@ export async function savedArchiveBrowserRouteReferences(beforeObservation?: (ho
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveReport, { report }) })));
     assert.deepEqual(paths, [`http://saved-wire.test/api/v1/archive/reports/${report.runId}/files/${digest}`]);
     restore = beforeObservation?.(host);
-    const links = host.querySelectorAll("a[href]");
+    const links = host.querySelectorAll('section[aria-label="Retained attachments"] a[download][href]');
     assert.equal(links.length, 1, "saved report has no exact native download sink");
     const path = links[0].getAttribute("href");
     SavedArchiveFileWireSchema.parse({ runId: report.runId, digest, resource: { state: "available", downloadUrl: path } });

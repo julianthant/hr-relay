@@ -6,6 +6,7 @@ import { ActorIdSchema, ArtifactIdSchema, FingerprintSchema, IsoInstantSchema, N
 import { ArtifactProjectionKeyValueSchema } from "./workflow/artifact-projection.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { OperatorXlsxExportEvidenceSchema, OperatorXlsxExportIdSchema, OperatorXlsxExportRequestSchema } from "./dashboard/xlsx-export.js";
+import { HistoricalOperatorXlsxExportRequestSchema } from "./dashboard/xlsx-export-history.js";
 export const ArtifactOutboxStorageRecordSchema = z.strictObject({
   outboxId: OutboxIdSchema,
   artifactId: ArtifactIdSchema,
@@ -61,7 +62,7 @@ export const GeneratedArtifactSchema = z.strictObject({
   fileId: z.string().min(1).max(256),
   sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).nullable(),
   exportId: OperatorXlsxExportIdSchema.nullable(),
-  exportRequest: OperatorXlsxExportRequestSchema.nullable(),
+  exportRequest: z.union([OperatorXlsxExportRequestSchema, HistoricalOperatorXlsxExportRequestSchema]).nullable(),
   registration: z.strictObject({requestedBy:ActorIdSchema,requestedAt:IsoInstantSchema}).nullable(),
   exportEvidenceJson: z.string().nullable(),
   exportEvidenceFingerprint: FingerprintSchema.nullable(),

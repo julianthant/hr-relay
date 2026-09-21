@@ -1,3 +1,5 @@
+import { verifySelectionDownload,type SelectionDownload } from "./selection-download.js";
+import { SearchMetadataExportRequestSchema,type SearchMetadataExportRequest } from "../../domain/dashboard/search-export.js";
 import { z } from "zod";
 import {
 OPERATOR_XLSX_MEDIA_TYPE,
@@ -53,15 +55,25 @@ async function sha256Of(bytes: ArrayBuffer): Promise<string> {
 
 export interface ExportCommands {
 
-  exportXlsx(request: OperatorXlsxExportRequest): Promise<OperatorXlsxClientDownload>;
+  exportSearchMetadata(request:SearchMetadataExportRequest,generatedAt:string,signal?:AbortSignal):Promise<SelectionDownload>;
+  exportXlsx(request: OperatorXlsxExportRequest, signal?:AbortSignal): Promise<OperatorXlsxClientDownload>;
 }
 
 export function createExportCommands(transport: DashboardTransport): ExportCommands { return Object.freeze({
 
-    async exportXlsx(input: OperatorXlsxExportRequest): Promise<OperatorXlsxClientDownload> {
+    async exportSearchMetadata(input:SearchMetadataExportRequest,generatedAt:string,signal?:AbortSignal) {
+      const request=SearchMetadataExportRequestSchema.parse(input);
+      if(request.selection.kind!=="search")throw new Error("search export selection required");
+      const date=z.iso.datetime().parse(generatedAt).slice(0,10),format=request.format;
+      const path="/api/v1/exports/search";
+      const response=await transport.requestBinary(path,{method:"POST",body:JSON.stringify(request),signal});
+      return verifySelectionDownload(response,{path,filename:`hr-run-search-${date}-g${String(request.selection.snapshot.authorityGeneration)}${format==="csv"?".csv":"-diagnostic.json"}`,
+        mediaType:format==="csv"?"text/csv; charset=utf-8":"application/json; charset=utf-8",token:request.selection.snapshot.token});
+    },
+    async exportXlsx(input: OperatorXlsxExportRequest, signal?:AbortSignal): Promise<OperatorXlsxClientDownload> {
       const request = OperatorXlsxExportRequestSchema.parse(input);
       const response = await transport.requestBinary("/api/v1/exports/xlsx", {
-        method: "POST",
+        method: "POST",signal,
         body: JSON.stringify(request),
       });
       let headers: z.infer<typeof OperatorXlsxResponseHeadersSchema>;
@@ -90,6 +102,11 @@ export function createExportCommands(transport: DashboardTransport): ExportComma
           new Error(`body digest ${actualDigest} disagrees with ${headers.sha256}`),
         );
       }
+      const selection=request.selection;
+      const filename=selection.kind==="activity"?`hr-activity-${selection.from}_${selection.to}.xlsx`: `hr-run-search-${selection.snapshot.generatedAt.slice(0,10)}-g${String(selection.snapshot.authorityGeneration)}.xlsx`;
+      if(selection.kind==="search"&&!headers.filename.endsWith(`-g${String(selection.snapshot.authorityGeneration)}.xlsx`))throw schemaError("POST /api/v1/exports/xlsx",new Error("XLSX generation mismatch"));
+      await verifySelectionDownload(response,{path:"POST /api/v1/exports/xlsx",filename,mediaType:OPERATOR_XLSX_MEDIA_TYPE,
+        token:selection.kind==="search"?selection.snapshot.token:selection.snapshotToken});
       return Object.freeze({ ...headers, bytes: response.bytes });
     }
 }); }

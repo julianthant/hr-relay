@@ -30,6 +30,7 @@ export const OPERATOR_XLSX_SEARCH_COLUMNS = Object.freeze([
   "Retry",
   "Match field",
   "Match strength",
+  "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic",
 ] as const);
 
 export const OPERATOR_XLSX_ACTIVITY_SHEETS = Object.freeze([
@@ -199,6 +200,7 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
       { width: 15 }, { width: 16 }, { width: 12 }, { width: 10 },
       { width: 14 }, { width: 32 }, { width: 23 }, { width: 23 },
       { width: 42 }, { width: 34 }, { width: 14 }, { width: 16 },
+      {width:10},{width:25},{width:30},{width:30},{width:12},{width:12},{width:12},
     ],
     data: [
       headerRow(OPERATOR_XLSX_SEARCH_COLUMNS),
@@ -207,9 +209,9 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
           result.runNumber.state === "present" ? result.runNumber.value : result.runNumber.reason,
           result.runNumber.state === "absent" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
         ),
-        cell(result.registration.label),
-        cell(result.registration.code),
-        cell(result.registration.categoryId),
+        cell(result.registration.state==="registered"?result.registration.label:"Unavailable"),
+        cell(result.registration.state==="registered"?result.registration.code:""),
+        cell(result.registration.state==="registered"?result.registration.categoryId:""),
         typedDate(`${result.partitionDay}T00:00:00.000Z`, "yyyy-mm-dd"),
         cell(result.state),
         cell(result.shape),
@@ -232,6 +234,10 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
         ),
         cell(result.match.field),
         cell(result.match.strength),
+        cell(result.metadata.version),cell(result.metadata.failureCode??""),
+        cell(result.metadata.subject.state==="available"?"Available (value omitted)":result.metadata.subject.reason),
+        cell(result.metadata.actor.state==="available"?"Available (value omitted)":result.metadata.actor.reason),
+        cell(result.metadata.evidence.receipt),cell(result.metadata.evidence.failure),cell(result.metadata.evidence.diagnostic),
       ]),
     ],
   };
@@ -288,6 +294,9 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
     data: [
       headerRow(["Metric", "Value", "Unit", "Note"]),
       [cell("Total runs"), numericCell(report.totalRuns), cell("runs"), cell("")],
+      [cell("Distinct people"), numericCell(report.people.state==="present"?report.people.distinct:undefined),cell("people"),cell(report.people.state==="absent"?report.people.reason:"")],
+      [cell("Person identity evidence rows"),numericCell(report.people.evidenceRows),cell("rows"),cell("")],
+      [cell("Person identity unavailable rows"),numericCell(report.people.state==="absent"?report.people.unavailableRows:0),cell("rows"),cell("")],
       [cell("Terminal runs"), numericCell(report.terminalRuns), cell("runs"), cell("")],
       [cell("In-flight runs"), numericCell(report.inFlightRuns), cell("runs"), cell("")],
       [cell("Read back"), numericCell(report.completion.readBack), cell("runs"), cell("")],

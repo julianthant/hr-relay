@@ -1,3 +1,4 @@
+import { localDatePart } from "../../domain/clock.js";
 import { hasHistoricalArchiveTables } from "./archive-compatibility.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { ArchivedRunRecordSchema, ArchivedTransactionsSchema } from "../../domain/archive/model.js";
@@ -17,7 +18,7 @@ import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../domain/run/
 import { DeletedRunRecordSchema } from "../../domain/run/deleted-run.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { timelineImportRecords, type TimelineSourceSnapshot } from "../events/timeline-import.js";
-import { createTimelineRepository } from "./timeline-repository.js";
+import { createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
 
 export const TimelineImportCountsSchema = z.strictObject({
   imported: z.number().int().nonnegative(),
@@ -199,7 +200,17 @@ export function freezeConvertedArchiveTransactions(database: DatabaseSync, recor
   const sources = read(HistoricalOperationSourceSchema, "timeline_operation_sources");
   const history = createTransactionHistory({
     timelineEvents: createTimelineRepository({ database, read: (work) => work(), mutate: (work) => work().result, assertOwner: () => {} }),
-    historicalOperationSources: { list: () => sources },
+    confirmedTransactionSources: { select: range => {
+      // Explicit stopped conversion owns the full legacy source scan.
+      const events = database.prepare("SELECT * FROM timeline_events WHERE retention_class='confirmed-operation'").all()
+        .map(timelineEventFromRow).filter(event => {
+          if (event.payload.kind !== "operation-confirmed") return false;
+          const facts = event.payload.facts, day = localDatePart(new Date(facts.confirmedAt));
+          return day >= range.from && day <= range.to && (range.runId === undefined || facts.runId === range.runId)
+            && (range.system === undefined || facts.system === range.system);
+        });
+      return {events,archived:[],historical:sources,eventIds:events.map(event=>event.eventId)};
+    } },
     runs: { get: (id) => runs.find((row) => row.envelope.runId === id) },
     deletedRuns: { get: (id) => deleted.find((row) => row.runId === id) },
     writeIntents: { get: (id) => operations.find((row) => row.writeIntentId === id) },

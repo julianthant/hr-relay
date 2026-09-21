@@ -1,3 +1,5 @@
+import { OperatorXlsxExportRequestSchema } from "../../../domain/dashboard/xlsx-export.js";
+import { sha256Hex } from "../../../domain/sha256.js";
 import { CalendarQuerySchema } from "../../../domain/dashboard/calendar.js";
 import { z } from "zod";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
@@ -41,11 +43,17 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
    * artifact-id byte reader: the command composes, persists, verifies and
    * serves only the workbook it just generated from one strict selection.
    */
+  app.post("/api/v1/exports/search", async c=>{
+    if(deps.searchMetadataExports===undefined)throw new SectionUnavailableError("search metadata export is unavailable");
+    return deps.searchMetadataExports.export(await c.req.json());
+  });
+
   app.post("/api/v1/exports/xlsx", async (c) => {
     if (deps.xlsxExports === undefined) {
       throw new SectionUnavailableError("operator XLSX export is unavailable: no export authority is composed");
     }
-    const download = await deps.xlsxExports.export(c.get("requestActorId"), await c.req.json());
+    const request = OperatorXlsxExportRequestSchema.parse(await c.req.json());
+    const download = await deps.xlsxExports.export(c.get("requestActorId"), request);
     return new Response(Uint8Array.from(download.bytes), {
       status: 200,
       headers: {
@@ -54,6 +62,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
         "content-length": String(download.bytes.byteLength),
         etag: `"${download.evidence.download.sha256}"`,
         "x-operator-export-id": download.evidence.exportId,
+        "x-selection-digest":sha256Hex(request.selection.kind==="search"?request.selection.snapshot.token:request.selection.snapshotToken),
         "cache-control": "no-store",
       },
     });

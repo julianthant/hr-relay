@@ -1,6 +1,8 @@
 /** Closed synthetic HTTP/SSE boundary for the REAL DashboardApp and typed client.
  * No client method, parser, hook, or component is replaced. DOM declarations
  * are observable here; this fixture provides no browser layout/decode proof. */
+import { CalendarWireSchema } from "../../../../src/domain/dashboard/calendar.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../parity/helpers/fixture-settings.js";
 import assert from "node:assert/strict";
 import { act, createElement, Fragment, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -152,6 +154,11 @@ export async function mountCaptureApp(input: {
   const priorUrl = window.location.href;
   const priorHistoryState: unknown = window.history.state;
   const priorChildren = [...document.body.childNodes];
+  const counts=[{status:"queued",count:input.runs.size}];
+  const selectedDay=DashboardDayWireSchema.parse({...captureDayRevision(input.runId,1),
+    queueSurfaces:[...input.runs.keys()].flatMap(runId=>captureDayRevision(runId,1).queueSurfaces),
+    statusCounts:counts,workflowCounts:[{workflowId:"fixture-workflow",count:input.runs.size,statusCounts:counts}],
+  });
   const requests: CaptureHttpRequest[] = [];
   const unexpected: string[] = [];
   let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -159,11 +166,17 @@ export async function mountCaptureApp(input: {
     const request = { url, signal: init?.signal };
     requests.push(request);
     if (url === `${CAPTURE_BASE_URL}/api/v1/bootstrap`) return Response.json(BOOTSTRAP);
+    if (url === `${CAPTURE_BASE_URL}/api/v1/preflight`) return Response.json({error:"capture-fixture-preflight-unavailable"},{status:503});
+    if (url === `${CAPTURE_BASE_URL}/api/v1/settings/editable`) return Response.json(FIXTURE_EDITABLE_SETTINGS);
+    if (url === `${CAPTURE_BASE_URL}/api/v1/calendar?month=2026-08&day=2026-08-30`) return Response.json(CalendarWireSchema.parse({
+      month:"2026-08",day:"2026-08-30",today:"2026-08-30",authorityGeneration:1,
+      monthCounts:selectedDay.monthCounts,firstDay:"2026-08-30",lastDay:"2026-08-30",previousDay:null,nextDay:null,
+    }));
     if (url === `${CAPTURE_BASE_URL}/events/v1?topics=dashboard-day:2026-08-30`) {
       const body = new ReadableStream<Uint8Array>({ start(controller) {
         stream = controller;
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
-          type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload: CAPTURE_DAY,
+          type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload: selectedDay,
         })}\n\n`));
         init?.signal?.addEventListener("abort", () => { controller.close(); }, { once: true });
       } });
@@ -208,7 +221,7 @@ export async function mountCaptureApp(input: {
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
     Reflect.set(globalThis, "ResizeObserver", DeclarationOnlyResizeObserver);
     document.body.append(host);
-    window.history.replaceState(null, "", `/?run=${input.runId}&section=${input.section ?? "logs"}`);
+    window.history.replaceState(null, "", `/?day=2026-08-30&run=${input.runId}&section=${input.section ?? "logs"}`);
     const mounted = createRoot(host);
     root = mounted;
     await act(async () => { mounted.render(createElement(DashboardClientProvider, {
@@ -231,7 +244,7 @@ export async function mountCaptureApp(input: {
         window.history.pushState(
           { hrDashboardRouteCursor: routeCursor + 1 },
           "",
-          `/?run=${runId}&section=receipt`,
+          `/?day=2026-08-30&run=${runId}&section=receipt`,
         );
         window.dispatchEvent(new PopStateEvent("popstate"));
       });

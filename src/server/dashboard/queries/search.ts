@@ -1,3 +1,4 @@
+import { searchPartitionDay } from "../../../domain/dashboard/search-calendar.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
@@ -23,6 +24,7 @@ import {
   type CrossDateSearchPage,
   type CrossDateSearchQuery,
   type CrossDateSearchResult,
+  SearchMetadataSchema, SearchCoverageSchema,
 } from "../../../domain/dashboard/search.js";
 
 export interface CrossDateSearchDescriptorView {
@@ -56,8 +58,10 @@ export interface CrossDateSearchQueryService {
 
 const RunSearchAuthorityPageSchema = z.strictObject({
   totalMatches: NonNegativeIntSchema,
+  coverage: SearchCoverageSchema,
   rows: z.array(z.strictObject({
     record: RunRecordSchema,
+    metadata: SearchMetadataSchema,
     matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
   })).max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
 }).superRefine((page, context) => {
@@ -77,6 +81,7 @@ const CrossDateSearchCursorPayloadSchema = z.strictObject({
   queryHash: FingerprintSchema,
   sourceIdentity: FingerprintSchema,
   authorityGeneration: NonNegativeIntSchema,
+  expiresAt: IsoInstantSchema,
   order: z.literal(CROSS_DATE_SEARCH_ORDER),
   after: z.strictObject({
     matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
@@ -90,6 +95,7 @@ const CrossDateSearchSnapshotTokenPayloadSchema = z.strictObject({
   queryHash: FingerprintSchema,
   sourceIdentity: FingerprintSchema,
   authorityGeneration: NonNegativeIntSchema,
+  expiresAt: IsoInstantSchema,
   order: z.literal(CROSS_DATE_SEARCH_ORDER),
 });
 type CrossDateSearchSnapshotTokenPayload = z.infer<typeof CrossDateSearchSnapshotTokenPayloadSchema>;
@@ -99,12 +105,6 @@ const CursorSigningKeySchema = z.instanceof(Uint8Array).refine(
 );
 
 const PACIFIC_TIME_ZONE = "America/Los_Angeles";
-const PACIFIC_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: PACIFIC_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
 const PACIFIC_INSTANT_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: PACIFIC_TIME_ZONE,
   year: "numeric",
@@ -130,11 +130,6 @@ function requireDatePart(parts: Readonly<Record<string, string>>, name: string):
   return value;
 }
 
-function pacificDatePart(at: Date): string {
-  const parts = dateParts(PACIFIC_DATE_FORMATTER, at);
-  return `${requireDatePart(parts, "year")}-${requireDatePart(parts, "month")}-${requireDatePart(parts, "day")}`;
-}
-
 function pacificOffsetAt(epochMs: number): number {
   const parts = dateParts(PACIFIC_INSTANT_FORMATTER, new Date(epochMs));
   const projectedUtc = Date.UTC(
@@ -153,7 +148,7 @@ function pacificMidnight(day: string): string {
   let candidate = utcCalendarMidnight - pacificOffsetAt(utcCalendarMidnight);
   candidate = utcCalendarMidnight - pacificOffsetAt(candidate);
   const instant = new Date(candidate);
-  if (pacificDatePart(instant) !== day) {
+  if (searchPartitionDay(instant) !== day) {
     throw new Error(`could not derive Pacific midnight for search day ${day}`);
   }
   return instant.toISOString();
@@ -327,6 +322,7 @@ function resultOf(
   deps: CrossDateSearchQueryDeps,
   record: RunRecord,
   matchRank: number,
+  metadata: z.infer<typeof SearchMetadataSchema>,
 ): CrossDateSearchResult {
   const descriptor = deps.descriptors.resolve(record.envelope.workflow);
   const enqueuedAt = canonicalUtcInstant(record.envelope.enqueuedAt);
@@ -348,7 +344,7 @@ function resultOf(
         code: descriptor.code,
         categoryId: descriptor.category,
       },
-    partitionDay: pacificDatePart(new Date(enqueuedAt)),
+    partitionDay: searchPartitionDay(new Date(enqueuedAt)),
     state: stateOf(record),
     shape: record.envelope.shape,
     dryRun: record.envelope.dryRun,
@@ -365,6 +361,7 @@ function resultOf(
       ? { state: "present", value: canonicalUtcInstant(record.lifecycle.endedAt) }
       : { state: "absent", reason: `run ${record.envelope.runId} is ${record.lifecycle.state}, not terminal` },
     match: matchOf(matchRank),
+    metadata,
   });
 }
 
@@ -379,6 +376,8 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
     const cursor = query.cursor === undefined
       ? undefined
       : decodeCursor(query.cursor, cursorSigningKey, sourceIdentity, queryHash);
+    const expiresAt = selectedSnapshot?.expiresAt ?? cursor?.expiresAt ?? new Date(deps.clock.now().getTime() + 15 * 60 * 1000).toISOString();
+    if (Date.parse(expiresAt) <= deps.clock.now().getTime()) return snapshotTokenRefusal("search snapshot expired; run a fresh query");
     return deps.authority.readSnapshot((snapshot) => {
         const authorityGeneration = NonNegativeIntSchema.parse(snapshot.authorityGeneration);
         if (cursor !== undefined && cursor.authorityGeneration !== authorityGeneration) {
@@ -424,6 +423,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
               queryHash,
               sourceIdentity,
               authorityGeneration,
+              expiresAt,
               order: CROSS_DATE_SEARCH_ORDER,
               after: {
                 matchRank: lastVisible.matchRank,
@@ -443,11 +443,13 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
               queryHash,
               sourceIdentity,
               authorityGeneration,
+              expiresAt,
               order: CROSS_DATE_SEARCH_ORDER,
             }), cursorSigningKey),
           },
           totalMatches: authorityPage.totalMatches,
-          results: visibleRows.map(({ record, matchRank }) => resultOf(deps, record, matchRank)),
+          coverage: authorityPage.coverage,
+          results: visibleRows.map(({ record, matchRank, metadata }) => resultOf(deps, record, matchRank, metadata)),
           nextCursor,
         });
       });

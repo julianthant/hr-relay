@@ -23,6 +23,7 @@ type Admission =
 const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/preflight/rerun": { inline: "inspectLoopbackOrigin(c.req.header(\"origin\"))" },
   "/api/v1/exports/xlsx": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/exports/search": { guard: "operatorMutationIngressGuard" },
   "/api/v1/explorer/validate": { guard: "operatorMutationIngressGuard" },
   "/api/v1/runs/:runId/advisory": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/start-plans": { guard: "operatorMutationIngressGuard" },

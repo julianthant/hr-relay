@@ -37,7 +37,8 @@ const CursorAttackPayloadSchema = z.strictObject({
   queryHash: z.string(),
   sourceIdentity: z.string(),
   authorityGeneration: z.number().int().nonnegative(),
-  order: z.literal("match-strength/enqueued-desc/run-id-asc:v1"),
+  expiresAt: z.string(),
+  order: z.literal("match-strength/enqueued-desc/run-id-asc:v2"),
   after: z.strictObject({
     matchRank: z.number().int().nonnegative(),
     enqueuedAt: z.string(),
@@ -89,6 +90,7 @@ function searchWireResult(input: Readonly<{
     enqueuedAt: input.enqueuedAt,
     endedAt: { state: "absent", reason: `run ${input.runId} is parked-gate, not terminal` },
     match: { field: "workflow", strength: "exact" },
+    metadata: { subject: { state: "unavailable", reason: "not-recorded" }, actor: { state: "unavailable", reason: "not-recorded" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } },
   };
 }
 
@@ -169,9 +171,9 @@ describe("cross-date search query", () => {
     assert.equal(parsed.limit, 50);
   });
 
-  it("refuses empty and whitespace-only query text", () => {
+  it("accepts filter-only queries under the explicit bounded candidate contract", () => {
     for (const q of ["", "   "]) {
-      assert.throws(() => CrossDateSearchQuerySchema.parse({ q }));
+      assert.equal(CrossDateSearchQuerySchema.parse({ q }).q, "");
     }
   });
 
@@ -192,7 +194,7 @@ describe("cross-date search query", () => {
     }
   });
 
-  it("accepts only the facets measured in the current durable corpus", () => {
+  it("accepts the historical measured facets and refuses arbitrary input fields", () => {
     const facets = {
       workflow: "separations",
       day: "2026-08-28",
@@ -212,13 +214,13 @@ describe("cross-date search query", () => {
     );
   });
 
-  it("refuses every unmeasured facet value and the unmeasured priority family", () => {
+  it("refuses malformed facet values and the unassigned priority family", () => {
     const unsupportedFacets = [
-      { workflow: "person-lookup" },
-      { state: "queued" },
-      { shape: "preview" },
-      { dryRun: false },
-      { system: "crm" },
+      { workflow: "NOT A WORKFLOW" },
+      { state: "imaginary" },
+      { shape: "unknown-shape" },
+      { dryRun: "false" },
+      { system: "unknown-system" },
       { priority: "interactive" },
     ];
 
@@ -226,7 +228,7 @@ describe("cross-date search query", () => {
       assert.throws(
         () => CrossDateSearchQuerySchema.parse({ q: "separations", facets }),
         (error) => error instanceof z.ZodError,
-        `facets ${JSON.stringify(facets)} are outside the sanitized D283 corpus`,
+        `facets ${JSON.stringify(facets)} are outside the approved strict metadata contract`,
       );
     }
   });
@@ -251,14 +253,15 @@ describe("cross-date search result", () => {
         generatedAt: "2026-11-02T16:00:00.000Z",
         snapshot: {
           authorityGeneration: 19,
-          order: "match-strength/enqueued-desc/run-id-asc:v1",
+          order: "match-strength/enqueued-desc/run-id-asc:v2",
           token: "test-snapshot-token",
         },
         totalMatches: 2,
+      coverage: { matched: 2, subjectUnavailable: 2, actorUnavailable: 2, candidateLimit: 10000 },
         results: [earlier, later],
         nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
       }),
-      /search page is not ordered by match-strength\/enqueued-desc\/run-id-asc:v1/,
+      /search page is not ordered by match-strength\/enqueued-desc\/run-id-asc:v2/,
     );
   });
 
@@ -268,10 +271,11 @@ describe("cross-date search result", () => {
       generatedAt: "2026-08-28T16:00:00.000Z",
       snapshot: {
         authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v1",
+        order: "match-strength/enqueued-desc/run-id-asc:v2",
         token: "test-snapshot-token",
       },
       totalMatches: 0,
+      coverage: { matched: 0, subjectUnavailable: 0, actorUnavailable: 0, candidateLimit: 10000 },
       results: [],
       nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
     }).totalMatches, 0);
@@ -283,10 +287,11 @@ describe("cross-date search result", () => {
       generatedAt: "2026-08-28T16:00:00.000Z",
       snapshot: {
         authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v1",
+        order: "match-strength/enqueued-desc/run-id-asc:v2",
         token: "test-snapshot-token",
       },
       totalMatches: 1,
+      coverage: { matched: 1, subjectUnavailable: 1, actorUnavailable: 1, candidateLimit: 10000 },
       results: [{
         runId: "00010001-0001-4001-8001-000100010001",
         traceId: "sp-160000-0001",
@@ -308,6 +313,7 @@ describe("cross-date search result", () => {
         enqueuedAt: "2026-08-28T15:00:00.000Z",
         endedAt: { state: "present", value: "2026-08-28T15:05:00.000Z" },
         match: { field: "workflow", strength: "exact" },
+    metadata: { subject: { state: "unavailable", reason: "not-recorded" }, actor: { state: "unavailable", reason: "not-recorded" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } },
       }],
       nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
     });
@@ -341,7 +347,7 @@ describe("cross-date search authority read", () => {
         });
 
         const rankedPasses = prepare.mock.calls.filter(([sql]) => (
-          sql.includes("WITH search(q) AS") && sql.includes("ranked AS")
+          sql.includes("WITH ranked AS")
         )).length;
         assert.equal(rankedPasses, 1);
       } finally {
@@ -353,7 +359,7 @@ describe("cross-date search authority read", () => {
     }
   });
 
-  it("refuses a non-archived authority row outside the closed D283 corpus", () => {
+  it("admits non-archived workflows beyond the historical measured corpus", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-outside-corpus-"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-outside-corpus-test" },
@@ -363,25 +369,16 @@ describe("cross-date search authority read", () => {
       const run = runRecordOf({ seed: 87, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       database.authority.runs.enqueue(run);
 
-      assert.throws(
-        () => database.authority.runs.search({
-          q: run.envelope.runId,
-          scope: "run",
-          facets: {},
-          limit: 1,
-        }),
-        (error: unknown) => error instanceof Error
-          && error.message === `search corpus run ${run.envelope.runId} has workflow outside the closed D283 corpus`
-          && error.cause instanceof Error
-          && error.cause.message === "search corpus observed workflow: person-lookup",
-      );
+      const page = database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: {}, limit: 1 });
+      assert.equal(page.totalMatches, 1);
+      assert.equal(page.rows[0]?.record.envelope.workflow, "person-lookup");
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("refuses unmeasured shape, dry-run, and resolved-system corpus dimensions", () => {
+  it("admits all supported shapes, dry-run values and system dimensions", () => {
     const cases = [
       {
         label: "shape preview",
@@ -411,7 +408,7 @@ describe("cross-date search authority read", () => {
       },
     ];
 
-    for (const { label, run, message } of cases) {
+    for (const { label, run } of cases) {
       const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-dimension-"));
       const database = AuthorityDatabase.open(
         { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-dimension-test" },
@@ -419,16 +416,11 @@ describe("cross-date search authority read", () => {
       );
       try {
         database.authority.runs.enqueue(run);
-        assert.throws(
-          () => database.authority.runs.search({
-            q: run.envelope.runId,
-            scope: "run",
-            facets: {},
-            limit: 1,
-          }),
-          message,
-          label,
-        );
+        const page = database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: {}, limit: 1 });
+        assert.equal(page.totalMatches, 1, label);
+        assert.deepEqual(page.rows[0]?.record.envelope.resolvedInstance, run.envelope.resolvedInstance);
+        assert.equal(page.rows[0]?.record.envelope.shape, run.envelope.shape);
+        assert.equal(page.rows[0]?.record.envelope.dryRun, run.envelope.dryRun);
       } finally {
         database.close();
         rmSync(root, { recursive: true, force: true });
@@ -436,7 +428,7 @@ describe("cross-date search authority read", () => {
     }
   });
 
-  it("refuses an unmeasured lifecycle state even when every other corpus dimension matches", () => {
+  it("serves queued lifecycle metadata alongside the historical terminal corpus", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-state-"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-state-test" },
@@ -446,22 +438,17 @@ describe("cross-date search authority read", () => {
       const run = queuedSearchCorpusCandidate({ seed: 83 });
       database.authority.runs.enqueue(run);
 
-      assert.throws(
-        () => database.authority.runs.search({
-          q: run.envelope.runId,
-          scope: "run",
-          facets: {},
-          limit: 1,
-        }),
-        /search corpus run .* has lifecycle\/outcome outside the closed D283 corpus/,
-      );
+      const page = database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: { state: "queued" }, limit: 1 });
+      assert.equal(page.totalMatches, 1);
+      assert.equal(page.rows[0]?.record.lifecycle.state, "queued");
+      assert.equal(database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: { state: "running" }, limit: 1 }).totalMatches, 0);
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("reconciles the whole non-archived corpus before facets or matching", () => {
+  it("refuses invalidated publication before facets or matching", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-"));
     const databasePath = join(root, "authority.db");
     const database = AuthorityDatabase.open(
@@ -488,10 +475,12 @@ describe("cross-date search authority read", () => {
           facets: { workflow: "separations" },
           limit: 1,
         }),
-        /searchable workflow column.*durable workflow/,
+        /run-search-index-rebuild-required/,
       );
       raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
         .run("separations", run.envelope.runId);
+      database.rebuildRunSearchIndex({ restart: true });
+      assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
       raw.prepare("UPDATE workflow_runs SET created_at = ? WHERE record_key = ?")
         .run("2026-08-27T15:00:00.000Z", run.envelope.runId);
@@ -507,10 +496,12 @@ describe("cross-date search authority read", () => {
           },
           limit: 1,
         }),
-        /authority order instant.*durable enqueue instant/,
+        /run-search-index-rebuild-required/,
       );
       raw.prepare("UPDATE workflow_runs SET created_at = ? WHERE record_key = ?")
         .run(run.createdAt, run.envelope.runId);
+      database.rebuildRunSearchIndex({ restart: true });
+      assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
       raw.prepare(`
         UPDATE workflow_runs
@@ -522,7 +513,7 @@ describe("cross-date search authority read", () => {
         () => search({ q: "does-not-match-any-run", scope: "trace", facets: {}, limit: 1 }),
         (error) => {
           nonMatchMessage = error instanceof Error ? error.message : String(error);
-          return /failed strict run validation/.test(nonMatchMessage);
+          return /run-search-index-rebuild-required/.test(nonMatchMessage);
         },
       );
       assert.throws(
@@ -558,25 +549,29 @@ describe("cross-date search authority read", () => {
         .run("person-lookup", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ workflow: "separations" }),
-        /searchable workflow column.*durable workflow/,
+        /run-search-index-rebuild-required/,
       );
       raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
         .run("separations", run.envelope.runId);
+      database.rebuildRunSearchIndex({ restart: true });
+      assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
       raw.prepare("UPDATE workflow_runs SET state = ? WHERE record_key = ?")
         .run("terminal", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ state: "parked-gate" }),
-        /searchable state column.*durable state/,
+        /run-search-index-rebuild-required/,
       );
       raw.prepare("UPDATE workflow_runs SET state = ? WHERE record_key = ?")
         .run(run.lifecycle.state, run.envelope.runId);
+      database.rebuildRunSearchIndex({ restart: true });
+      assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
       raw.prepare("UPDATE workflow_runs SET priority = ? WHERE record_key = ?")
         .run("bulk", run.envelope.runId);
       assert.throws(
         () => searchExactRun({}),
-        /searchable priority column.*durable priority/,
+        /run-search-index-rebuild-required/,
       );
     } finally {
       raw.close();
@@ -610,7 +605,7 @@ describe("cross-date search authority read", () => {
           facets: {},
           limit: 1,
         }),
-        /authority order instant.*durable enqueue instant/,
+        /run-search-index-rebuild-required/,
       );
     } finally {
       raw.close();
@@ -665,7 +660,7 @@ describe("cross-date search authority read", () => {
           runId: oldestSecondById.envelope.runId,
         },
       });
-      assert.deepEqual(exhausted, { totalMatches: 3, rows: [] });
+      assert.deepEqual(exhausted, { totalMatches: 3, coverage: { matched: 3, subjectUnavailable: 3, actorUnavailable: 3, candidateLimit: 10000 }, rows: [] });
 
       const exactRun = database.authority.runs.search({
         q: newest.envelope.runId,

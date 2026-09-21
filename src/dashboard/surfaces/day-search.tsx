@@ -1,3 +1,6 @@
+import { SearchFilters } from "./search-filters.js";
+import { EMPTY_SEARCH_FILTERS, searchQueryFromDraft, type SearchFilterDraft } from "./search-filters-model.js";
+import { SearchExportControls } from "./search-export-controls.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoTopBarSurfaces.tsx
@@ -11,7 +14,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, SearchX } from "lucide-react";
 import {
-  currentCorpusSearchQuery,
   type CrossDateSearchPage,
   type CrossDateSearchResult,
 } from "../../domain/dashboard/search.js";
@@ -189,8 +191,8 @@ export function CorpusSearchOutcomeView({
     return (
       <EmptyState
         icon={<SearchX aria-hidden className={dsIcon.lg} />}
-        title="Search the Separations corpus"
-        description="Search run identifiers, trace identifiers, or the workflow across the measured durable corpus."
+        title="Search run history"
+        description="Search declared subjects, recorded actors, run or trace identifiers, and workflow metadata."
       />
     );
   }
@@ -231,8 +233,8 @@ export function CorpusSearchOutcomeView({
     return (
       <EmptyState
         icon={<SearchX aria-hidden className={dsIcon.lg} />}
-        title={`No Separations run matches “${resource.query}”`}
-        description="Try a different run identifier, trace identifier, or workflow term. This search does not substitute the served day."
+        title={`No run matches “${resource.query}”`}
+        description="Adjust the text or filters. Missing subject and actor metadata are reported as unavailable."
       />
     );
   }
@@ -252,7 +254,7 @@ export function CorpusSearchOutcomeView({
         </div>
       )}
       <div className="px-[var(--ds-space-loose)] py-[var(--ds-space-base)]">
-        <MetaLine items={[plural(page.totalMatches, "match", "matches"), "ordered by durable authority"]} />
+        <MetaLine items={[plural(page.totalMatches, "match", "matches"), `${String(page.coverage.subjectUnavailable)} subjects unavailable`, `${String(page.coverage.actorUnavailable)} actors unavailable`, "ordered by durable authority"]} />
       </div>
       <div className="min-h-0 overflow-y-auto px-[var(--ds-space-loose)] pb-[var(--ds-space-loose)]">
         <ul aria-label="Cross-date search results" className="divide-y divide-[color:var(--ds-border-subtle)]">
@@ -266,7 +268,7 @@ export function CorpusSearchOutcomeView({
                 <button
                   type="button"
                   data-corpus-search-result
-                  aria-label={`Open ${result.registration.label} ${runLabel} from ${result.partitionDay}`}
+                  aria-label={`Open ${(result.registration.state==="registered"?result.registration.label:result.workflowId)} ${runLabel} from ${result.partitionDay}`}
                   onClick={() => onPick(result)}
                   onKeyDown={(event) => {
                     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -284,13 +286,16 @@ export function CorpusSearchOutcomeView({
                     dsMotion.fast,
                   )}
                 >
-                  <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>{result.registration.label}</span>
+                  <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>{(result.registration.state==="registered"?result.registration.label:result.workflowId)}</span>
                   <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>{runLabel}</span>
                   <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>{result.partitionDay}</span>
                   <Badge tone={tone}>{result.state}</Badge>
-                  <Badge tone="neutral">dry run</Badge>
+                  <Badge tone="neutral">{result.dryRun?"dry run":"live"}</Badge>
+                  <span className={dsText.meta}>v{result.metadata.version} · {result.shape}</span>
+                  <span className={cn(dsText.ui,"basis-full")}>{result.metadata.subject.state==="available"?result.metadata.subject.value:`Subject unavailable · ${result.metadata.subject.reason}`}</span>
+                  <span className={dsText.meta}>{result.metadata.actor.state==="available"?`Actor ${result.metadata.actor.value}`:`Actor unavailable · ${result.metadata.actor.reason}`}</span>
                   <span className={cn(dsText.meta, "basis-full text-[color:var(--ds-fg-muted)]")}>
-                    Matched {result.match.field} · {result.match.strength}
+                    {resource.query === "" ? "Matches selected filters" : `Matched ${result.match.field} · ${result.match.strength}`}
                   </span>
                 </button>
               </li>
@@ -334,6 +339,10 @@ export function DaySearchControl({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<TopBarSearchMode>("corpus");
   const [query, setQuery] = useState("");
+  const [filters,setFilters]=useState<SearchFilterDraft>(EMPTY_SEARCH_FILTERS);
+  const selectionKey=JSON.stringify([query.trim(),filters]);
+  const [acceptedKey,setAcceptedKey]=useState("");
+  const abortRequest=useRef<AbortController|null>(null);
   const [corpus, setCorpus] = useState<CorpusSearchResource>({ state: "idle" });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -349,15 +358,14 @@ export function DaySearchControl({
 
   const requestCorpus = useCallback((cursor?: string, previous?: CrossDateSearchPage): void => {
     const normalized = query.trim();
-    if (normalized === "") {
-      setCorpus({ state: "idle" });
-      return;
-    }
+    abortRequest.current?.abort();
+    const controller=new AbortController();abortRequest.current=controller;
+    setAcceptedKey(selectionKey);
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
     setCorpus({ state: "loading", query: normalized, cursor, page: previous });
-    void Promise.resolve().then(() => client.searchRuns({ ...currentCorpusSearchQuery(normalized), cursor })).then((page) => {
-      if (requestSequence.current !== sequence) return;
+    void Promise.resolve().then(() => client.searchRuns({ ...searchQueryFromDraft(normalized,filters), cursor },controller.signal)).then((page) => {
+      if (requestSequence.current !== sequence||controller.signal.aborted) return;
       try {
         setCorpus({
           state: "ready",
@@ -369,11 +377,11 @@ export function DaySearchControl({
         setCorpus({ state: "failed", query: normalized, cursor, page: previous, ...failure });
       }
     }, (error: unknown) => {
-      if (requestSequence.current !== sequence) return;
+      if (requestSequence.current !== sequence||controller.signal.aborted) return;
       const failure = corpusSearchFailure(error);
       setCorpus({ state: "failed", query: normalized, cursor, page: previous, ...failure });
     });
-  }, [client, query]);
+  }, [client, query, filters, selectionKey]);
 
   useEffect(() => {
     if (!open || mode !== "corpus") return;
@@ -381,6 +389,7 @@ export function DaySearchControl({
     return () => {
       window.clearTimeout(id);
       requestSequence.current += 1;
+      abortRequest.current?.abort();
     };
   }, [mode, open, requestCorpus]);
 
@@ -441,6 +450,7 @@ export function DaySearchControl({
 
   const onOpenChange = useCallback((next: boolean): void => {
     setOpen(next);
+    if (!next) { abortRequest.current?.abort(); requestSequence.current += 1; setAcceptedKey(""); setCorpus({state:"idle"}); }
     if (!next) window.setTimeout(() => triggerRef.current?.focus(), 0);
   }, []);
 
@@ -480,17 +490,17 @@ export function DaySearchControl({
           size="xl"
           title={mode === "corpus" ? "Search runs across dates" : "Search this day"}
           description={mode === "corpus"
-            ? "The measured Separations corpus only. Search run identifiers, trace identifiers, or workflow identity."
+            ? "Search non-archived runs across workflows and dates. Declared subject names and recorded actors are available where history contains them."
             : "Name, subject, trace id, run id or workflow over the rows this day already served."}
         >
           <div
-            className="border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]"
+            className="max-h-[45vh] shrink-0 overflow-y-auto border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]"
           >
             <div role="group" aria-label="Search scope" className="mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]">
               <button
                 type="button"
                 aria-pressed={mode === "corpus"}
-                onClick={() => setMode("corpus")}
+                onClick={() => {setAcceptedKey("");setCorpus({state:"idle"});setMode("corpus");}}
                 className={cn(
                   "px-[var(--ds-space-base)]",
                   TOP_BAR_SCOPE_TOGGLE_HIT_AREA,
@@ -505,7 +515,7 @@ export function DaySearchControl({
               <button
                 type="button"
                 aria-pressed={mode === "day"}
-                onClick={() => setMode("day")}
+                onClick={() => {setAcceptedKey("");setCorpus({state:"idle"});setMode("day");}}
                 className={cn(
                   "px-[var(--ds-space-base)]",
                   TOP_BAR_SCOPE_TOGGLE_HIT_AREA,
@@ -523,8 +533,8 @@ export function DaySearchControl({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onClear={() => setQuery("")}
-              placeholder={mode === "corpus" ? "sp-090505 · separations" : "Nguyen · 10777012 · pl-090505-0005 · person-lookup"}
-              aria-label={mode === "corpus" ? "Search the Separations corpus" : "Search this day"}
+              placeholder={mode === "corpus" ? "Subject name, actor, trace, run or workflow" : "Nguyen · 10777012 · pl-090505-0005 · person-lookup"}
+              aria-label={mode === "corpus" ? "Search run history" : "Search this day"}
               role={mode === "corpus" ? "searchbox" : undefined}
               maxLength={160}
               onKeyDown={(event) => {
@@ -535,6 +545,7 @@ export function DaySearchControl({
                 first.focus();
               }}
             />
+            {mode==="corpus"&&<><SearchFilters value={filters} onChange={setFilters}/><Button size="sm" variant="ghost" onClick={()=>requestCorpus()}>Refresh search</Button></>}
             {mode === "day" && examples.length > 0 && (
               <div className="mt-[var(--ds-space-base)] flex flex-wrap items-center gap-[var(--ds-space-tight)]">
                 <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Try:</span>
@@ -556,21 +567,24 @@ export function DaySearchControl({
           <DialogBody className="p-0">
             <div>
               {mode === "corpus" ? (
+              <>
+              {corpus.state==="ready"&&acceptedKey===selectionKey&&<div className="px-[var(--ds-space-loose)] py-[var(--ds-space-base)]"><SearchExportControls key={corpus.page.snapshot.token} page={corpus.page} query={searchQueryFromDraft(query,filters)}/></div>}
               <CorpusSearchOutcomeView
-                resource={corpus}
+                resource={acceptedKey===selectionKey?corpus:{state:"loading",query:query.trim()}}
                 onMore={loadNextCorpusPage}
                 onRetry={retryCorpus}
                 onPick={(result) => {
-                  setOpen(false);
+                  onOpenChange(false);
                   onOpenCrossDateResult(result);
                 }}
               />
+              </>
               ) : (
               <DaySearchOutcomeView
                 outcome={outcome}
                 day={day}
                 onPick={(runId) => {
-                  setOpen(false);
+                  onOpenChange(false);
                   onOpenRun(runId);
                 }}
               />

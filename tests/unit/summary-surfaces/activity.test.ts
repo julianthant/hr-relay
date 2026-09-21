@@ -1,3 +1,4 @@
+import { ActivityReportSelectionSchema } from "../../../src/domain/dashboard/activity-selection.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -65,6 +66,12 @@ function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
   });
 }
 
+function reviewedReport(overrides:Record<string,unknown>={}) {
+  const value=report(overrides);
+  return ActivityReportSelectionSchema.parse({...value,snapshot:{from:value.from,to:value.to,generatedAt:value.generatedAt,
+    expiresAt:"2026-09-09T12:15:00.000Z",sourceIdentity:"a".repeat(64),authorityGeneration:1,reportDigest:"b".repeat(64),token:"as1.fixture.signature"}});
+}
+
 const queueRow: QueueRowIdentity = {
   runId: RUN_A,
   workflowId: "separations",
@@ -115,9 +122,9 @@ describe("Activity consumes the served summary boundary", () => {
       assert.match(requests[0]?.url ?? "", /from=2026-09-08&to=2026-09-09/u);
       await draw("2026-09-09..2026-09-09");
       assert.equal(requests.length, 2);
-      await act(async () => { requests[0]?.resolve(Response.json(report())); });
+      await act(async () => { requests[0]?.resolve(Response.json(reviewedReport())); });
       assert.doesNotMatch(host.textContent ?? "", /Export CSV/u);
-      await act(async () => { requests[1]?.resolve(Response.json(report({ from: "2026-09-09", to: "2026-09-09", days: [{ day: "2026-09-09", runs: 2 }] }))); });
+      await act(async () => { requests[1]?.resolve(Response.json(reviewedReport({ from: "2026-09-09", to: "2026-09-09", days: [{ day: "2026-09-09", runs: 2 }] }))); });
       assert.match(host.textContent ?? "", /Export/u);
       await draw("2026-09-08..");
       assert.equal(requests.length, 2);

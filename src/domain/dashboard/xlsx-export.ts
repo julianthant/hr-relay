@@ -1,12 +1,14 @@
+import { ActivitySnapshotTokenSchema } from "./activity-selection.js";
 /**
  * DCR5 operator XLSX export: a strict, redacted selection document.
  *
- * The current search arm contains only the D283 separations corpus already
- * admitted by `CrossDateSearchResultSchema`. Full run, trace and retry ids are
+ * The current search arm contains the bounded metadata corpus admitted by
+ * `CrossDateSearchResultSchema`. Full run, trace and retry ids are
  * required to prove the authority selection, but the workbook composer omits
  * them; its durable run number is the only row label that leaves in the file.
  */
 import { z } from "zod";
+import { HistoricalOperatorXlsxExportEvidenceSchema } from "./xlsx-export-history.js";
 import { ArtifactRefSchema } from "../artifacts.js";
 import {
   ActorIdSchema,
@@ -20,6 +22,7 @@ import {
   CrossDateSearchQuerySchema,
   CrossDateSearchResultSchema,
   CrossDateSearchSnapshotTokenSchema,
+  SearchCoverageSchema,
 } from "./search.js";
 import { ActivityReportWireSchema } from "./activity.js";
 
@@ -35,6 +38,7 @@ export const OperatorXlsxSearchSelectionSchema = z.strictObject({
     authorityGeneration: NonNegativeIntSchema,
     order: z.literal(CROSS_DATE_SEARCH_ORDER),
     totalMatches: NonNegativeIntSchema,
+    coverage: SearchCoverageSchema,
   }),
 });
 
@@ -80,6 +84,8 @@ export const OperatorXlsxActivitySelectionSchema = z.strictObject({
     generatedAt: IsoInstantSchema,
     sourceIdentity: FingerprintSchema,
     totalRuns: NonNegativeIntSchema,
+    authorityGeneration: NonNegativeIntSchema,
+    reportDigest: FingerprintSchema,
   }).refine(
     (snapshot) => snapshot.from <= snapshot.to,
     { path: ["from"], message: "an Activity XLSX selection starts on or before it ends" },
@@ -115,6 +121,7 @@ const OperatorXlsxSearchExportRequestSelectionSchema = z.strictObject({
     kind: z.literal("search"),
     query: CrossDateSearchQuerySchema.omit({ cursor: true }),
     snapshot: z.strictObject({
+      generatedAt: IsoInstantSchema,
       authorityGeneration: NonNegativeIntSchema,
       order: z.literal(CROSS_DATE_SEARCH_ORDER),
       token: CrossDateSearchSnapshotTokenSchema,
@@ -125,12 +132,14 @@ const OperatorXlsxActivityExportRequestSelectionSchema = z.strictObject({
   kind: z.literal("activity"),
   from: z.iso.date(),
   to: z.iso.date(),
+  snapshotToken: ActivitySnapshotTokenSchema,
 }).refine(
   (selection) => selection.from <= selection.to,
   { path: ["from"], message: "an Activity XLSX selection starts on or before it ends" },
 );
 
 export const OperatorXlsxExportRequestSchema = z.strictObject({
+  requestVersion: z.literal(3),
   selection: z.union([
     OperatorXlsxSearchExportRequestSelectionSchema,
     OperatorXlsxActivityExportRequestSelectionSchema,
@@ -166,14 +175,9 @@ const OperatorXlsxExportEvidenceBaseFields = {
   artifact: ArtifactRefSchema,
 } as const;
 
-const OperatorXlsxExportEvidenceV1Fields = {
+const OperatorXlsxExportEvidenceV3Fields = {
   ...OperatorXlsxExportEvidenceBaseFields,
-  workbookVersion: z.literal(1),
-} as const;
-
-const OperatorXlsxExportEvidenceV2Fields = {
-  ...OperatorXlsxExportEvidenceBaseFields,
-  workbookVersion: z.literal(2),
+  workbookVersion: z.literal(3),
   requestedBy: ActorIdSchema,
 } as const;
 
@@ -235,13 +239,8 @@ function validateOperatorXlsxSearchEvidence(
   }
 }
 
-const OperatorXlsxSearchExportEvidenceV1Schema = z.strictObject({
-  ...OperatorXlsxExportEvidenceV1Fields,
-  ...OperatorXlsxSearchExportEvidenceFields,
-}).superRefine(validateOperatorXlsxSearchEvidence);
-
-const OperatorXlsxSearchExportEvidenceV2Schema = z.strictObject({
-  ...OperatorXlsxExportEvidenceV2Fields,
+const OperatorXlsxSearchExportEvidenceV3Schema = z.strictObject({
+  ...OperatorXlsxExportEvidenceV3Fields,
   ...OperatorXlsxSearchExportEvidenceFields,
 }).superRefine(validateOperatorXlsxSearchEvidence);
 
@@ -312,29 +311,24 @@ function validateOperatorXlsxActivityEvidence(
   }
 }
 
-const OperatorXlsxActivityExportEvidenceV1Schema = z.strictObject({
-  ...OperatorXlsxExportEvidenceV1Fields,
-  ...OperatorXlsxActivityExportEvidenceFields,
-}).superRefine(validateOperatorXlsxActivityEvidence);
-
-const OperatorXlsxActivityExportEvidenceV2Schema = z.strictObject({
-  ...OperatorXlsxExportEvidenceV2Fields,
+const OperatorXlsxActivityExportEvidenceV3Schema = z.strictObject({
+  ...OperatorXlsxExportEvidenceV3Fields,
   ...OperatorXlsxActivityExportEvidenceFields,
 }).superRefine(validateOperatorXlsxActivityEvidence);
 
 export const OperatorXlsxExportEvidenceSchema = z.union([
-  OperatorXlsxSearchExportEvidenceV1Schema,
-  OperatorXlsxSearchExportEvidenceV2Schema,
-  OperatorXlsxActivityExportEvidenceV1Schema,
-  OperatorXlsxActivityExportEvidenceV2Schema,
+  HistoricalOperatorXlsxExportEvidenceSchema,
+  OperatorXlsxSearchExportEvidenceV3Schema,
+  OperatorXlsxActivityExportEvidenceV3Schema,
 ]);
 export type OperatorXlsxExportEvidence = z.infer<typeof OperatorXlsxExportEvidenceSchema>;
 
 export function operatorXlsxSearchCaveats(document: OperatorXlsxSearchDocument): readonly string[] {
   return Object.freeze([
     "This workbook is a snapshot of non-archived run authority for the exact cross-date search selection recorded with the export.",
-    `The current measured corpus admits only Separations dry runs; this snapshot contains ${String(document.results.length)} row${document.results.length === 1 ? "" : "s"}.`,
-    "Person, run, trace and retry identifiers are omitted. A durable workflow run number is the only row label included in the workbook.",
+    `The bounded metadata selection includes every supported workflow and run shape; this snapshot contains ${String(document.results.length)} row${document.results.length === 1 ? "" : "s"}.`,
+    `Coverage: ${String(document.selection.snapshot.coverage.subjectUnavailable)} matching runs lack searchable subjects; ${String(document.selection.snapshot.coverage.actorUnavailable)} lack recorded actors.`,
+    "Person, actor, run, trace and retry identifiers are omitted. A durable workflow run number is the only row label included in the workbook.",
     "Search text is retained in the export evidence but omitted from workbook cells so an identifier-shaped query cannot become exported data.",
     "Rows retain the authority order: match strength, enqueue instant descending, then run id ascending. The final run-id tie-break is not displayed.",
     "Every instant is a typed spreadsheet date displayed in UTC; partition days remain Pacific calendar dates from the search authority.",
@@ -350,7 +344,7 @@ export function operatorXlsxActivityCaveats(document: OperatorXlsxActivityDocume
     `This workbook covers runs that started between ${report.from} and ${report.to} inclusive. Both bounds are recorded in this file; no default or latest range is used.`,
     "Error rate counts only terminal runs. Open work is excluded from that denominator and retained in its own status counts.",
     `${openRunStatement} Open work contributes only to the workbook totals and buckets that explicitly name it.`,
-    "Run totals come from the served non-archived run/queue projection. Archived runs are excluded by that authority before this workbook is composed.",
+    "Run totals come from the same validated summary snapshot served by Activity. Archived runs are excluded by that authority before this workbook is composed.",
     "Finished-run warning counts come from evidence receipts. A missing derived receipt remains warnings unread instead of being reported as clean.",
     "The served Activity report carries sampled run identifiers for interactive drill-down. This XLSX exports only each sample's count; every sampled, longest-run and failure-run identifier is omitted without a suffix substitute.",
     "The Ledger sheet is a second authority: it counts what was filed in HR systems and is not derived from run totals. Ledger entries can outlive archived runs.",

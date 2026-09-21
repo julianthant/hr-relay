@@ -1,3 +1,4 @@
+import { ActivityReportSelectionSchema, type ActivityReportSelection } from "../../../domain/dashboard/activity-selection.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
@@ -21,7 +22,7 @@ import {
   CrossDateSearchQuerySchema,
   type CrossDateSearchResult,
 } from "../../../domain/dashboard/search.js";
-import type { ActivityReportWire } from "../../../domain/dashboard/activity.js";
+import { ActivityReportWireSchema } from "../../../domain/dashboard/activity.js";
 import type { OperatorXlsxExportRepository } from "../../../infra/sqlite/authority-database.js";
 import type { CrossDateSearchQueryService } from "../queries/search.js";
 import { composeOperatorXlsxWorkbook } from "./operator-xlsx-workbook.js";
@@ -48,7 +49,7 @@ export interface OperatorXlsxExportServiceDependencies {
   readonly authority: OperatorXlsxExportRepository;
   readonly search: CrossDateSearchQueryService;
   /** Reserved for the Activity arm; search composition must never read it. */
-  readonly activityReport: (from: string, to: string) => ActivityReportWire;
+  readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection;
 }
 
 async function materialize(stream: Readable, expectedBytes: number): Promise<Buffer> {
@@ -73,9 +74,10 @@ async function materialize(stream: Readable, expectedBytes: number): Promise<Buf
 
 function assertSnapshot(
   pageInput: unknown,
-  expected: Readonly<{ authorityGeneration: number; order: typeof CROSS_DATE_SEARCH_ORDER }>,
+  expected: Readonly<{ generatedAt: string; authorityGeneration: number; order: typeof CROSS_DATE_SEARCH_ORDER }>,
 ) {
   const page = CrossDateSearchPageSchema.parse(pageInput);
+  if (page.generatedAt!==expected.generatedAt)throw new Error("operator-export-generation-time-mismatch");
   if (page.snapshot.authorityGeneration !== expected.authorityGeneration) {
     throw new Error(
       `operator XLSX search selection names authority generation ${String(expected.authorityGeneration)}, `
@@ -85,8 +87,8 @@ function assertSnapshot(
   return page;
 }
 
-function collectSearchDocument(
-  deps: OperatorXlsxExportServiceDependencies,
+export function collectSearchDocument(
+  deps: Pick<OperatorXlsxExportServiceDependencies, "search" | "sourceIdentity">,
   selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
 ) {
   const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse(selection.query);
@@ -113,6 +115,7 @@ function collectSearchDocument(
       deps.search.search({ ...query, cursor: page.nextCursor.value }),
       selection.snapshot,
     );
+    if (canonicalJsonStringify(page.coverage)!==canonicalJsonStringify(first.coverage)||page.generatedAt!==first.generatedAt||page.snapshot.token!==first.snapshot.token)throw new Error("operator-export-page-identity-mismatch");
     if (page.totalMatches !== first.totalMatches) {
       throw new Error(
         `operator XLSX search total moved from ${String(first.totalMatches)} to ${String(page.totalMatches)} `
@@ -140,6 +143,7 @@ function collectSearchDocument(
         authorityGeneration: first.snapshot.authorityGeneration,
         order: first.snapshot.order,
         totalMatches: first.totalMatches,
+        coverage: first.coverage,
       },
     },
     results,
@@ -150,7 +154,9 @@ function collectActivityDocument(
   deps: OperatorXlsxExportServiceDependencies,
   selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "activity" }>,
 ) {
-  const report = deps.activityReport(selection.from, selection.to);
+  const selectedReport = ActivityReportSelectionSchema.parse(deps.activityReport(selection.from, selection.to, selection.snapshotToken));
+  if(selectedReport.snapshot.token!==selection.snapshotToken)throw new Error("activity-export-selection-identity-mismatch");
+  const report = ActivityReportWireSchema.parse(Object.fromEntries(Object.entries(selectedReport).filter(([key])=>key!=="snapshot")));
   return OperatorXlsxActivityDocumentSchema.parse({
     selection: {
       kind: "activity",
@@ -160,6 +166,8 @@ function collectActivityDocument(
         generatedAt: report.generatedAt,
         sourceIdentity: FingerprintSchema.parse(deps.sourceIdentity),
         totalRuns: report.totalRuns,
+        authorityGeneration:selectedReport.snapshot.authorityGeneration,
+        reportDigest:selectedReport.snapshot.reportDigest,
       },
     },
     report,
@@ -232,7 +240,7 @@ export function createOperatorXlsxExportService(
         const contentDisposition = `attachment; filename="${filename}"`;
         const evidence = OperatorXlsxExportEvidenceSchema.parse({
           exportId,
-          workbookVersion: 2,
+          workbookVersion: 3,
           requestedBy,
           createdAt: registration.createdAt,
           selection: document.selection,

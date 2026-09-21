@@ -865,7 +865,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       },
     };
 
-  const shell = composeShell({ database, projection, clock, ids, artifacts, descriptors,
+  const shell = composeShell({ database, projection, activity, clock, ids, artifacts, descriptors,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
     advisoryAvailability: () => (advisory === undefined

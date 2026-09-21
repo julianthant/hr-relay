@@ -26,10 +26,11 @@ function corpusPage(): CrossDateSearchPage {
     generatedAt: "2026-08-28T16:00:00.000Z",
     snapshot: {
       authorityGeneration: 19,
-      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      order: "match-strength/enqueued-desc/run-id-asc:v2",
       token: "dcr4-test-snapshot-token",
     },
     totalMatches: 2,
+    coverage:{matched:2,subjectUnavailable:2,actorUnavailable:2,candidateLimit:10000},
     results: [{
       runId: RAW_RUN_ID,
       traceId: "sp-160000-3b8f",
@@ -46,21 +47,18 @@ function corpusPage(): CrossDateSearchPage {
       enqueuedAt: "2026-08-28T16:00:00.000Z",
       endedAt: { state: "absent", reason: "this run is parked at a gate" },
       match: { field: "workflow", strength: "exact" },
+      metadata: { subject:{state:"unavailable",reason:"declaration-unavailable"}, actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false} },
     }],
     nextCursor: { state: "present", value: "opaque-first-page-cursor" },
   });
 }
 
 describe("the Top Bar corpus search", () => {
-  it("starts a bounded Separations corpus query from the typed term", () => {
+  it("starts a bounded metadata corpus query from the typed term", () => {
     assert.deepEqual(currentCorpusSearchQuery("  sp-160000  "), {
       q: "sp-160000",
       scope: "all",
-      facets: {
-        workflow: "separations",
-        shape: "single",
-        dryRun: true,
-      },
+      facets: {},
       limit: 20,
     });
   });

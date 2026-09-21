@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ActorIdSchema, ErrorCodeSchema } from "../../../domain/ids.js";
 import {
   CrossDateSearchDryRunFacetSchema,
   CrossDateSearchQuerySchema,
@@ -11,13 +12,16 @@ import {
 } from "../../../domain/dashboard/search.js";
 
 const PositiveIntegerTextSchema = z.string().regex(/^[1-9]\d*$/).transform(Number);
-const DryRunTextSchema = z.literal("true").transform(() => CrossDateSearchDryRunFacetSchema.parse(true));
+const DryRunTextSchema = z.enum(["true", "false"]).transform(value => CrossDateSearchDryRunFacetSchema.parse(value === "true"));
 
 const CrossDateSearchRouteQuerySchema = z.strictObject({
-  q: z.string().min(1),
+  q: z.string().max(160),
   scope: CrossDateSearchScopeSchema.optional(),
   workflow: CrossDateSearchWorkflowFacetSchema.optional(),
   day: z.iso.date().optional(),
+  from:z.iso.date().optional(),to:z.iso.date().optional(),subject:z.string().trim().min(1).max(160).optional(),
+  actor:ActorIdSchema.optional(),version:PositiveIntegerTextSchema.optional(),failure:ErrorCodeSchema.optional(),
+  evidence:z.enum(["receipt","failure","diagnostic","none"]).optional(),
   state: CrossDateSearchStateFacetSchema.optional(),
   shape: CrossDateSearchShapeFacetSchema.optional(),
   dryRun: DryRunTextSchema.optional(),
@@ -45,6 +49,7 @@ function rawQueryOf(searchParams: URLSearchParams): Readonly<Record<string, unkn
 export function parseCrossDateSearchRouteQuery(requestUrl: string): CrossDateSearchQuery {
   const raw = CrossDateSearchRouteQuerySchema.parse(rawQueryOf(new URL(requestUrl).searchParams));
   const facets = {
+    ...Object.fromEntries(["from","to","subject","actor","version","failure","evidence"].flatMap(key=>{const value=raw[key as keyof typeof raw];return value===undefined?[]:[[key,value]];})),
     ...(raw.workflow === undefined ? {} : { workflow: raw.workflow }),
     ...(raw.day === undefined ? {} : { day: raw.day }),
     ...(raw.state === undefined ? {} : { state: raw.state }),

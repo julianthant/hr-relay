@@ -15,20 +15,26 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/infra/sqlite/authority-database.ts",
   "src/infra/sqlite/backup-service.ts",
   "src/infra/sqlite/completion-conversion.ts",
+  "src/infra/sqlite/explorer-override-conversion.ts",
+  "src/infra/sqlite/explorer-overrides.ts",
   "src/infra/sqlite/failure-resolution.ts",
   "src/infra/sqlite/foundation-retirement.ts",
   "src/infra/sqlite/generated-artifacts.ts",
   "src/infra/sqlite/generated-conversion.ts",
   "src/infra/sqlite/imported-artifacts.ts",
+  "src/infra/sqlite/notification-publications.ts",
   "src/infra/sqlite/provider-accounting.ts",
   "src/infra/sqlite/provider-storage.ts",
   "src/infra/sqlite/run-evidence-ownership.ts",
+  "src/infra/sqlite/run-search-index.ts",
   "src/infra/sqlite/run-summaries.ts",
   "src/infra/sqlite/settings-activation.ts",
   "src/infra/sqlite/settings-storage.ts",
   "src/infra/sqlite/stopped-database-conversion.ts",
   "src/infra/sqlite/timeline-conversion.ts",
-  "src/infra/sqlite/timeline-repository.ts"
+  "src/infra/sqlite/timeline-repository.ts",
+  "src/infra/sqlite/transaction-selection.ts",
+  "src/infra/sqlite/worker-control.ts",
 ];
 const ADAPTER_PATH = "src/infra/sqlite/authority-database.ts";
 

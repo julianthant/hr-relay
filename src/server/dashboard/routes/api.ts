@@ -61,6 +61,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
+  app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   app.use("/api/v1/explorer/validate", operatorMutationIngressGuard);
@@ -78,7 +79,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
   registerArchiveRoutes(app, deps);
-  registerActivityRoutes(app, { activity: deps.activity ?? { read: (from, to) => deps.projection.buildActivityReportWire(from, to) } });
+  registerActivityRoutes(app, { activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: day => deps.projection.buildDashboardDayWire(day) } });
   registerIntakeRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,

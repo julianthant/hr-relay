@@ -1,3 +1,5 @@
+import { backfillArchivedTransactionSelection, indexArchivedTransactionSnapshot } from "./transaction-selection.js";
+import { rebuildRunSearchForUpgrade } from "./run-search-index.js";
 import { assertExplorerOverrideSourceUnchanged, importExplorerOverrides, type ExplorerOverrideSourceSnapshot } from "./explorer-override-conversion.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
@@ -114,6 +116,7 @@ export function convertStoppedDatabase(args: Readonly<{
       if (!existed && args.verifyOnly !== true) { const fd = openSync(path, "wx", 0o600); closeSync(fd); }
       const createdIdentity = !existed && args.verifyOnly !== true ? lstatSync(path) : undefined;
       let database: DatabaseSync | undefined;
+      let convertedTransactionSnapshots: readonly import("../../domain/archive/lifecycle-source.js").LifecycleSourceSnapshot[] = [];
       try {
         database = args.verifyOnly === true ? cloneAuthorityReadOnly(existed ? path : undefined) : new DatabaseSync(path);
         database.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL; BEGIN EXCLUSIVE");
@@ -164,6 +167,7 @@ export function convertStoppedDatabase(args: Readonly<{
                   || authority.authority.runs.get(expected.runId) !== undefined
                   || authority.authority.deletedRuns.get(expected.runId) !== undefined) throw new Error("archive-retirement-verification-failed");
               }
+              convertedTransactionSnapshots = authority.authority.archivedTransactionSources.list();
               return result;
             });
             for (const plan of converted.retainedVersionSources.plans) {
@@ -200,6 +204,12 @@ export function convertStoppedDatabase(args: Readonly<{
         appendUpgrade(database, pending);
         database.prepare(`UPDATE ${databaseStateTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1`).run(now);
         createRunSummaries(database).refresh(GenerationSchema.parse(database.prepare("SELECT authority_generation FROM database_state").get()).authority_generation,now);
+        rebuildRunSearchForUpgrade(database,GenerationSchema.parse(database.prepare("SELECT authority_generation FROM database_state").get()).authority_generation,now);
+        let transactionArchive: ArchiveDatabase | undefined;
+        try {
+          if (from < 49) for (const snapshot of convertedTransactionSnapshots) indexArchivedTransactionSnapshot(database, snapshot);
+          else backfillArchivedTransactionSelection(database, () => transactionArchive ??= new ArchiveDatabase(join(input.stateRoot, "archive.sqlite"), {readOnly:true}));
+        } finally { transactionArchive?.close(); }
         inspectConvertedAuthority(database);
         if (args.verifyOnly !== true) {
           input.hooks?.beforeCommit?.();
@@ -234,6 +244,7 @@ export function settleDatabaseUpgrade(path: string, pending: UpgradeRecord, now:
     appendUpgrade(database, { ...pending, recordKey: randomUUID(), phase: "settled", recordedAt: now });
     database.prepare(`UPDATE ${databaseStateTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1`).run(now);
     createRunSummaries(database).refresh(GenerationSchema.parse(database.prepare("SELECT authority_generation FROM database_state").get()).authority_generation,now);
+        rebuildRunSearchForUpgrade(database,GenerationSchema.parse(database.prepare("SELECT authority_generation FROM database_state").get()).authority_generation,now);
     database.exec("COMMIT");
   } catch (error) { if (database.isTransaction) database.exec("ROLLBACK"); throw error; }
   finally { database.close(); }
