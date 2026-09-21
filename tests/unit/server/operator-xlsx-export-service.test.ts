@@ -26,10 +26,11 @@ function searchPage() {
     generatedAt: "2026-08-28T16:00:00.000Z",
     snapshot: {
       authorityGeneration: 19,
-      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      order: "match-strength/enqueued-desc/run-id-asc:v2",
       token: "test-snapshot-token",
     },
     totalMatches: 1,
+    coverage:{matched:1,subjectUnavailable:1,actorUnavailable:1,candidateLimit:10000},
     results: [{
       runId: RUN_ID,
       traceId: "sp-160000-0001",
@@ -51,6 +52,7 @@ function searchPage() {
       enqueuedAt: "2026-08-28T15:00:00.000Z",
       endedAt: { state: "present", value: "2026-08-28T15:05:00.000Z" },
       match: { field: "workflow", strength: "exact" },
+      metadata: { subject:{state:"unavailable",reason:"declaration-unavailable"}, actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false} },
     }],
     nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
   });
@@ -70,6 +72,7 @@ function searchResult(runId: string, enqueuedAt: string) {
 
 function selectedSearchRequest(token = "test-snapshot-token") {
   return {
+    requestVersion:3 as const,
     selection: {
       kind: "search" as const,
       query: {
@@ -79,8 +82,9 @@ function selectedSearchRequest(token = "test-snapshot-token") {
         limit: 20,
       },
       snapshot: {
+        generatedAt: "2026-08-28T16:00:00.000Z",
         authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v1" as const,
+        order: "match-strength/enqueued-desc/run-id-asc:v2" as const,
         token,
       },
     },
@@ -102,6 +106,7 @@ function pageWith(input: Readonly<{
       authorityGeneration: input.authorityGeneration ?? base.snapshot.authorityGeneration,
     },
     totalMatches: input.totalMatches,
+    coverage:{matched:input.totalMatches,subjectUnavailable:input.totalMatches,actorUnavailable:input.totalMatches,candidateLimit:10000},
     results: input.results,
     nextCursor: input.nextCursor,
   });
@@ -228,6 +233,7 @@ describe("operator XLSX export service", () => {
       });
 
       const download = await service.export(LOCAL_OPERATOR_ACTOR_ID, {
+        requestVersion:3,
         selection: {
           kind: "search",
           query: {
@@ -237,8 +243,9 @@ describe("operator XLSX export service", () => {
             limit: 20,
           },
           snapshot: {
+            generatedAt: "2026-08-28T16:00:00.000Z",
             authorityGeneration: 19,
-            order: "match-strength/enqueued-desc/run-id-asc:v1",
+            order: "match-strength/enqueued-desc/run-id-asc:v2",
             token: "test-snapshot-token",
           },
         },
@@ -246,7 +253,7 @@ describe("operator XLSX export service", () => {
 
       const persisted = database.authority.operatorXlsxExports.get(EXPORT_ID);
       assert.deepEqual(persisted, download.evidence);
-      assert.equal(download.evidence.workbookVersion, 2);
+      assert.equal(download.evidence.workbookVersion, 3);
       assert.equal(download.evidence.requestedBy, LOCAL_OPERATOR_ACTOR_ID);
       assert.equal(download.filename, "hr-run-search-2026-08-28-g19.xlsx");
       assert.equal(download.mediaType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -317,6 +324,7 @@ describe("operator XLSX export service", () => {
 
       await assert.rejects(
         service.export(LOCAL_OPERATOR_ACTOR_ID, {
+        requestVersion:3,
           selection: {
             kind: "search",
             query: {
@@ -326,8 +334,9 @@ describe("operator XLSX export service", () => {
               limit: 20,
             },
             snapshot: {
+              generatedAt: "2026-08-28T16:00:00.000Z",
               authorityGeneration: 20,
-              order: "match-strength/enqueued-desc/run-id-asc:v1",
+              order: "match-strength/enqueued-desc/run-id-asc:v2",
               token: "test-snapshot-token",
             },
           },
@@ -475,6 +484,7 @@ describe("operator XLSX export service", () => {
 
       await assert.rejects(
         service.export(LOCAL_OPERATOR_ACTOR_ID, {
+        requestVersion:3,
           selection: {
             ...request.selection,
             snapshot: {

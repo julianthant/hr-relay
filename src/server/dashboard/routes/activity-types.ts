@@ -1,3 +1,2 @@
-export interface ActivityRouteDeps {
-  readonly activity: { read(from: string, to: string): import("../../../domain/dashboard/activity.js").ActivityReportWire };
-}
+import type { ActivitySelectionService } from "../queries/activity-selection.js";
+export interface ActivityRouteDeps { readonly activity: ActivitySelectionService; }

@@ -114,7 +114,7 @@ describe("the rendered Activity axes (DCR1)", () => {
         state: "absent",
         evidenceRows: 1,
         unavailableRows: 1,
-        reason: "one current Separations row lacks keyed pseudonym evidence",
+        reason: "one current Separations row lacks validated canonical identity",
       },
     });
     const text = rendered(value).textContent ?? "";

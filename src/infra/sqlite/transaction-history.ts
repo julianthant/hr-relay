@@ -1,14 +1,15 @@
+import { TransactionHistorySelectionSchema, type TransactionHistorySelection } from "../../domain/transaction-selection.js";
+export { TransactionHistorySelectionSchema } from "../../domain/transaction-selection.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { localDatePart } from "../../domain/clock.js";
-import { BrowserSystemIdSchema, NonNegativeIntSchema } from "../../domain/ids.js";
+import { NonNegativeIntSchema, RunIdSchema } from "../../domain/ids.js";
 import { hasProtectedTransactionInput } from "../../domain/protected-input.js";
 import { ActivityLedgerBlockSchema } from "../../domain/dashboard/activity.js";
 import { resolveLedgerLine, unresolvedLedgerLine, type LedgerLinePointer } from "../../domain/archive/ledger-resolution.js";
 import { ArchivedTransactionsSchema } from "../../domain/archive/model.js";
 import { reconstructConfirmedOperation } from "../../events/confirmed-operation.js";
-import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, HistoricalOperationSource } from "../../events/timeline.js";
 import { TimelineEventRecordSchema } from "../../events/timeline.js";
 import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from "../../domain/write-safety.js";
@@ -18,18 +19,15 @@ import type { RunRecord } from "../../domain/run/record.js";
 import type { DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import type { WriteIntentRecord } from "../../domain/write-safety.js";
 
-export const TransactionHistorySelectionSchema = z.strictObject({
-  from: z.iso.date(), to: z.iso.date(), system: BrowserSystemIdSchema.optional(),
-}).superRefine((range, context) => {
-  if (range.from > range.to) context.addIssue({ code: "custom", message: "transaction range ends before it starts" });
-});
-
 /** One consistent database query serves Activity, archive capture and explicit exports. */
 type HistoryRepositories = Parameters<typeof reconstructConfirmedOperation>[0] & {
   timelineEvents: TimelineRepository;
-  /** Omitted only by pre-transfer conversion and isolated live-only fixtures. */
-  archivedTransactionSources?: { list(): readonly LifecycleSourceSnapshot[] };
-  historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
+  confirmedTransactionSources: { select(selection: TransactionHistorySelection): Readonly<{
+    events: readonly z.infer<typeof TimelineEventRecordSchema>[];
+    archived: readonly LifecycleSourceSnapshot[];
+    historical: readonly HistoricalOperationSource[];
+    eventIds: readonly string[];
+  }> };
   runs: { get(runId: string): RunRecord | undefined };
   deletedRuns: { get(runId: string): DeletedRunRecord | undefined };
   writeIntents: { get(operationId: string): WriteIntentRecord | undefined };
@@ -38,15 +36,17 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
   const query = (selection: z.input<typeof TransactionHistorySelectionSchema>) => {
     const range = TransactionHistorySelectionSchema.parse(selection);
     return repositories.timelineEvents.withReadSnapshot(() => {
-      const { records } = readTimelineRecords(repositories.timelineEvents);
-      const sources = repositories.historicalOperationSources.list();
-      const archived = (repositories.archivedTransactionSources?.list() ?? []).flatMap(snapshot => {
+      const selected = repositories.confirmedTransactionSources.select(range);
+      const records = selected.events, sources = selected.historical;
+      const selectedIds = new Set(selected.eventIds);
+      const archived = selected.archived.flatMap(snapshot => {
         const read = <T>(table: string, schema: z.ZodType<T>) => {
           const groups = snapshot.records.filter(group => group.table === table);
           const group = groups[0];
           if (groups.length !== 1 || group === undefined) throw new Error("transaction-history-archive-group-missing-or-duplicate");
           if (new Set(group.rows.map(row => row.key)).size !== group.rows.length) throw new Error("transaction-history-archive-row-duplicate");
-          return group.rows.map(row => schema.parse(JSON.parse(row.json)));
+          return group.rows.filter(row => table !== "timeline_events" || selectedIds.has(row.key))
+            .map(row => schema.parse(JSON.parse(row.json)));
         };
         const events = read("timeline_events", TimelineEventRecordSchema);
         const operations = read("run_operations", WriteIntentRecordSchema);
@@ -63,7 +63,7 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
         return events.map(event => ({ event, evidence }));
       });
       const rows = [...records.map(event => ({ event, evidence: repositories })), ...archived].flatMap(({ event, evidence }) => {
-        if (event.payload.kind !== "operation-confirmed") return [];
+        if (event.payload.kind !== "operation-confirmed" || !selectedIds.has(event.eventId)) throw new Error("transaction-history-selection-mismatch");
         const facts = event.payload.facts;
         const run = evidence.runs.get(facts.runId);
         if (run === undefined) throw new Error("transaction-history-owner-missing");
@@ -75,7 +75,8 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
           || run.envelope.resolvedInstance[facts.system] !== facts.instance) throw new Error("transaction-history-owner-mismatch");
         const { ledger, span } = reconstructConfirmedOperation(evidence, event);
         const localDate = localDatePart(new Date(facts.confirmedAt));
-        if (localDate < range.from || localDate > range.to || (range.system !== undefined && facts.system !== range.system)) return [];
+        if (localDate < range.from || localDate > range.to || (range.system !== undefined && facts.system !== range.system)
+          || (range.runId !== undefined && facts.runId !== range.runId)) throw new Error("transaction-history-selection-mismatch");
         const source = sources.find((item) => item.operationId === facts.writeIntentId && item.generation === facts.intentGeneration);
         if (source !== undefined && (source.ledgerOutbox.payload.kind !== "ledger-entry"
           || canonicalJsonStringify(source.ledgerOutbox.payload.entry) !== canonicalJsonStringify(ledger)
@@ -90,6 +91,7 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
           sourceDigest: source?.manifestDigest ?? null,
           presentation: resolveLedgerLine(pointer, ledger, hasProtectedTransactionInput(run)) }];
       }).sort((a, b) => a.ledger.confirmedAt.localeCompare(b.ledger.confirmedAt) || a.operationId.localeCompare(b.operationId) || a.generation - b.generation);
+      if (rows.length !== selectedIds.size) throw new Error("transaction-history-selection-incomplete");
       const identities = rows.map((row) => `${row.operationId}:${String(row.generation)}`);
       if (new Set(identities).size !== identities.length) throw new Error("transaction-history-duplicate-operation");
       return { digest: sha256Hex(canonicalJsonStringify({ range, rows })), range, rows };
@@ -106,7 +108,7 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
       return ActivityLedgerBlockSchema.parse({ systems: [...totals.values()].sort((a, b) => b.entries - a.entries || a.system.localeCompare(b.system)) });
     },
     capture(runId: string, contentDigest: string, capturedAt: string, pointers: readonly LedgerLinePointer[]) {
-      const rows = query({ from: "0001-01-01", to: "9999-12-31" }).rows.filter((row) => row.runId === runId);
+      const rows = query({ from: "0001-01-01", to: "9999-12-31", runId: RunIdSchema.parse(runId) }).rows;
       const lines = rows.map((row) => row.presentation);
       for (const pointer of pointers) {
         if (!lines.some((line) => canonicalJsonStringify(line.pointer) === canonicalJsonStringify(pointer))) {

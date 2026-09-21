@@ -199,7 +199,7 @@ describe("the Activity report's CSV export (D240)", () => {
     const filled = lines(activityReportCsv(FILLED));
     assert.ok(filled.includes("Write ledger — what was actually filed"));
     assert.ok(filled.includes(
-      "A separate authority from every total above; entries are never pruned and outlive their runs.",
+      "A separate authority from every total above; confirmed entries survive Archive transfer and remain until explicit owner deletion.",
     ));
     assert.ok(filled.includes("ucpath,4,3,1"));
     assert.ok(filled.includes("kuali,1,1,0"));

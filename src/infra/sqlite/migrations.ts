@@ -1,3 +1,5 @@
+import { TRANSACTION_SELECTION_DDL, TRANSACTION_SELECTION_CONSTRAINTS } from "./transaction-selection.js";
+import { RUN_SEARCH_INDEX_DDL, RUN_SEARCH_GRAMS_DDL, RUN_SEARCH_PUBLICATION_DDL, RUN_SEARCH_DECLARATIONS_DDL, RUN_SEARCH_ACTORS_DDL, RUN_SEARCH_INDEX_CONSTRAINTS, RUN_SEARCH_ACTOR_BACKFILL_SQL } from "./run-search-index.js";
 import { WORKER_CONTROL_DDL, WORKER_BROWSER_DDL } from "./worker-control.js";
 import { NOTIFICATION_PUBLICATIONS_DDL, NOTIFICATION_HEALTH_DDL } from "./notification-publications.js";
 export const VERSION_CHANGES_DDL = `CREATE TABLE version_changes (record_key TEXT PRIMARY KEY, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL) STRICT`;
@@ -15,7 +17,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 53;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 54;
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -86,6 +88,8 @@ const jsonRecordTable = (name: string): string => `
 `;
 
 export const SQLITE_TABLE_DDL = deepFreeze({
+  transaction_selection: TRANSACTION_SELECTION_DDL,
+  run_search_index: RUN_SEARCH_INDEX_DDL, run_search_grams: RUN_SEARCH_GRAMS_DDL, run_search_publication: RUN_SEARCH_PUBLICATION_DDL, run_search_declarations: RUN_SEARCH_DECLARATIONS_DDL, run_search_actors: RUN_SEARCH_ACTORS_DDL,
   version_changes: VERSION_CHANGES_DDL,
   archive_transfers: ARCHIVE_TRANSFER_DDL,
   run_summaries: RUN_SUMMARIES_DDL,
@@ -2149,6 +2153,10 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       BEGIN SELECT RAISE(ABORT,'worker control identity is immutable'); END`,
     "CREATE TRIGGER worker_controls_retained BEFORE DELETE ON worker_controls BEGIN SELECT RAISE(ABORT,'worker controls are retained'); END",
   ] },
+  { version: 54, statements: [TRANSACTION_SELECTION_DDL, ...TRANSACTION_SELECTION_CONSTRAINTS, RUN_SEARCH_INDEX_DDL, RUN_SEARCH_GRAMS_DDL, RUN_SEARCH_PUBLICATION_DDL, RUN_SEARCH_DECLARATIONS_DDL, RUN_SEARCH_ACTORS_DDL,
+    ...RUN_SEARCH_INDEX_CONSTRAINTS, ...RUN_SEARCH_ACTOR_BACKFILL_SQL,
+    `INSERT INTO run_search_publication SELECT 'current',json_object('state',CASE WHEN EXISTS(SELECT 1 FROM workflow_runs) THEN 'invalid' ELSE 'published' END,'sourceGeneration',authority_generation,'afterRun',NULL,'rowCount',0),updated_at FROM database_state`,
+  ] },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
@@ -2173,7 +2181,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
     }
   }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
-  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes", "explorer_overrides", "notification_publications", "notification_health", "worker_controls", "worker_browsers"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes", "explorer_overrides", "notification_publications", "notification_health", "worker_controls", "worker_browsers", "transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
   for (const name of retiredNames) {
     if (!TABLE_ORDER.some((migrationName) => migrationName === name || renamed(migrationName) === name)) {
       violations.push(`retired table ${name} is absent from migration history`);

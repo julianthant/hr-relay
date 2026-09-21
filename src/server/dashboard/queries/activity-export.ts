@@ -33,10 +33,8 @@
  *
  * Labelled blocks separated by a blank line, each with its own header row —
  * the shape a spreadsheet opens correctly and a person reads top to bottom.
- * Cells are quoted when they must be and never REWRITTEN: a leading `=` is
- * left exactly as the payload spells it, because prefixing a cell to defuse a
- * spreadsheet's formula parser would put a different string in the export than
- * the one on screen, and this artifact's entire value is that the two agree.
+ * Text cells with formula prefixes are escaped with an apostrophe before RFC 4180 quoting.
+ * Numeric values retain their numeric representation.
  */
 import {
   activityErrorRatePercent,
@@ -45,15 +43,7 @@ import {
   type ActivityReportWire,
 } from "../../../domain/dashboard/activity.js";
 
-/** RFC 4180: quote a cell that carries a comma, a quote or a newline. */
-function cell(value: string | number): string {
-  const text = typeof value === "number" ? String(value) : value;
-  return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
-function row(values: readonly (string | number)[]): string {
-  return values.map(cell).join(",");
-}
+import { spreadsheetCsvRow as row } from "../exports/spreadsheet-csv.js";
 
 export function activityReportCsvFileName(report: ActivityReportWire): string {
   return `activity-${report.from}_${report.to}.csv`;
@@ -192,7 +182,7 @@ export function activityReportCsv(report: ActivityReportWire): string {
   // seam rather than relying on the caveat block alone.
   blocks.push([
     row(["Write ledger — what was actually filed"]),
-    row(["A separate authority from every total above; entries are never pruned and outlive their runs."]),
+    row(["A separate authority from every total above; confirmed entries survive Archive transfer and remain until explicit owner deletion."]),
     row(["System", "Entries", "Production", "Test instance"]),
     ...(report.ledger.systems.length === 0
       ? [row(["No ledger entries. Nothing in this report's reach filed anything into a real HR system."])]

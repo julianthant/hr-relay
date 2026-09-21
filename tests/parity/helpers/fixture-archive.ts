@@ -417,7 +417,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   totalRuns: 12,
   terminalRuns: 10,
   inFlightRuns: 2,
-  // Eight keyed pseudonyms across twelve current Separations rows in one
+  // Eight validated canonical identities across twelve current Separations rows in one
   // compatible generation: the axis is a real deduplicated count, not another
   // spelling of run total.
   people: { state: "present", distinct: 8, evidenceRows: 12 },
@@ -509,7 +509,7 @@ export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityR
     state: "absent",
     evidenceRows: 12,
     unavailableRows: 0,
-    reason: "current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable",
+    reason: "current run/member rows lack validated canonical identity; distinct people is unavailable",
   },
 });
 

@@ -1,3 +1,5 @@
+import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
+import { createRunSearchIndex } from "./run-search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../domain/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
@@ -103,7 +105,6 @@ import {
   IsoInstantSchema,
   ItemIdSchema,
   LOCAL_OPERATOR_ACTOR_ID,
-  NonNegativeIntSchema,
   RunIdSchema,
   RunSessionIdSchema,
   TraceIdSchema,
@@ -112,27 +113,15 @@ import {
   WriteIntentIdSchema,
   type RunId,
 } from "../../domain/ids.js";
-import {
-  CROSS_DATE_SEARCH_MATCH_ORDER,
-  CROSS_DATE_SEARCH_MAX_MATCH_RANK,
-  CROSS_DATE_SEARCH_PAGE_LIMIT,
-  CROSS_DATE_SEARCH_QUERY_LIMIT,
-  CrossDateSearchDryRunFacetSchema,
-  CrossDateSearchScopeSchema,
-  CrossDateSearchShapeFacetSchema,
-  CrossDateSearchStateFacetSchema,
-  CrossDateSearchSystemFacetSchema,
-  CrossDateSearchWorkflowFacetSchema,
-} from "../../domain/dashboard/search.js";
+
+
 
 
 import {
-  RunPrioritySchema,
   nextAttemptEnvelope,
 } from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
-  RunStateSchema,
   runClaim,
   runTransitionViolation,
   type RunRecord,
@@ -923,6 +912,7 @@ export type AuthorityRepositories = Readonly<{
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
+  confirmedTransactionSources: Parameters<typeof createTransactionHistory>[0]["confirmedTransactionSources"];
   historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
   archivedTransactionSources: { list(): readonly z.infer<typeof LifecycleSourceSnapshotSchema>[] };
   failureResolution: ReturnType<typeof createFailureResolutionRepository>;
@@ -984,63 +974,6 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
-const DataVersionRowSchema = z.strictObject({ data_version: z.number().int().nonnegative() });
-const RunSearchReadRequestSchema = z.strictObject({
-  q: z.string().trim().min(1).max(CROSS_DATE_SEARCH_QUERY_LIMIT).transform((value) => value.toLowerCase()),
-  scope: CrossDateSearchScopeSchema,
-  facets: z.strictObject({
-    workflow: CrossDateSearchWorkflowFacetSchema.optional(),
-    day: z.strictObject({
-      startsAt: IsoInstantSchema,
-      endsBefore: IsoInstantSchema,
-    }).refine(
-      (day) => Date.parse(day.startsAt) < Date.parse(day.endsBefore),
-      { message: "search day must end after it starts" },
-    ).optional(),
-    state: CrossDateSearchStateFacetSchema.optional(),
-    shape: CrossDateSearchShapeFacetSchema.optional(),
-    dryRun: CrossDateSearchDryRunFacetSchema.optional(),
-    system: CrossDateSearchSystemFacetSchema.optional(),
-  }),
-  limit: z.number().int().positive().max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
-  after: z.strictObject({
-    matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
-    enqueuedAt: IsoInstantSchema,
-    runId: RunIdSchema,
-  }).optional(),
-});
-const RunSearchCorpusRowSchema = z.strictObject({
-  record_key: RunIdSchema,
-  record_json: z.string(),
-  workflow: WorkflowIdSchema,
-  state: RunStateSchema,
-  priority: RunPrioritySchema,
-  created_at: IsoInstantSchema,
-  created_at_epoch_ms: z.number().int(),
-});
-const RunSearchRowSchema = RunSearchCorpusRowSchema.extend({
-  match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
-});
-const RunSearchPassResultSchema = z.discriminatedUnion("result_kind", [
-  z.strictObject({
-    result_kind: z.literal("row"),
-    payload: z.string(),
-    total_matches: z.null(),
-    result_order: z.literal(0),
-    order_match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
-    order_created_at_epoch_ms: z.number().int(),
-    order_record_key: RunIdSchema,
-  }),
-  z.strictObject({
-    result_kind: z.literal("summary"),
-    payload: z.null(),
-    total_matches: NonNegativeIntSchema,
-    result_order: z.literal(1),
-    order_match_rank: z.null(),
-    order_created_at_epoch_ms: z.null(),
-    order_record_key: z.null(),
-  }),
-]);
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
@@ -1056,96 +989,7 @@ const AuthorityMetaFingerprintRowSchema = z.strictObject({
   migration_started_at: z.string().nullable(),
 });
 
-export type RunSearchAuthorityRow = Readonly<{
-  record: RunRecord;
-  matchRank: number;
-}>;
-
-
-export type RunSearchAuthorityPage = Readonly<{
-  totalMatches: number;
-  rows: readonly RunSearchAuthorityRow[];
-}>;
-
-type RunSearchReadRequest = z.infer<typeof RunSearchReadRequestSchema>;
-type RunSearchSqlParameter = string | number;
-type RunSearchCorpusRow = z.infer<typeof RunSearchCorpusRowSchema>;
-type RunSearchCorpusValidation = Readonly<{
-  authorityGeneration: number;
-  dataVersion: number;
-}>;
-
-const RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL =
-  "CAST(round((julianday(t.created_at) - 2440587.5) * 86400000.0) AS INTEGER)";
-
-const RUN_SEARCH_FIELD_EXPRESSIONS = Object.freeze({
-  run: "lower(t.record_key)",
-  trace: "lower(json_extract(t.record_json, '$.envelope.traceId'))",
-  workflow: "lower(t.workflow)",
-});
-
-function runSearchRankSql(scope: z.infer<typeof CrossDateSearchScopeSchema>): string {
-  const clauses = CROSS_DATE_SEARCH_MATCH_ORDER.flatMap((match, rank) => {
-    if (scope !== "all" && match.field !== scope) return [];
-    const expression = RUN_SEARCH_FIELD_EXPRESSIONS[match.field];
-    switch (match.strength) {
-      case "exact": return [`WHEN ${expression} = search.q THEN ${String(rank)}`];
-      case "prefix": return [
-        `WHEN substr(${expression}, 1, length(search.q)) = search.q THEN ${String(rank)}`,
-      ];
-      case "contains": return [`WHEN instr(${expression}, search.q) > 0 THEN ${String(rank)}`];
-    }
-  });
-  return `CASE ${clauses.join(" ")} ELSE NULL END`;
-}
-
-function runSearchFilter(input: RunSearchReadRequest, database: DatabaseSync): Readonly<{
-  sql: string;
-  parameters: readonly RunSearchSqlParameter[];
-}> {
-  const conditions = [
-    unarchivedRunSql(database, "t.record_key"),
-  ];
-  const parameters: RunSearchSqlParameter[] = [];
-  const { facets } = input;
-  if (facets.workflow !== undefined) {
-    conditions.push("t.workflow = ?");
-    parameters.push(facets.workflow);
-  }
-  if (facets.day !== undefined) {
-    conditions.push(
-      `${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} >= ? AND ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} < ?`,
-    );
-    parameters.push(
-      instantEpochMilliseconds(facets.day.startsAt),
-      instantEpochMilliseconds(facets.day.endsBefore),
-    );
-  }
-  if (facets.state !== undefined) {
-    const terminalOutcome = ![
-      "queued", "claimed", "validating", "running", "parked-gate", "parked-write",
-    ].includes(facets.state);
-    if (terminalOutcome) {
-      conditions.push("t.state = 'terminal' AND json_extract(t.record_json, '$.lifecycle.outcome') = ?");
-    } else {
-      conditions.push("t.state = ?");
-    }
-    parameters.push(facets.state);
-  }
-  if (facets.shape !== undefined) {
-    conditions.push("json_extract(t.record_json, '$.envelope.shape') = ?");
-    parameters.push(facets.shape);
-  }
-  if (facets.dryRun !== undefined) {
-    conditions.push("json_extract(t.record_json, '$.envelope.dryRun') = ?");
-    parameters.push(facets.dryRun ? 1 : 0);
-  }
-  if (facets.system !== undefined) {
-    conditions.push("json_type(t.record_json, ?) IS NOT NULL");
-    parameters.push(`$.envelope.resolvedInstance.${facets.system}`);
-  }
-  return Object.freeze({ sql: conditions.join(" AND "), parameters: Object.freeze(parameters) });
-}
+export type RunSearchAuthorityPage = ReturnType<ReturnType<typeof createRunSearchIndex>["search"]>;
 
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
   return schema.parse(JSON.parse(text));
@@ -1175,84 +1019,6 @@ function canonicalUtcInstant(instant: string): string {
   return new Date(instantEpochMilliseconds(instant)).toISOString();
 }
 
-type SearchCorpusDimension = "workflow" | "shape" | "dry-run" | "resolved systems" | "lifecycle/outcome";
-
-function refuseOutsideSearchCorpus(
-  runId: string,
-  dimension: SearchCorpusDimension,
-  observed: string,
-): never {
-  throw new Error(
-    `search corpus run ${runId} has ${dimension} outside the closed D283 corpus`,
-    { cause: new Error(`search corpus observed ${dimension}: ${observed}`) },
-  );
-}
-
-function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
-  let record: RunRecord;
-  try {
-    record = parseJsonRecord(RunRecordSchema, row.record_json);
-  } catch (error) {
-    throw new Error(
-      `search corpus run ${row.record_key} failed strict run validation`,
-      { cause: error },
-    );
-  }
-  if (record.envelope.runId !== row.record_key) {
-    throw new Error(
-      `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
-    );
-  }
-  if (row.workflow !== record.envelope.workflow) {
-    throw new Error(
-      `search selected run ${row.record_key} whose searchable workflow column ${row.workflow} does not `
-      + `equal its durable workflow ${record.envelope.workflow}`,
-    );
-  }
-  if (row.state !== record.lifecycle.state) {
-    throw new Error(
-      `search selected run ${row.record_key} whose searchable state column ${row.state} does not equal `
-      + `its durable state ${record.lifecycle.state}`,
-    );
-  }
-  if (row.priority !== record.envelope.priority) {
-    throw new Error(
-      `search selected run ${row.record_key} whose searchable priority column ${row.priority} does not `
-      + `equal its durable priority ${record.envelope.priority}`,
-    );
-  }
-  const createdAtEpochMs = instantEpochMilliseconds(record.createdAt);
-  const enqueuedAtEpochMs = instantEpochMilliseconds(record.envelope.enqueuedAt);
-  if (row.created_at_epoch_ms !== createdAtEpochMs || row.created_at_epoch_ms !== enqueuedAtEpochMs) {
-    throw new Error(
-      `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not equal its `
-      + `durable enqueue instant ${record.envelope.enqueuedAt} and created instant ${record.createdAt}`,
-    );
-  }
-  if (!CrossDateSearchWorkflowFacetSchema.safeParse(record.envelope.workflow).success) {
-    return refuseOutsideSearchCorpus(row.record_key, "workflow", record.envelope.workflow);
-  }
-  if (!CrossDateSearchShapeFacetSchema.safeParse(record.envelope.shape).success) {
-    return refuseOutsideSearchCorpus(row.record_key, "shape", record.envelope.shape);
-  }
-  if (!CrossDateSearchDryRunFacetSchema.safeParse(record.envelope.dryRun).success) {
-    return refuseOutsideSearchCorpus(row.record_key, "dry-run", String(record.envelope.dryRun));
-  }
-  const resolvedSystems = Object.keys(record.envelope.resolvedInstance)
-    .map((system) => BrowserSystemIdSchema.parse(system))
-    .sort((left, right) => left.localeCompare(right));
-  if (resolvedSystems.length !== CrossDateSearchSystemFacetSchema.options.length
-    || CrossDateSearchSystemFacetSchema.options.some((system) => !resolvedSystems.includes(system))) {
-    return refuseOutsideSearchCorpus(row.record_key, "resolved systems", resolvedSystems.join(", "));
-  }
-  const searchableState = record.lifecycle.state === "terminal"
-    ? record.lifecycle.outcome
-    : record.lifecycle.state;
-  if (!CrossDateSearchStateFacetSchema.safeParse(searchableState).success) {
-    return refuseOutsideSearchCorpus(row.record_key, "lifecycle/outcome", searchableState);
-  }
-  return record;
-}
 
 function readIntPragma(
   database: DatabaseSync,
@@ -2844,6 +2610,7 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  #stoppedHistoricalTransactionSelection = false;
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
@@ -2852,12 +2619,12 @@ export class AuthorityDatabase implements Disposable {
   #archiveSourcesDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
-  #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
 
   #archiveDatabase: ArchiveDatabase | undefined;
+  #transactionArchiveDatabase: ArchiveDatabase | undefined;
   lifecycleArchive(requireExisting = false): ArchiveDatabase {
     if (this.#archiveDatabase !== undefined) return this.#archiveDatabase;
     if (this.#path === ":memory:") throw new Error("archive-requires-durable-root");
@@ -2908,10 +2675,12 @@ export class AuthorityDatabase implements Disposable {
     if (conversion !== undefined) {
       if (!conversion.database.isTransaction) throw new Error("archive-conversion-requires-stopped-transaction");
       this.#database = conversion.database;
+      this.#stoppedHistoricalTransactionSelection = z.object({user_version:z.number().int()}).parse(this.#database.prepare("PRAGMA user_version").get()).user_version < 54;
       this.#archiveDatabase = conversion.archive;
       this.#transactionDepth = 1;
       this.#transactionMode = "authority";
       createRunSummaries(this.#database).installTracking();
+      createRunSearchIndex(this.#database).installTracking();
       this.authority = this.#buildAuthorityRepositories();
       return;
     }
@@ -2950,7 +2719,10 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
 
-    if (!readOnlyNoMigrate) createRunSummaries(this.#database).installTracking();
+    if (!readOnlyNoMigrate) {
+      createRunSummaries(this.#database).installTracking();
+      createRunSearchIndex(this.#database).installTracking();
+    }
     this.authority = this.#buildAuthorityRepositories();
   }
 
@@ -3078,6 +2850,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   close(): void {
+    this.#transactionArchiveDatabase?.close();
+    this.#transactionArchiveDatabase=undefined;
     this.#archiveDatabase?.close();
     this.#archiveDatabase = undefined;
     if (this.#closed) return;
@@ -3186,6 +2960,25 @@ export class AuthorityDatabase implements Disposable {
       return new Set(this.#database.prepare(`SELECT record_key FROM ${table}`).all()
         .map(row => z.strictObject({ record_key: RunIdSchema }).parse(row).record_key));
     });
+  }
+
+  #archivedTransactionSource(runId: string) {
+        const identity = this.#readRecord("archive_transfers",RunIdSchema.parse(runId),ArchiveTransferIdentitySchema);
+        if (identity === undefined) throw new Error("transaction-history-transfer-missing");
+        // Verified custody is sufficient after cleanup, even before publication replay.
+        if (this.#path === ":memory:" && this.#archiveDatabase === undefined) throw new Error("archive-requires-durable-root");
+        const archive = this.#archiveDatabase ?? (this.#transactionArchiveDatabase ??= new ArchiveDatabase(join(dirname(this.#path), "archive.sqlite"), {readOnly:true,validation:"selected"}));
+        const owner=resolveRunEvidenceOwner(this.#database,()=>archive,runId,false);
+        if(owner.state!=="archived")throw new Error("archive-transfer-owner-invalid");
+        const report = archive.verifiedReport(runId, identity.reportDigest);
+        const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+        if (source === undefined) throw new Error("transaction-history-archive-source-missing");
+        const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+        if (lifecycleSourceDigest(snapshot) !== identity.sourceDigest
+          || canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(identity.run)) {
+          throw new Error("transaction-history-archive-source-mismatch");
+        }
+        return snapshot;
   }
 
   listTransferredRuns() {
@@ -3581,6 +3374,17 @@ export class AuthorityDatabase implements Disposable {
 
   readRunSummaries() {
     return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).read(this.getMeta().authorityGeneration));
+  }
+
+  registerRunSearchDeclarations(input: unknown): void {
+    this.#authorityWrite("run_search_declarations", () => ({ result: undefined,
+      changes: createRunSearchIndex(this.#database).register(input, this.#now()) }));
+  }
+
+  rebuildRunSearchIndex(input: unknown) {
+    return this.#authorityWrite("run_search_index", () => ({
+      result: createRunSearchIndex(this.#database).rebuild(input, this.getMeta().authorityGeneration + 1, this.#now()), changes: 1,
+    }));
   }
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
@@ -4440,6 +4244,7 @@ export class AuthorityDatabase implements Disposable {
           legacyOwned.set(member.runId, lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)));
         }
       }
+      const searchPublication = createRunSearchIndex(this.#database).publication();
       result = work();
       if (this.#authorityDirty) {
         const update = this.#database.prepare(`
@@ -4479,7 +4284,10 @@ export class AuthorityDatabase implements Disposable {
         }
       }
       if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
-      if (this.#authorityDirty) createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
+      if (this.#authorityDirty) {
+        createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
+        createRunSearchIndex(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now(), searchPublication);
+      }
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4537,7 +4345,6 @@ export class AuthorityDatabase implements Disposable {
         // These two lifecycle protocols verify source identity themselves and
         // do not author new source evidence. Mixed transactions still check.
         if (table !== "archive_transfers" && table !== "version_changes") this.#archiveSourcesDirty = true;
-        this.#runSearchCorpusValidation = undefined;
       }
       return outcome.result;
     });
@@ -5039,20 +4846,25 @@ export class AuthorityDatabase implements Disposable {
         listByRun: (_runId: string): never => { throw new Error("activity-person-pseudonyms-retired"); },
         listByRuns: (_runIds: unknown): never => { throw new Error("activity-person-pseudonyms-retired"); },
       }),
-      archivedTransactionSources: { list: () => this.withAuthorityReadSnapshot(() => this.listTransferredRuns().map(run => {
-        const identity = this.transferredRun(run.envelope.runId);
-        if (identity === undefined) throw new Error("transaction-history-transfer-missing");
-        // Verified custody is sufficient after cleanup, even before publication replay.
-        const report = this.lifecycleArchive(true).verifiedReport(run.envelope.runId, identity.reportDigest);
-        const source = report.content.sources.find(value => value.kind === "authority-snapshot");
-        if (source === undefined) throw new Error("transaction-history-archive-source-missing");
-        const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-        if (lifecycleSourceDigest(snapshot) !== identity.sourceDigest
-          || canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(identity.run)) {
-          throw new Error("transaction-history-archive-source-mismatch");
+      confirmedTransactionSources: { select: input => this.withAuthorityReadSnapshot(() => {
+        const selected = this.#stoppedHistoricalTransactionSelection
+          ? selectStoppedConversionTransactions(this.#database, input) : selectTransactions(this.#database, input);
+        const events = [], archiveIds = new Set<string>();
+        for (const record of selected) {
+          const raw = this.#database.prepare("SELECT * FROM timeline_events WHERE record_key=?").get(record.eventId);
+          if (raw === undefined) archiveIds.add(record.runId);
+          else {
+            const event = timelineEventFromRow(raw);
+            if (event.payload.kind !== "operation-confirmed" || event.payload.facts.runId !== record.runId
+              || event.payload.facts.confirmedAt !== record.confirmedAt || event.payload.facts.system !== record.system) throw new Error("transaction-history-selection-mismatch");
+            events.push(event);
+          }
         }
-        return snapshot;
-      })) },
+        const archived = [...archiveIds].map(id => this.#archivedTransactionSource(id));
+        const historical = selectedHistoricalTransactionRows(this.#database, input).map(json => readHistoricalOperationSource(this.#database, json));
+        return {events,archived,historical,eventIds:selected.map(record=>record.eventId)};
+      }) },
+      archivedTransactionSources: { list: () => this.withAuthorityReadSnapshot(() => this.listTransferredRuns().map(run => this.#archivedTransactionSource(run.envelope.runId))) },
       historicalOperationSources: { list: () => this.#database.prepare("SELECT record_json FROM timeline_operation_sources ORDER BY record_key").all().map((row) => readHistoricalOperationSource(this.#database, JsonRowSchema.parse(row).record_json)) },
       runResults: Object.freeze({
         get: (runId: string) => this.#readRecord(
@@ -5908,32 +5720,6 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
-  /**
-   * Validate the whole searchable authority corpus before SQL can observe a
-   * query, facet or trace substring. The cache names exactly one authority
-   * generation and SQLite data version; a mismatch rebuilds synchronously,
-   * while an in-process authority write invalidates immediately so an outer
-   * transaction can never reuse its pre-write validation.
-   */
-  #assertRunSearchCorpusReconciled(): void {
-    const authorityGeneration = this.#readMetaRow().authority_generation;
-    const dataVersion = DataVersionRowSchema.parse(
-      this.#database.prepare("PRAGMA data_version").get(),
-    ).data_version;
-    const cached = this.#runSearchCorpusValidation;
-    if (cached?.authorityGeneration === authorityGeneration && cached.dataVersion === dataVersion) return;
-
-    const rows = z.array(RunSearchCorpusRowSchema).parse(this.#database.prepare(`
-      SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
-        ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms
-      FROM workflow_runs AS t
-      WHERE ${unarchivedRunSql(this.#database, "t.record_key")}
-      ORDER BY t.record_key
-    `).all());
-    for (const row of rows) reconcileRunSearchCorpusRow(row);
-    this.#runSearchCorpusValidation = Object.freeze({ authorityGeneration, dataVersion });
-  }
-
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
@@ -6220,83 +6006,7 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
-      search: (input: unknown) => {
-        const request = RunSearchReadRequestSchema.parse(input);
-        return this.withAuthorityReadSnapshot(() => {
-          this.#assertRunSearchCorpusReconciled();
-          const filter = runSearchFilter(request, this.#database);
-          const afterSql = request.after === undefined ? "" : `
-            AND (
-              match_rank > ?
-              OR (match_rank = ? AND created_at_epoch_ms < ?)
-              OR (match_rank = ? AND created_at_epoch_ms = ? AND record_key > ?)
-            )
-          `;
-          const afterParameters: RunSearchSqlParameter[] = request.after === undefined
-            ? []
-            : [
-              request.after.matchRank,
-              request.after.matchRank,
-              instantEpochMilliseconds(request.after.enqueuedAt),
-              request.after.matchRank,
-              instantEpochMilliseconds(request.after.enqueuedAt),
-              request.after.runId,
-            ];
-          const passRows = z.array(RunSearchPassResultSchema).parse(this.#database.prepare(`
-            WITH search(q) AS (VALUES (?)), ranked AS (
-              SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
-                ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
-                ${runSearchRankSql(request.scope)} AS match_rank
-              FROM workflow_runs AS t CROSS JOIN search
-              WHERE ${filter.sql}
-            ), matched AS MATERIALIZED (
-              SELECT ranked.*, count(*) OVER () AS total_matches
-              FROM ranked
-              WHERE match_rank IS NOT NULL
-            ), page AS MATERIALIZED (
-              SELECT * FROM matched
-              WHERE 1 = 1 ${afterSql}
-              ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
-              LIMIT ?
-            )
-            SELECT 'row' AS result_kind,
-              json_object(
-                'record_key', record_key,
-                'record_json', record_json,
-                'workflow', workflow,
-                'state', state,
-                'priority', priority,
-                'created_at', created_at,
-                'created_at_epoch_ms', created_at_epoch_ms,
-                'match_rank', match_rank
-              ) AS payload,
-              NULL AS total_matches,
-              0 AS result_order,
-              match_rank AS order_match_rank,
-              created_at_epoch_ms AS order_created_at_epoch_ms,
-              record_key AS order_record_key
-            FROM page
-            UNION ALL
-            SELECT 'summary', NULL, COALESCE(max(total_matches), 0), 1, NULL, NULL, NULL
-            FROM matched
-            ORDER BY result_order ASC, order_match_rank ASC,
-              order_created_at_epoch_ms DESC, order_record_key ASC
-          `).all(request.q, ...filter.parameters, ...afterParameters, request.limit));
-          const summaries = passRows.filter((row) => row.result_kind === "summary");
-          if (summaries.length !== 1) {
-            throw new Error(`search ranked pass returned ${String(summaries.length)} summary rows`);
-          }
-          const summary = summaries[0];
-          if (summary === undefined) throw new Error("search ranked pass omitted its summary row");
-          const selected = passRows.flatMap((passRow) => {
-            if (passRow.result_kind === "summary") return [];
-            const row = parseJsonRecord(RunSearchRowSchema, passRow.payload);
-            const record = reconcileRunSearchCorpusRow(row);
-            return [Object.freeze({ record, matchRank: row.match_rank })];
-          });
-          return Object.freeze({ totalMatches: summary.total_matches, rows: Object.freeze(selected) });
-        });
-      },
+      search: (input: unknown) => this.withAuthorityReadSnapshot(() => createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration)),
       /** D179: the whole set a version bump assesses — terminal and not. */
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM workflow_runs WHERE workflow = ? ORDER BY created_at, record_key

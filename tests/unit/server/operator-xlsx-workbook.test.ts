@@ -28,8 +28,9 @@ const SEARCH_DOCUMENT = Object.freeze({
       generatedAt: "2026-08-28T16:00:00.000Z",
       sourceIdentity: "a".repeat(64),
       authorityGeneration: 19,
-      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      order: "match-strength/enqueued-desc/run-id-asc:v2",
       totalMatches: 2,
+      coverage:{matched:2,subjectUnavailable:2,actorUnavailable:2,candidateLimit:10000},
     },
   },
   results: [{
@@ -53,6 +54,7 @@ const SEARCH_DOCUMENT = Object.freeze({
     enqueuedAt: "2026-08-28T15:00:00.000Z",
     endedAt: { state: "present", value: "2026-08-28T15:05:00.000Z" },
     match: { field: "run", strength: "exact" },
+      metadata: { subject:{state:"unavailable",reason:"declaration-unavailable"}, actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false} },
   }, {
     runId: SECOND_RUN_ID,
     traceId: SECOND_TRACE_ID,
@@ -74,6 +76,7 @@ const SEARCH_DOCUMENT = Object.freeze({
     enqueuedAt: "2026-08-28T14:00:00.000Z",
     endedAt: { state: "absent", reason: `run ${SECOND_RUN_ID} is parked-gate, not terminal` },
     match: { field: "run", strength: "contains" },
+      metadata: { subject:{state:"unavailable",reason:"declaration-unavailable"}, actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false} },
   }],
 });
 
@@ -137,7 +140,7 @@ describe("operator XLSX workbook", () => {
         ...SEARCH_DOCUMENT,
         results: [...SEARCH_DOCUMENT.results].reverse(),
       }),
-      /workbook rows are not ordered by match-strength\/enqueued-desc\/run-id-asc:v1/,
+      /workbook rows are not ordered by match-strength\/enqueued-desc\/run-id-asc:v2/,
     );
   });
 
@@ -167,6 +170,7 @@ describe("operator XLSX workbook", () => {
       "Retry",
       "Match field",
       "Match strength",
+      "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic",
     ]);
     assert.deepEqual(first.bytes, second.bytes);
     assert.equal(first.bytes[0], 0x50);
@@ -208,6 +212,7 @@ describe("operator XLSX workbook", () => {
           generatedAt: "2026-08-28T16:00:00.000Z",
           sourceIdentity: "a".repeat(64),
           totalRuns: ACTIVITY_REPORT.totalRuns,
+          authorityGeneration:1,reportDigest:"a".repeat(64),
         },
       },
       report: ACTIVITY_REPORT,

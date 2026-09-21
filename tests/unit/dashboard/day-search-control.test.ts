@@ -4,6 +4,7 @@
  * settlements cannot repaint newer state; all refusal renderings stay redacted,
  * including an unsafe duplicate continuation after a valid first page.
  */
+import * as downloads from "../../../src/dashboard/lib/save-download.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -36,10 +37,11 @@ function page(input: Readonly<{ cursor?: "present" | "absent"; runId?: string; q
     generatedAt: "2026-08-28T16:00:00.000Z",
     snapshot: {
       authorityGeneration: 19,
-      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      order: "match-strength/enqueued-desc/run-id-asc:v2",
       token: "dcr4-test-snapshot-token",
     },
     totalMatches: 1,
+    coverage:{matched:1,subjectUnavailable:1,actorUnavailable:1,candidateLimit:10000},
     results: [{
       runId,
       traceId: `sp-160000-${runId.slice(0, 4)}`,
@@ -56,6 +58,7 @@ function page(input: Readonly<{ cursor?: "present" | "absent"; runId?: string; q
       enqueuedAt: "2026-08-28T16:00:00.000Z",
       endedAt: { state: "absent", reason: "this run is parked at a gate" },
       match: { field: "workflow", strength: "exact" },
+      metadata: { subject:{state:"unavailable",reason:"declaration-unavailable"}, actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false} },
     }],
     nextCursor: input.cursor === "absent"
       ? { state: "absent", reason: "the snapshot has no later matching run" }
@@ -69,19 +72,21 @@ function emptyPage(): CrossDateSearchPage {
     generatedAt: "2026-08-28T16:00:00.000Z",
     snapshot: {
       authorityGeneration: 19,
-      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      order: "match-strength/enqueued-desc/run-id-asc:v2",
       token: "dcr4-test-snapshot-token",
     },
     totalMatches: 0,
+    coverage:{matched:0,subjectUnavailable:0,actorUnavailable:0,candidateLimit:10000},
     results: [],
     nextCursor: { state: "absent", reason: "the snapshot has no matching runs" },
   });
 }
 
-function clientWithSearch(searchRuns: (input: CrossDateSearchQueryInput) => Promise<CrossDateSearchPage>): DashboardClient {
+function clientWithSearch(searchRuns: (input: CrossDateSearchQueryInput,signal?:AbortSignal) => Promise<CrossDateSearchPage>, extra:Partial<DashboardClient>={}): DashboardClient {
   return new Proxy({ searchRuns }, {
     get(_target, property): unknown {
       if (property === "searchRuns") return searchRuns;
+      if(Reflect.has(extra,property))return Reflect.get(extra,property);
       throw new Error(`the Top Bar reached client.${String(property)} without this test serving it`);
     },
   }) as DashboardClient;
@@ -194,14 +199,14 @@ describe("the Top Bar corpus request", () => {
       requests[1]?.deferred.resolve(emptyPage());
       await Promise.resolve();
     });
-    assert.match(document.body.textContent ?? "", /No Separations run matches “new”/u);
+    assert.match(document.body.textContent ?? "", /No run matches “new”/u);
 
     await act(async () => {
       requests[0]?.deferred.resolve(page({ cursor: "absent" }));
       await Promise.resolve();
     });
     const text = document.body.textContent ?? "";
-    assert.match(text, /No Separations run matches “new”/u);
+    assert.match(text, /No run matches “new”/u);
     assert.doesNotMatch(text, /Open Separations Run 42/u, "a superseded response must not repaint the list");
   });
 
@@ -254,4 +259,36 @@ describe("the Top Bar corpus request", () => {
     assert.match(text, /The cross-date result set could not be safely applied\./u);
     assert.doesNotMatch(text, new RegExp(RAW_RUN_ID, "u"));
   });
+});
+
+
+it("aborts closed queries and downloads, fences late responses, and reopens without the old export selection",async()=>{
+  vi.useFakeTimers();
+  const saved=vi.spyOn(downloads,"saveDownload").mockImplementation(()=>undefined);
+  const queries:{signal:AbortSignal|undefined;pending:Deferred<CrossDateSearchPage>}[]=[];
+  const files:{signal:AbortSignal|undefined;pending:Deferred<Awaited<ReturnType<DashboardClient["exportSearchMetadata"]>>>}[]=[];
+  try {
+    await mount(clientWithSearch((_input,signal)=>{const pending=deferred<CrossDateSearchPage>();queries.push({signal,pending});return pending.promise;},{
+      exportSearchMetadata:(_request,_at,signal)=>{const pending=deferred<Awaited<ReturnType<DashboardClient["exportSearchMetadata"]>>>();files.push({signal,pending});return pending.promise;},
+    }));
+    await elapse(TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS);
+    await act(async()=>{queries[0]?.pending.resolve(page({cursor:"absent"}));});
+    const button=(name:string)=>{const found=[...document.body.querySelectorAll<HTMLButtonElement>("button")].find(value=>value.textContent?.trim()===name);assert.ok(found);return found;};
+    await act(async()=>{button("CSV").click();});
+    await act(async()=>{document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));});
+    assert.equal(files[0]?.signal?.aborted,true);
+    await act(async()=>{document.querySelector<HTMLButtonElement>("button[aria-label='Search runs across dates']")?.click();});
+    assert.equal(document.querySelector("[aria-label='Export selected search']"),null);
+    await act(async()=>{files[0]?.pending.resolve({bytes:new ArrayBuffer(1),filename:"late.csv",mediaType:"text/csv"});});
+    assert.equal(saved.mock.calls.length,0);
+    await elapse(TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS);
+    await typeCorpusQuery("changed");assert.equal(queries[1]?.signal?.aborted,true);
+    await act(async()=>{queries[1]?.pending.resolve(page({cursor:"absent"}));});
+    assert.equal(document.querySelector("[aria-label='Export selected search']"),null);
+    await elapse(TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS);
+    await act(async()=>{queries[2]?.pending.resolve(page({cursor:"absent"}));});
+    await act(async()=>{button("CSV").click();files[1]?.pending.resolve({bytes:new ArrayBuffer(1),filename:"current.csv",mediaType:"text/csv"});});
+    assert.equal(saved.mock.calls.length,1);
+    assert.match(document.body.textContent??"",/Verified file handed to the browser/u);
+  } finally {saved.mockRestore();}
 });

@@ -1,3 +1,6 @@
+import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
+import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
 import { createCalendarQuery } from "../../../src/server/dashboard/queries/calendar.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
@@ -33,7 +36,8 @@ import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,SEEDED_APP_VERSION } from "./seeded-identity.js";
 import { uuidOf } from "./seeded-lifecycle.js";
 /** Real service composition; HTTP lifetime and disposable authority custody stay with the caller. */
-export function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds }: {
+export function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices }: {
+ selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
  database: AuthorityDatabase; clock: Clock; stateRoot: string; root: string;
  projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
  descriptors: {resolve: (workflowId: string) => typeof personLookupDescriptor | undefined}; runIds: Record<string,string>;
@@ -182,6 +186,8 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
         })),
       },
     }),
+    activity:composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)}),
+    ...selectionServices,
     runDetail: runDetailDeps,
     archive: archiveQueryDeps({
       database,

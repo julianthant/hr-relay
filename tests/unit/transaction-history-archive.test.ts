@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import { exportTransactions } from "../../src/server/storage/transaction-export.js";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { historyWorld, historicalWorld, HISTORY_NOW } from "./transaction-history-fixture.js";
 import { fixtureUuid } from "./fixtures/ledger-projection-fixtures.js";
 import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
@@ -128,4 +128,61 @@ it("refuses a missing retained report instead of returning smaller totals", () =
     raw.exec("DROP TRIGGER archive_records_delete_receipt; DELETE FROM archive_records");
     assert.throws(() => w.history.query(range), /archive-unverified/u);
   } finally { w.dispose(); }
+});
+
+it("bounds cold range/run evidence reads before decoding unrelated live and archived history",()=>{
+  const w=historyWorld();
+  try {
+    const archivedIds:string[]=[];
+    for(let index=1000;index<1120;index++) {
+      const f=w.commit(index,{confirmedAt:index===1000?"2026-09-08T18:00:00.000Z":"2026-08-01T18:00:00.000Z"});
+      const runId=f.commit.transaction.runId;
+      if(index<1040) {
+        const run=w.database.authority.runs.get(runId);assert.ok(run);
+        w.database.authority.runs.transition({runId,expectedVersion:run.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:HISTORY_NOW},now:HISTORY_NOW});
+        const storage=createRunLifecycleStorage(w.database),snapshot=storage.capture(runId);
+        const report=captureArchiveReport({snapshot,transferId:fixtureUuid(`bounded-${String(index)}`),capturedAt:HISTORY_NOW,sections:[],files:[]});
+        transferArchiveReport(storage,report,snapshot.run.version);archivedIds.push(runId);
+      }
+    }
+    w.reopen();
+    // Observe returned raw evidence rows, not SQLite's internal page/row visits. Startup
+    // admission remains separate; the cold query has no previously opened archive reader.
+    const observed:{sql:string;rows:number}[]=[];
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- call restores the database receiver.
+    const original=DatabaseSync.prototype.prepare;
+    const spy=vi.spyOn(DatabaseSync.prototype,"prepare").mockImplementation(function(this:DatabaseSync,sql:string){
+      const statement=original.call(this,sql);
+      if(/SELECT(?: \*|[\s\S]*record_json)[\s\S]*FROM (?:timeline_events|timeline_operation_sources|archive_records)/u.test(sql)) {
+        const get=statement.get.bind(statement),all=statement.all.bind(statement);
+        statement.get=(...args)=>{const row=Reflect.apply(get,statement,args) as ReturnType<typeof get>;observed.push({sql,rows:row===undefined?0:1});return row;};
+        statement.all=(...args)=>{const rows=Reflect.apply(all,statement,args) as ReturnType<typeof all>;observed.push({sql,rows:rows.length});return rows;};
+      }
+      return statement;
+    });
+    try {
+      const selected=w.history.query({from:"2026-09-08",to:"2026-09-08"});assert.equal(selected.rows.length,1);
+      assert.equal(observed.filter(row=>row.sql.includes("FROM archive_records")).reduce((n,row)=>n+row.rows,0),2);
+      assert.ok(observed.every(row=>row.rows<=1));
+      const cold=observed.map(row=>({...row}));
+      observed.length=0;
+      assert.equal(w.history.query({from:"0001-01-01",to:"9999-12-31",runId:archivedIds[1]}).rows.length,1);
+      assert.equal(observed.filter(row=>row.sql.includes("FROM archive_records")).reduce((n,row)=>n+row.rows,0),2);
+      const runSelection=observed.map(row=>({...row}));
+      w.commit(1120,{confirmedAt:"2026-09-08T18:00:00.000Z"});observed.length=0;
+      assert.equal(w.history.query({from:"2026-09-08",to:"2026-09-08"}).rows.length,2);
+      assert.ok(observed.every(row=>row.rows<=1));
+      const postMutation=observed.map(row=>({...row}));
+      // Negative control: the same observer catches a deliberately widened archive read.
+      using rawArchive=new DatabaseSync(join(w.root,"archive.sqlite"),{readOnly:true});
+      observed.length=0;rawArchive.prepare("SELECT * FROM archive_records").all();
+      assert.equal(observed.reduce((n,row)=>n+row.rows,0),40);
+      using raw=new DatabaseSync(w.path,{readOnly:true});
+      const rangePlan=raw.prepare("EXPLAIN QUERY PLAN SELECT record_key FROM transaction_selection WHERE confirmed_at>=? AND confirmed_at<? ORDER BY confirmed_at,record_key LIMIT 10001").all("2026-09-08","2026-09-09");
+      assert.match(JSON.stringify(rangePlan),/SEARCH.*transaction_selection_range_idx/u);
+      const runPlan=raw.prepare("EXPLAIN QUERY PLAN SELECT record_key FROM transaction_selection WHERE run_id=? ORDER BY confirmed_at,record_key LIMIT 10001").all(archivedIds[0]??"");
+      assert.match(JSON.stringify(runPlan),/SEARCH.*transaction_selection_run_idx/u);
+      process.stdout.write(`P2_QUERY_PROOF ${JSON.stringify({kind:"transaction-range-run",historyConfirmations:120,archivedSources:40,cold,runSelection,postMutation,widenedArchiveRows:observed.reduce((n,row)=>n+row.rows,0),rangePlan,runPlan})}\n`);
+    } finally {spy.mockRestore();}
+  } finally {w.dispose();}
 });

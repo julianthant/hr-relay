@@ -95,10 +95,11 @@ function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Rea
     generatedAt: "2026-08-28T16:00:00.000Z",
     snapshot: {
       authorityGeneration: 19,
-      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      order: "match-strength/enqueued-desc/run-id-asc:v2",
       token: "test-snapshot-token",
     },
     totalMatches: 1,
+    coverage:{matched:1,subjectUnavailable:1,actorUnavailable:1,candidateLimit:10000},
     results: [{
       runId: RUN_ID,
       traceId: "sp-160000-3b8f",
@@ -119,6 +120,7 @@ function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Rea
       retryOf: { state: "absent", reason: "this run is not a retry" },
       enqueuedAt: "2026-08-28T16:00:00.000Z",
       endedAt: { state: "absent", reason: `run ${RUN_ID} is parked-gate, not terminal` },
+      metadata:{subject:{state:"unavailable",reason:"declaration-unavailable"},actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false}},
       match: { field: "workflow", strength: "exact" },
       ...resultPatch,
     }],
@@ -178,18 +180,19 @@ describe("typed queries and error normalization", () => {
             "content-length": String(workbookBytes.byteLength),
             etag: `"${digest}"`,
             "x-operator-export-id": "00020002-0002-4002-8002-000200020002",
+            "x-selection-digest":createHash("sha256").update("as1.test.token").digest("hex"),
           },
         }));
       },
     });
 
     const download = await client.exportXlsx({
-      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+      requestVersion:3, selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28", snapshotToken:"as1.test.token" },
     });
 
     assert.equal(method, "POST");
     assert.deepEqual(JSON.parse(body), {
-      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+      requestVersion:3, selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28", snapshotToken:"as1.test.token" },
     });
     assert.equal(download.filename, "hr-activity-2026-08-01_2026-08-28.xlsx");
     assert.equal(download.sha256, digest);
@@ -208,10 +211,11 @@ describe("typed queries and error normalization", () => {
           generatedAt: "2026-08-28T16:00:00.000Z",
           snapshot: {
             authorityGeneration: 19,
-            order: "match-strength/enqueued-desc/run-id-asc:v1",
+            order: "match-strength/enqueued-desc/run-id-asc:v2",
             token: "test-snapshot-token",
           },
           totalMatches: 0,
+          coverage:{matched:0,subjectUnavailable:0,actorUnavailable:0,candidateLimit:10000},
           results: [],
           nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
         }));
@@ -239,10 +243,11 @@ describe("typed queries and error normalization", () => {
       generatedAt: "2026-08-28T16:00:00.000Z",
       snapshot: {
         authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v1",
+        order: "match-strength/enqueued-desc/run-id-asc:v2",
         token: "test-snapshot-token",
       },
       totalMatches: 0,
+          coverage:{matched:0,subjectUnavailable:0,actorUnavailable:0,candidateLimit:10000},
       results: [],
       nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
     };
@@ -280,7 +285,7 @@ describe("typed queries and error normalization", () => {
     });
   });
 
-  it("rejects every result outside the measured search corpus", async () => {
+  it("accepts expanded typed metadata and still rejects malformed dimensions", async () => {
     const foreignResults = [
       { workflowId: "person-lookup" },
       {
@@ -298,16 +303,13 @@ describe("typed queries and error normalization", () => {
       { systems: ["crm", "kuali", "new-kronos", "ucpath"] },
     ];
 
-    for (const foreignResult of foreignResults) {
-      const client = createDashboardClient({
-        baseUrl: "http://bff.test",
-        fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage(foreignResult))),
-      });
-
-      await assert.rejects(
-        client.searchRuns({ q: "separations" }),
-        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
-      );
+    for (const result of foreignResults) {
+      const client=createDashboardClient({baseUrl:"http://bff.test",fetchImpl:()=>Promise.resolve(jsonResponse(200,measuredSearchPage(result)))});
+      assert.equal((await client.searchRuns({q:"separations"})).results.length,1);
+    }
+    for(const result of [{workflowId:""},{registration:{state:"guessed"}},{state:"invented"},{shape:"batch"},{dryRun:"false"},{systems:["unknown"]},{metadata:{subject:"raw"}}]) {
+      const client=createDashboardClient({baseUrl:"http://bff.test",fetchImpl:()=>Promise.resolve(jsonResponse(200,measuredSearchPage(result)))});
+      await assert.rejects(client.searchRuns({q:"separations"}),(error:unknown)=>error instanceof DashboardClientError&&error.kind==="schema");
     }
   });
 
@@ -325,7 +327,7 @@ describe("typed queries and error normalization", () => {
       q: "separations",
       facets: { day: "2026-08-28", priority: "interactive" },
     };
-    await assert.rejects(client.searchRuns({ q: "   " }));
+    await assert.rejects(client.searchRuns({ q: "x".repeat(161) }));
     await assert.rejects(client.searchRuns(queryWithUnmeasuredPriority));
     assert.equal(requests, 0);
   });
@@ -427,7 +429,7 @@ describe("typed queries and error normalization", () => {
       workflowId: "x", fileName: "roster.csv", mediaType: "text/csv", bytes: new Uint8Array([1, 2, 3]).buffer,
     }));
     await assert.rejects(client.requestFailureAdvisory(RUN_ID));
-    await assert.rejects(client.exportXlsx({ selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" } }));
+    await assert.rejects(client.exportXlsx({ requestVersion:3, selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28", snapshotToken:"as1.test.token" } }));
     await assert.rejects(client.validateExplorerEdit({
       draftVersion: 1,
       workflowId: "person-lookup",

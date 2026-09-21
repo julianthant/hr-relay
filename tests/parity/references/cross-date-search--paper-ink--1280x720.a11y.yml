@@ -1,7 +1,7 @@
 # cross-date-search--paper-ink--1280x720
 # adapter: fixture
 # fixture: cross-date-search
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -9,14 +9,19 @@
 - dialog "Search runs across dates":
   - banner:
     - heading "Search runs across dates" [level=2]
-    - paragraph: The measured Separations corpus only. Search run identifiers, trace identifiers, or workflow identity.
+    - paragraph: Search non-archived runs across workflows and dates. Declared subject names and recorded actors are available where history contains them.
     - button "Close"
   - group "Search scope":
     - button "Across dates" [pressed]
     - button "This day"
-  - searchbox "Search the Separations corpus": separations
+  - searchbox "Search run history": separations
   - button "Clear search"
-  - text: 1 matchordered by durable authority
+  - group: Filters · 0 selected
+  - button "Refresh search"
+  - button "CSV"
+  - button "XLSX"
+  - button "Diagnostic metadata"
+  - text: All 1 matches · values and raw evidence redacted 1 match0 subjects unavailable1 actors unavailableordered by durable authority
   - list "Cross-date search results":
     - listitem:
-      - button "Open Separations Run 42 from 2026-08-03": Separations Run 42 2026-08-03 parked-gate dry run Matched workflow · exact
+      - button "Open Separations Run 42 from 2026-08-03": Separations Run 42 2026-08-03 parked-gate dry run v1 · single Synthetic subject Actor unavailable · not-recorded Matched workflow · exact

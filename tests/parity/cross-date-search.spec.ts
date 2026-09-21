@@ -26,10 +26,11 @@ const SEARCH_PAGE = CrossDateSearchPageSchema.parse({
   generatedAt: "2026-08-28T16:00:00.000Z",
   snapshot: {
     authorityGeneration: 19,
-    order: "match-strength/enqueued-desc/run-id-asc:v1",
+    order: "match-strength/enqueued-desc/run-id-asc:v2",
     token: "dcr4-test-snapshot-token",
   },
   totalMatches: 1,
+  coverage:{matched:1,subjectUnavailable:0,actorUnavailable:1,candidateLimit:10000},
   results: [{
     runId: "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b",
     traceId: "sp-160000-3b8f",
@@ -50,6 +51,7 @@ const SEARCH_PAGE = CrossDateSearchPageSchema.parse({
     retryOf: { state: "absent", reason: "this run is not a retry" },
     enqueuedAt: "2026-08-28T16:00:00.000Z",
     endedAt: { state: "absent", reason: "this run is parked at a gate" },
+    metadata:{subject:{state:"available",value:"Synthetic subject"},actor:{state:"unavailable",reason:"not-recorded"},version:1,failureCode:null,evidence:{receipt:false,failure:false,diagnostic:false}},
     match: { field: "workflow", strength: "exact" },
   }],
   nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
@@ -71,11 +73,11 @@ for (const viewport of PARITY_VIEWPORTS) {
     test(`cross-date search ${theme.name} @ ${viewport.name}`, async ({ page }) => {
       await page.route("**/api/v1/search?**", async (route) => {
         const request = new URL(route.request().url());
-        expect(request.searchParams.get("q")).toBe("separations");
+        expect(["separations",""]).toContain(request.searchParams.get("q"));
         expect(request.searchParams.get("scope")).toBe("all");
-        expect(request.searchParams.get("workflow")).toBe("separations");
-        expect(request.searchParams.get("shape")).toBe("single");
-        expect(request.searchParams.get("dryRun")).toBe("true");
+        expect(request.searchParams.get("workflow")).toBeNull();
+        expect(request.searchParams.get("shape")).toBeNull();
+        expect(request.searchParams.get("dryRun")).toBeNull();
         expect(request.searchParams.get("limit")).toBe("20");
         await route.fulfill({ json: SEARCH_PAGE });
       });
@@ -85,7 +87,7 @@ for (const viewport of PARITY_VIEWPORTS) {
       await assertThemeApplied(page, theme satisfies ParityTheme);
 
       await page.getByRole("button", { name: "Search runs across dates" }).click();
-      const input = page.getByRole("searchbox", { name: "Search the Separations corpus" });
+      const input = page.getByRole("searchbox", { name: "Search run history" });
       await input.fill("separations");
       const result = page.getByRole("button", { name: "Open Separations Run 42 from 2026-08-03" });
       await expect(result).toBeVisible();

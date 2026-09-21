@@ -1,3 +1,4 @@
+import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { explorerAuthorityFixture } from "../fixtures/explorer-authority.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
@@ -441,7 +442,7 @@ function createExactV27Database(path: string): void {
   createExactIntegratedSuffixDatabase(path, 27, 19);
 }
 
-function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50 | 51 | 52 | 53): void {
+function createExactReleasedDatabase(path: string, version: 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 49 | 50 | 51 | 52 | 53 | 54): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const migration of SQLITE_MIGRATIONS.filter(({ version: candidate }) => candidate <= version)) {
@@ -1926,6 +1927,23 @@ describe("authority generation accounting", () => {
       table: "generated_artifacts",
       mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
     },
+    { table: "run_search_index", mutate: db=>{db.authority.runs.enqueue(QUEUED_RUN);} },
+    { table: "run_search_grams", mutate: db=>{db.authority.runs.enqueue(QUEUED_RUN);} },
+    { table: "run_search_publication", mutate: db=>{db.rebuildRunSearchIndex({restart:true,limit:1});} },
+    { table: "run_search_declarations", mutate: db=>{db.registerRunSearchDeclarations([{workflow:QUEUED_RUN.envelope.workflow,version:QUEUED_RUN.envelope.descriptorVersion,contractFingerprint:QUEUED_RUN.envelope.contractFingerprint,subjectProjection:null}]);} },
+    { table: "run_search_actors", prepare:db=>{db.authority.runs.enqueue(QUEUED_RUN);},mutate:db=>{
+      const e=QUEUED_RUN.envelope;
+      createTimelineEmitter({repository:db.authority.timelineEvents,clock:CLOCK,pid:4242}).emit({
+        t:"run.queued",kind:"run",ts:NOW,workflow:e.workflow,runId:e.runId,attempt:e.attempt,traceId:e.traceId,
+        spanPath:e.traceId,itemId:e.itemId,shape:e.shape,priority:e.priority,dryRun:e.dryRun,actorId:"fixture-actor",title:"Fixture",
+        descriptorVersion:e.descriptorVersion,contractFingerprint:e.contractFingerprint,resolvedInstance:e.resolvedInstance,
+        configFingerprint:e.configFingerprint,configSnapshotId:e.configSnapshotId,
+      });
+    } },
+    { table: "transaction_selection",prepare:db=>{
+      seedAtomicWriteOwner(db,ATOMIC_WRITE_COMMIT);
+      assert.equal(db.authority.writeIntents.fenceAttempt({intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT}).state,"fenced");
+    },mutate:db=>{db.commitWriteAttempt(ATOMIC_WRITE_COMMIT,atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));} },
     { table: "run_summaries", prepare: db => { prepareRunning(db); }, mutate: db => { db.refreshRunSummaries(); } },
     { table: "summary_publication", mutate: db => { db.refreshRunSummaries(); } },
     { table: "imported_artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },

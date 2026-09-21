@@ -33,7 +33,7 @@ export const ANCHORS: SceneAnchors = {
   "activity-report-unavailable": async (page) => {
     await expect(page.getByText("Distinct people unavailable", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "How runs is counted" }).click();
-    await expect(page.getByText(/mixed pseudonym key generations/u)).toBeVisible();
+    await expect(page.getByText(/lack validated canonical identity/u)).toBeVisible();
     const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
     await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
   }};

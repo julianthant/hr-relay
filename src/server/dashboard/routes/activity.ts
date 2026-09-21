@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { selectionDownload } from "../exports/selection-download.js";
+import { ActivitySnapshotTokenSchema } from "../../../domain/dashboard/activity-selection.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 
 import type { DashboardApp } from "./api-types.js";
@@ -12,6 +15,9 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
       // window the caller never named is a number nobody asked for.
       throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
     }
+    const parameters=[...new URL(c.req.url).searchParams];
+    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-report-duplicate-query");
+    z.strictObject({from:z.iso.date(),to:z.iso.date()}).parse(Object.fromEntries(parameters));
     return c.json(deps.activity.read(from, to));
   });
 
@@ -27,15 +33,11 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
     if (from === undefined || to === undefined) {
       throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
     }
-    const report = deps.activity.read(from, to);
-    return new Response(activityReportCsv(report), {
-      status: 200,
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${activityReportCsvFileName(report)}"`,
-        "cache-control": "no-store",
-      },
-    });
+    const parameters=[...new URL(c.req.url).searchParams];
+    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-export-duplicate-query");
+    const selection=z.strictObject({from:z.iso.date(),to:z.iso.date(),snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
+    const report = deps.activity.readSelected(from, to, selection.snapshot);
+    return selectionDownload(activityReportCsv(report),activityReportCsvFileName(report),"text/csv; charset=utf-8",selection.snapshot);
   });
 
 }

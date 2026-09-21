@@ -199,7 +199,7 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
         return mutate<{ state: "existing" | "inserted"; record: z.output<typeof OperatorXlsxExportEvidenceSchema> }>(() => {
           const old = get(`export:${evidence.exportId}`);
           if (old !== undefined && old.exportEvidenceJson === null) {
-            if(old.registration===null||old.exportRequest===null||evidence.workbookVersion!==2||old.registration.requestedBy!==evidence.requestedBy||old.exportRequest?.selection.kind!==evidence.selection.kind)throw new Error("generated-export-publication-identity-conflict");
+            if(old.registration===null||old.exportRequest===null||evidence.workbookVersion!==3||old.registration.requestedBy!==evidence.requestedBy||old.exportRequest?.selection.kind!==evidence.selection.kind)throw new Error("generated-export-publication-identity-conflict");
             const selection = old.exportRequest.selection;
             if (evidence.createdAt !== old.registration.requestedAt
               || (selection.kind === "search" && (evidence.selection.kind !== "search"

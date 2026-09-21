@@ -1,3 +1,5 @@
+import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
+import type { Clock } from "../../../src/domain/clock.js";
 import { dateNavigationReader, seedDateNavigation } from "./date-navigation-server.js";
 import { mkdtempSync,rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -122,7 +124,7 @@ export interface SeededServer {
 
 
 export async function startSeededServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean }>,
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">> }>,
 ): Promise<SeededServer> {
   // Ref frontend-backend-integration §7: the same working-tree proof the fixture adapter demands —
   // asserted before any temp root, database or port exists.
@@ -184,7 +186,10 @@ export async function startSeededServer(
     seedDateNavigation(database, source);
   }
 
-  const { app, hub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds});
+  let selectionServices:Awaited<ReturnType<NonNullable<typeof input.prepareSelection>>>|undefined;
+  try {selectionServices=await input.prepareSelection?.({database,clock,root});}
+  catch(error) {database.close();rmSync(root,{recursive:true,force:true});throw error;}
+  const { app, hub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {

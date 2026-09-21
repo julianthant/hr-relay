@@ -1,3 +1,5 @@
+import { saveDownload } from "../lib/save-download.js";
+import type { ActivityReportSelection } from "../../domain/dashboard/activity-selection.js";
 import { observeAsyncResource } from "../state/async-resource.js";
 /**
  * Ported from legacy hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e,
@@ -64,7 +66,7 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * by a name this surface would have to invent.
  */
 import { ChartNoAxesColumn,Download,Info,TriangleAlert } from "lucide-react";
-import { useCallback,useEffect,useMemo,useState,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useState,useRef,type ReactNode } from "react";
 import {
 activityErrorRatePercent,
 activityReportCaveats,
@@ -947,7 +949,7 @@ function WriteLedgerBlock({ ledger }: { ledger: ActivityReportWire["ledger"] }):
     <div className="min-w-0">
       <SectionLabel className="mb-[var(--ds-space-snug)]">Write ledger — what was actually filed</SectionLabel>
       <p className={cn(dsText.meta, "mb-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-        A separate authority from every total above. Ledger entries are never pruned and never archived, so they
+        A separate authority from every total above. Confirmed entries survive Archive transfer until explicit owner deletion, so they
         can outlive the runs that filed them.
       </p>
       {ledger.systems.length === 0 ? (
@@ -1018,47 +1020,37 @@ export function ActivityReport({
   const client = useDashboardClient();
   const resolved = useMemo(() => parseActivityRange(range, today), [range, today]);
   const requestRange = activityRangeValue(resolved);
-  const [response, setResponse] = useState<{ range: string; resource: AsyncResource<ActivityReportWire> }>({ range: requestRange, resource: LOADING });
-  const resource: AsyncResource<ActivityReportWire> = resolved.refusal !== undefined
+  const [refresh,setRefresh]=useState(0);
+  const [response, setResponse] = useState<{ range: string; resource: AsyncResource<ActivityReportSelection> }>({ range: requestRange, resource: LOADING });
+  const resource: AsyncResource<ActivityReportSelection> = resolved.refusal !== undefined
     ? failed(new DashboardClientError({ kind: "schema", message: resolved.refusal }))
     : response.range === requestRange ? response.resource : LOADING;
 
   useEffect(() => {
     if (resolved.refusal !== undefined) return;
-    const setResource = (next: AsyncResource<ActivityReportWire>): void => { setResponse({ range: requestRange, resource: next }); };
+    const setResource = (next: AsyncResource<ActivityReportSelection>): void => { setResponse({ range: requestRange, resource: next }); };
     setResource(LOADING);
-    return observeAsyncResource(() => client.activityReport(resolved.from, resolved.to), setResource);
-  }, [client, requestRange, resolved.from, resolved.to, resolved.refusal]);
+    const controller=new AbortController();
+    const stop=observeAsyncResource(() => client.activityReport(resolved.from, resolved.to,controller.signal), setResource);
+    return ()=>{controller.abort();stop();};
+  }, [client, requestRange, resolved.from, resolved.to, resolved.refusal,refresh]);
 
   const spanLabel = resolved.refusal === undefined ? activityRangeLabel(resolved.from, resolved.to) : "Invalid report span";
   const report = resource.state === "loaded" ? resource.value : undefined;
 
-  /**
-   * The demo's Export, wired to the SERVED CSV (D240).
-   *
-   * The bytes are the server's, not this component's: the artifact must carry
-   * the caveats and the named window, and a client that assembled its own copy
-   * would be a second rendering of the report that could disagree with the
-   * page it was taken from. The anchor points at the route; the response's
-   * `Content-Disposition` names the file.
-   *
-   * Mounted before the click and removed after, for the same reason
-   * `archive.tsx` does it — a detached anchor does not fire in every browser.
-   * There is deliberately NO success toast: the download settles after this
-   * function returns and nothing here can observe whether it arrived, so a
-   * success message would be a claim about an act this code never saw. The
-   * browser's own download UI reports both outcomes, and the button only
-   * exists once the same report has already been built successfully.
-   */
-  const exportReport = useCallback(() => {
-    const anchor = document.createElement("a");
-    anchor.href = client.activityExportUrl(resolved.from, resolved.to);
-    anchor.download = `activity-${resolved.from}_${resolved.to}.csv`;
-    anchor.rel = "noopener";
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-  }, [client, resolved.from, resolved.to]);
+  const exportRequest=useRef<AbortController|null>(null);
+  const [exportState,setExportState]=useState<"idle"|"pending"|"started"|"cancelled"|"failed">("idle");
+  useEffect(()=>{setExportState("idle");return ()=>{exportRequest.current?.abort();exportRequest.current=null;};},[requestRange,refresh]);
+  const exportReport = useCallback(async (format:"csv"|"xlsx") => {
+    if(report===undefined)return;
+    const controller=new AbortController();exportRequest.current?.abort();exportRequest.current=controller;setExportState("pending");
+    try {
+      const download=format==="csv"?await client.exportActivityCsv(report,controller.signal)
+        :await client.exportXlsx({requestVersion:3,selection:{kind:"activity",from:report.from,to:report.to,snapshotToken:report.snapshot.token}},controller.signal);
+      if(controller.signal.aborted||exportRequest.current!==controller)return;
+      saveDownload(download);setExportState("started");
+    } catch {if(!controller.signal.aborted&&exportRequest.current===controller){setExportState("failed");}} finally {if(exportRequest.current===controller)exportRequest.current=null;}
+  }, [client,report]);
 
   return (
     /* UF-AC-2. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
@@ -1143,15 +1135,22 @@ export function ActivityReport({
                     size="sm"
                     variant="secondary"
                     icon={<Download aria-hidden className={dsIcon.md} />}
-                    onClick={exportReport}
+                    disabled={exportState==="pending"}
+                    onClick={()=>{void exportReport("csv");}}
                   >
-                    Export
+                    Export CSV
                   </Button>
+                  <Button size="sm" variant="secondary" disabled={exportState==="pending"} onClick={()=>{void exportReport("xlsx");}}>XLSX</Button>
+                  <Button size="sm" variant="ghost" onClick={()=>{exportRequest.current?.abort();exportRequest.current=null;setResponse({range:requestRange,resource:LOADING});setRefresh(value=>value+1);}}>Refresh report</Button>
+                  {exportState==="pending"&&<Button size="sm" variant="ghost" onClick={()=>{exportRequest.current?.abort();exportRequest.current=null;setExportState("cancelled");}}>Cancel download</Button>}
                 </span>
               )
             }
           />
           <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
+            {exportState==="failed"&&<Refusal code="selection-export-refused" title="Export refused" outcome="No file was downloaded. Refresh the report and retry the reviewed selection.">The selection expired, changed, or failed verification.</Refusal>}
+            {exportState==="cancelled"&&<p role="status">Download cancelled locally. A registered XLSX export may still finish on the server.</p>}
+            {exportState==="started"&&<p role="status">Verified file handed to the browser.</p>}
             {resource.state === "loading" || resource.state === "idle" ? (
               <Skeleton className="h-64 w-full" />
             ) : resource.state === "failed" ? (
