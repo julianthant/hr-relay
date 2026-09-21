@@ -1979,6 +1979,7 @@ needs:
 
 log:
 - 2026-09-19 | operator-approved 3.1.11.3 execution brief | Complete F1–F6 plan: exact child intake, either-order combination, bounded group repairs, production-service/browser proof, focused gates and operator-directed integration/cleanup. One Astra/medium supervisor, no workers or independent review. Full acceptance remains 3.1.19. Planning persistence is authorized; implementation waits for accepted Sessions and both committed, focused-green child candidates.
+- 2026-09-21 | verified finalizer intake | Accepted Sessions/preflight ancestors plus Setup `9ac176dd77198c29c33134de3d43f45f00f18ebb` and Run/Rerun `9e3060d3ef73fba127fc945dd80398e1bc3bd0a0` verified against focused receipts and 2,570/148 committed-input hashes. Disjoint child changes produce the same object tree in either order. Ready for operator-opened 3.1.11.3; combined gates, product integration and cleanup remain unstarted. Current personal instructions reserve model/effort selection to the operator.
 
 #### 12 · Finish Activity, search, and export {#dash-activity}
 status: planned

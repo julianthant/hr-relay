@@ -47,7 +47,7 @@ it does not launch product implementation or authorize product integration.
 
 | Binding | Approved value |
 | --- | --- |
-| Supervisor | One operator-opened Codex supervisor, **GPT-6 Astra / medium**. Cross-layer composition, source-bound replay and integration repairs are consequential and coupled; one owner handles the sequence. |
+| Supervisor | One operator-opened Codex supervisor; the operator selects the model and effort under the current personal instructions. Cross-layer composition, source-bound replay and integration repairs remain one coupled assignment. |
 | Allocation / review | **Zero implementation workers; zero independent reviewers.** The Phase 3.1 exception applies. No coordinator, sibling or downstream dispatch. |
 | Implementation mode | Create a dedicated integration worktree after all start prerequisites are verified. Never implement in the shared integration checkout. |
 | Implementation branch | `codex/3.1.11.3-operations` |
@@ -66,11 +66,12 @@ At persistence start, the Sessions worktree was active; Date had completed integ
 Names are proposals, not reservations. Recheck ownership, refs, paths and the four-auxiliary-worktree
 ceiling before creation. Preserve concurrent work; uncommitted Sessions changes are not accepted APIs.
 
-**Start status: WAITING ON.** Sessions has no accepted implementation release at the persistence
-baseline, and neither child has a committed candidate. Before READY, resolve exact releases from
-their owning records, verify committed content/evidence, and recheck this plan's availability on the
-implementation base. Missing implementation or proof blocks intake; finalization does not substitute
-for unfinished children. An absent planned finalizer branch is expected and is not itself a blocker.
+**Start status: READY for finalizer intake**, reverified on 2026-09-21 in the
+[release reconciliation](#verified-finalizer-intake--2026-09-21) below. The initial 2026-09-19
+persistence waited for Sessions and both children; those required releases now exist. Recheck the
+exact candidate identities, retained evidence and this plan's availability before implementation.
+Missing or changed proof blocks dependent intake; finalization does not substitute for unfinished
+children. An absent planned finalizer branch is expected and is not itself a blocker.
 
 ### Feasibility and change ownership
 
@@ -248,7 +249,7 @@ settled behavior or transfer known conflicts to unspecified future discovery.
 | --- | --- |
 | Approval | Complete F1–F6 proposal and documentation persistence approved 2026-09-19. |
 | Implementation | Unstarted; no implementation checks or runtime acceptance executed by planning. |
-| Prerequisites | WAITING ON accepted/integrated Sessions and both committed, focused-green child candidates with approved ownership/proof records. |
+| Prerequisites | READY for intake as of 2026-09-21: accepted Sessions/preflight releases and both exact committed, focused-green children verified below. Combined finalizer gates, product integration and cleanup remain open. |
 | Planning checkout | `codex/plan-3.1.11.3` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-operations-plan`, based on `824521fac8795aa37f1bf66a34bfaa011bae4713`. |
 | Planning integration | This planner is authorized to validate, commit and integrate the approved planning documents into local `master`, then clean up its documentation worktree/ref. Product merge permission remains separate. |
 | Release | Group/downstream release stays open until F1–F6 acceptance, operator-directed integration and cleanup. |
@@ -284,3 +285,57 @@ controls exact portions and proof and supersedes this brief's blanket parent/sha
 allocation for those two operations. Admit them with the Run/Rerun candidate, preserve Setup's
 accepted preflight hooks, and verify either-order composition. All other shared integration,
 fixtures, generated output, focused finalizer gates and operator-directed release remain here.
+
+### Verified finalizer intake — 2026-09-21
+
+After the operator reported the children done, this planning continuation verified their committed
+execution records, raw gate logs, exact candidate trees, retained input hashes and clean checkouts.
+This resolves the earlier WAITING ON state within the existing approved F1–F6 scope; it does not
+claim combined runtime acceptance, launch implementation or authorize product integration.
+
+| Input / release | Verified identity and evidence |
+| --- | --- |
+| Integrated prerequisite | Sessions `c90da4ffc45ddfe6486192b8df68816dc6fe34a3`, followed by the accepted shared preflight admission release `ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`. Both are ancestors of the current integration base and both child candidates. The parent record owns the actual shared interface map and its retained limits. |
+| Setup candidate | `9ac176dd77198c29c33134de3d43f45f00f18ebb`, tree `933a8da32e1d2bda118959e28506db4577293969`, on `codex/3.1.11.1-setup` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-setup`; base `dac7528a12be884542d36355492fafcdffb63a30`. Consume the full candidate, including its implementation and recording commits. |
+| Setup evidence | [Frozen receipt and focused logs](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.1-setup-2026-09-19/implementation/): `freeze.json`, `final-gates.json` and `final-tested-inputs.json`. All **2,570** recorded hashes match committed candidate blobs. Detector/corpus/admission/recovery 194, architecture 63, UI 20, selected ingress 7 and guard membership 1 pass; 33 browser cases pass, with actual 125%/200% browser zoom proof. Scoped lint, typecheck, build and affected generated checks pass. |
+| Run/Rerun candidate | `9e3060d3ef73fba127fc945dd80398e1bc3bd0a0`, tree `ba9852e5d45d80fefc1fb7d0cdf8c5f9cec0caf7`, on `codex/3.1.11.2-run-rerun` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-run-rerun`; base `94766a1cc54227969462e9ce3b108144c7277723`. Consume all three commits: implementation, reference attribution and recording. |
+| Run/Rerun evidence | [Frozen receipt and focused logs](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-run-rerun-2026-09-19/): `final-receipt.json` and `tested-inputs.json`. All **148** recorded changed-input hashes match committed candidate blobs. The five focused groups pass 104/147/69/13/17 tests; 25 browser cases pass, with actual 125%/200% zoom proof. Scoped lint, build and affected generated checks pass. Its supplemental typecheck covers only changed-file imports, not the finalizer's combined full typecheck. |
+| Integration base | Clean local `master` at `94766a1cc54227969462e9ce3b108144c7277723` before this recording update. The finalizer creates its worktree from the verified descendant containing this committed readiness update; the delivered launch prompt names its full SHA. Preserve any later target changes and recheck ancestry. |
+| Composition preflight | Child implementation path sets are disjoint. Object-only `git merge-tree --write-tree --name-only` succeeds in both child orders with the same tree `3da80daca92996d2b5fb771caa856c0504674dd1`. No product branch, checkout, index or integration target was changed by this calculation. F2 still combines the candidates on the actual finalizer base and F3–F5 establish combined behavior. |
+
+The [Setup task owner](task-11-1-finish-setup-and-preflight.md) contains its execution record in
+candidate `9ac176dd77198c29c33134de3d43f45f00f18ebb`, including the “Authorized bounded repairs”
+section. It records three operator-approved exceptions: feature-scoped provider
+availability in the existing preflight domain contract; the explicit unavailable preflight route in
+the shared fixture BFF; and the ten missing Sessions origin declarations in the redaction audit.
+Admit those bounded repairs together with the previously approved Run/Rerun ownership amendment;
+they do not transfer further shared-root ownership or introduce a child dependency.
+
+Carry the exact affected child selectors into F4/F5 as already required by this brief. Setup's
+receipt names the actual corpus/admission/readiness tests and `tests/parity/setup-preflight.spec.ts`;
+Run/Rerun's receipt names the source/warning/supersede/replay tests plus
+`tests/parity/run-rerun.spec.ts` and `tests/parity/run-rerun-authority.spec.ts`. Reuse them instead of
+the two proposed new combined files only where they prove the same P1–P6 boundary on the combined
+inputs; add missing crossover regression proof under the approved ownership. Run the combined full
+`npm run typecheck`, focused integration tests, scoped lint and affected build/generated/browser
+checks. Passing separate candidates and a clean textual merge do not satisfy those gates.
+
+Setup retains one inherited paired-recovery limitation: restore repairs SQL authority and clears
+the interruption marker, but preserved custody makes the storage doctor report `preserved authority
+directory contains an unexpected entry`, so preflight stays unhealthy. Preserve that evidence;
+comprehensive storage recovery/repair remains 3.1.19. Parent supplemental failures and all broad/live
+acceptance deferrals remain explicit. No failed or unrun check becomes a pass at this handoff.
+
+Both child tracked/untracked working trees are clean and their receipts close owned proof processes;
+their branches/worktrees intentionally remain for finalizer integration and cleanup. Three auxiliary
+worktrees were present before readiness persistence: Setup, Run/Rerun and an unrelated UI planning
+checkout. This continuation temporarily uses the fourth slot at `hr-worktree-operations-plan`, then
+removes it. The assigned finalizer branch/path remain absent and available for creation; recheck
+capacity at launch. Preserve the UI checkout and every peer resource.
+
+Retained [readiness evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.3-ready-2026-09-21/)
+contains the reproducible intake verifier, candidate/log hashes, either-order object comparison and
+the final documentation gate/integration/cleanup receipt. Planning reused the prior scope approval;
+the current instruction that the operator selects model/effort supersedes this plan's earlier model
+assignment. Zero implementation workers and no independent review remain unchanged. Product merge
+into local `master` still requires operator instruction after the passing finalizer candidate.
