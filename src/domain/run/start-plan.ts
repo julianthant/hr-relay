@@ -1,4 +1,5 @@
 import { protectedInputBindings, valueFreeProtectedData, valueFreeProtectedInput, type ProtectedInputBinding } from "../protected-input.js";
+import { StartSupersedeTargetsSchema } from "./start-supersede.js";
 /**
  * The start plan — what a `start-run` command consumes (ref frontend-backend-integration §5.1).
  *
@@ -44,6 +45,7 @@ import {
 export { StartRefusalCodeSchema, type StartRefusalCode } from "./start-refusal.js";
 
 export const PlannedRunSchema = z.strictObject({
+  supersedeTargets: StartSupersedeTargetsSchema.optional(),
   /** Legacy reservations are readable only to require replanning. */
   runId: RunIdSchema.optional(),
   itemId: ItemIdSchema,
@@ -214,6 +216,7 @@ function plannedInputFingerprint(
       ...(rerun === undefined ? {} : { rerun: legacy ? rerun : valueFreeProtectedData(rerun) }),
       ...(planned.some((run) => run.runId !== undefined) || stepOmissions === undefined ? {} : { stepOmissions }),
       accepted: planned.map((run) => ({
+        ...(run.supersedeTargets === undefined ? {} : { supersedeTargets: run.supersedeTargets }),
         ...(run.runId === undefined ? {} : { runId: run.runId }),
         itemId: run.itemId,
         ...(run.traceId === undefined ? {} : { traceId: run.traceId }),

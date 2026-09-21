@@ -48,7 +48,7 @@ export type StartDoorAbsenceCode = keyof typeof START_DOOR_ABSENCE;
  */
 export const ENQUEUE_POLICY_MEANING: Readonly<Record<EnqueuePolicy, string>> = Object.freeze({
   "reject-active": "Refuse overlapping subject runs",
-  "supersede-active": "Declared, and not implemented — the planner supersedes nothing",
+  "supersede-active": "Replace the active runs shown in the final review",
   "allow-parallel": "Starts regardless of what is already running for the same subject",
 });
 

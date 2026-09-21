@@ -107,10 +107,10 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...ActionBaseFields,
     kind: z.literal("navigation"),
-    navigate: z.strictObject({
-      kind: z.enum(["self", "panel", "drill"]),
-      runId: z.string().min(1).optional(),
-    }),
+    navigate: z.union([
+      z.strictObject({ kind: z.enum(["self", "panel", "drill"]), runId: z.string().min(1).optional() }),
+      z.strictObject({ kind: z.literal("rerun"), expectedVersion: z.number().int().positive() }),
+    ]),
   }),
 ]).superRefine((action, context) => {
   if (action.kind !== "command") return;

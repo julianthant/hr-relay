@@ -1,4 +1,9 @@
-import { createRunLaunchService } from "../app/run-launch-model.js";
+import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
+import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
+import { candidateText, defaultRerunSteps, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
+import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "../app/run-launch-recovery.js";
+import { createRunLaunchService, type RerunLaunchSource } from "../app/run-launch-model.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx — and re-ported
@@ -839,6 +844,7 @@ export function RunStartDialog({
   actorId,
   onOpenIntake,
   onCloseAutoFocus,
+  rerunSource,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -857,10 +863,22 @@ export function RunStartDialog({
    */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  rerunSource?: RerunLaunchSource;
 }) {
   const client = useDashboardClient();
   const launchService = useMemo(() => createRunLaunchService(client, actorId), [client, actorId]);
-  const finalRequest = useRef<ReturnType<typeof launchService.prepareFinal> | null>(null);
+  const finalRequest = useRef<LaunchFinalCommand | null>(null);
+  const sending = useRef(false);
+  const launchInstance = useRef(0);
+  const [recovery, setRecovery] = useState<LaunchFinalCommand | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<RerunValuesSnapshot | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [valueDrafts, setValueDrafts] = useState<Readonly<Record<number, RerunValueDraft>>>({});
+  const [copiedOmissions, setCopiedOmissions] = useState<Readonly<Record<number, boolean>>>({});
+  const [warning, setWarning] = useState<RerunWarningWire | null>(null);
+  const [acknowledgment, setAcknowledgment] = useState<string | undefined>();
+  const isRerun = rerunSource !== undefined;
 
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
   const [currentStage, setCurrentStage] = useState<RunStartStage>("Input");
@@ -927,8 +945,28 @@ export function RunStartDialog({
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.
   useEffect(() => {
-    if (open) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId));
-  }, [open, workflows, panelWorkflowId, selectWorkflow]);
+    const instance = ++launchInstance.current;
+    if (!open) return;
+    selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId));
+    setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({});
+    setWarning(null); setAcknowledgment(undefined); setBusy(false);
+    try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
+    catch (caught) { setRecoveryError(caught instanceof Error ? caught.message : String(caught)); }
+    if (rerunSource !== undefined) {
+      setCurrentStage("Steps"); setCustomizeSteps(true);
+      void launchService.openRerun(rerunSource).then((response) => {
+        if (launchInstance.current !== instance) return;
+        if (response.state === "refused") { setSourceError(`Rerun unavailable: ${response.code}`); return; }
+        const sourceWorkflow = workflows.find((entry) => entry.workflowId === response.snapshot.source.workflow);
+        if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
+        const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
+        setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
+      }).catch((caught: unknown) => {
+        if (launchInstance.current === instance) setSourceError(caught instanceof Error ? caught.message : String(caught));
+      });
+    }
+    return () => { launchInstance.current = instance + 1; };
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, actorId, launchService]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
@@ -947,8 +985,8 @@ export function RunStartDialog({
   const activeMethod: StartMethod = methods.includes(method) ? method : (methods[0] ?? "typed");
   const isHandoff = activeMethod === "spreadsheet";
   const launchStages = useMemo(
-    () => runStartStages(customizeSteps, activeMethod),
-    [customizeSteps, activeMethod],
+    () => runStartStages(customizeSteps, activeMethod, isRerun),
+    [customizeSteps, activeMethod, isRerun],
   );
 
   useEffect(() => {
@@ -987,7 +1025,7 @@ export function RunStartDialog({
     },
   );
   const stepOmissions = completeStepOmissions(omissionRows);
-  const requestFingerprint = startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -996,7 +1034,7 @@ export function RunStartDialog({
     priority,
     selectedStepKeys,
     stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
-  });
+  })]);
   /**
    * The identity of the request the dialog is CURRENTLY describing, readable
    * from inside a settled promise (unit F5b finding 1).
@@ -1019,8 +1057,8 @@ export function RunStartDialog({
     setPlan(null);
     setResult(null);
     setError(null);
-    setCurrentStage((current) => current === "Confirm" ? "Input" : current);
-  }, [requestFingerprint]);
+    setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
+  }, [requestFingerprint, isRerun]);
 
   /**
    * The typed box, so an exit from a settled banner can put the keyboard back
@@ -1030,7 +1068,7 @@ export function RunStartDialog({
   const restoreInputFocusRef = useRef(false);
 
   useEffect(() => {
-    if (currentStage !== "Input" || !restoreInputFocusRef.current) return;
+    if (!["Input", "Values"].includes(currentStage) || !restoreInputFocusRef.current) return;
     restoreInputFocusRef.current = false;
     // A workflow with no typed-input surface has no box to restore to. That is
     // the served absence, not a focus fallback to an unrelated control.
@@ -1055,14 +1093,26 @@ export function RunStartDialog({
   const visibleConstants = constants.filter((constant) => !stepControlledFields.has(String(constant.field)));
 
   const submitPlan = useCallback(async (): Promise<void> => {
-    if (preview.entries.length === 0) return;
+    if (!isRerun && preview.entries.length === 0) return;
+    if (isRerun && (snapshot === null || preview.entries.length > 1)) return;
     const dispatchedFor = requestFingerprint;
+    const instance = launchInstance.current;
     setBusy(true);
     setError(null);
     try {
+      const values = snapshot === null ? null : rerunSubmission(snapshot,
+        preview.entries[0] === undefined ? {} : JsonValueSchema.parse(toRawSubmission(preview.entries[0])), valueDrafts);
+      const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
+        const candidate = snapshot?.values[Number(index)];
+        return copied && candidate?.state === "available" && candidate.targetStepKey !== undefined
+          && !selectedStepKeys.includes(candidate.targetStepKey)
+          ? [{ nodeId: candidate.nodeId, fieldPath: candidate.fieldPath, targetFieldPath: candidate.targetFieldPath, targetStepKey: candidate.targetStepKey }] : [];
+      })];
       const next = await launchService.preview({
         workflowId,
-        submissions: preview.entries.map((entry) => toRawSubmission(entry)),
+        submissions: values === null ? preview.entries.map((entry) => toRawSubmission(entry)) : [values.submission],
+        ...(snapshot === null ? {} : { rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version,
+          intent: "rerun", selectedStepKeys, copiedFrom }, ...(acknowledgment === undefined ? {} : { warningAcknowledgment: acknowledgment }) }),
         dryRun,
         browserMode,
         captureBrowserScreenshots,
@@ -1077,49 +1127,51 @@ export function RunStartDialog({
       // answered a question the form no longer asks and the plan token it
       // carries is already unusable. Landing it would put a proposal for text
       // that has left the box under a primary button that says Start run.
-      if (requestFingerprintRef.current !== dispatchedFor) return;
+      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setPlan(next);
       setResult(null);
-      setCurrentStage("Confirm");
+      if (next.rerun !== undefined && next.rerun.warnings.length > 0 && next.rerun.acknowledgment !== next.rerun.warningDigest) {
+        setWarning({ workflowId: next.workflowId, rerun: next.rerun }); setCurrentStage("Warning");
+      } else setCurrentStage("Confirm");
     } catch (caught) {
       // A refusal of a superseded request is not dropped evidence: the next
       // `Plan the run` re-asks the same server the same way and surfaces it
       // against the request the operator is actually looking at. What IS
       // banned is showing this one — a danger banner naming text that is no
       // longer in the box reads as a refusal of what is.
-      if (requestFingerprintRef.current !== dispatchedFor) return;
+      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setBusy(false);
+      if (launchInstance.current === instance) setBusy(false);
     }
-  }, [browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId]);
 
-  const confirmStart = useCallback(async (): Promise<void> => {
-    if (plan === null) return;
-    const dispatchedFor = requestFingerprint;
-    setBusy(true);
-    setError(null);
+  const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
+    if (sending.current) return;
+    const instance = launchInstance.current;
+    sending.current = true; setBusy(true); setError(null);
     try {
-      if (finalRequest.current === null || finalRequest.current.family !== "start" || finalRequest.current.target.startPlanId !== plan.startPlanId) {
-        finalRequest.current = launchService.prepareFinal(plan);
-      }
-      const next = await launchService.submit(finalRequest.current);
-      // Same rule one stage later, and it costs no record: `applied` is a
-      // RECEIPT for a request that was accepted, not the row itself — the
-      // queue changes only from the authoritative projection
-      // (ref frontend-backend-integration §0.5), so a run this command
-      // enqueued is on screen in the queue whether or not this banner draws.
-      // What the banner would claim, standing over an edited form, is that
-      // THIS request is the one that landed.
-      if (requestFingerprintRef.current !== dispatchedFor) return;
+      retainLaunchFinal(window.sessionStorage, command);
+      finalRequest.current = command; setRecovery(command);
+      const next = await launchService.submit(command);
+      // Durable recovery remains available even if this launch closed or changed.
+      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setResult(next);
     } catch (caught) {
-      if (requestFingerprintRef.current !== dispatchedFor) return;
+      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setBusy(false);
+      sending.current = false;
+      if (launchInstance.current === instance) setBusy(false);
     }
-  }, [launchService, plan, requestFingerprint]);
+  }, [launchService]);
+  const confirmStart = useCallback(async (): Promise<void> => {
+    if (plan === null || sending.current || recoveryError !== null) return;
+    if (finalRequest.current === null || finalRequest.current.target.startPlanId !== plan.startPlanId) {
+      finalRequest.current = launchService.prepareFinal(plan);
+    }
+    await sendFinal(finalRequest.current, requestFingerprint);
+  }, [launchService, plan, requestFingerprint, recoveryError, sendFinal]);
 
   // D253 / Track D row D3 — "did the start land" is the ONE fold's question,
   // and a replay of the same landing IS a landing: the plan token is single-use,
@@ -1227,12 +1279,16 @@ export function RunStartDialog({
 
   const changeFact = useCallback(
     (step: string, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) => {
+      setCopiedOmissions((current) => Object.fromEntries(Object.entries(current).filter(([index]) => {
+        const candidate = snapshot?.values[Number(index)];
+        return candidate?.targetStepKey !== step || candidate.targetFieldPath !== field;
+      })));
       setStepDrafts((current) => ({
         ...current,
         [step]: { ...(current[step] ?? initialStepOmissionDraft(form)), [field]: next },
       }));
     },
-    [],
+    [snapshot],
   );
 
   const touchFact = useCallback((step: string, field: string) => {
@@ -1242,7 +1298,24 @@ export function RunStartDialog({
 
   const advance = useCallback(async (): Promise<void> => {
     if (nextStage === null) return;
-    if (currentStage === "Steps" && stepsBlockedReason !== null) {
+    if (isRerun && currentStage === "Steps") {
+      if (snapshot === null) return;
+      const instance = launchInstance.current;
+      const dispatchedFor = requestFingerprint;
+      setBusy(true); setError(null);
+      try {
+        const next = await launchService.previewWarnings({ workflowId, source: { runId: snapshot.source.runId,
+          expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys } });
+        if (launchInstance.current !== instance || requestFingerprintRef.current !== dispatchedFor) return;
+        setWarning(next);
+        if (next.rerun.warnings.length > 0 && acknowledgment !== next.rerun.warningDigest) setCurrentStage("Warning");
+        else { setAcknowledgment(next.rerun.warningDigest); setCurrentStage("Values"); }
+      } catch (caught) {
+        if (launchInstance.current === instance && requestFingerprintRef.current === dispatchedFor) setError(caught instanceof Error ? caught.message : String(caught));
+      } finally { if (launchInstance.current === instance) setBusy(false); }
+      return;
+    }
+    if ((currentStage === "Steps" || (isRerun && currentStage === "Values")) && stepsBlockedReason !== null) {
       // The press is what asks for every refusal at once: the operator has now
       // said they are done with the form, so every empty box is a real answer
       // of "nothing" and gets its line.
@@ -1255,7 +1328,7 @@ export function RunStartDialog({
       return;
     }
     setCurrentStage(nextStage);
-  }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan]);
+  }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan, isRerun, snapshot, requestFingerprint, launchService, workflowId, selectedStepKeys, acknowledgment]);
 
   /**
    * The ONE exit from a settled banner — C69's `Reload the form` and C72's
@@ -1275,16 +1348,23 @@ export function RunStartDialog({
    * its first control instead of resuming where the operator was working.
    */
   const returnToInput = useCallback(() => {
+    if (recovery !== null && result !== null) {
+      dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
+    }
     restoreInputFocusRef.current = true;
     setPlan(null);
     setResult(null);
     setError(null);
-    setCurrentStage("Input");
-  }, []);
+    setCurrentStage(isRerun ? "Values" : "Input");
+  }, [recovery, result, isRerun]);
 
   const closeAndReset = useCallback((next: boolean) => {
     onOpenChange(next);
     if (!next) {
+      ++launchInstance.current;
+      if (result !== null && recovery !== null) {
+        dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
+      }
       // The plan token is short-lived and single-use; a closed dialog must not
       // reopen holding a token the server may already have consumed. The typed
       // draft survives — retyping it is the cost this deliberately avoids.
@@ -1293,25 +1373,30 @@ export function RunStartDialog({
       setError(null);
       setCurrentStage("Input");
     }
-  }, [onOpenChange]);
+  }, [onOpenChange, result, recovery]);
 
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
         size="lg"
-        title="Start a run"
+        title={isRerun ? "Rerun" : "Start a run"}
         description={<span className="sr-only">Choose a workflow, configure its start, review the server plan, and confirm.</span>}
         className="h-[min(86dvh,720px)]"
       >
         <div className="flex min-h-0 flex-1">
-          <WorkflowPicker
-            workflows={workflows}
-            value={workflowId}
-            onChange={selectWorkflow}
-          />
+          {!isRerun && <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} />}
 
           <DialogBody className="@container flex flex-1 flex-col gap-[var(--ds-space-section)]">
+            {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
+            {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
+            {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
+            {recovery !== null && result === null && (
+              <Banner tone="warning" title="A previous submission needs readback">
+                <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
+                <Button disabled={busy} onClick={() => void sendFinal(recovery, requestFingerprint)}>Replay exact submission</Button>
+              </Banner>
+            )}
             {result !== null && (
               <EnqueueResultBanner result={result} onDismiss={returnToInput} onReload={returnToInput} />
             )}
@@ -1358,13 +1443,13 @@ export function RunStartDialog({
             </section>
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
-              {currentStage === "Input" && (
-                <section aria-label="Input" className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
+              {(currentStage === "Input" || currentStage === "Values") && (
+                <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {/* The demo's own condition, verbatim: a strip over a set of
                       one is D186's sample-of-one, so a workflow whose module
                       declares no intake projection draws no tabs at all and
                       renders exactly what it rendered before D296. */}
-                  {methods.length > 1 && (
+                  {!isRerun && methods.length > 1 && (
                     <MethodTabs methods={methods} value={activeMethod} onChange={setMethod} />
                   )}
                   {isHandoff ? (
@@ -1395,6 +1480,57 @@ export function RunStartDialog({
                       />
                     </Well>
                   )}
+                  {isRerun && snapshot !== null && (
+                    <section aria-label="Previous values" className="flex flex-col gap-[var(--ds-space-cozy)]">
+                      <SectionLabel>Previous values</SectionLabel>
+                      {snapshot.values.length === 0 && <p className={cn(dsText.body, dsFg.muted)}>No reusable values recorded.</p>}
+                      {snapshot.values.map((candidate, index) => {
+                        const label = candidate.targetStepKey === undefined ? candidate.label : `${stepLabel(candidate.targetStepKey)} · ${candidate.label}`;
+                        const omitted = candidate.targetStepKey !== undefined && !selectedStepKeys.includes(candidate.targetStepKey);
+                        return <div key={`${candidate.nodeId}:${candidate.fieldPath}:${label}`} className="flex flex-col gap-[var(--ds-space-base)]">
+                          <span className={dsText.ui}>{label}</span>
+                          {candidate.state === "unavailable" ? <span className={cn(dsText.meta, dsFg.muted)}>{`Unavailable: ${candidate.reason}`}</span> : <>
+                            <span className={cn(dsText.body, "break-words")}>{candidateText(candidate.value)}</span>
+                            <Button size="sm" variant="secondary" disabled={candidate.targetStepKey !== undefined && !omitted} onClick={() => {
+                              if (candidate.targetStepKey === undefined) setValueDrafts((current) => ({ ...current, [index]: { text: candidateText(candidate.value), copied: true } }));
+                              else {
+                                const step = candidate.targetStepKey;
+                                const form = workflow?.steps.find((entry) => entry.key === step)?.control;
+                                if (form?.state !== "omittable") throw new Error("RERUN_OMISSION_TARGET_UNAVAILABLE");
+                                const field = form.form.fields.find((entry) => entry.key === candidate.targetFieldPath);
+                                if (field === undefined) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
+                                const draft = typeof candidate.value === "boolean" ? candidate.value
+                                  : Array.isArray(candidate.value) ? candidate.value.map((value: unknown) => candidateText(JsonValueSchema.parse(value))).join("\n") : candidateText(candidate.value);
+                                setStepDrafts((current) => ({ ...current, [step]: { ...(current[step] ?? initialStepOmissionDraft(form.form)), [field.key]: draft } }));
+                                setCopiedOmissions((current) => ({ ...current, [index]: true }));
+                              }
+                            }}>{`Copy ${label}`}</Button>
+                            {candidate.targetStepKey === undefined && valueDrafts[index] !== undefined && <Field label={`New ${label}`}>
+                              <Textarea rows={2} value={valueDrafts[index].text} onChange={(event) => setValueDrafts((current) => ({ ...current, [index]: { text: event.target.value, copied: false } }))} />
+                              <Button size="sm" variant="ghost" onClick={() => setValueDrafts((current) => ({ ...current, [index]: { text: "", copied: false } }))}>{`Clear ${label}`}</Button>
+                            </Field>}
+                          </>}
+                        </div>;
+                      })}
+                      {omissionRows.map((row) => <StepOmissionFactsForm key={row.step} step={row.label} form={row.form} draft={row.draft}
+                        errors={visibleFactErrors(row)} onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={(field) => touchFact(row.step, field)} />)}
+                    </section>
+                  )}
+                </section>
+              )}
+
+              {currentStage === "Warning" && warning !== null && (
+                <section aria-label="Repeat transaction warning" className="flex flex-col gap-[var(--ds-space-cozy)]">
+                  <Banner tone="warning" title="These transactions were already submitted">
+                    Running them again may create duplicates.
+                  </Banner>
+                  {warning.rerun.warnings.map((entry) => {
+                    const step = snapshot?.steps.find((candidate) => candidate.nodes.some((node) => node.nodeId === entry.nodeId));
+                    if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
+                    return <Well key={`${entry.nodeId}:${entry.writeIntentId}`}>
+                      <KeyValueList items={[{ key: "Step", value: stepLabel(step.key) }, { key: "System", value: entry.system }]} />
+                    </Well>;
+                  })}
                 </section>
               )}
 
@@ -1402,12 +1538,12 @@ export function RunStartDialog({
                 <section aria-label="Options" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   <div className="flex flex-col gap-[var(--ds-space-loose)]">
                     <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
-                      <Checkbox
+                      {!isRerun && <Checkbox
                         checked={customizeSteps}
                         onCheckedChange={(next) => changeCustomizeSteps(next === true)}
                         label="Customize steps"
                         description="Review the workflow and change any optional steps. Required steps stay locked."
-                      />
+                      />}
                       {supportsDryRun && (
                         <StartFlagControl label="Dry run" checked={dryRun} onChange={setDryRunRequested} />
                       )}
@@ -1473,13 +1609,17 @@ export function RunStartDialog({
                             label={step.label}
                             description={
                               control.state === "required"
-                                ? control.reason
+                                ? (isRerun && snapshot?.steps.find((entry) => entry.key === step.key)?.state === "completed"
+                                  ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason)
                                 : forcedBy.length > 0
                                   ? `Omitted with ${stepLabels(forcedBy)}.`
                                   : control.state === "omittable"
                                     ? multiSubject
                                       ? multiSubjectOmissionReason
-                                      : "Optional — leave it out and type what the rest of the run would have read."
+                                      : isRerun && selected && snapshot?.steps.find((entry) => entry.key === step.key)?.state === "completed"
+                                        && control.forces.some((key) => selectedStepKeys.includes(key))
+                                        ? "Completed in the source; needed by another included step. Leaving it out also omits the dependent steps."
+                                        : "Optional — leave it out and type what the rest of the run would have read."
                                     : "Optional for this workflow."
                             }
                           />
@@ -1488,7 +1628,7 @@ export function RunStartDialog({
                               {`Also omits: ${stepLabels(control.forces)}`}
                             </p>
                           )}
-                          {row !== undefined && (
+                          {row !== undefined && !isRerun && (
                             <div className="ml-[calc(1rem+var(--ds-space-base))] border-l-2 border-[color:var(--ds-border)] pl-[var(--ds-space-cozy)]">
                               <StepOmissionFactsForm
                                 step={row.label}
@@ -1518,7 +1658,7 @@ export function RunStartDialog({
                       className="grid-cols-[max-content_minmax(0,1fr)] [&_dd]:overflow-visible [&_dd]:whitespace-normal [&_dd]:break-words [&_dd]:text-clip"
                       items={[
                         { key: "Workflow", value: workflow?.label ?? plan.workflowId },
-                        { key: "Input", value: inputSummary },
+                        { key: "Input", value: inputSummary || (isRerun ? "Entered values" : inputSummary) },
                         { key: "Creates", value: plan.planned.length === 1 ? "1 run" : `${String(plan.planned.length)} runs` },
                         {
                           key: "Steps",
@@ -1543,7 +1683,7 @@ export function RunStartDialog({
                             </span>
                           ) : "Default workflow",
                         },
-                        { key: "Values", value: valuesSummary },
+                        { key: "Values", value: isRerun && snapshot !== null ? Object.entries(valueDrafts).map(([index, draft]) => `${snapshot.values[Number(index)].targetFieldPath}: ${draft.text}`).join(" · ") || valuesSummary : valuesSummary },
                         { key: "Options", value: optionChanges.length > 0 ? optionChanges.join(" · ") : "Defaults retained" },
                         { key: "Safety", value: workflow === undefined ? "Workflow unavailable" : ENQUEUE_POLICY_MEANING[workflow.enqueue] },
                       ]}
@@ -1587,13 +1727,15 @@ export function RunStartDialog({
             />
           }
         >
-          {previousStage !== null && (
+          {currentStage !== "Warning" && previousStage !== null && (
             <Button variant="secondary" onClick={() => setCurrentStage(previousStage)}>Back</Button>
           )}
-          <Button variant="secondary" onClick={() => closeAndReset(false)}>
+          <Button variant="secondary" onClick={() => currentStage === "Warning" ? setCurrentStage("Steps") : closeAndReset(false)}>
             Cancel
           </Button>
-          {isHandoff ? (
+          {currentStage === "Warning" && warning !== null ? (
+            <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); setCurrentStage("Values"); }}>Confirm</Button>
+          ) : isHandoff ? (
             /* D298 — the spreadsheet arm has NO primary. Its one act is the
                drop, and the button that used to sit here only led to the zone
                that is now on screen. A primary beside a dropzone is either a
@@ -1605,7 +1747,7 @@ export function RunStartDialog({
               variant="primary"
               icon={<Play aria-hidden className={dsIcon.md} />}
               loading={busy}
-              disabled={busy || applied || omissionMismatch || plan.planned.length === 0}
+              disabled={busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId)}
               onClick={() => void confirmStart()}
             >
               {plan.dryRun ? "Start dry run" : "Start run"}
@@ -1614,7 +1756,7 @@ export function RunStartDialog({
             <Button
               variant="primary"
               loading={busy}
-              disabled={busy || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
+              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (preview.problem !== null || preview.entries.length > 1)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
               onClick={() => void advance()}
             >
               Next
@@ -1639,6 +1781,7 @@ export function RunStartSurfaces({
   actorId,
   onOpenIntake,
   onCloseAutoFocus,
+  rerunSource,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1647,6 +1790,7 @@ export function RunStartSurfaces({
   actorId: string;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  rerunSource?: RerunLaunchSource;
 }) {
   return (
     <RunStartDialog
@@ -1657,6 +1801,7 @@ export function RunStartSurfaces({
       actorId={actorId}
       onOpenIntake={onOpenIntake}
       onCloseAutoFocus={onCloseAutoFocus}
+      rerunSource={rerunSource}
     />
   );
 }

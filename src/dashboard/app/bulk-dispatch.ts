@@ -41,8 +41,9 @@ import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 // The destructive command is last, matching both the demo and the context
 // menu's irreversible-last rule. D235 chose the two verbs; this is their
 // presentation order only.
-export const BULK_STRIP_VERBS = ["retry", "cancel"] as const;
-export type BulkVerb = (typeof BULK_STRIP_VERBS)[number];
+export const BULK_STRIP_VERBS = ["cancel"] as const;
+/** Retain the historical verb only to refuse stale saved selections explicitly. */
+export type BulkVerb = "cancel" | "retry";
 
 /** What a surface hands over per selected row: the row's identity and what the server served for it. */
 export interface BulkCandidateRow {
@@ -85,6 +86,7 @@ function commandFor(
   row: BulkCandidateRow,
   verb: BulkVerb,
 ): Extract<ActionDescriptorWire, { kind: "command" }> | undefined {
+  if (verb === "retry") return undefined;
   return row.actions.find(
     (action): action is Extract<ActionDescriptorWire, { kind: "command" }> =>
       action.kind === "command" && action.command === verb,
@@ -269,6 +271,7 @@ export interface BulkCommandContext {
  * kernel does not have.
  */
 export function composeBulkRunCommand(plan: BulkVerbPlan, context: BulkCommandContext): ComposedBulkCommand {
+  if (plan.verb !== "cancel") return { state: "refused", reason: "Open Rerun for one source and review its steps and values." };
   if (plan.eligible.length === 0) {
     return { state: "refused", reason: emptyPlanReason(plan) };
   }

@@ -62,6 +62,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
+  app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   app.use("/api/v1/explorer/validate", operatorMutationIngressGuard);
   // Intake bytes travel under the file's own media type (D170) and the advisory
   // carries no body: Host/Origin gate both; the body contract stays the route's.

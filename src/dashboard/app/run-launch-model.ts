@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from "react";
-import { CommandRequestSchema } from "../../domain/commands.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StartCommandRequestSchema } from "../../domain/commands.js";
 import { systemClock } from "../../domain/clock.js";
 import { canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
 import { RerunValuesSnapshotSchema, type RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
@@ -9,18 +9,33 @@ import { START_DOOR_ABSENCE } from "../surfaces/run-start-model.js";
 import type { RunStartWorkflow } from "../surfaces/run-start.js";
 import type { WorkflowBootstrapPrimitive } from "../surfaces/shell-model.js";
 import { RUN_START_DOOR_ID, restoreDashboardTakeoverFocus } from "./dashboard-app-model.js";
+import type { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
+import type { z } from "zod";
+export type RerunLaunchSource = z.infer<typeof RerunValuesRequestSchema>;
 
 /** The host owns focus transfer, independently of date/history and Settings state. */
 export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
   const [open, setOpen] = useState(initialOpen);
+  const [rerunSource, setRerunSource] = useState<RerunLaunchSource | undefined>();
+  const launcher = useRef<HTMLElement | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const intakeHandoff = useRef(false);
-  const openStart = useCallback(() => { intakeHandoff.current = false; setOpen(true); }, []);
+  const openStart = useCallback(() => { intakeHandoff.current = false; launcher.current = null; setRerunSource(undefined); setOpen(true); }, []);
+  const openRerun = useCallback((source: RerunLaunchSource) => {
+    intakeHandoff.current = false;
+    launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setRerunSource(source); setOpen(true);
+  }, []);
   const closeFocus = useCallback((event: Event) => {
     event.preventDefault();
-    if (!intakeHandoff.current) restoreDashboardTakeoverFocus(document, RUN_START_DOOR_ID, mainRegionId);
+    if (mounted.current && !intakeHandoff.current) {
+      if (launcher.current?.isConnected) launcher.current.focus();
+      else restoreDashboardTakeoverFocus(document, RUN_START_DOOR_ID, mainRegionId);
+    }
   }, [mainRegionId]);
   const handOffToIntake = useCallback(() => { intakeHandoff.current = true; }, []);
-  return { open, setOpen, openStart, closeFocus, handOffToIntake };
+  return { open, setOpen, openStart, openRerun, rerunSource, closeFocus, handOffToIntake };
 }
 
 export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]): readonly RunStartWorkflow[] {
@@ -39,12 +54,14 @@ export function prefillRerun(input: RerunValuesSnapshot, options: Readonly<{
 }>): StartPlanRequest {
   const snapshot = RerunValuesSnapshotSchema.parse(input);
   const submission: Record<string, JsonValue> = {};
+  const omissionFacts: Record<string, Record<string, JsonValue>> = {};
   const copiedFrom = [];
   for (const index of options.selectedValueIndexes) {
     const candidate = snapshot.values[index];
     if (candidate?.state !== "available") throw new Error("RERUN_PREFILL_VALUE_UNAVAILABLE");
     const keys = candidate.targetFieldPath.split(".");
-    let target = submission;
+    let target = candidate.targetStepKey === undefined ? submission
+      : (omissionFacts[candidate.targetStepKey] ??= {});
     for (const [position, key] of keys.entries()) {
       if (["__proto__", "constructor", "prototype"].includes(key)) throw new Error("RERUN_PREFILL_PATH_INVALID");
       if (position === keys.length - 1) {
@@ -65,15 +82,17 @@ export function prefillRerun(input: RerunValuesSnapshot, options: Readonly<{
   return StartPlanRequestSchema.parse({ workflowId: snapshot.source.workflow, submissions: [submission],
     dryRun: options.dryRun, browserMode: options.browserMode, captureBrowserScreenshots: options.captureBrowserScreenshots,
     selectedStepKeys: options.selectedStepKeys, rerunSource: { runId: snapshot.source.runId,
-      expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys: options.selectedStepKeys, copiedFrom } });
+      expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys: options.selectedStepKeys, copiedFrom },
+    ...(Object.keys(omissionFacts).length === 0 ? {} : { stepOmissions: Object.entries(omissionFacts).map(([step, facts]) => ({ step, facts })) }) });
 }
 
 /** Shared launch door; confirmation/replay send the same immutable envelope. */
-export function createRunLaunchService(client: Pick<DashboardClient, "rerunValues" | "submitStartPlan" | "executeCommand">, actorId: string,
+export function createRunLaunchService(client: Pick<DashboardClient, "rerunValues" | "previewRerunWarnings" | "submitStartPlan" | "executeCommand">, actorId: string,
   identity: { uuid(): string; now(): string } = { uuid: () => crypto.randomUUID(), now: () => systemClock.now().toISOString() }) {
   const preview = (input: unknown) => client.submitStartPlan(StartPlanRequestSchema.parse(input));
   return Object.freeze({
-    openRerun: client.rerunValues.bind(client), prefill: prefillRerun, preview,
+    openRerun: (input: unknown) => client.rerunValues(input), prefill: prefillRerun, preview,
+    previewWarnings: (input: unknown) => client.previewRerunWarnings(input),
     acknowledge(input: unknown, proposed: unknown) {
       const request = StartPlanRequestSchema.parse(input);
       const plan = StartPlanWireSchema.parse(proposed);
@@ -83,10 +102,10 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     },
     prepareFinal(input: unknown) {
       const plan = StartPlanWireSchema.parse(input);
-      return CommandRequestSchema.parse({ commandId: identity.uuid(), requestedAt: identity.now(), requestedBy: actorId,
+      return StartCommandRequestSchema.parse({ commandId: identity.uuid(), requestedAt: identity.now(), requestedBy: actorId,
         source: "run-start", family: "start", type: "start-run", target: { workflowId: plan.workflowId,
           startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
     },
-    submit: client.executeCommand.bind(client), replay: client.executeCommand.bind(client),
+    submit: (input: unknown) => client.executeCommand(input), replay: (input: unknown) => client.executeCommand(input),
   });
 }

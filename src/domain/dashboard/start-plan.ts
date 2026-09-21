@@ -21,6 +21,7 @@
  * Browser-bundle-safe on purpose: zod and src/domain/** only.
  */
 import { RerunSourceSchema, PublicRerunPlanSchema } from "../run/rerun.js";
+import { StartSupersedeTargetsSchema } from "../run/start-supersede.js";
 import { z } from "zod";
 import { JsonValueSchema } from "../canonical-json.js";
 import {
@@ -101,6 +102,7 @@ export const StartPlanWireSchema = z.strictObject({
   }),
   rerun: PublicRerunPlanSchema.optional(),
   planned: z.array(z.strictObject({
+    supersedeTargets: StartSupersedeTargetsSchema.optional(),
     logicalKey: z.string().min(1),
     title: z.string().min(1),
     subtitle: z.string().min(1).optional(),

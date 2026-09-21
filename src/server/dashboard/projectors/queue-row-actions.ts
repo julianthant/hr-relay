@@ -93,7 +93,7 @@ export interface QueueRowActionFacts {
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
-type ServedCommand = "retry" | "restart" | "cancel" | "bump" | "rename" | "delete";
+type ServedCommand = "cancel" | "bump" | "rename" | "delete";
 
 /**
  * The kernel's own preconditions, restated as row-level admission.
@@ -104,20 +104,6 @@ type ServedCommand = "retry" | "restart" | "cancel" | "bump" | "rename" | "delet
  * is admitted in every state, because that IS what the kernel accepts.
  */
 const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts) => boolean>> = {
-  /*
-   * `executeRetry`: rejects a non-terminal run ("only a terminal run can be
-   * retried"), rejects a `parked-write` run by name (ref write-safety §4.1's resolutions
-   * are the only exits), and refuses a delegated child ("child retries route
-   * through their delegation edge policy").
-   *
-   * Its `reject-active` enqueue check is NOT mirrored here on purpose: whether
-   * another run for this item is active is exactly the fact that can change
-   * between the projection and the click, so it belongs to the kernel's
-   * transaction and to the toast that prints its refusal.
-   */
-  retry: (facts) => TERMINAL_QUEUE_STATUSES.has(facts.status) && !facts.isChild,
-  /* D314 — `executeRetry` serves both recovery choices behind the same preconditions. */
-  restart: (facts) => TERMINAL_QUEUE_STATUSES.has(facts.status) && !facts.isChild,
   /* `executeCancel`: "already terminal; there is nothing to cancel". */
   cancel: (facts) => !TERMINAL_QUEUE_STATUSES.has(facts.status),
   /*
@@ -213,9 +199,6 @@ function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] 
   // exists: the footer is the FREQUENT subset. Naming a run is a thing an
   // operator does once, to one run, on purpose.
   if (command === "rename") return ["menu"];
-  // D314: Restart from start is the deliberate, less frequent recovery choice;
-  // the footer keeps Resume as the one-click recovery and the menu offers both.
-  if (command === "restart") return ["menu"];
   return ["footer", "menu"];
 }
 
@@ -269,28 +252,6 @@ function deleteBody(facts: QueueRowActionFacts): string {
     + "This is final; there is no undo.";
 }
 
-function retryBody(facts: QueueRowActionFacts): string {
-  return facts.dryRun
-    ? `This starts a NEW rehearsal run of ${facts.workflowLabel} as the next attempt of the same item, replaying `
-      + "its valid checkpoints. A rehearsal performs no real transaction. The run you are looking at is left "
-      + "exactly as it is."
-    : `This starts a NEW run of ${facts.workflowLabel} as the next attempt of the same item, replaying its valid `
-      + "checkpoints against the real systems it writes to. A write this item already completed is never "
-      + "performed again. The run you are looking at is left exactly as it is.";
-}
-
-/** D314 — Restart from start: every read and computation runs again; a completed write is reused, never repeated. */
-function restartBody(facts: QueueRowActionFacts): string {
-  return facts.dryRun
-    ? `This starts a NEW rehearsal run of ${facts.workflowLabel} from the first step, ignoring every earlier `
-      + "read and computation. A rehearsal performs no real transaction. The run you are looking at is left "
-      + "exactly as it is."
-    : `This starts a NEW run of ${facts.workflowLabel} from the first step: every read and computation runs `
-      + "again against the real systems. A write this item already completed is reused from its durable proof "
-      + "and never performed again; if the fresh facts no longer match that write, the run refuses. The run "
-      + "you are looking at is left exactly as it is.";
-}
-
 /**
  * The one descriptor builder. Copy is authored HERE rather than on the client
  * for the reason `ConfirmCommandDialog` states: only the server knows the blast
@@ -300,36 +261,6 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
   const placement = placementOf(command);
   const base = { command, expectedVersion: facts.rowRevision, kind: "command", placement } as const;
   switch (command) {
-    case "retry":
-      return {
-        ...base,
-        key: "retry",
-        label: "Resume from checkpoints",
-        intent: "primary",
-        icon: "retry",
-        confirm: {
-          title: "Resume this run from its checkpoints",
-          body: retryBody(facts),
-          confirmLabel: "Resume",
-          // A rehearsal cannot file anything; a real re-run can, and the
-          // dialog's tone is the last place that difference is visible.
-          tone: facts.dryRun ? "neutral" : "destructive",
-        },
-      };
-    case "restart":
-      return {
-        ...base,
-        key: "restart",
-        label: "Restart from start",
-        intent: "neutral",
-        icon: "retry",
-        confirm: {
-          title: "Restart this run from the first step",
-          body: restartBody(facts),
-          confirmLabel: "Restart",
-          tone: facts.dryRun ? "neutral" : "destructive",
-        },
-      };
     case "cancel":
       return {
         ...base,
@@ -395,7 +326,7 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
  * demo's own footer order, and the one that keeps the most destructive control
  * furthest from the click an operator makes by reflex.
  */
-const SERVED_ORDER: readonly ServedCommand[] = ["retry", "restart", "bump", "cancel", "rename", "delete"];
+const SERVED_ORDER: readonly ServedCommand[] = ["bump", "cancel", "rename", "delete"];
 
 /**
  * Every control this row may draw.
@@ -416,7 +347,13 @@ export function queueRowActions(
   facts: QueueRowActionFacts,
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
-  return SERVED_ORDER
+  const rerun = !facts.isChild && !facts.parkedWrite
+    && ["done", "failed", "partial"].includes(facts.status)
+    && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
+    ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
+      navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
+      intent: "primary", icon: "retry", placement: ["footer", "menu"] })] : [];
+  return [...rerun, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
-    .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)));
+    .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }
