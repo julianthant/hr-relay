@@ -4059,7 +4059,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     async (_label, headers) => {
       let plans = 0;
       const h = harness({
-        startPlans: (real) => ({ plan: (input) => { plans += 1; return real.plan(input); } }),
+        startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
       });
       const request = new Request("http://localhost/api/v1/start-plans", {
         method: "POST",
@@ -4082,7 +4082,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses a start plan whose JSON body rides text/plain, and admits the same body as JSON", async () => {
     let plans = 0;
     const h = harness({
-      startPlans: (real) => ({ plan: (input) => { plans += 1; return real.plan(input); } }),
+      startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
     });
     const body = JSON.stringify({
       workflowId: "fixture-graph",

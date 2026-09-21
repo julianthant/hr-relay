@@ -10,7 +10,7 @@ import { PARITY_DIST_DIR, assertParityBundleIsCurrent, readBundleStamp } from ".
 import { servedPreflightRuntime, type SetupScene } from "../../fixtures/preflight/served-runtime.js";
 
 /** Only shell/day/static transport is synthetic; readiness HTTP is the shipped route/service/detectors. */
-export async function startSetupPreflightServer(scene: SetupScene) {
+export async function startSetupPreflightServer(scene: SetupScene, configureRoutes?: (app: DashboardApp, runtime: Awaited<ReturnType<typeof servedPreflightRuntime>>) => void) {
   assertParityBundleIsCurrent();
   const runtime=await servedPreflightRuntime(scene);
   const shell=await startFixtureServer({distDir:PARITY_DIST_DIR,bundle:{proof:"working-tree"}});
@@ -20,6 +20,7 @@ export async function startSetupPreflightServer(scene: SetupScene) {
   app.onError((error,c)=>{const {status,body}=failureStatus(error);return c.json(body,status);});
   registerSettingsPreflightRoutes(app,{clock:runtime.clock,preflight:runtime.service});
   app.get("/api/v1/settings/editable",c=>c.json(runtime.document()));
+  configureRoutes?.(app, runtime);
   app.route("/",createFixtureBff().app);
   const requests:{method:string;path:string;status:number}[]=[];
   const server=createServer((req,res)=>{
