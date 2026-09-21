@@ -5888,6 +5888,15 @@ enqueued. Two halves with opposite rules, in one file so the difference is visib
 
 #### 9.5.2 Activity — a range rendering of the ONE projection, and the one exemption (D81)
 
+**2026-09-21 approved target:** [3.1.12](../plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md#approved-execution-brief--2026-09-21)
+finishes all roadmap search filters and snapshot-bound redacted exports. The
+[canonical amendment](frontend-backend-integration.md#activity-search-and-export-amendment--2026-09-21)
+owns validated/indexed metadata, cancellation/stale-result refusal, summary-backed page/CSV/XLSX
+identity, safe CSV encoding and diagnostic metadata scope. Preserve current summary/confirmed-history
+privacy and unavailable facts; no generic archive-run population is added. Historical as-built
+statements below do not certify this pending work or override the amendment.
+
+
 **The recorded bug.** The operator reports that in the legacy dashboard the per-workflow badges
 "always error out" — matching the audit's bug class #7, count/badge divergence, with ≥4 separate
 fixes over the project's life. The root cause is structural, not arithmetic: badges, the status
@@ -5986,9 +5995,9 @@ the panel's ⓘ renders, read by both consumers rather than copied
 spreadsheet has no ⓘ, so an export with the numbers and without the rules is precisely the lying
 artifact this surface is built to prevent. Two smaller rules travel with it: the error rate is the
 one `activityErrorRatePercent` the tile renders, so the exported rate cannot round differently from
-the screen it was taken from; and a cell is quoted when it must be and never REWRITTEN — a leading
-`=` is left exactly as the payload spells it, because prefixing it to defuse a spreadsheet's formula
-parser would put a different string in the export than the one on screen.
+the screen it was taken from; and text cells use the documented spreadsheet-safe encoding approved
+on 2026-09-21, preserving numeric values and meaning. That amendment supersedes D240's original
+exact-text treatment of formula-like strings; CSV quoting alone is insufficient.
 
 **The write-ledger block is served and its corpus is EMPTY, on every real machine.** The fold, the
 seam sentence and the empty state are all built and bounded by the guard above — and

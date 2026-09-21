@@ -2870,6 +2870,22 @@ exact snapshot selection, byte verification and authorized downloads. Owners:
 and [naming scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
 This is an approved future contract, not implementation evidence.
 
+## Activity search and export privacy — 2026-09-21
+
+The operator approved the [3.1.12 search/export amendment](frontend-backend-integration.md#activity-search-and-export-amendment--2026-09-21).
+Search subjects come only from approved displayed metadata; raw inputs, arbitrary checkpoint/capture
+contents and private counting identities are excluded. Recorded actors, versions, typed failure codes
+and evidence availability retain explicit historical unavailability. Search/export coverage must not
+invent missing facts. Activity person identity and protected-derived digests remain inside the server
+counting boundary and cannot escape in exports, logs or provenance.
+
+The diagnostic download is a redacted JSON manifest of the reviewed search snapshot and its filters,
+coverage, statuses, failure codes and evidence availability. Full bundles and captures remain
+3.1.14.4. Page/CSV/XLSX use the same accepted Activity snapshot. Formula-safe text encoding and verified
+selection/body metadata are required; issued XLSX actor attribution, immutable historical bytes and
+readability survive new schema versions. A cancelled download does not undo committed export custody.
+This ratifies requirements for the assigned implementation, not a runtime acceptance claim.
+
 ## C0 archived evidence and privacy — 2026-09-09
 
 After A transfers a run, the archive displays captured resolution read-only, superseding any earlier

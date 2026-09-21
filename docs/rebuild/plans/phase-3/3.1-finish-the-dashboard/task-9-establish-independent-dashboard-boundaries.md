@@ -932,3 +932,26 @@ are ratified with their decision-index pointers. No DDL, summary-publication red
 change, shared DS redesign or unapproved reference refreeze. One Astra/medium supervisor, no workers
 or independent review; targeted production-service browser proof and focused checks, operator-directed
 local integration and cleanup. Full acceptance remains 3.1.19. Approval does not claim implementation.
+
+### Activity search and export ownership amendment — 2026-09-21
+
+The operator's choice 1 A and complete 3.1.12 approval supersede earlier shared-file reservations
+only for the [approved Activity/search/export assignment](task-12-finish-activity-search-and-export.md#approved-execution-brief--2026-09-21).
+One supervisor owns the full slice; no unfinished sibling API or parallel shared writer is introduced.
+Required boundary/Archive/surface releases are integrated at `801da4f3d1bfdf0a9ecc81c993289f70699aa140`.
+
+In addition to dedicated Activity/search UI/client/query/export modules, admit the strict search,
+Activity snapshot and versioned export contracts; narrowly required authority/query ports; SQLite
+validated metadata/indexes, additive migration, source publication/archive/delete/rebuild hooks,
+bounded transaction-history readers and affected storage/backup compatibility. Admit only necessary
+shell/Activity route and composition/export-client registration, redaction/ingress proof entries and
+a task-owned real-service fixture host. The task owner names exact existing paths, assigned new
+proof files, data/privacy authorities and focused commands. Released migrations, recovery floor,
+backup custody and immutable historical export bytes remain binding.
+
+Preserve the existing exact day/workflow/run selection callback and Settings guard. No app navigation
+or Run/Rerun changes, worker/execution redesign, archive-policy change, generic archived Activity
+population or full diagnostic bundles are transferred. Only Activity report blocks in the mixed
+Archive fixture are editable here; Archive operations and shared fixture defaults stay with their
+owners. Generated outputs and deliberate Activity/search reference changes have one writer and
+attribution. A20/A21 acceptance outcomes and all other reservations remain unchanged.

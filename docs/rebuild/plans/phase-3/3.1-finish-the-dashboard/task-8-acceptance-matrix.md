@@ -574,6 +574,16 @@ D340's completed immediate dispositions remain: no coarse-pointer variants; no d
 
 ## Shared ownership and admission boundaries
 
+**2026-09-21 Activity/search/export exception:** the
+[approved ownership amendment](task-9-establish-independent-dashboard-boundaries.md#activity-search-and-export-ownership-amendment--2026-09-21)
+permits 3.1.12's necessary strict metadata/snapshot/export contracts, validated SQLite indexes,
+additive migration/publication/rebuild and storage/backup compatibility, bounded transaction-history
+selection and dedicated route/composition/client wiring. The single task owner binds exact paths,
+proof and exclusions. Existing app navigation/Run/Rerun, workflow execution, Archive policy and full
+diagnostic bundles remain outside its scope. A20/A21 and all frozen outcomes/proof obligations are
+unchanged; this is an explicit bounded allocation, not generic access to shared files.
+
+
 **2026-09-14 Intake exception:** the [approved boundary amendment](task-9-establish-independent-dashboard-boundaries.md#intake-child-ownership-amendment--2026-09-14)
 supersedes the reservations below only for 3.1.9.6's spreadsheet upload extraction/call site,
 Intake-specific command payload/kernel confirmation and directly affected Intake schema/redaction
@@ -625,7 +635,7 @@ Paths below are existing seams to retain or separate; a shared file reserved abo
 | 3.1.11 | `worker-supervisor.ts`, isolated session control plus shared child APIs | `3.1.11/`; focused prerequisite checks; broad gates at 3.1.11.3 |
 | 3.1.11.1 | `server/preflight/`, `domain/trust/preflight-scenarios.ts`, isolated Setup presentation | `3.1.11.1/`; 3.1.11.3 |
 | 3.1.11.2 | `surfaces/run-start*.ts*`, `commands/start-plan-service.ts`, separated prior-run value transport and modal; settings runtime is accepted input | `3.1.11.2/`; 3.1.11.3 |
-| 3.1.12 | `surfaces/activity*.ts*`, `day-search*.ts*`, `queries/activity-export.ts`, `search.ts`, `exports/`; extracted Activity summaries | `3.1.12/`; focused checks; broad gates at 3.1.19 |
+| 3.1.12 | `surfaces/activity*.ts*`, `day-search*.ts*`, `queries/activity-export.ts`, `search.ts`, `exports/`; extracted Activity summaries plus the [approved bounded shared/database amendment](task-9-establish-independent-dashboard-boundaries.md#activity-search-and-export-ownership-amendment--2026-09-21) | `3.1.12/`; focused checks; broad gates at 3.1.19 |
 | 3.1.13 | `surfaces/queue*.ts*`, `workflow-batch.tsx`, extracted Queue summaries/actions/bulk; accepted Rerun launcher only | `3.1.13/`; focused checks; broad gates at 3.1.19 |
 | 3.1.14.1 | extracted timeline/identity and follow-state implementation/tests | `3.1.14.1/`; 3.1.14.6 |
 | 3.1.14.2 | `surfaces/context-rail*.ts*`, separated Data/Attempts readback and tests | `3.1.14.2/`; 3.1.14.6 |

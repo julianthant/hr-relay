@@ -938,7 +938,7 @@ their bounded routes and UI callers; the other four capabilities below have no r
 | Capability | State | Owner / trigger |
 |---|---|---|
 | **Generic artifact resources** | DCA serves exact diagnostic-index-authorized bytes at `GET /artifacts/v1/:artifactId`, verified D292 origins through the lazy Run captures section in Logs and Receipt, and frozen archived-capture status/bytes through routes bound to both archive ids. The generic `ArtifactResourceWireSchema` status/gallery family remains unserved; no route admits arbitrary stored ids. | delivered for run/Archive evidence; `legacy-route-files` retains only the broader generic resource/gallery family |
-| **Cross-date run search** — `GET /api/v1/search?q=` | DCR3 authority and transport are delivered for the measured current separations corpus: the route applies the strict bounded query contract and returns the strict page/result wire; `DashboardQueries.searchRuns` validates both query and response. DCR4's Top Bar defaults to that corpus and retains an explicit served-day scope. | delivered DCR3/DCR4; broader workflows remain corpus-gated → `{#def-search-export}` |
+| **Cross-date run search** — `GET /api/v1/search?q=` | DCR3 authority and transport are delivered for the measured current separations corpus: the route applies the strict bounded query contract and returns the strict page/result wire; `DashboardQueries.searchRuns` validates both query and response. DCR4's Top Bar defaults to that corpus and retains an explicit served-day scope. | historical DCR3/DCR4 baseline; full bounded metadata scope is approved for 3.1.12 under the [2026-09-21 amendment](#activity-search-and-export-amendment--2026-09-21), implementation pending |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
 | **Excel export** — `POST /api/v1/exports/xlsx` | DCR5 serves one dedicated, strict binary command for an authenticated DCR3 search snapshot or an exact Activity date range. It persists content-addressed bytes and immutable attachment evidence before returning the verified body. This is not the generic artifact-byte route, and the D164 xlsx retention sink remains a separate projection sink. | delivered DCR5; generic artifact bytes remain → `{#def-search-export}` |
 | **Settings write / preflight** | Bounded authority is served: `GET /api/v1/settings/editable` lists strict resolver-owned leaves, `GET /api/v1/settings/facts` serves status facts, one `POST /api/v1/commands` `settings`/`apply-settings` command applies the reviewed atomic patch, and retained preflight is rerun by `POST /api/v1/preflight/rerun`; `GET /api/v1/storage/doctor` stays read-only. Credentials, AI assist, delete/recover and resolver-unowned legacy settings remain absent. | `{#def-settings}` |
@@ -2036,9 +2036,10 @@ as a file, and the panel header carries the demo's `Export` button beside the �
   never a zero — D124's rule survives the format change, because a spreadsheet will average a zero
   and cannot average a sentence. An unregistered workflow exports its reason, never an id dressed as
   a label.
-- **Cells are quoted, never rewritten.** A leading `=` is left exactly as the payload spells it:
-  prefixing a cell to defuse a spreadsheet's formula parser would put a different string in the file
-  than the one on screen, and the export's entire value is that the two agree.
+- **Text cells use spreadsheet-safe transport encoding.** The operator's
+  [2026-09-21 amendment](#activity-search-and-export-amendment--2026-09-21) supersedes the original
+  exact-text rule: formula-like text must remain data when opened in a spreadsheet. Document the
+  encoding, preserve numeric values and meaning, and retain ordinary CSV quoting as well.
 - **What is deliberately absent:** the panel footer's operator id and app build. They are client
   props that never crossed this wire, and a server composing them would assert provenance about a
   reader it cannot see. The window, the generation instant and the wire version are on the payload
@@ -2056,6 +2057,55 @@ that actor into a nullable authority column and refuses a JSON/column mismatch a
 Evidence v1 remains byte-for-byte valid and explicitly unattributed (`requested_by IS NULL`): no
 migration backfills an actor that the original export did not record. INSERT replacement, UPDATE
 and DELETE remain refused.
+
+#### Activity search and export amendment — 2026-09-21
+
+The operator approved 3.1.12 choices **1 A / 2 A / 3 A** and its complete execution brief. This is
+an approved target contract; it does not claim the existing Separations-only implementation has
+already been widened. It supersedes narrower corpus gating for this assigned implementation and
+D240's exact-text formula rule, while retaining A20/A21, C0 privacy and immutable issued evidence.
+
+Search covers the current non-archived run corpus through validated metadata for dates, workflows,
+subjects, lifecycle statuses, recorded actors, retained versions, typed failures and evidence
+availability. Subject matching uses approved displayed metadata, never arbitrary HR inputs,
+checkpoint bodies or capture contents. Historical missing facts remain unavailable and coverage
+is disclosed; current request identity must not be backfilled as historical authorship. Maintain
+validated metadata/index publication with source changes and fail closed on missing/stale/corrupt
+index authority. Page limits cannot hide whole-corpus source decoding or unrelated-row ranking.
+Rebuild is explicit, bounded and verified outside the interactive request; no raw-scan fallback.
+
+Queries, pages, result selection and export share an authenticated identity covering source,
+generation, query/filters and ordering. Preserve stable ordering and bounded pages. Changed, stale,
+expired, foreign or restart-invalidated tokens refuse explicitly. Query changes, close/cancellation
+and late responses cannot restore a superseded selection or its export authority. Result navigation
+continues to select the exact recorded day, workflow and run through the existing callback.
+
+The Activity page, CSV and XLSX must use one accepted summary-backed report under the same snapshot
+binding; a fresh range read cannot substitute for what the operator reviewed. Preserve report
+caveats, exact range/group/member containment, private distinct-person availability and duration
+semantics. Confirmed transaction history remains separate, selected before evidence loading, and
+survives archive transfer/restart until explicit deletion. Dry-run, unknown and observed-present
+operations are not confirmed writes; archived runs are not added to ordinary Activity membership.
+
+Exports disclose the reviewed whole-result count and coverage, reconcile every ordered row, and
+refuse oversized or incomplete selections instead of silently truncating. XLSX and diagnostic JSON
+are redacted. The diagnostic export is only a snapshot-bound manifest of selected result metadata,
+filters/coverage, statuses, failure codes and evidence availability. Full per-run diagnostic bundles
+and captures remain 3.1.14.4. Neither this export nor provenance may leak secrets, private person
+identity or protected-derived digests; approved existing public projections retain their boundary.
+
+CSV must encode formula-capable text safely, including relevant leading whitespace/control-character
+cases, in addition to correct quoting. The encoding rule travels with the artifact so text meaning
+is recoverable; numeric values remain numbers. XLSX writes untrusted text as data, never formulas.
+Before verified download success, validate selection identity, count/order, media type, safe filename,
+byte length and digest. Preserve actor-attributed XLSX persistence, immutable bytes and historical
+request/evidence readability through versioned compatibility. Cancellation can stop delivery but
+must not claim rollback of an already persisted export.
+
+The [single 3.1.12 owner](../plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md#approved-execution-brief--2026-09-21)
+assigns necessary search/Activity contracts, indexes, additive migrations, source publication/rebuild,
+storage/backup compatibility, route/composition/client wiring and focused production-service/browser
+proof. No live operator-state migration, archive-policy change or workflow execution is authorized.
 
 ### 6.8 Phase 3+ workflow migrations
 

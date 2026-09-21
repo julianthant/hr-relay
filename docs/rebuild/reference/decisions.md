@@ -2555,3 +2555,19 @@ D191 amendment: focused tests/lint/affected checks throughout each phase, full g
 repairs at its end. Phase 3.1, independent review, candidate freeze, controlled authorization,
 workflow admission and cutover boundaries remain unchanged. This is approved scheduling policy,
 not implementation or runtime acceptance evidence.
+
+### 2026-09-21 — Complete Activity search and safe snapshot exports
+
+The operator selected **1 A / 2 A / 3 A** and approved the complete 3.1.12 plan.
+[Frontend/backend integration](frontend-backend-integration.md#activity-search-and-export-amendment--2026-09-21)
+owns the full validated/indexed search dimensions, shared snapshot binding and the amendment of
+D240's exact-text rule to documented spreadsheet-safe CSV encoding. Diagnostic export is limited
+to redacted snapshot metadata; full bundles/captures remain 3.1.14.4.
+[Operator trust](operator-trust.md#activity-search-and-export-privacy--2026-09-21) preserves private
+counting identity, historical availability and immutable issued-export custody.
+
+The [task owner](../plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md#approved-execution-brief--2026-09-21)
+and [bounded ownership amendment](../plans/phase-3/3.1-finish-the-dashboard/task-9-establish-independent-dashboard-boundaries.md#activity-search-and-export-ownership-amendment--2026-09-21)
+admit the necessary contracts, SQLite indexes/additive migrations, publication/rebuild and storage
+compatibility, wiring and proof in this assignment. A20/A21 and the Phase 3.1 focused-gate cadence
+remain unchanged. Requirements are approved; product implementation remains unstarted.
