@@ -5,6 +5,10 @@ import type { DashboardApp } from "./api-types.js";
 import type { QueueRouteDeps } from "./queue-types.js";
 
 export function registerQueueRoutes(app: DashboardApp, deps: QueueRouteDeps): void {
+  app.post("/api/v1/rerun-warnings", async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json(deps.startPlans.previewWarnings(await c.req.json()));
+  });
   app.get("/api/v1/dashboard", (c) => {
     const day = DayQuerySchema.parse(c.req.query("day"));
     return c.json(deps.queue.day(day));

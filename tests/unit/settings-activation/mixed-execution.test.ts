@@ -120,6 +120,8 @@ it("saved idle cadence applies at the next boundary without retiming the pending
     controlPoll: () => "pause",
   });
   try {
+    // Worker admission settles asynchronously before its first scheduled wait.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     const first = scheduler.pending()[0]; assert.ok(first);
     assert.equal(first.deadlineMonotonicMs, f.clock.monotonicMs() + initial);
     assert.equal(f.save({ "daemon.idleRepollMs": { set: initial + 1_000 } }).state, "applied");

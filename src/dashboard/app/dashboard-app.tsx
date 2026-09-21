@@ -1,3 +1,4 @@
+import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./url-state.js";
 import { PreflightActionsProvider } from "../state/preflight-actions.js";
 import { resolveDateSelection, routeForDay } from "./date-state-model.js";
@@ -374,6 +375,7 @@ function LoadedApp({
   const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
   const openStart = launch.openStart;
+  const openRerun = launch.openRerun;
   /**
    * The command waiting on the operator's confirmation. A descriptor that
    * carries a server-authored `confirm` block goes here first; everything else
@@ -815,7 +817,8 @@ function LoadedApp({
   const runAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget): void => {
       if (action.kind === "navigation") {
-        if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
+        if (action.navigate.kind === "rerun") openRerun(RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }));
+        else if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
         return;
       }
       /*
@@ -862,7 +865,7 @@ function LoadedApp({
       }
       dispatchCommand(action, target);
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun],
   );
 
   /**

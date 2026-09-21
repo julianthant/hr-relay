@@ -26,6 +26,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/explorer/validate": { guard: "operatorMutationIngressGuard" },
   "/api/v1/runs/:runId/advisory": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/start-plans": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/rerun-warnings": { guard: "operatorMutationIngressGuard" },
   "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/commands": { guard: "operatorMutationIngressGuard" },
   "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },

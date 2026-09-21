@@ -47,11 +47,13 @@ function clientFor(body: unknown) {
 }
 
 function assertRejectedByWireAndClient(body: unknown, expectedMessage: RegExp): Promise<void> {
-  assert.equal(PreflightRerunCommandResultWireSchema.safeParse(body).success, false);
+  const parsed = PreflightRerunCommandResultWireSchema.safeParse(body);
+  assert.equal(parsed.success, false);
+  assert.ok(!parsed.success && expectedMessage.test(parsed.error.message));
   return assert.rejects(
     clientFor(body).rerunPreflight(COMMAND),
     (error: unknown) => error instanceof DashboardClientError
-      && error.kind === "schema" && expectedMessage.test(error.message),
+      && error.kind === "schema" && error.code === "PREFLIGHT_RERUN_UNAVAILABLE",
   );
 }
 

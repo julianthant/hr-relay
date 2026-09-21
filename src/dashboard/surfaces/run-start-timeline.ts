@@ -19,7 +19,7 @@
 
 import type { StartMethod } from "./run-start-model.js";
 
-export type RunStartStage = "Input" | "Options" | "Steps" | "Confirm";
+export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Confirm";
 
 export interface RunStartStageSpec {
   readonly label: RunStartStage;
@@ -29,8 +29,9 @@ export interface RunStartStageSpec {
 export function runStartStages(
   customizeSteps: boolean,
   method: StartMethod = "typed",
+  rerun = false,
 ): readonly RunStartStageSpec[] {
-  const labels: RunStartStage[] = method === "spreadsheet"
+  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options", "Confirm"] : method === "spreadsheet"
     ? ["Input"]
     : customizeSteps
       ? ["Input", "Options", "Steps", "Confirm"]
@@ -42,7 +43,7 @@ export function reconcileRunStartStage(
   stages: readonly RunStartStageSpec[],
   current: RunStartStage,
 ): RunStartStage {
-  if (stages.some((stage) => stage.label === current)) return current;
+  if (stages.some((stage) => stage.label === current) || (current === "Warning" && stages.some((stage) => stage.label === "Values"))) return current;
   return current === "Steps" ? "Options" : "Input";
 }
 

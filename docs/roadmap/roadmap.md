@@ -1909,14 +1909,14 @@ log:
 
 
 ##### 1 · Finish Setup and preflight {#dash-setup}
-status: planned
+status: done
 date: D344 · former 3.1.11-1 · independent worktree after named prerequisites
 doc: 3.1/task-11-1-finish-setup-and-preflight §Task 3.1.11.1 · Finish Setup and preflight · ref:frontend-backend-integration §5.1 · ref:operator-trust §3 · ref:clock-config-secrets §3
 
 builds:
-- [ ] BOTH derive setup state from the settings catalog, storage, workers, browsers, and workflow prerequisites
-- [ ] BOTH make every fix action real, idempotent, attributable, and followed by authoritative re-check
-- [ ] PROOF execute the declared preflight fault corpus and restart/recovery cases from a fresh local state root
+- [x] BOTH derive setup state from the settings catalog, storage, workers, browsers, and workflow prerequisites
+- [x] BOTH make every fix action real, idempotent, attributable, and followed by authoritative re-check
+- [x] PROOF execute the declared preflight fault corpus and restart/recovery cases from a fresh local state root
 
 needs:
 - dash-settings
@@ -1926,6 +1926,7 @@ needs:
 - dash-surfaces-finalizer
 
 log:
+- 2026-09-21 | focused release integrated and cleaned | Operator-directed worktree sweep accepted Operations `2c81ebd84` and both complete child histories. Exact merged product tree matches verified candidate; 2,890 file hashes and retained gate evidence checked. Combined typecheck, 819 focused tests, 69 browser cases, scoped lint and affected generated checks reused on unchanged inputs. Closure documentation checked; all three incorporated branches/worktree registrations/folders removed after hash-verified evidence preservation. Full acceptance and retained failures remain 3.1.19; no push or downstream dispatch. Final merge SHA and cleanup receipt are linked from the task owner.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-1.5; former 3.1.11-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 composed-preflight seam in `phase-3-1-dashboard-c21194e18-r12-setup`, parallel with Tasks 15 and 23 only after settings, storage and sessions merge · left: Tasks 11, 13 and 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D331 §D331.10 and §D331.11 P16 (no redesign) · left: the first post-upgrade boot's `migrated-refused { key }` is a setup fault with the `.env` remove-list (§D332.S5)
@@ -1935,22 +1936,23 @@ log:
 
 
 ##### 2 · Make Run and Rerun enqueue real work {#dash-run-modal}
-status: planned
+status: done
 date: D344 · former 3.1.11-2 · independent worktree after named prerequisites
 doc: 3.1/task-11-2-make-run-and-rerun-enqueue-real-work §Task 3.1.11.2 · Make Run and Rerun enqueue real work · ref:workflow-model §5.6 · ref:frontend-backend-integration §5.1.1 · ref:data-intake-and-edit-data §6 · ref:dashboard-surfaces §9.1 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] FE use one Rerun action: failed/interrupted sources default to remaining steps plus descriptor-required completed steps with a visible explanation, successful sources to all eligible steps; allow freely changed eligible optional selections. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values only, and final submission carries 1.6.4's D335 acknowledgment
-- [ ] BOTH make ordinary Run and Rerun use one modal and one source-bound server plan/confirm/enqueue path; Rerun opens at Steps, optional warning Confirm advances to Values, and only final modal submission consumes the plan and queues work
-- [ ] BOTH offer descriptor-allowed completed-step values as optional editable prefill and let the operator independently copy/change/clear values and select/omit eligible steps; submitted values/omissions alone are authoritative
-- [ ] BOTH create and reveal a new queued run identity only on final modal submission; keep the source byte-identical, never replay an unselected step, and never fabricate proof for an omitted transaction
-- [ ] PROOF ordinary/single/batch/dry-run, Rerun defaults and customization, stale/deleted/archived source, malformed/partial prefill, changed item, unknown-write refusal, conflict, no-worker, delayed-worker, reload, and exactly-once paths
+- [x] FE use one Rerun action: failed/interrupted sources default to remaining steps plus descriptor-required completed steps with a visible explanation, successful sources to all eligible steps; allow freely changed eligible optional selections. Selected previously submitted transactions show Cancel / Confirm; warning Confirm advances to Values only, and final submission carries 1.6.4's D335 acknowledgment
+- [x] BOTH make ordinary Run and Rerun use one modal and one source-bound server plan/confirm/enqueue path; Rerun opens at Steps, optional warning Confirm advances to Values, and only final modal submission consumes the plan and queues work
+- [x] BOTH offer descriptor-allowed completed-step values as optional editable prefill and let the operator independently copy/change/clear values and select/omit eligible steps; submitted values/omissions alone are authoritative
+- [x] BOTH create and reveal a new queued run identity only on final modal submission; keep the source byte-identical, never replay an unselected step, and never fabricate proof for an omitted transaction
+- [x] PROOF ordinary/single/batch/dry-run, Rerun defaults and customization, stale/deleted/archived source, malformed/partial prefill, changed item, unknown-write refusal, conflict, no-worker, delayed-worker, reload, and exactly-once paths
 
 needs:
 - dash-sessions
 - dash-boundary-foundation
 
 log:
+- 2026-09-21 | focused release integrated and cleaned | Operator-directed worktree sweep accepted Operations `2c81ebd84` and both complete child histories. Exact merged product tree matches verified candidate; 2,890 file hashes and retained gate evidence checked. Combined typecheck, 819 focused tests, 69 browser cases, scoped lint and affected generated checks reused on unchanged inputs. Closure documentation checked; all three incorporated branches/worktree registrations/folders removed after hash-verified evidence preservation. Full acceptance and retained failures remain 3.1.19; no push or downstream dispatch. Final merge SHA and cleanup receipt are linked from the task owner.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.2; former 3.1.11-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 3 run-start seam in `phase-3-1-dashboard-c21194e18-r15-run-start`, parallel with Tasks 12 and 23 after the session supervisor is real · left: Task 14
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 `create`, §D330.6 first-eligible claim in one transaction with `runtime-stale`, and §D330.4's served `version` as the one CAS token (no redesign) · left: a bulk start is D235's N children and one vector
@@ -1961,7 +1963,7 @@ log:
 
 
 ##### 3 · Finalization — run operations {#dash-operations-finalizer}
-status: planned
+status: done
 size: M
 date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
 doc: 3.1/task-11-3-finalization-run-operations §Task 3.1.11.3 · Finalization — run operations · ref:guards-and-tests §3.14
@@ -1969,17 +1971,19 @@ doc: 3.1/task-11-3-finalization-run-operations §Task 3.1.11.3 · Finalization �
 > Combine worker candidates with passing focused checks: 3.1.11.1–3.1.11.2; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
-- [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
-- [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
+- [x] BOTH resolve combined defects and generated-output drift within the approved group
+- [x] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [x] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
 - dash-setup
 - dash-run-modal
 
 log:
+- 2026-09-21 | focused release integrated and cleaned | Operator-directed worktree sweep accepted Operations `2c81ebd84` and both complete child histories. Exact merged product tree matches verified candidate; 2,890 file hashes and retained gate evidence checked. Combined typecheck, 819 focused tests, 69 browser cases, scoped lint and affected generated checks reused on unchanged inputs. Closure documentation checked; all three incorporated branches/worktree registrations/folders removed after hash-verified evidence preservation. Full acceptance and retained failures remain 3.1.19; no push or downstream dispatch. Final merge SHA and cleanup receipt are linked from the task owner.
 - 2026-09-19 | operator-approved 3.1.11.3 execution brief | Complete F1–F6 plan: exact child intake, either-order combination, bounded group repairs, production-service/browser proof, focused gates and operator-directed integration/cleanup. One Astra/medium supervisor, no workers or independent review. Full acceptance remains 3.1.19. Planning persistence is authorized; implementation waits for accepted Sessions and both committed, focused-green child candidates.
 - 2026-09-21 | verified finalizer intake | Accepted Sessions/preflight ancestors plus Setup `9ac176dd77198c29c33134de3d43f45f00f18ebb` and Run/Rerun `9e3060d3ef73fba127fc945dd80398e1bc3bd0a0` verified against focused receipts and 2,570/148 committed-input hashes. Disjoint child changes produce the same object tree in either order. Ready for operator-opened 3.1.11.3; combined gates, product integration and cleanup remain unstarted. Current personal instructions reserve model/effort selection to the operator.
+- 2026-09-21 | F1–F5 focused candidate frozen | Both full child candidates and approved ownership exceptions consumed from db8433c83; either-order composition verified. Repairs 176c6e0fc and attributed references 46f4d355f pass full typecheck, 819 focused tests, 69 built-browser cases, scoped lint and affected generated checks, with native 125%/200% zoom proof. Exact recording tip, inputs and retained limits are in the owner/evidence receipt. F6 product integration, child/group closure, owned worktree cleanup and downstream release await operator instruction. No workers, independent review, push or successor dispatch; full acceptance remains 3.1.19.
 
 #### 12 · Finish Activity, search, and export {#dash-activity}
 status: planned

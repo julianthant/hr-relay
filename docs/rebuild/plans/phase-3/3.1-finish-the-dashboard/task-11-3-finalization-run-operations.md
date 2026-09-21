@@ -1,11 +1,15 @@
 # Task 3.1.11.3 · Finalization — run operations
 <!-- roadmap: dash-operations-finalizer -->
 
+**Focused release accepted 2026-09-21.** Local integration and owned cleanup are complete; see
+[accepted integration and cleanup](#accepted-integration-and-cleanup--2026-09-21). Earlier pending
+intake/integration statements below describe the frozen candidate. Full acceptance remains 3.1.19.
+
 **Current assignment: 3.1.11.3.** Intake: candidates with passing focused checks from 3.1.11.1–3.1.11.2.
 
-- [ ] combine every assigned worker candidate and verify the integrated group with focused checks
-- [ ] fix group defects; pass typecheck, focused integration tests, scoped lint and affected build/generated checks
-- [ ] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
+- [x] combine every assigned worker candidate and verify the integrated group with focused checks
+- [x] fix group defects; pass typecheck, focused integration tests, scoped lint and affected build/generated checks
+- [x] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
 
 Accepted output releases 3.1.13 Queue, 3.1.14 Detail foundation and 3.1.15 Runtime. Full repository gates and final repairs remain at 3.1.19; this is a focused development release.
 
@@ -66,7 +70,7 @@ At persistence start, the Sessions worktree was active; Date had completed integ
 Names are proposals, not reservations. Recheck ownership, refs, paths and the four-auxiliary-worktree
 ceiling before creation. Preserve concurrent work; uncommitted Sessions changes are not accepted APIs.
 
-**Start status: READY for finalizer intake**, reverified on 2026-09-21 in the
+**Start status at launch: READY for finalizer intake**, reverified on 2026-09-21 in the
 [release reconciliation](#verified-finalizer-intake--2026-09-21) below. The initial 2026-09-19
 persistence waited for Sessions and both children; those required releases now exist. Recheck the
 exact candidate identities, retained evidence and this plan's availability before implementation.
@@ -248,11 +252,11 @@ settled behavior or transfer known conflicts to unspecified future discovery.
 | State | Record |
 | --- | --- |
 | Approval | Complete F1–F6 proposal and documentation persistence approved 2026-09-19. |
-| Implementation | Unstarted; no implementation checks or runtime acceptance executed by planning. |
-| Prerequisites | READY for intake as of 2026-09-21: accepted Sessions/preflight releases and both exact committed, focused-green children verified below. Combined finalizer gates, product integration and cleanup remain open. |
+| Implementation | Operator launched 2026-09-21. F1–F6 complete; focused candidate accepted into local master and owned cleanup verified below. |
+| Prerequisites | Consumed both complete child candidates and approved ownership exceptions after repeated identity/evidence checks. Combined focused gates pass; product integration and owned worktree cleanup are complete. |
 | Planning checkout | `codex/plan-3.1.11.3` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-operations-plan`, based on `824521fac8795aa37f1bf66a34bfaa011bae4713`. |
 | Planning integration | This planner is authorized to validate, commit and integrate the approved planning documents into local `master`, then clean up its documentation worktree/ref. Product merge permission remains separate. |
-| Release | Group/downstream release stays open until F1–F6 acceptance, operator-directed integration and cleanup. |
+| Release | Focused group release accepted after F1–F6, operator-directed integration and cleanup; no downstream task launched. |
 
 Planning validation and final commit/integration/cleanup receipts are retained in the
 [planning evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.3-plan-2026-09-19/).
@@ -339,3 +343,124 @@ the final documentation gate/integration/cleanup receipt. Planning reused the pr
 the current instruction that the operator selects model/effort supersedes this plan's earlier model
 assignment. Zero implementation workers and no independent review remain unchanged. Product merge
 into local `master` still requires operator instruction after the passing finalizer candidate.
+
+### Execution state — 2026-09-21
+
+**Frozen F1–F5 record; F6 is now closed by the accepted integration below.** The operator launched this assignment from
+approved plan/implementation base `db8433c83830a0c23b980be13abaa190761ff975` on
+`codex/3.1.11.3-operations` at
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-operations`.
+The exact recording tip and tree are bound in `final-receipt.json` in the
+[execution evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.3-operations-2026-09-21/).
+No worker, independent reviewer, push or sibling/downstream dispatch was used.
+
+| Stage | Verified result |
+| --- | --- |
+| F1 · intake | Repeated the committed plan, prerequisite ancestry, child identity, ownership and evidence checks. All **2,718** recorded child hashes match committed blobs; child checkouts were clean. Local master was unchanged at launch. Three auxiliary worktrees existed before creating the fourth, assigned finalizer checkout. `launch-preflight.json` and `intake-verification.json` retain exact identities. |
+| F2 · composition | Consumed both full child histories, including Setup's three bounded exceptions and Run/Rerun's dispatch/warning-preview amendment. Both orders on the actual base produce tree `82fa9c98a7cad0b660552d40df66ae4bc33eedeb`; merge commit `2e161faab9ce3ca073e9bea454f30f2383a1ba20` contains both full candidates. `composition.json` records the object comparison. |
+| F3 · repairs | Commit `176c6e0fc` preserves `previewWarnings` in two real-service test adapters, registers the new warning wire in the existing redaction audit, and adds the assigned shared-authority crossover fixtures/tests. No further product source change was needed. Commit `46f4d355fd8c4454332a7aaf993c62b51b4dc142` deliberately attributes the composed preflight header references. |
+| F4 · proof | The P1–P6 mapping below ran against the combined inputs. Both new crossover tests have a retained failure demonstration: removing admission from the owned fixture makes the unit assertion and both themed browser cases fail; the exact fixture hash was restored before final green gates. |
+| F5 · gates/freeze | Full typecheck, 52 focused test files, all 69 affected browser cases, scoped lint, descriptor generation/check and guard membership pass. Exact commands, exits, logs and input hashes are retained. Documentation generation/binding/link/instruction checks bind this recording; `final-receipt.json` identifies the immutable candidate. |
+| F6 · integration/closure | Operator invoked `/worktree-sweep` on 2026-09-21. Exact candidate integrated; unchanged-input gates verified; all three incorporated worktrees and branches removed after preserving ignored contents. Focused group and child records closed below. |
+
+The added crossover fixture uses the same real SQLite authority, preflight detectors/admission,
+planner, command kernel and lifecycle. Its HTTP unit test proves a healthy preview, a late fault
+refusal without plan consumption, explicit repair/recheck, one committed queued run, and read-only
+accepted replay after health fails again. Both themed built-browser cases correlate Setup refusal
+and explicit repair with ordinary Run admission and exactly one final-submit publication.
+Person Lookup has no transaction nodes and rejects a dry-run request; this synthetic queued-only
+proof therefore uses its supported ordinary mode, with worker/write effects wired to throw.
+No external HR transaction or workflow execution occurs in that fixture.
+
+| Proof | Executed coverage on combined inputs |
+| --- | --- |
+| P1 | All Setup detector/corpus/admission/readiness selectors in `focused-selectors.json`, including the 14 fault manifests and healthy/dependency controls; built `setup-preflight` plus the new shared-authority unit/browser crossover. Missing, stale and unavailable facts remain explicit; repair requires recheck. |
+| P2 | `settings-activation/{save-create,stale-plan,mixed-execution,retry-child}.test.ts`, planner/kernel tests and built `settings-activation.spec.ts`: committed settings selection, stale unconsumed review and original accepted replay/snapshot. |
+| P3 | Launch, Rerun, Values, warning, omission, focus and source eligibility selectors; built `run-rerun.spec.ts` and `run-rerun-authority.spec.ts`. Steps/Cancel/Confirm-to-Values and editable prefill preserve zero pre-submit effects. Native zoom repetitions verify keyboard access and focus return. |
+| P4 | Command kernel, source-bound repeat, protected identity, source eligibility, recovery and replay selectors plus built authority cases: singular accepted identity, divergent/refused inputs, source preservation, UNKNOWN refusal and source-bound execution semantics. |
+| P5 | `start-plan-supersede.test.ts`, `worker-pool-composition.test.ts`, source-bound execution and built `pool-control-desktop-target.spec.ts`/Run authority cases: reviewed supersede interleavings, claim/correlation and truthful no-worker/delayed-worker states. New crossover remains queued with no worker. |
+| P6 | Nine built specs cover Setup, ordinary/Rerun, Settings, pool controls and Date; Run reference cases retain Intake handoff. Both themes, desktop/minimum-canvas sizes, accessibility and keyboard assertions pass. Fresh native 125%/200% zoom proves affected Setup/doctor and Steps/warning/Values/final-submit journeys. |
+
+| Final gate | Passing evidence |
+| --- | --- |
+| Full typecheck | `typecheck-final-serial.json`: `npm run typecheck`, exit 0. |
+| Focused tests | `focused-final-serial.json`: **52 files / 819 tests**, exit 0. `focused-selectors.json` contains every baseline selector and affected child selectors, plus the new crossover. |
+| Scoped lint | `lint-final.json`: all **69** changed TypeScript/TSX paths from the real base, exit 0. The later type-only fixture annotation is covered by `lint-type-annotation.json`; all other lint inputs are unchanged. |
+| Built browser | `parity-final-assert.json`: **69 cases**, nine specs, four workers, exit 0; source-bound bundle built and verified by the parity lane. `parity-final-output/` retains assertion output, screenshots and accessibility/effect attachments. |
+| Generated/guards | `manifest-generate.json`, `manifest-check.json` and `guard-membership.json`: exit 0. No generated manifest diff. Catalog declarations/generator inputs are unchanged, recorded in `generated-scope.json`; no catalog regeneration required. No guard file added/retired, and the consumed guard inventory is preserved. |
+| Reference attribution | `reference-attribution.json`: **54 PNGs and four accessibility snapshots**, exact before/after hashes. Only the three affected Start/Rerun/Settings specs were refreshed after inspecting the shared preflight header/date-width changes. Metadata and unaffected accessibility output remain unchanged; assertions/tolerances were preserved. The final browser run asserts these references. |
+| Native browser zoom | `manual-zoom-index.json`: Chromium **153.0.8010.12**, native `chrome.tabs.setZoom/getZoom` through a task-owned extension, controlled by `playwright-cli`. 125% at 1280×720 yields **1024×576 CSS**; 200% at 1440×900 yields **720×450 CSS**. CSS zoom and visual scale remain 1. Keyboard recheck/remedy/warning/final-submit and focus return pass. The 200% Rerun accepts exactly one synthetic dry-run command and retains its queued identity. |
+| Documentation | `roadmap-generate.json`, `roadmap-check.json`, `roadmap-binding.json`, `docs-lint.json` and `docs-check.json` retain generation/check, binding tests, lint, local links, identical instruction twins, chain limits and clean diff checks. |
+
+Gate input snapshots establish unchanged implementation/test/config/dependency inputs through the
+recording-only commit; `final-receipt.json` records that comparison. Vitest resolves to four file
+workers with isolation; parity explicitly ran four. Assertions, suite membership, coverage floors
+and timeouts remain unchanged. No separate web build is claimed beyond the source-bound parity build.
+
+Initial failed iterations remain evidence, not passes: full typecheck exposed the two incomplete
+adapters; the combined redaction audit exposed its missing warning schema registration; scoped
+browser assertion exposed the composed header references. New fixture/test typing and browser
+locator/contract mistakes were corrected within the same repair group. A concurrent full typecheck
+and focused run experienced severe host slowdown and three test timeouts; unchanged inputs passed
+when those gates were serialized. The exact external cause is unproven; no timeout was relaxed and
+no peer was stopped. Manual capture-script mistakes are recorded in `manual-zoom-index.json`;
+settled screenshots preserve native focus scroll on the minimum desktop canvas. Accepted synthetic
+submission identities were read back before any fresh isolated proof; no UNKNOWN submit was retried.
+
+Owned manual servers, ephemeral ports and browser session are closed, with readbacks and exact
+resource checks in `owned-proof-cleanup.json`. Failed-start synthetic state was retained before
+removing its identified temporary roots. Other isolated synthetic state remains inside the evidence
+directory. No peer resource was closed or removed. Worktree cleanup is part of pending F6, not this
+proof-process shutdown.
+
+### Retained limits and delivery assessment
+
+Setup's inherited paired-recovery limitation remains: restore repairs SQL authority and clears the
+interruption marker, but preserved custody yields `preserved authority directory contains an
+unexpected entry`; preflight remains unhealthy. The parent supplemental run-deletion, wire-connectivity
+and Settings-reference failures retain their original evidence. The specifically assigned combined
+Settings cases pass here; that does not clear all supplemental parent failures. Full coverage,
+whole-repository lint/architecture, broad parity, production/performance/recovery/live acceptance and
+complete A01–A42/D01–D05 remain **3.1.19**. Synthetic adapters and isolated browser services are not
+live HR acceptance or cutover evidence.
+
+Delivery assessment: one coupled finalizer repair group, no implementation workers or review rounds.
+The missing adapter method and audit registration were implementation/proof integration defects
+within the approved plan. Reference reconciliation and crossover proof were assigned work, not new
+scope. No new planning amendment or assignment resizing was required. Fixture/capture-script mistakes
+caused local reruns; earlier service-contract/type verification and preserving browser focus scroll
+would have avoided those iterations. Host slowdown was observed, but its cause is unknown. Compaction
+alone is not counted as a defect; no lost-state obligation was identified. Logs retain actual gate
+durations, without an inferred savings estimate or quality score.
+
+F6 must recheck candidate/target ancestry and ownership after operator instruction, preserve target
+drift, run invalidated focused checks, integrate locally, retain receipts, then remove only accepted
+owned branches/worktree registrations/folders and close child/group records. Existing downstream
+dependencies may release only after that completion; this task never launches them. No product
+integration, push, child worktree deletion or downstream release has occurred at this freeze.
+
+### Accepted integration and cleanup — 2026-09-21
+
+The operator invoked `/worktree-sweep` after the finalizer froze its candidate. The integrator
+verified local `master` remained at `db8433c83830a0c23b980be13abaa190761ff975`, then merged the full
+Operations candidate `2c81ebd84bc4ee911a56f65cafdcd3784d721686`, which contains both complete child
+histories. The initial merge tree exactly equals candidate tree
+`08619e7f076072e714b1285434a6fb2fcf51198b`; no conflict or product repair occurred.
+
+All 2,890 recorded candidate file hashes, 15 retained evidence hashes and gate receipt/log/input
+hashes were independently checked. The passing combined typecheck, 819 focused tests, 69 browser
+cases, scoped lint and affected generated checks remain valid on unchanged implementation inputs.
+The integration commit additionally records closure and regenerates the roadmap; scoped
+documentation checks cover those changes. The final merge SHA and exact check outcomes are in the
+[sweep receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/worktree-sweep-2026-09-21/final-receipt.json).
+
+Before ordinary worktree removal, every ignored entry in Setup, Run/Rerun and Operations was
+archived and hash-verified outside the checkouts, including local browser/build/test evidence and
+dependencies. Fresh process cwd, argv and open-file inspection found no candidate activity. All
+three worktree registrations, physical folders and incorporated branches are absent. The dirty UI
+planning worktree and primary dependency/runtime roots were preserved.
+
+This closes the focused development release and its group/child integration obligations. It does
+not clear the inherited paired-recovery refusal, parent supplemental failures or deferred full
+coverage, whole-repository lint/architecture, broad parity, production/performance/recovery/live
+acceptance and A01–A42/D01–D05 at 3.1.19. No push, independent review or successor dispatch occurred.

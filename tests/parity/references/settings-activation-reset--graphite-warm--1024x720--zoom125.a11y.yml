@@ -18,6 +18,7 @@
   - button "No earlier day in the tracker" [disabled]
   - button "Pick a day — showing Wed, Sep 9 · today, 0 rows": Wed, Sep 9 · today 0
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 0 unread"
   - button "Switch to Paper Ink"
   - button "Settings — storage needs attention" [pressed]

@@ -1369,20 +1369,23 @@ equivalents. `input` is a generic canonical-JSON envelope only because one corpu
 contract; corpus load resolves `scope`, parses it through that exact task/workflow input schema, and
 stores the parsed value plus schema fingerprint before any scenario can execute.
 
-**As-built — TWO mechanisms share the word "scenario", and only one of them runs.**
-`ScenarioManifest` above is real code (`src/domain/trust/scenario.ts:33-90`) and it has exactly one
-consumer: `PREFLIGHT_SCENARIO_MANIFESTS` (`src/domain/trust/preflight-scenarios.ts:32`), the closed
-set of preflight FAULT scenarios. **Nothing executes them.** The `preflight-coverage` guard is
-`planned` in `guard-inventory.json` and its test file does not exist on disk; D188's re-disposition
-says in as many words that the missing half is a corpus of executed fault scenarios and that the
-guard activates with the first migration that adds a preflight runner.
+**As-built — two distinct executable mechanisms (3.1.11.1).**
+`PREFLIGHT_SCENARIO_MANIFESTS` in `src/domain/trust/preflight-scenarios.ts` declares fourteen
+preflight fault scenarios. `tests/fixtures/preflight/corpus.ts` parses and executes each manifest
+through the production runtime detector factory and strict report authority against private inputs.
+Registry-derived expansion covers each secret name, endpoint route, browser asset and feature-provider
+alternative. The corpus checks healthy controls, the injected result, explicit restoration, terminal,
+failure and evidence expectations, report digests, unchanged authority bytes and intercepted external
+effects. The active `preflight-coverage` architecture guard rejects absent/extra executions, mismatched
+evidence and registry drift; the companion unit suite rejects a deliberately false-healthy detector.
+`storage.backup` is exercised together with corrupt authority: D322 does not make an absent backup a
+failure for healthy storage. This is synthetic local proof; current target systems and live acceptance
+remain 3.1.19 work.
 
-The corpus that DOES run — `tests/scenario/**`, sixteen files — is built on a much smaller shape:
-`ScenarioCoverageClaim { scenarioId, covers }` (`tests/scenario/coverage-claims.ts`), one claim per
-scenario, each asserted by its own test to match the path the walk actually exercised. That is why a
-claim there cannot outlive the path it describes, and it is also why the rich manifest above buys
-nothing today: the executable lane never parses one. Both are honest; conflating them is what makes
-this section read as though the manifest gates the suite. It does not.
+The workflow corpus under `tests/scenario/**` independently uses
+`ScenarioCoverageClaim { scenarioId, covers }` in `tests/scenario/coverage-claims.ts`. Each claim is
+asserted against the path its test exercises. Those workflow claims do not execute preflight manifests,
+and preflight corpus completion does not credit workflow scenarios.
 
 ### 3.2 Minimum scenario coverage
 

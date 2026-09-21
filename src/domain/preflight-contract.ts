@@ -16,6 +16,7 @@ import {
 } from "./ids.js";
 import {
   PreflightCheckIdSchema,
+  PreflightProviderFeaturesSchema,
   RuntimeCapabilitySchema,
   validatePreflightReportSemantics,
 } from "./preflight-semantics.js";
@@ -29,7 +30,7 @@ export {
 
 /** The closed, browser-safe result shape; registry semantics remain server-side. */
 export const PreflightResultWireSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1) }),
+  z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1), availableFor: PreflightProviderFeaturesSchema.optional() }),
   z.strictObject({
     status: z.literal("warning"),
     check: PreflightCheckIdSchema,

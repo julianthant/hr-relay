@@ -114,6 +114,8 @@ export const PREFLIGHT_CHECK_EXPECTATIONS = deepFreeze(PreflightCheckSemanticExp
   ...providerExpectations(),
 ]));
 
+export const PreflightProviderFeaturesSchema = z.array(z.enum(["feature.ocr", "feature.ai-advisory"])).min(1).max(2);
+
 const FeatureProviderExpansionSchema = z.strictObject({
   feature: z.enum(["feature.ocr", "feature.ai-advisory"]),
   providerChecks: PreflightCheckIdSchema.array().min(1),
@@ -180,6 +182,7 @@ interface PreflightResultSemanticView {
   readonly status: "pass" | "warning" | "fail";
   readonly check: PreflightCheckId;
   readonly blocks?: readonly RuntimeCapability[];
+  readonly availableFor?: readonly ("feature.ocr" | "feature.ai-advisory")[];
 }
 
 interface PreflightReportSemanticView {
@@ -224,6 +227,12 @@ export function validatePreflightReportSemantics(report: PreflightReportSemantic
   for (const [index, result] of report.results.entries()) {
     const expectation = preflightExpectation(result.check);
     if (expectation === undefined) continue;
+    if (result.availableFor !== undefined) {
+      if (result.status !== "pass" || new Set(result.availableFor).size !== result.availableFor.length
+        || result.availableFor.some(feature => !providerChecksForFeature(feature).includes(result.check))) {
+        issue(context, ["results", index, "availableFor"], "provider feature availability contradicts its registered capabilities");
+      }
+    }
     const mandatory = mandatoryCapabilitiesForPreflightCheck(result.check, report.requestedCapabilities);
     if (result.status === "warning" && mandatory.length > 0) {
       issue(context, ["results", index, "status"], `blocking check ${result.check} cannot be a warning`);
@@ -260,7 +269,7 @@ export function validatePreflightReportSemantics(report: PreflightReportSemantic
     const providerResults = expansion.providerChecks
       .map((check) => resultByCheck.get(check))
       .filter((result): result is PreflightResultSemanticView => result !== undefined);
-    const healthyProviders = providerResults.filter(({ status }) => status === "pass").length;
+    const healthyProviders = providerResults.filter(result => result.status === "pass" && providerSupportsFeature(result.availableFor, expansion.feature)).length;
     const featureResult = resultByCheck.get(PreflightCheckIdSchema.parse(`${expansion.feature}.providers`));
     if (featureResult !== undefined && (featureResult.status === "pass") !== (healthyProviders >= expansion.minimumHealthyProviders)) {
       issue(
@@ -270,6 +279,15 @@ export function validatePreflightReportSemantics(report: PreflightReportSemantic
       );
     }
   }
+}
+
+/** An unqualified provider pass retains its existing meaning: every declared feature is available.
+ * A partial provider pass explicitly narrows that promise; it never certifies an omitted feature. */
+export function providerSupportsFeature(
+  availableFor: readonly ("feature.ocr" | "feature.ai-advisory")[] | undefined,
+  feature: "feature.ocr" | "feature.ai-advisory",
+): boolean {
+  return availableFor === undefined || availableFor.includes(feature);
 }
 
 interface RuntimeCheckSemanticView {

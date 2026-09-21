@@ -180,6 +180,13 @@ export function PlanPreview({
           {plan.planned.map((row) => (
             <li key={row.logicalKey}>
               <PlanRowCard row={row} />
+              {row.supersedeTargets !== undefined && (
+                <div className="flex flex-col gap-[var(--ds-space-tight)] py-[var(--ds-space-snug)]">
+                  <span className={dsText.body}>{row.supersedeTargets.length === 0 ? "No active runs to replace." : "Active runs to replace:"}</span>
+                  {row.supersedeTargets.map((target) => <MetaLine key={target.runId}
+                    items={[target.traceId, target.runId, `revision ${target.version}`, `attempt ${target.attempt}`, `generation ${target.claimGeneration}`]} />)}
+                </div>
+              )}
             </li>
           ))}
         </ul>

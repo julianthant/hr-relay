@@ -2439,7 +2439,8 @@ and descriptor fingerprints, the checked-at instant, and a non-empty closed resu
 
 ```ts
 type PreflightResult =
-  | { status: "pass"; check: PreflightCheckId; summary: string }
+  | { status: "pass"; check: PreflightCheckId; summary: string;
+      availableFor?: readonly ("feature.ocr" | "feature.ai-advisory")[] }
   | { status: "warning"; check: PreflightCheckId; summary: string;
       impact: string; remediation: string }
   | { status: "fail"; check: PreflightCheckId; summary: string;
@@ -2451,6 +2452,15 @@ marks blocking may not come back as a `warning`, an optional check may not `fail
 verdict must agree with the count of healthy provider checks behind it. A `fail` must name at least
 one blocked capability, and `buildPreflightReport` throws when an error-severity check resolves
 none — a refusal that blocks nothing is a refusal nobody can act on.
+
+3.1.11.1's operator-authorized bounded report repair allows a passing provider result to name
+`availableFor`, a non-empty, duplicate-free subset of its registered feature capabilities. The report
+validator and builder count healthy providers separately for each feature. Thus a configured executable
+OCR adapter can pass OCR while AI remains unavailable in the same report. An omitted list preserves
+the existing whole-provider pass meaning; only registered provider checks may carry the field.
+No registry membership, feature threshold or required/optional severity changes. Executable capability
+availability comes from composition; provider keys and model configuration alone do not certify an
+adapter, and preflight does not spend provider calls.
 
 Base checks cover Node and package-lock compatibility, Playwright browser and extension assets,
 configured paths and permissions, disk space, port availability, SQLite/migration/backup health,

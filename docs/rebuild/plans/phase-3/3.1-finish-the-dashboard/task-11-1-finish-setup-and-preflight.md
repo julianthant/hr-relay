@@ -1,6 +1,10 @@
 # Task 3.1.11.1 · Finish Setup and preflight
 <!-- roadmap: dash-setup -->
 
+**Focused release accepted 2026-09-21.** Local integration and owned cleanup are complete; see
+[accepted integration and cleanup](#accepted-integration-and-cleanup--2026-09-21). Earlier pending
+intake/integration statements below describe the frozen candidate. Full acceptance remains 3.1.19.
+
 **Current assignment: 3.1.11.1.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -8,7 +12,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Derive setup from authoritative settings/storage/workers/browsers/prerequisites and execute the
+- [x] Derive setup from authoritative settings/storage/workers/browsers/prerequisites and execute the
   complete preflight fault corpus with real idempotent repair/re-check actions.
 
 > 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes `ref clock-config-secrets` §D331.10 (Setup renders the same
@@ -17,7 +21,7 @@ Read the [subphase overview](README.md) before this assignment for shared scope,
 > `migrated-refused { key }` refusal is a SETUP fault, not an outage: it is presented with the same
 > `.env` remove-list the upgrade plan printed (`ref clock-config-secrets` §D332.S5). No redesign.
 
-Consume the accepted parent release's current schema, retaining floor 46, and the current catalog/preflight contract. The earlier schema-50 and migrated-refused/environment-import wording is historical: it does not authorize retired imports or below-floor upgrade. Display the current named admission/refusal and explicit compatible-release remedy. Full declared fault-corpus execution remains open despite the six existing dashboard runners.
+Consume the accepted parent release's current schema, retaining floor 46, and the current catalog/preflight contract. The earlier schema-50 and migrated-refused/environment-import wording is historical: it does not authorize retired imports or below-floor upgrade. Display the current named admission/refusal and explicit compatible-release remedy. The execution record below supplies the completed local fault corpus; finalizer integration and live acceptance remain open.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
@@ -66,7 +70,7 @@ independent work by default, no shared-index queue or unsolicited peer polling/m
 
 ### Feasibility and proof bindings
 
-These are historical planning observations. The accepted parent amendment below supplies the shared mechanisms; child detector/UI acceptance remains unexecuted.
+These are historical planning observations. The accepted parent amendment below supplies the shared mechanisms; the execution record records child detector/UI proof separately from finalizer acceptance.
 
 | Question / current evidence | Necessary change and owner | Required proof / exclusion effect |
 | --- | --- | --- |
@@ -228,11 +232,11 @@ fixes remain the supervisor's choices. Do not re-ask settled choice 1 A or the a
 | State | Record |
 | --- | --- |
 | Approval | Choice 1 A and complete S1–S5 plan approved 2026-09-19. |
-| Implementation | Approved for launch by “do that and launch 3.1.11.1”; child implementation remains open. |
+| Implementation | S1–S5 development complete. Implementation candidate `3d5c7d7beacfabd47c5b77274954936656d17596`; focused P1–P6/G1–G4 evidence recorded below. The recording-only tip is bound in the external freeze receipt. |
 | Parent release | Sessions plus the preflight amendment accepted in local `master` at `ef050d0a8cb99aa39b54f726b2bdd5269f125dfa`; exact interface/proof map in the parent release. Verify external cleanup receipt before launch. |
 | Plan availability | Complete approved S1–S5 plan `ac060faaf2a9f7cf9bc04f14335121cad0392e67` is integrated. This release record accompanies it; planning worktree and branch removed. |
-| Child/group release | READY after verifying the accepted integration and owned-cleanup receipt. Operator explicitly authorized this launch. 3.1.11.3 still owns combined intake and later accepted integration/cleanup; this child does not merge itself or launch peers. |
-| Broad proof | Deferred to 3.1.19; no runtime acceptance executed by planning. |
+| Child/group release | FROZEN for 3.1.11.3 intake. Combined acceptance, operator-selected integration and task-worktree cleanup remain open. The roadmap checkbox remains open until those conditions are met. |
+| Broad proof | Deferred to 3.1.19. Local synthetic production-service proof is complete; full repository and live/production acceptance are not claimed. |
 
 Maintain this compact state in place during execution, linking dated evidence. Send Done / Now /
 Remaining once at start or genuine resume; later updates report only new verified completions and
@@ -335,3 +339,113 @@ failures and existing Settings descriptor-reference drift. Their exact compariso
 the parent receipt. Full repository repair/acceptance remains 3.1.19; none is silently marked passed.
 Reproduce any relevant child failure before assigning it to that baseline. The child's own selected
 checks, detector corpus, presentation and remedy proof remain mandatory.
+
+### Execution state — 2026-09-19
+
+**Development complete; frozen for 3.1.11.3 intake.** Implementation commit
+`3d5c7d7beacfabd47c5b77274954936656d17596` is on `codex/3.1.11.1-setup`, based on
+`dac7528a12be884542d36355492fafcdffb63a30`, in the assigned Setup checkout. The recording-only
+commit does not change tested runtime, tests, references, dependencies or configuration. Its exact
+tip and tree are bound in `implementation/freeze.json`. Finalizer acceptance, integration and
+removal of the task worktree remain open; this task does not mark the roadmap checkbox complete.
+
+All evidence below is retained under
+[the implementation evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.1-setup-2026-09-19/implementation/).
+`final-gates.json` records exact command arrays, working directory, exit codes and log names;
+`final-tested-inputs.json` binds 2,570 relevant files. `implementation-paths.json` lists the exact
+202 feature paths; this task owner is the only additional recording path. Earlier failed iteration
+logs remain evidence, and are superseded only by the explicitly named passing receipts below.
+
+| Stage / proof | Completed result |
+| --- | --- |
+| S1 | Verified dedicated checkout, approved plan and parent integrations in ancestry, parent cleanup receipts and all 2,410 parent tested-input hashes unchanged; `s1-release.json`. Consumes the parent's exact interface release, including real admission consumers and scoped report/rerun operations. |
+| S2 / P1 / P3 / P5 | Registry-selected browser/Duo assets, fiscal dates, every protected-secret name, complete selected production/test endpoint sets, executable provider availability and selected feature exhaustion. No browser/authentication/provider probe or authority write is used to infer readiness. Actual plan, enqueue, worker, claim and browser consumers exercise healthy and refusal paths, optional-provider scope, replay and stale-input behavior. |
+| S3 / P4 | Setup and doctor share the served scope/report and selection. Absent, empty, future, expired and failed reports never appear current/healthy; restart-required refuses re-check, obsolete results cannot replace current state, and diagnostics remain safe. Remedies use existing Settings, Storage and Sessions navigation. |
+| S4 / P2 | All 14 declared manifests execute through 72 dependency-expanded fault cases, with healthy controls and restored checks. Missing/extra/unexecuted scenarios, mismatched evidence and a deliberately false-healthy detector are rejected. Browser launch, child spawn and fetch counters remain zero; authority bytes are unchanged by detector execution. `executed-corpus.json`; `preflight-coverage` is active. |
+| P6 | Fresh authority is healthy without automatic backup. Supported single-authority restore re-checks healthy. Corrupt, wrong/newer/below-floor authorities refuse without automatic mutation. Interrupted paired restore clears its marker through the existing command, but retained custody keeps the existing storage doctor unhealthy, as detailed below. |
+| S5 | Assigned focused checks pass; exact source/test/config/reference hashes remain unchanged. No implementation workers, independent reviewers, peer dispatch, external transactions, standing-runtime writes, push or self-integration occurred. |
+
+The adjacent helper map is now concrete: `provider-runners.ts` accompanies `workflow-runners.ts`;
+`tests/fixtures/preflight/runtime-fixture.ts`, `corpus.ts` and `served-runtime.ts` provide private
+production-service proof; the two assigned parity helpers compose that served runtime and its six
+scenes. `tests/unit/dashboard/preflight-client.test.ts` preserves direct schema assertions while
+checking safe public diagnostics; `settings-storage-doctor.test.ts` supplies the released shared
+provider wrapper. No registry, migration, provider adapter or shared composition root was added.
+
+### Authorized bounded repairs
+
+The operator explicitly authorized all three ownership exceptions in this session:
+
+| Repair / authorization | Exact bounded change and evidence |
+| --- | --- |
+| “Authorize bounded repair here” | The parent could not represent OCR ready and AI unavailable in one selected scope. `src/domain/preflight.ts`, `preflight-contract.ts` and `preflight-semantics.ts` now permit a passing provider's nonempty, unique `availableFor` feature subset, validated against its registered support. An unqualified existing pass retains availability for all declared features. The owning `clock-config-secrets.md` contract and focused report tests agree. No capability IDs, registry membership or severity changed. Reproducer: `mixed-provider-repro.mts` / `.jsonl`; passing proof in G1. |
+| “Authorize fixture repair here” | Exactly three lines in `tests/parity/helpers/fixture-bff.ts` add GET `/api/v1/preflight` with explicit unavailable readiness because this shell fixture does not compose runtime readiness. This removes the eight required Settings cases' missing-route errors. Production routes and assertions remain unchanged; `proposed-fixture-route.patch`, `settings-parity-before.log` and final G2 proof. |
+| “Authorize guard repair here” | Ten repository-authored origin declarations in `tests/unit/architecture/helpers/redaction-surface-audit.ts` cover five existing Sessions fields on both dashboard and stream reports: browser observation instance/reason and control basis reason, operation message and ownership reason. The four guard failures were reproduced on unchanged base `dac7528a12be884542d36355492fafcdffb63a30`. No runtime behavior, schemas or assertions changed; `base-redaction.log`, `session-origin-findings.json`, `proposed-session-origins.patch` and passing architecture proof. |
+
+### Focused verification and reference attribution
+
+| Assigned check | Actual result / retained evidence |
+| --- | --- |
+| G1 detector/corpus/admission/recovery | Exit 0, 10 files / 194 tests, including the nine assigned selectors and parent admission boundary; `g1-detectors-final.log`. |
+| G1 architecture | Exit 0, all five assigned files / 63 tests; `g1-architecture-final.log`. This includes executed corpus closure, runtime dependency/environment coverage, redaction surfaces and parity reference authority. |
+| G1 ingress / guard registration | Exit 0, seven selected preflight ingress tests (145 unselected); named guard membership test passes (five unselected); `g1-ingress.log`, `g1-guard-manifest.log`. |
+| G2 unit | Exit 0, six files / 20 tests, including four assigned files and parent readiness/setup boundary checks; `g2-ui-unit-final.log`. |
+| G2 browser build / references | `npm run web:build`: exit 0. Deliberate owned reference update: 33 pass. Assert run: 33 pass (25 Setup, eight Settings), including body-backed a11y report verification; `web-build.log`, `parity-owned-update-2.log`, `g2-parity-assert.log`. |
+| G2 keyboard / real zoom | Chromium 153.0.8010.12, actual `chrome.tabs.setZoom`/`getZoom` through a task-owned extension controlled by `playwright-cli`. At 125%, requested 1280×720 gives 1024×576 CSS pixels; at 200%, requested 1440×900 gives 720×450 CSS pixels. CSS zoom and visual scale both remain 1. Re-check returns HTTP 200, remedy access and Escape focus return pass; the doctor fits and scrolls within the effective viewport. The standing 1024-pixel minimum canvas requires horizontal scrolling at 200%. `zoom125-recapture-proof.log`, `zoom200-recapture-proof.log`, `zoom-fixture-clock.log` and `zoom125-capture.json` / `zoom200-capture.json`. The inspected `zoom125-viewport.png`, `zoom200-viewport.png` and `zoom200-bottom-viewport.png` use an unclipped Chromium capture through `playwright-cli`; these supersede the earlier miscropped zoom screenshots. |
+| G3 lint / quick checks | All 29 changed TypeScript paths exactly match the base-relative freeze list; `npx eslint --max-warnings 0` and `npx tsc --noEmit` exit 0. `lint-paths.txt`, `g3-lint.log`, `g3-typecheck.log`. |
+| G3 affected generated output | `npm run build:manifest` and `npm run build:manifest:check`: exit 0; no tracked generated diff. `build-manifest-generate.log`, `build-manifest-check.log`. No store catalog or roadmap regeneration is credited. |
+| G4 | Roadmap binding: 24 pass, `g4-roadmap-binding.log`. Added links, all existing instruction pairs, complete chains below 32,768 bytes and base-relative diff check pass; `verify-implementation.py`, `implementation-validation.json`, `instruction-chains.json`. |
+
+The 48 new Setup/doctor screenshot, a11y and metadata triplets cover six served states, both themes
+and both assigned desktop sizes. Eight existing Settings triplets were deliberately updated only
+for the accepted parent descriptor fingerprint and the neutral `Preflight: unavailable` doctor
+trigger. These are the existing graphite-warm 1280×720, 1440×900, capabilities, system-hosts and
+narrow-1024×768 scenes, plus paper-ink 1280×720, 1440×900 and narrow-1024×768. No other references,
+thresholds, membership, assertions, coverage floors or timeouts changed.
+
+### Finalizer intake, limits and cleanup
+
+3.1.11.3 consumes this candidate together with Run/Rerun, reconciles the three approved shared-file
+repairs and generated output, runs its assigned combined checks, and owns later accepted integration
+and task-worktree cleanup. The operator chooses integration. The dependency symlink remains intact;
+owned browser sessions, proof servers and disposable roots are closed/removed as recorded in
+`cleanup.json`. The temporary detached baseline worktree was removed both physically and from Git.
+No peer worktree was changed or removed by this task.
+
+The paired-recovery test records an inherited storage limitation rather than a successful healthy
+repair: the existing restore command returns success, SQL authority becomes healthy and the
+interruption marker clears, but the doctor reports `preserved authority directory contains an
+unexpected entry` and preflight remains unhealthy. Custody evidence is preserved. No storage policy
+or diagnostic bypass is introduced. The finalizer must retain this limitation in its combined
+record; comprehensive recovery acceptance and any storage repair remain with 3.1.19.
+
+Proof uses synthetic inputs and private roots with production services/detectors. It establishes no
+current HR system, real browser login or provider availability. Full repository coverage/lint/
+architecture, broad parity, production, performance, comprehensive recovery and A07 live dry-run
+acceptance remain 3.1.19 (using the 3.1.18 harness); none is claimed passed here.
+
+### Accepted integration and cleanup — 2026-09-21
+
+The operator invoked `/worktree-sweep` after the finalizer froze its candidate. The integrator
+verified local `master` remained at `db8433c83830a0c23b980be13abaa190761ff975`, then merged the full
+Operations candidate `2c81ebd84bc4ee911a56f65cafdcd3784d721686`, which contains both complete child
+histories. The initial merge tree exactly equals candidate tree
+`08619e7f076072e714b1285434a6fb2fcf51198b`; no conflict or product repair occurred.
+
+All 2,890 recorded candidate file hashes, 15 retained evidence hashes and gate receipt/log/input
+hashes were independently checked. The passing combined typecheck, 819 focused tests, 69 browser
+cases, scoped lint and affected generated checks remain valid on unchanged implementation inputs.
+The integration commit additionally records closure and regenerates the roadmap; scoped
+documentation checks cover those changes. The final merge SHA and exact check outcomes are in the
+[sweep receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/worktree-sweep-2026-09-21/final-receipt.json).
+
+Before ordinary worktree removal, every ignored entry in Setup, Run/Rerun and Operations was
+archived and hash-verified outside the checkouts, including local browser/build/test evidence and
+dependencies. Fresh process cwd, argv and open-file inspection found no candidate activity. All
+three worktree registrations, physical folders and incorporated branches are absent. The dirty UI
+planning worktree and primary dependency/runtime roots were preserved.
+
+This closes the focused development release and its group/child integration obligations. It does
+not clear the inherited paired-recovery refusal, parent supplemental failures or deferred full
+coverage, whole-repository lint/architecture, broad parity, production/performance/recovery/live
+acceptance and A01–A42/D01–D05 at 3.1.19. No push, independent review or successor dispatch occurred.

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { RerunPlanRefusalCodeSchema } from "../../domain/run/rerun.js";
 import { StartPlanRequestSchema,StartPlanWireSchema,type StartPlanWire } from "../../domain/dashboard/start-plan.js";
 import { DashboardClientError, httpError, schemaError } from "./errors.js";
@@ -23,11 +25,26 @@ export class StartPlanRefusalError extends DashboardClientError {
 }
 
 export interface StartCommands {
+  previewRerunWarnings(input: unknown): Promise<RerunWarningWire>;
 
   submitStartPlan(input: unknown): Promise<StartPlanResponse>;
 }
 
 export function createStartCommands(transport: DashboardTransport): StartCommands { return Object.freeze({
+    async previewRerunWarnings(input: unknown): Promise<RerunWarningWire> {
+      const body = RerunWarningRequestSchema.parse(input);
+      const response = await transport.requestJsonResponse("/api/v1/rerun-warnings", { method: "POST", body: JSON.stringify(body) });
+      if (!response.ok) {
+        const refusal = RerunRefusalSchema.safeParse(response.body);
+        if (refusal.success && (response.status === 404 || response.status === 409)) throw new StartPlanRefusalError(response.status, refusal.data);
+        throw httpError(response.status, response.body);
+      }
+      const warning = RerunWarningWireSchema.parse(response.body);
+      if (warning.workflowId !== body.workflowId || canonicalJsonStringify(warning.rerun.source) !== canonicalJsonStringify(body.source)) {
+        throw new Error("RERUN_WARNING_IDENTITY_MISMATCH");
+      }
+      return warning;
+    },
 
     async submitStartPlan(input: unknown): Promise<StartPlanResponse> {
       const body = StartPlanRequestSchema.parse(input);

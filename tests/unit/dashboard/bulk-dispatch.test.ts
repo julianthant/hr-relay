@@ -48,8 +48,8 @@ function row(runId: string, title: string, actions: readonly ActionDescriptorWir
 }
 
 describe("planBulkVerb — the intersection and the named skips (D235)", () => {
-  it("puts retry before irreversible cancel on the strip", () => {
-    assert.deepEqual(BULK_STRIP_VERBS, ["retry", "cancel"]);
+  it("offers cancel only; Rerun needs individual review", () => {
+    assert.deepEqual(BULK_STRIP_VERBS, ["cancel"]);
   });
   it("splits a mixed selection into the eligible intersection and the named skipped rows", () => {
     const rows = [
@@ -136,7 +136,7 @@ describe("planBulkVerb — selected rows the day no longer serves", () => {
   });
 
   it("refuses a plan whose whole selection has left the day, naming why", () => {
-    const plan = planBulkVerb([], "retry", ["run-gone", "run-also-gone"]);
+    const plan = planBulkVerb([], "cancel", ["run-gone", "run-also-gone"]);
     const composed = composeBulkRunCommand(plan, { actorId: "operator", source: "queue" });
     assert.equal(composed.state, "refused");
     assert.match(
@@ -222,17 +222,23 @@ describe("composeBulkRunCommand — a plan with nothing eligible refuses (D235)"
     );
   });
 
+  it("refuses stale bulk retry actions and composed plans", () => {
+    const plan = planBulkVerb([row("run-1", "Alpha", [servedCommand("retry", 4)])], "retry", ["run-1"]);
+    assert.deepEqual(plan.eligible, []);
+    assert.equal(composeBulkRunCommand(plan, context).state, "refused");
+  });
+
   it("composes a best-effort envelope whose bulk identity seeds the child identities", () => {
     const plan = planBulkVerb(
-      [row("run-1", "Alpha", [servedCommand("retry", 4)]), row("run-2", "Bravo", [servedCommand("retry", 9)])],
-      "retry",
+      [row("run-1", "Alpha", [servedCommand("cancel", 4)]), row("run-2", "Bravo", [servedCommand("cancel", 9)])],
+      "cancel",
       ["run-1", "run-2"],
     );
     const composed = composeBulkRunCommand(plan, context);
     assert.equal(composed.state, "ready");
     const request = (composed as { request: Record<string, unknown> }).request;
     assert.equal(request.family, "run");
-    assert.equal(request.type, "retry");
+    assert.equal(request.type, "cancel");
     assert.equal(request.mode, "best-effort", "the runtime executes no other mode, and the client never asks for one");
     assert.equal(request.bulkCommandId, request.commandId, "the bulk identity is the child identities' seed");
     assert.deepEqual(request.targets, [

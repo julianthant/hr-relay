@@ -1,0 +1,42 @@
+# run-rerun-values--paper-ink--1280x720
+# adapter: seeded
+# fixture: run-rerun-authority
+# descriptorHash: f1bf5319befbd7faff9ec51b54efee6ecfe80487f01ab9a90d0ae107148ae0f9
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: paper-ink  variant: default
+# capturedAt: 2026-07-31
+
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - list "Run configuration path":
+    - listitem: Steps
+    - listitem: Values
+    - listitem: Options
+    - listitem: Confirm
+  - heading "Launch proof" [level=3]
+  - region "Values":
+    - text: employee IDs — separated by “,” or a new line 0 parsed
+    - textbox "employee IDs — separated by “,” or a new line":
+      - /placeholder: Employee ID
+    - paragraph: An employee ID is eight digits beginning 10; an entry matching none of these refuses the whole box, and nothing is started.
+    - region "Previous values":
+      - text: Previous values Employee ID 10812345
+      - button "Copy Employee ID"
+      - text: New Employee ID
+      - textbox "New Employee ID": "10812345"
+      - button "Clear Employee ID"
+      - text: Check employee · Checked employee ID 10812345
+      - button "Copy Check employee · Checked employee ID" [disabled]
+      - text: Previous transaction T123456
+      - button "Copy Previous transaction"
+      - text: New Previous transaction
+      - textbox "New Previous transaction": Reviewed memo
+      - button "Clear Previous transaction"
+  - contentinfo:
+    - text: Launch proof v1
+    - button "Back"
+    - button "Cancel"
+    - button "Next"

@@ -1,6 +1,10 @@
 # Task 3.1.11.2 · Make Run and Rerun enqueue real work
 <!-- roadmap: dash-run-modal -->
 
+**Focused release accepted 2026-09-21.** Local integration and owned cleanup are complete; see
+[accepted integration and cleanup](#accepted-integration-and-cleanup--2026-09-21). Earlier pending
+intake/integration statements below describe the frozen candidate. Full acceptance remains 3.1.19.
+
 **Current assignment: 3.1.11.2.** Independent parallel task; launch only after the parent prerequisite is accepted and merged.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
 Follow the [execution cadence](README.md#execution-cadence--operator-amendment-2026-09-13): focused task checks, full repository gates only at 3.1.19, no independent review.
@@ -20,24 +24,24 @@ to shell/dialog focus and the narrow Run-modal hookup. Dismissal returns focus t
 successful Intake handoff retains takeover focus. Preserve that correction and the extracted uploader.
 Ordinary Run/Rerun, warning, prior-value and enqueue semantics remain owned by this task.
 
-- [ ] Make ordinary Run plus D334 Rerun use one modal and one server plan/confirm/enqueue path.
+- [x] Make ordinary Run plus D334 Rerun use one modal and one server plan/confirm/enqueue path.
   Use one Rerun action for failed/interrupted and successful sources; do not offer a separate Retry
   action. Failed/interrupted sources default to failed/unfinished steps plus descriptor-required
   completed steps, with a visible explanation for the latter; successful sources default
   to ALL steps, including previously omitted steps. Begin at Steps; defaults never restrict selection.
-- [ ] Offer descriptor-allowed completed-step values from 2.6 Task 1-2 as optional prefill. Let the
+- [x] Offer descriptor-allowed completed-step values from 2.6 Task 1-2 as optional prefill. Let the
   operator copy, change or clear values and select or omit any eligible step; submitted modal values
   and omission facts are authoritative, and unselected steps do not replay.
-- [ ] D335: proceeding from Steps with a selected previously submitted transaction shows a warning
+- [x] D335: proceeding from Steps with a selected previously submitted transaction shows a warning
   with Cancel / Confirm. Cancel returns to Steps; Confirm acknowledges the exact server warning set
   and advances to Values only. With no warning, proceed directly to Values. Neither navigation action
   consumes a plan, mints run/trace ids, creates/publishes a run or submits a transaction. Let the user
   edit Values normally; retain acknowledgment when the warning facts are unchanged, and renew it when
   warned selection/business keys/source/evidence change. Prior completion never disables a step or
   silently reuses its receipt. Consume 1.6.4's backend protocol; this task owns the full interaction.
-- [ ] Create a new queued run only on the modal's final submission, show the committed run identity returned by the server,
+- [x] Create a new queued run only on the modal's final submission, show the committed run identity returned by the server,
   keep the source run byte-identical, and never represent an omitted transaction as a new write/proof.
-- [ ] Prove ordinary/single/batch/dry-run plus Rerun defaults and full customization across
+- [x] Prove ordinary/single/batch/dry-run plus Rerun defaults and full customization across
   stale/deleted/archived sources, malformed/partial prefill, changed item identity, unknown-write
   refusal, conflict, no-worker, delayed-worker, reload and exactly-once paths. Include one Rerun label
   for both outcomes, failed-source remaining versus successful-source all-step defaults, selecting a
@@ -341,7 +345,7 @@ owner change, new contract choice, unprovable acceptance or uncertain effect; su
 | State | Record |
 | --- | --- |
 | Approval | Six-step scope and recommended 1 A approved on 2026-09-19; subsequent “do it” approved the two bounded launch ownership transfers and local planning-document integration. |
-| Implementation | Unstarted; no product/runtime edits or runtime acceptance during planning. |
+| Implementation | R1–R6 and P1–P5 implemented and focused proof passed; candidate frozen for 3.1.11.3 intake. Product integration, combined gates and worktree cleanup remain with the finalizer under operator direction. |
 | Parent prerequisite | Accepted Sessions integration/cleanup and later preflight release `ef050d0a8cb99aa39b54f726b2bdd5269f125dfa` verified. The two discovered launch gaps are approved R2/R3 work, with no dependency on Setup’s unmerged candidate. |
 | Planning persistence | This planner is authorized to validate/commit the full amended documentation, integrate it locally, verify the committed plan and remove only its incorporated planning branch/worktree. Product implementation/integration and task dispatch are not authorized here. |
 | Child/group release | Issue the READY prompt only after this amended plan passes documentation checks, is integrated and its planning checkout is cleaned up. Implementation then starts in an operator-opened session; later finalizer intake, product integration and cleanup remain distinct. |
@@ -437,3 +441,75 @@ full 3.1.19 gates, product integration and push remain outside this completed pl
 
 Detailed amendment receipts are in
 [the amendment evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-plan-2026-09-19/amendment/).
+
+### Frozen child candidate — 2026-09-21
+
+The prior task created the assigned branch/worktree, installed dependencies, and stopped at a usage limit before product edits. This supervisor verified its failed status, clean checkout, exact base and committed plan, accepted Sessions/preflight ancestors, ownership, and three occupied auxiliary worktrees before continuing. No workers or independent reviewer were used.
+
+| Candidate coordinate | Record |
+| --- | --- |
+| Branch / retained checkout | `codex/3.1.11.2-run-rerun` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-run-rerun` |
+| Approved base / plan | `94766a1cc54227969462e9ce3b108144c7277723` |
+| Implementation and focused tests | `44f842a555e795e72e99fcb605cbda254634084c` |
+| Affected visual/a11y references | `51d09f89c278e194eb687ed17a23900f106fac28` |
+| Final candidate | The documentation commit containing this record is the candidate tip. Its exact SHA/tree, commit order, clean status and unchanged-input comparison are recorded in the final evidence receipt after commit. Consume the full base-to-tip range, not just the reference commit. |
+| Evidence | [Execution evidence and final receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.11.2-run-rerun-2026-09-19/) |
+
+R1–R6 implement the approved allocation. Served, revision-bound Rerun navigation opens the shared modal at Steps; dashboard single/bulk Retry/Restart escape paths refuse. Failed/interrupted defaults include required completed work and the completed prerequisites necessary to retain selected unfinished work under the existing omission cascade. Those selections explain their reason; optional choices remain editable. Successful defaults include every eligible step. Declared prior values can be copied, edited and cleared; omission coordinates populate omission facts, and edits remove copy attribution.
+
+The guarded `POST /api/v1/rerun-warnings` reuses the authoritative source/warning validation and reads retained canonical input, source-owned checkpoints, gate results and write evidence before new Values are complete. It allocates no run/trace identity and performs no durable mutation. Warning Cancel returns to Steps; Confirm advances to Values. Final planning recomputes the binding, renews changed consent and retains fresh-execution/UNKNOWN fences. Source records, checkpoints and intents remain immutable.
+
+Supersede review persists the exact active run/trace, revision, attempt and claim-generation set, including an empty set. The start command compares every item before consuming the plan or mutating authority; late batch drift has no partial effect. Historical unconsumed plans without the basis replan; consumed historical commands replay after database reopen. Intake fan-out semantics and SQL schemas are unchanged.
+
+One minimal final command envelope is retained in actor-scoped session storage before dispatch, with no raw input or prior values. Duplicate clicks, lost responses and reload use the same command; stale replies cannot overwrite a later launch. Settings currentness, accepted preflight, Date state, Intake handoff/focus, server result vectors and queue authority remain in their accepted owners.
+
+| Gate / proof | Actual result on frozen relevant inputs |
+| --- | --- |
+| G1 group 1: mounted launch, model, timeline, focus, recovery and contracts | Exit 0; 9 files / 104 tests. `g1-final-group1.log`. |
+| G1 group 2: planning, supersede, row/bulk actions and command atomicity | Exit 0; 7 files / 147 tests. `g1-final-group2.log`. |
+| G1 group 3: retained values, source eligibility/protection and fresh source-bound execution | Exit 0; 6 files / 69 tests. `g1-final-group3.log`. |
+| G1 group 4: settings activation/currentness and preserved snapshots | Exit 0; 4 files / 13 tests. `g1-final-group4.log`. |
+| G1 group 5: mutation ingress and accepted preflight admission/readiness | Exit 0; 3 files / 17 tests. `g1-final-group5.log`. |
+| G2 built application | `npm run web:build`: exit 0. `g2-final-build.log`. |
+| G2 affected browser assertion | The exact three-spec command above, four workers: exit 0, 25 cases. `iteration-4-parity.log`. |
+| P5 real authority crossover | The private launch fixture uses the real Hono launch routes, SQLite, planner, command kernel, queue projection and controlled executor. Browser proof covers lost response/reload, exact committed identities, ordinary batch dry-run, current settings, stale review refusal, queued-without-worker and later execution/readback. Synthetic transaction seeding and all fresh transaction-bearing execution stay inside isolated test authority; no external HR write or live acceptance claim. |
+| G2 native browser zoom | playwright-cli with an owned persistent Chromium profile, Chrome 153.0.0.0. Browser Settings → Appearance → Page zoom selected 125% and 200%; no CSS zoom or device-scale substitution. 1280×720 at 125% yields 1024×576 CSS pixels; 1440×900 at 200% yields 720×450. Tab/scroll reaches warning Cancel/Confirm, editable Values, final dry-run submit and Close; Escape restores the Rerun launcher. Final captures: `zoom125-{warning,values,review}.png` and `zoom200-{warning,values,review}-scroll0.png`; keyboard/viewport receipts accompany them. |
+| G3 exact scoped lint | Exit 0, zero warnings; the exact 36 changed TS/TSX paths versus the approved base are in `g3-final-lint-paths.json`. No file-membership, assertion, floor, timeout or root configuration weakening. |
+| Supplemental affected types | `tsc --noEmit -p /tmp/hr-run-rerun-types.json`: exit 0, changed-file import closure only. A copy of the configuration is retained as `scoped-typecheck-config.json`; this is not the finalizer's full typecheck. |
+| G3 generated inputs | No descriptor import-closure or task-store catalog input changed. `npm run build:manifest:check`: exit 0; no manifest/store output regeneration required. No architecture guard was added or retired; the existing ingress guard gains the warning route. |
+| G3 documentation | Roadmap generation/freshness, document binding, links, instruction twins/chains and whitespace checked in the final recording receipt. Roadmap task completion remains pending finalizer integration. |
+| G4 unchanged-input reuse | `tested-inputs.json` hashes all 148 changed implementation/test/reference files. The final receipt compares those hashes with committed candidate bytes; documentation-only recording does not invalidate the passing runtime gates. |
+
+The 12 new warning/Values/review reference scenes retain PNG/a11y/provenance triples for both themes at both required desktop sizes. Thirty-eight existing affected Run scenes required stale descriptor-attribution refresh: only their a11y header and metadata hash changed; their pixels and accessibility bodies remain byte-identical to the approved base. `reference-attribution.json` records every path and hash transition. No unrelated reference or tolerance changed.
+
+Earlier failures remain in the evidence directory and are not accepted proof. Repairs included session-storage isolation between mounted tests, asynchronous source/reply ordering, canonical copied-input versus omission-fact routing, strict source/evidence checks, and private real-authority fixture composition. The existing settings scheduler test also failed on the clean base: it now waits one event-loop turn before inspecting the asynchronously populated pending timer; assertions and timeouts remain unchanged. Its final four-file settings group passed. During zoom proof, an accidental nine-digit keyboard edit correctly refused and was corrected; no resulting run was created. Initial captures after horizontally scrolling the minimum desktop canvas had a Chromium screenshot offset; final captures use the canvas's left edge, with native zoom and visible-control bounds independently recorded.
+
+Owned playwright-cli sessions `hrauto-run-rerun` and `hrauto-run-rerun-zoom`, the specimen Vite process (port 54098), and the isolated proof BFF (port 55315) were closed. The receipt verifies those owned handles/listeners are gone; peer sessions and checkouts remain untouched. The branch and worktree intentionally remain for finalizer intake.
+
+3.1.11.3 owns exact-candidate combination in either child order, shared-interface repairs, combined full `npm run typecheck`, focused integration tests/lint/generated checks, operator-directed local integration and accepted cleanup. This child has no unresolved implementation blocker. Full repository gates and broad/live acceptance remain with 3.1.19. No product merge, push, sibling dispatch or worktree cleanup occurred; candidate freeze does not mark the integrated group complete.
+
+### Accepted integration and cleanup — 2026-09-21
+
+The operator invoked `/worktree-sweep` after the finalizer froze its candidate. The integrator
+verified local `master` remained at `db8433c83830a0c23b980be13abaa190761ff975`, then merged the full
+Operations candidate `2c81ebd84bc4ee911a56f65cafdcd3784d721686`, which contains both complete child
+histories. The initial merge tree exactly equals candidate tree
+`08619e7f076072e714b1285434a6fb2fcf51198b`; no conflict or product repair occurred.
+
+All 2,890 recorded candidate file hashes, 15 retained evidence hashes and gate receipt/log/input
+hashes were independently checked. The passing combined typecheck, 819 focused tests, 69 browser
+cases, scoped lint and affected generated checks remain valid on unchanged implementation inputs.
+The integration commit additionally records closure and regenerates the roadmap; scoped
+documentation checks cover those changes. The final merge SHA and exact check outcomes are in the
+[sweep receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/worktree-sweep-2026-09-21/final-receipt.json).
+
+Before ordinary worktree removal, every ignored entry in Setup, Run/Rerun and Operations was
+archived and hash-verified outside the checkouts, including local browser/build/test evidence and
+dependencies. Fresh process cwd, argv and open-file inspection found no candidate activity. All
+three worktree registrations, physical folders and incorporated branches are absent. The dirty UI
+planning worktree and primary dependency/runtime roots were preserved.
+
+This closes the focused development release and its group/child integration obligations. It does
+not clear the inherited paired-recovery refusal, parent supplemental failures or deferred full
+coverage, whole-repository lint/architecture, broad parity, production/performance/recovery/live
+acceptance and A01–A42/D01–D05 at 3.1.19. No push, independent review or successor dispatch occurred.

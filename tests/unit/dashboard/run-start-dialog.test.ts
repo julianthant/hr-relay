@@ -215,6 +215,7 @@ async function settle(): Promise<void> {
 }
 
 afterEach(async () => {
+  window.sessionStorage.clear();
   const root = mounted;
   mounted = undefined;
   if (root !== undefined) {
