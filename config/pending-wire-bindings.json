@@ -19,12 +19,6 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref dashboard-surfaces §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
-    },
-    {
-      "binding": "route:GET /api/v1/runs/:runId/rerun-values",
-      "direction": "served-unconsumed",
-      "decision": "D335",
-      "note": "Task 2.6.1-2 serves read-only source values, completion facts and settled transaction coordinates. Task 3.1.11.2 (dash-run-modal) owns the Rerun modal client and removes this declaration when it calls the endpoint. No modal or repeat authorization is implemented by this read."
     }
   ]
 }

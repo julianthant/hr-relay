@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { REVIEWED_CATCH_DEFAULTS } from "./reviewed-catch-defaults.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import ts from "typescript";
@@ -244,7 +246,12 @@ export function auditFailLoudCatchDefaults(path: string, content: string): reado
 function auditBareDefaults(files: readonly string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
-    violations.push(...auditFailLoudCatchDefaults(file, readFileSync(file, "utf8")));
+    const content=readFileSync(file, "utf8");
+    const findings=auditFailLoudCatchDefaults(file,content);
+    const reviewed=REVIEWED_CATCH_DEFAULTS.find(entry=>normalize(file).endsWith(`/${entry.path}`));
+    if (reviewed !== undefined && createHash("sha256").update(content).digest("hex") === reviewed.sha256) {
+      if (findings.length === 0) violations.push(`${file}: stale reviewed catch classification`);
+    } else violations.push(...findings, ...(reviewed === undefined ? [] : [`${file}: reviewed catch source changed; re-review required`]));
   }
   return violations;
 }
@@ -308,11 +315,23 @@ function auditEvaluate(files: readonly string[]): string[] {
   return violations;
 }
 
-function moduleSpecifiers(file: string): string[] {
+function moduleSpecifiers(file: string, runtimeOnly = false): string[] {
   const specs: string[] = [];
   visit(parse(file), (node) => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
-      && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) specs.push(node.moduleSpecifier.text);
+      && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (runtimeOnly) {
+        if (ts.isImportDeclaration(node) && node.importClause !== undefined) {
+          if (node.importClause.isTypeOnly) return;
+          const bindings=node.importClause.namedBindings;
+          if (node.importClause.name === undefined && bindings !== undefined && ts.isNamedImports(bindings)
+            && bindings.elements.length > 0 && bindings.elements.every(element=>element.isTypeOnly)) return;
+        }
+        if (ts.isExportDeclaration(node) && (node.isTypeOnly || (node.exportClause !== undefined && ts.isNamedExports(node.exportClause)
+          && node.exportClause.elements.length > 0 && node.exportClause.elements.every(element=>element.isTypeOnly)))) return;
+      }
+      specs.push(node.moduleSpecifier.text);
+    }
   });
   return specs;
 }
@@ -328,7 +347,7 @@ function auditCycles(files: readonly string[]): string[] {
   const fileSet = new Set(files.map((file) => resolve(file)));
   const edges = new Map<string, string[]>();
   for (const file of files) {
-    edges.set(resolve(file), moduleSpecifiers(file)
+    edges.set(resolve(file), moduleSpecifiers(file, true)
       .map((specifier) => resolveModule(file, specifier))
       .filter((target): target is string => target !== undefined && fileSet.has(resolve(target)))
       .map((target) => resolve(target)));

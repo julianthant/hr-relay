@@ -204,7 +204,7 @@ async function auditRunCaptureBrowser(probe: RunCaptureBrowserProbe, accounting:
 function assertRefusedRunCapture(result: Awaited<ReturnType<typeof auditRunCaptureBrowser>>, message: RegExp): void {
   assert.equal(result.observation.state, "refused", "the invalid generic observation was credited");
   assert.match(result.problems[0], message);
-  assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN, GENERIC_ORPHAN]);
+  assert.deepEqual(result.problems.slice(1), [GENERIC_ORPHAN, ARCHIVE_ORPHAN]);
   assert.equal(result.references.some(({ path }) => routeMatches(GENERIC_ROUTE, path)), false);
 }
 
@@ -222,7 +222,7 @@ function changedNativeAttribute(selector: string, attribute: string, value: stri
 function assertRefusedArchive(result: Awaited<ReturnType<typeof auditArchiveBrowser>>, message: RegExp): void {
   assert.equal(result.observation.state, "refused", "the invalid browser observation was credited");
   assert.match(result.problems[0], message);
-  assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN, GENERIC_ORPHAN]);
+  assert.deepEqual(result.problems.slice(1), [GENERIC_ORPHAN, ARCHIVE_ORPHAN]);
   assert.equal(result.references.some(({ path }) => routeMatches(ARCHIVE_ROUTE, path)), false,
     "a refused observation still supplied an Archive reference");
 }
@@ -412,6 +412,10 @@ function projectedRowCommands(): ReadonlySet<string> {
   return commands;
 }
 
+// Operations replaced direct recovery buttons with reviewed Rerun navigation. The historical
+// command vocabulary remains kernel-readable; this exact asymmetry cannot credit any new key.
+const RETAINED_RECOVERY_ACTIONS = new Set(["retry", "restart"]);
+
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
   "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
@@ -590,8 +594,15 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
+    for (const key of RETAINED_RECOVERY_ACTIONS) {
+      assert.ok(actionKeys.includes(key) && kernelTypes.includes(key), `stale retained recovery command: ${key}`);
+      assert.ok(!projected.has(key), `retained recovery command became directly projected: ${key}`);
+    }
+    const navigation = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {status:"failed",rowRevision:1,dryRun:false,isChild:false,
+      parkedWrite:false,memberCount:0,isMember:false,named:false,workflowLabel:"Fixture",hasReviewPanel:false});
+    assert.ok(navigation.some(action => action.kind === "navigation" && action.navigate.kind === "rerun"));
     for (const key of actionKeys) {
-      if (projected.has(key)) continue;
+      if (projected.has(key) || RETAINED_RECOVERY_ACTIONS.has(key)) continue;
       problems.push(
         `ActionCommandKeySchema names "${key}" and nothing projects it — not queueRowActions over any `
         + `status, and no descriptor literal in ${SECTION_DESCRIPTOR_PRODUCER}. A served key nothing `
@@ -725,8 +736,8 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: `route:GET ${GENERIC_ROUTE}`,
       direction: "served-unconsumed", decision: "D292", note: "Test-only stale exception, never persisted." })];
     const result = await auditRunCaptureBrowser(runCaptureProbe(), { pending });
-    assert.deepEqual(result.problems, [ARCHIVE_ORPHAN,
-      `config/pending-wire-bindings.json declares route:GET ${GENERIC_ROUTE} unconsumed, but a client now calls it`]);
+    assert.deepEqual(result.problems, [
+      `config/pending-wire-bindings.json declares route:GET ${GENERIC_ROUTE} unconsumed, but a client now calls it`, ARCHIVE_ORPHAN]);
   });
 
   it("A8 credits the actual mounted Archive parent native sinks and leaves the generic route open", async () => {
@@ -851,8 +862,8 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const result = await auditArchiveBrowser(archiveProbe(), { pending });
     assert.equal(result.observation.state, "observed");
     assert.deepEqual(result.problems, [
-      "config/pending-wire-bindings.json declares route:GET /artifacts/v1/archive/:runId/:artifactId unconsumed, but a client now calls it",
       GENERIC_ORPHAN,
+      "config/pending-wire-bindings.json declares route:GET /artifacts/v1/archive/:runId/:artifactId unconsumed, but a client now calls it",
     ]);
   });
 
@@ -993,5 +1004,5 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
 
 it("V refuses missing or foreign native saved-file sinks", async () => {
   await assert.rejects(savedArchiveBrowserRouteReferences(withoutNativeSinks("a[href]")), /no exact native download sink/);
-  await assert.rejects(savedArchiveBrowserRouteReferences(changedNativeAttribute("a[href]", "href", "/artifacts/v1/archive/foreign/files/foreign")), /saved-file-download-identity-mismatch/);
+  await assert.rejects(savedArchiveBrowserRouteReferences(changedNativeAttribute('section[aria-label="Retained attachments"] a[download][href]', "href", "/artifacts/v1/archive/foreign/files/foreign")), /saved-file-download-identity-mismatch/);
 });

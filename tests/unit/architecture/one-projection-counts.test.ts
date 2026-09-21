@@ -57,6 +57,7 @@ import {
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const COUNT_FIELDS = new Set(["monthCounts", "workflowCounts", "statusCounts"]);
+const CALENDAR_SUMMARY = "src/infra/sqlite/run-summaries.ts";
 const THE_PROJECTION = "src/server/dashboard/projectors/run-queue-projection.ts";
 
 /**
@@ -117,7 +118,7 @@ function countFieldConstructions(filePath: string): readonly string[] {
 }
 
 describe("one-projection-counts (D81)", () => {
-  it("allows count construction in exactly one production module: the run/queue projection", () => {
+  it("keeps queue/status counts in one projection and bounds the admitted Calendar month-count owner", () => {
     const files = walkFiles(`${REPO_ROOT}/src`, { extensions: [".ts", ".tsx"] });
     const offenders: string[] = [];
     for (const file of files) {
@@ -128,6 +129,7 @@ describe("one-projection-counts (D81)", () => {
       if (relativePath.startsWith("src/domain/")) continue;
       const constructions = countFieldConstructions(file);
       if (constructions.length === 0) continue;
+      if (relativePath === CALENDAR_SUMMARY && constructions.length === 1 && constructions[0] === "monthCounts") continue;
       if (relativePath !== THE_PROJECTION) {
         offenders.push(`${relativePath}: builds ${[...new Set(constructions)].join(", ")}`);
       }
@@ -137,6 +139,8 @@ describe("one-projection-counts (D81)", () => {
       [],
       "a count/aggregate reachable from a surface may only originate in the one run/queue projection",
     );
+    assert.deepEqual(countFieldConstructions(`${REPO_ROOT}/${CALENDAR_SUMMARY}`), ["monthCounts"],
+      "the admitted Calendar summary owns exactly one month count projection; queue/status counts remain forbidden");
     // The one legal constructor must actually exist — an empty scan proves
     // nothing once files move.
     assert.ok(
