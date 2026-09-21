@@ -278,8 +278,8 @@ out-of-owner changes require amendment; routine query/index/UI/test repairs rema
 | Implementation | Unstarted; all product checkboxes remain open. No runtime gate is claimed by planning. |
 | Prerequisites | Required accepted releases are ancestors of persistence base `3633b7cd023379746c2d5642fa7960ef8e2d5535`. |
 | Planning ownership | This task owns the approved documentation candidate on `codex/plan-3.1.12`; peers remain untouched. |
-| Documentation integration | Approval authorizes persistence, validation and commit. Local-master documentation integration must be explicitly assigned; an isolated candidate alone is not READY. |
-| Launch readiness | Documentation checks passed as recorded below. WAITING ON authorized local-master documentation integration; verify exact committed content and the final integration/base SHA before issuing a READY prompt. |
+| Documentation integration | The operator explicitly approved local-master integration and owned planning-worktree cleanup on 2026-09-21. The final receipt below records the actual integrated plan/base SHA and cleanup. Product integration remains a separate later decision. |
+| Launch readiness | READY at the verified handoff: approved scope, passing documentation checks, committed content and required integrated prerequisites are established. Verify the final receipt's actual integration/base SHA and current checkout/ref/capacity before implementation. |
 
 Retain planning checks and the final commit/integration/cleanup/readiness receipt in
 `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.12-plan-2026-09-21/`.
@@ -301,3 +301,19 @@ only for interrupted unique state. Stop after the assigned task; never re-ask se
 The [planning evidence directory](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.12-plan-2026-09-21/)
 retains check scripts, exact commands/exits, logs, tested file hashes, committed-content comparison
 and the final persistence/readiness receipt. Approval is preserved; no new scope decision is pending.
+
+### Authorized planning release — 2026-09-21
+
+The operator approved local integration of the verified planning candidate
+`f5a7e9139057117e3b4e5f69a345af095efe93a5`, followed by cleanup of its owned documentation branch
+and worktree. This authorization resolves the earlier WAITING ON integration state; it does not
+start product implementation or authorize the later product merge. S1–S7, P1–P6, the three approved
+choices, ownership and gate schedule are unchanged.
+
+The [final planning receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.12-plan-2026-09-21/final-receipt.json)
+records the full plan/integration SHAs, committed-content and unchanged-input checks, passing
+recording checks, prerequisite ancestry and physical/ref cleanup. The copy-ready supervisor prompt
+uses the verified integrated SHA as its implementation base. The supervisor creates the assigned
+`codex/3.1.12-activity-search` branch/worktree only after checking that exact release and capacity;
+no existing UI draft checkout or integration checkout is repurposed. Full product acceptance remains
+open under this assignment and 3.1.19.
