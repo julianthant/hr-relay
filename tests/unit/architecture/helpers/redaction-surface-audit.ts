@@ -1214,6 +1214,13 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].actions[].navigate.runId", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "workerCards[].currentRun.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "workerCards[].browserRequirements.reason", origin: "repository-authored" },
+  // Sessions: projector-authored reasons, parsed prod/test instance, and bounded worker-control outcomes.
+  { surface: "wire/dashboard-day", path: "workerCards[].browsers[].observation.instance", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "workerCards[].browsers[].observation.reason", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "workerCards[].controls.basis.reason", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "workerCards[].controls.operation.message", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "workerCards[].controls.ownership.reason", origin: "repository-authored" },
+
 
   { surface: "wire/stream-envelope", path: "payload.gate.label", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.timeline.events[].durationMs.reason", origin: "repository-authored" },
@@ -1288,6 +1295,13 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.timeline.events[].notRun.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].currentRun.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].browserRequirements.reason", origin: "repository-authored" },
+  // Sessions: projector-authored reasons, parsed prod/test instance, and bounded worker-control outcomes.
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].browsers[].observation.instance", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].browsers[].observation.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.basis.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.operation.message", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.ownership.reason", origin: "repository-authored" },
+
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].runNumber.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].session.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].facts.reason", origin: "repository-authored" },

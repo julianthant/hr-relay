@@ -1,21 +1,37 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { z } from "zod";
-import type {
-PreflightCheckWireSchema,
-PreflightVerdictSchema
-} from "../../domain/dashboard/bootstrap.js";
-
-
-/* ── preflight (the doctor) ──────────────────────────────────────────────── */
-
+import type { PreflightCheckWireSchema, PreflightVerdictSchema } from "../../domain/dashboard/bootstrap.js";
+import { usePreflightActions } from "../state/preflight-actions.js";
+import { useSettingsClient } from "../state/settings-client.js";
+import type { EditableSettingsState } from "./settings-editor-model.js";
+import { useSettingsPreflight } from "./settings-preflight-model.js";
 export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
-
-
 export type PreflightVerdict = z.infer<typeof PreflightVerdictSchema>;
-
-
-/** How loud the standing indicator should be. `fail` beats `warning` beats `pass`. */
-export function preflightVerdict(checks: readonly PreflightCheckWire[]): PreflightVerdict {
-  if (checks.some((check) => check.verdict === "fail")) return "fail";
-  if (checks.some((check) => check.verdict === "warning")) return "warning";
+export function preflightVerdict(checks: readonly PreflightCheckWire[]): PreflightVerdict | "unavailable" {
+  if (checks.length === 0) return "unavailable";
+  if (checks.some(check => check.verdict === "fail")) return "fail";
+  if (checks.some(check => check.verdict === "warning")) return "warning";
   return "pass";
+}
+export function preflightRemedy(check: string): "settings" | "storage" | "sessions" {
+  if (check === "process.orphans") return "sessions";
+  if (check === "authority.health" || check === "filesystem.health") return "storage";
+  return "settings";
+}
+export function useDoctorPreflight() {
+  const actions = usePreflightActions();
+  const client = useSettingsClient();
+  const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
+  const epoch = useRef(0);
+  const refresh = useCallback(async () => {
+    const started = ++epoch.current;
+    try {
+      const document = await client.editableSettings();
+      if (started === epoch.current) setEditor({ state: "loaded", document });
+    } catch {
+      if (started === epoch.current) setEditor({ state: "failed", message: "Current settings could not be read." });
+    }
+  }, [client]);
+  useEffect(() => { void refresh(); return () => { epoch.current += 1; }; }, [refresh]);
+  return { ...useSettingsPreflight(editor, actions), refresh };
 }

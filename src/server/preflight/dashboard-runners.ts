@@ -92,6 +92,8 @@ export interface DashboardPreflightRunnerInput {
   readonly frontendProbe?: typeof probeOwnedViteServer;
   readonly listLiveWorkerProcesses: () => readonly Readonly<{ workerId: string; processId: number }>[];
   readonly observeProcess?: typeof observeProcessIdentity;
+  /** The filesystem boundary remains injectable for controlled disk-exhaustion proof. */
+  readonly filesystemProbe?: { availableBlocks(this: void, path: string): number };
 }
 
 export interface DashboardPreflightRunners {
@@ -106,7 +108,7 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
   const artifactRoot = z.string().min(1).parse(input.artifactRoot);
   const backendPort = z.number().int().nonnegative().parse(input.backendPort);
   const frontendPort = z.number().int().nonnegative().parse(input.frontendPort);
-  const config = ConfigSchema.parse(input.config);
+  const config = input.config;
   const frontendOwnerNonce = input.frontendOwnerNonce === undefined
     ? undefined
     : DashboardLaunchNonceSchema.parse(input.frontendOwnerNonce);
@@ -160,9 +162,8 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
         if (context.signal.aborted) throw new Error("filesystem.health preflight was aborted");
         try {
           for (const path of [stateRoot, artifactRoot]) accessSync(path, constants.R_OK | constants.W_OK);
-          const state = statfsSync(stateRoot);
-          const artifacts = statfsSync(artifactRoot);
-          if (state.bavail <= 0 || artifacts.bavail <= 0) {
+          const availableBlocks = input.filesystemProbe?.availableBlocks ?? ((path: string) => statfsSync(path).bavail);
+          if (availableBlocks(stateRoot) <= 0 || availableBlocks(artifactRoot) <= 0) {
             return unhealthy(this.check, "a runtime storage root has no writable filesystem blocks", "authority or evidence writes cannot be admitted");
           }
           return healthy(

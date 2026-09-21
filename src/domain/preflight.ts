@@ -24,6 +24,8 @@ import {
   expectedPreflightChecks,
   mandatoryCapabilitiesForPreflightCheck,
   providerChecksForFeature,
+  providerSupportsFeature,
+  PreflightProviderFeaturesSchema,
 } from "./preflight-semantics.js";
 
 export {
@@ -32,7 +34,7 @@ export {
 } from "./preflight-contract.js";
 
 export const PreflightObservationSchema = z.discriminatedUnion("state", [
-  z.strictObject({ check: PreflightCheckIdSchema, state: z.literal("healthy"), summary: z.string().min(1) }),
+  z.strictObject({ check: PreflightCheckIdSchema, state: z.literal("healthy"), summary: z.string().min(1), availableFor: PreflightProviderFeaturesSchema.optional() }),
   z.strictObject({
     check: PreflightCheckIdSchema,
     state: z.literal("unhealthy"),
@@ -207,7 +209,7 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
   for (const feature of FEATURE_RUNTIME_SPECS) {
     if (!requestedCapabilities.includes(feature.feature)) continue;
     const providerObservations = providerChecksForFeature(feature.feature).map((check) => byCheck.get(check));
-    const healthyProviders = providerObservations.filter((observation) => observation?.state === "healthy").length;
+    const healthyProviders = providerObservations.filter((observation) => observation?.state === "healthy" && providerSupportsFeature(observation.availableFor, feature.feature)).length;
     const shouldBeHealthy = healthyProviders >= feature.minimumHealthyProviders;
     const featureObservation = byCheck.get(feature.check);
     if (featureObservation === undefined || (featureObservation.state === "healthy") !== shouldBeHealthy) {
@@ -219,7 +221,7 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
   const results = selected.map((check) => {
     const observation = byCheck.get(check.id);
     if (observation === undefined) throw new Error(`selected preflight check ${check.id} has no observation`);
-    if (observation.state === "healthy") return { status: "pass" as const, check: check.id, summary: observation.summary };
+    if (observation.state === "healthy") return { status: "pass" as const, check: check.id, summary: observation.summary, ...(observation.availableFor === undefined ? {} : { availableFor: observation.availableFor }) };
     const blocks = blockingCapabilitiesForCheck(check, requestedCapabilities);
     if (check.severity === "warning") return {
       status: "warning" as const,

@@ -1,3 +1,5 @@
+import { createProviderPreflightRunners } from "./provider-runners.js";
+import { createWorkflowPreflightRunners } from "./workflow-runners.js";
 import type { Config } from "../../domain/config/schema.js";
 import type { PreflightAdmissionScope } from "../../domain/preflight-admission.js";
 import { requiredPreflightChecks, type PreflightRunner } from "../../domain/preflight.js";
@@ -11,20 +13,21 @@ export interface RuntimePreflightRunnerInput {
   readonly config: Config;
   readonly dashboard: Omit<DashboardPreflightRunnerInput, "config">;
   readonly protectedSecrets: ProtectedSecretSource;
+  /** Read-only local asset lookup, independently injectable without launching Chromium. */
+  readonly browserExecutablePath?: () => string;
   readonly providerAvailability: Readonly<Record<string, boolean>>;
 }
 export type RuntimePreflightRunnerFactory = (input: RuntimePreflightRunnerInput) => readonly PreflightRunner[];
 
-/** Setup extends this factory; absent implementations are truthful, registry-shaped observations. */
+/** The registered factory covers exactly the checks selected for this retained scope. */
 export const createRuntimePreflightRunners: RuntimePreflightRunnerFactory = input => {
   const available = new Map(createDashboardPreflightRunners({ ...input.dashboard, config: input.config }).runners.map(runner => [runner.check, runner]));
+  for (const runner of [...createWorkflowPreflightRunners(input), ...createProviderPreflightRunners(input)]) available.set(runner.check, runner);
   return requiredPreflightChecks(input.scope.requestedCapabilities).map(check => {
     const runner = available.get(check);
     if (runner !== undefined) return runner;
     const spec = PREFLIGHT_CHECKS.find(candidate => candidate.id === check);
     if (spec === undefined) throw new Error(`preflight registry omits ${check}`);
-    return { check, kind: spec.runner, async run() {
-      return { check, state: "unhealthy" as const, summary: `${check} detector is unavailable.`, impact: "Readiness cannot be verified until this registered detector is available." };
-    } };
+    throw new Error(`preflight detector is not implemented for ${spec.id}`);
   });
 };
