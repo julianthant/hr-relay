@@ -2029,6 +2029,7 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 queue seam in `phase-3-1-dashboard-c21194e18-r16-queue`, parallel with Tasks 18, 24 and 30 after authoritative start exists · left: Task 15
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 row facts, §D330.6 `list` order and §D330.8 delete plus tombstone (no redesign) · left: this task owns the two R01 residues — producing the `remove-queue-surface` / `tombstone-queue-surface` wire events, and reconciling the two projector outcome enums that disagree on `skipped`
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.13; standalone prerequisite or individual task; acceptance and historical execution anchor retained
+- 2026-09-22 | approved Queue plan | S1–S6 and P1–P5 approved; one supervisor, no workers or independent review; bounded shared dispatch/selection/stream, established deletion and historical-compatibility repairs admitted; baseline 279 passed / 9 failed with passing scoped lint; snapshot convergence requires proof; product implementation and integration remain open
 
 
 #### 14 · Establish independent run-detail sections {#dash-detail-foundation}

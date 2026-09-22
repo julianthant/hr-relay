@@ -955,3 +955,34 @@ population or full diagnostic bundles are transferred. Only Activity report bloc
 Archive fixture are editable here; Archive operations and shared fixture defaults stay with their
 owners. Generated outputs and deliberate Activity/search reference changes have one writer and
 attribution. A20/A21 acceptance outcomes and all other reservations remain unchanged.
+
+### Queue commands and convergence ownership amendment — 2026-09-22
+
+The operator approved the complete [3.1.13 execution brief](task-13-finish-queue-rows-commands-and-deletion.md#approved-execution-brief--2026-09-22),
+including its bounded shared-file and historical-compatibility repairs. That one owner retains the
+full S1–S6 sequence, P1–P5 proofs, exact paths and gate schedule. One supervisor owns this coupled
+assignment, with no workers or independent review under the Phase 3.1 exception. Boundary/Run/Rerun
+and Operations prerequisites are integrated; no unfinished sibling API or parallel shared writer
+is introduced.
+
+In addition to dedicated Queue surfaces, models, summaries, routes, actions and bulk composition,
+admit narrow Queue orchestration/selection edits in the app and action dialogs; Queue projection,
+command settlement, stream/subscription/day-state and necessary composition wiring; existing
+command-kernel/run-record-service/deletion-adapter corrections required by the admitted contract;
+and historical conversion/search-tracking applicability repairs in the SQLite adapter. Permit
+necessary existing Queue wire refinements without changing command semantics or deleting the
+declared remove/tombstone arms. The existing snapshot protocol must prove the required convergence.
+
+The baseline's five historical `run_search_actors` failures, earlier historical notification-delete
+failure, three outdated Rerun/browser-observation expectations, and command-result guard's forwarding
+and callback recognition belong to this task's bounded repair scope. Preserve supported historical
+formats, current-schema loud failures, exhaustive refusal handling and meaningful guard negative
+controls. Narrow shared fixture/registration changes and attributed affected Queue references have
+the same sole writer; preserve unrelated defaults and combined scene membership.
+
+No new DDL, released migration edit, runtime-policy redesign, archive/deletion/retention policy
+change, direct Retry/Restart Queue mutation or bulk retry restoration is admitted. Consume the
+accepted Rerun launcher, preserve Settings guards and unrelated Activity behavior, and keep detail
+completion at 3.1.14, wider convergence at 3.1.16 and broad acceptance at 3.1.19. A18/A26–A28 outcomes
+and all other ownership reservations remain unchanged. Approval includes the documentation release,
+not product implementation, product integration, push or successor dispatch.
