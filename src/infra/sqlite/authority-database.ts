@@ -1878,7 +1878,8 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => (hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name))
     && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)
     && (!["notification_publications", "notification_health"].includes(name) || readIntPragma(database, "user_version") >= 52)
-    && (!["worker_controls", "worker_browsers"].includes(name) || readIntPragma(database, "user_version") >= 53)).entries()) {
+    && (!["worker_controls", "worker_browsers"].includes(name) || readIntPragma(database, "user_version") >= 53)
+    && (!["transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name) || readIntPragma(database, "user_version") >= 54)).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "database_state") {
@@ -2675,12 +2676,15 @@ export class AuthorityDatabase implements Disposable {
     if (conversion !== undefined) {
       if (!conversion.database.isTransaction) throw new Error("archive-conversion-requires-stopped-transaction");
       this.#database = conversion.database;
-      this.#stoppedHistoricalTransactionSelection = z.object({user_version:z.number().int()}).parse(this.#database.prepare("PRAGMA user_version").get()).user_version < 54;
+      const userVersion = z.object({ user_version: z.number().int() }).parse(this.#database.prepare("PRAGMA user_version").get()).user_version;
+      this.#stoppedHistoricalTransactionSelection = userVersion < 54;
       this.#archiveDatabase = conversion.archive;
       this.#transactionDepth = 1;
       this.#transactionMode = "authority";
       createRunSummaries(this.#database).installTracking();
-      createRunSearchIndex(this.#database).installTracking();
+      if (userVersion >= 54) {
+        createRunSearchIndex(this.#database).installTracking();
+      }
       this.authority = this.#buildAuthorityRepositories();
       return;
     }
@@ -2927,7 +2931,7 @@ export class AuthorityDatabase implements Disposable {
           remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
           for (const key of (transfer ? [] : evidence.checkpointKeys)) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
           // Inbox items that would otherwise link to a run nobody can open.
-          if (!transfer) remove("notification_publications", `DELETE FROM notification_publications WHERE notification_id IN (
+          if (!transfer && this.#readIntPragma("user_version") >= 52) remove("notification_publications", `DELETE FROM notification_publications WHERE notification_id IN (
             SELECT record_key FROM notifications WHERE EXISTS (
               SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?))
             OR json_extract(record_json, '$.event.runId') = ?`, runId, runId);

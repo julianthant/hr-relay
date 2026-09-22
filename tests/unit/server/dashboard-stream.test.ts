@@ -154,7 +154,7 @@ describe("dashboard stream hub", () => {
     assert.equal(latest.topic, "dashboard-day");
     if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.deepEqual(latest.payload.workerCards[0]?.browsers, [
-      { sessionId: uuidOf(50), system: "ucpath", openedAt: w.clock.now().toISOString() },
+      { sessionId: uuidOf(50), system: "ucpath", openedAt: w.clock.now().toISOString(), observation: { state: "unavailable", reason: "No current owner observation." } },
     ]);
     connection.close();
   });
