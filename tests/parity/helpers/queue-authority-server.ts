@@ -22,6 +22,7 @@ export async function startQueueAuthorityServer(
     bundle,
     prepareSelection: async ({ database }) => {
       capturedDatabase = database;
+      return undefined;
     },
   });
 

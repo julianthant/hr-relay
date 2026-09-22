@@ -148,8 +148,10 @@ function isSettleCommandResultCall(node: ts.CallExpression): boolean {
   if (ts.isPropertyAccessExpression(callee)) {
     if (callee.name.text === "settleCommandResult") return true;
     if (callee.name.text === "then") {
-      return node.arguments.some((arg) => (ts.isIdentifier(arg) && arg.text === "settleCommandResult")
-        || (ts.isPropertyAccessExpression(arg) && arg.name.text === "settleCommandResult"));
+      const fulfillment = node.arguments[0];
+      if (fulfillment === undefined) return false;
+      return (ts.isIdentifier(fulfillment) && fulfillment.text === "settleCommandResult")
+        || (ts.isPropertyAccessExpression(fulfillment) && fulfillment.name.text === "settleCommandResult");
     }
   }
   return false;
@@ -270,6 +272,12 @@ describe("command-result-exhaustive (D253)", () => {
     expect(foldsFewerCommandsThanItPosts(
       "fixture.ts",
       'client.executeCommand(a).then((res) => console.log(res));\n',
+    )).toBe(true);
+    // Passing settleCommandResult as second (rejection) argument to .then leaves the fulfillment unhandled (negative control).
+    expect(foldsFewerCommandsThanItPosts(
+      "fixture.ts",
+      'import { settleCommandResult } from "../app/command-result.js";\n'
+      + 'client.executeCommand(a).then(() => toastSuccess(), settleCommandResult);\n',
     )).toBe(true);
     // And a module that posts nothing is out of this arm's scope entirely.
     expect(foldsFewerCommandsThanItPosts("fixture.ts", "export const NOTHING_IS_POSTED = 1;")).toBe(false);

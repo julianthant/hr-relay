@@ -124,7 +124,7 @@ export interface SeededServer {
 
 
 export async function startSeededServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">> }>,
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
 ): Promise<SeededServer> {
   // Ref frontend-backend-integration §7: the same working-tree proof the fixture adapter demands —
   // asserted before any temp root, database or port exists.

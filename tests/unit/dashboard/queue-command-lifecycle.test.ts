@@ -18,7 +18,7 @@
  *    run is currently selected (selection-switch race protection).
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -45,6 +45,7 @@ import { deriveItemId } from "../../../src/domain/identifiers.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   BulkRunCommandResponseSchema,
+  BulkRunCommandRequestSchema,
   CommandRequestSchema,
 } from "../../../src/domain/commands.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
@@ -74,7 +75,7 @@ function createHarness(): {
   clock: ReturnType<typeof manualClock>;
   lifecycle: RunRecordService;
 } {
-  const root = mkdtempSync(join(tmpdir(), "queue-lifecycle-test-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "queue-lifecycle-test-")));
   roots.push(root);
   const path = join(root, "authority.sqlite");
   const clock = manualClock(new Date(NOW));
@@ -170,7 +171,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
     const staleAction: CommandAction = {
       key: "cancel",
       label: "Cancel run",
-      intent: "danger",
+      intent: "destructive",
       placement: ["menu"],
       kind: "command",
       command: "cancel",
@@ -222,7 +223,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
     const action: CommandAction = {
       key: "cancel",
       label: "Cancel",
-      intent: "danger",
+      intent: "destructive",
       placement: ["menu"],
       kind: "command",
       command: "cancel",
@@ -310,7 +311,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
     const action: CommandAction = {
       key: "cancel",
       label: "Cancel run",
-      intent: "danger",
+      intent: "destructive",
       placement: ["menu"],
       kind: "command",
       command: "cancel",
@@ -394,15 +395,17 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
     const requestedAt = "2026-09-22T12:00:00.000Z";
     const composed = composeBulkRunCommand(plan, {
       actorId: "operator-1",
+      source: "queue",
       commandId,
       requestedAt,
     });
     assert.equal(composed.state, "ready");
     if (composed.state !== "ready") return;
 
-    assert.equal(composed.request.commandId, commandId);
-    assert.equal(composed.request.requestedAt, requestedAt);
-    assert.deepEqual(composed.request.targets, [
+    const request = BulkRunCommandRequestSchema.parse(composed.request);
+    assert.equal(request.commandId, commandId);
+    assert.equal(request.requestedAt, requestedAt);
+    assert.deepEqual(request.targets, [
       { runId: runIdA, expectedVersion: 2 },
       { runId: runIdB, expectedVersion: 5 },
     ]);
@@ -419,6 +422,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
       ],
     });
 
+    assert.equal(simulatedResponse.state, "vector");
     const counts = bulkResultCounts(simulatedResponse);
     assert.equal(counts.applied, 1);
     assert.equal(counts.conflict, 1);
@@ -442,7 +446,7 @@ describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protec
     const deleteAction: CommandAction = {
       key: "delete",
       label: "Delete run",
-      intent: "danger",
+      intent: "destructive",
       placement: ["menu"],
       kind: "command",
       command: "delete",
@@ -480,7 +484,7 @@ describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protec
     const deleteAction: CommandAction = {
       key: "delete",
       label: "Delete run",
-      intent: "danger",
+      intent: "destructive",
       placement: ["menu"],
       kind: "command",
       command: "delete",
@@ -600,7 +604,7 @@ describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protec
     const parentVersion = terminalizeRun(harness, parentId, "cancelled");
 
     const parentDelete = composeCommandRequest(
-      { key: "delete", label: "Delete", intent: "danger", placement: ["menu"], kind: "command", command: "delete", expectedVersion: parentVersion },
+      { key: "delete", label: "Delete", intent: "destructive", placement: ["menu"], kind: "command", command: "delete", expectedVersion: parentVersion },
       { runId: parentId, expectedVersion: parentVersion },
       { actorId: "operator-1", source: "queue" },
     );
@@ -619,7 +623,7 @@ describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protec
 
     // Member cannot be deleted alone
     const childDelete = composeCommandRequest(
-      { key: "delete", label: "Delete", intent: "danger", placement: ["menu"], kind: "command", command: "delete", expectedVersion: childVersion },
+      { key: "delete", label: "Delete", intent: "destructive", placement: ["menu"], kind: "command", command: "delete", expectedVersion: childVersion },
       { runId: childId, expectedVersion: childVersion },
       { actorId: "operator-1", source: "queue" },
     );
