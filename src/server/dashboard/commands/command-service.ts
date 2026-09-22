@@ -87,7 +87,7 @@ export { deriveBulkChildCommandId } from "../../../domain/command-groups.js";
  * the operator resolves the write and the queue keeps saying `blocked`.
  */
 const SPANLESS_RUN_TYPES = new Set([
-  "rename", "bump", "cancel",
+  "rename", "bump", "cancel", "delete",
   "resolve-write-present", "resolve-write-absent",
 ]);
 

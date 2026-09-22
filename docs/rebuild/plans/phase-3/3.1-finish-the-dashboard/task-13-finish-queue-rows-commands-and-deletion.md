@@ -304,3 +304,81 @@ UI-planning worktree is retained. The [final planning receipt](/Users/julianhein
 records full plan/integration/base SHAs, committed-content verification, final checks and physical/ref
 cleanup after those operations succeed. The copy-ready supervisor prompt uses that verified release;
 the implementation branch/worktree is created only after the supervisor rechecks its binding.
+
+### Focused acceptance and candidate freeze — 2026-09-22
+
+| Proof | Verified result |
+| --- | --- |
+| P1 · Rows | Summary/canonical status agreement, exact members and batches, canonical priority/enqueue/id ordering (interactive before bulk), versioned group toggle, stale/corrupt summaries refusal, heartbeat summary non-republication, and bounded pagination preserving selections passed. Verified in `final-queue-rows`. |
+| P2 · Commands | Rename/bump/cancel and bulk commands use exact revisions. Stale versions refuse. Claimed cancellation remains a request until worker settlement. Replay and in-flight deduplication cause one accepted effect. Partial bulk failures expose granular results with individual statuses. Frozen selection and result order survive intervening view changes. Verified in `final-commands-authority` and `final-convergence`. |
+| P3 · Delete | Active root/member/tree refuses deletion without tombstones. Valid terminal tree deletes leaves-first. Exact replay preserves disposition; divergent reuse refuses. Shared files and surviving owners remain intact. Historical and current-schema controls pass. Interrupted settlement retains evidence and exact identity. Selection-switch protection verified. Verified in `final-commands-authority` and `final-convergence`. |
+| P4 · Convergence | Connected and reconnected clients match fresh authority after transfer/delete, including counts, grouping, notifications and selection. Late responses cannot resurrect rows or replace another selection. Bounded backpressure, duplicate cursor, and lost wakeup convergence proved. Verified in `final-convergence`. |
+| P5 · Desktop | Both themes (Graphite Warm, Paper Ink) across 1440×900, 1280×720, and 1024×768, resize to 1024×720 and back, dialog accessibility, and focus return to triggering action verified. Rerun launcher handoff preserves accepted behavior. Verified in `final-parity`. |
+
+| Assigned gate | Result |
+| --- | --- |
+| Queue rows group | `final-queue-rows`: 20 test files, **354 tests passed** (exit 0). |
+| Commands authority & storage group | `final-commands-authority`: 24 test files, **395 tests passed** (exit 0). |
+| Queue commands & stream convergence | `final-convergence`: 2 test files, **15 tests passed** (exit 0). Total focused runtime proof: **764 tests across 46 files**. |
+| Scoped static checks | `final-scoped-lint`: exact 66 TypeScript/TSX paths passed (0 errors, 0 warnings). Scoped check per Phase 3.1 cadence. |
+| Generated inputs | `generated-manifest-check` and `store-catalog-check` passed (exit 0). |
+| Built browser/reference gate | `final-parity`: all five assigned specs, **27 tests passed** (exit 0). Real isolated SQLite/lifecycle/kernel/stream services; desktop viewports (1440×900, 1280×720, 1024×768) and resize; both themes; accessibility indicators and focus return verified. |
+| Reference attribution | Twelve existing Queue scenes (36 PNG/accessibility/metadata files) deliberately refreshed with unchanged membership and tolerances to reflect canonical priority ordering and action accessibility. `reference-attribution.json` binds before/after hashes. |
+
+### Freeze boundary and retained resources
+
+All ephemeral services, synthetic databases, and browser sessions are cleanly terminated and closed.
+Evidence is retained in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/`.
+Branch `codex/3.1.13-queue` and worktree `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-queue`
+remain assigned awaiting operator instruction for local-master integration.
+Master remains clean at `1afdefcfb5f6b301a9f0674a0e78a9a513a4ac9c`; the unrelated UI-planning worktree remains preserved.
+Full repository typecheck, repository-wide lint/coverage, and complete acceptance (A01–A42/D01–D05) remain deferred to Task 3.1.19.
+
+### Review repair and refreshed candidate freeze — 2026-09-22
+
+The implementation repair is committed on `codex/3.1.13-queue` as
+`e833c684eb9cf332695893513b56ccfdc11669c4`. This supplements the earlier
+S6 receipt: its 27-test parity result and missing zoom proof are superseded by
+the 30-test assertion below. No reference image or accessibility baseline changed.
+
+- An uncertain single or bulk command retains its complete original request. The
+  queue keeps a visible recovery control even after the row disappears. A new
+  selection opens a dialog naming the original targets, revisions and any
+  rename value; only an explicit recovery press resends the exact envelope.
+  A stale dialog cannot mint a new request. Browser fault injection proves a
+  response lost after authority accepted a bulk cancel or deletion, identical
+  replay, unchanged newer selection and one accepted effect.
+- Delete settlement clears the selected detail and every deleted run in the
+  bulk set using the authoritative `affectedTargets` vector. A browser test
+  deletes a valid terminal group and its children while preserving a selected
+  survivor. The synthetic group's test-only dependency edges are installed
+  before deletion; the production authority refuses an inconsistent tree.
+- The command-result guard counts only the fulfillment arm of `.then`; its
+  rejection-arm-only negative control fails as intended.
+- The queue lifecycle fixture now resolves its temporary root before opening
+  credential authority. A direct Vitest run changed from five failures with
+  `directory-integrity: credential path ancestry contains a symbolic link` to
+  10/10 passing without relaxing the production integrity check. The seeded
+  browser command service now gives each command a distinct audit ID.
+- Actual Chromium tab zoom is applied through `chrome.tabs.setZoom` in an owned
+  Manifest V3 test extension. Both themes proved 125% (effective 1024×576,
+  DPR 1.25) and 200% (640×360, DPR 2), empty document/body CSS zoom, visible
+  Queue, and scrollable keyboard access. Chromium reports
+  `HeadlessChrome/149.0.0.0` in the retained user agent.
+
+| Refreshed gate | Result |
+| --- | --- |
+| Queue rows | `repair-2026-09-22/final-queue-rows`: 354/354 passed. |
+| Commands, authority and storage | `repair-2026-09-22/final-commands-authority`: 395/395 passed. |
+| Queue convergence | `repair-2026-09-22/final-convergence`: 15/15 passed. |
+| Guard inventory and command-result guard | `repair-2026-09-22/guard-check`: 14/14 passed. |
+| Built browser assertion | `repair-2026-09-22/final-parity`: 30/30 passed across the five assigned specs. |
+| Static and generated checks | `repair-2026-09-22/final-scoped-lint`: 68 paths passed; `final-scoped-types`: eight affected files have no diagnostics. Manifest and catalog freshness checks passed. |
+
+The retained [repair evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/repair-2026-09-22/)
+includes each command, exit, input and log hashes, the red/green credential
+reproducer, final browser JSON/screenshots, [zoom proof](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/repair-2026-09-22/zoom-proof.json)
+and recovery-dialog capture. Full repository typecheck, whole-repository lint
+and coverage, and complete acceptance remain assigned to 3.1.19. Local-master
+integration and owned worktree cleanup remain subject to the plan's explicit
+operator integration instruction.

@@ -6,7 +6,7 @@
  * honest sentence is that there is nothing here to act on, because claiming the
  * rows "serve neither verb" would be a statement about an `actions[]` this
  * screen never received. Or SOME rows are still here and none of them serves
- * Cancel or Retry — and then the count in the sentence must be the rows still
+ * Cancel — and then the count in the sentence must be the rows still
  * present, `selectedCount - unavailable.length`, not the raw selection.
  *
  * That subtraction is the whole point (unit F2's lesson: a count and its
@@ -75,7 +75,7 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
       `the all-gone sentence is missing from: ${text}`,
     );
     assert.ok(
-      !text.includes("serve Cancel or Retry"),
+      !text.includes("serve Cancel"),
       "with no row still on the day, `actions[]` says nothing this screen may repeat",
     );
   });
@@ -95,7 +95,7 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
     const text = bandText({ selectedCount: 6, unavailable: [runId(7), runId(8)] });
     assert.ok(
       text.includes(
-        "None of the 4 selected rows still on this day serve Cancel or Retry, "
+        "None of the 4 selected rows still on this day serve Cancel, "
         + "so there is nothing to apply to this selection.",
       ),
       `the mixed sentence must count 6 - 2 = 4, not 6: ${text}`,
@@ -112,7 +112,7 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
     const text = bandText({ selectedCount: 4, unavailable: [runId(7), runId(8), runId(9)] });
     assert.ok(
       text.includes(
-        "None of the 1 selected row still on this day serves Cancel or Retry, "
+        "None of the 1 selected row still on this day serves Cancel, "
         + "so there is nothing to apply to this selection.",
       ),
       `4 - 3 = 1 and the sentence must agree with itself: ${text}`,
@@ -123,7 +123,7 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
     const text = bandText({ selectedCount: 2, unavailable: [] });
     assert.ok(
       text.includes(
-        "None of the 2 selected rows still on this day serve Cancel or Retry, "
+        "None of the 2 selected rows still on this day serve Cancel, "
         + "so there is nothing to apply to this selection.",
       ),
       `the whole selection is still here: ${text}`,

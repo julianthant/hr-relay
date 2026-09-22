@@ -82,6 +82,9 @@ export interface CommandContext {
    * command that writes what is already written and report it as a rename.
    */
   readonly renameAnswer?: string | undefined;
+  /** retained request identity for replay and in-flight protection */
+  readonly commandId?: string | undefined;
+  readonly requestedAt?: string | undefined;
 }
 
 /**
@@ -219,8 +222,8 @@ export function composeCommandRequest(
   context: CommandContext,
 ): ComposedCommand {
   const envelope = {
-    commandId: crypto.randomUUID(),
-    requestedAt: systemClock.now().toISOString(),
+    commandId: context.commandId ?? crypto.randomUUID(),
+    requestedAt: context.requestedAt ?? systemClock.now().toISOString(),
     requestedBy: context.actorId,
     source: context.source,
   };

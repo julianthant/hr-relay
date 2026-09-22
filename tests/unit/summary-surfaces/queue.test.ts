@@ -18,6 +18,7 @@ import {
   queueBatches,
   queueRowAccessibleName,
   rowInfoFacts,
+  sortQueueBand,
   visibleRunIds,
 } from "../../../src/dashboard/surfaces/queue-model.js";
 import {
@@ -192,6 +193,38 @@ describe("Queue consumes the served day boundary", () => {
       await act(async () => { root.unmount(); });
       host.remove();
       vi.unstubAllGlobals();
+    }
+  });
+
+  it("serves canonical priority/enqueue/id order and keeps explicit display sorts as pure presentation", () => {
+    const f = summaryFixture();
+    try {
+      const now = "2026-09-09T12:00:00.000Z";
+      const bulkId = id(9801);
+      const interactiveId = id(9802);
+      f.db.authority.runs.enqueue(RunRecordSchema.parse({
+        ...f.run,
+        envelope: { ...f.run.envelope, runId: bulkId, itemId: bulkId, enqueuedAt: "2026-09-09T11:59:00.000Z", priority: "bulk" },
+        lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: "2026-09-09T11:59:00.000Z", updatedAt: "2026-09-09T11:59:00.000Z",
+      }));
+      f.db.authority.runs.enqueue(RunRecordSchema.parse({
+        ...f.run,
+        envelope: { ...f.run.envelope, runId: interactiveId, itemId: interactiveId, enqueuedAt: "2026-09-09T12:00:00.000Z", priority: "interactive" },
+        lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: "2026-09-09T12:00:00.000Z", updatedAt: "2026-09-09T12:00:00.000Z",
+      }));
+      f.db.refreshRunSummaries();
+
+      const wire = f.projection.buildDashboardDayWire("2026-09-09");
+      const prioritySorted = wire.queueSurfaces.filter((s) => s.runId === bulkId || s.runId === interactiveId);
+      // Canonical order: interactive before bulk
+      assert.deepEqual(prioritySorted.map((s) => s.runId), [interactiveId, bulkId]);
+
+      // Presentation sort (oldest first): bulk was enqueued earlier, so oldest first puts bulkId first
+      assert.deepEqual(sortQueueBand(prioritySorted, "oldest", now).map((s) => s.runId), [bulkId, interactiveId]);
+      // Presentation sort (newest first): interactive was enqueued later
+      assert.deepEqual(sortQueueBand(prioritySorted, "newest", now).map((s) => s.runId), [interactiveId, bulkId]);
+    } finally {
+      f.dispose();
     }
   });
 });

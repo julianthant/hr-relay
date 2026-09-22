@@ -7,7 +7,7 @@ import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema, Activity
 import type { Clock } from "../../../domain/clock.js";
 import type { AuthorityDatabase } from "../../../infra/sqlite/authority-database.js";
 
-const RangeSchema=z.strictObject({from:z.iso.date(),to:z.iso.date()}).refine(range=>range.from<=range.to);
+const RangeSchema = z.strictObject({ from: z.iso.date(), to: z.iso.date() }).refine(range => range.from <= range.to, { message: "activity range ends before it starts" });
 /** A process-bound, expiring review token. No cached/latest report substitutes for the selected authority. */
 export function createActivitySelectionService(input: {
   database: AuthorityDatabase; clock: Clock; read(from:string,to:string,generatedAt:string): ActivityReportWire;

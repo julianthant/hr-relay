@@ -248,8 +248,8 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
     // D308's 🗑 is last, so the footer's most destructive control is furthest
     // from the click an operator makes by reflex.
-    assert.deepEqual(actionKeys(3), ["retry", "restart", "rename", "delete"], "the done row");
-    assert.deepEqual(actionKeys(4), ["retry", "restart", "rename", "delete"], "the failed row");
+    assert.deepEqual(actionKeys(3), ["rerun", "rename", "delete"], "the done row");
+    assert.deepEqual(actionKeys(4), ["rerun", "rename", "delete"], "the failed row");
     assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
     // A settled delegated member carries no re-run: the kernel refuses generic
     // retry for a child ("child retries route through their delegation edge
@@ -280,8 +280,12 @@ describe("THE run/queue projection (D81)", () => {
       if (surface.runId === uuidOf(8)) continue; // the settled member, above
       assert.ok(surface.actions.length > 0, `row ${surface.runId} was served no control at all`);
       for (const action of surface.actions) {
+        if (action.kind === "navigation") {
+          assert.equal(action.key, "rerun");
+          assert.equal(action.navigate.expectedVersion, surface.rowRevision, `${surface.runId}/${action.key}`);
+          continue;
+        }
         assert.equal(action.kind, "command");
-        if (action.kind !== "command") continue;
         assert.equal(action.expectedVersion, surface.rowRevision, `${surface.runId}/${action.key}`);
       }
     }
@@ -331,7 +335,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(card.leaseVersion, 7);
     assert.notEqual(Number(card.leaseVersion), Number(card.revision));
     assert.deepEqual(card.browsers, [
-      { sessionId: uuidOf(50), system: "ucpath", openedAt: instantOffsetOf(0) },
+      { sessionId: uuidOf(50), system: "ucpath", openedAt: instantOffsetOf(0), observation: { state: "unavailable", reason: "No current owner observation." } },
     ]);
     assert.deepEqual(card.browserRequirements, { state: "present", systems: ["kuali"] });
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });

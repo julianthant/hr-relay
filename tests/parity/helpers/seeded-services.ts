@@ -91,6 +91,14 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       resolve: (workflowId: string) =>
         (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
     },
+    canonical: {
+      reader: sqliteRunReader(database, clock),
+      database,
+      descriptors: {
+        resolve: (workflowId: string) =>
+          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+      },
+    },
     trust,
   };
 
@@ -106,7 +114,8 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
-    ids: { uuid: () => uuidOf(7000) },
+    // A shared server accepts multiple commands; each audit needs its own ID.
+    ids: sequentialIdFactory("d"),
     descriptors,
     writeResolution: {
       resolvePresent: () => {

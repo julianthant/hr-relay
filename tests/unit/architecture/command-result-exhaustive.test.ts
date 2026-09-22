@@ -66,6 +66,17 @@ const EXEMPT = new Set([
   "src/dashboard/client/commands.ts",
 ]);
 
+/**
+ * Admitted forwarding layers: modules that forward executeCommand without
+ * deciding settlement, returning the unhandled Promise to their callers.
+ * The guard proves both that these layers forward rather than swallow the result,
+ * and that all callers in src/dashboard consume it with settleCommandResult.
+ */
+const FORWARDING_LAYERS = new Set([
+  "src/dashboard/client/index.ts",
+  "src/dashboard/app/run-launch-model.ts",
+]);
+
 function sourceFiles(root: string): readonly string[] {
   const absolute = join(REPO_ROOT, root);
   const found: string[] = [];
@@ -134,7 +145,16 @@ function isExecuteCommandCall(node: ts.CallExpression): boolean {
 function isSettleCommandResultCall(node: ts.CallExpression): boolean {
   const callee = node.expression;
   if (ts.isIdentifier(callee)) return callee.text === "settleCommandResult";
-  return ts.isPropertyAccessExpression(callee) && callee.name.text === "settleCommandResult";
+  if (ts.isPropertyAccessExpression(callee)) {
+    if (callee.name.text === "settleCommandResult") return true;
+    if (callee.name.text === "then") {
+      const fulfillment = node.arguments[0];
+      if (fulfillment === undefined) return false;
+      return (ts.isIdentifier(fulfillment) && fulfillment.text === "settleCommandResult")
+        || (ts.isPropertyAccessExpression(fulfillment) && fulfillment.name.text === "settleCommandResult");
+    }
+  }
+  return false;
 }
 
 function countCallSites(source: ts.SourceFile, isMatch: (node: ts.CallExpression) => boolean): number {
@@ -182,9 +202,32 @@ describe("command-result-exhaustive (D253)", () => {
   it("every dashboard module folds at least as many commands as it posts (D3)", () => {
     const offenders = sourceFiles(SCAN_ROOT)
       .map((path) => relative(REPO_ROOT, path))
-      .filter((path) => !EXEMPT.has(path))
+      .filter((path) => !EXEMPT.has(path) && !FORWARDING_LAYERS.has(path))
       .filter((path) => foldsFewerCommandsThanItPosts(path, readFileSync(join(REPO_ROOT, path), "utf8")));
     expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("proves admitted forwarding layers forward command execution and their callers settle them", () => {
+    for (const path of FORWARDING_LAYERS) {
+      const text = readFileSync(join(REPO_ROOT, path), "utf8");
+      expect(decidesSettlementAlone(text), `${path} must not decide settlement alone`).toBe(false);
+      expect(
+        /return\s+(await\s+)?(commands|client)\.executeCommand|:\s*\(input.*?\)\s*=>\s*client\.executeCommand/u.test(text),
+        `${path} must return or forward executeCommand`,
+      ).toBe(true);
+    }
+    const runLaunchCallers = sourceFiles(SCAN_ROOT)
+      .map((path) => relative(REPO_ROOT, path))
+      .filter((path) => !FORWARDING_LAYERS.has(path) && !EXEMPT.has(path))
+      .filter((path) => {
+        const text = readFileSync(join(REPO_ROOT, path), "utf8");
+        return text.includes("createRunLaunchService") || text.includes("launchService.submit");
+      });
+    expect(runLaunchCallers.length).toBeGreaterThan(0);
+    for (const callerPath of runLaunchCallers) {
+      const text = readFileSync(join(REPO_ROOT, callerPath), "utf8");
+      expect(text.includes("settleCommandResult"), `${callerPath} must consume forwarded command with settleCommandResult`).toBe(true);
+    }
   });
 
   it("the call-site walker sees its own violations (negative control)", () => {
@@ -219,6 +262,23 @@ describe("command-result-exhaustive (D253)", () => {
       + 'client.executeCommand(a).then((r) => { if (settleCommandResult(r).kind === "refused") stop(); });\n'
       + 'client.executeCommand(b).then((r) => { settleCommandResult(r); });',
     )).toBe(false);
+    // Passing settleCommandResult directly as a .then callback settles the command.
+    expect(foldsFewerCommandsThanItPosts(
+      "fixture.ts",
+      'import { settleCommandResult } from "../app/command-result.js";\n'
+      + 'client.executeCommand(a).then(settleCommandResult);\n',
+    )).toBe(false);
+    // Passing an un-settled callback to .then leaves the command unhandled (negative control).
+    expect(foldsFewerCommandsThanItPosts(
+      "fixture.ts",
+      'client.executeCommand(a).then((res) => console.log(res));\n',
+    )).toBe(true);
+    // Passing settleCommandResult as second (rejection) argument to .then leaves the fulfillment unhandled (negative control).
+    expect(foldsFewerCommandsThanItPosts(
+      "fixture.ts",
+      'import { settleCommandResult } from "../app/command-result.js";\n'
+      + 'client.executeCommand(a).then(() => toastSuccess(), settleCommandResult);\n',
+    )).toBe(true);
     // And a module that posts nothing is out of this arm's scope entirely.
     expect(foldsFewerCommandsThanItPosts("fixture.ts", "export const NOTHING_IS_POSTED = 1;")).toBe(false);
   });

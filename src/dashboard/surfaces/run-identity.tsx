@@ -279,16 +279,21 @@ export interface PendingRename {
   target: ActionTarget;
   surface: QueueSurfaceWire;
   nowIso: string;
+  source?: "queue" | "run-detail" | undefined;
+  commandId?: string | undefined;
+  requestedAt?: string | undefined;
+  triggerElement?: HTMLElement | null | undefined;
 }
 
 /**
  * Ported from the demo's `RenameRunDialog` (`DemoRunIdentity.tsx:320`).
  *
- * Naming a run does not touch its identity: the subject, the trace id and the
- * `#N` ordinal all stay exactly as they were. That is the whole reason a rename
- * is safe to offer on a row that has already written to UCPath, and it is why
- * the footer prints those three facts UNDER the field — the operator can see
- * that the things which identify this run are not what they are editing.
+ * It is a MODAL dialog, not an inline edit. Three reasons that is the faithful
+ * port: inline edits in a virtualization boundary unmount when scrolled off
+ * screen (losing whatever the operator typed); a name is validated against the
+ * SAME rule the composer enforces (`rename-draft.ts`), so it needs a place for
+ * the problem sentence to live; and the demo's own placement is a centered
+ * dialog.
  */
 export function RenameRunDialog({
   pending,
@@ -355,7 +360,16 @@ function RenameDialogBody({
   };
 
   return (
-    <DialogContent size="sm" title={named ? "Rename this run" : "Name this run"}>
+    <DialogContent
+      size="sm"
+      title={named ? "Rename this run" : "Name this run"}
+      onCloseAutoFocus={(e) => {
+        if (pending.triggerElement?.isConnected) {
+          e.preventDefault();
+          pending.triggerElement.focus();
+        }
+      }}
+    >
       <DialogBody className="flex flex-col gap-[var(--ds-space-snug)]">
         <Field
           label={

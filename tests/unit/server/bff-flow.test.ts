@@ -8,6 +8,7 @@ import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
@@ -28,6 +29,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -53,7 +55,7 @@ import {
 } from "../../../src/domain/preflight.js";
 import {
 } from "../../../src/domain/archive/model.js";
-import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { ActivityReportSelectionSchema } from "../../../src/domain/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
@@ -242,7 +244,7 @@ function harness(options: {
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
 } = {}): Harness {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-bff-")));
   const stateRoot = join(root, ".tracker");
   mkdirSync(stateRoot, { mode: 0o700 });
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
@@ -420,6 +422,7 @@ function harness(options: {
       })),
     },
   });
+  const activity = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -448,6 +451,7 @@ function harness(options: {
     preflight: preflight.authority,
     projection,
     search,
+    activity,
     xlsxExports: createOperatorXlsxExportService({
       clock,
       ids,
@@ -455,7 +459,7 @@ function harness(options: {
       artifacts,
       authority: database.authority.operatorXlsxExports,
       search,
-      activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+      activityReport: (from, to, token) => activity.readSelected(from, to, token),
     }),
     commandJournal: options.commandJournal?.(database.authority.commands)
       ?? database.authority.commands,
@@ -679,7 +683,7 @@ function archiveCurrentSeparationsRun(h: Harness, run: RunRecord): void {
 async function activityPeople(h: Harness): Promise<unknown> {
   const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
   assert.equal(response.status, 200);
-  return ActivityReportWireSchema.parse(await response.json()).people;
+  return ActivityReportSelectionSchema.parse(await response.json()).people;
 }
 
 async function loopbackResponse(
@@ -771,11 +775,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const unknown = await h.app.request("/api/v1/search?q=separations&title=unsafe");
     assert.equal(unknown.status, 400);
     for (const parameter of [
-      "workflow=person-lookup",
-      "state=queued",
-      "shape=preview",
-      "dryRun=false",
-      "system=crm",
+      "workflow=Invalid_Workflow!",
+      "state=unknown-state",
+      "shape=invalid-shape",
+      "dryRun=maybe",
+      "system=invalid-system",
       "priority=interactive",
     ]) {
       const unmeasured = await h.app.request(`/api/v1/search?q=separations&${parameter}`);
@@ -944,7 +948,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
       assert.equal(
         body.message,
-        `search corpus run ${run.envelope.runId} has ${corpusCase.dimension} outside the closed D283 corpus`,
+        "run-search-index-rebuild-required",
         corpusCase.dimension,
       );
       assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
@@ -978,7 +982,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     assert.equal(response.status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
+    assert.equal(body.message, "run-search-index-rebuild-required");
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
   });
 
@@ -3576,7 +3580,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
 
-    const report = ActivityReportWireSchema.parse(
+    const report = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
     // The report is the SAME projection the day payload is served from, so the
@@ -3624,9 +3628,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
    */
   it("serves the Activity report as a CSV that carries its own caveats (D240)", async () => {
     const h = harness();
+    const activityReport = ActivityReportSelectionSchema.parse(
+      await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
+    );
     const report = h.projection.buildActivityReportWire(DAY, DAY);
 
-    const response = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=${DAY}`);
+    const response = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=${DAY}&snapshot=${activityReport.snapshot.token}`);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
     assert.equal(
@@ -3643,7 +3650,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(csv.includes(`Window from,${DAY}`));
     assert.ok(csv.includes("Write ledger — what was actually filed"));
 
-    const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}`);
+    const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&snapshot=${activityReport.snapshot.token}`);
     assert.equal(halfRange.ok, false);
     assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
 
@@ -3651,18 +3658,24 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(noRange.ok, false);
     assert.match(String((await json(noRange)).message), /requires both from= and to=/);
 
-    const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01`);
+    const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01&snapshot=${activityReport.snapshot.token}`);
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
 
   it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
     const h = harness();
+    const activityReport = ActivityReportSelectionSchema.parse(
+      await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
+    );
 
     const response = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
-      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+      body: JSON.stringify({
+        requestVersion: 3,
+        selection: { kind: "activity", from: DAY, to: DAY, snapshotToken: activityReport.snapshot.token },
+      }),
     });
 
     assert.equal(response.status, 200);
@@ -3670,7 +3683,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(exportId);
     const evidence = h.database.authority.operatorXlsxExports.get(exportId);
     assert.ok(evidence);
-    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.workbookVersion, 3);
     assert.equal(evidence.requestedBy, "local-operator");
     assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
     assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
@@ -3686,7 +3699,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const malformed = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
-      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
+      body: JSON.stringify({
+        requestVersion: 3,
+        selection: { kind: "activity", from: DAY, to: DAY, snapshotToken: activityReport.snapshot.token, latest: true },
+      }),
     });
     assert.equal(malformed.status, 400);
     assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
@@ -3695,8 +3711,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
+        requestVersion: 3,
         requestedBy: "other-operator",
-        selection: { kind: "activity", from: DAY, to: DAY },
+        selection: { kind: "activity", from: DAY, to: DAY, snapshotToken: activityReport.snapshot.token },
       }),
     });
     assert.equal(smuggledActor.status, 400);
@@ -3718,11 +3735,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     },
   ])("refuses XLSX $label before durable effects", async ({ headers, status, code }) => {
     const h = harness();
+    const activityReport = ActivityReportSelectionSchema.parse(
+      await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
+    );
     const before = h.database.getMeta();
     const response = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
       headers,
-      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+      body: JSON.stringify({
+        requestVersion: 3,
+        selection: { kind: "activity", from: DAY, to: DAY, snapshotToken: activityReport.snapshot.token },
+      }),
     });
     assert.equal(response.status, status);
     assert.equal((await json(response)).code, code);
@@ -3745,10 +3768,16 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
+        requestVersion: 3,
         selection: {
           kind: "search",
           query: { q: "separations", scope: "workflow", facets: {}, limit: 1 },
-          snapshot: selectionPage.snapshot,
+          snapshot: {
+            generatedAt: selectionPage.generatedAt,
+            authorityGeneration: selectionPage.snapshot.authorityGeneration,
+            order: selectionPage.snapshot.order,
+            token: selectionPage.snapshot.token,
+          },
         },
       }),
     });
@@ -3758,7 +3787,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(exportId);
     const evidence = h.database.authority.operatorXlsxExports.get(exportId);
     assert.ok(evidence);
-    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.workbookVersion, 3);
     assert.equal(evidence.requestedBy, "local-operator");
     assert.equal(evidence.selection.kind, "search");
     assert.equal(evidence.workbook.rowCount, 2);
