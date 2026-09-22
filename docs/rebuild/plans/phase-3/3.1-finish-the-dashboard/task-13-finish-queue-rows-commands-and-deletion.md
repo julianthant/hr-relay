@@ -304,3 +304,32 @@ UI-planning worktree is retained. The [final planning receipt](/Users/julianhein
 records full plan/integration/base SHAs, committed-content verification, final checks and physical/ref
 cleanup after those operations succeed. The copy-ready supervisor prompt uses that verified release;
 the implementation branch/worktree is created only after the supervisor rechecks its binding.
+
+### Focused acceptance and candidate freeze — 2026-09-22
+
+| Proof | Verified result |
+| --- | --- |
+| P1 · Rows | Summary/canonical status agreement, exact members and batches, canonical priority/enqueue/id ordering (interactive before bulk), versioned group toggle, stale/corrupt summaries refusal, heartbeat summary non-republication, and bounded pagination preserving selections passed. Verified in `final-queue-rows`. |
+| P2 · Commands | Rename/bump/cancel and bulk commands use exact revisions. Stale versions refuse. Claimed cancellation remains a request until worker settlement. Replay and in-flight deduplication cause one accepted effect. Partial bulk failures expose granular results with individual statuses. Frozen selection and result order survive intervening view changes. Verified in `final-commands-authority` and `final-convergence`. |
+| P3 · Delete | Active root/member/tree refuses deletion without tombstones. Valid terminal tree deletes leaves-first. Exact replay preserves disposition; divergent reuse refuses. Shared files and surviving owners remain intact. Historical and current-schema controls pass. Interrupted settlement retains evidence and exact identity. Selection-switch protection verified. Verified in `final-commands-authority` and `final-convergence`. |
+| P4 · Convergence | Connected and reconnected clients match fresh authority after transfer/delete, including counts, grouping, notifications and selection. Late responses cannot resurrect rows or replace another selection. Bounded backpressure, duplicate cursor, and lost wakeup convergence proved. Verified in `final-convergence`. |
+| P5 · Desktop | Both themes (Graphite Warm, Paper Ink) across 1440×900, 1280×720, and 1024×768, resize to 1024×720 and back, dialog accessibility, and focus return to triggering action verified. Rerun launcher handoff preserves accepted behavior. Verified in `final-parity`. |
+
+| Assigned gate | Result |
+| --- | --- |
+| Queue rows group | `final-queue-rows`: 20 test files, **354 tests passed** (exit 0). |
+| Commands authority & storage group | `final-commands-authority`: 24 test files, **395 tests passed** (exit 0). |
+| Queue commands & stream convergence | `final-convergence`: 2 test files, **15 tests passed** (exit 0). Total focused runtime proof: **764 tests across 46 files**. |
+| Scoped static checks | `final-scoped-lint`: exact 66 TypeScript/TSX paths passed (0 errors, 0 warnings). Scoped check per Phase 3.1 cadence. |
+| Generated inputs | `generated-manifest-check` and `store-catalog-check` passed (exit 0). |
+| Built browser/reference gate | `final-parity`: all five assigned specs, **27 tests passed** (exit 0). Real isolated SQLite/lifecycle/kernel/stream services; desktop viewports (1440×900, 1280×720, 1024×768) and resize; both themes; accessibility indicators and focus return verified. |
+| Reference attribution | Twelve existing Queue scenes (36 PNG/accessibility/metadata files) deliberately refreshed with unchanged membership and tolerances to reflect canonical priority ordering and action accessibility. `reference-attribution.json` binds before/after hashes. |
+
+### Freeze boundary and retained resources
+
+All ephemeral services, synthetic databases, and browser sessions are cleanly terminated and closed.
+Evidence is retained in `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/`.
+Branch `codex/3.1.13-queue` and worktree `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-queue`
+remain assigned awaiting operator instruction for local-master integration.
+Master remains clean at `1afdefcfb5f6b301a9f0674a0e78a9a513a4ac9c`; the unrelated UI-planning worktree remains preserved.
+Full repository typecheck, repository-wide lint/coverage, and complete acceptance (A01–A42/D01–D05) remain deferred to Task 3.1.19.
