@@ -604,6 +604,12 @@ their candidates in either order. A07 and the existing dependency edges are unch
 
 These baseline allocations retain the planned responsibilities. The accepted A/B records above now own the actual implemented modules and working interfaces. A later focused plan must name the actual accepted prerequisite commit, resulting exports/paths, exact focused commands, fixture/output roots and either-order merge proof. A child may not edit the reserved shared file because it finds a missing hook. Resolve that requirement in its prerequisite before launch. The operator-approved [3.1.9.1 shell amendment](task-9-establish-independent-dashboard-boundaries.md#shell-child-ownership-amendment--2026-09-13) now grants that child bounded route/selection/focus/empty-state edits in the two app files; other reservations and A01–A42/D01–D05 outcomes are unchanged. No unfinished sibling dependency is permitted.
 
+The operator-approved [3.1.13 Queue amendment](task-9-establish-independent-dashboard-boundaries.md#queue-commands-and-convergence-ownership-amendment--2026-09-22)
+grants its sole supervisor narrowly required shared dispatch/selection/projection/stream, existing
+deletion and historical-compatibility repairs, plus corresponding guards/fixtures/reference proof.
+The task owner contains the complete assignment; this changes ownership only for that bounded scope,
+without changing A18/A26–A28 or any other frozen outcome.
+
 | Shared seam now | Sole prerequisite owner and required operation | Independent consumers after acceptance |
 | --- | --- | --- |
 | `src/dashboard/app/dashboard-app.tsx`, `url-state.ts`, `nav-history.ts`, shared shell `surfaces/top-bar.tsx` and `shell.tsx` | 3.1.9 extracts route/open/close/history/focus and registration operations plus notification and session slots. Preserve dirty Settings guard. Shared file changes are complete before the first surface child. | 3.1.9.1 shell; 3.1.9.5 inbox; 3.1.10 date consumes dedicated date state; 3.1.11 takes the completed session slot. |
@@ -636,7 +642,7 @@ Paths below are existing seams to retain or separate; a shared file reserved abo
 | 3.1.11.1 | `server/preflight/`, `domain/trust/preflight-scenarios.ts`, isolated Setup presentation | `3.1.11.1/`; 3.1.11.3 |
 | 3.1.11.2 | `surfaces/run-start*.ts*`, `commands/start-plan-service.ts`, separated prior-run value transport and modal; settings runtime is accepted input | `3.1.11.2/`; 3.1.11.3 |
 | 3.1.12 | `surfaces/activity*.ts*`, `day-search*.ts*`, `queries/activity-export.ts`, `search.ts`, `exports/`; extracted Activity summaries plus the [approved bounded shared/database amendment](task-9-establish-independent-dashboard-boundaries.md#activity-search-and-export-ownership-amendment--2026-09-21) | `3.1.12/`; focused checks; broad gates at 3.1.19 |
-| 3.1.13 | `surfaces/queue*.ts*`, `workflow-batch.tsx`, extracted Queue summaries/actions/bulk; accepted Rerun launcher only | `3.1.13/`; focused checks; broad gates at 3.1.19 |
+| 3.1.13 | `surfaces/queue*.ts*`, `workflow-batch.tsx`, extracted Queue summaries/actions/bulk; accepted Rerun launcher plus the [approved bounded shared/deletion/compatibility amendment](task-9-establish-independent-dashboard-boundaries.md#queue-commands-and-convergence-ownership-amendment--2026-09-22). No new DDL, deletion-policy change or direct Retry/Restart mutation. | `3.1.13/`; focused checks and real-service browser proof; broad gates at 3.1.19 |
 | 3.1.14.1 | extracted timeline/identity and follow-state implementation/tests | `3.1.14.1/`; 3.1.14.6 |
 | 3.1.14.2 | `surfaces/context-rail*.ts*`, separated Data/Attempts readback and tests | `3.1.14.2/`; 3.1.14.6 |
 | 3.1.14.3 | `queries/run-logs.ts`, `run-captures.ts`, capture/screenshot surfaces and extracted log body; event producers only where traced missing | `3.1.14.3/`; 3.1.14.6 |
