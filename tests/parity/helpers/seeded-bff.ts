@@ -1,7 +1,7 @@
 import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
 import type { Clock } from "../../../src/domain/clock.js";
 import { dateNavigationReader, seedDateNavigation } from "./date-navigation-server.js";
-import { mkdtempSync,rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer,type IncomingMessage,type Server,type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -129,7 +129,7 @@ export async function startSeededServer(
   // Ref frontend-backend-integration §7: the same working-tree proof the fixture adapter demands —
   // asserted before any temp root, database or port exists.
   assertServedBundle(input.distDir, input.bundle);
-  const root = mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-")));
   const stateRoot = join(root, ".tracker");
   const clock = manualClock(SEEDED_AT);
   const database = AuthorityDatabase.open(

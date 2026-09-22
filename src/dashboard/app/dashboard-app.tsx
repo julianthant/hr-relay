@@ -900,7 +900,8 @@ function LoadedApp({
         const existingUncertain = uncertainCommands.current.get(inFlightKey);
         const commandId = existingUncertain?.commandId ?? crypto.randomUUID();
         const requestedAt = existingUncertain?.requestedAt ?? nowIso;
-        setPendingRename({ action, target, surface, nowIso, source, commandId, requestedAt });
+        const triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setPendingRename({ action, target, surface, nowIso, source, commandId, requestedAt, triggerElement });
         return;
       }
       if (action.confirm !== undefined) {
@@ -909,12 +910,14 @@ function LoadedApp({
         const existingUncertain = uncertainCommands.current.get(inFlightKey);
         const commandId = existingUncertain?.commandId ?? crypto.randomUUID();
         const requestedAt = existingUncertain?.requestedAt ?? nowIso;
+        const triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setPendingCommand({
           action,
           target,
           source,
           commandId,
           requestedAt,
+          triggerElement,
           // The row's own name and identity, so the operator is shown the thing
           // the blast radius lands ON. A run the day's projection does not hold
           // states that rather than inventing a title for it.

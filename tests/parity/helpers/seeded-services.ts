@@ -91,6 +91,14 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       resolve: (workflowId: string) =>
         (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
     },
+    canonical: {
+      reader: sqliteRunReader(database, clock),
+      database,
+      descriptors: {
+        resolve: (workflowId: string) =>
+          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+      },
+    },
     trust,
   };
 

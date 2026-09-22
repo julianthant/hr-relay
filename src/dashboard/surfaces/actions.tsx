@@ -523,6 +523,7 @@ export interface PendingCommand {
   source?: "queue" | "run-detail" | undefined;
   commandId?: string | undefined;
   requestedAt?: string | undefined;
+  triggerElement?: HTMLElement | null | undefined;
 }
 
 /**
@@ -547,6 +548,12 @@ export function ConfirmCommandDialog({
       {pending && confirm && (
         <DialogContent
           size="sm"
+          onCloseAutoFocus={(e) => {
+            if (pending.triggerElement?.isConnected) {
+              e.preventDefault();
+              pending.triggerElement.focus();
+            }
+          }}
           title={
             // The layout only — NO second type class. `DialogPrimitive.Title`
             // already carries `dsText.section`, and nesting `dsText.title`
