@@ -2009,15 +2009,15 @@ log:
 
 
 #### 13 · Finish queue rows, commands, and deletion {#dash-queue}
-status: planned
-date: D344 · former 3.1.12-1 · independent worktree after named prerequisites
+status: done
+date: 2026-09-22 · integrated focused acceptance; full repository gates remain 3.1.19
 doc: 3.1/task-13-finish-queue-rows-commands-and-deletion §Task 3.1.13 · Finish queue rows, commands, and deletion · ref:dashboard-surfaces §4 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from summary-backed display queries with canonical service enrichment
-- [ ] BOTH make cancel/rename/bump/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary; Rerun launchers remain Task 11-2's plan-backed modal
-- [ ] BOTH define delete as an idempotent lifecycle/tombstone operation with explicit evidence-retention and visible result
-- [ ] PROOF command matrix, stale conflicts, double-clicks, concurrent worker transitions, and queue/current/archive convergence
+- [x] BOTH render ordering, status, identity, session, worker, progress, outcome, constraints, evidence, and group/member facts from summary-backed display queries with canonical service enrichment
+- [x] BOTH make cancel/rename/bump/delete/bulk commands real, revision-bound, and reconciled to one response vocabulary; Rerun launchers remain Task 11-2's plan-backed modal
+- [x] BOTH define delete as an idempotent lifecycle/tombstone operation with explicit evidence-retention and visible result
+- [x] PROOF command matrix, stale conflicts, double-clicks, concurrent worker transitions, and queue/current/archive convergence
 
 needs:
 - dash-run-modal
@@ -2025,6 +2025,7 @@ needs:
 - dash-operations-finalizer
 
 log:
+- 2026-09-22 | accepted local 3.1.13 release | Operator-directed merge `2f97dae45e62ee6d046cbe90ef1673e993ea85e6` incorporates candidate `51fd2ef20f29f695a9bc884bb65262b967f734b6` with the exact verified tree. Reused unchanged 354 queue, 395 command/storage, 15 convergence, 14 guard, 30 browser, scoped lint/type and actual Chromium zoom evidence. The owned queue worktree and branch were removed after ignored outputs were retained; dirty UI planning was preserved. No push, external HR write or successor dispatch. Full repository gates and acceptance remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-2.3; former 3.1.12-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 queue seam in `phase-3-1-dashboard-c21194e18-r16-queue`, parallel with Tasks 18, 24 and 30 after authoritative start exists · left: Task 15
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.5 row facts, §D330.6 `list` order and §D330.8 delete plus tombstone (no redesign) · left: this task owns the two R01 residues — producing the `remove-queue-surface` / `tombstone-queue-surface` wire events, and reconciling the two projector outcome enums that disagree on `skipped`

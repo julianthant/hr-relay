@@ -382,3 +382,23 @@ and recovery-dialog capture. Full repository typecheck, whole-repository lint
 and coverage, and complete acceptance remain assigned to 3.1.19. Local-master
 integration and owned worktree cleanup remain subject to the plan's explicit
 operator integration instruction.
+
+
+### Accepted local integration and closure — 2026-09-22
+
+The operator explicitly authorized integration after the corrected candidate
+freeze. Local `master` merged candidate
+`51fd2ef20f29f695a9bc884bb65262b967f734b6` in merge commit
+`2f97dae45e62ee6d046cbe90ef1673e993ea85e6`. The merge has no conflicts;
+its object tree `f9bbaa00703ac7e4c6f4c7f36793b167e921b0d2` is byte-identical to
+the focused-green candidate. The candidate is an ancestor of local `master`.
+No runtime gate inputs changed during integration, so the focused receipts above
+remain valid under the approved cadence. The worktree registration and physical
+folder `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-queue`
+are absent, and `codex/3.1.13-queue` was deleted after its tip was verified
+incorporated. Ignored local outputs were preserved outside the checkout before
+removal. The unrelated dirty UI-planning worktree and branch remain untouched.
+The [integration receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/integration-2026-09-22/final-receipt.json)
+records exact integration, evidence, gate reuse, cleanup and retained resources.
+No push, standing database migration, external HR write or next-task dispatch
+occurred. Full repository gates and acceptance remain assigned to 3.1.19.
