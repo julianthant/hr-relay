@@ -1654,7 +1654,8 @@ export class RunQueueProjection {
         surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
       }
     }
-    surfaces.sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
+    const priorityOrder = (priority: "interactive" | "bulk"): number => (priority === "interactive" ? 0 : 1);
+    surfaces.sort((a, b) => priorityOrder(a.priority) - priorityOrder(b.priority) || a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
 
     /**
      * D81: every count below derives from `surfaces` — the exact array the
