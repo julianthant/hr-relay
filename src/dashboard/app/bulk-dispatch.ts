@@ -254,6 +254,8 @@ export type ComposedBulkCommand =
 export interface BulkCommandContext {
   readonly actorId: string;
   readonly source: "queue" | "run-detail";
+  readonly commandId?: string | undefined;
+  readonly requestedAt?: string | undefined;
 }
 
 /**
@@ -275,7 +277,7 @@ export function composeBulkRunCommand(plan: BulkVerbPlan, context: BulkCommandCo
   if (plan.eligible.length === 0) {
     return { state: "refused", reason: emptyPlanReason(plan) };
   }
-  const commandId = crypto.randomUUID();
+  const commandId = context.commandId ?? crypto.randomUUID();
   return {
     state: "ready",
     request: {
@@ -284,7 +286,7 @@ export function composeBulkRunCommand(plan: BulkVerbPlan, context: BulkCommandCo
       // command id per run from it, so re-sending this exact envelope replays
       // the same N children instead of filing N more.
       bulkCommandId: commandId,
-      requestedAt: systemClock.now().toISOString(),
+      requestedAt: context.requestedAt ?? systemClock.now().toISOString(),
       requestedBy: context.actorId,
       source: context.source,
       family: "run",

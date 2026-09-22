@@ -520,6 +520,9 @@ export interface PendingCommand {
   subject: string;
   traceId: string;
   workflowLabel: string;
+  source?: "queue" | "run-detail" | undefined;
+  commandId?: string | undefined;
+  requestedAt?: string | undefined;
 }
 
 /**

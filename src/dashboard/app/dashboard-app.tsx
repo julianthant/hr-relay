@@ -394,6 +394,12 @@ function LoadedApp({
    */
   const [pendingBulk, setPendingBulk] = useState<PendingBulkCommand | null>(null);
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(null);
+  const inFlightCommands = useRef<Set<string>>(new Set());
+  const uncertainCommands = useRef<Map<string, { commandId: string; requestedAt: string }>>(new Map());
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  const bulkIdsRef = useRef(bulkIds);
+  bulkIdsRef.current = bulkIds;
   const client = useDashboardClient();
   const { toast } = useToasts();
 
@@ -672,7 +678,21 @@ function LoadedApp({
      * "the dialog did not answer" and "the state had not updated yet" can
      * never look the same.
      */
-    (action: CommandAction, target: ActionTarget, answers: { renameAnswer?: string } = {}): void => {
+    (action: CommandAction, target: ActionTarget, answers: {
+      renameAnswer?: string;
+      source?: "queue" | "run-detail";
+      commandId?: string;
+      requestedAt?: string;
+    } = {}): void => {
+      const inFlightKey = action.command === "resolve-gate"
+        ? `${target.runId}:gate:${(target as { gateId?: string }).gateId ?? ""}`
+        : `${target.runId}:${action.command}`;
+      if (inFlightCommands.current.has(inFlightKey)) return;
+      const existingUncertain = uncertainCommands.current.get(inFlightKey);
+      const commandId = answers.commandId ?? existingUncertain?.commandId ?? crypto.randomUUID();
+      const requestedAt = answers.requestedAt ?? existingUncertain?.requestedAt ?? nowIso;
+      const source = answers.source ?? "queue";
+
       /*
         The gate section is still handed to the composer even though the gate's
         own controls no longer route here (D226 sends them to the ceremony
@@ -687,7 +707,9 @@ function LoadedApp({
       */
       const composed = composeCommandRequest(action, target, {
         actorId: boot.actor.id,
-        source: "run-detail",
+        source,
+        commandId,
+        requestedAt,
         gate: sections["identity-gate"],
         ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }),
       });
@@ -695,6 +717,7 @@ function LoadedApp({
         toast(commandFailureToast({ stage: "before-dispatch", reason: composed.reason }));
         return;
       }
+      inFlightCommands.current.add(inFlightKey);
       /*
         `.then(onFulfilled).catch(onRejected)` — NOT `.then(onFulfilled, onRejected)`, and the
         difference is the whole point of the two fail-loud guards inside this settlement handler.
@@ -708,6 +731,8 @@ function LoadedApp({
       */
       client.executeCommand(composed.request).then(
         (result) => {
+          inFlightCommands.current.delete(inFlightKey);
+          uncertainCommands.current.delete(inFlightKey);
           // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
           // and WHETHER one of them landed is decided ONCE, by the fold (D253,
           // Track D row D3) — this callback reads the verdict rather than
@@ -741,16 +766,30 @@ function LoadedApp({
             clock: fmtClock(nowIso),
             actorId: boot.actor.id,
           });
+          if (action.command === "delete") {
+            const currentRoute = routeRef.current;
+            if (currentRoute.run === target.runId) {
+              setRoute({ ...currentRoute, run: undefined, section: undefined });
+            }
+            const currentBulk = bulkIdsRef.current;
+            if (currentBulk.has(target.runId)) {
+              const next = new Set(currentBulk);
+              next.delete(target.runId);
+              onBulkIds(next);
+            }
+          }
           setDetailNonce((nonce) => nonce + 1);
         },
       ).catch((caught: unknown) => {
+        inFlightCommands.current.delete(inFlightKey);
+        uncertainCommands.current.set(inFlightKey, { commandId, requestedAt });
         // NOT "Nothing was recorded": the envelope is already on the wire by
         // the time anything can land here, so whether the kernel wrote the row
         // is a fact this tab does not hold (`commandFailureToast`).
         toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
-    [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso],
+    [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
   );
 
   /**
@@ -766,15 +805,29 @@ function LoadedApp({
    * to a word.
    */
   const dispatchBulk = useCallback(
-    (plan: BulkVerbPlan): void => {
-      const composed = composeBulkRunCommand(plan, { actorId: boot.actor.id, source: "queue" });
+    (plan: BulkVerbPlan, retained?: { commandId?: string; requestedAt?: string }): void => {
+      const inFlightKey = `bulk:${plan.verb}`;
+      if (inFlightCommands.current.has(inFlightKey)) return;
+      const existingUncertain = uncertainCommands.current.get(inFlightKey);
+      const commandId = retained?.commandId ?? existingUncertain?.commandId ?? crypto.randomUUID();
+      const requestedAt = retained?.requestedAt ?? existingUncertain?.requestedAt ?? nowIso;
+
+      const composed = composeBulkRunCommand(plan, {
+        actorId: boot.actor.id,
+        source: "queue",
+        commandId,
+        requestedAt,
+      });
       if (composed.state === "refused") {
         toast({ tone: "danger", title: "Nothing was sent", description: composed.reason });
         return;
       }
+      inFlightCommands.current.add(inFlightKey);
       const subjects = bulkSubjectsOf(plan);
       client.executeBulkCommand(composed.request).then(
         (response) => {
+          inFlightCommands.current.delete(inFlightKey);
+          uncertainCommands.current.delete(inFlightKey);
           setBulkOutcome({ plan, subjects, response });
           if (response.state === "refused") {
             toast({ tone: "danger", title: "Nothing was recorded", description: response.message });
@@ -791,17 +844,14 @@ function LoadedApp({
           });
           setDetailNonce((nonce) => nonce + 1);
         },
-        (caught: unknown) => {
-          // NOT "Nothing was recorded": the envelope is already on the wire by
-          // the time anything can land here, so whether the kernel wrote the
-          // row is a fact this tab does not hold (`commandFailureToast`).
-          toast(commandFailureToast({ stage: "after-dispatch", caught }));
-        },
-      );
+      ).catch((caught: unknown) => {
+        inFlightCommands.current.delete(inFlightKey);
+        uncertainCommands.current.set(inFlightKey, { commandId, requestedAt });
+        toast(commandFailureToast({ stage: "after-dispatch", caught }));
+      });
     },
-    [boot.actor.id, client, toast],
+    [boot.actor.id, client, nowIso, toast],
   );
-
   const workerCommands = useMemo(() => createWorkerCommandDispatch(client, { actorId: boot.actor.id, source: "session-panel" }), [client, boot.actor.id]);
   const planWorkerCount = workerCommands.plan;
   const spawnWorker = workerCommands.spawn;
@@ -815,7 +865,7 @@ function LoadedApp({
    * server-authored confirm copy asks first, everything else posts.
    */
   const runAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget): void => {
+    (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): void => {
       if (action.kind === "navigation") {
         if (action.navigate.kind === "rerun") openRerun(RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }));
         else if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
@@ -846,14 +896,25 @@ function LoadedApp({
           });
           return;
         }
-        setPendingRename({ action, target, surface, nowIso });
+        const inFlightKey = `${target.runId}:rename`;
+        const existingUncertain = uncertainCommands.current.get(inFlightKey);
+        const commandId = existingUncertain?.commandId ?? crypto.randomUUID();
+        const requestedAt = existingUncertain?.requestedAt ?? nowIso;
+        setPendingRename({ action, target, surface, nowIso, source, commandId, requestedAt });
         return;
       }
       if (action.confirm !== undefined) {
         const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
+        const inFlightKey = `${target.runId}:${action.command}`;
+        const existingUncertain = uncertainCommands.current.get(inFlightKey);
+        const commandId = existingUncertain?.commandId ?? crypto.randomUUID();
+        const requestedAt = existingUncertain?.requestedAt ?? nowIso;
         setPendingCommand({
           action,
           target,
+          source,
+          commandId,
+          requestedAt,
           // The row's own name and identity, so the operator is shown the thing
           // the blast radius lands ON. A run the day's projection does not hold
           // states that rather than inventing a title for it.
@@ -863,9 +924,23 @@ function LoadedApp({
         });
         return;
       }
-      dispatchCommand(action, target);
+      dispatchCommand(action, target, { source });
     },
     [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun],
+  );
+
+  const runQueueAction = useCallback(
+    (action: ActionDescriptorWire, target: ActionTarget): void => {
+      runAction(action, target, "queue");
+    },
+    [runAction],
+  );
+
+  const runDetailAction = useCallback(
+    (action: ActionDescriptorWire, target: ActionTarget): void => {
+      runAction(action, target, "run-detail");
+    },
+    [runAction],
   );
 
   /**
@@ -904,7 +979,7 @@ function LoadedApp({
         `runAction` → `composeCommandRequest` → the one command client. A row
         served an empty list still draws nothing, with no branch here.
       */
-      onAction: runAction,
+      onAction: runQueueAction,
       onToggleWell: (runId) => {
         const next = new Set(openWells);
         if (next.has(runId)) next.delete(runId);
@@ -941,7 +1016,7 @@ function LoadedApp({
         selectRun(String(link.runId));
       },
     }),
-    [setBatchGrouping, selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
   );
 
   const keyboardOrder = useMemo(
@@ -1230,7 +1305,13 @@ function LoadedApp({
             onClearSelection={() => onBulkIds(new Set())}
             bulkPlans={bulkPlans}
             bulkUnavailable={bulkUnavailable}
-            onBulk={(plan) => setPendingBulk({ plan })}
+            onBulk={(plan) => {
+              const inFlightKey = `bulk:${plan.verb}`;
+              const existingUncertain = uncertainCommands.current.get(inFlightKey);
+              const commandId = existingUncertain?.commandId ?? crypto.randomUUID();
+              const requestedAt = existingUncertain?.requestedAt ?? nowIso;
+              setPendingBulk({ plan, commandId, requestedAt });
+            }}
             bulkOutcome={bulkOutcome}
             onDismissBulkOutcome={() => setBulkOutcome(null)}
             onSelectRun={selectRun}
@@ -1358,7 +1439,7 @@ function LoadedApp({
                     carrying BOTH placements could ever have arrived.
                   */
                   actions={openPanelActions}
-                  onAction={runAction}
+                  onAction={runDetailAction}
                   tab={effectiveTab}
                   onTab={onTab}
                   workflowLabel={workflowLabelOf(selection.detail.header.workflowId)}
@@ -1453,7 +1534,11 @@ function LoadedApp({
         onCancel={() => setPendingCommand(null)}
         onConfirm={(confirmed) => {
           setPendingCommand(null);
-          dispatchCommand(confirmed.action, confirmed.target);
+          dispatchCommand(confirmed.action, confirmed.target, {
+            source: confirmed.source,
+            commandId: confirmed.commandId,
+            requestedAt: confirmed.requestedAt,
+          });
         }}
       />
 
@@ -1467,7 +1552,12 @@ function LoadedApp({
         onCancel={() => setPendingRename(null)}
         onConfirm={(confirmed, name) => {
           setPendingRename(null);
-          dispatchCommand(confirmed.action, confirmed.target, { renameAnswer: name });
+          dispatchCommand(confirmed.action, confirmed.target, {
+            renameAnswer: name,
+            source: confirmed.source,
+            commandId: confirmed.commandId,
+            requestedAt: confirmed.requestedAt,
+          });
         }}
       />
 
@@ -1481,7 +1571,10 @@ function LoadedApp({
         onCancel={() => setPendingBulk(null)}
         onConfirm={(confirmed) => {
           setPendingBulk(null);
-          dispatchBulk(confirmed.plan);
+          dispatchBulk(confirmed.plan, {
+            commandId: confirmed.commandId,
+            requestedAt: confirmed.requestedAt,
+          });
         }}
       />
     </div>

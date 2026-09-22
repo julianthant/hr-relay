@@ -109,6 +109,8 @@ const OUTCOME_TONE: Record<
 /** The pending batch a confirm dialog is asking about, held by the shell. */
 export interface PendingBulkCommand {
   readonly plan: BulkVerbPlan;
+  readonly commandId?: string | undefined;
+  readonly requestedAt?: string | undefined;
 }
 
 /**
@@ -369,7 +371,7 @@ export function QueueToolbar({
                   `${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`
                 : `None of the ${selectedCount - bulkUnavailable.length} selected `
                   + `${selectedCount - bulkUnavailable.length === 1 ? "row still on this day serves" : "rows still on this day serve"} `
-                  + `Cancel or Retry, so there is nothing to apply to this selection.`
+                  + `Cancel, so there is nothing to apply to this selection.`
                   + (bulkUnavailable.length === 0
                     ? ""
                     : ` A further ${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`)}

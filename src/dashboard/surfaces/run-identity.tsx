@@ -279,6 +279,9 @@ export interface PendingRename {
   target: ActionTarget;
   surface: QueueSurfaceWire;
   nowIso: string;
+  source?: "queue" | "run-detail" | undefined;
+  commandId?: string | undefined;
+  requestedAt?: string | undefined;
 }
 
 /**
