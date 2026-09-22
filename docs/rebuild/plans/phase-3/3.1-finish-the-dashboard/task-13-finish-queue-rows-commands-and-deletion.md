@@ -333,3 +333,52 @@ Branch `codex/3.1.13-queue` and worktree `/Users/julianhein/Projects/hr-automati
 remain assigned awaiting operator instruction for local-master integration.
 Master remains clean at `1afdefcfb5f6b301a9f0674a0e78a9a513a4ac9c`; the unrelated UI-planning worktree remains preserved.
 Full repository typecheck, repository-wide lint/coverage, and complete acceptance (A01–A42/D01–D05) remain deferred to Task 3.1.19.
+
+### Review repair and refreshed candidate freeze — 2026-09-22
+
+The implementation repair is committed on `codex/3.1.13-queue` as
+`e833c684eb9cf332695893513b56ccfdc11669c4`. This supplements the earlier
+S6 receipt: its 27-test parity result and missing zoom proof are superseded by
+the 30-test assertion below. No reference image or accessibility baseline changed.
+
+- An uncertain single or bulk command retains its complete original request. The
+  queue keeps a visible recovery control even after the row disappears. A new
+  selection opens a dialog naming the original targets, revisions and any
+  rename value; only an explicit recovery press resends the exact envelope.
+  A stale dialog cannot mint a new request. Browser fault injection proves a
+  response lost after authority accepted a bulk cancel or deletion, identical
+  replay, unchanged newer selection and one accepted effect.
+- Delete settlement clears the selected detail and every deleted run in the
+  bulk set using the authoritative `affectedTargets` vector. A browser test
+  deletes a valid terminal group and its children while preserving a selected
+  survivor. The synthetic group's test-only dependency edges are installed
+  before deletion; the production authority refuses an inconsistent tree.
+- The command-result guard counts only the fulfillment arm of `.then`; its
+  rejection-arm-only negative control fails as intended.
+- The queue lifecycle fixture now resolves its temporary root before opening
+  credential authority. A direct Vitest run changed from five failures with
+  `directory-integrity: credential path ancestry contains a symbolic link` to
+  10/10 passing without relaxing the production integrity check. The seeded
+  browser command service now gives each command a distinct audit ID.
+- Actual Chromium tab zoom is applied through `chrome.tabs.setZoom` in an owned
+  Manifest V3 test extension. Both themes proved 125% (effective 1024×576,
+  DPR 1.25) and 200% (640×360, DPR 2), empty document/body CSS zoom, visible
+  Queue, and scrollable keyboard access. Chromium reports
+  `HeadlessChrome/149.0.0.0` in the retained user agent.
+
+| Refreshed gate | Result |
+| --- | --- |
+| Queue rows | `repair-2026-09-22/final-queue-rows`: 354/354 passed. |
+| Commands, authority and storage | `repair-2026-09-22/final-commands-authority`: 395/395 passed. |
+| Queue convergence | `repair-2026-09-22/final-convergence`: 15/15 passed. |
+| Guard inventory and command-result guard | `repair-2026-09-22/guard-check`: 14/14 passed. |
+| Built browser assertion | `repair-2026-09-22/final-parity`: 30/30 passed across the five assigned specs. |
+| Static and generated checks | `repair-2026-09-22/final-scoped-lint`: 68 paths passed; `final-scoped-types`: eight affected files have no diagnostics. Manifest and catalog freshness checks passed. |
+
+The retained [repair evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/repair-2026-09-22/)
+includes each command, exit, input and log hashes, the red/green credential
+reproducer, final browser JSON/screenshots, [zoom proof](/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.13-queue-2026-09-22/repair-2026-09-22/zoom-proof.json)
+and recovery-dialog capture. Full repository typecheck, whole-repository lint
+and coverage, and complete acceptance remain assigned to 3.1.19. Local-master
+integration and owned worktree cleanup remain subject to the plan's explicit
+operator integration instruction.
