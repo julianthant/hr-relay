@@ -5,10 +5,11 @@ import { FIXTURE_DESCRIPTOR_HASH } from "../helpers/fixture-identity.js";
 import { RECEIPTS_FAILURES_SCENES } from "../helpers/run-detail/receipts-failures-scenes.js";
 import { SEEDED_APP_VERSION,SEEDED_DAY } from "../helpers/seeded-identity.js";
 import { REFERENCES,failOnPageErrors } from "../helpers/reference-harness.js";
-import { referenceSceneGroups,registerSeededServer } from "./shared.js";
+import { referenceSceneGroups,registerRunDetailServer,registerSeededServer } from "./shared.js";
 
+const servers = registerRunDetailServer();
 const seededServers = registerSeededServer();
-for (const group of referenceSceneGroups(Object.values(RECEIPTS_FAILURES_SCENES))) {
+for (const group of referenceSceneGroups(Object.values(RECEIPTS_FAILURES_SCENES), () => servers.server.baseUrl)) {
   test.describe(group.title, () => {
     for (const scene of group.tests) test(scene.title, scene.run);
   });

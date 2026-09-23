@@ -14,13 +14,18 @@ import { REFERENCES,dismissWorkflowWindow,failOnPageErrors,registerReferenceServ
 import type { ReferenceScene } from "../helpers/reference-scenes.js";
 import { ANCHORS } from "../helpers/reference-detail-scenes.js";
 
-export const servers = registerReferenceServers(["server"]);
+export function registerRunDetailServer() {
+  return registerReferenceServers(["server"]);
+}
 
 export function registerSeededServer() {
   return registerReferenceServers(["seeded"]);
 }
 
-export function referenceSceneGroups(scenes: readonly ReferenceScene[]): readonly Readonly<{
+export function referenceSceneGroups(
+  scenes: readonly ReferenceScene[],
+  serverBaseUrl: () => string,
+): readonly Readonly<{
   title: string;
   tests: readonly Readonly<{ title: string; run(input: { page: Page }): Promise<void> }>[];
 }>[] {
@@ -35,7 +40,7 @@ export function referenceSceneGroups(scenes: readonly ReferenceScene[]): readonl
             const errors = failOnPageErrors(page);
             await page.setViewportSize({ width: viewport.width, height: viewport.height });
             await installTheme(page, theme satisfies ParityTheme);
-            await gotoAppState(page, servers.server.baseUrl, scene.route);
+            await gotoAppState(page, serverBaseUrl(), scene.route);
             if (
               scene.route.intake !== undefined
               || scene.route.explore !== undefined

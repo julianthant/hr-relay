@@ -6,9 +6,11 @@ import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "../help
 import { FIXTURE_IDS } from "../helpers/fixture-queue.js";
 import { REFERENCES,failOnPageErrors } from "../helpers/reference-harness.js";
 import { GATES_PARK_SCENES } from "../helpers/run-detail/gates-park-scenes.js";
-import { referenceSceneGroups,servers } from "./shared.js";
+import { referenceSceneGroups,registerRunDetailServer } from "./shared.js";
 
-for (const group of referenceSceneGroups(Object.values(GATES_PARK_SCENES))) {
+const servers = registerRunDetailServer();
+
+for (const group of referenceSceneGroups(Object.values(GATES_PARK_SCENES), () => servers.server.baseUrl)) {
   test.describe(group.title, () => {
     for (const scene of group.tests) test(scene.title, scene.run);
   });
