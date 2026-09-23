@@ -1,4 +1,5 @@
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { searchPartitionDay } from "../../../domain/dashboard/search-calendar.js";
 import {
   ItemAttemptHistoryCursorSchema,
   ITEM_ATTEMPT_HISTORY_MAX_ENTRIES,
@@ -10,6 +11,7 @@ import {
   type ItemAttemptHistoryRun,
 } from "../../../domain/dashboard/item-attempt-history.js";
 import { RunIdSchema } from "../../../domain/ids.js";
+import { DateOnlySchema } from "../../../domain/ids.js";
 import type { RunRecord } from "../../../domain/run/record.js";
 import type { DeletedRunRecord } from "../../../domain/run/deleted-run.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
@@ -42,6 +44,7 @@ function historyRunOf(run: RunRecord, disposition: "live" | "archived"): History
     attempt: run.envelope.attempt,
     disposition,
     rowRevision: run.version,
+    partitionDay: DateOnlySchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))),
   };
 }
 

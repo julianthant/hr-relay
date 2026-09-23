@@ -265,10 +265,16 @@
       - text: Extracted fields
       - button "About run data"
       - button "Widen the data surface"
-      - text: Starts on 9:51 AM
+      - text: CRM dates CRM read Starts on 9:51 AM
       - paragraph: 2026-07-15
-      - text: Invited on corrected 9:50 AM
+      - text: Attempt 1 · crm-dates / startsOn.value read Invited on corrected 9:50 AM
       - paragraph: 2026-06-01
+      - text: Attempt 1 · crm-dates / invitedOn.value
+    - separator
+    - region "Attempts":
+      - text: Attempts
+      - link "Attempt 1":
+        - /url: "?day=2026-08-03&run=00000000-0001-4000-8000-000000000001"
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

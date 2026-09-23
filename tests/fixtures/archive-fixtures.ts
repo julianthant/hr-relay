@@ -215,12 +215,9 @@ export const ARCHIVED_RUN_WITH_SECTIONS: ArchivedRunRecord = (() => {
         state: "present",
         value: {
           runId: SECTIONED_RUN_ID,
-          editing: { state: "locked", reason: "an archived run is read-only" },
-          entries: [{
-            label: "Employee ID",
-            valueRedacted: "108*****",
-            edit: { state: "locked", reason: "an archived run is read-only" },
-          }],
+          state: "unavailable",
+          reason: "descriptor-mismatch",
+          entries: [],
         },
       },
       people: { state: "absent", reason: "this run fanned out no member runs" },

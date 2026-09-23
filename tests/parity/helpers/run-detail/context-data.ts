@@ -1,45 +1,62 @@
-import { at,uuidOf } from "../fixture-identity.js";
+import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
+import { ContractFieldPathSchema } from "../../../../src/domain/contracts/base.js";
+import { NodeIdSchema } from "../../../../src/domain/ids.js";
+import { personLookupDescriptor } from "../../../helpers/registered-workflows.js";
+import { at, CONTRACT_FINGERPRINT, uuidOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";
 import { sectionResponse } from "./section-wire.js";
 
 type DataEntrySeed = Readonly<{
   label: string;
   valueRedacted: string;
-  edit?: Record<string, unknown>;
+  fieldPath: string;
   observedAt?: string;
   source?: "live" | "derived" | "operator";
   correctedAt?: string;
+  origin?: Readonly<{ step: string; dir: "read" | "write"; system?: string }>;
 }>;
 
-const LOCKED_NOT_DECLARED = {
-  state: "locked",
-  reason: "not declared correctable by this workflow",
-} as const;
+const dateNode = personLookupDescriptor.nodes.find((node) => node.id === "crm-dates");
+if (dateNode === undefined || dateNode.kind !== "task" || !("uses" in dateNode)) {
+  throw new Error("the Context Data fixture requires the registered CRM dates output schema");
+}
+const DATE_OUTPUT_SCHEMA_HASH = deriveSchemaHash(dateNode.uses.output, "output");
 
-const CLAIMED_EDIT_LOCK = {
-  state: "locked",
-  reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
-    + "editing reopens when it parks or finishes",
-} as const;
-
-function sectionsOf(seed: number, entries: readonly DataEntrySeed[], editing?: Record<string, unknown>) {
+function sectionsOf(seed: number, entries: readonly DataEntrySeed[]) {
   const runId = uuidOf(seed);
   return Object.freeze({
     "context-data": sectionResponse({
       section: "context-data",
       payload: {
         runId,
-        editing: editing ?? {
-          state: "locked",
-          reason: "run is terminal; corrections apply only to a non-executing resumable run",
-        },
+        state: "available",
         entries: entries.map((entry) => ({
           label: entry.label,
           valueRedacted: entry.valueRedacted,
-          edit: entry.edit ?? LOCKED_NOT_DECLARED,
+          coordinate: {
+            nodeId: NodeIdSchema.parse("crm-dates"),
+            fieldPath: ContractFieldPathSchema.parse(entry.fieldPath),
+          },
+          checkpoint: {
+            state: "present",
+            runId,
+            attempt: 1,
+            claimGeneration: 1,
+            descriptorVersion: personLookupDescriptor.version,
+            contractFingerprint: CONTRACT_FINGERPRINT,
+            schemaHash: DATE_OUTPUT_SCHEMA_HASH,
+            writtenAt: at(52),
+          },
+          valueState: "present",
           ...(entry.observedAt === undefined ? {} : { observedAt: entry.observedAt }),
           ...(entry.source === undefined ? {} : { source: entry.source }),
           ...(entry.correctedAt === undefined ? {} : { correctedAt: entry.correctedAt }),
+          ...(entry.origin === undefined ? {} : { origin: {
+            nodeId: NodeIdSchema.parse("crm-dates"),
+            step: entry.origin.step,
+            dir: entry.origin.dir,
+            ...(entry.origin.system === undefined ? {} : { system: entry.origin.system }),
+          } }),
         })),
       },
     }),
@@ -55,64 +72,51 @@ export const FIXTURE_CONTEXT_DATA_SECTIONS = Object.freeze({
     {
       label: "Starts on",
       valueRedacted: "2026-07-15",
-      edit: {
-        state: "editable",
-        nodeId: "crm-dates",
-        fieldPath: "startsOn.value",
-        value: "2026-07-15",
-        pendingCorrection: { state: "none" },
-      },
+      fieldPath: "startsOn.value",
       observedAt: at(51),
       source: "live",
+      origin: { step: "CRM dates", dir: "read", system: "crm" },
     },
     {
       label: "Invited on",
       valueRedacted: "2026-06-01",
-      edit: {
-        state: "editable",
-        nodeId: "crm-dates",
-        fieldPath: "invitedOn.value",
-        value: "2026-06-01",
-        pendingCorrection: { state: "pending", value: "2026-06-02", correctedAt: at(50) },
-      },
+      fieldPath: "invitedOn.value",
       observedAt: at(50),
       source: "operator",
       correctedAt: at(50),
+      origin: { step: "CRM dates", dir: "read", system: "crm" },
     },
-  ], { state: "editable", expectedVersion: 2 }),
+  ]),
   [FIXTURE_IDS.runningRun]: sectionsOf(2, [
-    { label: "Selection", valueRedacted: "exact-match" },
-    { label: "Active status", valueRedacted: "pending" },
-  ], CLAIMED_EDIT_LOCK),
+    { label: "Selection", valueRedacted: "exact-match", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "pending", fieldPath: "invitedOn.value" },
+  ]),
   [FIXTURE_IDS.doneRun]: sectionsOf(3, [
-    { label: "Selection", valueRedacted: "exact-match" },
-    { label: "Active status", valueRedacted: "active" },
+    { label: "Selection", valueRedacted: "exact-match", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "active", fieldPath: "invitedOn.value" },
   ]),
   [FIXTURE_IDS.failedRun]: sectionsOf(4, [
-    { label: "Selection", valueRedacted: "exact-match" },
-    { label: "Active status", valueRedacted: "not-reached" },
+    { label: "Selection", valueRedacted: "exact-match", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "not-reached", fieldPath: "invitedOn.value" },
   ]),
   [FIXTURE_IDS.openGateRun]: sectionsOf(5, [
-    { label: "Selection", valueRedacted: "ambiguous (2 candidates)" },
-    { label: "Active status", valueRedacted: "pending" },
-  ], CLAIMED_EDIT_LOCK),
+    { label: "Selection", valueRedacted: "ambiguous (2 candidates)", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "pending", fieldPath: "invitedOn.value" },
+  ]),
   [FIXTURE_IDS.gateTypedEidRun]: sectionsOf(44, [
-    { label: "Selection", valueRedacted: "name mismatch" },
-    { label: "Active status", valueRedacted: "pending" },
-  ], CLAIMED_EDIT_LOCK),
+    { label: "Selection", valueRedacted: "name mismatch", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "pending", fieldPath: "invitedOn.value" },
+  ]),
   [FIXTURE_IDS.parkedRun]: sectionsOf(6, [
-    { label: "Selection", valueRedacted: "exact-match", observedAt: at(44), source: "live" },
-    { label: "Termination reason", valueRedacted: "Resign - No Reason Given", observedAt: at(44), source: "derived" },
-  ], {
-    state: "locked",
-    reason: "run is parked-write; corrections apply only to a non-executing resumable run",
-  }),
+    { label: "Selection", valueRedacted: "exact-match", fieldPath: "startsOn.value", observedAt: at(44), source: "live" },
+    { label: "Termination reason", valueRedacted: "Resign - No Reason Given", fieldPath: "invitedOn.value", observedAt: at(44), source: "derived" },
+  ]),
   [FIXTURE_IDS.memberRun]: sectionsOf(31, [
-    { label: "Selection", valueRedacted: "exact-match" },
-    { label: "Active status", valueRedacted: "active" },
+    { label: "Selection", valueRedacted: "exact-match", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "active", fieldPath: "invitedOn.value" },
   ]),
   [FIXTURE_IDS.groupOf13]: sectionsOf(70, [
-    { label: "Selection", valueRedacted: "13 members" },
-    { label: "Active status", valueRedacted: "mixed" },
+    { label: "Selection", valueRedacted: "13 members", fieldPath: "startsOn.value" },
+    { label: "Active status", valueRedacted: "mixed", fieldPath: "invitedOn.value" },
   ]),
 });

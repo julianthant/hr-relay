@@ -1,64 +1,9 @@
 /**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoContextRail.tsx
- *
- * The Context rail — the permanent home of a run's DATA, beside the stream
- * rather than behind a tab (ref frontend-backend-integration §3.3: "Data lives in the Context rail").
- *
- * WHAT THE WIRE SERVES, AND WHAT IT STILL DOES NOT. The demo's ledger drew four
- * axes this surface could not: DIRECTION (the `--ds-read-*` / `--ds-write-*`
- * pair), the originating system, the observation clock, and an editable/locked
- * policy with dirty/corrected/refreshed/staged/unconfirmed badges. Two of the
- * four have since arrived and two have NOT, and the difference between them is
- * the whole rule this comment exists to hold:
- *
- *  - **The edit policy** is served (2i-C): `edit` carries editable/locked with
- *    the real reason and any pending correction, and the row renders by SHAPE.
- *  - **The observation clock and the fact's own source** are served (W2): each
- *    entry may carry `observedAt`, `source` and `correctedAt`, projected from
- *    the producing checkpoint's `FactProvenance` row — the SAME record
- *    `editableEntryOf` was already reading and discarding. `corrected` is
- *    drawn from `correctedAt`; `derived` from `source`; a `live` read is the
- *    unmarked default, because a badge on every row is a badge on none.
- *  - **DIRECTION, the STEP and the SYSTEM are served (D252)**, and the
- *    sentence they replace is worth keeping because it was half right. It read
- *    "nothing durable says whether a recorded field was read or written", which
- *    is TRUE of the checkpoint row and FALSE of the descriptor that produced
- *    it: the node that recorded a value declares a task contract, and that
- *    contract's `effect` is ref task-contract's own word for what it does to the world.
- *    So `dir` is a DECLARATION, not the guess the old comment refused — and a
- *    guess is still refused, which is why an entry with no field identity
- *    draws no arrow rather than a defaulted `read`. `system` comes from the
- *    store that implements the task; a headless store owns none, and the chip
- *    is then absent rather than labelled "internal".
- *  - **The reuse bound is served (D252)** where it can BITE: an entry's own
- *    freshness limit, the override policy, and the write nodes the value can
- *    reach. A bound that reaches no write refuses nothing (the executor's own
- *    walk skips it), so no sentence is printed for one.
- *  - **The demo's `refreshed` badge is still absent** — it means "this changed
- *    on the server since you looked" and needs the superseded reading beside
- *    the current one. This wire carries one value per entry, so there is
- *    nothing to compare. The demo's `staged` / `unconfirmed` badges are absent
- *    for a structural reason, not a wire gap: a `prepare` contract is
- *    `checkpoint: "in-memory-only"` so a staged value never becomes the
- *    checkpoint a ledger row is read from, and an unconfirmed write is a
- *    `parked-write` run whose transaction node has no checkpoint at all — its
- *    honest surface is ref write-safety §4.1's park section, which serves it.
- *
- * An absent axis draws NOTHING — never a placeholder, never a dash, and never
- * a plausible default.
- *
- * What survives is the ratified SHAPE: the stacked label-over-value row bound
- * by a rail (the rail is what makes an eight-row ledger read as eight things
- * and not sixteen — that job is layout first, so an unattributable row still
- * gets its rail, in neutral ink), the section order, the collapse affordance
- * and its persisted preference, and the spine that still says what it is
- * hiding.
- *
- * Values arrive redacted BY THE SERVER. `valueRedacted` renders verbatim: this
- * surface never re-derives, re-formats or unmasks one.
+ * Read-only run Context rail. Data values, checkpoint coordinates and
+ * provenance come from the exact selected run; attempt history comes from the
+ * bounded item-history query.
  */
-import { type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -76,6 +21,7 @@ import {
   EmptyState,
   IconButton,
   LockedValue,
+  Button,
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -88,11 +34,13 @@ import {
 } from "../ds/ui.js";
 
 
-import {
-} from "../app/command-result.js";
 import { fmtClock, plural } from "./format.js";
 import { SystemChip } from "./system-chip.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { actionsAt, type ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { ITEM_ATTEMPT_HISTORY_MAX_LIMIT,
+  type ItemAttemptHistoryResponse, type ItemAttemptHistoryRun } from "../../domain/dashboard/item-attempt-history.js";
+import { useDashboardClient } from "../state/client-context.js";
+import { parseRoute, routeForCrossDateSearchResult, routeToSearch } from "../app/url-state.js";
 import type { DashboardActionHandler, ActionTarget } from "./actions.js";
 import {
   freshnessNoteOf,
@@ -104,7 +52,6 @@ import {
   type ContextSectionPayload,
   type ContextSections,
   type ContextSummary,
-  type EditPolicy,
 } from "./context-rail-model.js";
 
 export type {
@@ -115,7 +62,6 @@ export type {
   ContextSectionPayload,
   ContextSections,
   ContextSummary,
-  EditPolicy,
 };
 
 /* the rail's wire types live in `context-rail-model.ts` — see the note there */
@@ -123,17 +69,12 @@ export type {
 /** The two refusal arms of the D253 fold, which are the only ones this rail draws. */
 
 function isDataPayload(payload: ContextSectionPayload): payload is ContextDataPayload {
-  return "editing" in payload;
+  return "state" in payload;
 }
 
 // ---------------------------------------------------------------------------
 // open / collapsed, persisted
 // ---------------------------------------------------------------------------
-
-/* the rail's open state, and the edit policy, live in `context-rail-model.ts` — see the note there */
-
-/** Parse an operator draft back into the RECORDED scalar's own type. */
-
 
 // ---------------------------------------------------------------------------
 // one recorded value
@@ -153,7 +94,7 @@ function isDataPayload(payload: ContextSectionPayload): payload is ContextDataPa
  *
  * The value renders by POLICY (DESIGN.md: "you may change this" and "you may
  * not" are told apart by SHAPE): a locked row is flat text with a lock and the
- * REAL reason, an editable row is a `ValueField` box the operator types into.
+ * Source values always render as read-only values.
  */
 /**
  * WHEN a value was established, and by WHAT — the demo's Data-ledger axis, in
@@ -162,20 +103,8 @@ function isDataPayload(payload: ContextSectionPayload): payload is ContextDataPa
  * It reads `-muted` rather than `-faint`: `-faint` is the disabled/placeholder
  * step and a real observation is neither.
  *
- * THE DEMO'S `@min-[26rem]:` FOLD DOES NOT PORT, and that is a decision rather
- * than an omission. There, the clock was the THIRD thing competing for the
- * sub-step line — a direction arrow and a `SystemChip` sat ahead of it — so it
- * was rightly the first to give way at 376px and the first back when the rail
- * widened to 520px to edit in. Neither of those two is served by this wire, so
- * the line has room the demo's did not, and a threshold carried across
- * unexamined would hide the clock at EVERY width the product ever draws the
- * rail at (it is 376 at rest and 520 only mid-edit) — which is a field served,
- * projected and never seen. The LABEL gives way instead: it truncates, and it
- * is recoverable from its own `title` and from the value printed under it,
- * while a clipped clock is unreadable.
- *
- * The badges do not give way at all. `corrected` says a human overrode what the
- * run read, and a hazard is never disclosed behind a width.
+ * A label may truncate; a recorded timestamp stays visible so the operator can
+ * read when the value was observed.
  */
 function ProvenanceMarks({ entry }: { entry: ContextDataEntry }) {
   const { observedAt, source, correctedAt, assertedStep } = entry;
@@ -323,27 +252,12 @@ function DirectionRail({ dir }: { dir: "read" | "write" | undefined }) {
 function LedgerRow({
   label,
   dir,
-  fieldId,
   marks,
   children,
 }: {
   label: string;
   /** D252 — the producing task's declared effect; absent draws neutral ink. */
   dir?: "read" | "write";
-  /**
-   * The id of the input this row's label names, when the row has one.
-   *
-   * A REAL `htmlFor` pairing, which the one-line row could not have had (R6
-   * f.14, demo `DemoContextRail.tsx:328-352`): the label sat beside the input
-   * rather than above it, so it was written as an `aria-label` and the visible
-   * text was associated with nothing. Stacked, the label IS the field's label
-   * — which also makes it a click target that focuses the input, one more
-   * thing saying "this line takes typing".
-   *
-   * It replaces a `useId` that was minted on every row and referenced by
-   * NOTHING: an id nobody points at is a pairing that does not exist.
-   */
-  fieldId?: string;
   /** the row's provenance marks, on the label line */
   marks?: ReactNode;
   children: ReactNode;
@@ -364,15 +278,9 @@ function LedgerRow({
             demo's own shape (R6 f.15), and the one that keeps the badges
             reading as a continuation of the label instead of a right rail. */}
         <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-          {fieldId === undefined ? (
-            <span title={label} className={LEDGER_LABEL_CLASS}>
-              {label}
-            </span>
-          ) : (
-            <label htmlFor={fieldId} title={label} className={cn(LEDGER_LABEL_CLASS, "cursor-text")}>
-              {label}
-            </label>
-          )}
+          <span title={label} className={LEDGER_LABEL_CLASS}>
+            {label}
+          </span>
           {marks}
         </div>
         {children}
@@ -390,7 +298,7 @@ function ContextSection({
   label: string;
   payload: { entries: readonly { label: string; valueRedacted: string }[] } | undefined;
   emptyDescription: string;
-  /** Why every row in THIS section is uneditable — shown on each lock. */
+  /** Why every row in this read-only section is recorded. */
   lockReason: string;
 }) {
   if (payload === undefined) return null;
@@ -417,7 +325,7 @@ function ContextSection({
 }
 
 // ---------------------------------------------------------------------------
-// the Data section — the merged Data / Edit Data surface (ref dashboard-surfaces §1.1(c))
+// the read-only Data section
 // ---------------------------------------------------------------------------
 
 
@@ -440,29 +348,8 @@ const DATA_SECTION_LABEL = "Extracted fields";
 
 
 
-/** What the operator would be editing FROM: the pending correction if one is staged, else the recorded value. */
 
-
-
-
-/**
- * THE ⓘ IS WHERE THE EXPLAINING GOES.
- *
- * Ported from legacy hr-automation@1bffbd65,
- * `DemoContextRail.tsx:600-638` (R6 f.3b). Sentences that are true of every run
- * in the product and are facts about NONE of them used to be printed on this
- * surface at all times; they are one press away now and the surface is back to
- * being a ledger.
- *
- * TWO OF THE DEMO'S BULLETS DO NOT PORT, and their absence is named rather
- * than papered over. The freshness sentence ("reusing reads older than N
- * minutes takes a reason") and the whole `KeyValueList` above it
- * (`Generation` · `Captured` · `Accepted age`) all read the CHECKPOINT'S OWN
- * provenance, and `ContextDataSectionSchema` carries no `capturedAt`,
- * `maxAgeMin` or consuming node — they ride the batched wire row on the
- * audit's hookup ledger with the rest of the freshness surface (R6 f.7). A
- * bullet stating a limit this wire cannot name would be inventing the number.
- */
+/** The popover explains read-only provenance and rerun semantics. */
 function DataSectionHead({
   expanded,
   onExpandedChange,
@@ -525,25 +412,34 @@ function DataSection({
   payload,
   expanded,
   onExpandedChange,
+  rerunAction,
+  target,
+  onAction,
 }: {
   payload: ContextDataPayload;
-  actorId: string;
-  liveStatus: string | undefined;
-  /** The rail has more room to read long recorded values. */
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
-  onSaved: () => void;
-  /** Seed the ledger from an earlier run of this workflow — unserved, see the dock. */
-  onLoadPriorRun?: () => void;
-  /** Start a fresh run from the values on screen — unserved, see the dock. */
-  onStartCustomRun?: () => void;
+  rerunAction?: ActionDescriptorWire;
+  target?: ActionTarget;
+  onAction?: DashboardActionHandler;
 }) {
   return (
     <section aria-label={DATA_SECTION_LABEL} className="flex shrink-0 flex-col gap-[var(--ds-space-snug)]">
       <DataSectionHead expanded={expanded} onExpandedChange={onExpandedChange} />
-      {payload.entries.length === 0 ? (
+      {payload.state === "archived" && (
+        <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Archived checkpoint values are read-only.</p>
+      )}
+      {payload.state === "deleted" ? (
+        <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>This run was deleted; its recorded values are no longer available.</p>
+      ) : payload.state === "unavailable" ? (
+        <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{payload.reason === undefined
+          ? "Run data is unavailable because its source could not be verified."
+          : "Run data is unavailable because its " + payload.reason.replaceAll("-", " ") + "."}</p>
+      ) : payload.entries.length === 0 ? (
         <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          No run data recorded — this run has not extracted or written any fields yet.
+          {payload.state === "archived"
+            ? "No retained checkpoint values are available for this run."
+            : "No run data recorded — this run has not extracted or written any fields yet."}
         </p>
       ) : <div className="flex flex-col gap-[var(--ds-space-base)]">
         {groupEntriesByStep(payload.entries).map((group) => {
@@ -555,6 +451,19 @@ function DataSection({
               <LedgerRow label={entry.label} {...(entry.origin === undefined ? {} : { dir: entry.origin.dir })}
                 marks={<ProvenanceMarks entry={entry} />}>
                 <p className="m-0"><LockedValue value={entry.valueRedacted} reason="Recorded source values are read-only." /></p>
+                <span
+                  title={entry.checkpoint.state === "present"
+                    ? "Run " + entry.checkpoint.runId + " · checkpoint schema " + entry.checkpoint.schemaHash
+                      + " · written " + entry.checkpoint.writtenAt
+                    : "No value authority from another attempt is used for this coordinate."}
+                  className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-faint)]")}
+                  data-checkpoint-coordinate=""
+                >
+                  {entry.checkpoint.state === "present"
+                    ? "Attempt " + entry.checkpoint.attempt + " · "
+                    : entry.checkpoint.state === "absent" ? "No exact-run checkpoint · " : "Checkpoint unverified · "}
+                  {entry.coordinate.nodeId} / {entry.coordinate.fieldPath}
+                </span>
                 {freshnessNoteOf(entry) !== undefined && <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
                   {freshnessNoteOf(entry)}
                 </span>}
@@ -571,6 +480,152 @@ function DataSection({
           </Well>;
         })}
       </div>}
+      {payload.state === "available" && rerunAction !== undefined && target !== undefined && onAction !== undefined && (
+        <Button size="sm" variant="outline" onClick={() => onAction(rerunAction, target)}>
+          {rerunAction.label}
+        </Button>
+      )}
+    </section>
+  );
+}
+
+function attemptHref(entry: ItemAttemptHistoryRun): string | undefined {
+  if (entry.disposition === "deleted") return undefined;
+  if (entry.disposition === "archived") {
+    return routeToSearch({ start: false, archive: entry.runId, archiveView: "runs" });
+  }
+  const currentSearch = typeof window === "undefined" ? "" : window.location.search;
+  return routeToSearch(routeForCrossDateSearchResult(parseRoute(currentSearch), {
+    runId: entry.runId,
+    partitionDay: entry.partitionDay,
+  }));
+}
+
+function attemptLabel(entry: ItemAttemptHistoryRun): string {
+  if (entry.disposition === "deleted") {
+    return entry.attempt === null ? "Deleted run" : "Attempt " + entry.attempt + " · deleted";
+  }
+  return "Attempt " + entry.attempt + (entry.disposition === "archived" ? " · archived" : "");
+}
+
+function AttemptHistorySection({
+  payload,
+}: {
+  payload: { runId: string };
+}) {
+  const client = useDashboardClient();
+  const [history, setHistory] = useState<ItemAttemptHistoryResponse>();
+  const [entries, setEntries] = useState<readonly ItemAttemptHistoryRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [problem, setProblem] = useState<string>();
+  const requestEpoch = useRef(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const epoch = ++requestEpoch.current;
+    let active = true;
+    setHistory(undefined);
+    setEntries([]);
+    setProblem(undefined);
+    setLoading(true);
+    setMoreLoading(false);
+    void client.itemAttemptHistory(payload.runId, {
+      limit: ITEM_ATTEMPT_HISTORY_MAX_LIMIT,
+      signal: controller.signal,
+    }).then((response) => {
+      if (!active) return;
+      setHistory(response);
+      setEntries(response.state === "available" ? response.page.entries : []);
+    }).catch(() => {
+      if (active) setProblem("Attempt history could not be read.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+      controller.abort();
+      if (requestEpoch.current === epoch) requestEpoch.current += 1;
+    };
+  }, [client, payload.runId]);
+
+  const page = history?.state === "available" ? history.page : undefined;
+  async function loadEarlier() {
+    if (page?.nextCursor === null || page?.nextCursor === undefined || moreLoading) return;
+    const epoch = requestEpoch.current;
+    const requestedRunId = payload.runId;
+    setMoreLoading(true);
+    setProblem(undefined);
+    try {
+      const response = await client.itemAttemptHistory(payload.runId, {
+        limit: page.limit,
+        cursor: page.nextCursor,
+      });
+      if (epoch !== requestEpoch.current || requestedRunId !== payload.runId) return;
+      if (response.state !== "available") {
+        setHistory(response);
+        setProblem("Attempt history changed before the next page could be read.");
+        return;
+      }
+      setEntries((current) => [...current, ...response.page.entries]);
+      setHistory(response);
+    } catch {
+      if (epoch === requestEpoch.current && requestedRunId === payload.runId) {
+        setProblem("Earlier attempts could not be read.");
+      }
+    } finally {
+      if (epoch === requestEpoch.current && requestedRunId === payload.runId) setMoreLoading(false);
+    }
+  }
+
+  return (
+    <section aria-label="Attempts" className="flex flex-col gap-[var(--ds-space-snug)]">
+      <SectionLabel>Attempts</SectionLabel>
+      {loading ? (
+        <p aria-live="polite" className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Loading attempt history…</p>
+      ) : problem !== undefined ? (
+        <p role="status" className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{problem}</p>
+      ) : history?.state === "unavailable" ? (
+        <p role="status" className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+          Attempt history unavailable: {history.reason.replaceAll("-", " ")}.
+        </p>
+      ) : history?.state === "stale" ? (
+        <p role="status" className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+          Attempt history changed. Reopen the run to load it again.
+        </p>
+      ) : history?.state === "refused" ? (
+        <p role="status" className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+          Attempt history could not be shown: {history.reason.replaceAll("-", " ")}.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          {entries.map((entry) => {
+            const href = attemptHref(entry);
+            return (
+              <div key={entry.runId} className="border-b border-[color:var(--ds-border-subtle)] py-[var(--ds-space-tight)] last:border-b-0">
+                {href === undefined ? (
+                  <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{attemptLabel(entry)}</span>
+                ) : (
+                  <a
+                    href={href}
+                    title={entry.disposition === "live"
+                      ? "Open this attempt from " + entry.partitionDay + "."
+                      : "Open this archived run."}
+                    className={cn(dsText.body, "text-[color:var(--ds-link)] underline underline-offset-2")}
+                  >
+                    {attemptLabel(entry)}
+                  </a>
+                )}
+              </div>
+            );
+          })}
+          {page?.nextCursor !== null && page?.nextCursor !== undefined && (
+            <Button size="sm" variant="outline" disabled={moreLoading} onClick={() => void loadEarlier()}>
+              {moreLoading ? "Loading…" : "Show earlier attempts"}
+            </Button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -630,24 +685,19 @@ export function ContextRailSpine({
 }
 
 export function ContextRail({
-  summary,
   sections,
   onClose,
   className,
-  actorId,
-  liveStatus,
   dataExpanded,
   onDataExpandedChange,
-  onSaved,
+  actions,
+  target,
+  onAction,
 }: {
   summary: ContextSummary;
   sections: ContextSections;
   onClose: () => void;
   className?: string;
-  /** Who a correction is requested by; commands refuse without one. */
-  actorId: string;
-  /** The run's LIVE queue status off the day stream — the D19 staleness signal. */
-  liveStatus: string | undefined;
   /**
    * D273 item 5 — ONE OWNER. The Data surface's expansion is the LAYOUT owner's
    * state, and this rail is told it rather than keeping a second copy.
@@ -662,8 +712,6 @@ export function ContextRail({
    */
   dataExpanded: boolean;
   onDataExpandedChange: (expanded: boolean) => void;
-  /** An applied save bumped the run version — the owner refetches detail + sections. */
-  onSaved: () => void;
   /** Server-authored run controls and their exact selected-row identity. */
   actions?: readonly ActionDescriptorWire[];
   target?: ActionTarget;
@@ -672,13 +720,12 @@ export function ContextRail({
   const data = sections["context-data"];
   const attempts = sections["context-attempts"];
 
-  /**
-   * `RunSelector` renders nothing below two attempts, so the HEADING is gated
-   * on the same fact rather than on the component returning null — a labelled
-   * section with nothing under it reads as a failed render (R6 f.18, demo
-   * `DemoContextRail.tsx:1111-1114`).
-   */
-  const hasAttempts = summary.attempts > 1;
+  const hasAttemptHistory = attempts !== undefined;
+  const rerunAction = actions === undefined || target === undefined || target.runId !== data?.runId
+    ? undefined
+    : actionsAt(actions, "data").find((action) => action.key === "rerun"
+      && action.kind === "navigation" && action.navigate.kind === "rerun"
+      && action.navigate.expectedVersion === target.expectedVersion);
 
   return (
     <aside
@@ -739,11 +786,11 @@ export function ContextRail({
           <DataSection
             key={data.runId}
             payload={data}
-            actorId={actorId}
-            liveStatus={liveStatus}
             expanded={dataExpanded}
             onExpandedChange={onDataExpandedChange}
-            onSaved={onSaved}
+            rerunAction={rerunAction}
+            target={target}
+            onAction={onAction}
           />
         ) : (
           <ContextSection
@@ -757,33 +804,15 @@ export function ContextRail({
         {/* Expanding Data hides ATTEMPTS. The expand control stays in the Data
             section's own header at the top of the rail, so undoing a press
             costs no pointer travel. */}
-        {!dataExpanded && attempts !== undefined && hasAttempts && (
+        {!dataExpanded && hasAttemptHistory && attempts !== undefined && (
           <>
             <Separator />
-            {/* AN ON-RECORD DEVIATION: the demo puts a `RunSelector` here — a
-                control that CHANGES WHICH ATTEMPT YOU ARE READING. This wire
-                serves the attempts section as labelled values, so the rail
-                renders them as a locked ledger until the selector's wire lands.
-                The `>1` gate above is the demo's, and it applies either way. */}
-            <ContextSection
-              label="Attempts"
-              payload={attempts}
-              emptyDescription="Every attempt of this run appears here."
-              lockReason="Attempts are history; history is never edited."
-            />
+            <AttemptHistorySection key={attempts.runId} payload={attempts} />
           </>
         )}
 
-        {/* R6 f.26 — the hidden section says it is hidden and how to get it
-            back. A section that vanishes on a press the operator made for a
-            different reason reads as a rendering fault.
-
-            It is gated on `hasAttempts` as well as on the expansion, which the
-            demo's own line is not: the demo names two sections and this rail
-            draws one, so an ungated sentence would report hiding a section
-            that was never there on the majority of runs. Same reason the spine
-            label drops `delegation`. */}
-        {dataExpanded && hasAttempts && (
+        {/* Say why history is hidden while the wider data layout is active. */}
+        {dataExpanded && hasAttemptHistory && (
           <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
             Attempts are hidden while data is expanded. Narrow the surface to bring them back.
           </p>
