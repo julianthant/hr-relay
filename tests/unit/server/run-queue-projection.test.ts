@@ -282,6 +282,9 @@ describe("THE run/queue projection (D81)", () => {
       for (const action of surface.actions) {
         if (action.kind === "navigation") {
           assert.equal(action.key, "rerun");
+          if (action.navigate.kind !== "rerun") {
+            assert.fail(`${surface.runId}/${action.key} was not a rerun navigation`);
+          }
           assert.equal(action.navigate.expectedVersion, surface.rowRevision, `${surface.runId}/${action.key}`);
           continue;
         }
