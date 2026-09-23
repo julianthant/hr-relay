@@ -91,3 +91,38 @@ and A37's final production/browser correlation belong to 3.1.19; this focused re
 claim them. Phase 3.1 requires no independent review for this task. A passing candidate is ready
 for the operator's local integration decision, followed by the assigned integration checks and
 owned worktree/branch cleanup if integration is authorized.
+
+## Candidate evidence — 2026-09-23
+
+The implementation candidate is `a1b9ae48853b389e0c9865126c7e79d4782929c0` on
+`codex/3.1.15-production-runtime`, based on `7c524542aa3b4051b7847f264fb571fb43ebaa6d`.
+It validates current source and emitted bundle bytes before authority/lock/socket effects, serves
+the built app beside API routes, rejects inconsistent state/settings and duplicate ownership,
+unwinds failed startup in reverse ownership order, and waits for dashboard-owned worker exits under
+D271 before successful shutdown. Its focused controls cover live socket admission, HTTP bind
+failure, both stop signals during an active transfer, stale process identity, and preserved worker
+orphan evidence. The worktree is clean at this candidate.
+
+- Root verification: `npm run test --` with the eight affected unit files passed **164/164**;
+  `npx eslint` on the affected source/configuration/test files passed with zero warnings. Logs:
+  `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.15-2026-09-23/root-final-focused.log`
+  and `root-final-eslint.log` in the same directory.
+- The affected parity bundle assertions passed **2/2** under a focused filter. The full
+  `parity-reference-authority.test.ts` file passed 14 and failed 1 because its unchanged guard
+  names absent `tests/parity/reference-detail.spec.ts`. The file was absent and the guard entry
+  present at the approved base; the guard remains intact. Logs: `root-parity-bundle-focused.log`
+  and `root-parity-architecture-full.log` in the evidence directory.
+- `npm run web:build`, `npm run build:manifest:check`, `npm run roadmap:check`, and
+  `git diff --check` passed. The build and manifest logs are
+  `startup-final-web-build.log` and `startup-final-manifest-check.log` in the evidence directory.
+- An isolated real `dashboard --prod` child served actual Vite HTML/JS and bootstrap readiness,
+  refused a second live owner, drained with a released lock, recovered a stale server record by
+  process birth identity, showed a preserved worker orphan as a warning, and refused missing or
+  changed bundle bytes and an established root missing its database before taking a lock or socket.
+  The sanitized log and runner are `manual-production-child-proof.log` and
+  `manual-production-child-proof.mjs` in the evidence directory. No external HR write was made.
+
+The candidate awaits the operator's local integration choice. Keep the task checklist and roadmap
+node open until authorized integration and its focused integration checks complete. Full repository
+gates, broad parity, and final production/browser correlation remain assigned to 3.1.19; this task
+has no independent review gate.
