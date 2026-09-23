@@ -214,6 +214,7 @@ describe("person-lookup full walk", () => {
       claimed.claim.claimGeneration,
     ));
     const retriedNote = NoteWireSchema.parse(JSON.parse(noteLines[1]?.text ?? "{}"));
+    assert.ok("runId" in retriedNote);
     assert.equal(retriedNote.runId, RUN_ID);
     assert.equal(retriedNote.attempt, 1);
     assert.equal(retriedNote.traceId, claimed.run.envelope.traceId);

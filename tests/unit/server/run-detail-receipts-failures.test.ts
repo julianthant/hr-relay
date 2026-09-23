@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { ActorIdSchema, DiagnosticBundleIdSchema, FailureIdSchema } from "../../../src/domain/ids.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
@@ -50,7 +51,7 @@ function fixture() {
         const current = f.receipts.getFailure(failureId);
         return current === undefined || diagnosticBundleId === undefined
           ? current
-          : { ...current, diagnosticBundleId };
+          : { ...current, diagnosticBundleId: DiagnosticBundleIdSchema.parse(diagnosticBundleId) };
       },
     });
   const read = (diagnosticBundleId?: string, captureAuthority = captures.authority) => {
@@ -123,14 +124,20 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
 
   it("fails loudly when the origin belongs to a different failure or an operator request", () => {
     const h = fixture();
-    const wrongFailure = h.bundle(308, { kind: "failure", failureId: "00000000-0000-4000-8000-000000000309" });
+    const wrongFailure = h.bundle(308, {
+      kind: "failure",
+      failureId: FailureIdSchema.parse("00000000-0000-4000-8000-000000000309"),
+    });
     const wrongFailureAuthority = {
       ...h.captures.authority,
       get: (id: string) => id === wrongFailure.bundleId ? wrongFailure : h.captures.authority.get(id),
     };
     assert.throws(() => h.read(wrongFailure.bundleId, wrongFailureAuthority), DiagnosticBundleCorruptError);
 
-    const operatorBundle = h.bundle(310, { kind: "operator-request", requestedBy: "local-operator" });
+    const operatorBundle = h.bundle(310, {
+      kind: "operator-request",
+      requestedBy: ActorIdSchema.parse("local-operator"),
+    });
     const operatorAuthority = {
       ...h.captures.authority,
       get: (id: string) => id === operatorBundle.bundleId ? operatorBundle : h.captures.authority.get(id),
