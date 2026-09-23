@@ -63,7 +63,7 @@ describe("2.6.1-1 canonical trust linkage", () => {
     assert.throws(() => buildTrustSection(f.deps, uuidOf(88), "logs"), /absent/);
   });
 
-  it("keeps independent retry receipts and run-linked notifications, then refuses archived and deleted live doors", async () => {
+  it("keeps independent retry receipts and archived notification replay, then refuses deleted live doors", async () => {
     const f = fixture(); const source = f.cancel(f.create(10), 11); const id = source.envelope.runId;
     const sourceReceipt = canonicalJsonStringify(f.receipts.ensureReceipt(id));
     const notifications = inbox(f);
@@ -83,7 +83,7 @@ describe("2.6.1-1 canonical trust linkage", () => {
     assert.throws(() => f.receipts.ensureReceipt(id), SectionUnavailableError);
     assert.throws(() => buildTrustSection(f.deps, id, "receipt"), SectionUnavailableError);
     assert.throws(() => explainRunFrom(f.database, id), SectionUnavailableError);
-    await assert.rejects(notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow }), /archived/);
+    assert.equal((await notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow })).durable, "existing");
     assert.equal(canonicalJsonStringify(f.service.lifecycleStorage().readReport(id)),canonicalJsonStringify(archive));
     const captured=JSON.parse(archive.content.sources[0].json) as {records:{table:string;rows:{json:string}[]}[]};
     assert.equal(canonicalJsonStringify(JSON.parse(captured.records.find(group=>group.table==="run_receipts")!.rows[0].json)),sourceReceipt);
