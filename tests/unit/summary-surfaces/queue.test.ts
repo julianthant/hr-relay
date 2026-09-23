@@ -16,9 +16,11 @@ import { QueuePanel, QueueRow } from "../../../src/dashboard/surfaces/queue.js";
 import {
   partition,
   queueBatches,
+  queueRowTitle,
   queueRowAccessibleName,
   rowInfoFacts,
   sortQueueBand,
+  groupQueueAttempts,
   visibleRunIds,
 } from "../../../src/dashboard/surfaces/queue-model.js";
 import {
@@ -125,6 +127,51 @@ describe("Queue consumes the served day boundary", () => {
     assert.ok(batch);
     assert.deepEqual(new Set(batch.members.map((row) => row.runId)), new Set([first.runId, retry.runId]));
     assert.deepEqual(batch.history.map((row) => row.runId), [previous.runId]);
+  });
+
+  it("renders one queue row for repeated item attempts and opens the exact selected run", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const first = rowWhere((row) => row.surfaceKind === "single" && row.status === "failed");
+    const newest = QueueSurfaceWireSchema.parse({
+      ...first,
+      runId: uuidOf(9710),
+      itemId: first.itemId,
+      attempt: first.attempt + 1,
+      status: "done",
+      endedAt: { state: "present", value: FIXTURE_NOW },
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const opened: string[] = [];
+    try {
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: [first, newest],
+        state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: "person-lookup" },
+        handlers: { onSelect: (runId) => opened.push(runId) },
+        workflowLabelOf: () => "Person Lookup",
+        panelLabel: "Person Lookup",
+        day: FIXTURE_DAY,
+      })));
+      assert.equal(host.querySelectorAll("[data-demo-row-id]").length, 1);
+      assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("data-demo-row-id"), String(newest.runId));
+      assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("aria-label"), queueRowAccessibleName(newest, FIXTURE_NOW));
+      assert.match(host.textContent ?? "", /Attempts · 2/u);
+      const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="Attempts for ${queueRowTitle(newest)}"]`);
+      assert.ok(trigger);
+      await act(async () => trigger.click());
+      const attempt = document.body.querySelector<HTMLButtonElement>(
+        `button[aria-label="Open ${queueRowTitle(newest)} — attempt ${String(first.attempt)} — failed"]`,
+      );
+      assert.ok(attempt);
+      await act(async () => attempt.click());
+      assert.deepEqual(opened, [String(first.runId)]);
+      assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [first.runId, newest.runId]);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("renders warning and duration facts without replacing unavailable values with plausible defaults", () => {
