@@ -194,11 +194,8 @@ describe("C4 — one owner for the rail's expansion", () => {
       // read-only data beneath it is covered by the context rail render suite.
       sections: {},
       onClose: () => undefined,
-      actorId: "local-operator",
-      liveStatus: "running",
       dataExpanded,
       onDataExpandedChange: () => undefined,
-      onSaved: () => undefined,
     }));
   }
 

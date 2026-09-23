@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  DateOnlySchema,
   IsoInstantSchema,
   ItemIdSchema,
   PositiveIntSchema,
@@ -37,6 +38,7 @@ export const ItemAttemptHistoryRunSchema = z.discriminatedUnion("disposition", [
     itemId: ItemIdSchema,
     attempt: PositiveIntSchema,
     rowRevision: PositiveIntSchema,
+    partitionDay: DateOnlySchema,
   }),
   z.strictObject({
     disposition: z.literal("archived"),
@@ -45,6 +47,7 @@ export const ItemAttemptHistoryRunSchema = z.discriminatedUnion("disposition", [
     itemId: ItemIdSchema,
     attempt: PositiveIntSchema,
     rowRevision: PositiveIntSchema,
+    partitionDay: DateOnlySchema,
   }),
   z.strictObject({
     disposition: z.literal("deleted"),

@@ -300,12 +300,9 @@ function snapshotSource(world: {
             state: "present",
             value: {
               runId: run.envelope.runId,
-              editing: { state: "locked", reason: "an archived run is read-only" },
-              entries: [{
-                label: "eid",
-                valueRedacted: "108*****",
-                edit: { state: "locked", reason: "an archived run is read-only" },
-              }],
+              state: "unavailable",
+              reason: "descriptor-mismatch",
+              entries: [],
             },
           },
           people: { state: "absent", reason: "this run fanned out no member runs" },
@@ -614,7 +611,8 @@ describe("the D80 archive model", () => {
     assert.equal(apply(world, plan(world)).state, "applied");
     assert.equal(displayValue(world, archived, "sections.logs.state"), "present");
     assert.equal(displayValue(world, archived, "sections.logs.value.notes.0.message"), "frozen log line");
-    assert.equal(displayValue(world, archived, "sections.data.value.entries.0.label"), "eid");
+    assert.equal(displayValue(world, archived, "sections.data.value.state"), "unavailable");
+    assert.equal(displayValue(world, archived, "sections.data.value.reason"), "descriptor-mismatch");
     assert.equal(displayValue(world, archived, "sections.attempts.value.0.attempt"), 1);
     assert.equal(displayValue(world, archived, "sections.people.state"), "absent");
     assert.equal(reportOf(world, archived).content.files.length, 0);

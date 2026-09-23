@@ -1,5 +1,5 @@
 /**
- * The rail's persisted open state, and ref dashboard-surfaces D19's edit policy.
+ * The rail's persisted open state and read-only context data folds.
  *
  * It lives beside `context-rail.tsx` rather than inside it because a module that
  * exports a component may export nothing else if React Fast Refresh is to treat
@@ -27,7 +27,7 @@ export type ContextSectionPayload = Extract<
   { section: ContextSectionKind }
 >["payload"];
 
-/** The Data section's own payload — the one that carries the edit policy (2i-C). */
+/** The Data section's own payload. */
 export type ContextDataPayload = Extract<
   RunDetailSectionResponse,
   { section: "context-data" }
@@ -86,7 +86,7 @@ export function useContextRail(threeColumn: boolean): ContextRailState {
   return { open, collapsed: !open && threeColumn, setOpen };
 }
 
-/* ── D252: the ledger's two levels, and the reuse bound ─────────────────── */
+/* The ledger's two levels and the reuse bound. */
 
 /**
  * One LEVEL-1 group of the ledger: the step that recorded the values under it.
@@ -161,62 +161,4 @@ export function freshnessNoteOf(entry: ContextDataEntry): string | undefined {
     ? "Reusing an older reading takes a recorded reason."
     : "An older reading must be re-read — no override can authorize it.";
   return `Reusable for ${age} before ${writes}. ${stale}`;
-}
-
-/* ── D273 item 6: a refused save, said in the two arms this wire has ─────── */
-
-export type EditableScalar = string | number | boolean;
-
-export type EditPolicy =
-  | {
-    kind: "editable";
-    nodeId: string;
-    fieldPath: string;
-    recorded: EditableScalar;
-    pending: { value: EditableScalar; correctedAt: string } | undefined;
-  }
-  | { kind: "locked"; reason: string };
-
-/**
- * Ref dashboard-surfaces D19's unlock rule, with the reason ALWAYS shown: a row is editable
- * only when its own field policy, the run-level policy the server computed at
- * fetch, and the LIVE stream all agree — and whichever one disagrees supplies
- * the exact sentence the operator reads on the lock. The most specific reason
- * wins: a field's own lock explains that field; the run-level and live locks
- * apply to every row alike.
- */
-export function editPolicyFor(
-  entry: ContextDataEntry,
-  editing: ContextDataPayload["editing"],
-  liveLockReason: string | undefined,
-): EditPolicy {
-  if (entry.edit.state === "locked") return { kind: "locked", reason: entry.edit.reason };
-  if (editing.state === "locked") return { kind: "locked", reason: editing.reason };
-  if (liveLockReason !== undefined) return { kind: "locked", reason: liveLockReason };
-  return {
-    kind: "editable",
-    nodeId: entry.edit.nodeId,
-    fieldPath: entry.edit.fieldPath,
-    recorded: entry.edit.value,
-    pending: entry.edit.pendingCorrection.state === "pending"
-      ? {
-        value: entry.edit.pendingCorrection.value,
-        correctedAt: entry.edit.pendingCorrection.correctedAt,
-      }
-      : undefined,
-  };
-}
-
-/**
- * The ref dashboard-surfaces D19 staleness signal, read off the live day stream: the section
- * was served editable at fetch, and the queue row's status is the one live
- * fact that says the run has since been claimed or settled. The kernel's CAS
- * is the authority either way — this exists so the operator learns BEFORE
- * pressing Save, not from the rejection.
- */
-export function liveLockReasonOf(liveStatus: string | undefined): string | undefined {
-  if (liveStatus === undefined) return undefined;
-  if (liveStatus === "queued" || liveStatus === "awaiting-approval") return undefined;
-  return `The run is now ${liveStatus} — it moved while this data was open, so these values may be `
-    + "stale. Reopen the run to edit.";
 }

@@ -1,24 +1,22 @@
-/**
- * 2i-C: the context-data edit projection (ref data-intake-and-edit-data §6, ref dashboard-surfaces D19).
- *
- * The Data section serves, per entry, exactly what a checkpoint correction
- * needs — the patch identity and the raw recorded scalar off the latest
- * compatible checkpoint — or the reason it is not editable. Run-level policy
- * (`editing`) is computed from RAW authority lifecycle, never the coarse
- * queue status; a staged `envelope.injected` correction renders beside the
- * recorded value it will supersede, because until the resume replays it both
- * values are true.
- */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import { Hono } from "hono";
+import { z } from "zod";
+import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
-import { ContextDataSectionSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { ContextDataSectionSchema, RunDetailSectionResponseSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { DeletedRunRecordSchema } from "../../../src/domain/run/deleted-run.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { buildRunSection } from "../../../src/server/dashboard/queries/run-detail.js";
+import { composeDataQueries } from "../../../src/server/dashboard/compose/data.js";
+import { registerDataRoutes } from "../../../src/server/dashboard/routes/data.js";
+import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import type { RunDetailQueryDeps, RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail-types.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import {
-  claimEventOf,
   makeWorld,
-  queuedEventOf,
   runRecordOf,
   uuidOf,
   type DashboardWorld,
@@ -31,520 +29,425 @@ function world(): DashboardWorld {
   return created;
 }
 afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+  for (const current of worlds.splice(0)) current.dispose();
 });
 
-const CLAIM = {
-  workerId: "person-lookup-worker-1",
-  claimedAt: "2026-08-03T17:00:05.000Z",
-  heartbeatAt: "2026-08-03T17:00:05.000Z",
-} as const;
+const DATE_VALUE_SCHEMA = z.strictObject({
+  state: z.enum(["present", "absent"]),
+  value: z.string().optional(),
+  reason: z.string().optional(),
+});
+const OUTPUT_SCHEMA = z.strictObject({
+  emplId: z.string().optional(),
+  invitedOn: DATE_VALUE_SCHEMA.optional(),
+  startsOn: DATE_VALUE_SCHEMA.optional(),
+  completedOn: DATE_VALUE_SCHEMA.optional(),
+});
+const OUTPUT_SCHEMA_HASH = deriveSchemaHash(OUTPUT_SCHEMA, "output");
+const DATE_FIELDS = [
+  { nodeId: "crm-dates", fieldPath: "invitedOn.value", label: "Invited on" },
+  { nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" },
+  { nodeId: "crm-dates", fieldPath: "completedOn.value", label: "Completed on" },
+] as const;
 
-const DATE_FIELDS_VIEW = {
-  details: [],
-  capabilities: {
-    editData: {
-      fields: [
-        { nodeId: "crm-dates", fieldPath: "invitedOn.value", label: "Invited on" },
-        { nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" },
-        { nodeId: "crm-dates", fieldPath: "completedOn.value", label: "Completed on" },
-      ],
-    },
-  },
-} as const;
+const EXACT_DESCRIPTOR = {
+  id: "person-lookup",
+  version: 1,
+  contractFingerprint: HASH_A,
+  nodes: [{ kind: "task", id: "crm-dates", uses: { output: OUTPUT_SCHEMA } }],
+} as unknown as AnyWorkflowDescriptor;
 
-function depsOf(w: DashboardWorld, view: unknown = DATE_FIELDS_VIEW) {
-  return { runReader: w.runReader,
-    stateRoot: w.stateRoot,
-    projection: w.projection,
-    authority: w.authority,
-    descriptors: { resolve: () => view as never },
+function descriptorView(fields: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[]
+  = DATE_FIELDS): RunDetailDescriptorView {
+  return {
+    capabilities: { editData: { fields } },
+    dataOrigins: [{
+      nodeId: "crm-dates",
+      step: "CRM dates",
+      taskId: "crm-read",
+      role: "task",
+      dir: "read",
+      system: "crm",
+      feeds: [],
+    }],
   };
 }
 
-const OBSERVED_AT = "2026-08-03T16:58:00.000Z";
-const CORRECTED_AT = "2026-08-03T17:04:00.000Z";
+function depsOf(
+  current: DashboardWorld,
+  options: Readonly<{
+    fields?: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[];
+    reader?: RunDetailQueryDeps["runReader"];
+    database?: NonNullable<RunDetailQueryDeps["canonical"]>["database"];
+    exactDescriptor?: AnyWorkflowDescriptor | undefined;
+  }> = {},
+): RunDetailQueryDeps {
+  const reader = options.reader ?? sqliteRunReader(current.database, current.clock);
+  return {
+    runReader: reader,
+    stateRoot: current.stateRoot,
+    projection: current.projection,
+    authority: current.authority,
+    descriptors: { resolve: () => descriptorView(options.fields) },
+    canonical: {
+      reader,
+      database: options.database ?? current.database,
+      descriptors: { resolve: () => options.exactDescriptor === undefined
+        ? EXACT_DESCRIPTOR
+        : options.exactDescriptor },
+    },
+  };
+}
 
-function crmDatesCheckpoint(seed: number, provenance: readonly unknown[] = []) {
+function sourceRun(current: DashboardWorld, input: Parameters<typeof runRecordOf>[0]) {
+  const run = runRecordOf(input);
+  current.database.authority.runs.enqueue(run);
+  return run;
+}
+
+function checkpointFor(
+  run: ReturnType<typeof runRecordOf>,
+  overrides: Readonly<{
+    outputValue?: unknown;
+    nodeId?: string;
+    runId?: string;
+    attempt?: number;
+    claimGeneration?: number;
+    descriptorVersion?: number;
+    contractFingerprint?: string;
+    schemaHash?: string;
+    provenance?: readonly unknown[];
+  }> = {},
+) {
   return RunCheckpointRecordSchema.parse({
-    workflowId: "person-lookup",
-    itemId: uuidOf(seed + 5000),
-    nodeId: "crm-dates",
-    attempt: 1,
-    claimGeneration: 1,
-    runId: uuidOf(seed),
+    workflowId: run.envelope.workflow,
+    itemId: run.envelope.itemId,
+    nodeId: overrides.nodeId ?? "crm-dates",
+    attempt: overrides.attempt ?? run.envelope.attempt,
+    claimGeneration: overrides.claimGeneration ?? 1,
+    runId: overrides.runId ?? run.envelope.runId,
     output: {
-      schemaHash: HASH_A,
-      value: {
-        emplId: "10873698",
+      schemaHash: overrides.schemaHash ?? OUTPUT_SCHEMA_HASH,
+      value: overrides.outputValue ?? {
+        emplId: "10000023",
         invitedOn: { state: "present", value: "2026-06-01" },
         startsOn: { state: "present", value: "2026-07-15" },
-        completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
+        completedOn: { state: "absent", reason: "No completed transition" },
       },
     },
-    descriptorVersion: 1,
-    contractFingerprint: HASH_A,
+    descriptorVersion: overrides.descriptorVersion ?? run.envelope.descriptorVersion,
+    contractFingerprint: overrides.contractFingerprint ?? run.envelope.contractFingerprint,
     implFingerprint: HASH_B,
-    provenance,
+    provenance: overrides.provenance ?? [],
     writtenAt: NOW,
   });
 }
 
-function contextData(w: DashboardWorld, view: unknown = DATE_FIELDS_VIEW) {
-  const response = buildRunSection(depsOf(w, view), uuidOf(1), "context-data");
+function storeCheckpoint(current: DashboardWorld, record: ReturnType<typeof checkpointFor>) {
+  current.database.authority.runCheckpoints.insert(record);
+}
+
+function contextData(
+  current: DashboardWorld,
+  runId: string,
+  options: Parameters<typeof depsOf>[1] = {},
+) {
+  const response = buildRunSection(depsOf(current, options), runId, "context-data");
   if (response.section !== "context-data") throw new Error("wrong section");
   return response.payload;
 }
 
-describe("context-data edit projection (2i-C)", () => {
-  it("serves each recorded correctable field with its patch identity and the run's CAS basis", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-    w.authority.putCheckpoint(crmDatesCheckpoint(1));
+describe("read-only Context Data projection", () => {
+  it("reads exact selected-run checkpoint values, coordinates and provenance without changing authority", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 1, claimGeneration: 1, version: 2 });
+    const checkpoint = checkpointFor(source, { provenance: [
+      { path: "invitedOn.value", source: "live", observedAt: "2026-08-03T16:58:00.000Z", originalObservedAt: NOW },
+    ] });
+    storeCheckpoint(current, checkpoint);
+    const generation = current.database.getMeta().authorityGeneration;
 
-    const payload = contextData(w);
-    assert.deepEqual(payload.editing, { state: "editable", expectedVersion: 4 });
+    const payload = contextData(current, source.envelope.runId);
+    assert.equal(payload.state, "available");
     assert.equal(payload.entries.length, 3);
-
     const invited = payload.entries.find((entry) => entry.label === "Invited on");
     assert.ok(invited);
     assert.equal(invited.valueRedacted, "2026-06-01");
-    assert.deepEqual(invited.edit, {
-      state: "editable",
-      nodeId: "crm-dates",
-      fieldPath: "invitedOn.value",
-      value: "2026-06-01",
-      pendingCorrection: { state: "none" },
-    });
-
-    // The absent arm is a REAL recorded outcome: the row renders, says why it
-    // cannot be corrected, and never fabricates a value to edit.
-    const completed = payload.entries.find((entry) => entry.label === "Completed on");
-    assert.ok(completed);
-    assert.equal(completed.edit.state, "locked");
-    if (completed.edit.state === "locked") {
-      assert.match(completed.edit.reason, /carries no completedOn\.value/u);
-    }
-  });
-
-  /**
-   * D307 — an ASSERTED row on the Data rail.
-   *
-   * Before D307 an `operator` source meant one thing, a correction, and the
-   * rail drew nothing extra for it because the `corrected` badge already said
-   * so. An asserted value is operator-sourced with NO correction, so without
-   * its own leaf it would draw exactly like a value a task read from a live
-   * system — an instant beside it and nothing saying nobody looked.
-   */
-  it("names the omitted step behind an asserted value, and never calls it a correction", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-    w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
-      ...crmDatesCheckpoint(1, [
-        { path: "invitedOn.value", source: "operator", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
-      ]),
-      assertion: { step: "crm-read", assertedAt: OBSERVED_AT },
-    }));
-
-    const invited = contextData(w).entries.find((entry) => entry.label === "Invited on");
-    assert.ok(invited);
-    assert.equal(invited.assertedStep, "crm-read");
-    assert.equal(invited.source, "operator");
-    assert.equal(invited.correctedAt, undefined, "an assertion is not a correction");
-
-    // A leaf the asserted row recorded no covering point for is still asserted:
-    // the marker is a property of the ROW, not of one provenance line.
-    const starts = contextData(w).entries.find((entry) => entry.label === "Starts on");
-    assert.equal(starts?.assertedStep, "crm-read");
-    assert.equal(starts?.observedAt, undefined);
-  });
-
-  /**
-   * D254 — this case used to fold a `span.patched` detail and join it to the
-   * editData declaration. The channel is retired (zero production emitters),
-   * so what it pins now is the rail's WHOLE membership rule: a row exists iff
-   * a declared-correctable field has a stored checkpoint, and a declared
-   * `details` spec on its own contributes nothing. The `details` block below
-   * is deliberately present and deliberately inert — a re-added details-fed
-   * path would fail the second half.
-   */
-  it("serves editData fields from the checkpoint, and a declared detail alone serves NO row (D254)", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 1, version: 2 }));
-    w.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
-      workflowId: "person-lookup",
-      itemId: uuidOf(5001),
-      nodeId: "searching",
-      attempt: 1,
+    assert.equal(invited.coordinate.nodeId, "crm-dates");
+    assert.equal(invited.coordinate.fieldPath, "invitedOn.value");
+    assert.deepEqual(invited.checkpoint, {
+      state: "present",
+      runId: source.envelope.runId,
+      attempt: source.envelope.attempt,
       claimGeneration: 1,
-      runId: uuidOf(1),
-      output: { schemaHash: HASH_A, value: { selection: { status: "resolved" } } },
-      descriptorVersion: 1,
-      contractFingerprint: HASH_A,
-      implFingerprint: HASH_B,
-      provenance: [],
+      descriptorVersion: source.envelope.descriptorVersion,
+      contractFingerprint: source.envelope.contractFingerprint,
+      schemaHash: OUTPUT_SCHEMA_HASH,
       writtenAt: NOW,
-    }));
+    });
+    assert.equal(invited.origin?.step, "CRM dates");
+    assert.equal(invited.source, "live");
+    assert.equal(invited.observedAt, "2026-08-03T16:58:00.000Z");
 
-    const covering = {
-      details: [{
-        key: "selection-status",
-        label: "Selection",
-        source: { nodeId: "searching", fieldPath: "selection.status" },
-      }],
-      capabilities: {
-        editData: {
-          fields: [{ nodeId: "searching", fieldPath: "selection.status", label: "Selection" }],
-        },
-      },
-    };
-    const payload = contextData(w, covering);
-    assert.equal(payload.entries.length, 1, "one declared-correctable leaf with one checkpoint — one row");
-    const selection = payload.entries[0];
-    assert.ok(selection);
-    assert.equal(selection.label, "Selection");
-    // The value is READ from the checkpoint, which is the only producer left.
-    assert.equal(selection.valueRedacted, "resolved");
-    assert.equal(selection.edit.state, "editable");
-
-    // Same world, same declared detail, no editData field list: no rows at
-    // all. Before D254 this served a locked "not declared correctable" row
-    // fed by the fold — a row production could never actually render.
-    const notDeclared = contextData(w, { ...covering, capabilities: { editData: true } });
-    assert.deepEqual(notDeclared.entries, []);
+    const absentOutcome = payload.entries.find((entry) => entry.label === "Completed on");
+    assert.equal(absentOutcome?.checkpoint.state, "present");
+    assert.equal(absentOutcome?.valueState, "absent");
+    assert.equal(absentOutcome?.valueRedacted, "Not recorded on this outcome");
+    assert.equal(JSON.stringify(payload).includes("edit"), false);
+    assert.equal(current.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(current.database.authority.runCheckpoints.get(
+      source.envelope.workflow, source.envelope.itemId, "crm-dates", source.envelope.attempt, 1,
+    ), checkpoint);
   });
 
-  it("locks the run-level policy while a worker holds the claim — field identity stays served", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    claimEventOf(w, 1);
-    w.authority.put(runRecordOf({
-      seed: 1,
-      lifecycle: { state: "running", ...CLAIM },
-      claimGeneration: 1,
-      version: 2,
+  it("does not borrow a sibling attempt's latest checkpoint, value, provenance or origin", () => {
+    const current = world();
+    const first = sourceRun(current, { seed: 11, attempt: 1, claimGeneration: 1 });
+    const secondBase = runRecordOf({ seed: 12, attempt: 2, claimGeneration: 1 });
+    const second = RunRecordSchema.parse({
+      ...secondBase,
+      envelope: { ...secondBase.envelope, itemId: first.envelope.itemId, retryOf: first.envelope.runId },
+    });
+    current.database.authority.runs.enqueue(second);
+    storeCheckpoint(current, checkpointFor(second, {
+      outputValue: { invitedOn: { state: "present", value: "SIBLING_VALUE" } },
+      provenance: [{ path: "invitedOn.value", source: "operator", observedAt: NOW, originalObservedAt: NOW, correctedAt: NOW }],
     }));
-    w.authority.putCheckpoint(crmDatesCheckpoint(1));
 
-    const payload = contextData(w);
-    assert.equal(payload.editing.state, "locked");
-    if (payload.editing.state === "locked") {
-      assert.match(payload.editing.reason, /claimed by a worker/u);
-    }
-    // The per-entry policy is the FIELD's own; run state is the section's.
-    // The client composes the two — a wire that erased the identity here
-    // would force a refetch the moment the claim releases.
+    const payload = contextData(current, first.envelope.runId);
     const invited = payload.entries.find((entry) => entry.label === "Invited on");
-    assert.equal(invited?.edit.state, "editable");
-  });
-
-  it("names the terminal state when corrections no longer apply", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({
-      seed: 1,
-      lifecycle: { state: "terminal", outcome: "done", endedAt: "2026-08-03T17:10:00.000Z" },
-      version: 3,
-    }));
-    w.authority.putCheckpoint(crmDatesCheckpoint(1));
-
-    const payload = contextData(w);
-    assert.equal(payload.editing.state, "locked");
-    if (payload.editing.state === "locked") {
-      assert.match(payload.editing.reason, /run is terminal/u);
-    }
-  });
-
-  it("serves a staged correction beside the recorded value it will supersede", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({
-      seed: 1,
-      version: 5,
-      injected: [{
-        nodeId: "crm-dates",
-        fieldPath: "invitedOn.value",
-        value: "2026-06-02",
-        correctedAt: "2026-08-03T17:30:00.000Z",
-        reason: "CRM shows June 2; the read mis-parsed the date",
-      }],
-    }));
-    w.authority.putCheckpoint(crmDatesCheckpoint(1));
-
-    const invited = contextData(w).entries.find((entry) => entry.label === "Invited on");
     assert.ok(invited);
-    // The RECORDED value stays the display truth; the staged value rides beside it.
+    assert.deepEqual(invited.checkpoint, { state: "absent", reason: "no-checkpoint-for-run" });
+    assert.equal(invited.valueState, "absent");
+    assert.equal(invited.valueRedacted, "Not recorded for this run");
+    assert.equal(invited.origin, undefined);
+    assert.equal(invited.observedAt, undefined);
+    assert.equal(JSON.stringify(payload).includes("SIBLING_VALUE"), false);
+    assert.equal(JSON.stringify(payload).includes(NOW), false);
+  });
+
+  it("marks a same-attempt checkpoint with the wrong run identity malformed", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 13, attempt: 1, claimGeneration: 1 });
+    const malformed = RunCheckpointRecordSchema.parse({
+      ...checkpointFor(source),
+      runId: uuidOf(1313),
+    });
+    const corruptedDatabase = {
+      authority: { runCheckpoints: { listByAttempt: () => [malformed] } },
+      withAuthorityReadSnapshot: <T>(read: () => T): T =>
+        current.database.withAuthorityReadSnapshot(read),
+    } as unknown as NonNullable<RunDetailQueryDeps["canonical"]>["database"];
+
+    const payload = contextData(current, source.envelope.runId, { database: corruptedDatabase });
+    const invited = payload.entries.find((entry) => entry.label === "Invited on");
+    assert.ok(invited);
+    assert.deepEqual(invited.checkpoint, { state: "malformed", reason: "checkpoint-identity-mismatch" });
+    assert.equal(invited.valueState, "malformed");
+    assert.equal(invited.valueRedacted, "Checkpoint could not be verified");
+  });
+
+  it("selects the exact run checkpoint before considering foreign same-attempt rows", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 131, attempt: 1, claimGeneration: 2 });
+    const exact = checkpointFor(source, {
+      claimGeneration: 1,
+      outputValue: { emplId: "10000023", invitedOn: { state: "present", value: "2026-06-01" } },
+    });
+    const foreign = RunCheckpointRecordSchema.parse({
+      ...checkpointFor(source, {
+        claimGeneration: 2,
+        outputValue: { emplId: "10000023", invitedOn: { state: "present", value: "FOREIGN_RUN_VALUE" } },
+      }),
+      runId: uuidOf(1314),
+    });
+    const corruptedDatabase = {
+      authority: { runCheckpoints: { listByAttempt: () => [exact, foreign] } },
+      withAuthorityReadSnapshot: <T>(read: () => T): T =>
+        current.database.withAuthorityReadSnapshot(read),
+    } as unknown as NonNullable<RunDetailQueryDeps["canonical"]>["database"];
+
+    const payload = contextData(current, source.envelope.runId, { database: corruptedDatabase });
+    const invited = payload.entries.find((entry) => entry.label === "Invited on");
+    assert.ok(invited);
+    assert.equal(invited.checkpoint.state, "present");
+    if (invited.checkpoint.state !== "present") throw new Error("exact source checkpoint was not selected");
+    assert.equal(invited.checkpoint.runId, source.envelope.runId);
+    assert.equal(invited.checkpoint.claimGeneration, 1);
     assert.equal(invited.valueRedacted, "2026-06-01");
-    assert.deepEqual(invited.edit, {
-      state: "editable",
-      nodeId: "crm-dates",
-      fieldPath: "invitedOn.value",
-      value: "2026-06-01",
-      pendingCorrection: {
-        state: "pending",
-        value: "2026-06-02",
-        correctedAt: "2026-08-03T17:30:00.000Z",
+    assert.equal(JSON.stringify(payload).includes("FOREIGN_RUN_VALUE"), false);
+  });
+
+  it("refuses a checkpoint claim generation newer than the selected run", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 14, attempt: 1, claimGeneration: 1 });
+    storeCheckpoint(current, checkpointFor(source, { claimGeneration: 2 }));
+
+    const payload = contextData(current, source.envelope.runId);
+    const invited = payload.entries.find((entry) => entry.label === "Invited on");
+    assert.ok(invited);
+    assert.deepEqual(invited.checkpoint, { state: "malformed", reason: "checkpoint-identity-mismatch" });
+    assert.equal(invited.valueState, "malformed");
+  });
+
+  it("serves prior-run data through the production section route with exact source identity", async () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 21, attempt: 1, claimGeneration: 1 });
+    const laterBase = runRecordOf({ seed: 22, attempt: 2, claimGeneration: 1 });
+    const later = RunRecordSchema.parse({
+      ...laterBase,
+      envelope: { ...laterBase.envelope, itemId: source.envelope.itemId, retryOf: source.envelope.runId },
+    });
+    current.database.authority.runs.enqueue(later);
+    storeCheckpoint(current, checkpointFor(source, { outputValue: {
+      invitedOn: { state: "present", value: "PRIOR_RUN_VALUE" },
+    } }));
+    storeCheckpoint(current, checkpointFor(later, { outputValue: {
+      invitedOn: { state: "present", value: "CURRENT_RUN_VALUE" },
+    } }));
+    const deps = depsOf(current);
+    const app: DashboardApp = new Hono();
+    registerDataRoutes(app, () => composeDataQueries(deps));
+    const response = await app.request("/api/v1/runs/" + source.envelope.runId + "/context-data");
+    assert.equal(response.status, 200);
+    const section = RunDetailSectionResponseSchema.parse(await response.json());
+    assert.equal(section.section, "context-data");
+    if (section.section !== "context-data") throw new Error("wrong section");
+    assert.equal(section.payload.runId, source.envelope.runId);
+    assert.equal(section.payload.entries.find((entry) => entry.label === "Invited on")?.valueRedacted, "PRIOR_RUN_VALUE");
+    assert.equal(JSON.stringify(section).includes("CURRENT_RUN_VALUE"), false);
+  });
+
+  it("marks a retained archived checkpoint read-only and keeps its validated value", () => {
+    const current = world();
+    const archived = sourceRun(current, { seed: 31, claimGeneration: 1, version: 2 });
+    storeCheckpoint(current, checkpointFor(archived));
+    const reader = sqliteRunReader(current.database, current.clock);
+    const archivedReader = {
+      ...reader,
+      read: (runId: string) => {
+        const result = reader.read(runId);
+        return result.state === "present" ? { ...result, disposition: "archived" as const } : result;
+      },
+    } as typeof reader;
+    const payload = contextData(current, archived.envelope.runId, { reader: archivedReader });
+    assert.equal(payload.state, "archived");
+    const invited = payload.entries.find((entry) => entry.label === "Invited on");
+    assert.ok(invited);
+    assert.equal(invited.valueRedacted, "2026-06-01");
+    assert.equal(invited.checkpoint.state, "present");
+    if (invited.checkpoint.state === "present") assert.equal(invited.checkpoint.runId, archived.envelope.runId);
+  });
+
+  it("returns a deleted state with no openable checkpoint values", () => {
+    const current = world();
+    const deleted = sourceRun(current, { seed: 41 });
+    const baseReader = sqliteRunReader(current.database, current.clock);
+    const tombstone = DeletedRunRecordSchema.parse({
+      runId: deleted.envelope.runId,
+      workflow: deleted.envelope.workflow,
+      traceId: deleted.envelope.traceId,
+      itemId: deleted.envelope.itemId,
+      attempt: deleted.envelope.attempt,
+      origin: "queue",
+      commandId: uuidOf(4141),
+      deletedAt: NOW,
+      removed: [],
+    });
+    const reader = {
+      ...baseReader,
+      read: (runId: string) => runId === deleted.envelope.runId
+        ? { state: "deleted" as const, tombstone }
+        : baseReader.read(runId),
+    };
+    const payload = contextData(current, deleted.envelope.runId, { reader });
+    assert.equal(payload.state, "deleted");
+    assert.deepEqual(payload.entries, []);
+  });
+
+  it("withholds protected checkpoint values before serializing the BFF response", () => {
+    const current = world();
+    const secret = "protected-test-value-774411";
+    const base = runRecordOf({ seed: 51, claimGeneration: 1, version: 2 });
+    const protectedRun = RunRecordSchema.parse({
+      ...base,
+      input: {
+        ...base.input,
+        parsed: {
+          ...base.input.parsed,
+          value: { emplId: secret },
+          protectedBindings: [{
+            kind: "legacy-protected-input",
+            inputPath: "emplId",
+            name: "personLookupCanaryEid",
+          }],
+        },
       },
     });
+    current.database.authority.runs.enqueue(protectedRun);
+    storeCheckpoint(current, checkpointFor(protectedRun, {
+      outputValue: { emplId: secret },
+    }));
+    const payload = contextData(current, protectedRun.envelope.runId, {
+      fields: [{ nodeId: "crm-dates", fieldPath: "emplId", label: "Employee id" }],
+    });
+    const employeeId = payload.entries[0];
+    assert.ok(employeeId);
+    assert.equal(employeeId.valueState, "redacted");
+    assert.equal(employeeId.valueRedacted, "Protected value withheld");
+    assert.equal(JSON.stringify(payload).includes(secret), false);
   });
 
-  it("omits a declared field whose step never recorded — the Data section lists what the run touched", () => {
-    const w = world();
-    queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 1 }));
+  it("keeps stale descriptor and malformed output hashes out of the value projection", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 61, claimGeneration: 1, version: 2 });
+    storeCheckpoint(current, checkpointFor(source, { descriptorVersion: 2 }));
+    let payload = contextData(current, source.envelope.runId);
+    let invited = payload.entries.find((entry) => entry.label === "Invited on");
+    assert.equal(invited?.checkpoint.state, "malformed");
+    assert.equal(invited?.valueState, "malformed");
+    assert.equal(invited?.valueRedacted, "Checkpoint could not be verified");
+    assert.equal(invited?.origin, undefined);
 
-    assert.deepEqual(contextData(w).entries, []);
+    const next = sourceRun(current, { seed: 62, claimGeneration: 1, version: 2 });
+    storeCheckpoint(current, checkpointFor(next, { schemaHash: HASH_B }));
+    payload = contextData(current, next.envelope.runId);
+    invited = payload.entries.find((entry) => entry.label === "Invited on");
+    assert.equal(invited?.checkpoint.state, "malformed");
+    assert.equal(invited?.checkpoint.reason, "output-schema-mismatch");
+    assert.equal(invited?.valueRedacted, "Checkpoint could not be verified");
   });
 
-  /*
-    W2: the observation clock and the fact's own source, projected from the
-    producing checkpoint's `FactProvenance` — the record this query has read
-    since 2i-C and thrown away. Every arm is read forward (D133): a checkpoint
-    that carries no covering point serves no clock rather than a fabricated one.
-  */
-  describe("fact provenance on the served entries (W2)", () => {
-    it("dates a value from the exact provenance point, and carries its source", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
-        { path: "invitedOn.value", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
-        {
-          path: "startsOn.value",
-          source: "operator",
-          observedAt: CORRECTED_AT,
-          originalObservedAt: OBSERVED_AT,
-          correctedAt: CORRECTED_AT,
-        },
-      ]));
-
-      const entries = contextData(w).entries;
-      const invited = entries.find((entry) => entry.label === "Invited on");
-      assert.ok(invited);
-      assert.equal(invited.observedAt, OBSERVED_AT);
-      assert.equal(invited.source, "live");
-      assert.equal(invited.correctedAt, undefined);
-
-      // An operator correction carries its own instant — the rail's `corrected`
-      // badge is drawn from exactly this and from nothing it inferred.
-      const starts = entries.find((entry) => entry.label === "Starts on");
-      assert.ok(starts);
-      assert.equal(starts.source, "operator");
-      assert.equal(starts.correctedAt, CORRECTED_AT);
-    });
-
-    it("dates a leaf through the LONGEST covering prefix, never through a name it merely starts with", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
-        // The wrapper covers the leaf; the more specific point wins over it.
-        { path: "invitedOn", source: "derived", observedAt: NOW, originalObservedAt: NOW },
-        { path: "invitedOn.value", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
-        // Covers `startsOn` only by prefix of the STRING — never by path.
-        { path: "starts", source: "operator", observedAt: CORRECTED_AT, originalObservedAt: NOW },
-      ]));
-
-      const entries = contextData(w).entries;
-      const invited = entries.find((entry) => entry.label === "Invited on");
-      assert.ok(invited);
-      assert.equal(invited.observedAt, OBSERVED_AT, "the exact leaf beats the wrapper covering it");
-      assert.equal(invited.source, "live");
-
-      const starts = entries.find((entry) => entry.label === "Starts on");
-      assert.ok(starts);
-      assert.equal(starts.observedAt, undefined, "`starts` is not a segment prefix of `startsOn.value`");
-      assert.equal(starts.source, undefined);
-    });
-
-    it("dates a wrapper's leaf through the wrapper, the way a commit output is dated", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
-        { path: "startsOn", source: "derived", observedAt: OBSERVED_AT, originalObservedAt: NOW },
-      ]));
-
-      const starts = contextData(w).entries.find((entry) => entry.label === "Starts on");
-      assert.ok(starts);
-      assert.equal(starts.observedAt, OBSERVED_AT);
-      assert.equal(starts.source, "derived");
-    });
-
-    it("dates a LOCKED row too — uneditable and undated are unrelated facts", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1, [
-        // `completedOn.value` is ABSENT on the outcome, so its row is locked.
-        { path: "completedOn", source: "live", observedAt: OBSERVED_AT, originalObservedAt: OBSERVED_AT },
-      ]));
-
-      const completed = contextData(w).entries.find((entry) => entry.label === "Completed on");
-      assert.ok(completed);
-      assert.equal(completed.edit.state, "locked");
-      assert.equal(completed.observedAt, OBSERVED_AT);
-    });
-
-    // D254 retired the case that stood here: "dates a row the workflow does
-    // not declare correctable". Its subject was a `descriptor.details` spec
-    // whose leaf is NOT an editData field, which only ever became a row by way
-    // of the retired `span.patched` fold — so the state it asserted is now
-    // unreachable rather than merely untested. Its surviving half is the case
-    // above, "dates a LOCKED row too": a lock the rail can still reach (an
-    // absent leaf) is dated exactly like an editable row.
-
-    it("serves no clock at all when the checkpoint recorded no covering point (D133)", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      // A pre-provenance checkpoint. Its `writtenAt` is a real instant and is
-      // NOT substituted: it dates the ROW, not the fact.
-      w.authority.putCheckpoint(crmDatesCheckpoint(1));
-
-      for (const entry of contextData(w).entries) {
-        assert.equal(entry.observedAt, undefined);
-        assert.equal(entry.source, undefined);
-        assert.equal(entry.correctedAt, undefined);
-      }
+  it("refuses a descriptor that no longer matches the exact source run", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 63, claimGeneration: 1, version: 2 });
+    const descriptor = { ...EXACT_DESCRIPTOR, version: EXACT_DESCRIPTOR.version + 1 } as AnyWorkflowDescriptor;
+    const payload = contextData(current, source.envelope.runId, { exactDescriptor: descriptor });
+    assert.deepEqual(payload, {
+      runId: source.envelope.runId,
+      state: "unavailable",
+      reason: "descriptor-mismatch",
+      entries: [],
     });
   });
-  /**
-   * D252 — where a value came from, and the bound it is held under.
-   *
-   * Both are DESCRIPTOR facts served through `dataOrigins`, so the tests below
-   * pin the present arm, the absent arm, and the refusal that keeps a bound
-   * from being served without a step to attribute it to.
-   */
-  describe("origin and reuse bound (D252)", () => {
-    const ORIGIN_VIEW = {
-      ...DATE_FIELDS_VIEW,
-      dataOrigins: [{
-        nodeId: "crm-dates",
-        step: "CRM dates",
-        dir: "read",
-        system: "crm",
-        freshness: [
-          { fieldPath: "invitedOn.value", maxAge: 900_000, override: "audited" },
-          { fieldPath: "startsOn.value", maxAge: "unbounded", override: "forbidden" },
-        ],
-        feeds: [{ nodeId: "file-termination", label: "File the termination" }],
-      }],
-    } as const;
 
-    it("attributes every entry to its step, with the direction the contract DECLARES", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1));
-
-      for (const entry of contextData(w, ORIGIN_VIEW).entries) {
-        assert.deepEqual(entry.origin, {
-          nodeId: "crm-dates",
-          step: "CRM dates",
-          dir: "read",
-          system: "crm",
-        });
-      }
-    });
-
-    it("serves the bound only for the field paths the descriptor declares one for", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1));
-
-      const entries = contextData(w, ORIGIN_VIEW).entries;
-      const invited = entries.find((entry) => entry.label === "Invited on");
-      assert.deepEqual(invited?.freshness, {
-        maxAge: 900_000,
-        override: "audited",
-        feeds: [{ nodeId: "file-termination", label: "File the termination" }],
-      });
-      // `unbounded` is a DECLARED limit and travels as the word — the surface,
-      // not the wire, decides that an unbounded bound has no sentence.
-      assert.equal(entries.find((entry) => entry.label === "Starts on")?.freshness?.maxAge, "unbounded");
-      // Declared correctable, but the policy names no bound for it.
-      assert.equal(entries.find((entry) => entry.label === "Completed on")?.freshness, undefined);
-    });
-
-    // D254 retired the case that stood here: "attributes a step with NO stored
-    // checkpoint". D252 had already ruled that the Data section lists what the
-    // run TOUCHED, so such a field is not a row — but the retired detail fold
-    // could still manufacture one, reaching `editableEntryOf` with nothing
-    // behind it and serving a "has no stored checkpoint yet" lock. With the
-    // fold gone the caller resolves the checkpoint before it builds an entry,
-    // so the arm is unrepresentable; the rule itself stays pinned by "omits a
-    // declared field whose step never recorded".
-
-    it("serves NEITHER when the build has no origin for the node (read forward, D133)", () => {
-      const w = world();
-      queuedEventOf(w, { seed: 1 });
-      w.authority.put(runRecordOf({ seed: 1, version: 4 }));
-      w.authority.putCheckpoint(crmDatesCheckpoint(1));
-
-      for (const entry of contextData(w).entries) {
-        assert.equal(entry.origin, undefined);
-        assert.equal(entry.freshness, undefined);
-      }
-    });
-
-    it("REFUSES a bound with no step to attribute it to", () => {
-      assert.throws(
-        () => ContextDataSectionSchema.parse({
-          runId: uuidOf(1),
-          editing: { state: "editable", expectedVersion: 4 },
-          entries: [{
-            label: "Invited on",
-            valueRedacted: "2026-06-01",
-            edit: { state: "locked", reason: "fixture" },
-            freshness: { maxAge: 900_000, override: "audited", feeds: [] },
-          }],
-        }),
-        /cannot be served without an origin/u,
-      );
-    });
-
-    /*
-     * D307 — the converse of "an asserted value is operator-sourced". There are
-     * exactly two operator arms in authority, a correction and an assertion, and
-     * a leaf claiming `operator` with neither leaf would reach the rail as an
-     * unmarked row with a clock beside it: a value nobody read, drawn exactly
-     * like one a task observed. The wire is where that dies, so the surface does
-     * not have to invent a badge for an unnamed operator.
-     */
-    it("REFUSES an operator leaf that is neither a correction nor an assertion", () => {
-      const operatorEntry = (extra: Record<string, string>) => ({
-        runId: uuidOf(1),
-        editing: { state: "editable", expectedVersion: 4 } as const,
-        entries: [{
-          label: "Invited on",
-          valueRedacted: "2026-06-01",
-          edit: { state: "locked", reason: "fixture" } as const,
-          observedAt: "2026-06-01T00:00:00.000Z",
-          source: "operator" as const,
-          ...extra,
-        }],
-      });
-
-      assert.throws(
-        () => ContextDataSectionSchema.parse(operatorEntry({})),
-        /either a correction or an assertion; without `correctedAt` it must name the omitted step/u,
-      );
-      // Both real arms still parse: a correction, and an assertion.
-      assert.equal(
-        ContextDataSectionSchema.parse(operatorEntry({ correctedAt: "2026-06-02T00:00:00.000Z" }))
-          .entries[0]?.assertedStep,
-        undefined,
-      );
-      assert.equal(
-        ContextDataSectionSchema.parse(operatorEntry({ assertedStep: "kronos-timecard" }))
-          .entries[0]?.assertedStep,
-        "kronos-timecard",
-      );
-    });
+  it("refuses stale editable prefill fields and leaves checkpoint/source authority untouched", () => {
+    const current = world();
+    const source = sourceRun(current, { seed: 71, claimGeneration: 1, version: 2 });
+    const checkpoint = checkpointFor(source);
+    storeCheckpoint(current, checkpoint);
+    const generation = current.database.getMeta().authorityGeneration;
+    const beforeRun = current.database.authority.runs.get(source.envelope.runId);
+    const payload = contextData(current, source.envelope.runId);
+    const legacyShape = {
+      ...payload,
+      entries: payload.entries.map((entry) => ({ ...entry, edit: { state: "editable", value: "stale" } })),
+    };
+    assert.equal(ContextDataSectionSchema.safeParse(legacyShape).success, false);
+    assert.equal(current.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(current.database.authority.runs.get(source.envelope.runId), beforeRun);
+    assert.deepEqual(current.database.authority.runCheckpoints.get(
+      source.envelope.workflow, source.envelope.itemId, "crm-dates", source.envelope.attempt, 1,
+    ), checkpoint);
   });
 });

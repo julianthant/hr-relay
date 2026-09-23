@@ -287,23 +287,9 @@ const ARCHIVED_SECTIONS = {
     state: "present",
     value: {
       runId: ARCHIVED_RUN_ID,
-      editing: { state: "locked", reason: "an archived run is read-only; there is nothing to resume a correction into" },
-      entries: [
-        {
-          label: "Employee ID",
-          valueRedacted: "108*****",
-          edit: { state: "locked", reason: "an archived run is read-only" },
-          observedAt: at(4),
-          source: "live",
-        },
-        {
-          label: "Department",
-          valueRedacted: "Supply Chain Services",
-          edit: { state: "locked", reason: "an archived run is read-only" },
-          observedAt: at(12),
-          source: "derived",
-        },
-      ],
+      state: "unavailable",
+      reason: "descriptor-mismatch",
+      entries: [],
     },
   },
   people: {

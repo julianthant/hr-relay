@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { ItemAttemptHistoryResponseSchema } from "../../../src/domain/dashboard/item-attempt-history.js";
 import { restrictedJpegDiagnosticFixture } from "./diagnostic-jpeg-fixture.js";
 import { FIXTURE_RUN_DETAILS,FIXTURE_SECTIONS } from "./fixture-detail.js";
 import {
@@ -9,7 +10,38 @@ FIXTURE_RUN_CAPTURE_SECTIONS,
 runCaptureFixtureBytes
 } from "./fixture-run-captures.js";
 import { wireError } from "./fixture-wire-error.js";
+import { FIXTURE_DAY, uuidOf } from "./fixture-identity.js";
 export function registerFixtureDetailRoutes({ app, runCaptureEvidence, diagnostic }: { app: Hono; runCaptureEvidence: boolean; diagnostic: Omit<ReturnType<typeof restrictedJpegDiagnosticFixture>, "screenshotBytes"> & { screenshotBytes: Uint8Array } }): void {
+
+  app.get("/api/v1/runs/:runId/attempt-history", (c) => {
+    const runId = c.req.param("runId");
+    const detail = FIXTURE_RUN_DETAILS[runId];
+    if (detail === undefined) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture attempt history for ${runId}`), 404);
+    }
+    const seed = Number.parseInt(runId.slice(-12), 10);
+    const itemId = uuidOf(seed + 5000);
+    const attempt = detail.header.attempt;
+    const rowRevision = detail.rowRevision;
+    const workflowId = detail.header.workflowId;
+    const entry = {
+      disposition: "live" as const,
+      runId,
+      workflowId,
+      itemId,
+      attempt,
+      rowRevision,
+      partitionDay: FIXTURE_DAY,
+    };
+    const response = ItemAttemptHistoryResponseSchema.parse({
+      schemaVersion: 1,
+      state: "available",
+      selected: { state: "present", disposition: "live", runId, workflowId, itemId, attempt, rowRevision },
+      item: { workflowId, itemId },
+      page: { limit: 50, offset: 0, totalEntries: 1, entries: [entry], nextCursor: null },
+    });
+    return c.json(response);
+  });
 
 
   app.get("/api/v1/runs/:runId", (c) => {

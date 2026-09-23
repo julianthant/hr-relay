@@ -1,211 +1,84 @@
-import type { JsonValue } from "../../../domain/canonical-json.js";
 import { localDatePart } from "../../../domain/clock.js";
+import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
+import { valueFreeProtectedData, retainedRunProtectedBindings } from "../../../domain/protected-input.js";
+import type { JsonValue } from "../../../domain/canonical-json.js";
 import {
+  ContextDataSectionSchema,
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../domain/dashboard/run-detail.js";
-import { runClaim, type RunRecord } from "../../../domain/run/record.js";
+import { ContractFieldPathSchema } from "../../../domain/contracts/base.js";
+import { BrowserSystemIdSchema, NodeIdSchema } from "../../../domain/ids.js";
+import type { RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
+import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { TargetNotFoundError, SectionUnavailableError } from "../../failures.js";
+import type { z } from "zod";
 
-function requireDataRun(deps: RunDetailQueryDeps, runId: string) {
+type ContextDataPayload = z.infer<typeof ContextDataSectionSchema>;
+type ContextDataEntry = ContextDataPayload["entries"][number];
+
+function readDataRun(deps: RunDetailQueryDeps, runId: string) {
   const reader = deps.canonical?.reader ?? deps.runReader;
   if (reader === undefined) throw new Error("CANONICAL_DATA_READER_NOT_CONFIGURED");
   const existence = reader.read(runId);
-  if (existence.state !== "present") throw new TargetNotFoundError(`DATA_SOURCE_${existence.state}`);
-  if (existence.run.envelope.runId !== runId) throw new Error("DATA_SOURCE_IDENTITY_MISMATCH");
+  if (existence.state === "present" && existence.run.envelope.runId !== runId) {
+    throw new Error("DATA_SOURCE_IDENTITY_MISMATCH");
+  }
+  return existence;
+}
+
+function requireLiveDataRun(deps: RunDetailQueryDeps, runId: string): RunRecord {
+  const existence = readDataRun(deps, runId);
+  if (existence.state !== "present") throw new TargetNotFoundError("DATA_SOURCE_" + existence.state);
   if (existence.disposition === "archived") throw new SectionUnavailableError("DATA_SOURCE_ARCHIVED");
   return existence.run;
 }
-
-/* ── the context-data edit projection (2i-C) ─────────────────────────────── */
-
-type EditableScalar = string | number | boolean;
-
-/** Plain-string drafts; `RunDetailSectionResponseSchema.parse` brands them. */
-type ContextDataEditing =
-  | { state: "editable"; expectedVersion: number }
-  | { state: "locked"; reason: string };
-/**
- * The three provenance leaves the Data section serves (ref workflow-model §5.6).
- *
- * They are OMITTED, never nulled: the wire's members are optional and an absent
- * one says "this build cannot date this value". A checkpoint that recorded no
- * covering provenance point, an entry with no field identity, and a step that
- * never checkpointed all land here, and all three mean the same thing to the
- * rail — which is why they render identically rather than through three arms
- * the operator would have to tell apart.
- */
-type FactProvenanceWire = {
-  observedAt?: string;
-  source?: "live" | "derived" | "operator";
-  correctedAt?: string;
-  /** D307 — the omitted step this leaf was asserted for; see the wire's own note. */
-  assertedStep?: string;
-};
-
-/**
- * D252 — the origin/freshness half of an entry, projected onto the wire's
- * shape. Both are omitted together when the descriptor names no origin for
- * the entry's node: `ContextDataSectionSchema` refuses a bound with no step to
- * attribute it to.
- */
-type ContextDataOriginWire = {
-  origin?: {
-    nodeId: string;
-    step: string;
-    dir: "read" | "write";
-    system?: string;
-  };
-  freshness?: {
-    maxAge: number | "unbounded";
-    override: "forbidden" | "audited";
-    feeds: readonly Readonly<{ nodeId: string; label: string }>[];
-  };
-};
-
-type ContextDataEntry = FactProvenanceWire & ContextDataOriginWire & {
-  label: string;
-  valueRedacted: string;
-  edit:
-    | {
-      state: "editable";
-      nodeId: string;
-      fieldPath: string;
-      value: EditableScalar;
-      pendingCorrection:
-        | { state: "none" }
-        | { state: "pending"; value: EditableScalar; correctedAt: string };
-    }
-    | { state: "locked"; reason: string };
-};
 
 function isJsonRecord(value: JsonValue): value is { readonly [key: string]: JsonValue } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isEditableScalar(value: JsonValue): value is EditableScalar {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-}
-
 type ScalarLookup =
-  | { kind: "scalar"; value: EditableScalar }
+  | { kind: "scalar"; value: string | number | boolean }
   | { kind: "absent" }
+  | { kind: "protected" }
   | { kind: "not-scalar" };
 
-/**
- * Walk a stored output to the declared leaf. `absent` is a real outcome (the
- * value routinely lives on one arm of a present/absent union), and a value
- * that is not a single scalar is named as such rather than stringified into a
- * field the operator could "correct" without understanding its shape.
- */
+function isProtectedMarker(value: JsonValue): boolean {
+  if (!isJsonRecord(value)) return false;
+  return value.kind === "protected-store" || value.kind === "test-data-local"
+    || value.kind === "legacy-protected-input" || value.state === "withheld-protected-input";
+}
+
 function scalarAtPath(output: JsonValue, fieldPath: string): ScalarLookup {
   let current: JsonValue = output;
   for (const part of fieldPath.split(".")) {
     if (!isJsonRecord(current) || !Object.hasOwn(current, part)) return { kind: "absent" };
-    const next = current[part];
-    if (next === undefined) return { kind: "absent" };
-    current = next;
+    current = current[part]!;
+    if (isProtectedMarker(current)) return { kind: "protected" };
   }
-  return isEditableScalar(current) ? { kind: "scalar", value: current } : { kind: "not-scalar" };
+  return typeof current === "string" || typeof current === "number" || typeof current === "boolean"
+    ? { kind: "scalar", value: current }
+    : { kind: "not-scalar" };
 }
 
-function displayScalar(value: EditableScalar): string {
+function displayScalar(value: string | number | boolean): string {
   const text = String(value);
   return text.length === 0 ? "(empty)" : text;
 }
 
-/**
- * The run-level half of the edit policy. Same facts, same order, as the
- * kernel's `executeEditCheckpoint` refusal arms — this projection exists so
- * the rail can show the reason BEFORE a save is attempted, never so the
- * client can decide differently from the kernel.
- */
-function contextEditingOf(
-  authority: RunRecord,
-  descriptor: RunDetailDescriptorView | undefined,
-): ContextDataEditing {
-  if (descriptor === undefined) {
-    return {
-      state: "locked",
-      reason: `workflow ${authority.envelope.workflow} has no registered descriptor in this build`,
-    };
-  }
-  const editData = descriptor.capabilities?.editData;
-  if (editData === undefined || typeof editData === "boolean") {
-    return { state: "locked", reason: "this workflow declares no correctable fields" };
-  }
-  if (runClaim(authority) !== undefined) {
-    return {
-      state: "locked",
-      reason: "the run is claimed by a worker — the resume consumes corrections and wins races; "
-        + "editing reopens when it parks or finishes",
-    };
-  }
-  const { state } = authority.lifecycle;
-  if (state !== "queued" && state !== "parked-gate") {
-    return {
-      state: "locked",
-      reason: `run is ${state}; corrections apply only to a non-executing resumable run`,
-    };
-  }
-  return { state: "editable", expectedVersion: authority.version };
-}
+type FactProvenanceWire = Pick<ContextDataEntry, "observedAt" | "source" | "correctedAt" | "assertedStep">;
 
-type PendingCorrectionLookup =
-  | { state: "none" }
-  | { state: "pending"; value: EditableScalar; correctedAt: string }
-  | { state: "not-scalar" };
-
-function pendingCorrectionOf(
-  authority: RunRecord,
-  source: { nodeId: string; fieldPath: string },
-): PendingCorrectionLookup {
-  const pending = (authority.envelope.injected ?? []).find(
-    (patch) => String(patch.nodeId) === source.nodeId && patch.fieldPath === source.fieldPath,
-  );
-  if (pending === undefined) return { state: "none" };
-  if (!isEditableScalar(pending.value)) return { state: "not-scalar" };
-  return { state: "pending", value: pending.value, correctedAt: pending.correctedAt };
-}
-
-/**
- * The provenance point that DATES a leaf, off the checkpoint that produced it.
- *
- * Exact path first, then the longest COVERING PREFIX. The prefix arm is not a
- * convenience: `task-provenance.ts` records at leaf granularity but a wrapper
- * value is dated through the prefix that covers it — D82's evidence receipt
- * resolves a transaction commit's output leaves the same way, through the
- * `output`/`proof` wrapper the checkpoint actually recorded. Longest wins so a
- * point recorded for `startsOn.value` beats one recorded for `startsOn`, which
- * is the more specific and therefore the more truthful observation.
- *
- * A path is a prefix only at a SEGMENT boundary: `starts` must never cover
- * `startsOn.value`, or a leaf would inherit a date from an unrelated field
- * whose name it merely begins with.
- */
-function provenanceFor(
-  stored: RunCheckpointRecord,
-  fieldPath: string,
-): FactProvenanceWire {
+function provenanceFor(stored: RunCheckpointRecord, fieldPath: string): FactProvenanceWire {
   let best: RunCheckpointRecord["provenance"][number] | undefined;
   for (const point of stored.provenance) {
     const path = String(point.path);
-    if (path !== fieldPath && !fieldPath.startsWith(`${path}.`)) continue;
+    if (path !== fieldPath && !fieldPath.startsWith(path + ".")) continue;
     if (best === undefined || path.length > String(best.path).length) best = point;
   }
-  /*
-   * D307 — the row's own marker, not an inference from the leaf's source: an
-   * assertion is a property of the ROW (the executor stamps it when the step
-   * was omitted), and every one of its leaves is operator-sourced by
-   * construction. A leaf with no covering provenance point still carries it,
-   * because "this row was asserted" is true of the row whether or not one
-   * point covers this path.
-   */
-  const asserted = stored.assertion === undefined
-    ? {}
-    : { assertedStep: String(stored.assertion.step) };
+  const asserted = stored.assertion === undefined ? {} : { assertedStep: String(stored.assertion.step) };
   if (best === undefined) return asserted;
   return {
     observedAt: best.observedAt,
@@ -215,15 +88,8 @@ function provenanceFor(
   };
 }
 
-/**
- * D252 — where this entry's value came from, and the bound it is held under.
- *
- * Both facts are the DESCRIPTOR's, not the row's: the node that produced the
- * value declares whether its task reads or writes, which system it runs
- * against, and how old the fact may be before a scheduled commit refuses it.
- * A node the current build has no origin for yields neither — the same
- * absence as an entry with no field identity at all.
- */
+type ContextDataOriginWire = Pick<ContextDataEntry, "origin" | "freshness">;
+
 function originOf(
   descriptor: RunDetailDescriptorView | undefined,
   nodeId: string,
@@ -235,126 +101,181 @@ function originOf(
   const bound = origin.freshness?.find((entry) => entry.fieldPath === fieldPath);
   return {
     origin: {
-      nodeId: origin.nodeId,
+      nodeId: NodeIdSchema.parse(origin.nodeId),
       step: origin.step,
       dir: origin.dir,
-      ...(origin.system === undefined ? {} : { system: origin.system }),
+      ...(origin.system === undefined ? {} : { system: BrowserSystemIdSchema.parse(origin.system) }),
     },
     ...(bound === undefined
       ? {}
-      : { freshness: { maxAge: bound.maxAge, override: bound.override, feeds: origin.feeds } }),
+      : { freshness: { maxAge: bound.maxAge, override: bound.override, feeds: origin.feeds.map((feed) => ({
+        nodeId: NodeIdSchema.parse(feed.nodeId), label: feed.label,
+      })) } }),
   };
 }
 
-/**
- * One entry for a correctable field: the raw recorded scalar from the
- * caller-resolved latest compatible checkpoint, plus any pending injected
- * correction.
- *
- * The checkpoint is a PARAMETER rather than a lookup, because the caller has
- * already had to resolve it: ref dashboard-surfaces §1.1(c)'s Data section lists what the run
- * touched, so a declared-correctable field with no stored checkpoint is not an
- * entry at all. Before D254 the retired `span.patched` fold could reach this
- * function with no checkpoint behind it, and the `display` argument carried
- * that fold's projected value; with the channel gone both are unreachable
- * shapes, and stating "there is a stored checkpoint" in the type is stronger
- * than re-deriving it here and re-answering a question the caller settled.
- */
-function editableEntryOf(
+function outputSchemaHashOf(descriptor: AnyWorkflowDescriptor, nodeId: string): string | undefined {
+  const node = descriptor.nodes.find((candidate) => candidate.id === nodeId);
+  if (node?.kind !== "task" || !("uses" in node)) return undefined;
+  const contract = node.uses as { readonly output: z.ZodType };
+  return deriveSchemaHash(contract.output, "output");
+}
+
+function checkpointOf(
+  rows: readonly RunCheckpointRecord[],
+  run: RunRecord,
+  nodeId: string,
+): RunCheckpointRecord | "foreign-run" | undefined {
+  const matchingAttempt = rows.filter((row) => row.nodeId === nodeId
+    && row.attempt === run.envelope.attempt);
+  const matching = matchingAttempt.filter((row) => row.runId === run.envelope.runId);
+  if (matching.length === 0) return matchingAttempt.length === 0 ? undefined : "foreign-run";
+  matching.sort((left, right) => (left.claimGeneration ?? 0) - (right.claimGeneration ?? 0));
+  return matching.at(-1);
+}
+
+function malformedEntry(label: string, nodeId: string, fieldPath: string,
+  reason: "checkpoint-identity-mismatch" | "descriptor-mismatch" | "output-schema-mismatch"): ContextDataEntry {
+  return {
+    label,
+    coordinate: { nodeId: NodeIdSchema.parse(nodeId), fieldPath: ContractFieldPathSchema.parse(fieldPath) },
+    checkpoint: { state: "malformed", reason },
+    valueState: "malformed",
+    valueRedacted: "Checkpoint could not be verified",
+  };
+}
+
+function entryOf(
+  run: RunRecord,
+  rows: readonly RunCheckpointRecord[],
   descriptor: RunDetailDescriptorView | undefined,
-  authority: RunRecord,
-  stored: RunCheckpointRecord,
-  label: string,
-  source: { nodeId: string; fieldPath: string },
+  exactDescriptor: AnyWorkflowDescriptor,
+  field: Readonly<{ nodeId: string; fieldPath: string; label: string }>,
 ): ContextDataEntry {
-  // D252 — the origin is a DESCRIPTOR fact, so it is served on every arm
-  // below: "which step owns this value" is exactly the question a locked row
-  // makes more pressing.
-  const attribution = originOf(descriptor, source.nodeId, source.fieldPath);
-  // Dated once, for EVERY arm below: a locked row is as much a recorded fact
-  // as an editable one, and "when was this observed" is the question the lock
-  // makes more pressing rather than less.
-  const provenance = provenanceFor(stored, source.fieldPath);
-  const lookup = scalarAtPath(stored.output.value, source.fieldPath);
+  const coordinate = {
+    nodeId: NodeIdSchema.parse(field.nodeId),
+    fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
+  };
+  const selected = checkpointOf(rows, run, field.nodeId);
+  if (selected === "foreign-run") {
+    return malformedEntry(field.label, field.nodeId, field.fieldPath, "checkpoint-identity-mismatch");
+  }
+  if (selected === undefined) {
+    return {
+      label: field.label,
+      coordinate,
+      checkpoint: { state: "absent", reason: "no-checkpoint-for-run" },
+      valueState: "absent",
+      valueRedacted: "Not recorded for this run",
+    };
+  }
+  const stored = selected;
+  if (stored.workflowId !== run.envelope.workflow || stored.itemId !== run.envelope.itemId
+    || stored.nodeId !== field.nodeId || stored.runId !== run.envelope.runId
+    || stored.attempt !== run.envelope.attempt
+    || (stored.claimGeneration !== undefined && stored.claimGeneration > run.claimGeneration)) {
+    return malformedEntry(field.label, field.nodeId, field.fieldPath, "checkpoint-identity-mismatch");
+  }
+  if (stored.descriptorVersion !== run.envelope.descriptorVersion
+    || stored.contractFingerprint !== run.envelope.contractFingerprint
+    || stored.descriptorVersion !== exactDescriptor.version
+    || stored.contractFingerprint !== exactDescriptor.contractFingerprint) {
+    return malformedEntry(field.label, field.nodeId, field.fieldPath, "descriptor-mismatch");
+  }
+  const expectedSchemaHash = outputSchemaHashOf(exactDescriptor, field.nodeId);
+  if (expectedSchemaHash === undefined || stored.output.schemaHash !== expectedSchemaHash) {
+    return malformedEntry(field.label, field.nodeId, field.fieldPath, "output-schema-mismatch");
+  }
+
+  const safeOutput = valueFreeProtectedData(stored.output.value, retainedRunProtectedBindings(run));
+  const lookup = scalarAtPath(safeOutput, field.fieldPath);
+  const checkpoint = {
+    state: "present" as const,
+    runId: stored.runId,
+    attempt: stored.attempt,
+    ...(stored.claimGeneration === undefined ? {} : { claimGeneration: stored.claimGeneration }),
+    descriptorVersion: stored.descriptorVersion,
+    contractFingerprint: stored.contractFingerprint,
+    schemaHash: stored.output.schemaHash,
+    writtenAt: stored.writtenAt,
+  };
+  const attribution = originOf(descriptor, field.nodeId, field.fieldPath);
+  const provenance = provenanceFor(stored, field.fieldPath);
+  if (lookup.kind === "protected") {
+    return {
+      label: field.label,
+      coordinate,
+      checkpoint, valueState: "redacted", valueRedacted: "Protected value withheld",
+      ...attribution, ...provenance,
+    };
+  }
   if (lookup.kind === "absent") {
     return {
-      label,
-      valueRedacted: "not recorded on this outcome",
-      edit: {
-        state: "locked",
-        reason: `the recorded outcome carries no ${source.fieldPath} — there is no stored value to correct`,
-      },
-      ...provenance,
-      ...attribution,
+      label: field.label,
+      coordinate,
+      checkpoint, valueState: "absent", valueRedacted: "Not recorded on this outcome",
+      ...attribution, ...provenance,
     };
   }
   if (lookup.kind === "not-scalar") {
-    return {
-      label,
-      valueRedacted: "structured value",
-      edit: {
-        state: "locked",
-        reason: "not a single text/number value; structured output is corrected by a new run, not a field edit",
-      },
-      ...provenance,
-      ...attribution,
-    };
-  }
-  const pending = pendingCorrectionOf(authority, source);
-  if (pending.state === "not-scalar") {
-    return {
-      label,
-      valueRedacted: displayScalar(lookup.value),
-      edit: {
-        state: "locked",
-        reason: "a pending correction holds a structured value; it applies when the run resumes",
-      },
-      ...provenance,
-      ...attribution,
-    };
+    return malformedEntry(field.label, field.nodeId, field.fieldPath, "output-schema-mismatch");
   }
   return {
-    label,
-    valueRedacted: displayScalar(lookup.value),
-    edit: {
-      state: "editable",
-      nodeId: source.nodeId,
-      fieldPath: source.fieldPath,
-      value: lookup.value,
-      pendingCorrection: pending,
-    },
-    ...provenance,
-    ...attribution,
+    label: field.label,
+    coordinate,
+    checkpoint, valueState: "present", valueRedacted: displayScalar(lookup.value),
+    ...attribution, ...provenance,
   };
 }
 
-function buildContextDataPayload(
-  deps: RunDetailQueryDeps,
-  authority: RunRecord,
-): { runId: string; editing: ContextDataEditing; entries: ContextDataEntry[] } {
-  const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
-  const editing = contextEditingOf(authority, descriptor);
-  const editData = descriptor?.capabilities?.editData;
-  const editFields = typeof editData === "object" ? editData.fields : [];
-  const entries: ContextDataEntry[] = [];
-  for (const field of editFields) {
-    const stored = deps.authority.latestCheckpoint(
-      authority.envelope.workflow,
-      authority.envelope.itemId,
-      String(field.nodeId),
-    );
-    // The Data section lists values the run TOUCHED (ref dashboard-surfaces §1.1(c)); a
-    // declared-correctable field whose step never recorded is not among them.
-    if (stored === undefined) continue;
-    entries.push(editableEntryOf(
-      descriptor,
-      authority,
-      stored,
-      field.label,
-      { nodeId: String(field.nodeId), fieldPath: field.fieldPath },
-    ));
+function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): ContextDataPayload {
+  const existence = readDataRun(deps, runId);
+  if (existence.state === "absent") throw new TargetNotFoundError("DATA_SOURCE_absent");
+  if (existence.state === "deleted") {
+    return ContextDataSectionSchema.parse({ runId, state: "deleted", entries: [] });
   }
-  return { runId: authority.envelope.runId, editing, entries };
+  const run = existence.run;
+
+  const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+  const exactDescriptor = deps.canonical?.descriptors.resolve(run.envelope.workflow);
+  if (descriptor === undefined || exactDescriptor === undefined) {
+    return ContextDataSectionSchema.parse({
+      runId, state: "unavailable", reason: "descriptor-unavailable", entries: [],
+    });
+  }
+  if (exactDescriptor.version !== run.envelope.descriptorVersion
+    || exactDescriptor.contractFingerprint !== run.envelope.contractFingerprint) {
+    return ContextDataSectionSchema.parse({
+      runId, state: "unavailable", reason: "descriptor-mismatch", entries: [],
+    });
+  }
+  const fields = typeof descriptor.capabilities?.editData === "object"
+    ? descriptor.capabilities.editData.fields
+    : [];
+  const database = deps.canonical?.database;
+  if (database === undefined) {
+    return ContextDataSectionSchema.parse({
+      runId, state: "unavailable", reason: "checkpoint-reader-unavailable", entries: [],
+    });
+  }
+  const entries = database.withAuthorityReadSnapshot(() => {
+    const rowsByNode = new Map<string, readonly RunCheckpointRecord[]>();
+    for (const field of fields) {
+      const nodeId = String(field.nodeId);
+      if (!rowsByNode.has(nodeId)) {
+        rowsByNode.set(nodeId, database.authority.runCheckpoints.listByAttempt(
+          run.envelope.workflow, run.envelope.itemId, nodeId, run.envelope.attempt,
+        ));
+      }
+    }
+    return fields.map((field) => entryOf(
+      run, rowsByNode.get(String(field.nodeId)) ?? [], descriptor, exactDescriptor,
+      { nodeId: String(field.nodeId), fieldPath: field.fieldPath, label: field.label },
+    ));
+  });
+  return ContextDataSectionSchema.parse({
+    runId, state: existence.disposition === "archived" ? "archived" : "available", entries,
+  });
 }
 
 export function buildDataSection(
@@ -362,18 +283,14 @@ export function buildDataSection(
   runId: string,
   section: "context-data" | "context-attempts",
 ): RunDetailSectionResponse {
-  const authority = requireDataRun(deps, runId);
   if (section === "context-data") {
-    // The descriptor-declared detail patches ARE the display-safe data facts
-    // (ref dashboard-surfaces §1.1), joined back to their declaring specs for field identity;
-    // the descriptor's editData fields extend them with the raw checkpoint
-    // scalars a correction targets (ref data-intake-and-edit-data §6, 2i-C).
     return RunDetailSectionResponseSchema.parse({
       section,
-      payload: buildContextDataPayload(deps, authority),
+      payload: buildContextDataPayload(deps, runId),
     });
   }
 
+  const authority = requireLiveDataRun(deps, runId);
   const row = deps.projection.runFold(runId);
   if (row !== undefined && (row.queued.runId !== runId || row.queued.workflow !== authority.envelope.workflow))
     throw new Error("DATA_SOURCE_EVIDENCE_MISMATCH");

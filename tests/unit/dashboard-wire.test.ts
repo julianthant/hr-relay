@@ -458,27 +458,24 @@ describe("lazy detail and artifact resources", () => {
         section: "context-data",
         payload: {
           runId: RUN_1,
-          editing: { state: "editable", expectedVersion: 3 },
+          state: "available",
           entries: [
             {
               label: "EID",
               valueRedacted: "••••1234",
-              edit: { state: "locked", reason: "not declared correctable by this workflow" },
+              coordinate: { nodeId: "crm-dates", fieldPath: "emplId" },
+              checkpoint: {
+                state: "present", runId: RUN_1, attempt: 1, claimGeneration: 1,
+                descriptorVersion: 1, contractFingerprint: HASH_A, schemaHash: HASH_B, writtenAt: NOW,
+              },
+              valueState: "present",
             },
             {
               label: "Starts on",
-              valueRedacted: "2026-07-15",
-              edit: {
-                state: "editable",
-                nodeId: "crm-dates",
-                fieldPath: "startsOn.value",
-                value: "2026-07-15",
-                pendingCorrection: {
-                  state: "pending",
-                  value: "2026-07-16",
-                  correctedAt: "2026-08-03T17:00:00.000Z",
-                },
-              },
+              valueRedacted: "Not recorded for this run",
+              coordinate: { nodeId: "crm-dates", fieldPath: "startsOn.value" },
+              checkpoint: { state: "absent", reason: "no-checkpoint-for-run" },
+              valueState: "absent",
             },
           ],
         },

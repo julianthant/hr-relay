@@ -5,6 +5,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
+import { Hono } from "hono";
 import {
   ContextRail,
   type ContextSections,
@@ -15,7 +16,17 @@ import {
   ContextSummaryWireSchema,
   RunDetailSectionResponseSchema,
 } from "../../../src/domain/dashboard/run-detail.js";
+import { ItemAttemptHistoryResponseSchema, type ItemAttemptHistoryResponse } from "../../../src/domain/dashboard/item-attempt-history.js";
+import { ActionDescriptorWireSchema } from "../../../src/domain/dashboard/actions.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { registerRunDetailRoutes } from "../../../src/server/dashboard/routes/run-detail.js";
+import { createItemAttemptHistoryQuery } from "../../../src/server/dashboard/queries/item-attempt-history.js";
+import type { RunDetailQueryDeps } from "../../../src/server/dashboard/queries/run-detail-types.js";
+import type { RequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
+import { makeWorld, runRecordOf, uuidOf, type DashboardWorld } from "../server/helpers/dashboard-harness.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -61,57 +72,104 @@ function refusingClient(): DashboardClient {
 
 const SUMMARY = ContextSummaryWireSchema.parse({ dataFacts: 3, evidenceFacts: 0, attempts: 1 });
 
+function historyWire(input: Readonly<{
+  selectedRunId: string;
+  itemId: string;
+  selectedAttempt: number;
+  entries: readonly Readonly<{
+    runId: string;
+    attempt: number | null;
+    disposition?: "live" | "archived" | "deleted";
+    partitionDay?: string;
+    deletedAt?: string;
+  }>[];
+  offset?: number;
+  totalEntries?: number;
+  nextCursor?: string | null;
+}>): ItemAttemptHistoryResponse {
+  return ItemAttemptHistoryResponseSchema.parse({
+    schemaVersion: 1,
+    state: "available",
+    selected: {
+      state: "present", disposition: "live", runId: input.selectedRunId,
+      workflowId: "person-lookup", itemId: input.itemId,
+      attempt: input.selectedAttempt, rowRevision: 1,
+    },
+    item: { workflowId: "person-lookup", itemId: input.itemId },
+    page: {
+      limit: 50,
+      offset: input.offset ?? 0,
+      totalEntries: input.totalEntries ?? input.entries.length,
+      entries: input.entries.map((entry) => entry.disposition === "deleted" ? ({
+        disposition: "deleted",
+        runId: entry.runId,
+        workflowId: "person-lookup",
+        itemId: input.itemId,
+        attempt: entry.attempt,
+        deletedAt: entry.deletedAt ?? "2026-09-22T17:00:00.000Z",
+      }) : ({
+        disposition: entry.disposition ?? "live",
+        runId: entry.runId,
+        workflowId: "person-lookup",
+        itemId: input.itemId,
+        attempt: entry.attempt ?? 1,
+        rowRevision: 1,
+        partitionDay: entry.partitionDay ?? "2026-09-22",
+      })),
+      nextCursor: input.nextCursor ?? null,
+    },
+  });
+}
+
 /**
  * Three entries over TWO attributed steps and one the build cannot attribute —
  * the exact shape C51 and C54 are about, parsed through the real wire schema so
  * the fixture cannot outlive its contract.
  */
-function dataSections(): ContextSections {
+function dataSections(runId = RUN_ID, attempt = 1): ContextSections {
+  const checkpoint = {
+    state: "present",
+    runId,
+    attempt,
+    claimGeneration: 3,
+    descriptorVersion: 1,
+    contractFingerprint: "a".repeat(64),
+    schemaHash: "b".repeat(64),
+    writtenAt: "2026-09-22T17:00:00.000Z",
+  } as const;
+  const entry = (label: string, valueRedacted: string, nodeId: string, fieldPath: string,
+    origin?: Record<string, string>) => ({
+    label, valueRedacted,
+    coordinate: { nodeId, fieldPath },
+    checkpoint,
+    valueState: "present" as const,
+    ...(origin === undefined ? {} : { origin }),
+  });
   const response = RunDetailSectionResponseSchema.parse({
     section: "context-data",
     payload: {
-      runId: RUN_ID,
-      editing: { state: "editable", expectedVersion: 4 },
+      runId,
+      state: "available",
       entries: [
-        {
-          label: "Employee id",
-          valueRedacted: "10••••23",
-          edit: {
-            state: "editable",
-            nodeId: "find-person",
-            fieldPath: "employeeId",
-            value: "10000023",
-            pendingCorrection: { state: "none" },
-          },
-          origin: { nodeId: "find-person", step: "Find person", dir: "read", system: "ucpath" },
-        },
-        {
-          label: "Department",
-          valueRedacted: "Neurosciences",
-          edit: { state: "locked", reason: "Recorded by the run." },
-          origin: { nodeId: "find-person", step: "Find person", dir: "read", system: "ucpath" },
-        },
-        {
-          label: "Separation date",
-          valueRedacted: "2026-09-30",
-          edit: { state: "locked", reason: "Recorded by the run." },
-          origin: { nodeId: "submit-separation", step: "Submit separation", dir: "write" },
-        },
-        {
-          label: "Legacy key",
-          valueRedacted: "sep-4471",
-          edit: { state: "locked", reason: "Recorded under an earlier descriptor." },
-        },
+        entry("Employee id", "10••••23", "find-person", "employeeId",
+          { nodeId: "find-person", step: "Find person", dir: "read", system: "ucpath" }),
+        entry("Department", "Neurosciences", "find-person", "department",
+          { nodeId: "find-person", step: "Find person", dir: "read", system: "ucpath" }),
+        entry("Separation date", "2026-09-30", "submit-separation", "separationDate",
+          { nodeId: "submit-separation", step: "Submit separation", dir: "write" }),
+        entry("Legacy key", "sep-4471", "legacy-node", "legacyKey"),
       ],
     },
   });
-  // The parse answers the whole section union; a fixture that drifted onto
-  // another arm would otherwise render an empty rail and pass every assertion
-  // below by drawing nothing.
   if (response.section !== "context-data") {
     throw new Error(`the fixture parsed as ${response.section}, not context-data`);
   }
-  return { "context-data": response.payload };
+  const attempts = RunDetailSectionResponseSchema.parse({
+    section: "context-attempts",
+    payload: { runId, entries: [{ label: "Current attempt", valueRedacted: "1" }] },
+  });
+  if (attempts.section !== "context-attempts") throw new Error("the fixture parsed as the wrong attempt section");
+  return { "context-data": response.payload, "context-attempts": attempts.payload };
 }
 
 function renderRail(sections: ContextSections, dataExpanded = false): string {
@@ -125,11 +183,8 @@ function renderRail(sections: ContextSections, dataExpanded = false): string {
             summary: SUMMARY,
             sections,
             onClose: () => undefined,
-            actorId: "operator-1",
-            liveStatus: "queued",
             dataExpanded,
             onDataExpandedChange: () => undefined,
-            onSaved: () => undefined,
           }),
         }),
       },
@@ -189,7 +244,7 @@ describe("D334 read-only source data", () => {
   it("keeps redacted source values without offering a checkpoint mutation", () => {
     const markup = renderRail(dataSections());
     for (const value of ["10••••23", "Neurosciences", "2026-09-30", "sep-4471"]) assert.ok(markup.includes(value));
-    assert.equal(markup.includes("10000023"), false, "legacy editable payload cannot disclose raw values");
+    assert.equal(markup.includes("10000023"), false, "the source rail carries no raw editable scalar");
     assert.equal(markup.includes("<input"), false);
     assert.equal(markup.includes("Save"), false);
     assert.equal(markup.includes("correction"), false);
@@ -199,11 +254,17 @@ describe("D334 read-only source data", () => {
   it("widens and narrows using keyboard focus without touching the command client", async () => {
     const host = document.createElement("div"); document.body.append(host);
     const root = createRoot(host);
+    const client = {
+      itemAttemptHistory: async () => historyWire({
+        selectedRunId: RUN_ID, itemId: uuidOf(5001), selectedAttempt: 1,
+        entries: [{ runId: RUN_ID, attempt: 1 }],
+      }),
+    } as unknown as DashboardClient;
     let expanded = false;
-    const render = () => root.render(createElement(DashboardClientProvider, { client: refusingClient(),
+    const render = () => root.render(createElement(DashboardClientProvider, { client,
       children: createElement(ToastProvider, { children: createElement(ContextRail, {
-        summary: SUMMARY, sections: dataSections(), onClose: () => undefined, actorId: "operator-1", liveStatus: "queued",
-        dataExpanded: expanded, onDataExpandedChange: (value: boolean) => { expanded = value; render(); }, onSaved: () => { throw new Error("read-only data saved"); },
+        summary: SUMMARY, sections: dataSections(), onClose: () => undefined,
+        dataExpanded: expanded, onDataExpandedChange: (value: boolean) => { expanded = value; render(); },
       }) }) }));
     try {
       await act(async () => { render(); });
@@ -213,5 +274,210 @@ describe("D334 read-only source data", () => {
       await act(async () => { button.click(); }); assert.equal(expanded, false); assert.equal(document.activeElement, button);
       assert.equal(document.querySelectorAll("input").length, 0);
     } finally { await act(async () => { root.unmount(); }); host.remove(); }
+  });
+});
+
+describe("Context attempt-history reads", () => {
+  it("loads item-wide history through the BFF and typed client while attempt one is selected", async () => {
+    const current: DashboardWorld = makeWorld();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const previousSearch = window.location.search;
+    const itemId = uuidOf(9800);
+    const firstBase = runRecordOf({ seed: 980, attempt: 1, enqueuedAt: "2026-08-03T06:30:00.000Z" });
+    const first = RunRecordSchema.parse({ ...firstBase, envelope: { ...firstBase.envelope, itemId } });
+    current.database.authority.runs.enqueue(first);
+    const secondBase = runRecordOf({ seed: 981, attempt: 2, enqueuedAt: "2026-08-03T07:30:00.000Z" });
+    const second = RunRecordSchema.parse({
+      ...secondBase,
+      envelope: { ...secondBase.envelope, itemId, retryOf: first.envelope.runId },
+    });
+    current.database.authority.runs.enqueue(second);
+    const historyQuery = createItemAttemptHistoryQuery({
+      database: current.database,
+      reader: sqliteRunReader(current.database, current.clock),
+    });
+    const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
+    const runDetail: RunDetailQueryDeps = {
+      itemAttemptHistory: historyQuery,
+      stateRoot: current.stateRoot,
+      projection: current.projection,
+      authority: current.authority,
+      descriptors: { resolve: () => undefined },
+    };
+    registerRunDetailRoutes(app, { runDetail });
+    const requests: string[] = [];
+    const client = createDashboardClient({
+      baseUrl: "http://fixture.test",
+      fetchImpl: async (url, init) => {
+        requests.push(url);
+        return app.fetch(new Request(url, init));
+      },
+    });
+    let rerunAction = ActionDescriptorWireSchema.parse({
+      kind: "navigation",
+      navigate: { kind: "rerun", expectedVersion: first.version + 1 },
+      key: "rerun",
+      label: "Rerun",
+      intent: "neutral",
+      placement: ["data"],
+    });
+    const handled: Array<{ action: typeof rerunAction; target: { runId: string; expectedVersion: number } }> = [];
+    const rail = () => createElement(DashboardClientProvider, {
+      client,
+      children: createElement(ToastProvider, { children: createElement(ContextRail, {
+        summary: SUMMARY,
+        sections: dataSections(first.envelope.runId, 1),
+        onClose: () => undefined,
+        dataExpanded: false,
+        onDataExpandedChange: () => undefined,
+        actions: [rerunAction],
+        target: { runId: first.envelope.runId, expectedVersion: first.version },
+        onAction: (action, target) => handled.push({ action, target }),
+      }) }),
+    });
+    window.history.replaceState({}, "", `/?day=2026-09-22&run=${first.envelope.runId}`);
+
+    try {
+      await act(async () => {
+        root.render(rail());
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      const later = Array.from(host.querySelectorAll("a")).find((anchor) => anchor.textContent === "Attempt 2");
+      assert.ok(later, "the attempt-one rail should render its later item retry");
+      assert.equal(requests.length, 1);
+      assert.match(requests[0] ?? "", new RegExp(`/runs/${first.envelope.runId}/attempt-history\\?limit=50$`, "u"));
+      assert.equal(later.getAttribute("href"), `?day=2026-08-03&run=${second.envelope.runId}`);
+      assert.equal(Array.from(host.querySelectorAll("button")).some((button) => button.textContent === "Rerun"), false,
+        "a rerun action projected from another version is not shown");
+      rerunAction = ActionDescriptorWireSchema.parse({
+        ...rerunAction,
+        navigate: { kind: "rerun", expectedVersion: first.version },
+      });
+      await act(async () => { root.render(rail()); });
+      const rerun = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Rerun");
+      assert.ok(rerun);
+      await act(async () => { rerun.click(); });
+      assert.deepEqual(handled, [{
+        action: rerunAction,
+        target: { runId: first.envelope.runId, expectedVersion: first.version },
+      }]);
+    } finally {
+      await act(async () => { root.unmount(); });
+      host.remove();
+      current.dispose();
+      window.history.replaceState({}, "", previousSearch.length === 0 ? "/" : `/${previousSearch}`);
+    }
+  });
+
+  it("opens archives by exact archive route and leaves deleted entries non-openable", async () => {
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    const selectedRunId = "44444444-4444-4444-8444-444444444444";
+    const archivedRunId = "55555555-5555-4555-8555-555555555555";
+    const deletedRunId = "66666666-6666-4666-8666-666666666666";
+    const itemId = uuidOf(5004);
+    const previousSearch = window.location.search;
+    const client = {
+      itemAttemptHistory: async () => historyWire({
+        selectedRunId, itemId, selectedAttempt: 2,
+        entries: [
+          { runId: selectedRunId, attempt: 2 },
+          { runId: archivedRunId, attempt: 1, disposition: "archived" },
+          { runId: deletedRunId, attempt: null, disposition: "deleted" },
+        ],
+      }),
+    } as unknown as DashboardClient;
+    window.history.replaceState({}, "", `/?day=2026-09-22&run=${selectedRunId}`);
+
+    try {
+      await act(async () => {
+        root.render(createElement(DashboardClientProvider, {
+          client,
+          children: createElement(ToastProvider, { children: createElement(ContextRail, {
+            summary: SUMMARY,
+            sections: dataSections(selectedRunId, 2),
+            onClose: () => undefined,
+            dataExpanded: false,
+            onDataExpandedChange: () => undefined,
+          }) }),
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      const archiveLink = Array.from(host.querySelectorAll("a")).find((anchor) => anchor.textContent === "Attempt 1 · archived");
+      assert.ok(archiveLink);
+      assert.equal(archiveLink.getAttribute("href"), `?archive=${archivedRunId}&archiveView=runs`);
+      const deletedLabel = Array.from(host.querySelectorAll("span")).find((span) => span.textContent === "Deleted run");
+      assert.ok(deletedLabel);
+      assert.equal(deletedLabel.closest("a"), null);
+      assert.equal(Array.from(host.querySelectorAll("a")).some((anchor) => anchor.getAttribute("href")?.includes(deletedRunId)), false);
+    } finally {
+      await act(async () => { root.unmount(); });
+      host.remove();
+      window.history.replaceState({}, "", previousSearch.length === 0 ? "/" : `/${previousSearch}`);
+    }
+  });
+
+  it("does not let a late earlier-page response from the old run enter the newly selected run", async () => {
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    const oldRunId = "22222222-2222-4222-8222-222222222222";
+    const newRunId = "33333333-3333-4333-8333-333333333333";
+    const oldItemId = uuidOf(5002);
+    const newItemId = uuidOf(5003);
+    let releaseOldPage: ((response: ItemAttemptHistoryResponse) => void) | undefined;
+    const client = {
+      itemAttemptHistory: (runId: string, options?: { cursor?: string }) => {
+        if (runId === oldRunId && options?.cursor !== undefined) {
+          return new Promise<ItemAttemptHistoryResponse>((resolve) => { releaseOldPage = resolve; });
+        }
+        return Promise.resolve(runId === oldRunId
+          ? historyWire({ selectedRunId: oldRunId, itemId: oldItemId, selectedAttempt: 1,
+            entries: [{ runId: oldRunId, attempt: 1 }], totalEntries: 2, nextCursor: "old-page" })
+          : historyWire({ selectedRunId: newRunId, itemId: newItemId, selectedAttempt: 1,
+            entries: [{ runId: newRunId, attempt: 1 }] }));
+      },
+    } as unknown as DashboardClient;
+    let selectedRunId = oldRunId;
+    const render = () => root.render(createElement(DashboardClientProvider, {
+      client,
+      children: createElement(ToastProvider, { children: createElement(ContextRail, {
+        summary: SUMMARY,
+        sections: dataSections(selectedRunId, 1),
+        onClose: () => undefined,
+        dataExpanded: false,
+        onDataExpandedChange: () => undefined,
+      }) }),
+    }));
+
+    try {
+      await act(async () => {
+        render();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      assert.ok(host.textContent?.includes("Show earlier attempts"));
+      const earlierButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Show earlier attempts");
+      assert.ok(earlierButton);
+      await act(async () => { earlierButton.click(); });
+      assert.ok(releaseOldPage);
+
+      selectedRunId = newRunId;
+      await act(async () => {
+        render();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      const newLink = Array.from(host.querySelectorAll("a")).find((anchor) => anchor.getAttribute("href")?.includes(newRunId));
+      assert.ok(newLink, "the new run's own initial history should be visible");
+      await act(async () => {
+        releaseOldPage?.(historyWire({ selectedRunId: oldRunId, itemId: oldItemId, selectedAttempt: 1,
+          entries: [{ runId: oldRunId, attempt: 7 }], offset: 1, totalEntries: 2 }));
+      });
+      assert.equal(host.textContent?.includes("Attempt 7"), false);
+      assert.ok(Array.from(host.querySelectorAll("a")).some((anchor) => anchor.getAttribute("href")?.includes(newRunId)));
+    } finally {
+      await act(async () => { root.unmount(); });
+      host.remove();
+    }
   });
 });
