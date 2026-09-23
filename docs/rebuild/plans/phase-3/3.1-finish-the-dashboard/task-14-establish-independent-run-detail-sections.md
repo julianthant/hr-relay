@@ -247,9 +247,16 @@ with separately selectable attempts. Its narrow exception also owns the
 item grouping so a matching attempt never hides its sibling attempts, while
 preserving the existing workflow scope, session-batch grouping and keyboard
 order. No other app composition behavior transfers. The accepted Queue
-projector identity and row actions remain shared inputs; any necessary change to them returns to the
-parent before parallel launch. 3.1.14.2 consumes the attempt read and Rerun
-callback in its exclusive Context/Data section. 3.1.14.3 owns any genuine
+projector identity and row actions remain shared inputs; any necessary change
+to them returns to the parent before parallel launch. The shared follow-up may
+add only the optional action/target prop contract in `context-rail.tsx` needed
+to connect its parent-owned detail callback; 3.1.14.2 retains the renderer.
+That child also receives a narrow exception in `src/domain/dashboard/run-detail.ts`
+for the Context/Data editing and entry schemas only, so it can make the source
+rail read-only atomically with its exclusive query and UI changes. The shared
+follow-up must not narrow the active Context/Data schema ahead of that leaf.
+3.1.14.2 consumes the attempt read and Rerun callback in its exclusive
+Context/Data section. 3.1.14.3 owns any genuine
 ordinary worker-note producer seam after tracing current callers. 3.1.14.4
 and 3.1.14.5 retain their exclusive receipt/failure and gate/park paths.
 For 3.1.14.5 only, the approved gate-command outcome also grants a narrow
