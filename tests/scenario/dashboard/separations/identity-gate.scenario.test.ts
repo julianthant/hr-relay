@@ -169,6 +169,7 @@ describe("separations dashboard — the gate command the ceremony composes", () 
     // read it: WHO answered is the kernel's own fact, never the caller's claim.
     const [stored] = parked.world.database.authority.gateResults.listByRun(parked.runId);
     assert.ok(stored);
+    assert.ok("resolvedBy" in stored);
     assert.equal(stored.gateId, GATE_ID);
     assert.equal(stored.resolvedBy, "local-operator");
     assert.deepEqual(stored.result.value, {

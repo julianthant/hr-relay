@@ -1,4 +1,4 @@
-import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Generic node dispatch for the control kinds person-lookup does not use:
  * branch selection and exclusion, gate park/resume over the stored gate
@@ -11,6 +11,8 @@ import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { deriveGateResultCheckpointFingerprint } from "../../src/core/command-kernel.js";
+import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope } from "../../src/core/gate-source-runtime.js";
+import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
 import {
   executeClaimedRun,
   type ChildRunExecutor,
@@ -18,7 +20,9 @@ import {
 } from "../../src/core/run-executor.js";
 import {
   DelegationEdgeIdSchema,
+  GateIdSchema,
   ItemIdSchema,
+  RunIdSchema,
   TraceIdSchema,
   WorkflowIdSchema,
 } from "../../src/domain/ids.js";
@@ -26,6 +30,7 @@ import type { RunRecord } from "../../src/domain/run/record.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import type { GateResultRecord } from "../../src/domain/gates.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -241,6 +246,60 @@ const conditionalGateDescriptor = defineWorkflowDescriptor({
     }),
 });
 
+const SOURCE_EVENT = z.strictObject({ ticket: z.string().min(1), created: z.boolean() });
+const CHILD_TERMINAL_EVENT = z.strictObject({
+  ticket: z.string().min(1),
+  terminal: z.enum(["done", "failed"]),
+  complete: z.boolean(),
+});
+const SOURCE_APPROVAL = z.strictObject({ approved: z.boolean(), note: z.string() });
+const sourceGateFlow = flow(ControlInput)
+  .gate("approval", { dependsOn: [], label: "Approval", resolvedBy: "operator", result: SOURCE_APPROVAL })
+  .gate("ticket-created", {
+    dependsOn: ["approval"],
+    label: "Ticket created",
+    resolvedBy: "external",
+    subscribes: {
+      kind: "external",
+      sourceId: "source-fixture",
+      event: SOURCE_EVENT,
+      correlationKey: "ticket",
+    },
+    result: z.strictObject({ created: z.boolean() }),
+    resolve: (event: z.output<typeof SOURCE_EVENT>) => ({ created: event.created }),
+  })
+  .build({ schema: z.strictObject({ created: z.boolean() }), dependsOn: ["ticket-created"],
+    derive: ({ outputs }) => ({ created: outputs["ticket-created"].created }) });
+const sourceGateDescriptor = defineWorkflowDescriptor({
+  ...descriptorMeta("source-gate-fixture", "sg"),
+  flow: sourceGateFlow,
+});
+const sourceChildRef = {
+  id: WorkflowIdSchema.parse("source-child-fixture"),
+  input: ControlInput,
+  result: z.strictObject({ complete: z.boolean() }),
+};
+const childTerminalGateDescriptor = defineWorkflowDescriptor({
+  ...descriptorMeta("child-terminal-gate-fixture", "ct"),
+  flow: flow(ControlInput)
+    .gate("children-complete", {
+      dependsOn: [],
+      label: "Children complete",
+      resolvedBy: "children-terminal",
+      subscribes: {
+        kind: "workflow",
+        workflow: sourceChildRef,
+        event: CHILD_TERMINAL_EVENT,
+        correlationKey: "ticket",
+        terminal: ["done"],
+      },
+      result: z.strictObject({ complete: z.boolean() }),
+      resolve: (event: z.output<typeof CHILD_TERMINAL_EVENT>) => ({ complete: event.complete }),
+    })
+    .build({ schema: z.strictObject({ complete: z.boolean() }), dependsOn: ["children-complete"],
+      derive: ({ outputs }) => ({ complete: outputs["children-complete"].complete }) }),
+});
+
 describe("conditional operator gates", () => {
   it("records a false declared condition without a gate result or opened gate", async () => {
     const harness = controlHarness(conditionalGateDescriptor);
@@ -292,6 +351,215 @@ describe("conditional operator gates", () => {
     assert.equal(outcome.state, "failed");
     if (outcome.state !== "failed") return;
     assert.match(harness.authority.database.authority.failures.get(outcome.failureId)?.summary ?? "", /inapplicable gate/u);
+  });
+});
+
+describe("registered source gate settlement", () => {
+  it("fails loudly when a non-operator gate has no registered provider", async () => {
+    const harness = controlHarness(childTerminalGateDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(controlQueuedRun(childTerminalGateDescriptor, "left"));
+    const outcome = await executeClaimedRun(harness.deps, {
+      ...claim(database, childTerminalGateDescriptor),
+      signal: SIGNAL,
+    });
+    assert.equal(outcome.state, "failed");
+    if (outcome.state !== "failed") return;
+    assert.match(database.authority.failures.get(outcome.failureId)?.summary ?? "", /registered source runtime is unavailable/u);
+    assert.notEqual(database.authority.runs.get(RUN_ID)?.lifecycle.state, "parked-gate");
+    assert.deepEqual(database.authority.gateResults.listByRun(RUN_ID), []);
+  });
+
+  it("settles a declared children-terminal event only for its retained terminal set", async () => {
+    const harness = controlHarness(childTerminalGateDescriptor);
+    const { database, clock } = harness.authority;
+    database.authority.runs.enqueue(controlQueuedRun(childTerminalGateDescriptor, "left"));
+    let deliver: (event: GateSourceEnvelope) => Promise<GateSourceDelivery> = async () => ({
+      state: "refused", reason: "source port has not started",
+    });
+    const port = {
+      kind: "workflow" as const,
+      sourceId: String(sourceChildRef.id),
+      bindCorrelation: ({ canonicalInput }: { canonicalInput: unknown }) =>
+        (canonicalInput as { readonly name: string }).name,
+      subscribe: async (next: (event: GateSourceEnvelope) => Promise<GateSourceDelivery>) => {
+        deliver = next;
+        return (): void => undefined;
+      },
+    };
+    const runtime = createGateSourceRuntime({
+      database,
+      lifecycle: testRunService(database, clock),
+      descriptors: { resolve: (workflowId) => workflowId === childTerminalGateDescriptor.id
+        ? childTerminalGateDescriptor
+        : undefined },
+      ports: [port],
+      clock,
+    });
+    const stop = await runtime.start(SIGNAL);
+    try {
+      const parked = await executeClaimedRun({ ...harness.deps, gateSources: runtime }, {
+        ...claim(database, childTerminalGateDescriptor),
+        signal: SIGNAL,
+      });
+      assert.deepEqual(parked, { state: "parked-gate", runId: RUN_ID, gateId: "children-complete" });
+      const parkedRun = database.authority.runs.get(RUN_ID);
+      assert.ok(parkedRun?.lifecycle.state === "parked-gate");
+      if (parkedRun?.lifecycle.state !== "parked-gate") return;
+      const event: GateSourceEnvelope = {
+        eventId: UUID_7,
+        runId: RunIdSchema.parse(RUN_ID),
+        attempt: parkedRun.envelope.attempt,
+        gateId: GateIdSchema.parse("children-complete"),
+        expectedVersion: parkedRun.version,
+        event: { ticket: "Battistessa, Johnnie", terminal: "failed", complete: false },
+      };
+      assert.equal((await deliver(event)).state, "refused");
+      assert.deepEqual(database.authority.gateResults.listByRun(RUN_ID), []);
+      assert.equal((await deliver({ ...event, event: { ticket: "Battistessa, Johnnie", terminal: "done", complete: true } })).state, "settled");
+      const [stored] = database.authority.gateResults.listByRun(RUN_ID);
+      assert.ok(stored && "source" in stored);
+      if (stored && "source" in stored) {
+        assert.equal(stored.source.kind, "workflow");
+        assert.equal(stored.source.sourceId, String(sourceChildRef.id));
+        assert.deepEqual(stored.result.value, { complete: true });
+      }
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    } finally {
+      await stop();
+    }
+  });
+
+  it("binds retained input correlation, refuses invalid events, and replays one typed source result", async () => {
+    const harness = controlHarness(sourceGateDescriptor);
+    const { database, clock } = harness.authority;
+    database.authority.runs.enqueue(controlQueuedRun(sourceGateDescriptor, "left"));
+    const operatorResult = { schemaHash: deriveSchemaHash(SOURCE_APPROVAL, "output"),
+      value: { approved: true, note: "synthetic approval" } };
+    assert.equal(database.authority.gateResults.insert({
+      runId: RUN_ID,
+      gateId: "approval",
+      commandId: UUID_7,
+      expectedVersion: 1,
+      resolvedBy: "local-operator",
+      resolvedAt: clock.now().toISOString(),
+      checkpointFingerprint: deriveGateResultCheckpointFingerprint(operatorResult),
+      result: operatorResult,
+    }).state, "inserted");
+
+    let deliver: (event: GateSourceEnvelope) => Promise<GateSourceDelivery> = async () => ({
+      state: "refused", reason: "source port has not started",
+    });
+    const port = {
+      kind: "external" as const,
+      sourceId: "source-fixture",
+      bindCorrelation: ({ canonicalInput }: { canonicalInput: unknown }) =>
+        (canonicalInput as { readonly name: string }).name,
+      subscribe: async (next: (event: GateSourceEnvelope) => Promise<GateSourceDelivery>) => {
+        deliver = next;
+        return (): void => undefined;
+      },
+    };
+    const service = testRunService(database, clock);
+    const runtime = createGateSourceRuntime({
+      database,
+      lifecycle: service,
+      descriptors: { resolve: (workflowId) => workflowId === sourceGateDescriptor.id ? sourceGateDescriptor : undefined },
+      ports: [port],
+      clock,
+    });
+    const stop = await runtime.start(SIGNAL);
+    try {
+      const parked = await executeClaimedRun({ ...harness.deps, gateSources: runtime }, {
+        ...claim(database, sourceGateDescriptor),
+        signal: SIGNAL,
+      });
+      assert.deepEqual(parked, { state: "parked-gate", runId: RUN_ID, gateId: "ticket-created" });
+      const parkedRun = database.authority.runs.get(RUN_ID);
+      assert.ok(parkedRun?.lifecycle.state === "parked-gate");
+      if (parkedRun?.lifecycle.state !== "parked-gate") return;
+      assert.ok(parkedRun.lifecycle.sourceBinding);
+      assert.equal(parkedRun.lifecycle.sourceBinding.correlationKey, "ticket");
+
+      const event: GateSourceEnvelope = {
+        eventId: UUID_7,
+        runId: RunIdSchema.parse(RUN_ID),
+        attempt: parkedRun.envelope.attempt,
+        gateId: GateIdSchema.parse("ticket-created"),
+        expectedVersion: parkedRun.version,
+        event: { ticket: "Battistessa, Johnnie", created: true },
+      };
+      const invalid: GateSourceEnvelope[] = [
+        { ...event, event: { ticket: "different", created: true } },
+        { ...event, attempt: event.attempt + 1 as GateSourceEnvelope["attempt"] },
+        { ...event, expectedVersion: event.expectedVersion - 1 as GateSourceEnvelope["expectedVersion"] },
+        { ...event, gateId: "approval" as GateSourceEnvelope["gateId"] },
+        { ...event, runId: RunIdSchema.parse("00000000-0000-4000-8000-000000000099") },
+        { ...event, event: { ticket: 42, created: true } },
+      ];
+      for (const candidate of invalid) {
+        assert.equal((await deliver(candidate)).state, "refused");
+      }
+      assert.equal((await deliver({ ...event, attempt: 0 } as unknown as GateSourceEnvelope)).state, "refused");
+      let wrongSourceDeliver: (event: GateSourceEnvelope) => Promise<GateSourceDelivery> = async () => ({
+        state: "refused", reason: "source port has not started",
+      });
+      const wrongSourceRuntime = createGateSourceRuntime({
+        database,
+        lifecycle: service,
+        descriptors: { resolve: (workflowId) => workflowId === sourceGateDescriptor.id ? sourceGateDescriptor : undefined },
+        ports: [{ ...port, sourceId: "wrong-source", subscribe: async (next: typeof deliver) => {
+          wrongSourceDeliver = next;
+          return (): void => undefined;
+        } }],
+        clock,
+      });
+      const stopWrongSource = await wrongSourceRuntime.start(SIGNAL);
+      try {
+        assert.equal((await wrongSourceDeliver(event)).state, "refused");
+      } finally {
+        await stopWrongSource();
+      }
+      const sourceGateRows = (): readonly GateResultRecord[] => database.authority.gateResults.listByRun(RUN_ID)
+        .filter((record) => "source" in record);
+      const resolutions = (): number => readTimelineRecords(database.authority.timelineEvents, 0, RUN_ID).records
+        .filter((record) => record.payload.kind === "span" && record.payload.event.t === "gate.resolved").length;
+      assert.equal(sourceGateRows().length, 0);
+      assert.equal(resolutions(), 0);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "parked-gate");
+
+      const applied = await deliver(event);
+      assert.equal(applied.state, "settled");
+      const [stored] = sourceGateRows();
+      assert.ok(stored && "source" in stored);
+      if (!stored || !("source" in stored)) return;
+      assert.equal(stored.source.sourceId, "source-fixture");
+      assert.equal(stored.source.eventId, UUID_7);
+      assert.deepEqual(stored.result.value, { created: true });
+      assert.equal("resolvedBy" in stored, false);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      assert.equal(resolutions(), 1);
+
+      assert.equal((await deliver(event)).state, "replayed");
+      const restarted = createGateSourceRuntime({
+        database,
+        lifecycle: service,
+        descriptors: { resolve: (workflowId) => workflowId === sourceGateDescriptor.id ? sourceGateDescriptor : undefined },
+        ports: [port],
+        clock,
+      });
+      const stopRestarted = await restarted.start(SIGNAL);
+      try {
+        assert.equal((await deliver(event)).state, "replayed");
+      } finally {
+        await stopRestarted();
+      }
+      assert.equal((await deliver({ ...event, event: { ticket: "Battistessa, Johnnie", created: false } })).state, "refused");
+      assert.equal(sourceGateRows().length, 1);
+      assert.equal(resolutions(), 1);
+    } finally {
+      await stop();
+    }
   });
 });
 

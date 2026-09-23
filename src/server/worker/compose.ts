@@ -69,6 +69,7 @@ import {
 import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
+import { createGateSourceRuntime, type GateSourcePort } from "../../core/gate-source-runtime.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
@@ -225,6 +226,8 @@ export interface WorkerComposeInput {
   /** Test-only observation/crash hooks for the settings exclusion boundary. */
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
+  /** Registered non-operator gate sources; production workflows without a provider fail at the gate. */
+  readonly gateSourcePorts?: readonly GateSourcePort[];
   /**
    * Test seam over the Duo ceremony lease gate factory (D267); production
    * omits it and resolves the credential identity at boot. The seam exists
@@ -454,9 +457,17 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   }
 
   const protectedSecrets = createCredentialSecretSource(protectedAuthority);
-  const lifecycle = workerRunLifecyclePort(new RunRecordService({ database, clock, ids,
+  const runRecordService = new RunRecordService({ database, clock, ids,
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
-  }));
+  });
+  const lifecycle = workerRunLifecyclePort(runRecordService);
+  const gateSources = createGateSourceRuntime({
+    database,
+    lifecycle: runRecordService,
+    descriptors: { resolve: id => SERVER_REGISTRY[id]?.descriptor },
+    ports: input.gateSourcePorts ?? [],
+    clock,
+  });
   const runtimePreflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: input.isolation,
     descriptors: { resolve: id => SERVER_REGISTRY[id]?.descriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
@@ -688,7 +699,9 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       return lease.control.directive;
     };
     let report: WorkerLoopReport;
+    let stopGateSources: () => Promise<void> = async () => undefined;
     try {
+      stopGateSources = await gateSources.start(stopController.signal);
       report = await runWorkerLoop({
         workflowId,
         workerId,
@@ -696,6 +709,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stores: taskStoreRegistry,
         authority: database,
         lifecycle,
+        gateSources,
         sessionFactory: baselineResources.sessionFactory,
         emitter,
         clock,
@@ -754,10 +768,12 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         browserScreenshotCapture,
       });
     } catch (loopError) {
+      await stopGateSources();
       maintenance.stop();
       settleLease(database, clock, workerId, leaseGeneration, "crashed", loopError, log);
       throw loopError;
     }
+    await stopGateSources();
     maintenance.stop();
     const background = maintenance.failure();
     if (background !== undefined) {

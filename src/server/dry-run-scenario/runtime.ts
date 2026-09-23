@@ -546,11 +546,14 @@ export function createProductionDryRunScenarioRuntime(
               ...(checkpoint.claimGeneration === undefined ? [] : ["claimGeneration"]),
             ],
           }));
-        const gateResults = database.authority.gateResults.listByRun(runId).map((gate) => ({
-          gate: gate.gateId,
-          decision: IdentityApprovalResultSchema.parse(gate.result.value).decision,
-          resolvedBy: gate.resolvedBy,
-        }));
+        const gateResults = database.authority.gateResults.listByRun(runId).map((gate) => {
+          if (!("resolvedBy" in gate)) throw new Error(`dry-run ${runId} contains a source-settled gate`);
+          return {
+            gate: gate.gateId,
+            decision: IdentityApprovalResultSchema.parse(gate.result.value).decision,
+            resolvedBy: gate.resolvedBy,
+          };
+        });
         const receipt = createReceiptService({ database, descriptors: DESCRIPTORS, runReader }).ensureReceipt(runId);
         const failure = run.lifecycle.failureId === undefined
           ? undefined

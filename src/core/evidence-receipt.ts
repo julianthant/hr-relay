@@ -1339,6 +1339,36 @@ interface GateEvidenceInput {
  */
 function emitGateEvidence(input: GateEvidenceInput): void {
   const { stored, nodeId, entryId, evidence } = input;
+  if ("source" in stored) {
+    const factId = entryId("observation", `${nodeId}.sourceEvent`);
+    input.observations.push({
+      id: factId,
+      field: "sourceEvent",
+      mandatory: input.mandatory,
+      source: {
+        kind: "gate-source-event",
+        gateId: stored.gateId,
+        sourceKind: stored.source.kind,
+        sourceId: stored.source.sourceId,
+        eventId: stored.source.eventId,
+        eventDigest: stored.source.eventDigest,
+        correlationDigest: stored.source.correlationDigest,
+        attempt: stored.source.attempt,
+        resolvedAt: stored.resolvedAt,
+      },
+      state: "unresolved",
+      reason: `source ${stored.source.sourceId} event ${stored.source.eventId} settled gate "${nodeId}"; `
+        + "the source event is not a human decision, and this build has no declared semantic interpretation",
+    });
+    input.verification.push({
+      id: input.verificationId,
+      obligation: `node.${nodeId}`,
+      mandatory: input.mandatory,
+      verdict: "unknown",
+      evidence: [evidenceEntryRef(factId)],
+    });
+    return;
+  }
   const declaration = gateDecisionFor(input.workflowId, nodeId);
   const scope: EvidenceValueScope = {
     kind: "gate-result",

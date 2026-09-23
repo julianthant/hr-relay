@@ -102,6 +102,17 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     parkedAt: IsoInstantSchema,
     /** The node execution resumes at once the gate resolves (ref workflow-model §4). */
     resumeAt: NodeIdSchema,
+    /** A source subscription is bound to retained run authority at the park boundary. */
+    sourceBinding: z.strictObject({
+      kind: z.enum(["workflow", "external"]),
+      sourceId: z.string().min(1),
+      correlationKey: z.string().min(1),
+      correlationDigest: FingerprintSchema,
+      eventSchemaHash: FingerprintSchema,
+      resultSchemaHash: FingerprintSchema,
+      attempt: PositiveIntSchema,
+      parkedVersion: PositiveIntSchema,
+    }).optional(),
   }),
   z.strictObject({
     state: z.literal("parked-write"),

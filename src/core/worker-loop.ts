@@ -48,6 +48,7 @@ import type {
 import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../base/diagnostics.js";
+import type { GateSourceRuntime } from "./gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   executeClaimedRun,
@@ -139,6 +140,7 @@ export interface WorkerLoopDependencies {
    */
   readonly writeSequencerFor?: (sessions: WorkerSessionManager, taskDeadlineMs:number) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
+  readonly gateSources?: GateSourceRuntime;
   /** Ref operator-trust §2.2's automatic bundle capture; absent means no bundle is minted. */
   readonly diagnostics?: RunDiagnosticCapture;
   /** Explicit per-run screenshot persistence, executed while a lease owns its page. */
@@ -406,6 +408,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
               : { canonicalInputMigrations: deps.canonicalInputMigrations }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
+            ...(deps.gateSources === undefined ? {} : { gateSources: deps.gateSources }),
             ...(deps.diagnostics === undefined ? {} : { diagnostics: deps.diagnostics }),
             ...(providers === undefined ? {} : { providers }),
             ...(deps.artifacts === undefined ? {} : { artifacts: deps.artifacts }),
