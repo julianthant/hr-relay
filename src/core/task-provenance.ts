@@ -227,7 +227,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
      */
     ...evidence.gateResults.map((gate) => FactProvenanceSchema.parse({
       path: "gateResult",
-      source: "operator",
+      source: "source" in gate ? "live" : "operator",
       observedAt: gate.resolvedAt,
       originalObservedAt: gate.resolvedAt,
     })),

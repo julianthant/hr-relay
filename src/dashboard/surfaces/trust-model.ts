@@ -236,6 +236,8 @@ export function evidenceSourceMeta(source: EvidenceSourceWire): string {
     // the `gate_results` row, not a claim in the gate's payload.
     case "gate-result":
       return `gate ${source.gateId} · by ${source.resolvedBy} · ${fmtClock(source.resolvedAt)}`;
+    case "gate-source-event":
+      return `gate ${source.gateId} · source ${source.sourceId} · event ${source.eventId} · ${fmtClock(source.resolvedAt)}`;
     case "operator-correction":
       return `operator correction · supersedes ${source.supersedes}`;
     case "derived":

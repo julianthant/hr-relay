@@ -1,7 +1,7 @@
 # run-failed--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
   - button "Settings"
@@ -126,14 +127,14 @@
       - text: EID 10555001
       - button "What is this row? — Run Panel"
       - text: "Failed 9:33 AM #1 pl-090404-0004 6m 0s"
-      - button "Resume from checkpoints"
+      - button "Rerun"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10555001
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015
       - button "What is this row? — Run Panel"
       - text: "3 Done 9:24 AM #1 pl-090808-0008 5m 0s"
-      - button "Resume from checkpoints"
+      - button "Rerun"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10333015
     - button "Separation audit — August — done with warnings":
@@ -181,14 +182,14 @@
       - text: person lookup
       - button "Expand"
       - text: "9:10 AM #1 pl-091010-0070 2m 0s"
-      - button "Resume from checkpoints"
+      - button "Rerun"
       - button "Delete group"
       - text: Right-click or press m for every command on Separation audit — August
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
       - text: "Done 9:35 AM #1 pl-090303-0003 5m 0s"
-      - button "Resume from checkpoints"
+      - button "Rerun"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10001573
     - button "Onboarding cohort — July stragglers — done":
@@ -233,14 +234,13 @@
       - text: person lookup
       - button "Expand"
       - text: "9:05 AM #1 pl-095050-0050 2m 0s"
-      - button "Resume from checkpoints"
+      - button "Rerun"
       - button "Delete group"
       - text: Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What is this row? — Run Panel"
       - text: "Cancelled 9:26 AM #1 pl-090707-0007 4m 0s"
-      - button "Resume from checkpoints"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10222009
   - region "Run shape":
@@ -280,7 +280,7 @@
         - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written"
       - 'listitem "9:36 AM: error note: Run failed at cross-verify; nothing was written"': 9:36 AM Run failed at cross-verify; nothing was written
     - searchbox "Search logs"
-    - text: 71b1674f
+    - text: 67c72bc1
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

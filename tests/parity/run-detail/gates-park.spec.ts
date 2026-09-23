@@ -1,47 +1,21 @@
 import { expect,test } from "@playwright/test";
-import { gotoAppState } from "./helpers/app-driver.js";
-import {
-PARITY_THEMES,
-assertThemeApplied,
-captureParityPair,
-installTheme,
-type ParityTheme
-} from "./helpers/capture.js";
-import { FIXTURE_IDENTITY_GATE } from "./helpers/fixture-detail.js";
-import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
-import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
-import { ANCHORS,SCENES } from "./helpers/reference-detail-scenes.js";
-import { REFERENCES,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
-import { registerReferenceScenes } from "./helpers/reference-scenes.js";
-import { SEEDED_APP_VERSION,SEEDED_DAY } from "./helpers/seeded-identity.js";
-const servers = registerReferenceServers(["server","seeded"]);
-registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
+import { gotoAppState } from "../helpers/app-driver.js";
+import { PARITY_THEMES,assertThemeApplied,captureParityPair,installTheme } from "../helpers/capture.js";
+import { FIXTURE_IDENTITY_GATE } from "../helpers/run-detail/gates-park.js";
+import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "../helpers/fixture-identity.js";
+import { FIXTURE_IDS } from "../helpers/fixture-queue.js";
+import { REFERENCES,failOnPageErrors } from "../helpers/reference-harness.js";
+import { GATES_PARK_SCENES } from "../helpers/run-detail/gates-park-scenes.js";
+import { referenceSceneGroups,registerRunDetailServer } from "./shared.js";
 
+const servers = registerRunDetailServer();
 
-/**
- * THE TWO TYPED RESOLUTIONS, OPEN (W2, ref write-safety §4.1).
- *
- * The `run-parked-write` reference above photographs the record; the copy that
- * decides a real HR write lives one click further in, in the confirm block the
- * SERVER authored. A dialog nobody photographs is a dialog whose wording is
- * reviewed once, by whoever wrote it.
- *
- * Both arms, because they are not two skins of one screen. `absent` carries the
- * evidence note the kernel requires; `present` carries that note AND the typed
- * PROOF FORM the section's `proofContract` describes — one control per
- * operator-supplied leaf of the commit contract's own completion proof schema,
- * with the literals the schema pins shown as chips rather than offered as
- * boxes (D245).
- *
- * **These two references were re-photographed for D245 and the change is the
- * point.** Until then the `present` arm was a REFUSAL — the wire served no
- * proof schema identity, so the surface offered the control disabled with its
- * reason — and the corpus was recording a defect rather than catching one
- * (D187's lesson, from the side where the defect finally got fixed).
- *
- * One viewport and one theme apiece: these are about the copy and the controls,
- * which are the same pixels at every width.
- */
+for (const group of referenceSceneGroups(Object.values(GATES_PARK_SCENES), () => servers.server.baseUrl)) {
+  test.describe(group.title, () => {
+    for (const scene of group.tests) test(scene.title, scene.run);
+  });
+}
+
 test.describe("park resolutions", () => {
   const ARMS: readonly { variant: string; label: string }[] = [
     { variant: "resolve-absent", label: "I confirmed it is NOT there" },
@@ -231,51 +205,4 @@ test.describe("identity gate ceremonies", () => {
       variant: "gate-refused",
     });
   });
-});
-
-
-/**
- * The populated receipt, from adapter #2 over a real authority database (2j).
- *
- * One viewport, both themes: the point is the receipt BODY — input,
- * observations, decisions, actions, verification, output, reuse, warnings, in
- * the schema's narrative order — and photographing it at three widths would
- * only add pixels to review. Its `missing` twin stays in the fixture corpus,
- * because "no authority rows" is a real state the panel must also render.
- */
-test.describe("populated receipt (adapter #2)", () => {
-  for (const theme of PARITY_THEMES) {
-    test(`run-receipt-populated @ ${theme.name}`, async ({ page }) => {
-      const errors = failOnPageErrors(page);
-      await page.setViewportSize({ width: 1440, height: 900 });
-      await installTheme(page, theme satisfies ParityTheme);
-      await gotoAppState(page, servers.seeded.baseUrl, {
-        day: SEEDED_DAY,
-        run: servers.seeded.runIds["doneRun"] ?? "",
-        section: "receipt",
-      });
-      // The floating workflow window opens over the queue's left column. The
-      // takeover dismissal clicks at y=100, which on THIS layout is the status
-      // filter row — it would change the queue's filter and reset the panel's
-      // open section. The empty gutter between the queue and the panel is the
-      // only inert target at this viewport.
-      await page.mouse.click(500, 500);
-      await page.waitForTimeout(120);
-      await assertThemeApplied(page, theme satisfies ParityTheme);
-      await page.waitForTimeout(120);
-      expect(errors, "page errors while rendering the populated receipt").toEqual([]);
-
-      await captureParityPair(page, REFERENCES, {
-        stateId: "run-receipt-populated",
-        viewport: "1440x900",
-        theme: theme.name,
-        adapter: "seeded",
-        fixtureId: "seeded-done-run",
-        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-        appVersion: SEEDED_APP_VERSION,
-        capturedAt: SEEDED_DAY,
-        variant: "default",
-      });
-    });
-  }
 });

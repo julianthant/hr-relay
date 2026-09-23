@@ -67,6 +67,7 @@ import {
   type CommandResult,
 } from "../domain/commands.js";
 import { deriveItemId, type IdFactory } from "../domain/identifiers.js";
+import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../domain/gates.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,
@@ -90,7 +91,7 @@ import { deepFreeze } from "../domain/immutability.js";
 import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { isLiveWorker } from "../domain/run/worker.js";
 import { workerPoolVersion } from "../domain/run/worker-pool.js";
-import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
+import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
@@ -524,11 +525,7 @@ function applied(
 }
 
 export function deriveGateResultCheckpointFingerprint(result: unknown): string {
-  const parsed = SchemaBoundCanonicalValueSchema.parse(result);
-  return FingerprintSchema.parse(createHash("sha256")
-    .update("hrauto:gate-result-checkpoint:v1\0")
-    .update(canonicalJsonStringify(parsed))
-    .digest("hex"));
+  return deriveGateFingerprint(result);
 }
 
 function resolveDescriptorOrReject(
@@ -1870,6 +1867,13 @@ function executeResolveGate(
     throw new Error(
       `run ${request.target.runId} is parked on gate ${request.target.gateId}, which ${descriptor.id} does not declare; `
       + "the stored park is inconsistent with the descriptor",
+    );
+  }
+  if (node.resolvedBy !== "operator") {
+    reject(
+      request,
+      "invalid-state",
+      `gate ${request.target.gateId} is resolved by ${node.resolvedBy}; only its registered source may settle it`,
     );
   }
   const expectedSchemaHash = deriveSchemaHash(node.result, "output");

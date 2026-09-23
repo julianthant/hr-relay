@@ -4,6 +4,7 @@ import { timelineCheckpointReference } from "../events/timeline.js";
 import { localDatePart } from "../domain/clock.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
+import type { GateSourceRuntime } from "./gate-source-runtime.js";
 /**
  * The Phase-1f graph interpreter (ref workflow-model §§4–5; ref execution-and-sessions §3): a worker claims a
  * queued run and walks the descriptor's node tuple to a terminal state.
@@ -303,6 +304,8 @@ export interface RunExecutorDependencies {
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
+  /** Registered workflow/external source ports for non-operator gates. */
+  readonly gateSources?: GateSourceRuntime;
   /** Ref operator-trust §2.2. Absent means no automatic bundle, never a silent empty one. */
   readonly diagnostics?: RunDiagnosticCapture;
   /**
@@ -1663,17 +1666,39 @@ export async function executeClaimedRun(
             continue;
           }
           transitionTo(runningLifecycle(node.id));
+          let sourceBinding: unknown;
+          if (node.resolvedBy !== "operator") {
+            if (deps.gateSources === undefined || canonicalInput === undefined) {
+              return await failNode(node, undefined, new Error(
+                `gate "${node.id}" is resolved by ${node.resolvedBy}, but its registered source runtime is unavailable`,
+              ));
+            }
+            try {
+              const current = getRun();
+              sourceBinding = deps.gateSources.bind(node, {
+                run: current,
+                canonicalInput,
+                dependencyOutputs: scopeFor(node.dependsOn).outputs,
+                parkedVersion: current.version + 1,
+              });
+            } catch (error) {
+              return await failNode(node, undefined, error instanceof Error
+                ? error
+                : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
+            }
+          }
           // §4 park: the checkpoint barrier is already durable (each output
           // was checkpointed at production), then gate.opened, then session
           // release, then the parked state. A parked run owns no browser.
           await deps.sessions.closeAll("parked");
           const resumeAt = nodes[index + 1]?.id ?? node.id;
-          transitionTo({
+          transitionTo(RunLifecycleSchema.parse({
             state: "parked-gate",
             gateId: GateIdSchema.parse(String(node.id)),
             parkedAt: instant(),
             resumeAt,
-          });
+            ...(sourceBinding === undefined ? {} : { sourceBinding }),
+          }));
           return RunExecutionOutcomeSchema.parse({ state: "parked-gate", runId, gateId: String(node.id) });
         }
         case "transaction": {

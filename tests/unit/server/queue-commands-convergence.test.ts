@@ -238,8 +238,8 @@ describe("P4 · Stream convergence: authoritative snapshots across create, delet
     // Client reconnects with cursorBeforeDelete
     const resumed = await hub.connect({
       day: DAY,
-      cursor: cursorBeforeDelete,
-      generation: w.projection.generation(),
+      lastEventId: cursorBeforeDelete,
+      lastProjectionGeneration: w.projection.generation(),
     });
 
     // Because a snapshot occurred in the retained window, the hub delivers a fresh snapshot
@@ -253,7 +253,7 @@ describe("P4 · Stream convergence: authoritative snapshots across create, delet
     resumed.close();
   });
 
-  it("delivers fresh snapshot when reconnecting with duplicate or expired cursor", async () => {
+  it("snapshots an expired cursor and avoids resnapshotting at the current cursor", async () => {
     const { w, hub } = harness({ retention: 4 });
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -269,23 +269,22 @@ describe("P4 · Stream convergence: authoritative snapshots across create, delet
     // Reconnecting with expired cursor gets fresh snapshot
     const expiredResume = await hub.connect({
       day: DAY,
-      cursor,
-      generation: w.projection.generation(),
+      lastEventId: cursor,
+      lastProjectionGeneration: w.projection.generation(),
     });
     const [hello, snapshot] = expiredResume.initial;
     assert.equal(hello.type, "hello");
     assert.equal(snapshot.type, "snapshot");
     expiredResume.close();
 
-    // Reconnecting with duplicate / exact current cursor also delivers fresh snapshot
+    // An exact current cursor with matching generation already names current authority.
     const currentCursor = w.projection.cursor();
     const currentResume = await hub.connect({
       day: DAY,
-      cursor: currentCursor,
-      generation: w.projection.generation(),
+      lastEventId: currentCursor,
+      lastProjectionGeneration: w.projection.generation(),
     });
-    assert.equal(currentResume.initial[0]?.type, "hello");
-    assert.equal(currentResume.initial[1]?.type, "snapshot");
+    assert.deepEqual(currentResume.initial.map(({ type }) => type), ["hello", "health"]);
     currentResume.close();
   });
 

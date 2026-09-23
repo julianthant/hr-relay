@@ -5,14 +5,14 @@ import { SettingsFactsWireSchema } from "../../src/domain/dashboard/settings.js"
 import { EditableSettingsWireSchema } from "../../src/domain/dashboard/settings-editor.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
-import { ActorIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
+import { ActorIdSchema, GateIdSchema, RunIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
 import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
 import { createCredentialSecretSource, readSettings } from "../../src/server/settings-runtime.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { testRunService } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
  * The Phase-1f worker composition (`src/server/worker/compose.ts`) and the
@@ -30,10 +30,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS, personLookupModule } from "../../src/control/workflow-registry.js";
 import { createCommandKernel, executeSettingsCommand, type CommandKernel } from "../../src/core/command-kernel.js";
-import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from "../../src/core/worker-loop.js";
+import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId, runWorkerLoop } from "../../src/core/worker-loop.js";
+import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../src/core/gate-source-runtime.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import {
@@ -42,11 +44,17 @@ import {
   initialSettingsFileRecord,
   derivePersistedSettingsFingerprint,
 } from "../../src/domain/config/settings.js";
-import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
+import { PositiveIntSchema, WorkflowIdSchema, WorkerIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { flow } from "../../src/base/flow.js";
+import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createCredentialStore } from "../../src/infra/config/credential-store.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
@@ -67,8 +75,9 @@ import {
   sessionFactoryHarness,
   type SessionFactoryHarness,
 } from "../helpers/phase1f-executor-harness.js";
-import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID, QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
+import { happySessionHarness as sourceSessionHarness, ManualScheduler, recordingLogger, recordingTimelineEmitter } from "../helpers/phase1f-executor-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { settingsSetOperations } from "./fixtures/settings-operation-fixtures.js";
@@ -254,6 +263,136 @@ function journalWorkerSettings(
   assert.equal(result.state, "applied");
 }
 
+describe("worker-loop source gate composition", () => {
+  for (const mode of ["external", "children-terminal"] as const) {
+    it(`parks and source-settles a ${mode} descriptor through the production worker loop`, async () => {
+      const { stateRoot } = repoRootWithState();
+      const clock = manualClock(new Date(NOW));
+      const database = reopen(stateRoot, clock);
+      const descriptor = sourceGateDescriptor(mode);
+      const workerPorts = testWorkerPorts(database, clock);
+      database.authority.runs.enqueue(RunRecordSchema.parse(sourceGateQueuedRun(descriptor)));
+
+      const sourceKind = mode === "external" ? "external" : "workflow";
+      const sourceId = mode === "external" ? "source-ticket-system" : String(SOURCE_CHILD.id);
+      let dispatch: ((event: GateSourceEnvelope) => Promise<GateSourceDelivery>) | undefined;
+      const source: GateSourcePort = {
+        kind: sourceKind,
+        sourceId,
+        bindCorrelation: ({ canonicalInput }) =>
+          (canonicalInput as Readonly<{ ticket: string }>).ticket,
+        subscribe: async (deliver, _signal) => {
+          dispatch = deliver;
+          return (): void => undefined;
+        },
+      };
+      const sourceRuntime = createGateSourceRuntime({
+        database,
+        lifecycle: testRunService(database, clock),
+        descriptors: { resolve: (id) => id === WORKFLOW_ID ? descriptor : undefined },
+        ports: [source],
+        clock,
+      });
+      const stopController = new AbortController();
+      const stopSource = await sourceRuntime.start(stopController.signal);
+      const sessions = sourceSessionHarness();
+      const spans = recordingTimelineEmitter(database, clock);
+      const workerPromise = runWorkerLoop({
+        workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
+        workerId: WorkerIdSchema.parse("source-gate-worker-1"),
+        descriptor,
+        stores: taskStoreRegistry,
+        authority: database,
+        lifecycle: workerPorts.lifecycle,
+        gateSources: sourceRuntime,
+        sessionFactory: sessions.factory,
+        emitter: spans.emitter,
+        clock,
+        ids: sequentialIdFactory("d"),
+        scheduler: new ManualScheduler(clock),
+        taskDeadlineMs: 60_000,
+        sessionAcquireMs: 15_000,
+        duoCeremony: fixtureDuoCeremonyGates(clock),
+        heartbeatIntervalMs: 60_000,
+        idleRepollMs: 60_000,
+        log: recordingLogger().log,
+        stopSignal: stopController.signal,
+        exitWhenIdle: false,
+        claimNext: workerPorts.claimNext,
+      });
+      void workerPromise.catch(() => undefined);
+
+      try {
+        let parked = database.authority.runs.get(RUN_ID);
+        const deadline = Date.now() + 5_000;
+        while (parked?.lifecycle.state !== "parked-gate" && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          parked = database.authority.runs.get(RUN_ID);
+        }
+        assert.ok(parked?.lifecycle.state === "parked-gate", "worker loop did not commit the source gate park");
+        assert.ok(dispatch !== undefined, "the source port was not registered with the runtime");
+        const event: GateSourceEnvelope = {
+          eventId: UUID_7,
+          runId: RunIdSchema.parse(RUN_ID),
+          attempt: parked.envelope.attempt,
+          gateId: GateIdSchema.parse("source-result"),
+          expectedVersion: PositiveIntSchema.parse(parked.version),
+          event: {
+            ticket: "synthetic-ticket-10873698",
+            complete: true,
+            ...(mode === "children-terminal" ? { terminal: "done" } : {}),
+          },
+        };
+        assert.deepEqual(await dispatch(event), {
+          state: "settled",
+          result: {
+            schemaHash: deriveSchemaHash(SOURCE_GATE_RESULT, "output"),
+            value: { complete: true },
+          },
+        });
+        stopController.abort(new Error("source settlement proof complete"));
+
+        const report = await workerPromise;
+        assert.deepEqual(report.outcomes.map(({ state }) => state), ["parked-gate"]);
+        assert.equal(report.stopped, "stop-signal");
+        const settledRun = database.authority.runs.get(RUN_ID);
+        assert.ok(settledRun?.lifecycle.state === "queued", "the exact parked run was not requeued");
+        assert.equal(settledRun.version, parked.version + 1);
+
+        const results = database.authority.gateResults.listByRun(RUN_ID);
+        assert.equal(results.length, 1);
+        const [stored] = results;
+        assert.ok(stored !== undefined && "source" in stored);
+        if (stored !== undefined && "source" in stored) {
+          assert.deepEqual(stored.source, {
+            kind: sourceKind,
+            sourceId,
+            eventId: UUID_7,
+            eventDigest: sha256Hex(canonicalJsonStringify(event.event)),
+            correlationKey: "ticket",
+            correlationDigest: sha256Hex(canonicalJsonStringify("synthetic-ticket-10873698")),
+            attempt: parked.envelope.attempt,
+          });
+          assert.deepEqual(stored.result, {
+            schemaHash: deriveSchemaHash(SOURCE_GATE_RESULT, "output"),
+            value: { complete: true },
+          });
+        }
+
+        const sourceResolutions = database.authority.timelineEvents.page({ workflow: WORKFLOW_ID })
+          .flatMap((record) => record.payload.kind === "span" ? [record.payload.event] : [])
+          .filter((eventRecord) => eventRecord.t === "gate.resolved"
+            && eventRecord.runId === RUN_ID && eventRecord.gate === "source-result");
+        assert.equal(sourceResolutions.length, 1, "one durable gate resolution event must publish");
+      } finally {
+        stopController.abort(new Error("source gate test cleanup"));
+        await workerPromise.catch(() => undefined);
+        await stopSource();
+      }
+    });
+  }
+});
+
 function fixtureProcessIdentityObserver(pid: number) {
   return pid === process.pid
     ? observeProcessIdentity(pid)
@@ -295,6 +434,114 @@ function composeInput(options: Readonly<{
       options.lines?.push(line);
     },
   } as const;
+}
+
+const SOURCE_GATE_INPUT = z.strictObject({ ticket: z.string().min(1) });
+const SOURCE_GATE_CANONICAL_INPUT = defineCanonicalInput(
+  SOURCE_GATE_INPUT,
+  z.strictObject({ ticket: z.string().min(1) }),
+  [{ ticket: "synthetic-ticket-10873698" }],
+);
+const SOURCE_GATE_EVENT = z.strictObject({
+  ticket: z.string().min(1),
+  complete: z.boolean(),
+  terminal: z.enum(["done", "failed"]).optional(),
+});
+const SOURCE_GATE_RESULT = z.strictObject({ complete: z.boolean() });
+const SOURCE_CHILD = {
+  id: WorkflowIdSchema.parse("source-child-fixture"),
+  input: SOURCE_GATE_INPUT,
+  result: SOURCE_GATE_RESULT,
+};
+type SourceGateMode = "external" | "children-terminal";
+
+function sourceGateDescriptor(mode: SourceGateMode) {
+  const registered = personLookupModule.descriptor;
+  const metadata = {
+    id: WORKFLOW_ID,
+    version: registered.version,
+    contractFingerprint: registered.contractFingerprint,
+    code: registered.code,
+    label: "Synthetic source gate",
+    icon: registered.icon,
+    category: registered.category,
+    input: SOURCE_GATE_INPUT,
+    canonicalInput: SOURCE_GATE_CANONICAL_INPUT,
+    inputSubject: "none",
+    surface: registered.surface,
+    enqueue: registered.enqueue,
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {},
+    details: [],
+    scenarios: ["person-lookup/source-gate-composition-proof"] as [string],
+    identity: { matchKey: ({ ticket }: z.output<typeof SOURCE_GATE_INPUT>) => `ticket:${ticket}` },
+    presentation: { title: ({ ticket }: z.output<typeof SOURCE_GATE_INPUT>) => `Source gate ${ticket}` },
+  } as const;
+
+  if (mode === "external") {
+    const graph = flow(SOURCE_GATE_INPUT)
+      .gate("source-result", {
+        dependsOn: [],
+        label: "External source result",
+        resolvedBy: "external",
+        subscribes: {
+          kind: "external",
+          sourceId: "source-ticket-system",
+          event: SOURCE_GATE_EVENT,
+          correlationKey: "ticket",
+        },
+        result: SOURCE_GATE_RESULT,
+        resolve: (event: z.output<typeof SOURCE_GATE_EVENT>) => ({ complete: event.complete }),
+      })
+      .build({
+        schema: SOURCE_GATE_RESULT,
+        dependsOn: ["source-result"],
+        derive: ({ outputs }) => outputs["source-result"],
+      });
+    return defineWorkflowDescriptor({ ...metadata, flow: graph });
+  }
+
+  const graph = flow(SOURCE_GATE_INPUT)
+    .gate("source-result", {
+        dependsOn: [],
+        label: "Child terminal result",
+        resolvedBy: "children-terminal",
+        subscribes: {
+          kind: "workflow",
+          workflow: SOURCE_CHILD,
+          event: SOURCE_GATE_EVENT,
+          correlationKey: "ticket",
+          terminal: ["done"],
+        },
+        result: SOURCE_GATE_RESULT,
+        resolve: (event: z.output<typeof SOURCE_GATE_EVENT>) => ({ complete: event.complete }),
+      })
+      .build({
+        schema: SOURCE_GATE_RESULT,
+        dependsOn: ["source-result"],
+        derive: ({ outputs }) => outputs["source-result"],
+    });
+  return defineWorkflowDescriptor({ ...metadata, flow: graph });
+}
+
+function sourceGateQueuedRun(descriptor: ReturnType<typeof sourceGateDescriptor>) {
+  return {
+    ...QUEUED_RUN,
+    envelope: {
+      ...QUEUED_RUN.envelope,
+      workflow: WORKFLOW_ID,
+      descriptorVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
+    },
+    input: {
+      raw: { ticket: "synthetic-ticket-10873698" },
+      parsed: {
+        schemaHash: deriveSchemaHash(SOURCE_GATE_CANONICAL_INPUT, "output"),
+        value: { ticket: "synthetic-ticket-10873698" },
+      },
+      ingressSchemaHash: deriveSchemaHash(SOURCE_GATE_INPUT, "input"),
+    },
+  };
 }
 
 function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock): void {
@@ -368,6 +615,29 @@ describe("composed worker runtime", () => {
     assert.equal(reports.flatMap(({ outcomes }) => outcomes).length, 1,
       "one queued run is claimed once while other workers observe idle");
     assert.equal(existsSync(join(stateRoot, "settings")), false, "boot and polling create no file authority or lock");
+  });
+
+  it("starts and awaits shutdown of registered gate source ports", async () => {
+    const { repoRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    let subscribed = 0;
+    let stopped = 0;
+    const port: GateSourcePort = {
+      kind: "external",
+      sourceId: "composition-startup-fixture",
+      bindCorrelation: () => "synthetic-correlation",
+      subscribe: async (_deliver, _signal) => {
+        subscribed += 1;
+        return async () => { stopped += 1; };
+      },
+    };
+    const report = await composeWorkerRuntime({
+      ...composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }),
+      gateSourcePorts: [port],
+    });
+    assert.equal(report.stopped, "idle");
+    assert.equal(subscribed, 1, "composeWorkerRuntime must start its registered gate source runtime");
+    assert.equal(stopped, 1, "composeWorkerRuntime must await source shutdown before returning");
   });
 
   it("ignores retired unjournaled file bytes and claims using SQLite settings", async () => {

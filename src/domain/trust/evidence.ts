@@ -44,6 +44,17 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
     resolvedBy: ActorIdSchema,
     resolvedAt: IsoInstantSchema,
   }),
+  z.strictObject({
+    kind: z.literal("gate-source-event"),
+    gateId: GateIdSchema,
+    sourceKind: z.enum(["workflow", "external"]),
+    sourceId: z.string().min(1),
+    eventId: z.string().min(1),
+    eventDigest: FingerprintSchema,
+    correlationDigest: FingerprintSchema,
+    attempt: PositiveIntSchema,
+    resolvedAt: IsoInstantSchema,
+  }),
   z.strictObject({ kind: z.literal("operator-correction"), supersedes: EvidenceEntryIdSchema }),
   z.strictObject({ kind: z.literal("derived"), evidence: z.array(EvidenceRefSchema).min(1) }),
   /**
