@@ -28,6 +28,12 @@ Accepted 2.6 is the product input. Old surface/exit counts below retain their da
 and are not a current Phase 3.1 completion claim. Current acceptance is owned by 3.1.19.
 
 ## Phase summary
+
+**Admitted UI side group (2026-09-23).** [Dashboard UI refinement](ui-refinement/README.md)
+uses 3.1.23 as its real common prerequisite, 3.1.23.1/UI-A and 3.1.23.2/UI-B as independent
+workers, then 3.1.23.3 Finalization. Scope is authorized; implementation remains blocked on
+the common-base release; feature work through 3.1.15 is integrated and capacity is available.
+
 <!-- roadmap: dash-defaults -->
 
 <!-- roadmap-status: dash-defaults -->
@@ -76,7 +82,8 @@ identity map; older doc-04 deferral references below are historical, not release
 
 ### The order of work
 
-Work from the current task table below in numeric order. Historical 3.1.1–3.1.8 keep their
+Work from the current task table below in numeric order, with the admitted UI side-group
+exception: execute 3.1.23 and its children after 3.1.15 and before 3.1.16. Historical 3.1.1–3.1.8 keep their
 numbers and completion evidence. Each prerequisite is followed by its independent children,
 then **Finalization** as its last child. After that group is accepted, continue to the next
 whole-number task. The last mandatory task is **3.1.19 · Final repairs, acceptance, and close Phase 3.1**.
@@ -86,13 +93,13 @@ Optional 3.1.20–3.1.22 are a separate menu, not steps required after final acc
 **3.1.11.3**, and former 3.1.25 becomes **3.1.14.6**. Current plan headings, filenames and roadmap
 positions now agree with that order. Stable execution node IDs, prerequisite edges, scope,
 acceptance outcomes, gate timing and the no-independent-review rule are unchanged. Numeric order
-is a valid sequential path; it does not add dependencies between independent tasks or workers.
+was a valid sequential path before the 2026-09-23 UI side-group exception; it does not add dependencies between independent tasks or workers.
 Dated evidence retains its original labels; use the rename map below to resolve older references.
 
 ### Execution cadence — operator amendment, 2026-09-13
 
 **Final-gates correction (operator-approved, 2026-09-13).** Full repository gates run at **3.1.19**.
-Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 combine and repair their groups using focused
+Group finalizers 3.1.9.8, 3.1.11.3, 3.1.14.6 and the admitted 3.1.23.3 combine and repair their groups using focused
 integration checks. 3.1.19 repairs gate-found defects itself in the same session, then completes
 acceptance and closure. This replaces the earlier per-group full-gate and audit-only rules.
 
@@ -107,7 +114,7 @@ skills and launch prompts do not recommend them. Role duties and restrictions re
 | Stage | Required before release | Deferred proof |
 | --- | --- | --- |
 | Prerequisites and individual tasks through 3.1.18 | Meaningful affected tests, scoped lint and affected quick/generated checks; finish the actual behavior or specific proof assigned to that task | Full repository and broad combined gates at 3.1.19 |
-| Group finalizers 3.1.9.8, 3.1.11.3 and 3.1.14.6 | Combine exact worker commits, fix integration defects, run typecheck, focused integration/regression tests, scoped lint and affected build/generated checks | Full coverage, whole-repository lint/architecture, broad parity, production, performance, recovery and full acceptance at 3.1.19 |
+| Group finalizers 3.1.9.8, 3.1.11.3, 3.1.14.6 and 3.1.23.3 | Combine exact worker commits, fix integration defects, run typecheck, focused integration/regression tests, scoped lint and affected build/generated checks | Full coverage, whole-repository lint/architecture, broad parity, production, performance, recovery and full acceptance at 3.1.19 |
 | 3.1.19 — final repairs and acceptance | Combine all required inputs, execute full gates and A01–A42/D01–D05, fix failures in this session, verify the final corrected tree, integrate and clean up under the assigned permission | None for Phase 3.1 release |
 | Optional 3.1.20–3.1.22, only if selected | Applicable focused checks; the selected brief names its final acceptance boundary | Never an added prerequisite for mandatory 3.1 release |
 
@@ -153,6 +160,7 @@ allowed to resolve blockers, overlap or duplicate work; no automatic dispatch or
 | 3.1.9 · Shared dashboard boundaries (after baseline 3.1.8) | 3.1.9.1–3.1.9.7: Shell, Settings, Storage, Explorer, Notifications, Intake, Archive | [3.1.9.8 · Finalize dashboard surfaces](task-9-8-finalization-dashboard-surfaces.md) |
 | 3.1.11 · Sessions (after accepted 3.1.9.8) | 3.1.11.1–3.1.11.2: Setup and Run/Rerun | [3.1.11.3 · Finalize run operations](task-11-3-finalization-run-operations.md) |
 | 3.1.14 · Detail foundation (after accepted 3.1.11.3 and Queue) | 3.1.14.1–3.1.14.5: Timeline, Context/Data, Logs, Receipts, Gates | [3.1.14.6 · Finalize run detail](task-14-6-finalization-run-detail.md) |
+| 3.1.23 · UI baseline (after accepted feature work through 3.1.15) | 3.1.23.1/UI-A: Settings and records; 3.1.23.2/UI-B: Workflow interactions | [3.1.23.3 · Finalization](ui-refinement/README.md#proof-and-finalization) |
 
 A prerequisite closes on its own integrated focused release before its children. A worker finishes
 its implementation session after focused checks pass and its committed candidate/evidence are
@@ -192,7 +200,7 @@ approval of 3.1.8 does not launch or complete another task.
 
 ### Current task identities
 
-Read top to bottom for the sequential execution path. Independent workers may still run in parallel
+Read top to bottom for the sequential execution path, including the UI side group between 15 and 16. Independent workers may still run in parallel
 under their approved ownership and worktree limits. Finalization waits for every worker in its group.
 
 | Task | Outcome and plan | Stable execution node |
@@ -222,10 +230,30 @@ under their approved ownership and worktree limits. Finalization waits for every
 | **3.1.14.5** | [Finish gates and parked-write resolution](task-14-5-finish-gates-and-parked-write-resolution.md) | `dash-gates` |
 | **3.1.14.6** | [Finalization — run detail](task-14-6-finalization-run-detail.md) | `dash-detail-finalizer` |
 | **3.1.15** | [Finish production startup, serving, and shutdown](task-15-finish-production-startup-serving-and-shutdown.md) | `dash-production-runtime` |
+| **3.1.23** | [Freeze UI baseline and ownership](ui-refinement/README.md#shared-prerequisite-release) | `dash-ui-baseline` |
+| **3.1.23.1** | [UI-A: Settings and records](ui-refinement/settings-and-records.md) | `dash-ui-settings-records` |
+| **3.1.23.2** | [UI-B: Workflow interactions](ui-refinement/workflow-interactions.md) | `dash-ui-workflow-interactions` |
+| **3.1.23.3** | [Finalization: UI refinement](ui-refinement/README.md#proof-and-finalization) | `dash-ui-finalizer` |
 | **3.1.16** | [Prove realtime convergence and reconnect](task-16-prove-realtime-convergence-and-reconnect.md) | `dash-realtime` |
 | **3.1.17** | [Meet large-data and responsiveness budgets](task-17-meet-large-data-and-responsiveness-budgets.md) | `dash-performance` |
 | **3.1.18** | [Build the complete dashboard proof infrastructure](task-18-build-the-complete-dashboard-proof-infrastructure.md) | `dash-proof-infrastructure` |
 | **3.1.19** | [Final repairs, acceptance, and close Phase 3.1](task-19-final-acceptance-and-close-phase-3-1.md) | `dash-acceptance` |
+
+### UI refinement side group
+
+This routing section is the roadmap's `doc:` target; the linked files below are the sole execution
+owners. The current roadmap grammar does not accept nested-directory document tokens.
+
+| Task | Execution owner |
+| --- | --- |
+| 3.1.23 | [Shared prerequisite release](ui-refinement/README.md#shared-prerequisite-release) |
+| 3.1.23.1 / UI-A | [Settings and records](ui-refinement/settings-and-records.md) |
+| 3.1.23.2 / UI-B | [Workflow interactions](ui-refinement/workflow-interactions.md) |
+| 3.1.23.3 | [Proof and finalization](ui-refinement/README.md#proof-and-finalization) |
+
+3.1.16–3.1.19 require the accepted 3.1.23.3 output as well as their existing inputs. The side group
+is required; optional 3.1.20–3.1.22 remain outside the mandatory sequence. All launch prerequisites
+and the accepted common SHA must be verified in the shared release record, not inferred from this map.
 
 ### Optional tasks — outside the required sequence
 

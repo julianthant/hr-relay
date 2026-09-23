@@ -2059,15 +2059,15 @@ log:
 
 
 ##### 1 · Finish run detail and the live timeline {#dash-run-detail}
-status: planned
+status: done
 date: D344 · former 3.1.12-2 · independent worktree after named prerequisites
 doc: 3.1/task-14-1-finish-run-detail-and-the-live-timeline §Task 3.1.14.1 · Finish run detail and the live timeline · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §9.2
 
 builds:
-- [ ] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
-- [ ] BOTH follow the selected run live without losing expansion, focus, scroll, or exact attempt identity
-- [ ] BOTH consume the accepted detail-section foundation while retaining exclusive timeline ownership; section extraction is owned by 3.1.14
-- [ ] PROOF refresh/reconnect, replay, retry, archive, out-of-order patch, and terminal convergence against direct authority checks
+- [x] BOTH render task groups, attempts, replay/skipped/blocked arms, live duration, systems, provenance, and focusable timeline segments
+- [x] BOTH follow the selected run live without losing expansion, focus, scroll, or exact attempt identity
+- [x] BOTH consume the accepted detail-section foundation while retaining exclusive timeline ownership; section extraction is owned by 3.1.14
+- [x] PROOF refresh/reconnect, replay, retry, archive, out-of-order patch, and terminal convergence against direct authority checks
 
 needs:
 - dash-run-modal
@@ -2076,6 +2076,7 @@ needs:
 - dash-operations-finalizer
 
 log:
+- 2026-09-23 | reconcile accepted run-detail release | Accepted local integration 095be697774621a673e08759f775236cfa06ae00 and closure 7c524542aa3b4051b7847f264fb571fb43ebaa6d are ancestors of inspected master beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a. Task owners and retained 3.1.14.6 verification record the five exact candidates, 550 focused tests, 60 parity cases, lint/typecheck/build checks and completed cleanup. This corrects stale tracking, does not rerun acceptance; full gates remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.1; former 3.1.12-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 run-detail foundation in `phase-3-1-dashboard-c21194e18-r18-run-detail`, parallel with Tasks 16, 24 and 30; its exit freezes the four disjoint wave-5 section seams · left: Task 15
 - 2026-09-04 | phase-0-3-authority-design C31da5310 R04 | consumes D330 §D330.3's seven states and §D330.4's `version` as `rowRevision`, with D268's one derivation retained and no fold arm (§D330.12 item 1) (no redesign) · left: attempts render as separately selectable rows, never compared (D289 amendment)
@@ -2083,14 +2084,14 @@ log:
 
 
 ##### 2 · Finish Context, Data, Attempts, and provenance readback {#dash-context-data}
-status: planned
+status: done
 date: D344 · former 3.1.13-1 · independent worktree after named prerequisites
 doc: 3.1/task-14-2-finish-context-data-attempts-and-provenance-readback §Task 3.1.14.2 · Finish Context, Data, Attempts, and provenance readback · ref:dashboard-surfaces §5 · ref:data-intake-and-edit-data §6
 
 builds:
-- [ ] BOTH render declared inputs, origins, directions, redaction, checkpoint provenance, attempt history, and D334 prior-run value coordinates without a mutable source editor
-- [ ] BOTH link eligible rows to Task 11-2's Rerun modal while keeping the Context/Data rail read-only
-- [ ] PROOF empty, redacted, malformed, stale, cross-attempt, archived, and prior-run prefill/readback cases
+- [x] BOTH render declared inputs, origins, directions, redaction, checkpoint provenance, attempt history, and D334 prior-run value coordinates without a mutable source editor
+- [x] BOTH link eligible rows to Task 11-2's Rerun modal while keeping the Context/Data rail read-only
+- [x] PROOF empty, redacted, malformed, stale, cross-attempt, archived, and prior-run prefill/readback cases
 
 needs:
 - dash-queue
@@ -2098,20 +2099,21 @@ needs:
 - dash-boundary-foundation
 
 log:
+- 2026-09-23 | reconcile accepted run-detail release | Accepted local integration 095be697774621a673e08759f775236cfa06ae00 and closure 7c524542aa3b4051b7847f264fb571fb43ebaa6d are ancestors of inspected master beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a. Task owners and retained 3.1.14.6 verification record the five exact candidates, 550 focused tests, 60 parity cases, lint/typecheck/build checks and completed cleanup. This corrects stale tracking, does not rerun acceptance; full gates remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.2; former 3.1.13-1; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Context/Data section seam in `phase-3-1-dashboard-c21194e18-r19-context-data`, parallel with Tasks 20–22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.14.2; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
 
 
 ##### 3 · Finish logs, observations, and captures {#dash-logs}
-status: planned
+status: done
 date: D344 · former 3.1.13-2 · independent worktree after named prerequisites
 doc: 3.1/task-14-3-finish-logs-observations-and-captures §Task 3.1.14.3 · Finish logs, observations, and captures · ref:operator-trust §2.3 · ref:dashboard-surfaces §5
 
 builds:
-- [ ] BE compose the missing production note and line-kind producers without inventing page facts
-- [ ] BOTH render bounded searchable note/observed/fence/navigation/pause/event rows plus diagnostic captures and bundles
-- [ ] PROOF pagination snapshots, stale-response isolation, archive read-forward, redaction, artifact absence, and large-log behavior
+- [x] BE compose the missing production note and line-kind producers without inventing page facts
+- [x] BOTH render bounded searchable note/observed/fence/navigation/pause/event rows plus diagnostic captures and bundles
+- [x] PROOF pagination snapshots, stale-response isolation, archive read-forward, redaction, artifact absence, and large-log behavior
 
 needs:
 - dash-queue
@@ -2119,20 +2121,21 @@ needs:
 - dash-boundary-foundation
 
 log:
+- 2026-09-23 | reconcile accepted run-detail release | Accepted local integration 095be697774621a673e08759f775236cfa06ae00 and closure 7c524542aa3b4051b7847f264fb571fb43ebaa6d are ancestors of inspected master beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a. Task owners and retained 3.1.14.6 verification record the five exact candidates, 550 focused tests, 60 parity cases, lint/typecheck/build checks and completed cleanup. This corrects stale tracking, does not rerun acceptance; full gates remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.3; former 3.1.13-2; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Logs section seam in `phase-3-1-dashboard-c21194e18-r20-logs`, parallel with Tasks 19, 21 and 22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.14.3; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
 
 
 ##### 4 · Finish receipts and failure records {#dash-receipts-failures}
-status: planned
+status: done
 date: D344 · former 3.1.13-3 · independent worktree after named prerequisites
 doc: 3.1/task-14-4-finish-receipts-and-failure-records §Task 3.1.14.4 · Finish receipts and failure records · ref:operator-trust §5 · ref:write-safety §6
 
 builds:
-- [ ] BOTH render derived receipt identity, action evidence, write-state proof, failure fingerprint, causal record, recovery, and unknown outcomes
-- [ ] BOTH connect explain/open-evidence actions to immutable evidence and eligible Rerun launches to Task 11-2's source-bound Run modal; unknown writes never expose Rerun
-- [ ] PROOF success, verified no-op, refusal, failed, unknown-submit, recovered, retried, archived, and tamper cases
+- [x] BOTH render derived receipt identity, action evidence, write-state proof, failure fingerprint, causal record, recovery, and unknown outcomes
+- [x] BOTH connect explain/open-evidence actions to immutable evidence and eligible Rerun launches to Task 11-2's source-bound Run modal; unknown writes never expose Rerun
+- [x] PROOF success, verified no-op, refusal, failed, unknown-submit, recovered, retried, archived, and tamper cases
 
 needs:
 - dash-queue
@@ -2140,20 +2143,21 @@ needs:
 - dash-boundary-foundation
 
 log:
+- 2026-09-23 | reconcile accepted run-detail release | Accepted local integration 095be697774621a673e08759f775236cfa06ae00 and closure 7c524542aa3b4051b7847f264fb571fb43ebaa6d are ancestors of inspected master beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a. Task owners and retained 3.1.14.6 verification record the five exact candidates, 550 focused tests, 60 parity cases, lint/typecheck/build checks and completed cleanup. This corrects stale tracking, does not rerun acceptance; full gates remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.4; former 3.1.13-3; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Receipt/Failure section seam in `phase-3-1-dashboard-c21194e18-r21-receipts-failures`, parallel with Tasks 19, 20 and 22 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.14.4; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
 
 
 ##### 5 · Finish gates and parked-write resolution {#dash-gates}
-status: planned
+status: done
 date: D344 · former 3.1.13-4 · independent worktree after named prerequisites
 doc: 3.1/task-14-5-finish-gates-and-parked-write-resolution §Task 3.1.14.5 · Finish gates and parked-write resolution · ref:write-safety §14 · ref:dashboard-surfaces §5
 
 builds:
-- [ ] BOTH render active and settled gate evidence, freshness, actor, command version, write plan, conflict, rejection, and machine-verified absence of gate
-- [ ] BOTH make approve/reject/reopen and parked-write resolution real, attributable, revision-bound commands
-- [ ] PROOF stale, expired, changed-plan, skipped-condition, resumed, rejected, archived, and unauthorized paths
+- [x] BOTH render active and settled gate evidence, freshness, actor, command version, write plan, conflict, rejection, and machine-verified absence of gate
+- [x] BOTH make approve/reject/reopen and parked-write resolution real, attributable, revision-bound commands
+- [x] PROOF stale, expired, changed-plan, skipped-condition, resumed, rejected, archived, and unauthorized paths
 
 needs:
 - dash-queue
@@ -2161,13 +2165,14 @@ needs:
 - dash-boundary-foundation
 
 log:
+- 2026-09-23 | reconcile accepted run-detail release | Accepted local integration 095be697774621a673e08759f775236cfa06ae00 and closure 7c524542aa3b4051b7847f264fb571fb43ebaa6d are ancestors of inspected master beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a. Task owners and retained 3.1.14.6 verification record the five exact candidates, 550 focused tests, 60 parity cases, lint/typecheck/build checks and completed cleanup. This corrects stale tracking, does not rerun acceptance; full gates remain 3.1.19.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.9-3.5; former 3.1.13-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 5 Gate/Parked-write section seam in `phase-3-1-dashboard-c21194e18-r22-gates`, parallel with Tasks 19–21 only through Task 18's frozen section boundary · left: Tasks 16 and 18
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.14.5; parallel child of its completed parent prerequisite; acceptance and historical execution anchor retained
 
 
 ##### 6 · Finalization — run detail {#dash-detail-finalizer}
-status: planned
+status: done
 size: M
 date: D344 · renumbered 2026-09-13 · sequential finalization after all group workers
 doc: 3.1/task-14-6-finalization-run-detail §Task 3.1.14.6 · Finalization — run detail · ref:guards-and-tests §3.14
@@ -2175,9 +2180,9 @@ doc: 3.1/task-14-6-finalization-run-detail §Task 3.1.14.6 · Finalization — r
 > Combine worker candidates with passing focused checks: 3.1.14.1–3.1.14.5; fix group defects, run typecheck, focused integration tests, scoped lint and affected build/generated checks, defer full repository gates to 3.1.19 and complete accepted integration and cleanup; no independent review step.
 
 builds:
-- [ ] BOTH resolve combined defects and generated-output drift within the approved group
-- [ ] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
-- [ ] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
+- [x] BOTH resolve combined defects and generated-output drift within the approved group
+- [x] PROOF typecheck, focused integration/regression tests, scoped lint and affected build/generated checks; full gates deferred to 3.1.19
+- [x] DOCS candidate SHAs, focused group evidence, deferred broad proofs for 3.1.19, development integration and cleanup
 
 needs:
 - dash-run-detail
@@ -2185,6 +2190,9 @@ needs:
 - dash-logs
 - dash-receipts-failures
 - dash-gates
+
+log:
+- 2026-09-23 | reconcile accepted run-detail release | Accepted local integration 095be697774621a673e08759f775236cfa06ae00 and closure 7c524542aa3b4051b7847f264fb571fb43ebaa6d are ancestors of inspected master beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a. Task owners and retained 3.1.14.6 verification record the five exact candidates, 550 focused tests, 60 parity cases, lint/typecheck/build checks and completed cleanup. This corrects stale tracking, does not rerun acceptance; full gates remain 3.1.19.
 
 #### 15 · Finish production startup, serving, and shutdown {#dash-production-runtime}
 status: done
@@ -2222,6 +2230,7 @@ builds:
 - [ ] PROOF ordering, duplicate, missed cursor, restart generation, offline/reconnect, selected-run switch, and permanent backfill-gap behavior
 
 needs:
+- dash-ui-finalizer
 - dash-shell
 - dash-date-navigation
 - dash-settings
@@ -2261,6 +2270,7 @@ builds:
 - [ ] PROOF preserve the recorded performance fixture and fail on structural counter regressions; keep host timing observational
 
 needs:
+- dash-ui-finalizer
 - dash-realtime
 
 log:
@@ -2281,6 +2291,7 @@ builds:
 - [ ] PROOF parity references include Settings, sessions, setup, dialogs, and the DS specimen; update only through the deliberate lane
 
 needs:
+- dash-ui-finalizer
 - dash-performance
 - dash-production-runtime
 
@@ -2303,6 +2314,7 @@ builds:
 - [ ] BOTH fix gate-found defects in this session, add regression proof and establish every required gate on the final corrected tree before integration and cleanup
 
 needs:
+- dash-ui-finalizer
 - dash-shell
 - dash-date-navigation
 - dash-settings
@@ -2394,6 +2406,74 @@ log:
 - 2026-09-03 | 3.1 parallel execution plan | serial section-extension gate in `phase-3-1-dashboard-c21194e18-r27-review-people`; it follows wave 5 so it cannot collide with the four run-detail section writers · left: Tasks 18–22
 - 2026-09-06 | D339 approved deferral | removed from 3.1 realtime/acceptance dependencies; the unchecked future feature does not block release
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.22; standalone prerequisite or individual task; acceptance and historical execution anchor retained
+
+
+#### 23 · Freeze the UI refinement baseline {#dash-ui-baseline}
+status: planned
+date: 2026-09-23 · UI side-group admission · prerequisite release outstanding
+doc: 3.1 §UI refinement side group
+
+> Required side group: execute after accepted feature work through 3.1.15 and before 3.1.16, regardless of display position. Historical former 3.1.23 remains dash-surfaces-finalizer, now 3.1.9.8.
+
+builds:
+- [ ] PROOF verify accepted feature integrations, inventory reachable surfaces/shared APIs and freeze the exact common base and disjoint source/test/reference ownership
+- [ ] PROOF move catalog-search unchanged into Settings proof, repair split-detail registration guard coverage without dropping membership, and establish passing inherited diagnostic/resolution references
+- [ ] PROOF verify specimen composition, actual browser zoom and independent two-worker gate resources; complete authorized release and cleanup
+
+needs:
+- dash-surfaces-finalizer
+- dash-date-navigation
+- dash-operations-finalizer
+- dash-activity
+- dash-queue
+- dash-detail-finalizer
+- dash-production-runtime
+
+log:
+- 2026-09-23 | UI refinement admission | conditional UI-A/UI-B scope retained; accepted common base and launch prerequisites remain open
+
+##### 1 · Refine Settings and records {#dash-ui-settings-records}
+status: planned
+date: 2026-09-23 · independent worker after accepted 3.1.23
+chip: Parallel · UI refinement
+doc: 3.1 §UI refinement side group
+
+builds:
+- [ ] FE refine Settings and every subsection, mounted Archive, Activity, expanded Sessions, Calendar interior and help/catalog using frozen shared primitives and concise copy
+- [ ] PROOF preserve facts, safety, dirty/conflict/destructive behavior; pass owned focused tests, scoped lint, both-theme desktop/zoom proof and attributed references
+- [ ] DOCS commit exact candidate, approved plan/base, ownership and retained evidence for 3.1.23.3; integration and cleanup remain separate
+
+needs:
+- dash-ui-baseline
+
+##### 2 · Refine workflow interactions {#dash-ui-workflow-interactions}
+status: planned
+date: 2026-09-23 · independent worker after accepted 3.1.23
+chip: Parallel · UI refinement
+doc: 3.1 §UI refinement side group
+
+builds:
+- [ ] FE refine Run/Rerun, Intake, Explorer, Notifications, Logs, Context/Data and owned workflow dialogs using frozen shared primitives and concise copy
+- [ ] PROOF preserve reviews, refusals, pinned warnings, write uncertainty and focus; pass owned focused tests, scoped lint, both-theme desktop/zoom proof and attributed references
+- [ ] DOCS commit exact candidate, approved plan/base, ownership and retained evidence for 3.1.23.3; integration and cleanup remain separate
+
+needs:
+- dash-ui-baseline
+
+##### 3 · Finalization {#dash-ui-finalizer}
+status: planned
+date: 2026-09-23 · sequential finalization after both exact UI candidates
+doc: 3.1 §UI refinement side group · ref:guards-and-tests §3.14
+
+builds:
+- [ ] BOTH combine exact independent UI candidates in either order, verify identical product/test trees and repair in-scope integration defects
+- [ ] PROOF typecheck, focused combined regressions and parity, scoped lint, affected build/generated checks and shared-surface consistency
+- [ ] DOCS retain attributed evidence, candidate/base/integration identities and deferred broad proof; complete operator-authorized integration and owned cleanup
+
+needs:
+- dash-ui-baseline
+- dash-ui-settings-records
+- dash-ui-workflow-interactions
 
 
 ### 3.2 · Workflow authoring and candidate freeze {#workflow-authoring-model}
@@ -3867,6 +3947,19 @@ Preserve product outcomes, test membership/assertions/floors, isolation, timeout
 boundaries. This supersedes conflicting D191/D344 and skill review/gate cadence for Phase 3.1 only;
 it does not reopen completed evidence, remove independent freezes in other phases, authorize push,
 launch a successor or change operator integration permission.
+
+### UI refinement side-group admission (operator amendment, 2026-09-23)
+
+The required UI refinement group is 3.1.23, with a real baseline prerequisite, independent children
+3.1.23.1 and 3.1.23.2, and 3.1.23.3 Finalization. Append the display ordinal after existing 22;
+execute by the explicit edges: accepted feature work through 3.1.15 → 3.1.23 and children →
+3.1.16–3.1.19. This is a specific exception to the earlier numeric-order guidance, preserving
+all existing identities, optional 3.1.20–3.1.22 and 3.1.19 as the final acceptance session.
+Historical former 3.1.23 still resolves to 3.1.9.8 / dash-surfaces-finalizer; the new group uses
+new stable dash-ui-* IDs. The owning [UI brief](../rebuild/plans/phase-3/3.1-finish-the-dashboard/ui-refinement/README.md)
+records scope, frozen shared interfaces, isolated ownership, missing prerequisites and release.
+Use the existing focused/no-independent-review cadence; full repository gates remain at 3.1.19.
+Planning admission neither completes the prerequisite nor authorizes automatic launch or merge.
 
 ### Plan, implement, review (operator amendment, 2026-09-04)
 
