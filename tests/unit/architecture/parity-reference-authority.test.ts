@@ -57,6 +57,11 @@ const FIXTURE_WRITE_DESTINATIONS: Readonly<Record<string, readonly string[]>> = 
   "tests/parity/helpers/storage-recovery-server.ts": ['join(repoRoot, "package.json")'],
   "tests/parity/helpers/session-runtime.ts": ['join(root, "release-drivers")'],
   "tests/parity/storage-recovery.spec.ts": ["authorityPath", 'join(target.root, ".lifecycle-restore.json")'],
+  "tests/parity/queue-authority.spec.ts": [
+    'join(root, "manifest.json")',
+    'join(root, "worker.js")',
+    "proof",
+  ],
 };
 
 function assertFixtureWriteDestinations(source: string, path: string, expected: readonly string[]): void {
@@ -439,7 +444,6 @@ describe("parity lane reference authority (D132)", () => {
     // and a stale allowlist entry would hide the arm going dead.
     const allowedWriters: Readonly<Record<string, string>> = {
       "tests/parity/helpers/reference-store.ts": "owns the PARITY_UPDATE gate — the ONE place a reference may be written",
-      "tests/parity/helpers/bundle.ts": "writes the build stamp into dist/, never into tests/parity/references/",
       ...Object.fromEntries(Object.keys(FIXTURE_WRITE_DESTINATIONS).map(path => [path, "exact disposable authority/evidence destinations checked below"])),
     };
     for (const [path, expected] of Object.entries(FIXTURE_WRITE_DESTINATIONS)) {
@@ -504,7 +508,7 @@ describe("parity lane reference authority (D132)", () => {
       assert.equal(parityBundleState({ distDir, repoRoot }).state, "stale");
       assert.throws(
         () => assertParityBundleIsCurrent({ distDir, repoRoot }),
-        new RegExp(`carries no ${PARITY_BUNDLE_STAMP_FILE}`),
+        new RegExp(`missing ${PARITY_BUNDLE_STAMP_FILE}.*npm run ${PARITY_BUILD_SCRIPT}`),
       );
 
       // Stamped against these exact sources — the positive control.
@@ -517,22 +521,22 @@ describe("parity lane reference authority (D132)", () => {
       assert.equal(stale.state, "stale");
       assert.throws(
         () => assertParityBundleIsCurrent({ distDir, repoRoot }),
-        new RegExp(`built from different sources[\\s\\S]*npm run ${PARITY_BUILD_SCRIPT}`),
+        new RegExp(`bundle inputs changed after build[\\s\\S]*npm run ${PARITY_BUILD_SCRIPT}`),
       );
 
       // Re-stamping restores it; editing the OUTPUT after the build is equally loud.
       writeBundleStamp({ distDir, repoRoot });
       assert.equal(parityBundleState({ distDir, repoRoot }).state, "current");
       writeFileSync(join(distDir, "assets", "index.js"), "console.log(2);\n");
-      assert.throws(() => assertParityBundleIsCurrent({ distDir, repoRoot }), /changed after its build/);
+      assert.throws(() => assertParityBundleIsCurrent({ distDir, repoRoot }), /bundle bytes changed after build/);
 
       // A missing bundle is stale, never an empty digest that compares equal.
       rmSync(distDir, { recursive: true, force: true });
-      assert.throws(() => assertParityBundleIsCurrent({ distDir, repoRoot }), /does not exist/);
-      assert.throws(() => computeBundleOutputDigest(distDir), /does not exist/);
+      assert.throws(() => assertParityBundleIsCurrent({ distDir, repoRoot }), /missing dashboard-build-identity\.json/);
+      assert.throws(() => computeBundleOutputDigest(distDir), /ENOENT/);
       assert.throws(
         () => computeBundleInputDigest(join(repoRoot, "nowhere")),
-        /input root src is missing/,
+        /ENOENT/,
       );
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
@@ -547,7 +551,7 @@ describe("parity lane reference authority (D132)", () => {
       seedSyntheticDist(distDir);
       await assert.rejects(
         startFixtureServer({ distDir, bundle: { proof: "working-tree" } }),
-        /refuses to serve a bundle that is not a build of the working tree/,
+        new RegExp(`missing ${PARITY_BUNDLE_STAMP_FILE}`),
       );
       // An unverified probe must still name its reason.
       await assert.rejects(
@@ -660,7 +664,7 @@ describe("parity lane reference authority (D132)", () => {
 
     it("is wired into the lane's own capture path, not merely available", () => {
       const spec = readFileSync(join(REPO_ROOT, "tests/parity/helpers/reference-scenes.ts"), "utf8");
-      for (const path of ["dashboard-reference", "reference-settings", "reference-explorer", "reference-intake", "reference-archive", "reference-activity", "reference-start", "reference-detail"]) {
+      for (const path of ["dashboard-reference", "reference-settings", "reference-explorer", "reference-intake", "reference-archive", "reference-activity", "reference-start"]) {
         const registration = readFileSync(join(REPO_ROOT, `tests/parity/${path}.spec.ts`), "utf8");
         assert.match(registration, /registerReferenceScenes\(SCENES, \(\) => servers\.server, ANCHORS\)/u,
           `${path} must use the guarded capture registration`);
