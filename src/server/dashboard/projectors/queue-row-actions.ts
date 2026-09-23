@@ -352,7 +352,7 @@ export function queueRowActions(
     && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
-      intent: "primary", icon: "retry", placement: ["footer", "menu"] })] : [];
+      intent: "primary", icon: "retry", placement: ["footer", "menu", "data"] })] : [];
   return [...rerun, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];

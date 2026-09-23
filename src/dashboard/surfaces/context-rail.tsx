@@ -92,6 +92,8 @@ import {
 } from "../app/command-result.js";
 import { fmtClock, plural } from "./format.js";
 import { SystemChip } from "./system-chip.js";
+import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { DashboardActionHandler, ActionTarget } from "./actions.js";
 import {
   freshnessNoteOf,
   groupEntriesByStep,
@@ -662,6 +664,10 @@ export function ContextRail({
   onDataExpandedChange: (expanded: boolean) => void;
   /** An applied save bumped the run version — the owner refetches detail + sections. */
   onSaved: () => void;
+  /** Server-authored run controls and their exact selected-row identity. */
+  actions?: readonly ActionDescriptorWire[];
+  target?: ActionTarget;
+  onAction?: DashboardActionHandler;
 }) {
   const data = sections["context-data"];
   const attempts = sections["context-attempts"];

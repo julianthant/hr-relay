@@ -946,6 +946,9 @@ export const LogPanel = memo(function LogPanel({
           dataExpanded={dataExpanded}
           onDataExpandedChange={setDataExpanded}
           onSaved={onDetailEdited}
+          actions={actions}
+          target={{ runId: detail.runId, expectedVersion: detail.rowRevision }}
+          onAction={handleAction}
           className={cn(
             "shrink-0",
             "@min-[868px]/detail:col-start-2 @min-[868px]/detail:row-start-2 @min-[868px]/detail:shrink",
