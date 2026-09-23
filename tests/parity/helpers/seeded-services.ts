@@ -25,6 +25,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboa
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { createItemAttemptHistoryQuery } from "../../../src/server/dashboard/queries/item-attempt-history.js";
 import { archiveQueryDeps,archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps,uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
@@ -42,7 +43,8 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
  projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
  descriptors: {resolve: (workflowId: string) => typeof personLookupDescriptor | undefined}; runIds: Record<string,string>;
 }) {
-  const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
+  const runReader = sqliteRunReader(database, clock);
+  const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor] });
 
   /**
    * THE DONE RUN'S EVIDENCE RECEIPT IS PART OF THE SEED, not a side effect of
@@ -77,7 +79,8 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     );
   }
 
-  const runDetailDeps = { runReader: sqliteRunReader(database, clock),
+  const runDetailDeps = { runReader,
+    itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }),
     stateRoot,
     projection,
     authority: {
@@ -92,7 +95,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
         (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
     },
     canonical: {
-      reader: sqliteRunReader(database, clock),
+      reader: runReader,
       database,
       descriptors: {
         resolve: (workflowId: string) =>
