@@ -459,7 +459,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // development path, declared at the schema rather than as a literal fallback.
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const staticBundle = frontend === "built-bundle"
-    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"))
+    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot)
     : undefined;
 
   // D324: the production environment carries the host's primary display as the `display` default.
@@ -960,17 +960,23 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       }
       clearInterval(timelineTimer);
       clearInterval(gateParkTimer);
-      await notificationObserver.stop();
-      /**
-       * W3 shutdown ordering: the supervisor closes AFTER ingress stopped
-       * accepting worker commands (`server.close()` above) and BEFORE the
-       * database closes and the process lock releases — its close() cancels
-       * every armed escalation timer and refuses further commands, and the
-       * evidence of every still-live child goes to the structured fault path.
-       * This supervisor never pretends a child stopped: a live worker keeps
-       * running (its lease, not this process, owns its lifecycle), and the
-       * operator can read exactly what was left running.
-       */
+      try {
+        await notificationObserver.stop();
+      } catch (error: unknown) {
+        failures.push(error);
+      }
+      // Ingress and active transfers are drained before D271 stop directives
+      // are written. The supervisor controls only children it spawned and
+      // resolves only after each OS exit event has been observed.
+      try {
+        await workerControl.supervisor.drainOwnedChildren({
+          requestedAt: clock.now().toISOString(),
+          requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+          reason: "dashboard-shutdown",
+        });
+      } catch (error: unknown) {
+        failures.push(error);
+      }
       try {
         for (const evidence of workerControl.supervisor.close()) {
           try {

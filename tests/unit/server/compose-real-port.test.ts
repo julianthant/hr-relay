@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   fsyncSync,
   mkdirSync,
@@ -60,6 +61,7 @@ import {
   type DashboardComposeInput,
   type DashboardRuntime,
 } from "../../../src/server/dashboard/compose.js";
+import { writeDashboardBuildIdentity } from "../../../src/server/dashboard/build-identity.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
@@ -147,6 +149,31 @@ function protectedSettingsCommand(
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId,
       entries: { ucpathPassword: { set: value } },
+    },
+  });
+}
+
+function protectedUcpathSettingsCommand(
+  commandId: string,
+  requestedAt: string,
+  expectedRevision: number,
+  writeId: string,
+) {
+  return ProtectedSettingsCommandRequestSchema.parse({
+    commandId,
+    requestedAt,
+    requestedBy: "local-operator",
+    source: "settings-surface",
+    family: "settings",
+    type: "apply-protected-settings",
+    target: { expectedRevision },
+    payload: {
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+      writeId,
+      entries: {
+        ucpathUserId: { set: "synthetic-ucpath-user" },
+        ucpathPassword: { set: "synthetic-ucpath-password" },
+      },
     },
   });
 }
@@ -255,7 +282,7 @@ function journalExplorer(
 }
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
-  it("M9 refuses the current authority under CURRENT29 before settings opens or config resolution", async () => {
+  it("M9 refuses the current authority under the pre-floor build before settings opens or config resolution", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -291,7 +318,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeOlderBuild({
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), /authority schema 51 is newer than supported 29/u);
+        }), new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)} is newer than supported 29`, "u"));
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -314,16 +341,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.equal((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 51);
+    assert.notEqual((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 29,
+      "the isolated pre-floor build substitution must not escape its callback");
   });
 
-  it.each([
-    { version: 29, refusal: /upgrade-required \{ schemaVersion: 29, floor: 46 \}/u },
-    { version: 52, refusal: /authority schema 52 is newer than supported 51/u },
-  ])("releases its acquired server process record when authority v$version refuses open", async ({
-    version,
-    refusal,
-  }) => {
+  it("releases its acquired server process record when a pre-floor authority refuses open", async () => {
+    const version = 29;
     const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(version)}-`));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -354,7 +377,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
         repoRoot,
       }),
-      refusal,
+      /upgrade-required \{ schemaVersion: 29, floor: 46 \}/u,
     );
     const releasedRecord = JSON.parse(readFileSync(
       join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"),
@@ -364,6 +387,43 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const unchanged = new DatabaseSync(path, { readOnly: true });
     try {
       assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), version);
+    } finally {
+      unchanged.close();
+    }
+  });
+
+  it("releases its acquired server process record when a valid authority is marked ahead of this build", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}-`));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    const path = join(stateRoot, "state.db");
+    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "future-schema-fixture" }).close();
+    const futureVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
+    const raw = new DatabaseSync(path);
+    raw.exec(`UPDATE database_state SET schema_version = ${String(futureVersion)} WHERE singleton_id = 1`);
+    raw.exec(`PRAGMA user_version = ${String(futureVersion)}`);
+    raw.close();
+
+    await assert.rejects(
+      composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0,
+        env: {},
+        clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+        repoRoot,
+      }),
+      new RegExp(`authority schema ${String(futureVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"),
+    );
+    const releasedRecord = JSON.parse(readFileSync(
+      join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"),
+      "utf8",
+    )) as Record<string, unknown>;
+    assert.equal(releasedRecord.releasedAt, "2026-08-28T12:00:00.000Z");
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), futureVersion);
     } finally {
       unchanged.close();
     }
@@ -648,10 +708,17 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
       1,
-      { browser: { headless: false } },
+      { browser: { headless: false }, features: { duoWebAuthn: false } },
     );
     const applied = await client.executeCommand(command);
     assert.equal(applied.state, "applied");
+    const protectedApplied = await client.executeCommand(protectedUcpathSettingsCommand(
+      "44444444-4444-4444-8444-444444444444",
+      clock.now().toISOString(),
+      1,
+      "44444444-4444-4444-8444-444444444445",
+    ));
+    assert.equal(protectedApplied.state, "applied");
 
     const plan = await client.submitStartPlan({
       workflowId: "person-lookup", submissions: [{ emplId: "10800000" }], dryRun: true,
@@ -680,7 +747,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
       1,
-      { browser: { headless: false } },
+      { browser: { headless: false }, features: { duoWebAuthn: false } },
     );
     const applied = await firstClient.executeCommand(command);
     const persisted = readPersistedSettings(repoRoot, clock);
@@ -692,6 +759,13 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       settingsRevision: 2,
       settingsFingerprint: persisted.settingsFingerprint,
     });
+    const protectedApplied = await firstClient.executeCommand(protectedUcpathSettingsCommand(
+      "44444444-4444-4444-8444-444444444444",
+      clock.now().toISOString(),
+      1,
+      "44444444-4444-4444-8444-444444444445",
+    ));
+    assert.equal(protectedApplied.state, "applied");
 
     await runtime.stop();
     runtime = await composeDashboardRuntime({
@@ -965,6 +1039,9 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   it("built-bundle mode refuses to compose without dist/dashboard/index.html, and serves the bundle beside the API when it exists", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-built-bundle-"));
     copyRuntimePackageFixture(repoRoot);
+    cpSync(join(process.cwd(), "src"), join(repoRoot, "src"), { recursive: true });
+    copyFileSync(join(process.cwd(), "vite.dashboard.config.ts"), join(repoRoot, "vite.dashboard.config.ts"));
+    copyFileSync(join(process.cwd(), "tsconfig.json"), join(repoRoot, "tsconfig.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
     // No bundle: refuse before any authority, lock or socket exists.
@@ -985,6 +1062,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     mkdirSync(dist, { recursive: true });
     writeFileSync(join(repoRoot, "dist", "dashboard", "index.html"), "<!doctype html><title>built</title>");
     writeFileSync(join(dist, "app.f00d.js"), "export const built = true;");
+    writeDashboardBuildIdentity({ repoRoot, distDir: join(repoRoot, "dist", "dashboard") });
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
