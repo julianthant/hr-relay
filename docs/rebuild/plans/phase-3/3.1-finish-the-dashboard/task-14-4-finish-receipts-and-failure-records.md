@@ -8,9 +8,9 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Render derived write/evidence/failure/recovery facts and prove success, no-op, refusal, failure,
+- [x] Render derived write/evidence/failure/recovery facts and prove success, no-op, refusal, failure,
   unknown submit, retry, archive, explanation, and tamper behavior.
-- [ ] Route an eligible Rerun action to Task 3.1.11.2's source-bound Run modal; an unknown write exposes
+- [x] Route an eligible Rerun action to Task 3.1.11.2's source-bound Run modal; an unknown write exposes
   only its evidence-resolution actions.
 
 Current immutable failures/receipts/completion coexist with versioned live resolution annotations and diagnostic_snapshots/diagnostic_files. Archived resolution is frozen and read-only. Knowledge/fix tables and old terminal outboxes do not return; preserve captured evidence, tamper refusal and UNKNOWN resolution boundaries.

@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Render groups/attempts/status arms/duration/systems/provenance and preserve exact live UI state
+- [x] Render groups/attempts/status arms/duration/systems/provenance and preserve exact live UI state
   across patches, retry, archive, reconnect, and out-of-order delivery.
 D344 moves the shared section projector/component/test extraction to
 [the detail foundation](task-14-establish-independent-run-detail-sections.md), which must be accepted first.
