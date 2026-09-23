@@ -13,6 +13,39 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 describe("same-item attempt history", () => {
+  it("keeps attempt one selected while returning a later retry from the same item", () => {
+    const world = makeWorld();
+    cleanups.push(() => world.dispose());
+    const itemId = uuidOf(9890);
+    const firstBase = runRecordOf({ seed: 890, attempt: 1, enqueuedAt: "2026-08-03T06:30:00.000Z" });
+    const first = RunRecordSchema.parse({ ...firstBase, envelope: { ...firstBase.envelope, itemId } });
+    world.database.authority.runs.enqueue(first);
+    const secondBase = runRecordOf({ seed: 891, attempt: 2, enqueuedAt: "2026-08-03T07:30:00.000Z" });
+    const second = RunRecordSchema.parse({
+      ...secondBase,
+      envelope: { ...secondBase.envelope, itemId, retryOf: first.envelope.runId },
+    });
+    world.database.authority.runs.enqueue(second);
+
+    const history = createItemAttemptHistoryQuery({
+      database: world.database,
+      reader: sqliteRunReader(world.database, world.clock),
+    }).read(first.envelope.runId, { limit: 50 });
+    assert.equal(history.state, "available");
+    if (history.state !== "available") throw new Error("attempt one history unavailable");
+    assert.equal(history.selected.state, "present");
+    if (history.selected.state !== "present") throw new Error("attempt one selection was not present");
+    assert.equal(history.selected.runId, first.envelope.runId);
+    const entries = history.page.entries.map((entry) => {
+      if (entry.disposition === "deleted") throw new Error("the live fixture unexpectedly returned a deleted entry");
+      return { runId: entry.runId, attempt: entry.attempt, partitionDay: entry.partitionDay };
+    });
+    assert.deepEqual(entries, [
+      { runId: first.envelope.runId, attempt: 1, partitionDay: "2026-08-02" },
+      { runId: second.envelope.runId, attempt: 2, partitionDay: "2026-08-03" },
+    ]);
+  });
+
   it("keeps deleted history associated, orders attempts, and refuses a cursor after authority changes", () => {
     const world = makeWorld();
     cleanups.push(() => world.dispose());
@@ -114,7 +147,7 @@ describe("same-item attempt history", () => {
     const database = world.database;
     const reader = sqliteRunReader(database, world.clock);
     const itemId = uuidOf(9300);
-    const archivedBase = runRecordOf({ seed: 301, attempt: 1 });
+    const archivedBase = runRecordOf({ seed: 301, attempt: 1, enqueuedAt: "2026-08-03T06:30:00.000Z" });
     const archivedRun = RunRecordSchema.parse({
       ...archivedBase, envelope: { ...archivedBase.envelope, itemId },
     });
@@ -158,6 +191,10 @@ describe("same-item attempt history", () => {
     assert.deepEqual(firstPage.page.entries.map(({ runId, attempt, disposition }) => ({ runId, attempt, disposition })), [
       { runId: archivedRun.envelope.runId, attempt: 1, disposition: "archived" },
     ]);
+    const archivedEntry = firstPage.page.entries[0];
+    assert.ok(archivedEntry);
+    assert.equal(archivedEntry.disposition, "archived");
+    if (archivedEntry.disposition === "archived") assert.equal(archivedEntry.partitionDay, "2026-08-02");
     assert.ok(firstPage.page.nextCursor);
     const secondPage = history.read(liveRun.envelope.runId, { limit: 1, cursor: firstPage.page.nextCursor });
     assert.equal(secondPage.state, "available");
@@ -165,6 +202,10 @@ describe("same-item attempt history", () => {
     assert.deepEqual(secondPage.page.entries.map(({ runId, attempt, disposition }) => ({ runId, attempt, disposition })), [
       { runId: liveRun.envelope.runId, attempt: 2, disposition: "live" },
     ]);
+    const liveEntry = secondPage.page.entries[0];
+    assert.ok(liveEntry);
+    assert.equal(liveEntry.disposition, "live");
+    if (liveEntry.disposition === "live") assert.equal(liveEntry.partitionDay, "2026-08-03");
 
     const beforeDeletion = database.getMeta().authorityGeneration;
     const receipt = database.withAuthorityTransaction((repositories) => repositories.runs.delete({

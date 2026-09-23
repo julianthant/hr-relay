@@ -147,7 +147,19 @@
       - text: Extracted fields
       - button "About run data"
       - button "Widen the data surface"
-      - paragraph: No run data recorded — this run has not extracted or written any fields yet.
+      - text: Invited on
+      - paragraph: Not recorded for this run
+      - text: No exact-run checkpoint · crm-dates / invitedOn.value Starts on
+      - paragraph: Not recorded for this run
+      - text: No exact-run checkpoint · crm-dates / startsOn.value Completed on
+      - paragraph: Not recorded for this run
+      - text: No exact-run checkpoint · crm-dates / completedOn.value
+      - button "Rerun"
+    - separator
+    - region "Attempts":
+      - text: Attempts
+      - link "Attempt 1":
+        - /url: "?day=2026-08-03&run=00000000-0003-4000-8000-000000000003"
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
   - button "Add workers"

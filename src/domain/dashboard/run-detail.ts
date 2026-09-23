@@ -14,6 +14,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
+  PositiveIntSchema,
   NoteIdSchema,
   PageStateIdSchema,
   ProjectionCursorSchema,
@@ -570,38 +571,23 @@ const ContextSectionSchema = z.strictObject({
   entries: z.array(z.strictObject({ label: z.string().min(1), valueRedacted: z.string().min(1) })),
 });
 
-/**
- * A correctable value is a SCALAR leaf: the rail edits it as text and the
- * kernel re-parses the whole post-patch output, so a structured value has no
- * honest single-field edit affordance and stays locked with that reason.
- */
-const EditableScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
-
-/**
- * Ref data-intake-and-edit-data §6 / ref dashboard-surfaces D19 (2i-C): the Data section carries, per entry, exactly
- * what a checkpoint correction needs — the patch target identity and the raw
- * recorded scalar — or the reason it is not editable, so `editPolicyFor` shows
- * a reason instead of a dead control. `pendingCorrection` is the staged-write
- * honesty rule applied to corrections: a saved patch rides `envelope.injected`
- * and becomes authority only at replay, so until the run resumes the recorded
- * value and the pending value are BOTH true and both render.
- */
-const ContextDataEntryEditSchema = z.discriminatedUnion("state", [
+const ContextDataCoordinateSchema = z.strictObject({ nodeId: NodeIdSchema, fieldPath: ContractFieldPathSchema });
+const ContextDataCheckpointSchema = z.discriminatedUnion("state", [
   z.strictObject({
-    state: z.literal("editable"),
-    nodeId: NodeIdSchema,
-    fieldPath: ContractFieldPathSchema,
-    value: EditableScalarSchema,
-    pendingCorrection: z.discriminatedUnion("state", [
-      z.strictObject({ state: z.literal("none") }),
-      z.strictObject({
-        state: z.literal("pending"),
-        value: EditableScalarSchema,
-        correctedAt: IsoInstantSchema,
-      }),
-    ]),
+    state: z.literal("present"),
+    runId: RunIdSchema,
+    attempt: PositiveIntSchema,
+    claimGeneration: PositiveIntSchema.optional(),
+    descriptorVersion: PositiveIntSchema,
+    contractFingerprint: FingerprintSchema,
+    schemaHash: FingerprintSchema,
+    writtenAt: IsoInstantSchema,
   }),
-  z.strictObject({ state: z.literal("locked"), reason: z.string().min(1) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.enum(["no-checkpoint-for-run", "field-not-recorded"]) }),
+  z.strictObject({
+    state: z.literal("malformed"),
+    reason: z.enum(["checkpoint-identity-mismatch", "descriptor-mismatch", "output-schema-mismatch"]),
+  }),
 ]);
 
 /**
@@ -618,8 +604,8 @@ const ContextDataEntryEditSchema = z.discriminatedUnion("state", [
  * owns none, so the field is absent rather than a fabricated "internal".
  *
  * The whole block is optional and read forward (D133): an entry recorded under
- * an earlier descriptor has no field identity, so nothing can name its step —
- * which is the same absence the `edit` lock already states in words.
+ * an earlier descriptor has no field identity, so this entry cannot be
+ * attributed to a producing step.
  */
 const ContextDataOriginSchema = z.strictObject({
   nodeId: NodeIdSchema,
@@ -656,112 +642,63 @@ const ContextDataFreshnessSchema = z.strictObject({
 
 export const ContextDataSectionSchema = z.strictObject({
   runId: RunIdSchema,
-  /**
-   * The run-level half of the edit policy, computed against raw authority
-   * lifecycle — the coarse `header.status` cannot distinguish `parked-gate`
-   * from an open gate on a running row, and a client-side guess would be a
-   * claim about whether a save can land. `expectedVersion` is the CAS basis
-   * for the values THIS response serves.
-   */
-  editing: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("editable"), expectedVersion: z.number().int().positive() }),
-    z.strictObject({ state: z.literal("locked"), reason: z.string().min(1) }),
-  ]),
+  state: z.enum(["available", "archived", "deleted", "unavailable"]),
+  reason: z.enum(["descriptor-unavailable", "descriptor-mismatch", "checkpoint-reader-unavailable"]).optional(),
   entries: z.array(z.strictObject({
     label: z.string().min(1),
     valueRedacted: z.string().min(1),
-    edit: ContextDataEntryEditSchema,
-    /**
-     * WHEN this value was established and by WHAT, off the producing
-     * checkpoint's own `FactProvenance` row (ref workflow-model §5.6).
-     *
-     * The rail's header comment has listed an observation clock among four
-     * axes the 1i wire dropped since the surface was ported, and of those four
-     * this one was never missing from AUTHORITY — `editableEntryOf` has read
-     * the checkpoint since 2i-C and thrown its `.provenance` away. So this is
-     * a projection of a fact already loaded, not a new storage read and not a
-     * migration: there is no schema version to move.
-     *
-     * All three are OPTIONAL and every one of them is read forward (D133). A
-     * pre-2i checkpoint carries provenance for the leaves its task recorded and
-     * nothing for a leaf it did not, an entry with no field identity at all
-     * (a key recorded under an earlier descriptor) can have none by
-     * construction, and a run whose step never checkpointed has no row to read
-     * — three different absences, all of which mean "this build cannot date
-     * this value", which is what an absent field says. Substituting the
-     * checkpoint's `writtenAt` would date the ROW rather than the FACT, and a
-     * derived value's own rule (`originalObservedAt`) exists precisely because
-     * those two are not the same instant.
-     *
-     * `correctedAt` is present only on an operator correction and is what the
-     * surface's `corrected` badge is drawn from. The demo's `refreshed` badge
-     * has NO arm here on purpose: it means "this value changed on the server
-     * since you looked", which needs the superseded reading beside the current
-     * one, and this wire carries one value per entry.
-     */
+    coordinate: ContextDataCoordinateSchema,
+    checkpoint: ContextDataCheckpointSchema,
+    valueState: z.enum(["present", "absent", "redacted", "malformed"]),
     observedAt: IsoInstantSchema.optional(),
     source: z.enum(["live", "derived", "operator"]).optional(),
     correctedAt: IsoInstantSchema.optional(),
-    /**
-     * D307 — the omitted STEP this value was asserted for, present exactly when
-     * the checkpoint row that carries it is an operator assertion.
-     *
-     * Before D307 an `operator` source meant one thing — a correction, which
-     * carries `correctedAt` — and the rail drew nothing for it because the
-     * `corrected` badge already said it. An asserted value is operator-sourced
-     * with NO correction, so without this leaf it would draw as an unmarked
-     * row with a clock beside it: a value nobody read, presented exactly like
-     * one a task observed.
-     */
     assertedStep: TimelineCategoryKeySchema.optional(),
     origin: ContextDataOriginSchema.optional(),
     freshness: ContextDataFreshnessSchema.optional(),
-  })).superRefine((entries, context) => {
-    entries.forEach((entry, index) => {
-      // A bound with no origin is a bound about nothing: `freshness` is
-      // resolved from the producing node's contract, so an entry that cannot
-      // name its step cannot have one either. Refused here rather than left to
-      // a surface that would print an unattributed age.
-      // An asserted ROW may hold a leaf no provenance point covers, which is
-      // dateless and sourceless — and still asserted. What it may never be is
-      // live or derived: those two say a task established the value.
-      if (entry.assertedStep !== undefined && (entry.source === "live" || entry.source === "derived")) {
-        context.addIssue({
-          code: "custom",
-          path: [index, "assertedStep"],
-          message: `an asserted value is operator-sourced; a ${entry.source} leaf never names an omitted step`,
-        });
-      }
-      /*
-       * D307 — the CONVERSE, and the one that actually protects the rail. There
-       * are exactly two operator-sourced values: a CORRECTION, which carries
-       * `correctedAt` and draws the `corrected` badge, and an ASSERTION, which
-       * carries `assertedStep` and draws the `asserted` badge naming the omitted
-       * step (`src/domain/workflow/checkpoint.ts` marks the row; `checkpoint-patch.ts`
-       * always stamps `correctedAt` and never sets `assertion`, so no third kind
-       * exists in authority). A leaf claiming `operator` with NEITHER leaf is
-       * therefore a producer defect, and the rail would draw it as an unmarked
-       * row with a clock beside it — a value nobody read, presented exactly like
-       * one a task observed. The wire refuses it here so the surface may assume
-       * the invariant instead of inventing a badge for an unnamed operator.
-       */
-      if (entry.source === "operator" && entry.correctedAt === undefined && entry.assertedStep === undefined) {
-        context.addIssue({
-          code: "custom",
-          path: [index, "assertedStep"],
-          message: "an operator-sourced value is either a correction or an assertion; "
-            + "without `correctedAt` it must name the omitted step it was asserted for",
-        });
-      }
-      if (entry.freshness !== undefined && entry.origin === undefined) {
-        context.addIssue({
-          code: "custom",
-          path: [index, "freshness"],
-          message: "a freshness bound is the producing step's declaration; it cannot be served without an origin",
-        });
-      }
-    });
-  }),
+  })),
+}).superRefine((payload, context) => {
+  if ((payload.state === "deleted" || payload.state === "unavailable") && payload.entries.length > 0) {
+    context.addIssue({ code: "custom", path: ["entries"], message: "deleted or unavailable context data cannot claim checkpoint values" });
+  }
+  if (payload.state === "unavailable" && payload.reason === undefined) {
+    context.addIssue({ code: "custom", path: ["reason"], message: "unavailable context data names why it cannot be read" });
+  }
+  if (payload.state !== "unavailable" && payload.reason !== undefined) {
+    context.addIssue({ code: "custom", path: ["reason"], message: "only unavailable context data carries a reason" });
+  }
+  payload.entries.forEach((entry, index) => {
+    if (entry.checkpoint.state === "malformed" && entry.valueState !== "malformed") {
+      context.addIssue({ code: "custom", path: ["entries", index, "valueState"], message: "malformed checkpoint values stay unprojected" });
+    }
+    if (entry.checkpoint.state === "absent" && entry.valueState !== "absent") {
+      context.addIssue({ code: "custom", path: ["entries", index, "valueState"], message: "a missing checkpoint cannot provide a value" });
+    }
+    if (entry.checkpoint.state === "present" && entry.checkpoint.runId !== payload.runId) {
+      context.addIssue({ code: "custom", path: ["entries", index, "checkpoint", "runId"], message: "checkpoint belongs to another source run" });
+    }
+    if (entry.assertedStep !== undefined && (entry.source === "live" || entry.source === "derived")) {
+      context.addIssue({
+        code: "custom",
+        path: [index, "assertedStep"],
+        message: `an asserted value is operator-sourced; a ${entry.source} leaf never names an omitted step`,
+      });
+    }
+    if (entry.source === "operator" && entry.correctedAt === undefined && entry.assertedStep === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [index, "assertedStep"],
+        message: "an operator-sourced value is either a correction or an assertion; without `correctedAt` it must name the omitted step it was asserted for",
+      });
+    }
+    if (entry.freshness !== undefined && entry.origin === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [index, "freshness"],
+        message: "a freshness bound is the producing step's declaration; it cannot be served without an origin",
+      });
+    }
+  });
 });
 export type ContextDataSectionWire = z.infer<typeof ContextDataSectionSchema>;
 

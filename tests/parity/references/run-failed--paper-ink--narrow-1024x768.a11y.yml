@@ -292,8 +292,15 @@
       - button "Widen the data surface"
       - text: Selection
       - paragraph: exact-match
-      - text: Active status
+      - text: Attempt 1 · crm-dates / startsOn.value Active status
       - paragraph: not-reached
+      - text: Attempt 1 · crm-dates / invitedOn.value
+      - button "Rerun"
+    - separator
+    - region "Attempts":
+      - text: Attempts
+      - link "Attempt 1":
+        - /url: "?day=2026-08-03&run=00000000-0004-4000-8000-000000000004"
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

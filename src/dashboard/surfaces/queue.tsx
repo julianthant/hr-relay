@@ -29,7 +29,7 @@ import { WorkflowBatchGroup, GroupWorkflowBatchButton } from "./workflow-batch.j
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
-import { Fragment, memo } from "react";
+import { Fragment, memo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
@@ -38,8 +38,8 @@ import {
   IconButton,
   MetaLine,
   Popover,
-  PopoverContent,
   PopoverTrigger,
+  PopoverContent,
   dsBorder,
   dsClip,
   dsFocus,
@@ -80,7 +80,7 @@ import {
   type QueueSurfaceWire,
   bandOf,
   canViewAllMembers,
-  checkedByYouCount,
+  checkedQueueItemCount,
   orderMembers,
   partition,
   queueGateAge,
@@ -88,6 +88,8 @@ import {
   queueRowTitle,
   queueRowTitleTooltip,
   rowInfoFacts,
+  groupQueueAttempts,
+  type QueueItemGroup,
   sortQueueBand,
   useAttentionAnnounce,
 } from "./queue-model.js";
@@ -768,15 +770,17 @@ function MemberWell({
  */
 function MemberLine({
   surface,
+  item,
   selected,
   checked,
   onSelect,
   onToggleChecked,
 }: {
   surface: MemberSurfaceWire;
+  item: QueueItemGroup;
   selected: boolean;
   checked: boolean;
-  onSelect: () => void;
+  onSelect: (runId: string) => void;
   onToggleChecked?: () => void;
 }) {
   const status = dsStatusOf(surface.status);
@@ -818,11 +822,17 @@ function MemberLine({
           type="button"
           title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
           aria-label={selectionLabel}
-          onClick={onSelect}
+          onClick={() => onSelect(String(surface.runId))}
           className={cn("min-w-0 truncate text-left", dsFocus)}
         >
           {queueRowTitle(surface)}
         </button>
+        <QueueAttemptSelector
+          title={queueRowTitle(surface)}
+          item={item}
+          selectedRunId={selected ? String(surface.runId) : undefined}
+          onSelect={onSelect}
+        />
         {checked && (
           <span title="Marked checked by you" className="inline-flex shrink-0 items-center text-[color:var(--ds-success-fg)]">
             <CheckCircle2 aria-hidden className={dsIcon.sm} />
@@ -888,19 +898,22 @@ const disclosureLink = cn(
 
 function GroupMemberList({
   surface,
+  itemKey,
   members,
   state,
   handlers,
 }: {
   surface: OperationSurfaceWire;
+  itemKey: string;
   members: readonly MemberSurfaceWire[];
   state: QueueViewState;
   handlers: QueueHandlers;
 }) {
-  const ordered = orderMembers(members);
+  const itemGroups = groupQueueAttempts(members);
+  const ordered = orderMembers(itemGroups.map((item) => item.representative) as MemberSurfaceWire[]);
   const checkedIds = state.checkedIds ?? NO_CHECKED_IDS;
-  const checkedCount = checkedByYouCount(ordered, checkedIds);
-  const wellOpen = state.openWells.has(surface.runId);
+  const checkedCount = checkedQueueItemCount(itemGroups, checkedIds);
+  const wellOpen = state.openWells.has(itemKey);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
   /**
    * DEFERRED, and this branch is currently unreachable (R3 finding 23).
@@ -924,7 +937,7 @@ function GroupMemberList({
           aria-expanded={wellOpen}
           onClick={(event) => {
             event.stopPropagation();
-            onToggleWell(surface.runId);
+            onToggleWell(itemKey);
           }}
           className={disclosureLink}
         >
@@ -1026,18 +1039,26 @@ function GroupMemberList({
         ) : undefined
       }
     >
-      {ordered.map((member) => (
-        <MemberLine
-          key={member.runId}
-          surface={member}
-          selected={state.selectedRunId === member.runId}
-          checked={checkedIds.has(String(member.runId))}
-          onSelect={() => handlers.onSelect(member.runId)}
-          {...(handlers.onToggleChecked === undefined
-            ? {}
-            : { onToggleChecked: () => handlers.onToggleChecked?.(String(member.runId)) })}
-        />
-      ))}
+      {ordered.map((member) => {
+        const item = itemGroups.find((candidate) => candidate.representative.runId === member.runId);
+        if (item === undefined) throw new Error(`member list lost item ${String(member.itemId)}`);
+        const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
+        const visible = selectedAttempt ?? member;
+        const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
+        return (
+          <MemberLine
+            key={item.key}
+            surface={visible as MemberSurfaceWire}
+            item={item}
+            selected={selected}
+            checked={checkedIds.has(String(visible.runId))}
+            onSelect={handlers.onSelect}
+            {...(handlers.onToggleChecked === undefined
+              ? {}
+              : { onToggleChecked: () => handlers.onToggleChecked?.(String(visible.runId)) })}
+          />
+        );
+      })}
     </MemberWell>
   );
 }
@@ -1176,10 +1197,93 @@ function FactChip({ fact, grow }: { fact: { label: string; value: string }; grow
   );
 }
 
+function QueueAttemptSelector({
+  title,
+  item,
+  selectedRunId,
+  onSelect,
+}: {
+  title: string;
+  item: QueueItemGroup;
+  selectedRunId?: string;
+  onSelect: (runId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [closedSelection, setClosedSelection] = useState<string | undefined>();
+  if (item.attempts.length < 2) return null;
+  const selectedOlderAttempt = selectedRunId !== undefined
+    && selectedRunId !== String(item.representative.runId)
+    && item.attempts.some((attempt) => String(attempt.runId) === selectedRunId)
+    && selectedRunId !== closedSelection;
+  const open = expanded || selectedOlderAttempt;
+
+  return (
+    <Popover open={open} onOpenChange={(next) => {
+      setExpanded(next);
+      if (!next) setClosedSelection(selectedRunId);
+      else setClosedSelection(undefined);
+    }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Attempts for ${title}`}
+          aria-expanded={open}
+          onClick={(event) => event.stopPropagation()}
+          className={cn(
+            "inline-flex shrink-0 items-center border px-[var(--ds-space-snug)]",
+            "h-[var(--ds-h-xs)]",
+            dsRadius.sm,
+            dsBorder.base,
+            dsText.micro,
+            dsFocus,
+            "text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
+          )}
+        >
+          Attempts · {item.attempts.length}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent title={`Attempts for ${title}`} width="md" className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+        <ol className="flex flex-col divide-y divide-[color:var(--ds-border-subtle)]">
+          {item.attempts.map((attempt) => {
+            const status = dsStatusOf(attempt.status);
+            const selected = String(attempt.runId) === selectedRunId;
+            return (
+              <li key={attempt.runId}>
+                <button
+                  type="button"
+                  aria-label={`Open ${title} — attempt ${String(attempt.attempt)} — ${statusAccessibleName(status).toLowerCase()}`}
+                  aria-current={selected ? "true" : undefined}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(String(attempt.runId));
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-left",
+                    dsText.meta,
+                    dsFocus,
+                    "hover:bg-[var(--ds-surface-3)]",
+                    selected && "bg-[var(--ds-surface-selected)]",
+                  )}
+                >
+                  <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-secondary)]")}>#{attempt.attempt}</span>
+                  <StatusBadge status={status} />
+                  <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{attempt.traceId}</span>
+                  <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>{fmtClock(attempt.startedAt)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /* ── the row ─────────────────────────────────────────────────────────────── */
 
 export function QueueRow({
   surface,
+  itemGroup,
   members = [],
   state,
   handlers,
@@ -1188,6 +1292,7 @@ export function QueueRow({
   parentOf,
 }: {
   surface: QueueSurfaceWire;
+  itemGroup?: QueueItemGroup;
   /** the joined member surfaces, for an operation row */
   members?: readonly MemberSurfaceWire[];
   state: QueueViewState;
@@ -1204,7 +1309,8 @@ export function QueueRow({
 }) {
   const status = dsStatusOf(surface.status);
   const announcing = useAttentionAnnounce(status);
-  const selected = state.selectedRunId === surface.runId;
+  const selected = itemGroup?.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId)
+    ?? state.selectedRunId === surface.runId;
   const actions = actionsOf(surface);
   const target = { runId: surface.runId, expectedVersion: surface.rowRevision };
   const StatusIcon = PROPOSED_STATUS[status].icon;
@@ -1441,7 +1547,13 @@ export function QueueRow({
                 rather than a well indented inside column two. */}
             {isOperation && surface.surfaceKind === "operation" && (
               <div className="col-span-2 flex flex-col gap-[var(--ds-space-base)]">
-                <GroupMemberList surface={surface} members={members} state={state} handlers={handlers} />
+                <GroupMemberList
+                  surface={surface}
+                  itemKey={itemGroup?.key ?? String(surface.runId)}
+                  members={members}
+                  state={state}
+                  handlers={handlers}
+                />
               </div>
             )}
 
@@ -1497,6 +1609,16 @@ export function QueueRow({
           />
         </div>
       </RowContextMenu>
+      {itemGroup !== undefined && itemGroup.attempts.length > 1 && (
+        <div className="flex pl-[var(--ds-w-row-indent)] pt-[var(--ds-space-hair)]">
+          <QueueAttemptSelector
+            title={queueRowTitle(surface)}
+            item={itemGroup}
+            selectedRunId={state.selectedRunId}
+            onSelect={handlers.onSelect}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1565,7 +1687,7 @@ export const QueuePanel = memo(function QueuePanel({
   sort?: QueueSortKey;
 }) {
   const { top, membersOf } = partition(surfaces);
-  const { batchByRun, flatBatchByFirst, displayTop } = queueBatchLayout(top, sort, state.nowIso);
+  const { batchByRun, flatBatchByFirst, displayTop, itemByRunId } = queueBatchLayout(top, sort, state.nowIso);
   const bands = BAND_ORDER.map((key) => ({
     key,
     label: BAND_LABEL[key],
@@ -1592,7 +1714,7 @@ export const QueuePanel = memo(function QueuePanel({
    * verified is itself the answer; the other three appear only when they
    * happened, which is how the demo folds it (`DemoQueue.tsx:1845-1850`).
    */
-  const finished = top.filter((surface) => bandOf(dsStatusOf(surface.status)) === "finished");
+  const finished = displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === "finished");
   const digestOf = (status: ProposedStatus): number =>
     finished.filter((surface) => dsStatusOf(surface.status) === status).length;
   const digest = {
@@ -1738,9 +1860,40 @@ export const QueuePanel = memo(function QueuePanel({
                 </div>
               )}
               {band.rows.map((surface) => {
-                const renderRow = (row: QueueSurfaceWire) => <QueueRow key={row.runId} surface={row} members={membersOf.get(row.runId) ?? []} state={state} handlers={handlers} actionsOf={actionsOf} workflowLabelOf={workflowLabelOf} {...(parentOf === undefined ? {} : { parentOf })} />;
+                const renderRow = (row: QueueSurfaceWire) => {
+                  const item = itemByRunId.get(String(row.runId));
+                  if (item === undefined) throw new Error(`queue row lost item ${String(row.itemId)}`);
+                  const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
+                  const visible = state.selectMode === true ? item.representative : selectedAttempt ?? item.representative;
+                  return <QueueRow
+                    key={item.key}
+                    surface={visible}
+                    itemGroup={item}
+                    members={membersOf.get(String(visible.runId)) ?? []}
+                    state={state}
+                    handlers={handlers}
+                    actionsOf={actionsOf}
+                    workflowLabelOf={workflowLabelOf}
+                    {...(parentOf === undefined ? {} : { parentOf })}
+                  />;
+                };
                 const batch = batchByRun.get(surface.runId);
-                if (batch !== undefined) return <WorkflowBatchGroup key={batch.id} batch={batch} label={workflowLabelOf(surface.workflowId)} selected={[...batch.members, ...batch.history].find((row) => row.runId === state.selectedRunId)?.runId} {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })} history={batch.history.map(renderRow)}>{batch.members.map(renderRow)}</WorkflowBatchGroup>;
+                if (batch !== undefined) {
+                  const selectedItem = state.selectedRunId === undefined ? undefined : itemByRunId.get(state.selectedRunId);
+                  const selected = selectedItem !== undefined && batch.members.some((row) => row.runId === selectedItem.representative.runId)
+                    ? state.selectedRunId
+                    : undefined;
+                  return <WorkflowBatchGroup
+                    key={batch.id}
+                    batch={batch}
+                    label={workflowLabelOf(surface.workflowId)}
+                    selected={selected}
+                    {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })}
+                    history={batch.history.map(renderRow)}
+                  >
+                    {batch.members.map(renderRow)}
+                  </WorkflowBatchGroup>;
+                }
                 const flatBatch = flatBatchByFirst.get(surface.runId);
                 return <Fragment key={surface.runId}>{flatBatch !== undefined && <GroupWorkflowBatchButton batch={flatBatch} {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })} />}{renderRow(surface)}</Fragment>;
               })}

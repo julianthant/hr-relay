@@ -55,6 +55,7 @@ import type { IdentityEvidencePacket } from "../../../../src/domain/separations/
 import { UcpathPersonSelectionSchema } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
 import { SeparationWritePlanSchema } from "../../../../src/domain/separations/write-plan.js";
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
+import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/domain/workflow/build-manifest.js";
 import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workflow/ingress.js";
 import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
@@ -199,6 +200,11 @@ export function createSeparationsWorld(): SeparationsDashboardWorld {
 
   const receipts = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [descriptor] });
   const runDetail: RunDetailQueryDeps = { runReader: sqliteRunReader(database, clock),
+    canonical: {
+      reader: sqliteRunReader(database, clock),
+      database,
+      descriptors: descriptorResolver,
+    },
     stateRoot,
     projection,
     authority: {
@@ -574,6 +580,11 @@ export function seedIdentityPacketCheckpoint(
 ): { readonly evidenceDigest: string } {
   const run = world.database.authority.runs.get(runId);
   if (run === undefined) throw new Error(`run ${runId} is not in authority`);
+  const comparison = descriptorRuntimeNodes(world.descriptor)
+    .find((node) => node.kind === "task" && String(node.id) === COMPARISON_NODE);
+  if (comparison === undefined || comparison.kind !== "task") {
+    throw new Error(`workflow ${world.descriptor.id} does not declare ${COMPARISON_NODE} as a task`);
+  }
   const evidenceDigest = deriveIdentityEvidenceDigest(packet);
   world.database.withAuthorityTransaction((repositories) => repositories.runCheckpoints.insert(
     RunCheckpointRecordSchema.parse({
@@ -589,7 +600,7 @@ export function seedIdentityPacketCheckpoint(
       },
       descriptorVersion: run.envelope.descriptorVersion,
       contractFingerprint: run.envelope.contractFingerprint,
-      implFingerprint: run.envelope.contractFingerprint,
+      implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, comparison.uses.id),
       provenance: [],
       writtenAt: world.clock.now().toISOString(),
     }),

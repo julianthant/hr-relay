@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Implement evidence-complete revision-bound gate/parked-write commands and prove stale, expired,
+- [x] Implement evidence-complete revision-bound gate/parked-write commands and prove stale, expired,
   changed-plan, skipped-condition, resume, rejection, archive, and authorization cases.
 
 Gate decisions remain checkpoint-backed; run_operations/run_operation_attempts retain write evidence and parked resolution. The retirement of SQL gates/ocr_approvals does not remove required approval or durable review behavior. Do not restore the retired tables to satisfy old storage wording.

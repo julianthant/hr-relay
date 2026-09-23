@@ -941,11 +941,8 @@ export const LogPanel = memo(function LogPanel({
             railState.setOpen(false);
             setDataExpanded(false);
           }}
-          actorId={actorId}
-          liveStatus={surface?.status}
           dataExpanded={dataExpanded}
           onDataExpandedChange={setDataExpanded}
-          onSaved={onDetailEdited}
           actions={actions}
           target={{ runId: detail.runId, expectedVersion: detail.rowRevision }}
           onAction={handleAction}

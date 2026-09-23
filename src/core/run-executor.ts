@@ -60,6 +60,8 @@ import type { Clock } from "../domain/clock.js";
 import type { AnyReadTaskContract } from "../domain/contracts/base.js";
 import type { GateResultRecord } from "../domain/gates.js";
 import type { IdFactory } from "../domain/identifiers.js";
+import type { TaskRunNoteKind } from "../domain/run/task-note.js";
+import type { NoteJsonlWriter } from "../infra/events/note-jsonl-writer.js";
 import {
   GateIdSchema,
   IsoInstantSchema,
@@ -287,6 +289,11 @@ function admittedClientFor(
   }
 }
 
+const TASK_LOG_NOTE_KIND_BY_MESSAGE: ReadonlyMap<string, TaskRunNoteKind> = new Map([
+  ["contact advisory withheld fields whose classification forbids provider use", "contact-advice-withheld"],
+  ["roster match completed", "roster-match-completed"],
+]);
+
 export interface RunExecutorDependencies {
   readonly lifecycle: WorkerRunLifecyclePort;
   readonly descriptor: AnyWorkflowDescriptor;
@@ -300,6 +307,8 @@ export interface RunExecutorDependencies {
   /** Immutable per-invocation task bound (ref execution-and-sessions §5.5); no default, no opt-out. */
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
+  /** Optional production sink for the executor's allowlisted ordinary task notes. */
+  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote">;
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
@@ -485,6 +494,8 @@ export async function executeClaimedRun(
   );
   const runs = deps.authority.authority.runs;
   const instant = () => IsoInstantSchema.parse(clock.now().toISOString());
+  let taskNoteCount = 0;
+  let taskNoteLimitReported = false;
 
   const getRun = (): RunRecord => {
     const current = runs.get(runId);
@@ -1120,6 +1131,39 @@ export async function executeClaimedRun(
         },
       });
 
+      const taskLog = (message: string): void => {
+        const sink = deps.taskNotes;
+        if (sink === undefined) return;
+        const kind = TASK_LOG_NOTE_KIND_BY_MESSAGE.get(message);
+        if (kind === undefined) return;
+        const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
+        if (taskNoteCount >= 256) {
+          if (!taskNoteLimitReported) {
+            taskNoteLimitReported = true;
+            sink.emitRunNote({ workflow: descriptor.id, address, kind: "task-log-limit-reached" }, getRun());
+          }
+          return;
+        }
+        taskNoteCount += 1;
+        sink.emitRunNote({
+          workflow: descriptor.id,
+          address,
+          kind,
+        }, getRun());
+      };
+      const taskLogger: TaskLogger = {
+        debug: (message, fields) => {
+          deps.log.debug(message, fields);
+        },
+        info: (message, fields) => {
+          deps.log.info(message, fields);
+          taskLog(message);
+        },
+        warn: (message, fields) => {
+          deps.log.warn(message, fields);
+        },
+      };
+
       const controller = new AbortController();
       const forwardAbort = (): void => {
         controller.abort(input.signal.reason instanceof Error
@@ -1140,7 +1184,7 @@ export async function executeClaimedRun(
       const run = RunnableTaskSchema.parse(task.impl.run);
       const ctxCommon = {
         signal: controller.signal,
-        log: protectedTaskLogger(deps.log, initial),
+        log: protectedTaskLogger(taskLogger, initial),
         fail: (code: string, message: string, options?: Readonly<{
           subject?: string; transient?: boolean; cause?: unknown;
         }>): never => {

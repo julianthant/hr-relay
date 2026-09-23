@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Compose missing truthful producers; render bounded searchable logs/captures/bundles and prove
+- [x] Compose missing truthful producers; render bounded searchable logs/captures/bundles and prove
   pagination snapshots, stale isolation, read-forward, redaction, absence, and large streams.
 
 Current observation/fence producers, timeline events and note writer already exist. Trace actual ordinary workflow note call sites before labeling a producer missing. Current diagnostic capture metadata/bytes and immutable cursor tests are accepted inputs. Do not rebuild SQL spans/notes or artifact/terminal outboxes; preserve log, diagnostic, redaction and append-day retention behavior.

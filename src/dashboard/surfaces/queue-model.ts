@@ -142,6 +142,75 @@ export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "ope
 
 export type PipelineStep = QueueSurfaceWire["pipeline"][number];
 
+export type QueueStatusFilter = QueueSurfaceWire["status"] | "needsYou" | "all";
+
+export interface QueueItemGroup {
+  readonly key: string;
+  readonly attempts: readonly QueueSurfaceWire[];
+  readonly representative: QueueSurfaceWire;
+}
+
+function queueItemKey(surface: Pick<QueueSurfaceWire, "workflowId" | "itemId">): string {
+  return JSON.stringify([surface.workflowId, surface.itemId]);
+}
+
+/** Keep the day's attempts under their served logical item identity. */
+export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): readonly QueueItemGroup[] {
+  const groups = new Map<string, QueueSurfaceWire[]>();
+  for (const surface of surfaces) {
+    const key = queueItemKey(surface);
+    const attempts = groups.get(key);
+    if (attempts === undefined) groups.set(key, [surface]);
+    else attempts.push(surface);
+  }
+
+  return [...groups].map(([key, unsorted]) => {
+    const attempts = [...unsorted].sort((left, right) =>
+      left.attempt - right.attempt || String(left.runId).localeCompare(String(right.runId)));
+    for (let index = 1; index < attempts.length; index += 1) {
+      if (attempts[index - 1]?.attempt === attempts[index]?.attempt) {
+        throw new Error(`queue item has duplicate attempt: ${key}`);
+      }
+    }
+    const representative = attempts.at(-1);
+    if (representative === undefined) throw new Error(`queue item has no attempts: ${key}`);
+    return { key, attempts, representative };
+  });
+}
+
+/** Match a status at item scope, then retain every served attempt for that item. */
+export function filterQueueSurfaces(
+  surfaces: readonly QueueSurfaceWire[],
+  filter: QueueStatusFilter,
+): readonly QueueSurfaceWire[] {
+  if (filter === "all") return surfaces;
+  const matches = (surface: QueueSurfaceWire): boolean => filter === "needsYou"
+    ? surface.status === "awaiting-approval" || surface.status === "blocked"
+    : surface.status === filter;
+  const includedItems = new Set(
+    groupQueueAttempts(surfaces.filter(matches)).map((group) => group.key),
+  );
+
+  // An included operation retains its served child set. A child that matches
+  // on its own remains visible and keeps all of its attempts too.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const includedParents = new Set(surfaces
+      .filter((surface) => includedItems.has(queueItemKey(surface)) && surface.surfaceKind === "operation")
+      .map((surface) => String(surface.runId)));
+    for (const surface of surfaces) {
+      if (surface.lineage.state !== "child" || !includedParents.has(String(surface.lineage.parentRunId))) continue;
+      const key = queueItemKey(surface);
+      if (includedItems.has(key)) continue;
+      includedItems.add(key);
+      changed = true;
+    }
+  }
+
+  return surfaces.filter((surface) => includedItems.has(queueItemKey(surface)));
+}
+
 /**
  * Browser-local triage, deliberately not an authority projection. The caller
  * owns the state lifetime (DashboardApp creates an empty set on every load),
@@ -158,6 +227,10 @@ export function toggleCheckedByYou(previous: ReadonlySet<string>, runId: string)
  * from another operation cannot inflate a group it does not belong to. */
 export function checkedByYouCount(members: readonly MemberSurfaceWire[], checkedIds: ReadonlySet<string>): number {
   return members.filter((member) => checkedIds.has(String(member.runId))).length;
+}
+
+export function checkedQueueItemCount(items: readonly QueueItemGroup[], checkedIds: ReadonlySet<string>): number {
+  return items.filter((item) => item.attempts.some((attempt) => checkedIds.has(String(attempt.runId)))).length;
 }
 
 /** One delegated child this row waits on and does NOT count (D231). */
@@ -435,8 +508,13 @@ export function visibleRunIds(
   nowIso: string = new Date(0).toISOString(),
 ): string[] {
   const { top, membersOf } = partition(surfaces);
-  const { batchByRun, displayTop } = queueBatchLayout(top, sort, nowIso);
+  const { batchByRun, displayTop, itemByRunId } = queueBatchLayout(top, sort, nowIso);
   const ids: string[] = [];
+  const addAttempts = (surface: QueueSurfaceWire): void => {
+    const item = itemByRunId.get(String(surface.runId));
+    if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
+    ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
+  };
   for (const key of BAND_ORDER) {
     const band = sortQueueBand(
       displayTop.filter((surface) => (batchByRun.get(surface.runId)?.band ?? bandOf(dsStatusOf(surface.status))) === key),
@@ -446,11 +524,16 @@ export function visibleRunIds(
     for (const surface of band) {
       const batch = batchByRun.get(surface.runId);
       if (batch !== undefined) {
-        ids.push(...[...batch.members, ...batch.history].map((row) => row.runId));
+        for (const row of batch.members) addAttempts(row);
         continue;
       }
-      ids.push(surface.runId);
-      for (const member of orderMembers(membersOf.get(surface.runId) ?? [])) ids.push(member.runId);
+      addAttempts(surface);
+      const memberGroups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);
+      for (const member of orderMembers(memberGroups.map((group) => group.representative) as MemberSurfaceWire[])) {
+        const item = memberGroups.find((group) => group.representative.runId === member.runId);
+        if (item === undefined) throw new Error(`queue keyboard order lost member item ${String(member.itemId)}`);
+        ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
+      }
     }
   }
   return ids;
@@ -471,7 +554,8 @@ export function attentionRunIds(
   nowIso: string = new Date(0).toISOString(),
 ): string[] {
   const attention = new Set<string>(
-    surfaces
+    groupQueueAttempts(surfaces)
+      .map((group) => group.representative)
       .filter((surface) => bandOf(dsStatusOf(surface.status)) === "attention")
       .map((surface) => String(surface.runId)),
   );
@@ -522,12 +606,18 @@ export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueB
 
 /** One layout shared by rendering and keyboard traversal. */
 export function queueBatchLayout(top: readonly QueueSurfaceWire[], sort: QueueSortKey, nowIso: string) {
-  const batches = queueBatches(top).map((batch) => ({ ...batch,
+  const itemGroups = groupQueueAttempts(top);
+  const itemByRunId = new Map(itemGroups.flatMap((group) =>
+    group.attempts.map((attempt) => [String(attempt.runId), group] as const)));
+  const representatives = itemGroups.map((group) => group.representative);
+  const batches = queueBatches(representatives).map((batch) => ({ ...batch,
     members: sortQueueBand(batch.members, sort, nowIso), history: sortQueueBand(batch.history, sort, nowIso),
   }));
   const grouped = batches.filter((batch) => batch.groupInQueue && batch.members.length > 1);
-  const batchByRun = new Map(grouped.flatMap((batch) => [...batch.members, ...batch.history].map((row) => [row.runId, batch] as const)));
+  const batchByRun = new Map(grouped.flatMap((batch) => batch.members.map((row) => [row.runId, batch] as const)));
   const flatBatchByFirst = new Map(batches.filter((batch) => !batch.groupInQueue && batch.members.length > 1).map((batch) => [batch.representative.runId, batch]));
-  const displayTop = top.filter((row) => !batchByRun.has(row.runId) || batchByRun.get(row.runId)?.representative.runId === row.runId);
-  return { batchByRun, flatBatchByFirst, displayTop };
+  const displayTop = representatives.filter((row) =>
+    !batchByRun.has(row.runId) || batchByRun.get(row.runId)?.representative.runId === row.runId,
+  );
+  return { batchByRun, flatBatchByFirst, displayTop, itemGroups, itemByRunId };
 }

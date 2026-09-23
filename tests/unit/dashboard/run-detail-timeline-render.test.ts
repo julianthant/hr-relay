@@ -230,4 +230,35 @@ describe("F6b item 3 — the disclosure trigger names what it controls", () => {
     });
     assert.equal(button.getAttribute("aria-expanded"), "false");
   });
+
+  it("keeps the focused step disclosure with that step when a live patch reorders categories", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = root;
+    const before = [step("Find person", "done", 4), step("Cross-verify", "active")];
+
+    await act(async () => {
+      root.render(createElement(Timeline, { detail: detailOf(before, NO_GATE), nowIso: NOW }));
+    });
+
+    const focused = [...host.querySelectorAll("button")].find((button) =>
+      button.getAttribute("aria-label")?.startsWith("Cross-verify"),
+    );
+    if (focused === undefined) throw new Error("the cross-verify disclosure was not rendered");
+    await act(async () => focused.focus());
+    assert.equal(focused.getAttribute("aria-expanded"), "true");
+
+    await act(async () => {
+      root.render(createElement(Timeline, {
+        detail: detailOf([step("Cross-verify", "done", 7), step("Find person", "done", 4)], NO_GATE),
+        nowIso: NOW,
+      }));
+    });
+
+    const reordered = host.querySelector('button[aria-label^="Cross-verify"]');
+    assert.equal(document.activeElement, reordered);
+    assert.equal(reordered?.getAttribute("aria-expanded"), "true");
+    assert.equal(host.querySelector('button[aria-label^="Find person"]')?.getAttribute("aria-expanded"), "false");
+  });
 });
