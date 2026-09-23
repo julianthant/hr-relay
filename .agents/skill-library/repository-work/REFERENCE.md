@@ -57,7 +57,7 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   catalog — read it before authoring a task, and remember the code wins over it).
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
   "X looked safe and did Y", each naming its decision. Before kernel / driver / dashboard /
-  write-safety work, search by seam/decision and read the matching entries; record root-level lessons THERE when requested; follow module lesson pointers for scoped entries.
+  write-safety work, search by seam/decision and read the matching entries; do not append historical lessons or retrospective comments as part of ordinary execution.
 - `docs/rebuild/plans/phase-0/`–`phase-6/` — active plan-document folders. D323 maps their owning work into the visible
   Phase 0–6 hierarchy; D329 aligns every Phase 3 filename to its decimal part. Each phase owns its
   tasks, decisions and **exit criteria**;
@@ -343,19 +343,24 @@ in-flight work outside Phase 3 keeps its ownership/gates/integration permissions
 includes unrelated work; an additional lane requires explicit capacity approval.
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
-The operator opens planning and supervisor sessions. Skills use the exact phase task and approved
-plan commit. Where independent review is required, the supervisor dispatches a fresh read-only reviewer using /review with no implementation
-history, waits for its verdict, fixes/re-reviews and finalizes in the same session. Completion remains
-open until the assigned gates, integration and cleanup pass, plus independent review where required.
+`/sol-orchestrator` owns execution and replaces `/supervise`. `/plan` and `/phase-plan` remain usable
+alone or within the same root session. Planning, roadmap recording and execution are separate intent:
+plan-only stops; explicitly requested execution continues after required approval, persisted plan and
+verified prerequisites. No fresh root is required between those stages. Existing phase admission,
+review/gate cadence, integration permission and in-flight ownership remain binding.
 
-Before authorized worker dispatch, read the active platform's
-`~/.agents/skill-library/parallel-agent-work/REFERENCE.md` (Codex) or
-`~/.claude/skill-library/parallel-agent-work/REFERENCE.md` (Claude). Codex focused workers use
-`gpt-5.6-luna` at `xhigh`; independent reviewers use `gpt-5.6-sol` at `xhigh`. Native roles retain
-their responsibilities, context limits and tool restrictions. The operator chooses planning and
-supervisor models/effort; skills and launch prompts do not recommend or assign them. This supersedes
-older model/effort directions. Claude native worker/reviewer definitions are unchanged. Validate
-saved native role definitions before dispatch.
+The orchestrator uses GPT-6 Sol ultra. Native workers use GPT-6 Luna high/xhigh; native independent
+review uses a fresh read-only Luna xhigh session when required. Workers own coherent implementation,
+checks and fixes; the root retains consequential decisions, acceptance and authorized integration.
+Before dispatch, read `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and validate native
+roles. `/cursor-worker` and `/antigravity-worker` use the same canonical personal/project skills with
+their host's tools. Standard variants only; quota failover follows the shared routing policy without
+paid overages. The user handles root exhaustion. Existing admitted sessions keep their assignments;
+Claude Code's separate native role definitions remain unchanged.
+
+When required, independent review runs against a stable candidate without implementation conversation.
+Fix findings, obtain required renewed review and complete assigned checks, authorized integration and
+cleanup before marking completion. No historical lesson entries or routine delivery retrospectives.
 
 Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve
@@ -391,8 +396,7 @@ at the source.
 **A fallback is acceptable only when BOTH hold:**
 
 1. The fallback path is itself **verified correct** for the exact case it handles (live-verified for
-   selectors and page state; test-pinned for pure logic) — and its verification is recorded (a
-   `// verified <date>` comment, a lesson, or a test), AND
+   selectors and page state; test-pinned for pure logic) — and its verification is recorded (a test or retained verification receipt), AND
 2. Absence, or the fallback case, is a **genuinely valid expected state** (e.g. "no search results"
    is a real outcome; a documented default that is provably right).
 

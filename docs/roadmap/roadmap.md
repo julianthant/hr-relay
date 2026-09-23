@@ -3837,12 +3837,13 @@ changes. The focused-check/no-independent-review cadence below remains binding.
 
 ### Phase 3.1 execution cadence and Codex subagents (operator amendment, 2026-09-13)
 
-**Model-policy update (operator-approved, 2026-09-19).** Codex focused workers use `gpt-5.6-luna`
-with `xhigh` reasoning; independent reviewers use `gpt-5.6-sol` with `xhigh`. Native roles retain
-their duties, context limits and tool restrictions; the dormant analyst remains explicit-comparison
-only. The operator selects planning and supervisor models/effort, without skill or prompt
-recommendations. This supersedes older model selections in plans and guidance; historical evidence
-keeps the models that actually ran. Claude native worker/reviewer definitions are unchanged.
+**Execution model policy.** New `/sol-orchestrator` work uses one GPT-6 Sol ultra root. Native
+workers use GPT-6 Luna high/xhigh; required native independent review uses a fresh read-only Luna
+xhigh session. Cursor and Antigravity workers follow the shared provider adapters and canonical
+skills. The user chooses the initial worker model; confirmed exhaustion allows automatic eligible
+failover without paid overages. Use standard variants only. The user handles root exhaustion.
+Preserve admitted in-flight arrangements and actual historical evidence; Claude Code's separate
+native role definitions remain unchanged. This replaces prior model selections for new orchestration.
 
 For **all remaining Phase 3.1 work**, the operator removes the independent-review step and moves
 broad gates to final task 3.1.19. The [phase execution cadence](../rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
@@ -3866,16 +3867,18 @@ launch a successor or change operator integration permission.
 
 ### Plan, implement, review (operator amendment, 2026-09-04)
 
-For remaining Phase 3.1 work, the 2026-09-13 exception above replaces this section’s review and gate
-cadence. The 2026-09-19 model policy above supersedes older model/effort selections.
+For remaining Phase 3.1 work, the 2026-09-13 exception above controls review and gate cadence.
+The current model policy above applies to new orchestration.
 
-The operator opens planning and supervisor sessions for an exact roadmap task and selects their
-models and effort. Where review is required, the supervisor dispatches one fresh read-only reviewer
-at the end of implementation: Codex `sup_review` (Sol, xhigh) or Claude `sup-review` (Opus, high). Review, fixes and finalization
-continue in the same supervisor session. Skills do not switch the current session model or start
-the next task. A separately opened review session is an explicit operator option.
-Explicit operator overrides take precedence. This rule governs future task execution, not a
-retroactive reopening of completed tasks.
+`/sol-orchestrator` replaces `/supervise` as execution owner. Use `/plan` for general planning and
+`/phase-plan` for an existing roadmap task. Planning, roadmap recording and execution are separate
+choices: a planning-only request stops after its approved deliverable; a request to plan and execute
+continues in the same root after required approval and verified prerequisites. Persist roadmap work
+in its existing owner. Do not invent a second plan, require a fresh root, silently approve a material
+change, launch a sibling or start the next roadmap task. The operator still chooses integration.
+Workers own coherent implementation, tests and repairs; the root owns consequential decisions,
+acceptance and authorized integration. Required independent review remains separate and read-only.
+Skills cannot switch the current root model. Existing in-flight ownership and phase boundaries remain.
 
 **Implementation isolation.** Every phase/task implements on a dedicated non-`master` branch.
 Sequential work may check out its task branch in an exclusively available existing directory;
@@ -3886,45 +3889,33 @@ not switch another session's checkout or stash/reset its edits. The planner reco
 branch/path/base, plan availability, scope and target/owner/order/merge conditions for every task.
 The supervisor rechecks ownership and creates/checks out the binding before implementation edits;
 an absent planned branch is expected. Correct an old `master` implementation binding under this
-policy without reopening unchanged scope. Integrate only after independent PASS and required gates;
+policy without reopening unchanged scope. Integrate only after required review and assigned gates;
 run integration gates and re-review behavior-changing conflicts before cleanup. Never delete an
 active branch or primary checkout; preserve and report unresolved residue. Approved planning and
 completion records retain their existing documentation rules. This is local workflow protection,
 not a remote branch-protection setting or push authorization.
 
-1. **Plan — `/phase-plan`.** Verify the exact roadmap node, owning phase section, current code and
-   prerequisite evidence. Preserve parallel suffixes such as `2-1` and `2-2`. Propose outcome/scope,
-   implementation sequence, acceptance tests and required gates in native Plan Mode. After approval
-   and leaving Plan Mode, the same planner updates only the owning phase and necessary roadmap or
-   explicitly approved contract/index changes, validates and commits them, then stops. Planning is
-   not implementation, and an approved implementation plan cannot silently redesign an admitted
-   contract. Existing phase boundaries and proof obligations remain binding.
-2. **Implement — `/supervise`.** Consume the approved phase-plan commit, verify prerequisites and
-   current checkout, implement and test the assigned outcome, and commit the candidate. Supporting
-   agents are optional, bounded and governed by native role/isolation rules. The supervisor retains
-   the central hard work and consequential judgment. Record `awaiting independent review` with the
-   plan reference, candidate base/head, gate evidence and exclusions in the existing phase section;
-   leave task completion open. Preserve other sessions' edits and keep the candidate stable during
-   review. Do not start another task or create an agent coordinator.
-3. **Review — fresh subagent using `/review`.** After committing the candidate and evidence, pause
-   owned writers and dispatch the dedicated read-only reviewer with no inherited implementation history.
-   Give exact task, approved phase/plan commit, checkout, candidate base/head, authority paths and
-   gate evidence. The reviewer must not have implemented this candidate, edit files or delegate.
-   Inspect the pinned candidate against contracts, surrounding code and tests. Report PASS, CHANGES
-   REQUIRED or BLOCKED with exact commits, findings and evidence limits. The supervisor runs any
-   needed write-producing validation on pinned state for the reviewer to assess. Missing mandatory
-   proof or an unavailable reviewer is BLOCKED, never self-review or PASS. Wait for the verdict here;
-   `awaiting independent review` is not a routine session stop. Standalone `/review` stays inline.
-4. **Finalize — original supervisor.** Verify the returned verdict and unchanged reviewed state. Fix required
-   findings and obtain renewed review of changed code or consequential requirement changes. Preserve
-   unresolved findings; never replace a reviewer to evade them. After
-   PASS, integrate locally onto the required target, resolve shared-target drift, run all required
-   integration gates and clean up owned worker worktrees/branches. Behavior-changing merge conflict
-   resolutions need renewed review. Mark complete in BOTH phase and roadmap only with integrated
-   implementation, green required gates, accepted review and verified cleanup. Record candidate and
-   integration commits, review provenance and gates; regenerate/check the roadmap and commit the
-   completion update. Mechanical evidence-only recording does not invalidate review of unchanged
-   implementation. Stop after that task; no automatic phase closure or next-task assignment.
+1. **Plan — `/phase-plan` or `/plan`.** Verify current behavior, task ownership, requirements and
+   prerequisites. Check cheap relevant baseline guards before freezing change ownership. Propose
+   scope, coherent outcomes, critical production-path failure cases and focused proof plus phase
+   gates. Resolve material decisions and obtain required approval. Persist the complete roadmap plan,
+   validate and commit it; verify the committed content and availability. Planning-only stops here.
+2. **Execute — `/sol-orchestrator`.** Consume the approved plan, verify workspace and prerequisites,
+   and dispatch ready worker bundles through the selected adapter. Parallel writers require stable
+   inputs, independent acceptance and isolated ownership. Workers investigate, implement, test and
+   repair within scope; the root inspects completed patches and evidence, batching corrections.
+   Preserve checks, failure cases and deferred full-gate obligations. A worker report is not acceptance.
+3. **Review — when required by the phase or assignment.** Freeze candidate/evidence identity and
+   dispatch a fresh independent read-only reviewer using `/review`. Supply exact requirements,
+   workspace, base/head and proof without implementation conversation. Reviewers inspect the full
+   assigned scope and real callers, report PASS / CHANGES REQUIRED / BLOCKED with limits, and never
+   author fixes or delegate. Missing required evidence stays open. Do not add review to every edit.
+4. **Finalize — the same orchestrator.** Fix verified findings, run affected checks and obtain required
+   renewed review. Integrate only when authorized under existing merge conditions. Run integration
+   gates and re-review behavior-changing conflicts when required. Verify owned cleanup, update the
+   existing phase/roadmap evidence, regenerate/check derived output, and commit exact paths. Mark only
+   assigned work complete after all its obligations pass. Record current state/results; no historical
+   lesson entries, routine retrospectives or narrative code comments. No automatic next-task dispatch.
 
 A plain direct task assignment uses its existing approved phase section as the brief; it never
 waives prerequisites or authorizes unrelated scope. Retain the repo's local integration policy and

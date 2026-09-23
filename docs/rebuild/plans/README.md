@@ -99,3 +99,7 @@ The [3.2 assignment map](phase-3/3.2-finish-workflow-authoring/README.md#current
 preserves old task labels as aliases and all stable anchors. Exact future briefs still need their
 operator-opened planning sessions. Existing Phase 3.1 and earlier identities, parallel arrangements
 and exceptions remain with their owning plans; this amendment does not reopen them.
+
+Execution uses `/sol-orchestrator`. `/plan` and `/phase-plan` can run alone or within that root;
+planning-only stops, while an explicit plan-and-execute request continues after required approval
+and verified prerequisites. Roadmap recording remains a separate scope choice.

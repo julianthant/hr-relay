@@ -28,7 +28,11 @@ production authority and rollback asset until the approved all-at-once cutover (
   Resolve moved historical receipts through that parent's `relocation.json`. Preserve evidence
   and unknown files before cleanup; accepted cleanup removes both worktree registration and folder.
 - Keep existing AGENTS.md / CLAUDE.md twins byte-identical. Change instructions for changed rules;
-  record lessons in the linked module ledger. Keep complete project instruction chains below 32,768 bytes.
+  do not add historical lessons or retrospective comments. Comments explain necessary current behavior
+  or constraints only. Keep complete project instruction chains below 32,768 bytes.
+- `/sol-orchestrator` owns execution. Combine it with `/plan` or `/phase-plan` when planning is needed;
+  planning-only, roadmap recording and execution remain separate choices. An explicit plan-and-execute
+  request can continue in the same root after required approval and verified prerequisites.
 - The operator launches tasks and chooses integration. No automatic sibling/next-task dispatch or
   merge. Phase 3.2 onward uses tangible feature tasks and subtasks; only explicitly labelled Parallel
   nodes run concurrently. Follow the roadmap’s 2026-09-19 amendment; preserve admitted ownership
