@@ -2034,16 +2034,16 @@ log:
 
 
 #### 14 · Establish independent run-detail sections {#dash-detail-foundation}
-status: planned
-date: D344 · operator-coordinated prerequisites
+status: done
+date: 2026-09-22 · integrated focused acceptance; full repository gates remain 3.1.19
 doc: 3.1/task-14-establish-independent-run-detail-sections §Task 3.1.14 · Establish independent run-detail sections
 
 > Extract the section-boundary obligation from former Task 12-2. Finish this prerequisite before the timeline and evidence-section tasks; those tasks need this accepted boundary, not each other.
 
 builds:
-- [ ] BOTH separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
-- [ ] PROOF preserve the existing live detail path and section behavior, pass focused checks, then integrate the common base
-- [ ] DOCS freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
+- [x] BOTH separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
+- [x] PROOF preserve the existing live detail path and section behavior, pass focused checks, then integrate the common base
+- [x] DOCS freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
 
 needs:
 - dash-boundary-foundation
@@ -2052,6 +2052,7 @@ needs:
 - dash-operations-finalizer
 
 log:
+- 2026-09-22 | accepted local 3.1.14 release | Product candidate `625c359fc138d965c5db0473e7d4a028d366fdd8` merged into local master by `92e88701c3800263b57734c12d96df54c4bd1e6c`. Focused proof: 332 tests, 152 BFF tests, 6 trust-linkage tests, 58 parity cases, scoped lint, typecheck, manifest check and web build passed. Reviewed 60 parity reference pairs after repairing inherited Queue typing and trust-linkage failures. Child section and timeline ownership and fixtures are frozen in the task owner. No push or successor dispatch; full repository gates remain 3.1.19.
 - 2026-09-22 | approved 3.1.14 plan | Operator approved shared client/server section extraction and registration, disjoint child/fixture ownership, source-bound durable non-operator gate settlement, focused P1–P5 proof, Luna xhigh execution and local integration after acceptance. Exact approved controls live in the task owner; implementation and release remain open.
 - 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.14; standalone prerequisite or individual task; acceptance and historical execution anchor retained

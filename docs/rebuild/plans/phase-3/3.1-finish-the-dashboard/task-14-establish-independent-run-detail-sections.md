@@ -10,9 +10,9 @@ Read [the shared phase plan](README.md#parallel-execution-and-worktree-contract)
 
 Extract the section-boundary obligation from former Task 12-2. Finish this prerequisite before the timeline and evidence-section tasks; those tasks need this accepted boundary, not each other.
 
-- [ ] separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
-- [ ] preserve the existing live detail path and section behavior, pass focused checks, then integrate the common base
-- [ ] freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
+- [x] separate production projector/component/test entry points for Context/Data, Logs, Receipts/Failures and Gates with one completed registration owner
+- [x] preserve the existing live detail path and section behavior, pass focused checks, then integrate the common base
+- [x] freeze exclusive section and timeline paths plus fixtures; refuse admission while a shared mutable switch/query remains
 
 This is roadmap scope, not a launch-ready execution brief. Before implementation, the operator
 approves exact paths, base, branch/worktree, proof commands and resource ownership through
@@ -146,13 +146,16 @@ investigation is required. For documentation/generated changes run
 lint, coverage, broad parity/production/performance/recovery and frozen
 A01–A42/D01–D05 acceptance. Record unrun obligations explicitly.
 
-### Candidate proof and child ownership — 2026-09-22
+### Released proof and child ownership — 2026-09-22
 
-Candidate `c45d1cd78` on `codex/3.1.14-detail-foundation` contains the source-gate
-runtime, section extraction and fixture split. It starts at the approved
-`4cd6a7c95` base. Local `master` advanced only by the instruction change
-`4edaa7389`; the approved base remains its ancestor and no product path overlaps.
-The operator's final-gate disposition and local integration are pending.
+Product candidate `625c359fc` on `codex/3.1.14-detail-foundation` contains
+the source-gate runtime, section extraction, fixture split and focused gate
+repairs. It starts at approved `4cd6a7c95` and was integrated into local
+`master` by merge `92e88701c`. The merge tree differs from the tested candidate
+only by the independently integrated instruction change `4edaa7389` in
+`.agents/skill-library/repository-work/REFERENCE.md`; no tested product,
+fixture or reference input changed during integration. No push or sibling
+dispatch occurred.
 
 | Child | Exclusive client and server implementation | Exclusive parity entry and scenes |
 | --- | --- | --- |
@@ -178,9 +181,10 @@ released base without modifying another child's paths. A child needing a
 shared registration, schema, composition or generated-input change must return
 that change to the parent/finalizer owner before parallel admission.
 
-Focused candidate checks: 268 tests passed across 16 exact unit, architecture
-and scenario files; ESLint passed on 56 changed TypeScript files;
-`build:manifest:check`, `web:build` and staged `git diff --check` passed. The
+Focused release checks: 332 tests passed across 18 exact unit, architecture
+and scenario files; the real BFF flow passed 152/152; canonical trust linkage
+passed 6/6. Scoped ESLint, `typecheck`, `build:manifest:check`, `web:build`,
+`roadmap:check` and staged `git diff --check` passed. The
 new synthetic external and children-terminal gate cases exercise the actual
 source runtime, retained authority, worker loop and composition; refusals and
 duplicate/restart replay are asserted against result rows, timeline and
@@ -188,17 +192,26 @@ lifecycle. The generated manifest changed only because the shared gates source
 hash changed, and its check passed. `web:build` emitted the existing large
 chunk advisory.
 
-Final gate exceptions are measured, not counted as passes. `npm run typecheck`
-still reports the four Queue test errors independently reproduced on untouched
-`4cd6a7c95`: three `cursor` shape errors in
-`queue-commands-convergence.test.ts` and one `navigate.expectedVersion`
-narrowing error in `run-queue-projection.test.ts`. Filtered browser parity
-reached the reference comparison for all 58 cases but failed on stale a11y
-references. The same 58 cases failed on untouched local `master` with identical
-failure signatures after normalizing the expected descriptor-hash change; the
-existing `Preflight: unavailable` button is absent from the stored references.
-No reference was refreshed. The existing `trust-canonical-linkage.test.ts`
-also fails 1/6 on untouched master because the archived-run notification
-publish unexpectedly resolves; it is outside the affected focused set.
+The operator approved repairing inherited final-gate failures in this task.
+The four Queue test typing errors were corrected against the current stream
+and rerun contracts, keeping the expired-cursor snapshot and exact-head
+no-snapshot assertions. The affected trust-linkage test now expects durable
+`existing` for replay of an already published notification after archive,
+while retaining archived receipt and deleted-run refusals. These failures
+were reproduced on untouched `4cd6a7c95` before their repairs.
+
+Filtered browser parity passed 58/58 in refresh mode and again in normal
+assertion mode. The 60 refreshed a11y/metadata/screenshot pairs were reviewed:
+all metadata differences are the derived descriptor hash; a11y changes have
+eight distinct forms from that hash, the existing preflight control, Queue's
+Rerun labels, and previously integrated archive export/status presentation.
+Screenshot deltas were quantified for all 60 pairs and the largest archive,
+gate and parked-write changes were inspected side by side. No reference was
+refreshed merely to suppress an unexplained difference. The first refresh run
+also exposed a cached shared fixture-server hook after Playwright worker reuse;
+each child spec now registers its own server, and both final parity runs pass.
+
+Full repository lint, coverage, broad parity, production, performance,
+recovery and frozen A01–A42/D01–D05 acceptance remain assigned to 3.1.19.
 Evidence and command logs are retained at
 `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.14-detail-foundation-2026-09-22/acceptance/`.
