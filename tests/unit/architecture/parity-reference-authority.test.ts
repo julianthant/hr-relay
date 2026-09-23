@@ -664,7 +664,7 @@ describe("parity lane reference authority (D132)", () => {
 
     it("is wired into the lane's own capture path, not merely available", () => {
       const spec = readFileSync(join(REPO_ROOT, "tests/parity/helpers/reference-scenes.ts"), "utf8");
-      for (const path of ["dashboard-reference", "reference-settings", "reference-explorer", "reference-intake", "reference-archive", "reference-activity", "reference-start"]) {
+      for (const path of ["dashboard-reference", "reference-settings", "reference-explorer", "reference-intake", "reference-archive", "reference-activity", "reference-start", "reference-detail"]) {
         const registration = readFileSync(join(REPO_ROOT, `tests/parity/${path}.spec.ts`), "utf8");
         assert.match(registration, /registerReferenceScenes\(SCENES, \(\) => servers\.server, ANCHORS\)/u,
           `${path} must use the guarded capture registration`);
