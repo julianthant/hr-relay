@@ -349,7 +349,7 @@ plan-only stops; explicitly requested execution continues after required approva
 verified prerequisites. No fresh root is required between those stages. Existing phase admission,
 review/gate cadence, integration permission and in-flight ownership remain binding.
 
-The orchestrator uses GPT-6 Sol ultra. Workers own coherent implementation, checks and fixes; the
+The orchestrator uses GPT-6 Sol max. Workers own coherent implementation, checks and fixes; the
 root retains consequential decisions, acceptance and authorized integration. Before dispatch, read
 `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and only the selected worker adapter;
 validate roles when that adapter requires it. User-named providers or models limit eligible routes to
