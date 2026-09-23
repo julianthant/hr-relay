@@ -2052,6 +2052,7 @@ needs:
 - dash-operations-finalizer
 
 log:
+- 2026-09-22 | approved 3.1.14 plan | Operator approved shared client/server section extraction and registration, disjoint child/fixture ownership, source-bound durable non-operator gate settlement, focused P1–P5 proof, Luna xhigh execution and local integration after acceptance. Exact approved controls live in the task owner; implementation and release remain open.
 - 2026-09-08 | D344 prerequisite planning | scheduled boundary and ownership; implementation and acceptance remain open
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.14; standalone prerequisite or individual task; acceptance and historical execution anchor retained
 

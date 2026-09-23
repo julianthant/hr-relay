@@ -23,3 +23,125 @@ automatic sibling dispatch or merge.
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
 their mapped outcome/proof; historical subfeature credit does not complete this task.
+
+## Approved execution brief — 2026-09-22
+
+**Approval.** The operator approved the complete S1–S5/P1–P5 plan on 2026-09-22,
+including Luna xhigh execution and local `master` integration after focused acceptance.
+This is the sole plan for 3.1.14. It releases only the shared detail foundation; it
+does not launch 3.1.14.1–3.1.14.5 or claim their A29–A36/D01–D05 outcomes.
+
+| Control | Binding |
+| --- | --- |
+| Prerequisites | Accepted 3.1.9 boundary foundation, 3.1.11.2 Run/Rerun, 3.1.11.3 Operations release and 3.1.13 Queue. Operations candidate `2c81ebd84bc4ee911a56f65cafdcd3784d721686` and Queue integration `2f97dae45e62ee6d046cbe90ef1673e993ea85e6` are ancestors of inspected clean local `master` `e49ec3f2a26728b3f8ecb1d1b23e15a5625799d4`. Recheck ancestry and target drift at launch. |
+| Planning checkout | `codex/plan-3.1.14` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-detail-plan`; documentation integration and cleanup only. |
+| Implementation checkout | `codex/3.1.14-detail-foundation` at `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-detail-foundation`, created from the committed, integrated plan and verified prerequisite base. One Luna xhigh worker owns the coherent shared boundary; the Sol root accepts and integrates. The existing UI planning worktree is unrelated and untouched. |
+| Integration | Local `master` in `/Users/julianhein/Projects/hr-automation-rebuild`. Operator approval includes integration of the passing documentation and product candidates and cleanup of their owned branches/worktrees. The root rechecks exact candidate, target drift, changed gate inputs, evidence and merge conditions first. No push. |
+| Evidence | `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.14-detail-foundation-2026-09-22/`; retain focused commands/results, tested SHAs, section and child ownership map, parity output, gate-source proof, integration and cleanup receipts. |
+| UI route | `/ui` Components, narrow unchanged-rendering wiring route; Luna xhigh performs implementation and affected parity. Any observed visual or interaction change leaves that narrow route and receives the applicable UI verification before release. |
+
+### Scope and ownership
+
+**S1 — complete one client registration owner.** `src/dashboard/surfaces/log-panel.tsx`,
+`log-panel-model.ts`, `src/dashboard/app/use-panel-sections.ts` and the shared
+`PanelSections` type currently mix timeline, Context, logs, receipts/failures and
+gate/park state. Extract the current bodies and state into exclusive section
+modules under `src/dashboard/surfaces/run-detail/`: `timeline*` for 3.1.14.1,
+`logs*` for 3.1.14.3, `receipt-failure*` for 3.1.14.4 and `gate-park*` for
+3.1.14.5. Existing `context-rail*.ts*` remains 3.1.14.2's body. Keep
+`log-panel.tsx` as the completed composition/registration owner and
+`use-panel-sections.ts` as stable orchestration; section-specific selectors,
+loads, controls and refresh operations live behind the owning modules. Preserve
+the same DOM, copy, focus, tab routing, loading/error states, memo behavior,
+live follow, sticky scroll and dialog lifetime. The accepted release records
+every final concrete file and export before any child is admitted.
+
+**S2 — complete one server registration owner.** Split the current
+`src/server/dashboard/queries/run-detail.ts`, `run-trust.ts`, `run-sections.ts`,
+`run-detail-types.ts` and `data.ts` overlap into a closed section dispatcher
+and dedicated Context/Data, logs/captures, receipts/failures and gate/park
+projectors. Use existing `run-logs.ts`, `run-captures.ts` and `data.ts` as the
+starting owners. The parent alone changes shared section schemas in
+`src/domain/dashboard/run-detail.ts`, descriptor projection/composition in
+`src/server/dashboard/compose/run-detail.ts`, and route/transport registration
+when required. Keep a single authority-bound detail and section read path:
+exact run/attempt identity, advertised availability, lazy bounded reads,
+explicit absent/error arms and capture byte binding. Preserve the accepted
+Rerun-values producer; Context is readback, never an `edit-checkpoint` writer.
+
+**S3 — make non-operator gates consumable before children.** The graph currently
+declares `children-terminal` and `external` `subscribes`, but
+`src/core/run-executor.ts` parks every gate and only the operator
+`resolve-gate` path in `src/core/command-kernel.ts` settles results.
+Complete the shared source registration/dispatch and settlement in
+`src/base/flow.ts`, `src/domain/workflow/graph.ts`, `src/core/run-executor.ts`,
+the command/lifecycle boundary and worker runtime composition as needed.
+Admit bounded supporting changes to `src/domain/gates.ts` and existing authority
+repositories for durable source identity/replay; use their existing JSON record
+storage, never edit a released migration or use a parallel authority. A new
+table/DDL is outside this approval and requires an amendment if proven necessary.
+Require an actual registered source before a non-operator gate can
+park, validate declared source ID, correlation, run/attempt, event and result
+schema, and bind the durable result to the exact gate/version. A matching
+source event settles once, records the source rather than a fabricated human
+answer, publishes resolution and requeues by the established lifecycle.
+Duplicates/restart replay return the same result; wrong/stale events refuse
+without a row, timeline resolution or lifecycle transition. Operator
+`resolve-gate` refuses non-operator gates, and source dispatch refuses operator
+gates. There is no registered non-operator workflow today; a synthetic
+descriptor with an actual runtime source port proves production composition.
+Workflow-specific source providers and activation remain with their admitted
+workflow task, and an unavailable provider fails loudly instead of leaving a
+silently permanent park.
+
+**S4 — freeze disjoint child and fixture ownership.** Complete current section
+registration and extract shared tests/fixtures so children can work against
+this accepted base without editing a common switch or query. The parent owns
+`tests/parity/helpers/fixture-detail*.ts`, `fixture-gate.ts`,
+`fixture-failure-resolution.ts`, `reference-detail-scenes.ts`, common run-detail
+unit fixtures, shared strict wires, root config and combined generated output.
+The resulting exclusive map grants .1 timeline/identity and follow-state;
+.2 `context-rail*.ts*` and Data/Attempts readback; .3 logs/captures; .4
+receipts/failures/diagnostics; .5 gate/park presentation and resolver proof.
+Each child gets its own test and parity fixture/spec entry point and evidence
+namespace `3.1.14.N/`; .6 integrates all five. The release must name actual
+paths, imports and test selectors, show both orders of child intake remain
+possible, and refuse child admission while a shared mutable registration,
+schema, fixture or generated input remains. No sibling consumes an unmerged
+API, and no child inherits shared executor/command/registration ownership.
+
+**S5 — focused release.** Commit the implemented source, meaningful focused
+proof and current task record by logical category. The root inspects the
+patch and production-path evidence, integrates the exact accepted candidate
+under the approved local merge condition, reruns invalidated focused checks,
+records the released base and exact child map in this owner and the roadmap,
+then removes only its owned worktree/branch. This task does not dispatch a
+child, change a workflow-specific policy, execute an HR write, refreeze a
+reference merely to pass, or claim 3.1.19's full gates.
+
+### Production-path proof and gates
+
+| Proof | Required result and forbidden effect |
+| --- | --- |
+| P1 · section dispatch | The real BFF route and client fetch every advertised current section from the same run/attempt; exact absence/error, cursor, capture and context-source behavior survives extraction. A wrong-run response or late response cannot render beside another run. No eager entire-stream read or invented fallback. |
+| P2 · visible behavior | Existing detail, receipt, open gate, parked write and failure states keep their DOM/copy/focus and reference identities. A tab switch and same-run revision refresh preserve the relevant dialog/scroll behavior; a run switch clears old sections. Filtered browser parity and a11y establish the affected states. No unreviewed refreeze. |
+| P3 · valid settlement | Valid operator gate retains its existing command path. Synthetic child-terminal and external descriptors each receive a matching durable source event through the production composition, store one typed source-attributed result, publish one resolution and requeue the exact parked run. Restart/replay and duplicate delivery cannot add a second result or effect. |
+| P4 · negative controls | Wrong resolver family, source ID, correlation, run, attempt or gate; stale version; missing provider; malformed event/result; and conflicting duplicate each refuse before any gate-result insert, resolution event, requeue or external write. A valid positive control in the same fixture prevents an unrelated setup refusal from satisfying these tests. |
+| P5 · isolation | Stable section and fixture exports compile without child-owned shared writes. Verify test selectors exist, accepted prerequisite ancestry and worktree capacity, exact branch ownership, generated freshness and unchanged-input evidence before candidate release and integration. |
+
+During implementation run `npm run test -- <affected exact test paths>`, including
+`tests/unit/run-executor-control-nodes.test.ts`,
+`tests/unit/command-kernel.test.ts`, the affected run-detail server/dashboard
+tests, `tests/unit/architecture/wire-connectivity.test.ts`,
+`dashboard-wire-boundary.test.ts` and `dashboard-refresh-boundary.test.ts`,
+plus new focused source-settlement and section-boundary tests. Run
+`npx eslint <affected source/test paths> --max-warnings 0` whenever tests run;
+`npm run typecheck`, `npm run build:manifest:check`, `npm run web:build`, and
+filtered `npm run test:parity -- tests/parity/reference-detail.spec.ts tests/parity/failure-resolution.spec.ts`
+on the final candidate. Use `playwright-cli` and its playbook if a manual browser
+investigation is required. For documentation/generated changes run
+`npm run roadmap`, `npm run roadmap:check`, link/check selectors and
+`git diff --check`. The parent owns these focused gates and their repairs;
+3.1.14.6 owns group typecheck/integration, and 3.1.19 owns full repository
+lint, coverage, broad parity/production/performance/recovery and frozen
+A01–A42/D01–D05 acceptance. Record unrun obligations explicitly.
