@@ -15,6 +15,9 @@ import type { Clock } from "../../domain/clock.js";
 import { localDatePart } from "../../domain/clock.js";
 import { redactDiagnosticFields } from "../../domain/redaction.js";
 import { NoteLevelSchema, NoteWireSchema, type NoteFieldWire, type NoteWire } from "../../events/types.js";
+import { assertNoteWithinRunScope } from "../../domain/run/note-scope.js";
+import type { RunRecord } from "../../domain/run/record.js";
+import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../domain/run/task-note.js";
 import { appendEventStreamLine } from "./jsonl-streams.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../domain/trust/failure.js";
 
@@ -49,6 +52,11 @@ export interface NoteJsonlWriterDeps {
 
 export interface NoteJsonlWriter {
   emitNote(input: unknown): NoteWire;
+  emitRunNote(input: Readonly<{
+    workflow: string;
+    address: z.input<typeof RunNoteAddressSchema>;
+    kind: TaskRunNoteKind;
+  }>, authority: RunRecord): NoteWire;
 }
 
 function toWireField(field: ReturnType<typeof redactDiagnosticFields>["fields"][number]): NoteFieldWire | undefined {
@@ -66,30 +74,58 @@ function toWireField(field: ReturnType<typeof redactDiagnosticFields>["fields"][
 
 export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWriter {
   const pid = z.number().int().positive().parse(deps.pid ?? process.pid);
+  const write = (input: unknown, authority?: RunRecord): NoteWire => {
+    const ingress = NoteIngressSchema.parse(input);
+    const at = deps.clock.now();
+    if (authority !== undefined) {
+      if (!("runId" in ingress.address)) {
+        throw new Error("a run-scoped note requires run identity, not worker identity");
+      }
+      const { runId, attempt, traceId } = ingress.address;
+      if (runId !== authority.envelope.runId
+        || attempt !== authority.envelope.attempt
+        || traceId !== authority.envelope.traceId) {
+        throw new Error(`run note identity does not match authority for run ${authority.envelope.runId}`);
+      }
+      assertNoteWithinRunScope(authority, { runId, workflow: ingress.workflow, at });
+    }
+    const redaction = redactDiagnosticFields(ingress.fields ?? []);
+    const fields: NoteFieldWire[] = [];
+    for (const field of redaction.fields) {
+      const wire = toWireField(field);
+      if (wire !== undefined) fields.push(wire);
+    }
+    if (redaction.warnings.length > 0) {
+      fields.push({ key: "redactionWarnings", kind: "count", value: redaction.warnings.length });
+    }
+    const note = NoteWireSchema.parse({
+      diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+      ...ingress.address,
+      ts: at.toISOString(),
+      workflow: ingress.workflow,
+      pid,
+      level: ingress.level,
+      message: ingress.message,
+      ...(fields.length === 0 ? {} : { fields }),
+    });
+    appendEventStreamLine(deps.stateRoot, "notes", note.workflow, localDatePart(at), JSON.stringify(note));
+    return note;
+  };
+  const emitRunNote: NoteJsonlWriter["emitRunNote"] = (input, authority) => {
+    const ingress = z.strictObject({
+      workflow: z.string().min(1),
+      address: RunNoteAddressSchema,
+      kind: TaskRunNoteKindSchema,
+    }).parse(input);
+    return write({
+      workflow: ingress.workflow,
+      address: ingress.address,
+      level: "step",
+      message: taskRunNoteMessage(ingress.kind),
+    }, authority);
+  };
   return Object.freeze({
-    emitNote(input: unknown): NoteWire {
-      const ingress = NoteIngressSchema.parse(input);
-      const redaction = redactDiagnosticFields(ingress.fields ?? []);
-      const fields: NoteFieldWire[] = [];
-      for (const field of redaction.fields) {
-        const wire = toWireField(field);
-        if (wire !== undefined) fields.push(wire);
-      }
-      if (redaction.warnings.length > 0) {
-        fields.push({ key: "redactionWarnings", kind: "count", value: redaction.warnings.length });
-      }
-      const note = NoteWireSchema.parse({
-        diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-        ...ingress.address,
-        ts: deps.clock.now().toISOString(),
-        workflow: ingress.workflow,
-        pid,
-        level: ingress.level,
-        message: ingress.message,
-        ...(fields.length === 0 ? {} : { fields }),
-      });
-      appendEventStreamLine(deps.stateRoot, "notes", note.workflow, localDatePart(deps.clock.now()), JSON.stringify(note));
-      return note;
-    },
+    emitNote: (input: unknown): NoteWire => write(input),
+    emitRunNote,
   });
 }

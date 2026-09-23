@@ -10,9 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { ObservedDataPointSchema } from "../../../src/core/span-emitter.js";
-import { manualClock } from "../../../src/domain/clock.js";
+import { localDatePart, manualClock, type Clock } from "../../../src/domain/clock.js";
 import { RedactedFieldSchema } from "../../../src/domain/redaction.js";
-import { SpanEventWireSchema } from "../../../src/events/types.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import { NoteWireSchema, SpanEventWireSchema } from "../../../src/events/types.js";
 import {
   appendEventStreamLine,
   listEventStreamFiles,
@@ -24,6 +25,7 @@ import {
 } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 
 const roots: string[] = [];
 
@@ -351,7 +353,7 @@ describe("note JSONL writer and schema-owned redaction", () => {
     assert.equal(bytes.includes("6789"), true); // last4 survives, nothing more
   });
 
-  it("partitions a note at its OWN clock, which is the gap the run-scope assertion closes", () => {
+  it("keeps generic note ingress append-at-now without authority scoping", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
@@ -366,12 +368,66 @@ describe("note JSONL writer and schema-owned redaction", () => {
     emit("at the run's own day");
     clock.setWall(new Date(AT.getTime() + 3 * 24 * 60 * 60 * 1000));
     emit("three days later");
-    // The writer knows nothing about the run's durable instants, so BOTH lines
-    // land — the second in a partition the logs reader's scope never opens
-    // (ref dashboard-surfaces §2.1). `assertNoteWithinRunScope` in
-    // `src/domain/run/note-scope.ts` is what a producer calls to refuse
-    // it at the append instead; nothing here can, and nothing here should.
+    // Generic `emitNote` is for callers that do not hold run authority. The
+    // production task producer uses `emitRunNote` to assert the same append
+    // instant against the run's partition scope.
     assert.deepEqual(listEventStreamFiles(root, "notes").map(({ date }) => date), ["2026-08-03", "2026-08-06"]);
+  });
+
+  it("uses one instant for run-scope validation, note timestamp, and append-day partition", () => {
+    const root = stateRoot();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const noteAt = new Date(run.updatedAt);
+    const nextDay = new Date(noteAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+    let calls = 0;
+    const base = manualClock(AT);
+    const clock: Clock = {
+      ...base,
+      now: () => {
+        calls += 1;
+        return calls === 1 ? noteAt : nextDay;
+      },
+    };
+    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const note = writer.emitRunNote({
+      workflow: run.envelope.workflow,
+      address: {
+        runId: run.envelope.runId,
+        attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId,
+        spanPath: run.envelope.traceId,
+      },
+      kind: "roster-match-completed",
+    }, run);
+
+    const files = listEventStreamFiles(root, "notes");
+    assert.equal(calls, 1);
+    assert.equal(files.length, 1);
+    const noteFile = files[0];
+    assert.ok(noteFile);
+    assert.equal(noteFile.date, localDatePart(noteAt));
+    const stored = NoteWireSchema.parse(JSON.parse(readFileSync(noteFile.path, "utf8")));
+    assert.equal(note.ts, noteAt.toISOString());
+    assert.equal(stored.ts, noteAt.toISOString());
+    assert.equal(stored.message, "roster match completed");
+  });
+
+  it("refuses arbitrary run-task note text at the writer boundary", () => {
+    const root = stateRoot();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const writer = createNoteJsonlWriter({ stateRoot: root, clock: manualClock(new Date(run.updatedAt)), pid: 7 });
+    assert.throws(() => writer.emitRunNote({
+      workflow: run.envelope.workflow,
+      address: {
+        runId: run.envelope.runId,
+        attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId,
+        spanPath: run.envelope.traceId,
+      },
+      kind: "roster-match-completed",
+      message: "UNCLASSIFIED_NOTE_CANARY",
+    } as never, run));
+    assert.deepEqual(readEventStreamLines(root, "notes"), []);
   });
 
   it("refuses a non-note ingress instead of writing a best guess", () => {

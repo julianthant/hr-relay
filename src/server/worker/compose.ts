@@ -94,6 +94,8 @@ import {
 } from "../../services/trust/run-diagnostic-capture.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../settings-runtime.js";
 import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
+import { createNoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
+import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 
 
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
@@ -416,6 +418,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const hostFacts = hostConfigFacts(env);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
+  const taskNotes = createNoteJsonlWriter({ stateRoot, clock });
   const protectedAuthority = createCredentialStore({ stateRoot });
   /**
    * D181: the `workers` role lock, taken before the database opens. The
@@ -474,6 +477,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
   try {
+    pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readSettings(repositories));
     resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock);
@@ -722,6 +726,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,
+        taskNotes,
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,

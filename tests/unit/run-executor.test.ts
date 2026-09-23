@@ -24,7 +24,16 @@ import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onb
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/domain/workflow/scenario-execution.js";
 import { NodeIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
+import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../src/domain/contracts/ucpath/search-person-org.js";
+import { buildRunLogsSection } from "../../src/server/dashboard/queries/run-logs.js";
+import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail-types.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
+import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
+import { NoteWireSchema } from "../../src/events/types.js";
+import { ucpathStore } from "../../src/stores/ucpath/index.js";
+import { ucpathDriver } from "../../src/stores/ucpath/driver-declaration.js";
+import { ucpathSession } from "../../src/stores/ucpath/session-provider.js";
 import { crmSession } from "../../src/stores/crm/session-provider.js";
 import { crmDriver } from "../../src/stores/crm/declaration.js";
 import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboarding-dates.js";
@@ -114,6 +123,145 @@ function enqueueAndClaim(
 const SIGNAL = new AbortController().signal;
 
 describe("person-lookup full walk", () => {
+  it("writes bounded, protected ordinary task logs through the run query cursor", async () => {
+    let searchCalls = 0;
+    const sessions = sessionFactoryHarness({
+      ucpath: () => {
+        const driver = healthyUcpathDriver();
+        return Object.freeze({
+          ...driver,
+          searchPersonOrg: (...args: Parameters<typeof driver.searchPersonOrg>) => {
+            searchCalls += 1;
+            if (searchCalls === 1) {
+              return Promise.reject(new TaskError(
+                SearchPersonOrg.id,
+                "search-unavailable",
+                "transient search failure",
+                { transient: true },
+              ));
+            }
+            return driver.searchPersonOrg(...args);
+          },
+        });
+      },
+      crm: () => healthyCrmDriver(),
+    });
+    const harness = executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
+    const { database, clock, stateRoot } = harness.authority;
+    const logs = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const stdout = recordingLogger();
+    const searchWithLogs = defineTask(ucpathDriver, SearchPersonOrg, {
+      sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
+      retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
+      async run({ input, ctx }) {
+        if (searchCalls === 0) {
+          ctx.log.info(`UNCLASSIFIED_MESSAGE_CANARY protected EID ${"10873698"}; ${"x".repeat(3_000)}`, {
+            unclassifiedEid: "10873698",
+            unclassifiedSecret: "UNCLASSIFIED_NOTE_CANARY",
+          });
+          ctx.log.info("roster match completed", { unclassifiedSecret: "UNCLASSIFIED_NOTE_CANARY" });
+        }
+        const output = SearchPersonOrgOutputSchema.parse(await ctx.driver.searchPersonOrg(input));
+        for (let index = 0; index < 260; index += 1) {
+          ctx.log.info("roster match completed", { unclassifiedSecret: "UNCLASSIFIED_NOTE_CANARY" });
+        }
+        ctx.recordData([
+          { direction: "read", field: "results", value: output.results },
+          { direction: "read", field: "selection", value: output.selection },
+        ]);
+        return output;
+      },
+    });
+    const ucpath = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, {
+      ...ucpathStore.tasks,
+      searchPersonOrg: searchWithLogs,
+    });
+    const stores = defineTaskStoreRegistry(
+      taskStoreRegistry.stores.map((store) => store.namespace === "ucpath" ? ucpath : store),
+      taskStoreRegistry.corpus,
+    );
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun({
+      protectedBindings: [{
+        kind: "legacy-protected-input",
+        inputPath: "emplId",
+        name: "personLookupCanaryEid",
+      }],
+    }), clock.now().toISOString());
+    const outcome = await executeClaimedRun({ ...harness.deps, stores, log: stdout.log, taskNotes: logs }, { ...claimed, signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+    assert.equal(searchCalls, 2, "a transient task failure retries once");
+    assert.equal(stdout.entries().length, 262, "all task log lines still reach stdout");
+    assert.match(stdout.entries()[0] ?? "", /UNCLASSIFIED_MESSAGE_CANARY/u);
+    assert.equal(stdout.entries()[0]?.includes("10873698"), false, "protected EID remains redacted in stdout");
+
+    const noteLines = readEventStreamLines(stateRoot, "notes");
+    assert.equal(noteLines.length, 257, "256 task messages plus one explicit run-limit note");
+    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_MESSAGE_CANARY")), false);
+    assert.equal(noteLines.some(({ text }) => text.includes("10873698")), false);
+    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_NOTE_CANARY")), false);
+    const firstLine = noteLines[0];
+    assert.ok(firstLine);
+    const firstNote = NoteWireSchema.parse(JSON.parse(firstLine.text));
+    assert.equal(firstNote.message, "roster match completed");
+    assert.ok("runId" in firstNote);
+    assert.equal(firstNote.runId, RUN_ID);
+    assert.equal(firstNote.attempt, 1);
+    assert.equal(firstNote.traceId, claimed.run.envelope.traceId);
+    assert.equal(firstNote.spanPath, taskSpanPath(
+      TraceIdSchema.parse(claimed.run.envelope.traceId),
+      NodeIdSchema.parse("searching"),
+      1,
+      claimed.claim.claimGeneration,
+    ));
+    const retriedNote = NoteWireSchema.parse(JSON.parse(noteLines[1]?.text ?? "{}"));
+    assert.equal(retriedNote.runId, RUN_ID);
+    assert.equal(retriedNote.attempt, 1);
+    assert.equal(retriedNote.traceId, claimed.run.envelope.traceId);
+    assert.equal(retriedNote.spanPath, taskSpanPath(
+      TraceIdSchema.parse(claimed.run.envelope.traceId),
+      NodeIdSchema.parse("searching"),
+      2,
+      claimed.claim.claimGeneration,
+    ));
+    assert.equal(firstNote.fields, undefined, "unclassified TaskLogger fields are not copied into notes");
+    const lastNote = NoteWireSchema.parse(JSON.parse(noteLines.at(-1)?.text ?? "{}"));
+    assert.equal(lastNote.message, "Further task log messages were omitted after the 256-message run limit.");
+
+    const terminal = database.authority.runs.get(RUN_ID);
+    assert.ok(terminal);
+    const queryDeps = {
+      stateRoot,
+      projection: { runLogSnapshot: () => ({ entries: [] }) },
+      descriptors: { resolve: () => undefined },
+    } as unknown as RunDetailQueryDeps;
+    const firstPage = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal);
+    if (firstPage.section !== "logs") throw new Error("expected bounded log page");
+    assert.equal(firstPage.payload.rows?.length, 200);
+    assert.equal(firstPage.payload.nextCursor.state, "present");
+    if (firstPage.payload.nextCursor.state !== "present") throw new Error("expected log continuation");
+
+    logs.emitNote({
+      workflow: "person-lookup",
+      address: { runId: RUN_ID, attempt: 1, traceId: terminal.envelope.traceId, spanPath: terminal.envelope.traceId },
+      level: "step",
+      message: "arrived after page one",
+    });
+    const oldContinuation = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal, firstPage.payload.nextCursor.value);
+    if (oldContinuation.section !== "logs") throw new Error("expected old snapshot continuation");
+    assert.equal(oldContinuation.payload.rows?.length, 57);
+    assert.equal(oldContinuation.payload.rows?.some((row) => row.kind === "note" && row.note.message === "arrived after page one"), false);
+
+    const freshFirst = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal);
+    if (freshFirst.section !== "logs" || freshFirst.payload.nextCursor.state !== "present") {
+      throw new Error("expected a new snapshot after an appended note");
+    }
+    assert.notEqual(freshFirst.payload.nextCursor.value, firstPage.payload.nextCursor.value);
+    const freshContinuation = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal, freshFirst.payload.nextCursor.value);
+    if (freshContinuation.section !== "logs") throw new Error("expected refreshed continuation");
+    assert.equal(freshContinuation.payload.rows?.length, 58);
+    assert.equal(freshContinuation.payload.rows?.at(-1)?.sequence, 257);
+  });
+
   it("walks all four nodes to sealed terminal success, skipping crm-dates by condition", async () => {
     const harness = executorHarness();
     const { database, clock } = harness.authority;

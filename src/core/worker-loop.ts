@@ -48,6 +48,7 @@ import type {
 import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../base/diagnostics.js";
+import type { NoteJsonlWriter } from "../infra/events/note-jsonl-writer.js";
 import type { GateSourceRuntime } from "./gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
@@ -121,6 +122,8 @@ export interface WorkerLoopDependencies {
   readonly heartbeatIntervalMs: number;
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
+  /** Allowlisted run notes from ordinary tasks; transaction callbacks stay outside this sink. */
+  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote">;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
   /**
@@ -402,6 +405,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             scheduler: deps.scheduler,
             taskDeadlineMs,
             log: deps.log,
+            ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
             ...(deps.canonicalInputMigrations === undefined
               ? {}
