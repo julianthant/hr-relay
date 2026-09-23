@@ -100,7 +100,7 @@ afterEach(() => {
 
 const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
 /**
- * The section-level `ActionDescriptorWire` producer, read as SOURCE.
+ * The gate/park section `ActionDescriptorWire` producer, read as SOURCE.
  *
  * The queue row's producer beside it is CALLED instead (`queueRowActions` is a
  * pure function of a policy and a flat fact record), which is the standard arm
@@ -108,7 +108,7 @@ const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
  * whole run-detail build, so a scan of the literals it can emit is the honest
  * cheap reading — and its three verbs are plain literals there.
  */
-const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-trust.ts";
+const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail/gate-park.ts";
 const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 

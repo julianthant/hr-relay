@@ -8,62 +8,12 @@
  * absence instead of becoming a 404 the operator has to interpret.
  */
 import { useEffect, useState } from "react";
-import type { RunDetailSectionResponse, RunDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { RunDetailWire } from "../../domain/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/index.js";
-import type { PanelSections } from "../surfaces/log-panel.js";
+import type { PanelSections } from "../surfaces/run-detail/sections.js";
+import { mergeSection, sectionsWanted } from "../surfaces/run-detail/section-registration.js";
 import type { PanelTab } from "../surfaces/log-panel-model.js";
 import { useDashboardClient } from "../state/client-context.js";
-
-const CONTEXT_SECTIONS = ["context-data", "context-evidence", "context-attempts"] as const;
-
-function sectionsWanted(detail: RunDetailWire, tab: PanelTab): string[] {
-  const advertised = new Set(detail.availableSections);
-  const wanted = new Set<string>();
-  for (const section of CONTEXT_SECTIONS) if (advertised.has(section)) wanted.add(section);
-  if (advertised.has(tab)) wanted.add(tab);
-  // The inline failure record lives in the Logs stream, so the pointer is
-  // needed whenever the run failed — not only when a "failure" tab is open.
-  if (advertised.has("failure")) wanted.add("failure");
-  // The parked write is the OTHER surface that renders inline in the stream
-  // (DESIGN.md names `Waiting on you` and `Write parked` as the two decisions),
-  // so it is fetched for the same reason and on the same terms: whenever the
-  // run advertises it, never only when some tab is open.
-  if (advertised.has("parked-write")) wanted.add("parked-write");
-  // Ref write-safety §14.4's identity gate is the THIRD inline decision, on exactly the
-  // same terms — and it was an orphan until this line: the server has projected
-  // it (packet, options, approval shape, both `resolve-gate` descriptors) since
-  // the gate landed, nothing ever asked for it, and `merge()` below would have
-  // thrown if anything had. A run held at a gate therefore drew a decision card
-  // with no way to answer it. R5's escalation on the audit's queue/run-action
-  // ledger row (`docs/plans/2026-08-13-detail-fidelity-audit.md`).
-  if (advertised.has("identity-gate")) wanted.add("identity-gate");
-  return [...wanted];
-}
-
-function merge(into: PanelSections, response: RunDetailSectionResponse): PanelSections {
-  switch (response.section) {
-    case "logs":
-      return { ...into, logs: response.payload };
-    case "receipt":
-      return { ...into, receipt: response.payload };
-    case "failure":
-      return { ...into, failure: response.payload };
-    case "context-data":
-      return { ...into, "context-data": response.payload };
-    case "context-evidence":
-      return { ...into, "context-evidence": response.payload };
-    case "context-attempts":
-      return { ...into, "context-attempts": response.payload };
-    case "parked-write":
-      return { ...into, "parked-write": response.payload };
-    case "identity-gate":
-      return { ...into, "identity-gate": response.payload };
-    default:
-      // A section the server serves and this build does not know how to place
-      // is dropped rather than guessed at — but it must not be silent.
-      throw new Error(`run section "${response.section}" has no panel placement in this build`);
-  }
-}
 
 export interface PanelSectionsState {
   readonly sections: PanelSections;
@@ -101,7 +51,7 @@ export function usePanelSections(
     void Promise.all(names.map(async (name) => client.runSection(runId, name))).then(
       (responses) => {
         if (!live) return;
-        setState({ runId: String(runId), sections: responses.reduce<PanelSections>(merge, {}) });
+        setState({ runId: String(runId), sections: responses.reduce<PanelSections>(mergeSection, {}) });
       },
       (error: unknown) => {
         if (!live) return;
@@ -119,5 +69,7 @@ export function usePanelSections(
     };
   }, [client, runId, wantedKey, revision]);
 
-  return state;
+  // Effects run after render. Mask the previous run synchronously so its
+  // sections never sit beside a newly selected run's header for one frame.
+  return runId !== undefined && state.runId === String(runId) ? state : { sections: {} };
 }

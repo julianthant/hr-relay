@@ -2,16 +2,19 @@ import {
   type RunDetailSectionResponse,
 } from "../../../domain/dashboard/run-detail.js";
 import { RunIdSchema } from "../../../domain/ids.js";
-
-
+import { SectionUnavailableError } from "../../failures.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { SectionNameSchema } from "./run-read.js";
+import { requireTrustRun } from "../../trust/run-reader.js";
 import { readRunCaptureSection } from "./run-captures.js";
 import { buildDataSection } from "./data.js";
-import { buildTrustSection } from "./run-trust.js";
+import { availableSections } from "./run-detail/availability.js";
+import { buildGateParkSection } from "./run-detail/gate-park.js";
+import { buildLogsSection } from "./run-detail/logs.js";
+import { buildReceiptFailureSection } from "./run-detail/receipts-failures.js";
 import type { RunNoteScanCache } from "./run-logs.js";
 
-/** The live route's lazy section read; capture metadata never rides the initial detail. */
+/** The one live section dispatcher. Every arm names its exclusive projector. */
 export async function readRunSection(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -21,25 +24,52 @@ export async function readRunSection(
 ): Promise<RunDetailSectionResponse> {
   RunIdSchema.parse(runId);
   const section = SectionNameSchema.parse(sectionInput);
-  if (section !== "captures") {
-    return buildRunSection(deps, runId, section, cursorInput);
-  }
-  return readRunCaptureSection(deps, runId, signal);
+  if (section === "captures") return readRunCaptureSection(deps, runId, signal);
+  return buildRunSection(deps, runId, section, cursorInput);
 }
 
-/* ── lazy sections ───────────────────────────────────────────────────────── */
-
+/** Synchronous projector entry used by archive freezes and compatibility callers. */
 export function buildRunSection(
   deps: RunDetailQueryDeps,
   runId: string,
   sectionInput: string,
   cursorInput?: string,
-  /** D5/L3: immutable combined-log snapshots across a page walk. */
   noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
-  if (section === "context-data" || section === "context-attempts") {
-    return buildDataSection(deps, runId, section);
+  switch (section) {
+    case "context-data":
+    case "context-attempts":
+      return buildDataSection(deps, runId, section);
+    case "logs":
+      return buildLogsSection(deps, runId, cursorInput, noteScanCache);
+    case "receipt":
+    case "failure":
+      return buildReceiptFailureSection(deps, runId, section);
+    case "parked-write":
+    case "identity-gate":
+      return buildGateParkSection(deps, runId, section);
+    case "captures":
+    case "review":
+    case "people":
+    case "context-evidence": {
+      const authority = requireTrustRun(deps.runReader, runId);
+      const served = availableSections(undefined, authority, deps.trust);
+      throw new SectionUnavailableError(
+        `section ${section} is not available for run ${runId}; served sections are ${served.join(", ")}`,
+      );
+    }
   }
-  return buildTrustSection(deps, runId, section, cursorInput, noteScanCache);
+}
+
+/** Legacy imports use the same dispatcher rather than a second section switch. */
+export function buildTrustSection(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  sectionInput: string,
+  cursorInput?: string,
+  noteScanCache?: RunNoteScanCache,
+): RunDetailSectionResponse {
+  const section = SectionNameSchema.parse(sectionInput);
+  return buildRunSection(deps, runId, section, cursorInput, noteScanCache);
 }
