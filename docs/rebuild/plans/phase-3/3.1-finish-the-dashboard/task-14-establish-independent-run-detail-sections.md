@@ -215,3 +215,53 @@ Full repository lint, coverage, broad parity, production, performance,
 recovery and frozen A01–A42/D01–D05 acceptance remain assigned to 3.1.19.
 Evidence and command logs are retained at
 `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.14-detail-foundation-2026-09-22/acceptance/`.
+
+### Approved child-release amendment — 2026-09-22
+
+The operator approved the plan for 3.1.14.1–3.1.14.6 after the accepted
+foundation at `92e88701c` and documentation close at `3170fc47e`. This
+amendment owns one bounded shared follow-up before the five leaf candidates.
+It does not reopen the accepted foundation or add a roadmap node. Its product
+branch is `codex/3.1.14-shared-followup` in
+`hr-worktree-detail-shared`, cut from the committed, integrated child plan.
+The Sol root accepts and locally integrates it before admitting leaves.
+
+The parent reserves the versioned, bounded, authority-backed item-attempt
+read and its shared wire/route/composition, the Queue/detail action placement
+and callback needed to surface the already accepted source-bound Rerun modal,
+and shared fixtures. The read must return a deterministic page or bounded
+history for the exact item with separate run/attempt identities; archive and
+deleted-run absence must remain explicit. No new table, migration, edit command,
+client-derived status or broad shared registration redesign is authorized.
+The follow-up may touch its reserved `log-panel*`, app action plumbing,
+shared domain schemas, server dispatcher/composition, and common tests/fixtures.
+It must publish stable exports and prove version binding, stale/refused action,
+archive/deletion behavior and bounded pagination with focused tests, scoped
+ESLint, typecheck and affected generated/build checks. Evidence goes under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.14-detail-children-2026-09-22/shared/`.
+
+After that release, 3.1.14.1 additionally owns the smallest Queue row/model
+and focused Queue test/parity change required to show one selected-day item row
+with separately selectable attempts. The accepted Queue projector identity and
+row actions remain shared inputs; any necessary change to them returns to the
+parent before parallel launch. 3.1.14.2 consumes the attempt read and Rerun
+callback in its exclusive Context/Data section. 3.1.14.3 owns any genuine
+ordinary worker-note producer seam after tracing current callers. 3.1.14.4
+and 3.1.14.5 retain their exclusive receipt/failure and gate/park paths.
+Children cannot edit another leaf's paths or the parent reservation. Any
+unplanned shared change returns to this owner or to 3.1.14.6 after candidates
+are complete; the Sol root decides that boundary before work proceeds.
+
+Each leaf begins from the same accepted shared-follow-up commit, uses an owned
+`codex/3.1.14.N-*` branch and `hr-worktree-detail-*` worktree, and records
+its exact candidate SHA, commands, results and changed paths under the matching
+`3.1.14.N/` evidence directory. At most three auxiliary task worktrees may
+coexist with the unrelated UI planning worktree. The five leaves run in waves
+as capacity permits, with no sibling prerequisite or overlapping writes.
+3.1.14.6 combines their exact committed candidates in
+`codex/3.1.14.6-finalize` / `hr-worktree-detail-finalize`, repairs integration
+defects, proves the focused group gate, then the Sol root integrates locally
+and cleans owned resources. No push, external HR write or next-task dispatch
+is authorized. Broad repository gates and frozen A01–A42/D01–D05 acceptance
+remain with 3.1.19. No independent review applies under the approved 3.1
+cadence.

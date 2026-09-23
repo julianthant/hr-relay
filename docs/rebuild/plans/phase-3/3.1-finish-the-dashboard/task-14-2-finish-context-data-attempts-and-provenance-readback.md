@@ -18,3 +18,11 @@ Consume current checkpoint_payloads/run_checkpoints and exact prior-run read con
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
 [frozen matrix and ownership](task-8-acceptance-matrix.md). Remaining checklist items require
 their mapped outcome/proof; historical subfeature credit does not complete this task.
+
+## Approved execution brief — 2026-09-22
+
+The operator approved this child with the [parent's shared follow-up](task-14-establish-independent-run-detail-sections.md#approved-child-release-amendment--2026-09-22). Admit only after its bounded item-attempt read and existing Rerun action callback are committed, tested and integrated into local `master`. Cut `codex/3.1.14.2-context-data` in `hr-worktree-detail-data` from that exact commit. This leaf is independent of the other four candidates. The Sol root accepts and integrates; a Luna xhigh worker owns this candidate. Retain proof under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.14-detail-children-2026-09-22/3.1.14.2/`.
+
+Own `src/dashboard/surfaces/context-rail*.ts*`, `src/server/dashboard/queries/data.ts`, their focused tests and exclusive Context/Data parity scenes. Show declared input, direction, exact origin, redaction, checkpoint payload/provenance coordinates and truthful item attempt history from the shared authority read. The source run is immutable in every lifecycle state: remove the server's stale editable claim and unused edit-facing props, display read-only values, and send an eligible version-bound Rerun action to the accepted source-bound modal. Show empty, redacted, malformed, unavailable, archived and deleted evidence distinctly. Reject wrong-run/wrong-attempt value joins, stale prefill and source mutation; no edit-checkpoint command or new persistence authority.
+
+Prove prior-run readback, cross-attempt isolation, version/stale refusal, archived/deleted behavior and source immutability in focused query/model/BFF tests and `tests/parity/run-detail/context-data.spec.ts`. Run scoped ESLint over changed source/tests, `git diff --check` and affected generated checks. Review any parity reference update. Final A30/D03 and full repository gates stay with 3.1.19; 3.1.14.6 owns the focused combined release.
