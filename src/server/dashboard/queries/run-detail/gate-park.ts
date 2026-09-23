@@ -25,6 +25,14 @@ import { SectionUnavailableError } from "../../../failures.js";
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
 import { requireTrustRun } from "../../../trust/run-reader.js";
 import { availableSections } from "./availability.js";
+import { descriptorRuntimeNodes } from "../../../../base/workflow.js";
+import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../domain/workflow/build-manifest.js";
+import { checkpointLookupKey } from "../../../../domain/workflow/checkpoint.js";
+import { deriveSchemaHash } from "../../../../domain/schema-bound-value.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../../../domain/identifiers.js";
+import { canonicalJsonStringify } from "../../../../domain/canonical-json.js";
+import { readRunCheckpoint } from "../../../../core/run-checkpoint-reader.js";
+import { timelineCheckpointReference } from "../../../../events/timeline.js";
 
 /**
  * D237 — what a SETTLED gate's panel says: approved or rejected, by whom, when.
@@ -316,17 +324,70 @@ function buildIdentityGatePayload(
       + "describe the decision this run is parked on",
     );
   }
+  if (deps.canonical === undefined) {
+    return missing(`gate "${gate.nodeId}" cannot verify checkpoint identity without canonical authority`);
+  }
+  const runtimeDescriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
+  if (runtimeDescriptor === undefined) {
+    return missing(`workflow ${authority.envelope.workflow} has no canonical descriptor for checkpoint verification`);
+  }
+  if (runtimeDescriptor.version !== authority.envelope.descriptorVersion
+    || runtimeDescriptor.contractFingerprint !== authority.envelope.contractFingerprint) {
+    return missing(
+      `workflow ${authority.envelope.workflow} descriptor ${String(runtimeDescriptor.version)}/`
+      + `${runtimeDescriptor.contractFingerprint} does not match the run's bound descriptor `
+      + `${String(authority.envelope.descriptorVersion)}/${authority.envelope.contractFingerprint}`,
+    );
+  }
+  const runtimeGate = descriptorRuntimeNodes(runtimeDescriptor)
+    .find((candidate) => candidate.kind === "gate" && String(candidate.id) === gate.nodeId);
+  if (runtimeGate === undefined || runtimeGate.kind !== "gate"
+    || deriveSchemaHash(runtimeGate.result, "output") !== gate.resultSchemaHash
+    || canonicalJsonStringify(runtimeGate.dependsOn.map(String)) !== canonicalJsonStringify(gate.dependsOn)) {
+    return missing(`gate "${gate.nodeId}" does not match the registered descriptor used by this run`);
+  }
+  const expectedOutputHash = deriveSchemaHash(MatchIdentityOutputSchema, "output");
   const evidence = gate.dependsOn
-    .map((nodeId) => deps.authority.latestCheckpoint(authority.envelope.workflow, authority.envelope.itemId, nodeId))
+    .map((nodeId) => readRunCheckpoint(deps.canonical!.database.authority, authority.envelope, nodeId, true))
     .flatMap((stored) => {
       if (stored === undefined) return [];
       if (stored.workflowId !== authority.envelope.workflow || stored.itemId !== authority.envelope.itemId
-        || stored.attempt > authority.envelope.attempt) {
-        throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: gate checkpoint for ${runId}`);
-      }
+        || stored.attempt > authority.envelope.attempt || stored.descriptorVersion !== authority.envelope.descriptorVersion
+        || stored.contractFingerprint !== authority.envelope.contractFingerprint
+        || stored.output.schemaHash !== expectedOutputHash) return [];
       // `stored.output` is the schema-BOUND envelope; the packet is its value.
       const parsed = MatchIdentityOutputSchema.safeParse(stored.output.value);
-      return parsed.success ? [parsed.data] : [];
+      if (!parsed.success || deriveIdentityEvidenceDigest(parsed.data.packet) !== parsed.data.evidenceDigest) return [];
+      const runtimeNode = descriptorRuntimeNodes(runtimeDescriptor)
+        .find((candidate) => candidate.kind === "task" && String(candidate.id) === String(stored.nodeId));
+      if (runtimeNode === undefined || runtimeNode.kind !== "task"
+        || deriveSchemaHash(runtimeNode.uses.output, "output") !== expectedOutputHash
+        || stored.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, runtimeNode.uses.id)) return [];
+      const currentExecution = stored.runId === runId && stored.attempt === authority.envelope.attempt
+        && Number(stored.claimGeneration) === Number(authority.claimGeneration);
+      const eventId = currentExecution
+        ? deriveStableUuid("timeline-checkpoint-recorded", checkpointLookupKey(
+          stored.workflowId,
+          stored.itemId,
+          stored.nodeId,
+          stored.attempt,
+          stored.claimGeneration,
+        ))
+        : lifecycleCommandId("timeline-checkpoint-replayed", {
+          runId,
+          nodeId: stored.nodeId,
+          claimGeneration: authority.claimGeneration,
+        });
+      const checkpointEvent = deps.canonical!.database.authority.timelineEvents.get(eventId);
+      const expectedReference = timelineCheckpointReference(stored);
+      const expectedKind = currentExecution ? "checkpoint-recorded" : "checkpoint-replayed";
+      if (checkpointEvent?.payload.kind !== expectedKind
+        || canonicalJsonStringify(checkpointEvent.payload.checkpoint) !== canonicalJsonStringify(expectedReference)
+        || checkpointEvent.payload.workflow !== authority.envelope.workflow
+        || checkpointEvent.payload.runId !== runId
+        || checkpointEvent.payload.attempt !== authority.envelope.attempt
+        || Number(checkpointEvent.payload.claimGeneration) !== Number(authority.claimGeneration)) return [];
+      return [parsed.data];
     });
   if (evidence.length !== 1) {
     return missing(
