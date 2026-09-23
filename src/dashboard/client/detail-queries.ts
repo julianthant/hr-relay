@@ -1,5 +1,9 @@
 import { RunAdvisoryWireSchema,type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
 import {
+  ItemAttemptHistoryResponseSchema,
+  type ItemAttemptHistoryResponse,
+} from "../../domain/dashboard/item-attempt-history.js";
+import {
 DiagnosticBundleWireSchema,
 type DiagnosticBundleWire,
 } from "../../domain/dashboard/diagnostic-bundle.js";
@@ -32,6 +36,12 @@ export interface DetailQueries {
   runDetail(runId: string): Promise<RunDetailWire>;
 
   runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
+
+  /** Bounded same-item attempt history, pinned to this exact selected run. */
+  itemAttemptHistory(
+    runId: string,
+    options?: Readonly<{ limit?: number; cursor?: string; signal?: AbortSignal }>,
+  ): Promise<ItemAttemptHistoryResponse>;
 
   /** One D137 bundle, read by its exact durable id only after the operator asks. */
   diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire>;
@@ -86,6 +96,38 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       if ((section === "captures" && response.section !== "captures")
         || (response.section === "captures" && response.payload.runId !== runId)) {
         throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
+      }
+      return response;
+    },
+
+    async itemAttemptHistory(
+      runId: string,
+      options: Readonly<{ limit?: number; cursor?: string; signal?: AbortSignal }> = {},
+    ): Promise<ItemAttemptHistoryResponse> {
+      const query = new URLSearchParams();
+      if (options.limit !== undefined) query.set("limit", String(options.limit));
+      if (options.cursor !== undefined) query.set("cursor", options.cursor);
+      const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+      const path = `/api/v1/runs/${encodeURIComponent(runId)}/attempt-history${suffix}`;
+      const context = `GET ${path}`;
+      const response = parseOrThrow(
+        ItemAttemptHistoryResponseSchema,
+        context,
+        await transport.requestJson(path, options.signal === undefined ? undefined : { signal: options.signal }),
+      );
+      const selectedRunId = response.state === "available" || response.state === "unavailable"
+        ? response.selected.runId
+        : response.selectedRunId;
+      if (selectedRunId !== runId) {
+        throw runIdentityError(context, "RUN_ATTEMPT_HISTORY_IDENTITY_MISMATCH", runId);
+      }
+      if (response.state === "available"
+        && (response.selected.state === "absent"
+          || response.selected.workflowId !== response.item.workflowId
+          || response.selected.itemId !== response.item.itemId
+          || response.page.entries.some((entry) =>
+            entry.workflowId !== response.item.workflowId || entry.itemId !== response.item.itemId))) {
+        throw runIdentityError(context, "RUN_ATTEMPT_HISTORY_IDENTITY_MISMATCH", runId);
       }
       return response;
     },
