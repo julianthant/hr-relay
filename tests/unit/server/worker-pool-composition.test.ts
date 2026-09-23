@@ -949,8 +949,8 @@ describe("the composed worker process control through the kernel pool door", () 
 
 /* ── dashboard shutdown ordering (the composed runtime) ──────────────────── */
 
-describe("dashboard shutdown closes the worker supervisor between ingress and the process lock", () => {
-  it("reports still-live children to the fault path before the server lock releases", async () => {
+describe("dashboard shutdown drains owned workers between ingress and the process lock", () => {
+  it("writes a graceful stop, waits for the owned OS exit, then releases the server lock", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-shutdown-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
@@ -963,11 +963,6 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     const lockFile = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const lockRecord = (): { releasedAt: string | null } =>
       JSON.parse(readFileSync(lockFile, "utf8")) as { releasedAt: string | null };
-    // ORDER pin, observed AT EMISSION TIME: when the supervisor's shutdown
-    // fault line is emitted, the process lock must still be held (close()
-    // runs before the release) — an after-the-fact read cannot tell the two
-    // orders apart.
-    const lockStateAtShutdownFault: (string | null)[] = [];
     // Port 0: the OS assigns an ephemeral port, so this test never contends
     // with a concurrently running rebuild dashboard on the machine-wide
     // isolation port — and never silently passes vacuous because of one.
@@ -988,9 +983,6 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
         birth: { pollMs: 250, timeoutMs: 10_000 },
         faultSink: (line) => {
           faultLines.push(line);
-          if (line.includes("dashboard shutdown leaves a worker child")) {
-            lockStateAtShutdownFault.push(existsSync(lockFile) ? lockRecord().releasedAt : "lock-file-missing");
-          }
         },
       },
     });
@@ -1040,28 +1032,31 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     assert.equal(response.status, 200);
     assert.equal(((await response.json()) as { state: string }).state, "applied");
 
-    // Shutdown: ingress stops, the supervisor closes, THEN the lock releases.
+    // Shutdown: ingress closes and the supervisor durably requests stop. It
+    // must remain pending until this owned child reports its real OS exit.
     assert.equal(existsSync(lockFile), true);
     assert.equal(lockRecord().releasedAt, null);
-    for (const stop of stops.splice(0)) await stop();
+    stops.splice(0);
+    const stopping = runtime.stop();
+    let stopRequested = false;
+    for (let waited = 0; waited < 200 && !stopRequested; waited += 1) {
+      const probe = AuthorityDatabase.open(
+        { path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
+        clock,
+      );
+      try {
+        stopRequested = probe.authority.workerLeases.get(WORKER_1)?.control.directive === "stop";
+      } finally {
+        probe.close();
+      }
+      if (!stopRequested) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(stopRequested, true, "shutdown must persist the graceful stop directive");
+    assert.equal(lockRecord().releasedAt, null);
+    children[0]?.emitExit(0, null);
+    await stopping;
 
-    // The still-live child reached the structured fault path — one JSON line
-    // naming its running state — and was NOT pretended stopped.
-    const shutdownLines = faultLines.filter((line) => line.includes("dashboard shutdown leaves a worker child"));
-    assert.equal(shutdownLines.length, 1);
-    const parsed = JSON.parse(shutdownLines[0] ?? "") as { level: string; source: string; message: string };
-    assert.equal(parsed.level, "error");
-    assert.equal(parsed.source, "worker-supervisor");
-    assert.match(parsed.message, /"state":"running"/);
-    assert.match(parsed.message, /"pid":7001/);
-    // The ORDER, pinned at emission time: the supervisor's close (which emits
-    // the fault line) ran while the process lock was still held. Moving
-    // close() after the lock release records a releasedAt instant here.
-    assert.deepEqual(lockStateAtShutdownFault, [null]);
-    // The process lock under .tracker/locks records its release only
-    // after the supervisor closed (the closed-supervisor refusal itself is
-    // pinned in the W2 suite). The file stays as the durable record; the NEXT
-    // acquirer archives it.
+    assert.equal(faultLines.some((line) => line.includes("dashboard shutdown leaves a worker child")), false);
     assert.notEqual(lockRecord().releasedAt, null);
   });
 });

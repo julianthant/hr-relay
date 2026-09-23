@@ -13,6 +13,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
+import { writeDashboardBuildIdentity } from "./src/server/dashboard/build-identity.js";
 import {
   DASHBOARD_FRONTEND_OWNER_PATH,
   DASHBOARD_LAUNCH_NONCE_ENV,
@@ -44,6 +45,15 @@ export default defineConfig({
         response.setHeader("content-type", "text/plain; charset=utf-8");
         response.setHeader("cache-control", "no-store");
         response.end(ownerNonce);
+      });
+    },
+  }, {
+    name: "hrauto-dashboard-build-identity",
+    apply: "build",
+    closeBundle() {
+      writeDashboardBuildIdentity({
+        repoRoot: import.meta.dirname,
+        distDir: resolve(import.meta.dirname, "dist/dashboard"),
       });
     },
   }, react(), tailwindcss()],

@@ -5,10 +5,12 @@
  * HEAD, and the fail-loud refusal to open a bundle with no index.html.
  */
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolve } from "node:path";
 import { Hono } from "hono";
+import { writeDashboardBuildIdentity } from "../../../src/server/dashboard/build-identity.js";
 import { afterEach, describe, it } from "vitest";
 import type { ActorId } from "../../../src/domain/ids.js";
 import {
@@ -21,6 +23,7 @@ import {
 type TestDashboardEnv = { Variables: { requestActorId: ActorId } };
 
 const roots: string[] = [];
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -47,6 +50,7 @@ function scaffold(): { repoRoot: string; dist: string; outside: string } {
   mkdirSync(join(repoRoot, "elsewhere"));
   writeFileSync(join(repoRoot, "elsewhere", "leak.js"), "leak");
   symlinkSync(join(repoRoot, "elsewhere"), join(dist, "linked-dir"));
+  writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist });
   return { repoRoot, dist, outside };
 }
 
@@ -105,17 +109,31 @@ describe("static bundle decision table", () => {
 describe("static bundle over a real temp bundle", () => {
   it("refuses to open a bundle that is missing or has no index.html, naming the build command", async () => {
     const { repoRoot } = scaffold();
-    await assert.rejects(openStaticBundle(join(repoRoot, "dist", "nowhere")), /npm run web:build/u);
+    await assert.rejects(openStaticBundle(join(repoRoot, "dist", "nowhere"), REPO_ROOT), /npm run web:build/u);
     const bare = join(repoRoot, "dist", "bare");
     mkdirSync(bare, { recursive: true });
-    await assert.rejects(openStaticBundle(bare), /no index\.html.*npm run web:build/u);
+    await assert.rejects(openStaticBundle(bare, REPO_ROOT), /no index\.html.*npm run web:build/u);
     mkdirSync(join(bare, "index.html"));
-    await assert.rejects(openStaticBundle(bare), /has no index\.html/u);
+    await assert.rejects(openStaticBundle(bare, REPO_ROOT), /has no index\.html/u);
+  });
+
+  it("refuses missing, stale, or changed build identity before opening the bundle", async () => {
+    const { dist } = scaffold();
+    const identityPath = join(dist, "dashboard-build-identity.json");
+    unlinkSync(identityPath);
+    await assert.rejects(openStaticBundle(dist, REPO_ROOT), /missing dashboard-build-identity\.json/u);
+    writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist });
+    const identity = JSON.parse(readFileSync(identityPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(identityPath, JSON.stringify({ ...identity, inputDigest: "0".repeat(64) }));
+    await assert.rejects(openStaticBundle(dist, REPO_ROOT), /bundle inputs changed after build/u);
+    writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist });
+    writeFileSync(join(dist, "assets", "app.abc123.js"), "changed after build");
+    await assert.rejects(openStaticBundle(dist, REPO_ROOT), /bundle bytes changed after build/u);
   });
 
   it("serves bundle bytes with exact headers, falls back to the SPA, and keeps API precedence", async () => {
     const { dist } = scaffold();
-    const app = await appOver(await openStaticBundle(dist));
+    const app = await appOver(await openStaticBundle(dist, REPO_ROOT));
 
     const index = await app.request("http://127.0.0.1:3938/");
     assert.equal(index.status, 200);
@@ -166,7 +184,7 @@ describe("static bundle over a real temp bundle", () => {
 
   it("refuses traversal and a symlink that leaves the bundle, and follows one that stays inside", async () => {
     const { dist } = scaffold();
-    const app = await appOver(await openStaticBundle(dist));
+    const app = await appOver(await openStaticBundle(dist, REPO_ROOT));
     // The WHATWG URL layer (in Node's Request and in every browser) resolves a
     // literal `/../` before any handler sees it, so that form can only ever
     // name a bundle-relative path — here a missing one. The ENCODED forms are
@@ -199,7 +217,7 @@ describe("static bundle over a real temp bundle", () => {
 
   it("decides pass-through on the decoded path too, so an encoded API path never falls to index.html", async () => {
     const { dist } = scaffold();
-    const app = await appOver(await openStaticBundle(dist));
+    const app = await appOver(await openStaticBundle(dist, REPO_ROOT));
     for (const path of ["/api%2Fv1/bootstrap", "/api%2fv1%2fnope", "/events%2Fv1", "/artifacts/v1/x/"]) {
       const response = await app.request(`http://127.0.0.1:3938${path}`);
       assert.equal(response.status, 404, path);
@@ -209,7 +227,7 @@ describe("static bundle over a real temp bundle", () => {
 
   it("puts a fixed message on the wire when the filesystem fails, never the bundle path", async () => {
     const { dist } = scaffold();
-    const bundle = await openStaticBundle(dist);
+    const bundle = await openStaticBundle(dist, REPO_ROOT);
     const app = new Hono<TestDashboardEnv>();
     app.use("*", staticBundleHandler(bundle));
     app.onError((error, c) => c.json({ name: error.name, message: error.message }, 500));
@@ -232,6 +250,6 @@ describe("static bundle over a real temp bundle", () => {
     const linked = join(repoRoot, "dist", "linked");
     mkdirSync(linked, { recursive: true });
     symlinkSync(outside, join(linked, "index.html"));
-    await assert.rejects(openStaticBundle(linked), /resolves outside the bundle/u);
+    await assert.rejects(openStaticBundle(linked, REPO_ROOT), /resolves outside the bundle/u);
   });
 });

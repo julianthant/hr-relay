@@ -28,6 +28,7 @@ import {
 } from "../../../src/core/worker-loop.js";
 import {
   createDashboardWorkerProcessSupervisor,
+  WORKER_EXIT_OBSERVATION_TIMEOUT_MS,
   workerCliArgv,
   type DashboardWorkerProcessSupervisor,
   type SpawnedWorkerHandle,
@@ -1196,6 +1197,70 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
 });
 
 /* ── close(): the W3 teardown seam ───────────────────────────────────────── */
+
+describe("drainOwnedChildren", () => {
+  it("requests the durable graceful stop and resolves only after the owned child's real exit", async () => {
+    const { harness, target } = await runningHarness();
+    let drained = false;
+    const pending = harness.supervisor.drainOwnedChildren(stopDirective(NOW)).then(() => { drained = true; });
+
+    await Promise.resolve();
+    expect(harness.gracefulRequests).toEqual([target]);
+    expect(drained).toBe(false);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "stopping" });
+
+    harness.children[0]?.emitExit(0, null);
+    await pending;
+
+    expect(drained).toBe(true);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "exited",
+      outcome: "stopped",
+      reportedBy: "os",
+      observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
+    });
+  });
+
+  it("keeps D271 escalation active until a real exit follows SIGKILL", async () => {
+    const { harness, target } = await runningHarness();
+    let drained = false;
+    const pending = harness.supervisor.drainOwnedChildren(stopDirective(NOW)).then(() => { drained = true; });
+    await Promise.resolve();
+    harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    harness.scheduler.pending()[0]?.fire();
+    expect(harness.children[0]?.signalsSent).toEqual(["SIGTERM"]);
+    harness.clock.advanceMonotonic(WORKER_SIGTERM_TIMEOUT_MS);
+    harness.clock.advanceWall(WORKER_SIGTERM_TIMEOUT_MS);
+    harness.scheduler.pending()[0]?.fire();
+    expect(harness.children[0]?.signalsSent).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(drained).toBe(false);
+
+    harness.children[0]?.emitExit(null, "SIGKILL");
+    await pending;
+    expect(drained).toBe(true);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "exited", reportedBy: "os" });
+  });
+
+  it("fails visibly when SIGKILL was delivered but no OS exit arrives within the observation bound", async () => {
+    const { harness, target } = await runningHarness();
+    const pending = harness.supervisor.drainOwnedChildren(stopDirective(NOW));
+    await Promise.resolve();
+    harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    harness.scheduler.pending()[0]?.fire();
+    harness.clock.advanceMonotonic(WORKER_SIGTERM_TIMEOUT_MS);
+    harness.scheduler.pending()[0]?.fire();
+    const failed = expect(pending).rejects.toThrow(/could not observe every owned worker exit/);
+
+    harness.clock.advanceMonotonic(WORKER_EXIT_OBSERVATION_TIMEOUT_MS);
+    harness.scheduler.pending()[0]?.fire();
+    await failed;
+
+    expect(harness.faults.some(({ message }) => /no OS exit was observed/.test(message))).toBe(true);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "stopping", pid: harness.children[0]?.pid });
+    harness.supervisor.close();
+  });
+});
 
 describe("close", () => {
   it("cancels every armed escalation timer and returns the still-live children's evidence", async () => {

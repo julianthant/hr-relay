@@ -22,6 +22,12 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
  return Object.freeze({
       settingsCurrent: Object.freeze({
         get: () => readRecord("settings_current", "current", SettingsCurrentRecordSchema),
+        hasHistory: () => ports.database.prepare(`
+          SELECT 1 FROM commands
+          WHERE family = 'settings'
+            AND json_extract(record_json, '$.type') = 'apply-settings'
+          LIMIT 1
+        `).get() !== undefined,
         advance: (input: unknown) => {
           const record = SettingsCurrentRecordSchema.parse(input);
           return ports.mutate( () => {
@@ -78,6 +84,7 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
         },
       }),
       runtimeConfig: Object.freeze({
+        hasHistory: () => ports.database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get() !== undefined,
         matchesClaim(input: unknown): boolean {
           const token = RuntimeConfigClaimTokenSchema.parse(input);
           const current = readAppSettings(ports.database);

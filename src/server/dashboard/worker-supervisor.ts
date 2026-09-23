@@ -153,6 +153,8 @@ export interface DashboardWorkerSupervisorDependencies {
 
 export const WORKER_CLI_SUBCOMMAND = "worker";
 export const WORKER_CLI_POOL_INDEX_FLAG = "--pool-index";
+/** Bound the OS exit event observation after an accepted SIGKILL during shutdown. */
+export const WORKER_EXIT_OBSERVATION_TIMEOUT_MS = 5_000;
 
 /** The member-derived argv tail: `worker <workflow-id> --pool-index <n>`. */
 export function workerCliArgv(member: WorkerPoolMember): readonly string[] {
@@ -200,6 +202,10 @@ interface MemberRecord {
   stopInFlight: boolean;
   observedStop: { stage: "graceful-stop-requested" | "sigterm-sent" | "sigkill-sent"; at: string }[];
   escalationTimer?: MonotonicDeadlineHandle;
+  drainExitTimer?: MonotonicDeadlineHandle;
+  exitObserved: Promise<void>;
+  resolveExitObserved: () => void;
+  drainFailure?: { promise: Promise<void>; reject: (error: Error) => void };
   exit?: {
     exitCode: number | null;
     signal: string | null;
@@ -277,6 +283,8 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
   /** Evidence about a member THIS supervisor spawned; undefined = never spawned here. */
   memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined;
   ownsWorker(workerId: string, processId: number, startedAt: string): boolean;
+  /** Durably request D271 stops for owned live children and resolve only when their OS exits are observed. */
+  drainOwnedChildren(directive: WorkerStopDirectiveContext): Promise<void>;
   /**
    * The teardown seam (W3 composition): cancels every armed escalation timer,
    * refuses all further commands, and returns the evidence of every child
@@ -306,13 +314,17 @@ export function createDashboardWorkerProcessSupervisor(
   const records = new Map<string, MemberRecord>();
   const instant = (): string => deps.clock.now().toISOString();
   let closed = false;
+  let draining: Promise<void> | undefined;
 
   const onChildExit = (record: MemberRecord, exitCode: number | null, signal: string | null): void => {
     record.escalationTimer?.cancel();
     record.escalationTimer = undefined;
+    record.drainExitTimer?.cancel();
+    record.drainExitTimer = undefined;
     const outcome: "stopped" | "crashed" = record.state === "stopping" ? "stopped" : "crashed";
     record.exit = { exitCode, signal, at: instant(), outcome, reportedBy: "os" };
     record.state = "exited";
+    record.resolveExitObserved();
   };
 
   /** The channel-throw cause of a stop-uncertain record; a missing one is registry corruption, never defaulted. */
@@ -356,6 +368,8 @@ export function createDashboardWorkerProcessSupervisor(
       cwd: deps.launch.cwd,
       member,
     }));
+    let resolveExitObserved!: () => void;
+    const exitObserved = new Promise<void>((resolve) => { resolveExitObserved = resolve; });
     const record: MemberRecord = {
       member,
       state: "awaiting-birth",
@@ -363,6 +377,8 @@ export function createDashboardWorkerProcessSupervisor(
       pid: child.pid,
       observedStop: [],
       stopInFlight: false,
+      exitObserved,
+      resolveExitObserved,
     };
     records.set(member.workerId, record);
 
@@ -436,6 +452,7 @@ export function createDashboardWorkerProcessSupervisor(
               reportedBy: "supervisor",
             };
             record.state = "exited";
+            record.resolveExitObserved();
           } else {
             // The abort SIGKILL was NOT delivered: the child may still be
             // alive. Recording "exited" would free the slot and let a
@@ -594,15 +611,35 @@ export function createDashboardWorkerProcessSupervisor(
       record.escalationTimer = undefined;
       if (record.state !== "stopping") return;
       if (!record.child.kill(signal)) {
-        deps.onFault(new Error(
+        const error = new Error(
           `worker ${record.member.workerId} (pid ${String(record.pid)}) escalation ${signal} was not `
           + "delivered and the child has not reported exit; the stop is wedged",
-        ));
+        );
+        deps.onFault(error);
+        record.drainFailure?.reject(error);
         return;
       }
       record.observedStop.push({ stage, at: instant() });
+      if (stage === "sigkill-sent" && draining !== undefined) armDrainExitTimeout(record);
       next?.();
     });
+  };
+
+  const armDrainExitTimeout = (record: MemberRecord): void => {
+    record.drainExitTimer?.cancel();
+    record.drainExitTimer = deps.scheduler.schedule(
+      deps.clock.monotonicMs() + WORKER_EXIT_OBSERVATION_TIMEOUT_MS,
+      () => {
+        record.drainExitTimer = undefined;
+        if (record.state === "exited" || record.drainFailure === undefined) return;
+        const error = new Error(
+          `worker ${record.member.workerId} (pid ${String(record.pid)}) received SIGKILL but no OS exit `
+          + `was observed within ${String(WORKER_EXIT_OBSERVATION_TIMEOUT_MS)}ms`,
+        );
+        deps.onFault(error);
+        record.drainFailure.reject(error);
+      },
+    );
   };
 
   const beginStopEscalation = async (
@@ -1001,13 +1038,19 @@ export function createDashboardWorkerProcessSupervisor(
 
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
-      if (closed) {
+      if (closed || draining !== undefined) {
         throw new WorkerControlRefusal(
-          `${request.command} refused: this worker supervisor is closed; a closed supervisor `
-          + "acknowledges nothing",
+          `${request.command} refused: this worker supervisor is ${closed ? "closed" : "draining"}; `
+          + "a shutting-down supervisor acknowledges nothing",
         );
       }
       if (deps.prepareAdmission !== undefined) await deps.prepareAdmission(request);
+      if (closed || draining !== undefined) {
+        throw new WorkerControlRefusal(
+          `${request.command} refused: this worker supervisor is ${closed ? "closed" : "draining"}; `
+          + "a shutting-down supervisor acknowledges nothing",
+        );
+      }
       deps.admission?.(request);
       switch (request.command) {
         case "plan-worker-count":
@@ -1049,12 +1092,70 @@ export function createDashboardWorkerProcessSupervisor(
       if (record === undefined) return undefined;
       return recordEvidence(record);
     },
+    drainOwnedChildren(directive: WorkerStopDirectiveContext): Promise<void> {
+      if (closed) return Promise.reject(new Error("cannot drain a closed worker supervisor"));
+      if (draining !== undefined) return draining;
+      const parsedDirective = WorkerStopDirectiveContextSchema.parse(directive);
+      draining = (async () => {
+        const live = [...records.values()].filter((record) => record.state !== "exited");
+        const failures: Error[] = [];
+        const stopRequests: Promise<void>[] = [];
+        for (const record of live) {
+          let rejectDrain!: (error: Error) => void;
+          const promise = new Promise<void>((_resolve, reject) => { rejectDrain = reject; });
+          // The promise is raced below after all stop requests have been started.
+          void promise.catch(() => undefined);
+          record.drainFailure = { promise, reject: rejectDrain };
+          if (record.state === "running") {
+            stopRequests.push(beginStopEscalation(record, canonicalEscalation(), parsedDirective).then(() => undefined).catch((error: unknown) => {
+              const failure = error instanceof Error ? error : new Error(String(error));
+              failures.push(failure);
+              if (record.state !== "exited") record.drainFailure.reject(failure);
+            }));
+          } else if (record.state === "stopping") {
+            const finalSignalSent = record.observedStop.at(-1)?.stage === "sigkill-sent";
+            if (record.stopInFlight || (record.escalationTimer === undefined && !finalSignalSent)) {
+              const failure = new Error(
+                `owned worker ${record.member.workerId} is stopping without an active D271 escalation`,
+              );
+              failures.push(failure);
+              record.drainFailure.reject(failure);
+            } else if (finalSignalSent) {
+              armDrainExitTimeout(record);
+            }
+          } else {
+            const failure = new Error(
+              `owned worker ${record.member.workerId} cannot be safely drained from ${record.state}`,
+            );
+            failures.push(failure);
+            record.drainFailure.reject(failure);
+          }
+        }
+        await Promise.all(stopRequests);
+        const outcomes = await Promise.allSettled(live.map(async (record) => {
+          if (record.state === "exited") return;
+          await Promise.race([record.exitObserved, record.drainFailure?.promise ?? Promise.resolve()]);
+        }));
+        for (const outcome of outcomes) {
+          if (outcome.status === "rejected") {
+            const failure = outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
+            if (!failures.includes(failure)) failures.push(failure);
+          }
+        }
+        if (failures.length > 0) {
+          throw new AggregateError(failures, "dashboard could not observe every owned worker exit", { cause: failures[0] });
+        }
+      })();
+      return draining;
+    },
     close(): readonly WorkerChildEvidence[] {
       closed = true;
       const live: WorkerChildEvidence[] = [];
       for (const record of records.values()) {
         record.escalationTimer?.cancel();
         record.escalationTimer = undefined;
+        record.drainExitTimer?.cancel();
+        record.drainExitTimer = undefined;
         if (record.state !== "exited") live.push(recordEvidence(record));
       }
       return Object.freeze(live);
