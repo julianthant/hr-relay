@@ -284,18 +284,39 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     });
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(requestedPort, hostname, () => {
-      server.removeListener("error", reject);
-      resolve();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: Error): void => {
+        server.removeListener("listening", onListening);
+        reject(error);
+      };
+      const onListening = (): void => {
+        server.removeListener("error", onError);
+        resolve();
+      };
+      server.once("error", onError);
+      server.once("listening", onListening);
+      server.listen(requestedPort, hostname);
     });
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("the dashboard HTTP server reported no TCP address after listen; the bound port is unknowable");
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("the dashboard HTTP server reported no TCP address after listen; the bound port is unknowable");
+    }
+    boundPort = address.port;
+  } catch (primary: unknown) {
+    if (server.listening) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => error === undefined ? resolve() : reject(error));
+        });
+      } catch (cleanup: unknown) {
+        server.closeAllConnections();
+        throw primaryFirstAggregate(primary, cleanup, "dashboard HTTP startup and listener cleanup both failed");
+      }
+    }
+    server.closeAllConnections();
+    throw primary;
   }
-  boundPort = address.port;
 
   return Object.freeze({
     port: boundPort,

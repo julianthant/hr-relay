@@ -13,9 +13,7 @@
  * The durable proof is the process lock. `composeDashboardRuntime`'s `stop()`
  * releases it only AFTER the authority database handle closed, so a released
  * record for this exact pid is evidence that ingress closed, the timers were
- * cleared, the worker supervisor closed, the graceful-drain backup succeeded
- * (it throws otherwise, which would be a non-zero exit) and the database
- * closed. Before this fix the same SIGINT left `releasedAt: null`.
+ * cleared, owned workers drained, and the database closed.
  *
  * Two SIGINTs, not one: the second arrives while `stop()` is still draining.
  * With `process.once` the first signal removed its own listener, so the second
@@ -26,6 +24,7 @@
 import assert from "node:assert/strict";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { request } from "node:http";
 import type { Readable } from "node:stream";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,6 +32,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
+import { writeDashboardBuildIdentity } from "../../src/server/dashboard/build-identity.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const BOOTSTRAP = join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts");
@@ -44,21 +44,9 @@ const LISTENING_MARKER = "dashboard BFF listening";
 const BOOT_TIMEOUT_MS = 120_000;
 const SHUTDOWN_TIMEOUT_MS = 60_000;
 /**
- * When the second Ctrl+C is sent, measured against a scratch root's virgin
- * authority: the child listens ~1s after spawn and its whole drain took ~40ms
- * while it still wrote a graceful-drain backup; since D322 removed that backup
- * the drain completes in well under 10ms, so 2ms lands inside the ordering and
- * still comfortably after the first signal was delivered and handled
- * (sub-millisecond).
- *
- * It must also stay inside the drain: `ownDashboardUntilShutdown` disposes both
- * listeners once `stop()` settles — correctly, since everything durable is
- * released by then — so a signal sent in the few milliseconds between that
- * disposal and process exit would terminate an already-drained process and
- * prove nothing. The test asserts the child is still running before it signals
- * rather than assuming the timing holds.
+ * The test checks that the child is still inside stop() before sending the
+ * second signal; it does not assume a fixed drain duration.
  */
-const SECOND_SIGNAL_DELAY_MS = 2;
 
 /**
  * A dashboard already listening on the isolated port makes this test measure
@@ -86,6 +74,29 @@ async function requireIsolatedPortFree(): Promise<void> {
   });
 }
 
+async function waitForIngressToClose(port: number, child: DashboardChild, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error("dashboard exited before the test observed ingress closure");
+    }
+    const probe = createServer();
+    const bindable = await new Promise<boolean>((resolve, reject) => {
+      probe.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EADDRINUSE") resolve(false);
+        else reject(error);
+      });
+      probe.once("listening", () => {
+        probe.close((error) => error === undefined ? resolve(true) : reject(error));
+      });
+      probe.listen(port, "127.0.0.1");
+    });
+    if (bindable) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 2));
+  }
+  throw new Error(`dashboard ingress did not close within ${String(timeoutMs)}ms`);
+}
+
 /** The bootstrap refuses any `.env.providers` a group or other can read (D-secure-env). */
 function requirePrivateEnvironmentFile(root: string): void {
   const path = join(root, ".env.providers");
@@ -100,30 +111,41 @@ function requirePrivateEnvironmentFile(root: string): void {
 /**
  * `composeDashboardRuntime` takes `repoRoot = process.cwd()`, so spawning this
  * child in the checkout would boot a real dashboard over the developer's own
- * `.tracker/state.db` on every per-commit gate: a config snapshot
- * inserted, the active runtime generation advanced, the real `server` lock
- * claimed, a drain backup written. The child gets a scratch cwd holding ONLY
- * what the composition reads relative to its root:
+ * `.tracker/state.db` on every per-commit gate: a config snapshot inserted,
+ * the active runtime generation advanced, and the real `server` lock claimed.
+ * The child gets a scratch cwd holding the production inputs it reads relative
+ * to its root:
  *
  *  - `package.json` — the served app version (compose.ts) and half of the
  *    `runtime.compatibility` preflight;
- *  - `package-lock.json` — the other half of that same preflight;
+ *  - `package-lock.json` — the other half of that same preflight and the build identity;
+ *  - `src`, `vite.dashboard.config.ts`, and `tsconfig.json` — the identity-bound inputs;
+ *  - a small synthetic `dist/dashboard` stamped from those copied inputs;
+ *  - `config/test-data.json` — the public registry loaded by the secure bootstrap;
  *  - `node_modules` — a symlink, because Node resolves the bare `--import tsx`
  *    specifier against the CWD.
  *
  * `.tracker/**` and `config/**` are the composition's own to create. Copy the
  * unmodified production bootstrap into this root so its module-relative `.env`
  * is the private provider-only fixture, never the operator's migration sources.
- * Source and dependencies are linked read-only by convention; runtime state and
- * admitted environment bytes belong to this disposable root.
+ * Dependencies are linked read-only by convention; runtime state and admitted
+ * environment bytes belong to this disposable root.
  */
 function createScratchRepoRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "hr-dashboard-lifecycle-"));
-  for (const file of ["package.json", "package-lock.json"]) {
+  for (const file of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"]) {
     cpSync(join(REPO_ROOT, file), join(root, file));
   }
+  cpSync(join(REPO_ROOT, "src"), join(root, "src"), { recursive: true });
+  const bundleRoot = join(root, "dist", "dashboard");
+  mkdirSync(join(bundleRoot, "assets"), { recursive: true });
+  writeFileSync(join(bundleRoot, "index.html"), '<!doctype html><html><body><script type="module" src="/assets/app.js"></script></body></html>\n');
+  writeFileSync(join(bundleRoot, "assets", "app.js"), `/* ${"x".repeat(16 * 1024 * 1024)} */\n`);
+  writeDashboardBuildIdentity({ repoRoot: root, distDir: bundleRoot });
+  mkdirSync(join(root, "config"), { recursive: true });
+  cpSync(join(REPO_ROOT, "config", "test-data.json"), join(root, "config", "test-data.json"));
+  cpSync(join(REPO_ROOT, "config", "pending-impl-bindings.json"), join(root, "config", "pending-impl-bindings.json"));
   symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
-  symlinkSync(join(REPO_ROOT, "src"), join(root, "src"), "dir");
   mkdirSync(join(root, "scripts"));
   cpSync(BOOTSTRAP, join(root, "scripts", "secure-env-bootstrap.ts"));
   cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env.providers"));
@@ -133,11 +155,11 @@ function createScratchRepoRoot(): string {
 }
 
 /**
- * Unlink the source and dependency links explicitly before recursive cleanup;
- * neither target belongs to this disposable fixture.
+ * Unlink the dependency link before recursive cleanup; its target belongs to
+ * the shared checkout.
  */
 function removeScratchRepoRoot(root: string): void {
-  for (const directory of ["src", "node_modules"]) rmSync(join(root, directory), { force: true });
+  rmSync(join(root, "node_modules"), { force: true });
   rmSync(root, { recursive: true, force: true });
 }
 
@@ -191,10 +213,13 @@ function waitForExit(
   });
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
+function captureOutput(child: DashboardChild): () => string {
+  let output = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => { output += chunk; });
+  child.stderr.on("data", (chunk: string) => { output += chunk; });
+  return () => output;
 }
 
 /**
@@ -237,7 +262,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       // process the signal must reach and the lock record must name.
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard"],
+        ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
       );
       const pid = child.pid;
@@ -245,34 +270,47 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
 
       try {
         await waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS);
-        assert.equal(child.kill("SIGINT"), true, "SIGINT must be delivered to the running dashboard");
-        const firstSignalAt = performance.now();
-        await delay(SECOND_SIGNAL_DELAY_MS);
-        // The premise of the second signal, asserted rather than assumed: a
-        // dashboard that already left its drain proves nothing about absorbing
-        // one, so a faster-than-expected shutdown fails loud here instead of
-        // passing vacuously.
-        assert.equal(
-          child.exitCode === null && child.signalCode === null,
-          true,
-          `the dashboard left its drain within ${String(SECOND_SIGNAL_DELAY_MS)}ms, so the second Ctrl+C could not land `
-          + "inside stop(); this proof needs a signal that arrives while the shutdown ordering is still running",
+        const staticResponse = await fetch(`http://127.0.0.1:${String(rebuildRuntimeIsolation.backendPort)}/`);
+        assert.equal(staticResponse.status, 200, "the production child serves the built dashboard bytes");
+        assert.match(staticResponse.headers.get("content-type") ?? "", /text\/html/u);
+        assert.match(await staticResponse.text(), /<script[^>]+type="module"/u);
+
+        const duplicate = spawn(
+          process.execPath,
+          ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+          { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
         );
-        assert.equal(child.kill("SIGINT"), true, "the second Ctrl+C must reach the draining dashboard");
-        const secondSignalAfterMs = performance.now() - firstSignalAt;
+        const duplicateOutput = captureOutput(duplicate);
+        const duplicateExit = await waitForExit(duplicate, BOOT_TIMEOUT_MS);
+        assert.notEqual(duplicateExit.code, 0, `a second production dashboard must be refused: ${duplicateOutput()}`);
+        const liveOwner = readScratchLock(lockPath);
+        assert.equal(liveOwner.pid, pid, "the duplicate must not adopt or replace the live owner's record");
+        assert.equal(liveOwner.releasedAt, null, "the duplicate must leave the first owner's lock live");
+        assert.equal(child.exitCode, null, "refusing a duplicate must leave the original dashboard running");
+
+        const transfer = request({
+          hostname: "127.0.0.1",
+          port: rebuildRuntimeIsolation.backendPort,
+          path: "/assets/app.js",
+        });
+        const activeResponse = await new Promise<import("node:http").IncomingMessage>((resolve, reject) => {
+          transfer.once("response", resolve);
+          transfer.once("error", reject);
+          transfer.end();
+        });
+        activeResponse.on("error", () => undefined);
+        assert.equal(activeResponse.complete, false, "the large static transfer is active before shutdown starts");
+        assert.equal(child.kill("SIGINT"), true, "SIGINT must be delivered to the running dashboard");
+        await waitForIngressToClose(rebuildRuntimeIsolation.backendPort, child, 10_000);
+        assert.equal(child.exitCode, null, "the child remains in ordered drain after ingress closes");
+        assert.equal(readScratchLock(lockPath).releasedAt, null, "the server lock stays held after ingress closes");
+        assert.equal(child.kill("SIGINT"), true, "the second SIGINT must reach the active-transfer drain");
+        activeResponse.destroy();
+        transfer.destroy();
         const exit = await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
         if (exit.signal !== null) {
-          // A signal-terminated exit has two readings, and only the lock tells
-          // them apart: a released record means the second Ctrl+C landed in the
-          // window after stop() settled and its listeners were disposed but
-          // before the process exited — a timing miss of THIS test, not the
-          // regression — while `releasedAt: null` is the mid-drain kill the
-          // listener rule exists to prevent.
           const lock = existsSync(lockPath) ? readScratchLock(lockPath) : undefined;
-          const reading = typeof lock?.releasedAt === "string"
-            ? `TIMING MISS: the second Ctrl+C was sent ${secondSignalAfterMs.toFixed(1)}ms after the first and landed after the drain had released the lock (${lock.releasedAt}); rerun on a quieter machine`
-            : `REGRESSION: the second Ctrl+C killed the dashboard mid-drain (lock releasedAt=${String(lock?.releasedAt)})`;
-          assert.fail(`dashboard exited by ${exit.signal} — ${reading}`);
+          assert.fail(`dashboard exited by ${exit.signal} mid-drain (lock releasedAt=${String(lock?.releasedAt)})`);
         }
         assert.equal(exit.code, 0, "a drained dashboard exits 0 of its own accord");
       } finally {
@@ -305,4 +343,30 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       removeScratchRepoRoot(scratchRoot);
     }
   }, BOOT_TIMEOUT_MS + SHUTDOWN_TIMEOUT_MS + 30_000);
+
+  it("refuses a missing production bundle before touching an established state root or process lock", async () => {
+    const scratchRoot = createScratchRepoRoot();
+    requirePrivateEnvironmentFile(scratchRoot);
+    const stateRoot = join(scratchRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    writeFileSync(join(stateRoot, "retained-evidence"), "evidence");
+    rmSync(join(scratchRoot, "dist", "dashboard", "dashboard-build-identity.json"));
+    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    try {
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      const output = captureOutput(child);
+      const exit = await waitForExit(child, BOOT_TIMEOUT_MS);
+      assert.notEqual(exit.code, 0, `missing production identity must refuse startup: ${output()}`);
+      assert.match(output(), /dashboard bundle refused: missing dashboard-build-identity\.json/u);
+      assert.equal(existsSync(join(stateRoot, "state.db")), false);
+      assert.equal(existsSync(lockPath), false, "bundle identity is checked before process-lock admission");
+      assert.equal(readFileSync(join(stateRoot, "retained-evidence"), "utf8"), "evidence");
+    } finally {
+      removeScratchRepoRoot(scratchRoot);
+    }
+  }, BOOT_TIMEOUT_MS + 30_000);
 });

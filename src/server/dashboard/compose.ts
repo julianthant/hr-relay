@@ -66,10 +66,13 @@ import { spawn as spawnChildProcess } from "node:child_process";
 import {
   closeSync,
   constants,
+  existsSync,
   fchmodSync,
   fstatSync,
+  lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -140,7 +143,7 @@ import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
-import { startDashboardHttpServer } from "./http-server.js";
+import { startDashboardHttpServer, type DashboardHttpServer } from "./http-server.js";
 import { createAdvisoryProviderClient } from "../../core/provider-admission.js";
 import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
@@ -187,6 +190,8 @@ export interface DashboardComposeInput {
    */
   readonly backendPortOverride?: 0;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
+  /** Test-only replacement for injecting an HTTP bind failure after startup admission. */
+  readonly httpServerStarter?: typeof startDashboardHttpServer;
   /** Test-only preflight probe override; production always checks the isolated frontend port. */
   readonly frontendPortOverride?: 0;
   /**
@@ -444,7 +449,43 @@ function ensureOwnerOnlyDirectory(path: string, label: string): void {
   }
 }
 
+type StartupCleanup = () => void | Promise<void>;
+
+async function unwindDashboardStartup(
+  cleanups: readonly StartupCleanup[],
+  primary: unknown,
+): Promise<never> {
+  const failures: unknown[] = [];
+  for (const cleanup of [...cleanups].reverse()) {
+    try {
+      await cleanup();
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 0) throw primary;
+  throw new AggregateError(
+    [primary, ...failures],
+    "dashboard startup failed and cleanup observed additional failures",
+    { cause: primary },
+  );
+}
+
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
+  const startupCleanups: StartupCleanup[] = [];
+  try {
+    const runtime = await composeDashboardRuntimeStartup(input, startupCleanups);
+    startupCleanups.length = 0;
+    return runtime;
+  } catch (primary: unknown) {
+    return unwindDashboardStartup(startupCleanups, primary);
+  }
+}
+
+async function composeDashboardRuntimeStartup(
+  input: DashboardComposeInput,
+  startupCleanups: StartupCleanup[],
+): Promise<DashboardRuntime> {
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
@@ -466,6 +507,15 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
+  if (existsSync(stateRoot)) {
+    const rootInfo = lstatSync(stateRoot);
+    if (!rootInfo.isDirectory()) throw new Error("dashboard state root is not a real directory");
+    const authorityPath = join(stateRoot, "state.db");
+    const priorStateEntries = readdirSync(stateRoot);
+    if (!existsSync(authorityPath) && priorStateEntries.length > 0) {
+      throw new Error("dashboard state root is established but its authority database is missing");
+    }
+  }
   mkdirSync(stateRoot, { recursive: true });
   ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
   /**
@@ -479,56 +529,43 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
     clock,
   );
-  const database = (() => {
-    try {
-      return AuthorityDatabase.open(
-        { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
-        clock,
-      );
-    } catch (openError) {
-      try {
-        processLock.release();
-      } catch (releaseError) {
-        throw new AggregateError(
-          [openError, releaseError],
-          "dashboard authority open failed and its process record could not release",
-          { cause: releaseError },
-        );
-      }
-      throw openError;
+  let databaseClosed = true;
+  startupCleanups.push(() => {
+    if (!databaseClosed) {
+      throw new Error("dashboard server process record retained because its authority database did not close");
     }
-  })();
+    processLock.release();
+  });
+  const database = AuthorityDatabase.open(
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
+    clock,
+  );
+  databaseClosed = false;
+  startupCleanups.push(() => {
+    database.close();
+    databaseClosed = true;
+  });
   const protectedSettingsAuthority = createCredentialStore({ stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
-    try {
-      const persistedSettings = database.withAuthorityTransaction((repositories) =>
-        readSettings(repositories));
-      return Object.freeze({
-        persistedSettings,
-        resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock),
-      });
-    } catch (bootError) {
-      try {
-        database.close();
-      } catch (closeError) {
-        throw new AggregateError(
-          [bootError, closeError],
-          "dashboard settings boot failed and its authority database could not close",
-          { cause: closeError },
-        );
+    const persistedSettings = database.withAuthorityTransaction((repositories) => {
+      const activeRuntime = repositories.runtimeConfig.get();
+      const hasSettingsHistory = repositories.settingsCurrent.hasHistory();
+      const savedSettings = repositories.settingsCurrent.get();
+      const persisted = readSettings(repositories);
+      if (activeRuntime === undefined && (hasSettingsHistory || repositories.runtimeConfig.hasHistory())) {
+        throw new Error("dashboard settings/runtime authority is missing despite durable revision evidence");
       }
-      try {
-        processLock.release();
-      } catch (releaseError) {
-        throw new AggregateError(
-          [bootError, releaseError],
-          "dashboard settings boot failed and its process record could not release",
-          { cause: releaseError },
-        );
+      if (savedSettings === undefined && (hasSettingsHistory
+        || (activeRuntime !== undefined && activeRuntime.settingsRevision > 1))) {
+        throw new Error("dashboard settings authority is missing despite durable revision evidence");
       }
-      throw bootError;
-    }
+      return persisted;
+    });
+    return Object.freeze({
+      persistedSettings,
+      resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock),
+    });
   })();
   const { persistedSettings, resolved } = bootConfig;
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
@@ -611,6 +648,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const { backfillGapNotifier, observer: notificationObserver } = createTrustNotifications({
     database, clock, ids, reader: lifecycle, stateRoot,
   });
+  startupCleanups.push(() => notificationObserver.stop());
 
   // Start only after startup acceptance; stop drains the exact owned observation.
 
@@ -691,6 +729,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     projection.reconcileWorkerAuthority();
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
+  startupCleanups.push(() => clearInterval(timelineTimer));
 
   /**
    * W3: the REAL worker process control. Faults observed outside a command
@@ -726,6 +765,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
     preflight: runtimePreflight,
+  });
+  startupCleanups.push(() => {
+    const evidence = workerControl.supervisor.close();
+    if (evidence.length > 0) {
+      throw new Error(
+        `dashboard startup cleanup leaves owned worker children: ${JSON.stringify(evidence)}`,
+      );
+    }
   });
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
@@ -874,19 +921,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       : { state: "available" }),
   });
   const { hub } = shell;
+  startupCleanups.push(() => hub.close());
 
-  const abortStartup = (reason: Error): never => {
-    hub.close();
-    clearInterval(timelineTimer);
-    for (const evidence of workerControl.supervisor.close()) {
-      reportSupervisorFault(new Error(
-        `dashboard preflight cleanup leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
-      ));
-    }
-    database.close();
-    processLock.release();
-    throw reason;
-  };
   // The artifact writer and verified reader start initializing their roots at
   // construction. Serve nothing until both exist: awaited here, a failure is a
   // legible boot refusal with cleanup; un-awaited, a workspace removed under a
@@ -894,14 +930,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   try {
     await Promise.all([artifacts.ready, artifactReader.ready]);
   } catch (error: unknown) {
-    abortStartup(new Error("dashboard artifact roots could not be initialized", { cause: error }));
+    throw new Error("dashboard artifact roots could not be initialized", { cause: error });
   }
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
   if (blockingChecks.length > 0) {
-    abortStartup(new Error(
+    throw new Error(
       `dashboard preflight refused startup: ${blockingChecks.map(({ check, summary }) => `${check}: ${summary}`).join("; ")}`,
-    ));
+    );
   }
 
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get, report: id => { const report = lifecycle.lifecycleStorage().readReport(id); return report === undefined ? undefined : { runId: report.content.runId, digest: report.digest }; } });
@@ -932,15 +968,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ...(advisory === undefined ? {} : { advisory }),
   });
 
-  const server = await startDashboardHttpServer({
+  const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
+  const server: DashboardHttpServer = await startHttpServer({
     app,
     port: input.backendPortOverride ?? input.isolation.backendPort,
     onTransferError: reportDashboardTransferFault,
   });
+  startupCleanups.push(() => server.close());
   dashboardPreflightRunners.markBackendOwned(server.port);
   void notificationObserver.observe();
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
   gateParkTimer.unref();
+  startupCleanups.push(() => clearInterval(gateParkTimer));
 
   return Object.freeze({
     port: server.port,

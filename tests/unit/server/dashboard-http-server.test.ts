@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { request, type IncomingMessage } from "node:http";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -90,6 +91,26 @@ function errorTree(error: unknown): readonly unknown[] {
 }
 
 describe("dashboard HTTP request ownership", () => {
+  it("preserves an occupied-port refusal and can bind the port after its owner closes", async () => {
+    const owner = createServer();
+    await new Promise<void>((resolve, reject) => {
+      owner.once("error", reject);
+      owner.listen(0, "127.0.0.1", resolve);
+    });
+    const address = owner.address();
+    assert.ok(address !== null && typeof address !== "string");
+    const port = address.port;
+    try {
+      await assert.rejects(startDashboardHttpServer({ app: new Hono<TestDashboardEnv>(), port }), (error: unknown) =>
+        typeof error === "object" && error !== null && "code" in error && error.code === "EADDRINUSE");
+    } finally {
+      await new Promise<void>((resolve, reject) => owner.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+    const recovered = await startDashboardHttpServer({ app: new Hono<TestDashboardEnv>(), port });
+    openServers.add(recovered);
+    await closeServer(recovered);
+  });
+
   it("adapts a Node request body to the exact web request bytes", async () => {
     const expected = Buffer.from([0x00, 0x01, 0x7f, 0x80, 0xfe, 0xff, 0x44]);
     const received = Promise.withResolvers<Uint8Array>();
