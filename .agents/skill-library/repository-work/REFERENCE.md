@@ -349,14 +349,14 @@ plan-only stops; explicitly requested execution continues after required approva
 verified prerequisites. No fresh root is required between those stages. Existing phase admission,
 review/gate cadence, integration permission and in-flight ownership remain binding.
 
-The orchestrator uses GPT-6 Sol ultra. Native workers use GPT-6 Luna high/xhigh; native independent
-review uses a fresh read-only Luna xhigh session when required. Workers own coherent implementation,
-checks and fixes; the root retains consequential decisions, acceptance and authorized integration.
-Before dispatch, read `~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and validate native
-roles. `/cursor-worker` and `/antigravity-worker` use the same canonical personal/project skills with
-their host's tools. Standard variants only; quota failover follows the shared routing policy without
-paid overages. The user handles root exhaustion. Existing admitted sessions keep their assignments;
-Claude Code's separate native role definitions remain unchanged.
+The orchestrator uses GPT-6 Sol ultra. Workers own coherent implementation, checks and fixes; the
+root retains consequential decisions, acceptance and authorized integration. Before dispatch, read
+`~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and only the selected worker adapter;
+validate roles when that adapter requires it. User-named providers or models limit eligible routes to
+those choices and any named fallbacks. Read quota routing only after confirmed exhaustion or verified
+route unavailability with an allowed fallback. Standard variants only; no paid overages. The user
+handles root exhaustion.
+Existing admitted sessions keep their assignments; Claude Code's native roles remain unchanged.
 
 When required, independent review runs against a stable candidate without implementation conversation.
 Fix findings, obtain required renewed review and complete assigned checks, authorized integration and
