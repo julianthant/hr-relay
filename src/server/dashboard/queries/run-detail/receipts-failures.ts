@@ -11,9 +11,12 @@ import {
   type FailureRecord,
 } from "../../../../domain/trust/failure.js";
 import { projectReceiptForOperator } from "../../../../domain/trust/evidence.js";
+import { canonicalJsonStringify } from "../../../../domain/canonical-json.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../../domain/trust/diagnostic.js";
 import type { RunRecord } from "../../../../domain/run/record.js";
 import type { RunDetailQueryDeps, RunDetailTrustDeps } from "../run-detail-types.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "../../../trust/run-reader.js";
+import { DiagnosticBundleCorruptError } from "../../../failures.js";
 import { availableSections } from "./availability.js";
 
 export type ReceiptFailureSection = "receipt" | "failure";
@@ -78,7 +81,13 @@ export function buildReceiptFailureSection(
   if (failure.failureId !== failureId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: failure ${failureId}`);
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
-    payload: { state: "available", value: failureDetailWire(runId, failure, trust, retainedRunProtectedBindings(authority).length > 0) },
+    payload: { state: "available", value: failureDetailWire(
+      runId,
+      failure,
+      trust,
+      retainedRunProtectedBindings(authority).length > 0,
+      deps.captures,
+    ) },
   });
 }
 
@@ -105,8 +114,10 @@ function failureDetailWire(
   failure: FailureRecord,
   trust: RunDetailTrustDeps,
   protectedInput: boolean,
+  captures: RunDetailQueryDeps["captures"],
 ): z.infer<typeof FailureDetailWireSchema> {
   const projected = projectFailureForOperator(failure, protectedInput);
+  const diagnosticBundleId = validateFailureDiagnosticBundle(runId, failure, captures);
   const seen = trust.countFailuresByFingerprint(projected.fingerprint);
   const resolution = trust.failureResolution?.read(runId, failure.failureId);
   if (trust.failureResolution !== undefined && resolution === undefined) throw new Error("failure-resolution-annotation-missing");
@@ -134,12 +145,72 @@ function failureDetailWire(
     // The record being projected is itself one occurrence, so a count that
     // came back short of 1 means the index disagrees with the row.
     sameFingerprintSeen: Math.max(1, seen),
-    diagnosticBundle: projected.diagnosticBundleId === undefined
+    diagnosticBundle: diagnosticBundleId === undefined
       ? {
         state: "absent",
         reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
       }
-      : { state: "present", bundleId: projected.diagnosticBundleId },
+      : { state: "present", bundleId: diagnosticBundleId },
     occurredAt: projected.occurredAt,
   });
+}
+
+function validateFailureDiagnosticBundle(
+  runId: string,
+  failure: FailureRecord,
+  captures: RunDetailQueryDeps["captures"],
+): string | undefined {
+  const bundleId = failure.diagnosticBundleId;
+  if (bundleId === undefined) return undefined;
+
+  const corrupt = (reason: string, cause?: unknown): never => {
+    throw new DiagnosticBundleCorruptError(
+      `failure ${failure.failureId} diagnostic bundle linkage is corrupt: ${reason}`,
+      ...(cause === undefined ? [] : [{ cause }]),
+    );
+  };
+  if (captures === undefined) return corrupt("no diagnostic capture authority is available");
+
+  let stored: DiagnosticBundle | undefined;
+  try {
+    const value = captures.authority.get(bundleId);
+    stored = value === undefined ? undefined : DiagnosticBundleSchema.parse(value);
+  } catch (error: unknown) {
+    return corrupt("the exact bundle record could not be read", error);
+  }
+  if (stored === undefined) return corrupt("the named bundle record is absent");
+  if (stored.bundleId !== bundleId) return corrupt("the exact-id lookup returned another bundle");
+  assertFailureBundleOrigin(stored, runId, failure.failureId, corrupt);
+
+  let listed: readonly DiagnosticBundle[];
+  try {
+    listed = captures.authority.listByRun(runId).map((value) => DiagnosticBundleSchema.parse(value));
+  } catch (error: unknown) {
+    return corrupt("the run-indexed bundle set could not be read", error);
+  }
+  const bundleIds = new Set<string>();
+  let indexed: DiagnosticBundle | undefined;
+  for (const bundle of listed) {
+    if (bundle.runId !== runId) return corrupt("the run index returned a foreign run identity");
+    if (bundleIds.has(bundle.bundleId)) return corrupt("the run index repeated a bundle identity");
+    bundleIds.add(bundle.bundleId);
+    if (bundle.bundleId === bundleId) indexed = bundle;
+  }
+  if (indexed === undefined) return corrupt("the named bundle is absent from the run index");
+  if (canonicalJsonStringify(indexed) !== canonicalJsonStringify(stored)) {
+    return corrupt("the exact bundle record disagrees with the run index");
+  }
+  return bundleId;
+}
+
+function assertFailureBundleOrigin(
+  bundle: DiagnosticBundle,
+  runId: string,
+  failureId: string,
+  corrupt: (reason: string, cause?: unknown) => never,
+): void {
+  if (bundle.runId !== runId) return corrupt("the named bundle belongs to another run");
+  if (bundle.origin.kind === "operator-request" || bundle.origin.failureId !== failureId) {
+    return corrupt("the named bundle does not originate from this failure");
+  }
 }
