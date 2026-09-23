@@ -15,7 +15,7 @@ const base = FIXTURE_DAY_WIRE.queueSurfaces.find((row) => row.surfaceKind === "s
 if (base === undefined) throw new Error("batch fixture requires a queued single run");
 function row(n: number, grouped = true, item = n, attempt = 1): QueueSurfaceWire {
   return QueueSurfaceWireSchema.parse({ ...base, runId: uuidOf(900 + n), itemId: uuidOf(800 + item), attempt,
-    title: ["Alice", "Ben", "Cara", "Ben retry"][n - 1],
+    title: ["Alice", "Ben", "Cara", "Ben retry"][n - 1] ?? "Ben retry again",
     session: { state: "present", sessionId: uuidOf(700), presentation: { groupInQueue: grouped, version: 1, startedAt: base?.startedAt } },
   });
 }
@@ -59,16 +59,36 @@ describe("workflow batches in the queue", () => {
     assert.equal(document.querySelectorAll('section[aria-label="Separations batch"]').length, 0);
     assert.ok(document.body.textContent?.includes("Alice"));
   });
-  it("counts a retry once and preserves the old run in previous attempts, including a selected historical run", async () => {
+  it("counts a retry once and keeps the selected older attempt inside its logical item", async () => {
     const rows = [row(1), row(2), row(3), row(4, true, 2, 2)];
     const batch = queueBatches(rows)[0];
     assert.ok(batch);
     assert.equal(batch.members.length, 3);
     assert.deepEqual(batch.history.map((entry) => entry.runId), [row(2).runId]);
+    assert.deepEqual(visibleRunIds(rows), [row(1).runId, row(2).runId, row(4).runId, row(3).runId]);
     await render(rows, undefined, row(2).runId);
+    assert.equal(document.querySelectorAll('section[aria-label="Separations batch"]').length, 1);
     assert.ok(document.body.textContent?.includes("3 items"));
-    assert.ok(document.body.textContent?.includes("Previous attempts (1)"));
-    assert.ok(document.body.textContent?.includes("Ben retry"));
+    assert.ok(document.body.textContent?.includes("Attempts · 2"));
+    assert.equal(document.querySelectorAll(`[data-demo-row-id="${String(row(2).runId)}"]`).length, 1);
+    assert.ok(document.body.querySelector('button[aria-current="true"]'));
+  });
+  it("keeps the focused attempt and open batch when a newer retry arrives out of order", async () => {
+    const rows = [row(1), row(2), row(3), row(4, true, 2, 2)];
+    await render(rows, undefined, row(2).runId);
+    const oldAttempt = document.querySelector<HTMLButtonElement>('button[aria-current="true"]');
+    assert.ok(oldAttempt);
+    await act(async () => oldAttempt.focus());
+
+    const retry = row(5, true, 2, 3);
+    await render([retry, ...rows], undefined, row(2).runId);
+
+    const selected = document.querySelector<HTMLButtonElement>('button[aria-current="true"]');
+    assert.equal(document.activeElement, selected);
+    assert.equal(selected?.getAttribute("aria-label"), "Open Ben — attempt 1 — queued");
+    assert.equal(button("Separations · 3 items").getAttribute("aria-expanded"), "true");
+    assert.ok(document.body.textContent?.includes("Attempts · 3"));
+    assert.equal(document.querySelectorAll(`[data-demo-row-id="${String(row(2).runId)}"]`).length, 1);
   });
   it("allows collapsing a selected batch and opens it for another selected run", async () => {
     const rows = [row(1), row(2)];

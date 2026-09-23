@@ -43,8 +43,10 @@ import { LogPanel } from "../surfaces/log-panel.js";
 import { type NotificationRowWire } from "../surfaces/notification-bell-model.js";
 import type { QueueBatch } from "../surfaces/queue-model.js";
 import {
-attentionRunIds,
-queueRowTitle,
+  attentionRunIds,
+  filterQueueSurfaces,
+  groupQueueAttempts,
+  queueRowTitle,
 toggleCheckedByYou,
 visibleRunIds,
 type QueueSortKey,
@@ -457,18 +459,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (dayWire === undefined) return [];
     const scoped = dayWire.queueSurfaces.filter((s) => s.workflowId === activeWorkflowId);
-    if (filter === "all") return scoped;
-    if (filter === "needsYou") {
-      // The same two statuses the `Needs you` count is the sum of.
-      return scoped.filter((s) => s.status === "awaiting-approval" || s.status === "blocked");
-    }
-    // Members stay with their group: filtering a member out of a group that
-    // matched would silently shrink a roster the server said was whole.
-    const kept = new Set(scoped.filter((s) => s.status === filter).map((s) => s.runId));
-    return scoped.filter((s) => {
-      if (kept.has(s.runId)) return true;
-      return s.lineage.state === "child" && kept.has(s.lineage.parentRunId);
-    });
+    return filterQueueSurfaces(scoped, filter);
   }, [dayWire, activeWorkflowId, filter]);
 
   const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
@@ -585,7 +576,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    * this set — `visibleRunIds` includes members, so it is not the same list.
    */
   const selectableIds = useMemo(
-    () => surfaces.filter((s) => s.lineage.state !== "child").map((s) => String(s.runId)),
+    () => groupQueueAttempts(surfaces)
+      .map((item) => item.representative)
+      .filter((surface) => surface.lineage.state !== "child")
+      .map((surface) => String(surface.runId)),
     [surfaces],
   );
 

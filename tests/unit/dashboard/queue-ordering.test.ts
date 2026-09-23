@@ -15,7 +15,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { bandOf, sortQueueBand, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
+import {
+  attentionRunIds,
+  bandOf,
+  filterQueueSurfaces,
+  groupQueueAttempts,
+  sortQueueBand,
+  visibleRunIds,
+} from "../../../src/dashboard/surfaces/queue-model.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -25,7 +32,7 @@ const runId = (n: number): string => `${String(n).repeat(8)}-${String(n).repeat(
 
 function surface(input: Record<string, unknown>) {
   return QueueSurfaceWireSchema.parse({
-    itemId: runId(9),
+    itemId: input.itemId ?? input.runId ?? runId(9),
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
@@ -173,6 +180,45 @@ describe("member ordering (R3 finding 13)", () => {
       runId(4),
       runId(5),
     ]);
+  });
+});
+
+describe("logical item attempt grouping", () => {
+  it("keeps selected-day attempts under one item and scopes identity by workflow", () => {
+    const first = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
+    const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
+    const otherWorkflow = settled({ runId: runId(3), workflowId: "other-workflow", itemId: runId(8), attempt: 1, status: "done" });
+
+    const groups = groupQueueAttempts([first, otherWorkflow, retry]);
+    assert.equal(groups.length, 2);
+    assert.deepEqual(groups[0]?.attempts.map((row) => row.attempt), [1, 2]);
+    assert.equal(groups[0]?.representative.runId, retry.runId);
+    assert.equal(groups[1]?.representative.workflowId, "other-workflow");
+    assert.deepEqual(visibleRunIds([first, retry]), [first.runId, retry.runId]);
+  });
+
+  it("refuses two served run identities for the same workflow item attempt", () => {
+    const first = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
+    const duplicate = settled({ runId: runId(2), itemId: runId(8), attempt: 1, status: "done" });
+    assert.throws(() => groupQueueAttempts([first, duplicate]), /duplicate attempt/u);
+  });
+
+  it("keeps every sibling attempt when one attempt matches the status filter", () => {
+    const failed = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
+    const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
+    const otherItem = settled({ runId: runId(3), itemId: runId(7), status: "done" });
+    const otherWorkflow = settled({ runId: runId(4), workflowId: "other-workflow", itemId: runId(8), status: "done" });
+
+    assert.deepEqual(
+      filterQueueSurfaces([failed, retry, otherItem, otherWorkflow], "failed").map((row) => row.runId),
+      [failed.runId, retry.runId],
+    );
+  });
+
+  it("does not promote historical attention over the selected item's current attempt", () => {
+    const failed = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
+    const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
+    assert.deepEqual(attentionRunIds([failed, retry]), []);
   });
 });
 
