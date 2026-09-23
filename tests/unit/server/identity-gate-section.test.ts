@@ -25,7 +25,17 @@ import {
   deriveIdentityEvidenceDigest,
 } from "../../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../src/domain/separations/identity-evidence.js";
-import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+import {
+  checkpointLookupKey,
+  RunCheckpointRecordSchema,
+  type RunCheckpointRecord,
+} from "../../../src/domain/workflow/checkpoint.js";
+import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../src/domain/workflow/build-manifest.js";
+import { deriveStableUuid } from "../../../src/domain/identifiers.js";
+import { timelineCheckpointReference } from "../../../src/events/timeline.js";
+import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
+import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
 import {
   availableSections,
@@ -48,9 +58,11 @@ import {
 import { fixtureIdentityGateActions } from "../../parity/helpers/fixture-gate.js";
 
 const worlds: DashboardWorld[] = [];
+const checkpointEvents = new WeakMap<DashboardWorld, Map<string, unknown>>();
 function world(): DashboardWorld {
   const created = makeWorld();
   worlds.push(created);
+  checkpointEvents.set(created, new Map());
   return created;
 }
 afterEach(() => {
@@ -61,6 +73,13 @@ const RUN_ID = uuidOf(1);
 const NOW = "2026-08-12T18:00:00.000Z";
 const EID = "10833507";
 const HASH = "a".repeat(64);
+const IDENTITY_DESCRIPTOR = (() => {
+  const descriptor = WORKFLOW_DESCRIPTORS.find(
+    (candidate) => String(candidate.id) === "separations-identity-check",
+  );
+  if (descriptor === undefined) throw new Error("identity-check descriptor is not registered");
+  return descriptor;
+})();
 const RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 
 const PARKED_GATE_LIFECYCLE = {
@@ -117,35 +136,90 @@ function packetOf(overrides: Readonly<{
   });
 }
 
-function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison"): unknown {
+function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison"): RunCheckpointRecord {
+  const task = descriptorRuntimeNodes(IDENTITY_DESCRIPTOR)
+    .find((node) => node.kind === "task" && String(node.id) === nodeId);
+  if (task === undefined || task.kind !== "task") throw new Error(`identity checkpoint task ${nodeId} is absent`);
   const value = MatchIdentityOutputSchema.parse({
     packet,
     evidenceDigest: deriveIdentityEvidenceDigest(packet),
   });
   return RunCheckpointRecordSchema.parse({
-    workflowId: "person-lookup",
+    workflowId: IDENTITY_DESCRIPTOR.id,
     itemId: runRecordOf({ seed: 1 }).envelope.itemId,
     nodeId,
     attempt: 1,
+    claimGeneration: 1,
     runId: RUN_ID,
-    output: { schemaHash: deriveSchemaHash(MatchIdentityOutputSchema, "output"), value },
-    descriptorVersion: 1,
-    contractFingerprint: HASH,
-    implFingerprint: HASH,
+    output: { schemaHash: deriveSchemaHash(task.uses.output, "output"), value },
+    descriptorVersion: IDENTITY_DESCRIPTOR.version,
+    contractFingerprint: IDENTITY_DESCRIPTOR.contractFingerprint,
+    implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, task.uses.id),
     provenance: [],
     writtenAt: NOW,
   });
+}
+
+function putCheckpoint(w: DashboardWorld, input: unknown): { record: RunCheckpointRecord; eventId: string } {
+  const record = RunCheckpointRecordSchema.parse(input);
+  const run = w.authority.getRun(RUN_ID);
+  if (run === undefined) throw new Error("identity checkpoint fixture run was not seeded");
+  w.authority.putCheckpoint(record);
+  const eventId = deriveStableUuid("timeline-checkpoint-recorded", checkpointLookupKey(
+    record.workflowId,
+    record.itemId,
+    record.nodeId,
+    record.attempt,
+    record.claimGeneration,
+  ));
+  const events = checkpointEvents.get(w);
+  if (events === undefined) throw new Error("identity checkpoint timeline fixture was not initialized");
+  events.set(eventId, {
+    payload: {
+      kind: "checkpoint-recorded",
+      runId: record.runId,
+      workflow: record.workflowId,
+      attempt: record.attempt,
+      claimGeneration: record.claimGeneration,
+      checkpoint: timelineCheckpointReference(record),
+    },
+  });
+  return { record, eventId };
 }
 
 /** `null` means "this build registers no descriptor for the run's workflow". */
 function depsOf(
   w: DashboardWorld,
   gateNodes: readonly unknown[] | null = GATE_NODES,
+  includeCanonical = true,
 ): RunDetailQueryDeps {
+  const timelineEvents = {
+    get: (eventId: string) => checkpointEvents.get(w)?.get(eventId),
+  };
+  const canonical = {
+    reader: w.runReader,
+    descriptors: {
+      resolve: (workflowId: string) => String(IDENTITY_DESCRIPTOR.id) === workflowId ? IDENTITY_DESCRIPTOR : undefined,
+    },
+    database: {
+      authority: {
+        runCheckpoints: {
+          latest: (workflowId: string, itemId: string, nodeId: string) =>
+            w.authority.latestCheckpoint(workflowId, itemId, nodeId),
+          listByAttempt: (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
+            const stored = w.authority.latestCheckpoint(workflowId, itemId, nodeId);
+            return stored?.attempt === attempt ? [stored] : [];
+          },
+        },
+        timelineEvents,
+      },
+    },
+  };
   return { runReader: w.runReader,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,
+    ...(includeCanonical ? { canonical: canonical as never } : {}),
     descriptors: {
       resolve: () => (gateNodes === null
         ? undefined
@@ -157,9 +231,21 @@ function depsOf(
 function seed(w: DashboardWorld, input?: Readonly<{ lifecycle?: unknown; version?: number }>): void {
   queuedEventOf(w, {
     seed: 1,
+    workflow: String(IDENTITY_DESCRIPTOR.id),
+    claimGeneration: 1,
     version: input?.version ?? 4,
     lifecycle: input?.lifecycle ?? PARKED_GATE_LIFECYCLE,
   });
+  const seeded = w.authority.getRun(RUN_ID);
+  if (seeded === undefined) throw new Error("identity gate fixture run was not seeded");
+  w.authority.put(RunRecordSchema.parse({
+    ...seeded,
+    envelope: {
+      ...seeded.envelope,
+      descriptorVersion: IDENTITY_DESCRIPTOR.version,
+      contractFingerprint: IDENTITY_DESCRIPTOR.contractFingerprint,
+    },
+  }));
 }
 
 function gateSection(w: DashboardWorld, deps = depsOf(w)) {
@@ -190,7 +276,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     const w = world();
     seed(w);
     const packet = packetOf();
-    w.authority.putCheckpoint(checkpointOf(packet) as never);
+    putCheckpoint(w, checkpointOf(packet));
 
     const payload = gateSection(w);
     assert.equal(payload.state, "available");
@@ -208,7 +294,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
   it("publishes the exact gate-result schema hash the kernel will demand", () => {
     const w = world();
     seed(w);
-    w.authority.putCheckpoint(checkpointOf(packetOf()) as never);
+    putCheckpoint(w, checkpointOf(packetOf()));
     const payload = gateSection(w);
     if (payload.state !== "available") throw new Error("unreachable");
     assert.equal(payload.value.resultSchemaHash, RESULT_SCHEMA_HASH);
@@ -254,7 +340,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     const w = world();
     seed(w);
     const packet = packetOf({ differentName: true });
-    w.authority.putCheckpoint(checkpointOf(packet) as never);
+    putCheckpoint(w, checkpointOf(packet));
     const payload = gateSection(w);
     if (payload.state !== "available") throw new Error("unreachable");
     assert.deepEqual(
@@ -289,7 +375,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID]) {
       const w = world();
       seed(w);
-      w.authority.putCheckpoint(checkpointOf(fixture.packet) as never);
+      putCheckpoint(w, checkpointOf(fixture.packet));
       const payload = gateSection(w);
       if (payload.state !== "available") throw new Error("unreachable");
 
@@ -312,6 +398,15 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(a.state, "missing");
     assert.match(a.state === "missing" ? a.reason : "", /has no registered descriptor/);
 
+    // The packet endpoint cannot fall back to its coarse item-latest reader if
+    // the canonical checkpoint and timeline authority are unavailable.
+    const noCanonical = world();
+    seed(noCanonical);
+    putCheckpoint(noCanonical, checkpointOf(packetOf()));
+    const noAuthority = gateSection(noCanonical, depsOf(noCanonical, GATE_NODES, false));
+    assert.equal(noAuthority.state, "missing");
+    assert.match(noAuthority.state === "missing" ? noAuthority.reason : "", /cannot verify checkpoint identity without canonical authority/);
+
     // (b) the build declares no such gate.
     const wrongGate = world();
     seed(wrongGate);
@@ -328,24 +423,34 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(c.state, "missing");
     assert.match(c.state === "missing" ? c.reason : "", /0 of them hold an identity decision packet/);
 
-    // (d) TWO of the gate's dependencies hold a packet: which one the gate is
-    //     about is not derivable, and picking one would be a guess.
-    const ambiguous = world();
-    seed(ambiguous);
-    const packet = packetOf();
-    ambiguous.authority.putCheckpoint(checkpointOf(packet, "comparison") as never);
-    ambiguous.authority.putCheckpoint(checkpointOf(packet, "second") as never);
-    const d = gateSection(ambiguous, depsOf(ambiguous, [{
-      ...GATE_NODES[0], dependsOn: ["comparison", "second"],
-    }]));
+    // A separately stored checkpoint without its timeline link is not enough
+    // to authorize a packet, and the fixture keeps that event independent.
+    const noEvent = world();
+    seed(noEvent);
+    const stored = putCheckpoint(noEvent, checkpointOf(packetOf()));
+    checkpointEvents.get(noEvent)?.delete(stored.eventId);
+    const missingLink = gateSection(noEvent);
+    assert.equal(missingLink.state, "missing");
+    assert.match(missingLink.state === "missing" ? missingLink.reason : "", /0 of them hold an identity decision packet/);
+
+    // (d) a current-looking checkpoint whose implementation binding no longer
+    //     matches the registered task cannot supply the gate's decision packet.
+    const changedBinding = world();
+    seed(changedBinding);
+    const altered = RunCheckpointRecordSchema.parse({
+      ...checkpointOf(packetOf()),
+      implFingerprint: HASH,
+    });
+    putCheckpoint(changedBinding, altered);
+    const d = gateSection(changedBinding);
     assert.equal(d.state, "missing");
-    assert.match(d.state === "missing" ? d.reason : "", /2 of them hold an identity decision packet/);
+    assert.match(d.state === "missing" ? d.reason : "", /0 of them hold an identity decision packet/);
   });
 
   it("refuses to serve a historical supplied-EID park as a current operator decision", () => {
     const w = world();
     seed(w);
-    w.authority.putCheckpoint(checkpointOf(packetOf({ source: "document-eid" })) as never);
+    putCheckpoint(w, checkpointOf(packetOf({ source: "document-eid" })));
     const payload = gateSection(w);
     assert.equal(payload.state, "missing");
     assert.match(

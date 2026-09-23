@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect,test } from "@playwright/test";
 import { gotoAppState } from "../helpers/app-driver.js";
 import { PARITY_THEMES,assertThemeApplied,captureParityPair,installTheme } from "../helpers/capture.js";
@@ -9,6 +10,20 @@ import { GATES_PARK_SCENES } from "../helpers/run-detail/gates-park-scenes.js";
 import { referenceSceneGroups,registerRunDetailServer } from "./shared.js";
 
 const servers = registerRunDetailServer();
+
+test("gates-park body accessibility evidence", {
+  annotation: [{ type: "required-a11y-evidence", description: "run-detail-gates-park.a11y.yml" }],
+}, async ({ page }) => {
+  await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.openGateRun });
+  const snapshot = await page.locator("body").ariaSnapshot();
+  expect(snapshot).toContain("Approve the chosen EID");
+  const name = "run-detail-gates-park.a11y.yml";
+  test.info().annotations.push({
+    type: `a11y-attachment-sha256:${name}`,
+    description: createHash("sha256").update(snapshot).digest("hex"),
+  });
+  await test.info().attach(name, { body: snapshot, contentType: "text/yaml" });
+});
 
 for (const group of referenceSceneGroups(Object.values(GATES_PARK_SCENES), () => servers.server.baseUrl)) {
   test.describe(group.title, () => {
