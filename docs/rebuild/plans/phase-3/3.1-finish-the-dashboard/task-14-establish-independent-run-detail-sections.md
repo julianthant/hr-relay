@@ -242,12 +242,23 @@ ESLint, typecheck and affected generated/build checks. Evidence goes under
 
 After that release, 3.1.14.1 additionally owns the smallest Queue row/model
 and focused Queue test/parity change required to show one selected-day item row
-with separately selectable attempts. The accepted Queue projector identity and
-row actions remain shared inputs; any necessary change to them returns to the
+with separately selectable attempts. Its narrow exception also owns the
+`dashboard-app.tsx` Queue input/filter handoff: apply status filtering after
+item grouping so a matching attempt never hides its sibling attempts, while
+preserving the existing workflow scope, session-batch grouping and keyboard
+order. No other app composition behavior transfers. The accepted Queue
+projector identity and row actions remain shared inputs; any necessary change to them returns to the
 parent before parallel launch. 3.1.14.2 consumes the attempt read and Rerun
 callback in its exclusive Context/Data section. 3.1.14.3 owns any genuine
 ordinary worker-note producer seam after tracing current callers. 3.1.14.4
 and 3.1.14.5 retain their exclusive receipt/failure and gate/park paths.
+For 3.1.14.5 only, the approved gate-command outcome also grants a narrow
+exception in `src/core/command-kernel.ts` at `executeResolveGate` and focused
+command tests: validate current condition, bound dependency evidence and
+freshness before any durable gate decision. The existing run-version and gate
+identity checks remain. If that cannot be expressed without changing the
+shared executor, descriptor contract or another leaf's path, return the
+change to the parent/finalizer owner before writing it.
 Children cannot edit another leaf's paths or the parent reservation. Any
 unplanned shared change returns to this owner or to 3.1.14.6 after candidates
 are complete; the Sol root decides that boundary before work proceeds.
