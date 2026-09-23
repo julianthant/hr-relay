@@ -71,6 +71,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/runs/:runId/advisory", operatorOpaqueIngressGuard);
 
   registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
+  registerRunDetailRoutes(app, deps);
   registerTrustRoutes(app, deps);
   registerShellRoutes(app, deps);
   registerNotificationRoutes(app, deps);
@@ -84,7 +85,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerIntakeRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt, intake: deps.intake });
-  registerRunDetailRoutes(app, deps);
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));

@@ -11,6 +11,7 @@ import type { AuthorityDatabase, AuthorityRepositories } from "../../../infra/sq
 import type { ProofShape } from "../../../validation/proof-shape.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DiagnosticBundleQueryDeps } from "./diagnostic-bundle.js";
+import type { ItemAttemptHistoryRequest, ItemAttemptHistoryResponse } from "../../../domain/dashboard/item-attempt-history.js";
 
 /**
  * The trust reads the receipt and failure sections need (D140/D142). They are
@@ -161,6 +162,10 @@ export interface RunDetailDescriptorView {
 export type CanonicalRunReader = Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
 
 export interface RunDetailQueryDeps {
+  /** Bounded, versioned same-item history read, composed only with lifecycle authority. */
+  readonly itemAttemptHistory?: Readonly<{
+    read(runId: string, request: ItemAttemptHistoryRequest): ItemAttemptHistoryResponse;
+  }>;
   /** Sole lifecycle read port; separate from the complete Context/Rerun backing bundle. */
   readonly runReader?: CanonicalRunReader;
   /** Explicit canonical backing for consumers that require retained authority reads. */

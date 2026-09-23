@@ -2990,6 +2990,46 @@ export class AuthorityDatabase implements Disposable {
       .map(row => {const id=z.object({record_key:z.string()}).parse(row).record_key;const transfer=this.transferredRun(id);if(transfer===undefined)throw new Error("archive-transfer-missing");return transfer.run;}));
   }
 
+  /** Bounded row materialization for same-item history; archive and tombstone predicates still scan without added indexes. */
+  listItemAttemptHistorySources(input: unknown) {
+    const request = z.strictObject({ workflow: WorkflowIdSchema, itemId: ItemIdSchema, sourceLimit: z.number().int().min(1).max(501) }).parse(input);
+    return this.withAuthorityReadSnapshot(() => {
+      const countFor = (table: "workflow_runs" | "archive_transfers" | "deleted_runs") => {
+        const row = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare(
+          `SELECT count(*) AS count FROM ${table} WHERE workflow = ? AND item_id = ?`,
+        ).get(request.workflow, request.itemId));
+        return row.count;
+      };
+      const liveCount = countFor("workflow_runs");
+      const archiveTransferCount = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare(
+        "SELECT count(*) AS count FROM archive_transfers WHERE workflow = ? AND item_id = ? AND record_key NOT IN (SELECT record_key FROM deleted_runs)",
+      ).get(request.workflow, request.itemId)).count;
+      const deletedCount = countFor("deleted_runs");
+      const live = this.#database.prepare(`
+        SELECT record_json FROM workflow_runs WHERE workflow = ? AND item_id = ?
+        ORDER BY attempt, record_key LIMIT ?
+      `).all(request.workflow, request.itemId, request.sourceLimit)
+        .map(row => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json));
+      const archiveTransferIds = this.#database.prepare(`
+        SELECT record_key FROM archive_transfers WHERE workflow = ? AND item_id = ?
+          AND record_key NOT IN (SELECT record_key FROM deleted_runs)
+        ORDER BY attempt, record_key LIMIT ?
+      `).all(request.workflow, request.itemId, request.sourceLimit)
+        .map(row => RunIdSchema.parse(z.strictObject({ record_key: z.string() }).parse(row).record_key));
+      const deleted = this.#database.prepare(`
+        SELECT record_json FROM deleted_runs WHERE workflow = ? AND item_id = ?
+        ORDER BY attempt, record_key LIMIT ?
+      `).all(request.workflow, request.itemId, request.sourceLimit)
+        .map(row => parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json));
+      return Object.freeze({
+        counts: Object.freeze({ live: liveCount, archiveTransfers: archiveTransferCount, deleted: deletedCount }),
+        live: Object.freeze(live),
+        archiveTransferIds: Object.freeze(archiveTransferIds),
+        deleted: Object.freeze(deleted),
+      });
+    });
+  }
+
   savedReportOwner(runId: string) {
     return this.withAuthorityReadSnapshot(() => resolveSavedReportOwner(this.#database, () => this.lifecycleArchive(true), RunIdSchema.parse(runId)));
   }

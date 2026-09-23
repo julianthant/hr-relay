@@ -10,12 +10,14 @@ import type {
   RunDetailQueryDeps,
 } from "../queries/run-detail.js";
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
+import { createItemAttemptHistoryQuery } from "../queries/item-attempt-history.js";
 
 export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
   const { stateRoot, projection, database, trust, captures, canonical, runReader } = input;
   return {
     ...(canonical === undefined ? {} : { canonical }),
     ...(runReader === undefined ? {} : { runReader }),
+    ...(runReader === undefined ? {} : { itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }) }),
     stateRoot,
     projection,
     authority: {

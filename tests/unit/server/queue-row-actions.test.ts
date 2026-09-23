@@ -168,7 +168,7 @@ describe("queue-row action descriptors — the per-status set", () => {
       rename: ["menu"],
     });
     assert.deepEqual(placements("done"), {
-      rerun: ["footer", "menu"],
+      rerun: ["footer", "menu", "data"],
       rename: ["menu"],
       // D308's 🗑, back in the footer slot D234 emptied.
       delete: ["footer", "menu"],
