@@ -194,7 +194,9 @@ Proposed, not created or reserved:
 | UI-B | `codex/3.1-ui-workflows` | `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-workflows` |
 | Finalization | `codex/3.1-ui-final` | `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-final` |
 
-Use one implementer per plan. Recheck path/ref availability, ownership and the four-worktree ceiling
+Use the owning plan's execution allocation. UI-A permits bounded Luna xhigh assignments under
+[Astra high root acceptance](settings-and-records.md#execution-allocation); UI-B retains its admitted
+single-implementer allocation. Recheck path/ref availability, ownership and the four-worktree ceiling
 at launch. Both use the same accepted base, not each other's branch. Separate evidence folders:
 `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-settings-records-<date>/` and
 `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-workflow-interactions-<date>/`. No shared evidence filenames, browser sessions, output
@@ -287,6 +289,10 @@ package is introduced. Roadmap admission does not authorize launch, master integ
 `beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a` on local master. A later accepted baseline integration SHA, followed
 by its release-record commit, must be recorded before either worker branches. Never substitute
 the old planning SHA or this feature input for that release.
+
+UI-A alone has an operator exception to this launch dependency, recorded in its
+[task owner](settings-and-records.md#start-and-ownership). This does not complete the prerequisite,
+release UI-B, waive acceptance proof or transfer shared repair ownership to an implementation worker.
 
 | Verified state | Evidence / remaining work |
 | --- | --- |
@@ -403,11 +409,11 @@ Operator-controlled master integration/cleanup and 3.1.19's full proof remain se
 
 The operator's conditional UI-A/UI-B implementation scopes and panel/calendar amendment are
 retained; draft status never establishes admission. The operator approved persistence and commit of these planning documents on 2026-09-23. It does not implement UI, launch implementation workers,
-merge or push. Future launches use `/sol-orchestrator`, `/luna-worker` and `/ui`; one Luna xhigh
-implementer per worker assignment, no nested dispatch, root acceptance and no independent review
-under the Phase 3.1 cadence.
+merge or push. Execution uses `/sol-orchestrator`, `/luna-worker` and `/ui`; Luna xhigh implements
+bounded assignments without nested dispatch. Root acceptance and the Phase 3.1 no-independent-review
+cadence remain. UI-A's later operator-approved launch exception and allocation are in its task owner.
 
-**Prepared, not launch-ready.** The remaining release tasks are exactly those in the shared
+**Shared baseline and UI-B remain not launch-ready.** The remaining release tasks are those in the shared
 prerequisite above. Feature prerequisites are complete; the baseline's focused acceptance,
 authorized integration and cleanup remain open. Admission is approved and recorded in this planning commit; the baseline release must consume that committed plan.
 

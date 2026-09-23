@@ -1,8 +1,9 @@
 # UI-A: Settings and records
 
-Status: **approved plan; baseline release pending**. Task **3.1.23.1**
-(UI-A); not launch-ready or started. The prior `/supervise UI-A` request authorized this scope
-subject to the shared prerequisite. The operator approved this planning amendment on 2026-09-23; baseline release remains required. One independent implementation assignment; Sol root acceptance, one Luna xhigh implementer.
+Status: **execution authorized; candidate not accepted**. Task **3.1.23.1** (UI-A).
+The operator waived the 3.1.23 release prerequisite for this execution on 2026-09-23 and approved
+[bounded execution assignments](#execution-allocation). Astra high owns design decisions and
+acceptance; Luna xhigh assignments own implementation and focused repairs.
 Read the [shared brief](README.md), particularly the frozen base, design rules, file allowlists,
 gate cadence and finalization conditions. This plan never waits for UI-B's implementation.
 
@@ -34,15 +35,49 @@ settings, convert stored units, restore retired Archive behavior or expose prote
 
 ## Start and ownership
 
-- Accepted common base: **WAITING ON** the shared prerequisite described in the overview.
-- Proposed branch: `codex/3.1-ui-settings-records` from that same base used by UI-B.
-- Proposed checkout: `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-settings`.
+- Accepted feature input: `beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a`; initial branch/plan
+  commit: `fac236fbc2c27192c31fdfbca3e2a5512d870800`, with unchanged product code between them.
+  The 3.1.23 release is waived for UI-A, not completed. Retain its unperformed shared repairs and
+  proof as explicit obligations; this exception does not release UI-B or change finalizer gates.
+- Existing branch: `codex/3.1-ui-settings-records`.
+- Owned checkout: `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-settings`.
 - Exact source/test/reference ownership: the closed UI-A paths in [ownership.json](ownership.json). New helpers/tests use
   `ui-settings-records-` prefixes. This file alone receives UI-A progress and candidate evidence.
 - Target: operator-controlled finalization branch, then `master`; either worker merge order works.
-- Lead: `/ui` Design, refinement within the existing system; Content support; one implementer.
-- Execution: `/sol-orchestrator` with `/luna-worker`; one native `luna_worker_xhigh`, standard speed,
-  no nested dispatch. The root accepts the complete candidate. Phase 3.1 requires no independent reviewer.
+- Lead: `/ui` Design, refinement within the existing system; Content support.
+- Execution: `/sol-orchestrator` with `/luna-worker`; Astra high is the explicit root-model override
+  for this task. New native workers use `luna_worker_xhigh`, standard speed, with no nested dispatch.
+  The root accepts completed outcomes and the combined candidate. Phase 3.1 requires no independent reviewer.
+
+## Execution allocation
+
+UI-A permits multiple bounded assignments; the whole manifest is not one automatic worker brief.
+Preserve current edits, receipts and settled decisions. Verify the existing writer before resuming it;
+checkpoint and stop it before transferring its paths. Reuse a session while its context remains useful.
+
+| Outcome | Included work | Acceptance emphasis |
+| --- | --- | --- |
+| Settings | A2–A3, all subsections and their help/catalog/dialogs | Control hierarchy; draft/save/clear/conflict behavior and rendered comparison. |
+| Records | A4 Archive and Activity, including confirmations/viewers | Scannable records; selection/export/delete consequences and rendered comparison. |
+| Sessions and Calendar | A4b–A4c | Expanded/open hierarchy; keyboard/focus, unavailable states, real zoom and unchanged collapsed controls. |
+
+Apply A1 inventory and A5 consistency checks to each outcome; retain all manifest entries and proof.
+Adapt order to verified progress. Reuse attributable baseline evidence when inputs are unchanged;
+capture missing required states before editing that surface, then implement. Do not restart the whole
+inventory or expand baseline work beyond assigned proof.
+
+Before dispatch, the root settles consequential layout, grouping and copy direction using existing
+tokens and inspected examples. Give the worker that concise direction, owned paths and deciding checks.
+The worker handles discovery, implementation, focused tests/lint and routine repairs for its outcome.
+The root inspects completed patches, critical behavior and before/after renders, then batches corrections.
+Intervene earlier for material scope, contract or verification violations; report only new evidence,
+accepted outcomes, blockers and decisions. Do not direct every small edit or repeat unchanged status.
+
+Sequence coupled writes. Parallel assignments require stable inputs, disjoint source/test/evidence
+ownership, independent acceptance, isolated worktrees/resources and available capacity. Record exact
+bindings and an authorized integration/cleanup owner before dispatch; this allocation grants no new
+merge permission. Read-only parallel work must answer a concrete independent question. Complete the
+combined focused acceptance before finalizer intake; additional agents and independent review are not gates.
 
 ## Implementation sequence
 
@@ -141,35 +176,28 @@ deliberate reference attribution; privacy/keyboard/zoom evidence; deferred broad
 blocker. End with a committed candidate ready for finalizer intake. Do not update the shared phase,
 roadmap, generated index or UI-B record, integrate, push or launch another task.
 
-## Conditional launch prompt
+## Resume prompt
 
-Prepared for after admitted 3.1.23 release; do not launch now. The future release record supplies
-its real accepted base and planning commit. Copy those verified values rather than using the
-inspection SHA as an implementation base. No sibling branch is an input.
+Resume the existing execution under its UI-A-only prerequisite exception. Verify actual current HEAD
+and dirty state; do not reset the branch to its initial planning commit.
 
 ```text
-/sol-orchestrator 3.1.23.1 (UI-A) using /luna-worker and /ui.
+Continue UI-A with Astra high as orchestrator and /luna-worker plus /ui.
+Read this amended task owner and verify the existing branch, worker, edits and evidence.
+Preserve my approval to skip the 3.1.23 release for UI-A; do not claim skipped checks passed.
+Do not restart discovery or create a new root session.
 
-Read the committed ui-refinement/settings-and-records.md, shared README.md and ownership.json under
-docs/rebuild/plans/phase-3/3.1-finish-the-dashboard in the accepted checkout.
-Verify numbered admission, the plan commit, completed 3.1.23 release and its exact accepted base.
-If any is missing, report the exact prerequisite; do not implement against the inspection base.
+Own consequential design choices and acceptance. Delegate bounded outcomes with tests and repairs:
+Settings, records, then Sessions/Calendar, adapting order to verified progress. Multiple Luna xhigh
+assignments are permitted. Reuse useful context; stop the previous writer before transferring paths.
+Parallelize only proven independent ownership and proof within existing capacity and integration rules.
 
-Create/reuse the verified owned branch codex/3.1-ui-settings-records from that common accepted SHA in
-/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-settings.
-Recheck exclusive ownership and the four-worktree capacity before creation.
+Inspect completed renders and critical behavior, batch corrections and report meaningful changes.
+Preserve the closed manifest, frozen surfaces/APIs, tests and required focused unit/parity, lint,
+both-theme and real-zoom proof. Reuse valid baseline evidence. No independent review under Phase 3.1.
+Do not silently absorb shared prerequisite repairs or weaken checks.
 
-Implement UI-A's closed manifest scope, including expanded Sessions and the Calendar picker.
-Preserve the queue, default dashboard design, collapsed session/date controls, shared APIs and frozen toolbar
-rendering, tokens, authority and the other worker's files. Use concise copy and cohesive layouts;
-keep warnings, validation, uncertainty and action consequences visible.
-
-Run the assigned focused unit/parity checks, scoped lint and browser proof in both themes and
-the desktop/real-zoom matrix. Use the verified two-worker adapter and isolated output/evidence.
-No independent review under the Phase 3.1 exception.
-
-Commit exact owned paths and this worker record; return candidate/base/plan SHAs, checks,
-screenshot attribution and deferred broad proof to finalizer 3.1.23.3. Do not merge, push,
-edit shared roadmap/manifest records or launch another task. Root may assign one Luna xhigh
-implementation worker with this exact scope; that worker cannot delegate.
+Commit exact owned paths and this worker record. Return candidate/base/plan SHAs, checks, screenshot
+attribution and deferred proof to finalizer 3.1.23.3. No merge, push, shared roadmap/manifest edits,
+new roadmap task or nested worker dispatch.
 ```
