@@ -5,7 +5,7 @@
 
 - [x] combine every assigned worker candidate and verify the integrated group with focused checks
 - [x] fix group defects; pass typecheck, focused integration tests, scoped lint and affected build/generated checks
-- [ ] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
+- [x] record broad gates as deferred to 3.1.19; integrate the focused release, close worker/group records and clean up owned resources
 
 Accepted output releases 3.1.16 realtime convergence and later acceptance. Full repository gates and final repairs remain at 3.1.19; this is a focused development release.
 
