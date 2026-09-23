@@ -218,7 +218,7 @@ function StepStrip({
    * `group-focus-within` itself keys on, so the attribute and the visible
    * card open and close together for a keyboard user.
    */
-  const [focusedIndex, setFocusedIndex] = useState<number | undefined>(undefined);
+  const [focusedStep, setFocusedStep] = useState<string | undefined>(undefined);
   return (
     <div className="flex items-stretch gap-[var(--ds-space-hair)]">
       {steps.map((step, index) => {
@@ -270,10 +270,10 @@ function StepStrip({
             <button
               type="button"
               aria-label={stepAriaLabel(step, openedAt)}
-              aria-expanded={focusedIndex === index}
+              aria-expanded={focusedStep === step.label}
               aria-controls={disclosureId}
-              onFocus={() => setFocusedIndex(index)}
-              onBlur={() => setFocusedIndex(undefined)}
+              onFocus={() => setFocusedStep(step.label)}
+              onBlur={() => setFocusedStep(undefined)}
               className={cn(
                 "mt-[var(--ds-space-tight)] block w-full",
                 "h-[var(--ds-h-timeline-bar)]",
@@ -439,7 +439,7 @@ export function Timeline({ detail, nowIso }: { detail: RunDetailWire; nowIso: st
   if (categorical) {
     return (
       <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
-        <StepStrip steps={steps} gate={detail.gate} nowIso={nowIso} />
+        <StepStrip key={detail.runId} steps={steps} gate={detail.gate} nowIso={nowIso} />
         {first !== undefined && (
           <TimelineAxis
             startAt={first.at}
