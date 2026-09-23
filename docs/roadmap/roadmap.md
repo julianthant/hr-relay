@@ -2187,14 +2187,14 @@ needs:
 - dash-gates
 
 #### 15 · Finish production startup, serving, and shutdown {#dash-production-runtime}
-status: planned
-date: D344 · former 3.1.12-4 · independent worktree after named prerequisites
+status: done
+date: 2026-09-23 · integrated focused acceptance; full repository gates remain 3.1.19
 doc: 3.1/task-15-finish-production-startup-serving-and-shutdown §Task 3.1.15 · Finish production startup, serving, and shutdown · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
 
 builds:
-- [ ] BOTH serve the production bundle, admit one runtime, report startup failures, and expose truthful readiness
-- [ ] BE stop signals, workers, browsers, writers, projections, locks, and backups in the declared order without abandoned authority
-- [ ] PROOF clean start, duplicate start, missing bundle/settings, signal drain, second signal, crash recovery, and orphan sweep
+- [x] BOTH serve the production bundle, admit one runtime, report startup failures, and expose truthful readiness
+- [x] BE stop signals, workers, browsers, writers, projections, locks, and backups in the declared order without abandoned authority
+- [x] PROOF clean start, duplicate start, missing bundle/settings, signal drain, second signal, crash recovery, and orphan sweep
 
 needs:
 - dash-setup
@@ -2205,6 +2205,7 @@ needs:
 - dash-operations-finalizer
 
 log:
+- 2026-09-23 | accepted local 3.1.15 release | Operator-directed merge `87016e631d6bcb5bbb323df539598e5af473e73b` incorporates implementation candidate `a1b9ae48853b389e0c9865126c7e79d4782929c0`. Integrated focused checks passed: 164 unit tests, 2 affected parity bundle assertions, scoped lint, web build with current bundle identity, manifest and roadmap checks. An isolated real production child served built HTML/JS and readiness, refused duplicate/missing/tampered inputs, drained and recovered stale process evidence with the worker orphan warning preserved. The unrelated missing `reference-detail.spec.ts` remains a pre-existing full parity architecture failure; broad gates and final production/browser correlation remain 3.1.19. The owned worktree/branch were removed; no push, external HR write or successor dispatch.
 - 2026-09-08 | D344 prerequisite planning | now 3.1.10.1; former 3.1.12-4; stable anchor and acceptance retained; starts after named prerequisites, not whole-wave closure
 - 2026-09-03 | 3.1 parallel execution plan | wave 4 production-runtime seam in `phase-3-1-dashboard-c21194e18-r30-production-runtime`, parallel with Tasks 16, 18 and 24 after setup/storage/session authority is integrated · left: Tasks 12–14
 - 2026-09-08 | D344 decimal naming amendment | assignment 3.1.15; standalone prerequisite or individual task; acceptance and historical execution anchor retained

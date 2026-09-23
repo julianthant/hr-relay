@@ -8,7 +8,7 @@ Earlier labels and filenames are recorded in the [rename map](README.md#earlier-
 
 Read the [subphase overview](README.md) before this assignment for shared scope, dependencies, decisions and gates.
 
-- [ ] Prove production bundle serving, admission/readiness, duplicate/missing-state refusal, ordered
+- [x] Prove production bundle serving, admission/readiness, duplicate/missing-state refusal, ordered
   signal drain, second signal, crash recovery, and orphan sweep.
 
 Current baseline and acceptance: [3.1.8 inventory](task-8-dashboard-inventory.md) and
@@ -94,14 +94,14 @@ owned worktree/branch cleanup if integration is authorized.
 
 ## Candidate evidence — 2026-09-23
 
-The implementation candidate is `a1b9ae48853b389e0c9865126c7e79d4782929c0` on
+The implementation candidate was `a1b9ae48853b389e0c9865126c7e79d4782929c0` on
 `codex/3.1.15-production-runtime`, based on `7c524542aa3b4051b7847f264fb571fb43ebaa6d`.
 It validates current source and emitted bundle bytes before authority/lock/socket effects, serves
 the built app beside API routes, rejects inconsistent state/settings and duplicate ownership,
 unwinds failed startup in reverse ownership order, and waits for dashboard-owned worker exits under
 D271 before successful shutdown. Its focused controls cover live socket admission, HTTP bind
 failure, both stop signals during an active transfer, stale process identity, and preserved worker
-orphan evidence. The worktree is clean at this candidate.
+orphan evidence. The worktree was clean at this candidate.
 
 - Root verification: `npm run test --` with the eight affected unit files passed **164/164**;
   `npx eslint` on the affected source/configuration/test files passed with zero warnings. Logs:
@@ -122,7 +122,19 @@ orphan evidence. The worktree is clean at this candidate.
   The sanitized log and runner are `manual-production-child-proof.log` and
   `manual-production-child-proof.mjs` in the evidence directory. No external HR write was made.
 
-The candidate awaits the operator's local integration choice. Keep the task checklist and roadmap
-node open until authorized integration and its focused integration checks complete. Full repository
-gates, broad parity, and final production/browser correlation remain assigned to 3.1.19; this task
-has no independent review gate.
+## Integrated release — 2026-09-23
+
+The operator authorized local integration. Merge commit
+`87016e631d6bcb5bbb323df539598e5af473e73b` incorporates the exact candidate into `master`.
+On the integrated tree, the eight focused unit files passed **164/164**, the affected parity bundle
+assertions passed **2/2**, scoped ESLint passed with zero warnings, and `npm run web:build`,
+`npm run build:manifest:check`, `npm run roadmap:check`, and the current build-identity assertion
+passed. The integration logs are `integration-focused-tests.log`,
+`integration-parity-bundle-focused.log`, `integration-eslint.log`, and
+`integration-web-build.log` in the evidence directory above. The owned production-runtime worktree
+and branch were removed after those checks; the unrelated UI planning worktree was retained. No
+push or external HR write occurred.
+
+The pre-existing `reference-detail.spec.ts` absence remains the one failing assertion in the full
+parity architecture file. Full repository gates, broad parity, and final production/browser
+correlation remain assigned to 3.1.19. This task has no independent review gate.
