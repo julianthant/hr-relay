@@ -137,7 +137,7 @@ tests, `tests/unit/architecture/wire-connectivity.test.ts`,
 plus new focused source-settlement and section-boundary tests. Run
 `npx eslint <affected source/test paths> --max-warnings 0` whenever tests run;
 `npm run typecheck`, `npm run build:manifest:check`, `npm run web:build`, and
-filtered `npm run test:parity -- tests/parity/reference-detail.spec.ts tests/parity/failure-resolution.spec.ts`
+filtered `npm run test:parity -- tests/parity/run-detail/*.spec.ts tests/parity/failure-resolution.spec.ts`
 on the final candidate. Use `playwright-cli` and its playbook if a manual browser
 investigation is required. For documentation/generated changes run
 `npm run roadmap`, `npm run roadmap:check`, link/check selectors and
@@ -145,3 +145,60 @@ investigation is required. For documentation/generated changes run
 3.1.14.6 owns group typecheck/integration, and 3.1.19 owns full repository
 lint, coverage, broad parity/production/performance/recovery and frozen
 A01–A42/D01–D05 acceptance. Record unrun obligations explicitly.
+
+### Candidate proof and child ownership — 2026-09-22
+
+Candidate `c45d1cd78` on `codex/3.1.14-detail-foundation` contains the source-gate
+runtime, section extraction and fixture split. It starts at the approved
+`4cd6a7c95` base. Local `master` advanced only by the instruction change
+`4edaa7389`; the approved base remains its ancestor and no product path overlaps.
+The operator's final-gate disposition and local integration are pending.
+
+| Child | Exclusive client and server implementation | Exclusive parity entry and scenes |
+| --- | --- | --- |
+| 3.1.14.1 Timeline | `src/dashboard/surfaces/run-detail/timeline.tsx`, `timeline-model.ts`; `src/server/dashboard/queries/run-detail.ts` | `tests/parity/run-detail/timeline.spec.ts`, `helpers/run-detail/timeline*.ts`; `run-done`, `run-group`, `run-member` |
+| 3.1.14.2 Context/Data | `src/dashboard/surfaces/context-rail*.ts*`; `src/server/dashboard/queries/data.ts` | `tests/parity/run-detail/context-data.spec.ts`, `helpers/run-detail/context-data*.ts`; `run-queued` |
+| 3.1.14.3 Logs/Captures | `src/dashboard/surfaces/run-detail/logs*.ts*`, `src/dashboard/surfaces/run-captures*.ts*`; `src/server/dashboard/queries/run-detail/logs.ts`, `run-logs.ts`, `run-captures.ts` | `tests/parity/run-detail/logs-captures.spec.ts`, `helpers/run-detail/logs-captures*.ts`; `run-running` |
+| 3.1.14.4 Receipts/Failures | `src/dashboard/surfaces/run-detail/receipt-failure.tsx`, existing receipt/trust/advisory leaves; `src/server/dashboard/queries/run-detail/receipts-failures.ts`, existing failure-resolution/diagnostic leaves | `tests/parity/run-detail/receipts-failures.spec.ts`, `helpers/run-detail/receipts-failures*.ts`; `run-failed`, `run-receipt-populated` |
+| 3.1.14.5 Gates/Park | `src/dashboard/surfaces/run-detail/gate-park.tsx`, existing identity-approve/park-resolve leaves; `src/server/dashboard/queries/run-detail/gate-park.ts` | `tests/parity/run-detail/gates-park.spec.ts`, `helpers/run-detail/gates-park*.ts`; open-gate, parked-write, decision and resolution variants |
+
+The parent owns `log-panel.tsx`, `log-panel-model.ts`,
+`app/use-panel-sections.ts`, `run-detail/section-registration.ts` and
+`sections.ts`; the closed server dispatcher `queries/run-sections.ts`,
+`run-trust.ts`, `run-detail-types.ts`, `run-detail/availability.ts`, shared
+schemas and route/composition registration; and parity
+`helpers/fixture-detail.ts`, `fixture-detail-routes.ts`,
+`reference-detail-scenes.ts`, `helpers/run-detail/section-wire.ts` and
+`run-detail/shared.ts`. `log-panel.tsx` retains cross-section navigation,
+outcome routing and notices as frozen composition. The Logs renderer imports
+gate/failure renderers, and Gates/Park imports `decisionAge` from the timeline
+model; those accepted exports are stable inputs. Child specs import shared
+runner/anchors, not sibling scenes. Either child intake order can use the
+released base without modifying another child's paths. A child needing a
+shared registration, schema, composition or generated-input change must return
+that change to the parent/finalizer owner before parallel admission.
+
+Focused candidate checks: 268 tests passed across 16 exact unit, architecture
+and scenario files; ESLint passed on 56 changed TypeScript files;
+`build:manifest:check`, `web:build` and staged `git diff --check` passed. The
+new synthetic external and children-terminal gate cases exercise the actual
+source runtime, retained authority, worker loop and composition; refusals and
+duplicate/restart replay are asserted against result rows, timeline and
+lifecycle. The generated manifest changed only because the shared gates source
+hash changed, and its check passed. `web:build` emitted the existing large
+chunk advisory.
+
+Final gate exceptions are measured, not counted as passes. `npm run typecheck`
+still reports the four Queue test errors independently reproduced on untouched
+`4cd6a7c95`: three `cursor` shape errors in
+`queue-commands-convergence.test.ts` and one `navigate.expectedVersion`
+narrowing error in `run-queue-projection.test.ts`. Filtered browser parity
+reached the reference comparison for all 58 cases but failed on stale a11y
+references. The same 58 cases failed on untouched local `master` with identical
+failure signatures after normalizing the expected descriptor-hash change; the
+existing `Preflight: unavailable` button is absent from the stored references.
+No reference was refreshed. The existing `trust-canonical-linkage.test.ts`
+also fails 1/6 on untouched master because the archived-run notification
+publish unexpectedly resolves; it is outside the affected focused set.
+Evidence and command logs are retained at
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/3.1.14-detail-foundation-2026-09-22/acceptance/`.
