@@ -147,6 +147,7 @@ function ActivityDateControl({ from, to, invalid, onRange }: {
   onRange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const start = calendarDate(from);
   const end = calendarDate(to);
   const selected = !invalid && start !== null && end !== null;
@@ -155,14 +156,14 @@ function ActivityDateControl({ from, to, invalid, onRange }: {
     onRange(activityRangeValue({ from: first, to: last }));
     setOpen(false);
   };
-  return <Popover open={open} onOpenChange={setOpen}>
+  return <Popover open={open} onOpenChange={next => { setOpen(next); if (!next) setYearPickerOpen(false); }}>
     <PopoverTrigger asChild>
       <Button size="toolbar" variant="secondary" aria-label={`Select report dates: ${label}`} aria-invalid={invalid || undefined} icon={<CalendarDays aria-hidden className={dsIcon.sm} />}>
         <span className="tabular-nums">{label}</span><ChevronDown aria-hidden className={dsIcon.sm} />
       </Button>
     </PopoverTrigger>
     <PopoverContent title="Select report dates" hideTitle align="end" width="md" className="ds-date-popover">
-      <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar" value={selected ? { start, end } : null} onChange={dates => { if (dates !== null) choose(dates.start.toString(), dates.end.toString()); }}>
+      <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar" isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen} value={selected ? { start, end } : null} onChange={dates => { if (dates !== null) choose(dates.start.toString(), dates.end.toString()); }}>
         <HeroRangeCalendar.Header>
           <HeroRangeCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
           <HeroRangeCalendar.YearPickerTrigger className="w-full justify-center">
@@ -172,7 +173,7 @@ function ActivityDateControl({ from, to, invalid, onRange }: {
           <HeroRangeCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
         </HeroRangeCalendar.Header>
         <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
-        <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>
+        {yearPickerOpen && <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>}
       </HeroRangeCalendar>
     </PopoverContent>
   </Popover>;

@@ -9,7 +9,7 @@ ChevronLeft,
 ChevronRight
 } from "lucide-react";
 import { type ReactElement,useMemo,useRef,useState } from "react";
-import { Button,CountBadge,Popover,PopoverContent,PopoverTrigger,Tooltip,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
+import { Button,CountBadge,Popover,PopoverContent,PopoverTrigger,Tooltip,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { type DayCountWire,monthOfDay } from "./date-navigation-model.js";
 import {
@@ -25,9 +25,7 @@ function DateCalendar({
   month,
   setMonth,
   resource,
-  followingToday,
   onRetry,
-  onToday,
   onPick,
 }: {
   day: string;
@@ -35,14 +33,14 @@ function DateCalendar({
   month: string;
   setMonth: (month: string) => void;
   resource: AsyncResource<CalendarWire>;
-  followingToday: boolean;
   onRetry: () => void;
-  onToday: () => void;
   onPick: (day: string) => void;
 }) {
   const counts = resource.state === "loaded" ? resource.value.monthCounts : NO_COUNTS;
   const countByDay = useMemo(() => new Map<string, number>(counts.map(entry => [entry.day, entry.count])), [counts]);
   const [focusedDay, setFocusedDay] = useState<string>();
+  // HeroUI renders one year cell per permitted year; keep that grid out of the closed calendar.
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const calendarFocus = parseDate(focusedDay?.startsWith(month)
     ? focusedDay
     : day.startsWith(month) ? day : `${month}-15`);
@@ -52,6 +50,8 @@ function DateCalendar({
       <HeroCalendar
         aria-label="Pick a day"
         className="ds-hero-calendar"
+        isYearPickerOpen={yearPickerOpen}
+        onYearPickerOpenChange={setYearPickerOpen}
         value={parseDate(day)}
         onChange={next => { if (next !== null) onPick(next.toString()); }}
         focusedValue={calendarFocus}
@@ -89,33 +89,14 @@ function DateCalendar({
             </HeroCalendar.Cell>}
           </HeroCalendar.GridBody>
         </HeroCalendar.Grid>
-        <HeroCalendar.YearPickerGrid>
+        {yearPickerOpen && <HeroCalendar.YearPickerGrid>
           <HeroCalendar.YearPickerGridBody>
             {({ year }) => <HeroCalendar.YearPickerCell year={year} />}
           </HeroCalendar.YearPickerGridBody>
-        </HeroCalendar.YearPickerGrid>
+        </HeroCalendar.YearPickerGrid>}
       </HeroCalendar>
 
-      {/* TODAY IN ONE ACTION, from anywhere in the calendar. It moves the month
-          AND the day, so a picker parked three months out is one press from
-          live rather than three. */}
       {resource.state === "failed" && <div role="alert" className={dsText.meta}>{resource.error.message} <Button size="sm" variant="secondary" onClick={onRetry}>Retry calendar</Button></div>}
-      <div className={cn("flex items-center border-t pt-[var(--ds-space-snug)]", dsBorder.subtle)}>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={followingToday && day === today && month === monthOfDay(today)}
-          onClick={() => {
-            setMonth(monthOfDay(today));
-            onToday();
-          }}
-        >
-          Today
-        </Button>
-        <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-muted)]")}>
-          {resource.state === "failed" ? "Calendar unavailable" : resource.state === "loaded" ? `${counts.length} active days this month` : "Loading calendar…"}
-        </span>
-      </div>
     </div>
   );
 }
@@ -169,10 +150,10 @@ function DateStep({
 const NO_COUNTS: readonly DayCountWire[] = Object.freeze([]);
 
 /** Chronological navigation comes from the calendar; the badge comes from the matching day stream. */
-export function DateNav({ day, today, monthCounts, onDay, onToday, followingToday = false,
+export function DateNav({ day, today, monthCounts, onDay, onToday,
   dateError, calendarRevision, dayState = "loaded" }: {
   day: string; today: string; monthCounts: readonly DayCountWire[]; onDay: (day: string) => void;
-  onToday: () => void; followingToday?: boolean; dateError?: string; calendarRevision?: object;
+  onToday: () => void; dateError?: string; calendarRevision?: object;
   dayState?: "loaded" | "loading" | "failed";
 }) {
   const [open, setOpen] = useState(false);
@@ -250,9 +231,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday, followingToda
             month={month}
             setMonth={setViewedMonth}
             resource={resource}
-            followingToday={followingToday}
             onRetry={() => setAttempt(value => value + 1)}
-            onToday={() => { setOpen(false); onToday(); }}
             onPick={(next) => {
               setOpen(false);
               if (next !== day) onDay(next);

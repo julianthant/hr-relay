@@ -109,7 +109,7 @@ export const TopBar = memo(function TopBar({
   day,
   today,
   monthCounts,
-  onToday, followingToday, dateError, calendarRevision, dayState,
+  onToday, dateError, calendarRevision, dayState,
   onDay,
   theme,
   onToggleTheme,
@@ -157,7 +157,6 @@ export const TopBar = memo(function TopBar({
   today: string;
   monthCounts: readonly DayCountWire[];
   onToday: () => void;
-  followingToday?: boolean;
   dateError?: string;
   calendarRevision?: object;
   dayState?: "loaded" | "loading" | "failed";
@@ -232,7 +231,7 @@ export const TopBar = memo(function TopBar({
           onOpenRun={onOpenRun}
           onOpenCrossDateResult={onOpenCrossDateResult}
         />
-        <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} onToday={onToday} followingToday={followingToday} dateError={dateError} calendarRevision={calendarRevision} dayState={dayState} />
+        <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} onToday={onToday} dateError={dateError} calendarRevision={calendarRevision} dayState={dayState} />
       </span>
 
       <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">

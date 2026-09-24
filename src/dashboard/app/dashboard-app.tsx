@@ -1291,7 +1291,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         day={day}
         today={today}
         dateError={dateError}
-        followingToday={route.day === undefined}
         onToday={onToday}
         calendarRevision={dayWire}
         dayState={dayResource.state === "loaded" ? "loaded" : dayResource.state === "failed" ? "failed" : "loading"}

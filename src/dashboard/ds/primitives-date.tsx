@@ -1,5 +1,6 @@
 import { Calendar as HeroCalendar, DateField, DatePicker, Label } from "@heroui/react";
 import { parseDate, type CalendarDate } from "@internationalized/date";
+import { useState } from "react";
 import { cn } from "../lib/utils.js";
 import { dsElev, dsFocus, dsLayer, dsText } from "./tokens.js";
 
@@ -22,8 +23,10 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
   inline?: boolean;
   className?: string;
 }) {
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   return (
     <DatePicker
+      onOpenChange={open => { if (!open) setYearPickerOpen(false); }}
       value={dateValue(value)}
       onChange={date => onChange(date?.toString() ?? "")}
       minValue={dateValue(min) ?? undefined}
@@ -48,7 +51,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
         </DateField.Suffix>
       </DateField.Group>
       <DatePicker.Popover className={cn("ds-date-popover", dsElev.mid, dsLayer.menu)}>
-        <HeroCalendar aria-label={`Choose ${label.toLowerCase()} date`} className="ds-hero-calendar">
+        <HeroCalendar aria-label={`Choose ${label.toLowerCase()} date`} className="ds-hero-calendar" isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen}>
           <HeroCalendar.Header>
             <HeroCalendar.NavButton className="text-foreground" slot="previous" />
             <HeroCalendar.YearPickerTrigger className="w-full justify-center">
@@ -65,11 +68,11 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
               {date => <HeroCalendar.Cell date={date} />}
             </HeroCalendar.GridBody>
           </HeroCalendar.Grid>
-          <HeroCalendar.YearPickerGrid>
+          {yearPickerOpen && <HeroCalendar.YearPickerGrid>
             <HeroCalendar.YearPickerGridBody>
               {({ year }) => <HeroCalendar.YearPickerCell year={year} />}
             </HeroCalendar.YearPickerGridBody>
-          </HeroCalendar.YearPickerGrid>
+          </HeroCalendar.YearPickerGrid>}
         </HeroCalendar>
       </DatePicker.Popover>
     </DatePicker>
