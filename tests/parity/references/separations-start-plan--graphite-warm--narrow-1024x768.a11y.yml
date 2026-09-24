@@ -1,7 +1,7 @@
 # separations-start-plan--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: separations-start-plan
-# descriptorHash: 54cd9be55d9e1fd64518a3f5e381b5e799b4afa6a347fea50a95ee783154c0bf
+# descriptorHash: ebc94624774bb282007bd8b6a0c36e760951cdfcdcae3b5cd52978b3b790ff1f
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -23,7 +23,6 @@
     - list:
       - listitem:
         - button "Person Lookup pl"
-  - button "5 not startable"
   - list "Run configuration path":
     - listitem: Input
     - listitem: Options
