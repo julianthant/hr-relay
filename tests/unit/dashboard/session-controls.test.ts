@@ -39,6 +39,9 @@ it("real controls retain exact identity across transport loss, clock ticks, hear
     nowIso: now, connection: { state: "live" }, appVersion: "0.1.0", workerCommands: dispatch,
   })));
   await render(); await press("Sessions");
+  assert.equal(document.querySelectorAll('[role="group"][aria-label$="browser controls"]').length, current.browsers.length);
+  assert.ok(document.querySelector('[role="group"][aria-label^="Worker controls for "]'));
+  assert.match(document.body.textContent ?? "", /Run.*Not checked/s);
   await press("Refresh UCPATH"); assert.equal(requests.length, 1);
   assert.match(document.body.textContent ?? "", /Response unavailable/);
   assert.equal(button("Reopen UCPATH").disabled, true);

@@ -8,9 +8,9 @@ CircleDashed,
 CircleHelp,
 Eye,
 Minus,
-Plus
+Plus,
 } from "lucide-react";
-import { useCallback,useEffect,useMemo,useState } from "react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 import type { CommandSettlement } from "../app/command-result.js";
 import { type SubscriptionState } from "../client/subscription.js";
 import { Banner,Button,Dialog,DialogBody,DialogContent,DialogFooter,Field,IconButton,MetaLine,Popover,PopoverContent,PopoverTrigger,Select,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
@@ -36,6 +36,13 @@ function BrowserTile({
   nowIso: string;
 }) {
   const health = browserHealthLabel(browser);
+  const healthTone = browser.observation?.state !== "present"
+    ? "border-[color:var(--ds-border-subtle)] text-[color:var(--ds-fg-muted)]"
+    : browser.observation.health === "failed"
+      ? "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)] text-[color:var(--ds-danger)]"
+      : browser.observation.health === "unknown"
+        ? "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]"
+        : "border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg)]";
   const openFor = fmtElapsed(elapsedSecondsBetween(browser.openedAt, nowIso));
   return (
     <div
@@ -68,13 +75,10 @@ function BrowserTile({
           ]}
         />
       </span>
-      {/* The tone word alone, as the demo's tile prints it (`tone.label`); the
-          session's age is a popover fact, because `Not checked · open 55m 4s`
-          truncated to `Not checked · open 5…` in a two-column tile. */}
-      <span className={cn(dsText.micro, "truncate opacity-80")} title={browser.observation?.state === "present" ? `Observed ${browser.observation.observedAt}` : "No owner observation"}>{health}</span>
-      {control !== undefined && <div className="flex flex-wrap gap-[var(--ds-space-tight)]">
-        <Button size="sm" variant="ghost" aria-label={`Refresh ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Reset this session and verify authentication"} disabled={refusal !== undefined} onClick={() => control("refresh-browser", browser.sessionId)}>Refresh</Button>
-        <Button size="sm" variant="ghost" aria-label={`Reopen ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Close and reopen this exact session"} disabled={refusal !== undefined} onClick={() => control("reopen-browser", browser.sessionId)}>Reopen</Button>
+      <span className={cn("inline-flex w-fit max-w-full items-center border px-[var(--ds-space-tight)]", dsRadius.sm, dsText.meta, healthTone)} title={browser.observation?.state === "present" ? `Observed ${browser.observation.observedAt}` : "No owner observation"}>{health}</span>
+      {control !== undefined && <div role="group" aria-label={`${SYSTEM_LABEL[browser.system]} browser controls`} className="grid w-full grid-cols-2 gap-[var(--ds-space-hair)]">
+        <Button size="sm" variant="ghost" className="w-full px-[var(--ds-space-tight)]" aria-label={`Refresh ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Reset this session and verify authentication"} disabled={refusal !== undefined} onClick={() => control("refresh-browser", browser.sessionId)}>Refresh</Button>
+        <Button size="sm" variant="ghost" className="w-full px-[var(--ds-space-tight)]" aria-label={`Reopen ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Close and reopen this exact session"} disabled={refusal !== undefined} onClick={() => control("reopen-browser", browser.sessionId)}>Reopen</Button>
       </div>}
     </div>
   );
@@ -290,10 +294,10 @@ function WorkerCard({
             workerId={String(card.workerId)}
             facts={[{ label: "Workflow", value: workflowLabel }]}
           />
-          <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-danger)]")}>{tone.label}</span>
+          <span className={cn("inline-flex h-[var(--ds-h-xs)] shrink-0 items-center border px-[var(--ds-space-tight)]", dsRadius.sm, dsText.meta, "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)] text-[color:var(--ds-danger)]")}>{tone.label}</span>
         </div>
-        <p className={cn(dsText.meta, "text-[color:var(--ds-danger)] opacity-85")}>
-          {card.stopReason === undefined ? "" : WORKER_STOP_REASON_LABEL[card.stopReason]}
+        <p className={cn(dsText.body, "text-[color:var(--ds-danger)]")}>
+          {card.stopReason === undefined ? "Failure reason unavailable" : WORKER_STOP_REASON_LABEL[card.stopReason]}
         </p>
       </article>
     );
@@ -333,15 +337,16 @@ function WorkerCard({
             <span className={dsText.nums}>{queued}</span> queued
           </span>
         )}
-        <span className={cn(dsText.caps, "ml-auto shrink-0", tone.text)}>{tone.label}</span>
+        <span className={cn("ml-auto inline-flex h-[var(--ds-h-xs)] shrink-0 items-center border px-[var(--ds-space-tight)]", dsRadius.sm, dsText.meta, "border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-2)]", tone.text)}>{tone.label}</span>
       </div>
 
       {/* The demo's subline. `currentRun` is a served union, so a worker with no
           run says WHY in the server's own words rather than going blank. */}
       <span className="-mt-[var(--ds-space-tight)] flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+        <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-fg-muted)]")}>Run</span>
         <span
           className={cn(
-            dsText.meta,
+            dsText.body,
             "min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]",
             card.currentRun.state === "present" && dsText.nums,
           )}
@@ -427,8 +432,8 @@ function WorkerCard({
         </div>
       )}
 
-      {workerCommands !== undefined && control.message !== undefined && <div role="status" className={cn(dsText.micro, "text-[color:var(--ds-status-waiting-fg)]")}>{control.message}{control.retry !== undefined && <Button size="sm" variant="ghost" onClick={control.retry}>Check outcome</Button>}</div>}
-      {workerCommands !== undefined && browserRefusal !== undefined && <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{browserRefusal}</span>}
+      {workerCommands !== undefined && control.message !== undefined && <div role="status" className={cn("flex flex-col gap-[var(--ds-space-tight)] border-l-2 border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)]", dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{control.message}{control.retry !== undefined && <Button size="sm" variant="ghost" onClick={control.retry}>Check outcome</Button>}</div>}
+      {workerCommands !== undefined && browserRefusal !== undefined && <span role="note" className={cn("border-l-2 border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)]", dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{browserRefusal}</span>}
       {/*
         THE BASE — pipeline then footer, pinned to the bottom as ONE block
         (ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -467,20 +472,20 @@ function WorkerCard({
           <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
             {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
           </span>
-          {workerCommands !== undefined && <Button size="sm" variant="outline" disabled={refusal !== undefined} title={refusal} onClick={() => control.invoke(card.directive === "pause" ? "resume-worker" : "pause-worker")}>{card.directive === "pause" ? "Resume" : "Pause"}</Button>}
-          {/* The worker card's stop control. */}
-          <Button
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            disabled={workerCommands === undefined ? onStop === undefined || !canStopWorker(card) : refusal !== undefined}
-            title={canStopWorker(card)
-              ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
-              : `Worker ${String(card.workerId)} is already ${card.directive === "stop" ? "stopping" : "settled"}`}
-            onClick={() => workerCommands === undefined ? onStop?.(card) : control.invoke("stop-worker")}
-          >
-            Stop
-          </Button>
+          <div role="group" aria-label={`Worker controls for ${workflowLabel}`} className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">
+            {workerCommands !== undefined && <Button size="sm" variant="outline" disabled={refusal !== undefined} title={refusal} onClick={() => control.invoke(card.directive === "pause" ? "resume-worker" : "pause-worker")}>{card.directive === "pause" ? "Resume" : "Pause"}</Button>}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={workerCommands === undefined ? onStop === undefined || !canStopWorker(card) : refusal !== undefined}
+              title={canStopWorker(card)
+                ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
+                : `Worker ${String(card.workerId)} is already ${card.directive === "stop" ? "stopping" : "settled"}`}
+              onClick={() => workerCommands === undefined ? onStop?.(card) : control.invoke("stop-worker")}
+            >
+              Stop
+            </Button>
+          </div>
         </div>
       </div>
     </article>
@@ -715,6 +720,7 @@ export function PoolOutcomeNotice({ outcome }: { outcome: PoolControlOutcome }) 
 function AddWorkersDialog({
   open,
   onOpenChange,
+  returnFocusRef,
   workflows,
   workerCards,
   workerPools,
@@ -724,6 +730,7 @@ function AddWorkersDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef: React.RefObject<HTMLButtonElement | null>;
   workflows: readonly WorkflowBootstrapPrimitive[];
   workerCards: readonly WorkerCardWire[];
   workerPools: readonly WorkerPoolWire[];
@@ -761,7 +768,7 @@ function AddWorkersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" title="Add workers" description="Start parallel executors for one workflow">
+      <DialogContent size="md" title="Add workers" description="Start parallel executors for one workflow" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusRef.current?.focus(); }}>
         <DialogBody>
           {workflow === undefined || group === undefined ? (
             <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
@@ -821,16 +828,19 @@ function AddWorkersDialog({
                 day projection, so no control here is withheld on it; the
                 server's refusal by name stays the authority.
               */}
-              <MetaLine
-                items={[
-                  group.facts.state === "declared"
-                    ? `${String(group.facts.desiredWorkers)} declared`
-                    : "no pool declaration",
-                  `${String(group.facts.activeWorkers)} active`,
-                  `pool version ${String(group.expectedVersion)}`,
-                  `cap ${String(SESSION_POOL_MAX_WORKERS)}`,
-                ]}
-              />
+              <dl aria-label="Worker pool" className="grid grid-cols-2 gap-x-[var(--ds-space-loose)] px-[var(--ds-space-tight)] py-[var(--ds-space-tight)]">
+                {[
+                  { label: "Declared workers", value: group.facts.state === "declared" ? String(group.facts.desiredWorkers) : "No pool declaration" },
+                  { label: "Active workers", value: String(group.facts.activeWorkers) },
+                  { label: "Pool version", value: String(group.expectedVersion) },
+                  { label: "Maximum workers", value: String(SESSION_POOL_MAX_WORKERS) },
+                ].map((fact) => (
+                  <div key={fact.label} className={cn("flex min-w-0 flex-col gap-[var(--ds-space-hair)] border-b py-[var(--ds-space-tight)]", dsBorder.subtle)}>
+                    <dt className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>{fact.label}</dt>
+                    <dd className={cn(dsText.body, dsText.nums, "break-words font-medium text-[color:var(--ds-fg)]")}>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
 
               {intent !== undefined && intent.kind === "refused" && (
                 <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{intent.reason}</span>
@@ -996,6 +1006,7 @@ export function SessionPanel({
   ) => Promise<CommandSettlement>;
 }) {
   const [localOpen, setLocalOpen] = useState(false);
+  const addWorkersTriggerRef = useRef<HTMLButtonElement>(null);
   const open = controlledOpen ?? localOpen;
   const setOpen = onOpenChange ?? setLocalOpen;
   const [addOpen, setAddOpen] = useState(false);
@@ -1190,6 +1201,7 @@ export function SessionPanel({
               per-member answer; this is only its door (the demo's `+`,
               `DemoShell.tsx:1903-1910`, D305). */}
           <IconButton
+            ref={addWorkersTriggerRef}
             size="sm"
             label="Add workers"
             title="Start parallel executors — pick a workflow and how many"
@@ -1269,6 +1281,7 @@ export function SessionPanel({
       <AddWorkersDialog
         open={addOpen}
         onOpenChange={setAddOpen}
+        returnFocusRef={addWorkersTriggerRef}
         workflows={workflows}
         workerCards={workerCards}
         workerPools={workerPools}
