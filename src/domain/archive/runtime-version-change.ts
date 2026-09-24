@@ -18,12 +18,14 @@ export const RuntimeVersionChangeReviewSchema = z.strictObject({
   after: RuntimeVersionStateSchema,
   members: z.array(RuntimeVersionMemberSchema),
   membershipDigest: FingerprintSchema,
+  planCommandFingerprint: FingerprintSchema,
 });
 export type RuntimeVersionChangeReview = z.infer<typeof RuntimeVersionChangeReviewSchema>;
 
-export function runtimeVersionChangeReviewFingerprint(input: Readonly<Omit<RuntimeVersionChangeReview, "members" | "membershipDigest"> & {
+export function runtimeVersionChangeReviewFingerprint(input: Readonly<Omit<RuntimeVersionChangeReview, "members" | "membershipDigest" | "planCommandFingerprint"> & {
   members: readonly RuntimeVersionChangeReview["members"][number][];
   membershipDigest: string;
+  planCommandFingerprint: string;
 }>): string {
   return sha256Hex(canonicalJsonStringify(RuntimeVersionChangeReviewSchema.parse(input)));
 }
@@ -32,6 +34,8 @@ export const RuntimeVersionChangeSchema = RuntimeVersionChangeReviewSchema.exten
   reviewFingerprint: FingerprintSchema,
   state: z.enum(["planned", "applying", "applied"]),
   completedRunIds: z.array(RunIdSchema),
+  applicationCommandId: z.string().uuid().optional(),
+  applicationRequestFingerprint: FingerprintSchema.optional(),
   claimedAt: IsoInstantSchema.optional(),
   completedAt: IsoInstantSchema.optional(),
   pendingCaptures: z.array(z.strictObject({ runId: RunIdSchema, reportJson: z.string().min(1) })).optional(),
@@ -53,11 +57,11 @@ export const RuntimeVersionChangeSchema = RuntimeVersionChangeReviewSchema.exten
     || change.completedRunIds.some(id => !candidates.includes(id))
     || new Set(pendingIds).size !== pendingIds.length
     || pendingIds.some(id => !candidates.includes(id) || change.completedRunIds.includes(id))
-    || (change.state === "planned" && (change.claimedAt !== undefined || change.completedAt !== undefined
+    || (change.state === "planned" && (change.applicationCommandId !== undefined || change.applicationRequestFingerprint !== undefined || change.claimedAt !== undefined || change.completedAt !== undefined
       || change.completedRunIds.length > 0 || change.pendingCaptures !== undefined))
-    || (change.state === "applying" && (change.claimedAt === undefined || change.completedAt !== undefined
+    || (change.state === "applying" && (change.applicationCommandId === undefined || change.applicationRequestFingerprint === undefined || change.claimedAt === undefined || change.completedAt !== undefined
       || pendingIds.length + change.completedRunIds.length !== candidates.length))
-    || (change.state === "applied" && (change.claimedAt === undefined || change.completedAt === undefined
+    || (change.state === "applied" && (change.applicationCommandId === undefined || change.applicationRequestFingerprint === undefined || change.claimedAt === undefined || change.completedAt === undefined
       || change.completedRunIds.length !== candidates.length || change.pendingCaptures !== undefined));
   if (invalid) context.addIssue({ code: "custom", message: "runtime-version-change-invalid" });
   for (const capture of change.pendingCaptures ?? []) {

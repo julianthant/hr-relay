@@ -39,6 +39,7 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
+import { RuntimeVersionScopeSchema } from "./archive/runtime-version.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { sha256Hex } from "./sha256.js";
 import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
@@ -87,6 +88,8 @@ export const CommandActionSchema = z.enum([
   "apply-protected-settings",
   "plan-version-bump",
   "apply-version-bump",
+  "plan-runtime-version",
+  "apply-runtime-version",
   "relaunch-archived-run",
   "delete-archived-run",
   "retry",
@@ -334,6 +337,18 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("apply-version-bump"),
     target: z.strictObject({ versionPlanId: VersionPlanIdSchema, expectedVersion: PositiveIntSchema }),
     payload: z.strictObject({ planFingerprint: FingerprintSchema }),
+  }),
+  z.strictObject({
+    ...CommandEnvelopeFields,
+    family: z.literal("version-archive"),
+    type: z.literal("plan-runtime-version"),
+    target: z.strictObject({ scope: RuntimeVersionScopeSchema }),
+  }),
+  z.strictObject({
+    ...CommandEnvelopeFields,
+    family: z.literal("version-archive"),
+    type: z.literal("apply-runtime-version"),
+    target: z.strictObject({ changeId: z.string().uuid(), reviewFingerprint: FingerprintSchema }),
   }),
   z.strictObject({
     ...CommandEnvelopeFields,
@@ -786,7 +801,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings", "apply-protected-settings"],
-  "version-archive": ["plan-version-bump", "apply-version-bump", "delete-archived-run"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
@@ -818,7 +833,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "delete-archived-run"] },
+  { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },

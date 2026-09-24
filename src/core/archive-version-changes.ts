@@ -8,6 +8,7 @@ import type { IdFactory } from "../domain/identifiers.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RunRecordService } from "./run-record-service.js";
 import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
+import type { createRuntimeVersionChanges } from "./archive-runtime-version-changes.js";
 import type { TargetReference, VersionChange as RunVersionChange } from "./run-fan-out.js";
 interface ArchiveCommandDependencies {
   authority: { withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
@@ -18,6 +19,7 @@ interface ArchiveCommandDependencies {
   appVersion: string;
   descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   archiveSnapshots: ArchiveSnapshotSource;
+  runtimeVersionChanges?: ReturnType<typeof createRuntimeVersionChanges>;
 }
 export interface ArchiveCommandTools {
   applied(request: CommandRequest, targets: readonly TargetReference[], changes: readonly RunVersionChange[]): CommandApplication;
@@ -84,6 +86,24 @@ export function executeArchiveCommand(deps: ArchiveCommandDependencies, repos: A
   request: Request, now: string, tools: ArchiveCommandTools): CommandApplication {
   const storage = deps.lifecycle.lifecycleStorage();
   switch (request.type) {
+    case "plan-runtime-version": {
+      const row = deps.runtimeVersionChanges === undefined ? undefined : storage.runtimeVersionIndex().changes.find(change => change.changeId === request.commandId);
+      if (row === undefined || row.actorId !== request.requestedBy
+        || row.planCommandFingerprint !== sha256Hex(canonicalJsonStringify(request))
+        || canonicalJsonStringify(row.scope) !== canonicalJsonStringify(request.target.scope)) {
+        refuse(request, "invalid-state", "Runtime version review was not retained for this command.");
+      }
+      return tools.applied(request, [planTarget(row.changeId)], []);
+    }
+    case "apply-runtime-version": {
+      const row = storage.runtimeVersionIndex().changes.find(change => change.changeId === request.target.changeId);
+      if (row?.state !== "applied" || row.applicationCommandId !== request.commandId
+        || row.applicationRequestFingerprint !== sha256Hex(canonicalJsonStringify(request))
+        || row.reviewFingerprint !== request.target.reviewFingerprint) {
+        refuse(request, "invalid-state", "Runtime version transfer is not complete for this command.");
+      }
+      return tools.applied(request, [planTarget(row.changeId), ...row.members.map(member => runTarget(member.runId))], []);
+    }
     case "plan-version-bump": {
       if (request.target.scope.kind === "application" && request.target.scope.applicationVersion !== deps.appVersion) {
         refuse(request, "invalid-state", "Application review must name the running build.");
@@ -235,7 +255,17 @@ export function runArchiveCommand(request: Request, deps: ArchiveCommandDependen
       if (historical !== undefined) archivedRunReferenceFingerprint(historical);
     }
     if (journaled || request.type === "plan-version-bump" || request.type === "relaunch-archived-run") return executeAtomic();
-    if (request.type === "apply-version-bump") {
+    if (request.type === "plan-runtime-version") {
+      if (deps.runtimeVersionChanges === undefined) refuse(request, "capability-unavailable", "Runtime version changes are unavailable.");
+      deps.runtimeVersionChanges.plan(request.target.scope, request.requestedBy, request.commandId,
+        sha256Hex(canonicalJsonStringify(request)));
+    } else if (request.type === "apply-runtime-version") {
+      if (deps.runtimeVersionChanges === undefined) refuse(request, "capability-unavailable", "Runtime version changes are unavailable.");
+      const row = deps.lifecycle.lifecycleStorage().runtimeVersionIndex().changes.find(change => change.changeId === request.target.changeId);
+      if (row === undefined) refuse(request, "target-not-found", "Runtime version review is unavailable.");
+      if (row.reviewFingerprint !== request.target.reviewFingerprint) refuse(request, "schema-mismatch", "Runtime version review fingerprint differs.");
+      deps.runtimeVersionChanges.apply(row.changeId, request.commandId, sha256Hex(canonicalJsonStringify(request)));
+    } else if (request.type === "apply-version-bump") {
       const refusal = prepareApply(deps, request);
       if (refusal !== undefined) return refusal;
       applyTransfer(deps, request);
@@ -262,6 +292,13 @@ export function runArchiveCommand(request: Request, deps: ArchiveCommandDependen
   } catch (error) {
     if (error instanceof CommandIdentityConflictError) return { state: "rejected" as const, commandId: request.commandId, code: "command-divergent" as const, message: error.message };
     if (error instanceof ArchivePolicyRefusal) return error.result;
+    if (error instanceof Error && ["runtime-version-no-workflows", "runtime-version-invalid-selection",
+      "runtime-version-review-stale", "runtime-version-active-blockers", "runtime-version-workflow-claimed",
+      "runtime-version-claim-active", "runtime-version-legacy-change-active",
+      "runtime-version-child-out-of-scope",
+      "runtime-version-application-command-conflict", "runtime-version-plan-command-conflict"].includes(error.message)) {
+      return { state: "rejected" as const, commandId: request.commandId, code: "policy-refused" as const, message: error.message };
+    }
     throw error;
   }
 }

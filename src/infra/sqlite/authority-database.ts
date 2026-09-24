@@ -3308,6 +3308,12 @@ export class AuthorityDatabase implements Disposable {
         if (previous.claimedAt !== undefined && previous.claimedAt !== change.claimedAt) {
           throw new Error("runtime-version-change-conflict");
         }
+        if (previous.applicationCommandId !== undefined && previous.applicationCommandId !== change.applicationCommandId) {
+          throw new Error("runtime-version-application-command-conflict");
+        }
+        if (previous.applicationRequestFingerprint !== undefined && previous.applicationRequestFingerprint !== change.applicationRequestFingerprint) {
+          throw new Error("runtime-version-application-command-conflict");
+        }
         for (const capture of previous.pendingCaptures ?? []) {
           const nextCapture = change.pendingCaptures?.find(row => row.runId === capture.runId);
           if (nextCapture === undefined && !change.completedRunIds.includes(capture.runId)) {

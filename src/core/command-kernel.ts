@@ -53,6 +53,7 @@ import {
 } from "./run-fan-out.js";
 import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
 import { executeArchiveCommand, runArchiveCommand } from "./archive-version-changes.js";
+import type { createRuntimeVersionChanges } from "./archive-runtime-version-changes.js";
 import { buildRerunPlan, RerunRefusedError } from "../services/start/rerun.js";
 import type { ArtifactRef } from "../domain/artifacts.js";
 import type { Clock } from "../domain/clock.js";
@@ -158,7 +159,7 @@ const PHASE1_ACTIVE = {
   ],
   settings: ["apply-settings", "apply-protected-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
-  "version-archive": ["plan-version-bump", "apply-version-bump", "delete-archived-run"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -439,6 +440,7 @@ export interface CommandKernelDependencies {
    * of them.
    */
   readonly archiveSnapshots: ArchiveSnapshotSource;
+  readonly runtimeVersionChanges?: ReturnType<typeof createRuntimeVersionChanges>;
   /** D283: durable Explorer apply, composed behind the ONE command journal. */
   readonly explorerEdits?: ExplorerEditExecutor;
 }

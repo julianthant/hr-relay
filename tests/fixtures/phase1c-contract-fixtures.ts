@@ -69,6 +69,8 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: { "browser.headless": { set: false } } } },
   { ...BASE_COMMAND, family: "version-archive", type: "plan-version-bump", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } }, payload: { targetVersion: "1.1.0", changeFingerprint: HASH_A, changeRecord: VERSION_BUMP_CHANGE_RECORD } },
   { ...BASE_COMMAND, family: "version-archive", type: "apply-version-bump", target: { versionPlanId: UUID_3, expectedVersion: 1 }, payload: { planFingerprint: HASH_A } },
+  { ...BASE_COMMAND, family: "version-archive", type: "plan-runtime-version", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } } },
+  { ...BASE_COMMAND, family: "version-archive", type: "apply-runtime-version", target: { changeId: UUID_3, reviewFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "version-archive", type: "delete-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
   ...["retry", "restart", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),

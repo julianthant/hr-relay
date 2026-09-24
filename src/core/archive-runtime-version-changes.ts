@@ -3,8 +3,9 @@ import { z } from "zod";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import { deriveStableUuid } from "../domain/identifiers.js";
+import { sha256Hex } from "../domain/sha256.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../domain/canonical-json.js";
-import { IsoInstantSchema, RunIdSchema } from "../domain/ids.js";
+import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../domain/ids.js";
 import { RuntimeVersionChangeSchema, runtimeVersionChangeReviewFingerprint } from "../domain/archive/runtime-version-change.js";
 import { RuntimeVersionScopeSchema } from "../domain/archive/runtime-version.js";
 import { ArchiveReportSchema } from "../domain/archive/report.js";
@@ -23,15 +24,25 @@ export function createRuntimeVersionChanges(deps: Readonly<{
   afterTransferStep?: (runId: string, step: "captured" | "verified" | "cleaned" | "published") => void;
 }>) {
   const storage = createRunLifecycleStorage(deps.database);
-  const plan = (scopeInput: z.input<typeof RuntimeVersionScopeSchema>, actorId: string) =>
+  const plan = (scopeInput: z.input<typeof RuntimeVersionScopeSchema>, actorId: string, changeId = deps.ids.uuid(),
+    commandFingerprint = sha256Hex(canonicalJsonStringify({ scope: scopeInput, actorId, changeId }))) =>
     deps.database.withAuthorityTransaction(() => {
       const scope = RuntimeVersionScopeSchema.parse(scopeInput);
+      const existing = deps.database.readRuntimeVersionChange(changeId);
+      if (existing !== undefined) {
+        if (existing.actorId !== actorId || existing.planCommandFingerprint !== commandFingerprint
+          || canonicalJsonStringify(existing.scope) !== canonicalJsonStringify(scope)) {
+          throw new Error("runtime-version-plan-command-conflict");
+        }
+        return existing;
+      }
       const review = deps.database.reviewRuntimeVersionTransition(scope);
       const record = {
         schemaVersion: 3 as const,
-        changeId: deps.ids.uuid(), actorId, reviewedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()),
+        changeId, actorId, reviewedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()),
         authorityRevision: review.revision, scope, before: review.transition.before, after: review.transition.after,
         members: review.review.members, membershipDigest: review.review.membershipDigest,
+        planCommandFingerprint: FingerprintSchema.parse(commandFingerprint),
       };
       const change = RuntimeVersionChangeSchema.parse({ ...record,
         reviewFingerprint: runtimeVersionChangeReviewFingerprint(record), state: "planned", completedRunIds: [],
@@ -39,10 +50,15 @@ export function createRuntimeVersionChanges(deps: Readonly<{
       return deps.database.writeRuntimeVersionChange(change);
     });
 
-  const claim = (changeId: string) => deps.database.withAuthorityTransaction(() => {
+  const claim = (changeId: string, commandId: string, requestFingerprint: string) => deps.database.withAuthorityTransaction(() => {
     const row = deps.database.readRuntimeVersionChange(changeId);
     if (row === undefined) throw new Error("runtime-version-change-missing");
-    if (row.state !== "planned") return row;
+    if (row.state !== "planned") {
+      if (row.applicationCommandId !== commandId || row.applicationRequestFingerprint !== requestFingerprint) {
+        throw new Error("runtime-version-application-command-conflict");
+      }
+      return row;
+    }
     const current = deps.database.reviewRuntimeVersionTransition(row.scope);
     if (current.revision !== row.authorityRevision
       || current.review.membershipDigest !== row.membershipDigest
@@ -50,12 +66,18 @@ export function createRuntimeVersionChanges(deps: Readonly<{
       throw new Error("runtime-version-review-stale");
     }
     if (current.review.blockers.length > 0) throw new Error("runtime-version-active-blockers");
+    const candidates = current.review.candidates;
+    const candidateIds = new Set(candidates.map(member => member.runId));
+    for (const member of candidates) {
+      if (deps.database.authority.runs.listChildren(member.runId).some(child => !candidateIds.has(child.envelope.runId))) {
+        throw new Error("runtime-version-child-out-of-scope");
+      }
+    }
     const affectedWorkflowIds = current.transition.affectedWorkflowIds;
     deps.database.claimRuntimeVersionTransition({ changeId, expectedRevision: row.authorityRevision,
       workflowIds: affectedWorkflowIds, after: row.after, expectedMembershipDigest: row.membershipDigest });
-    const candidates = current.review.candidates;
     const displays = deps.archiveSnapshots.snapshotBatch(candidates.map(member => member.runId));
-    const pendingCaptures = candidates.map(member => {
+    const captures = candidates.map(member => {
       const snapshot = storage.capture(member.runId);
       if (snapshot.run.version !== member.recordVersion || snapshot.run.lifecycle.state !== "terminal") {
         throw new Error("runtime-version-source-stale");
@@ -77,14 +99,28 @@ export function createRuntimeVersionChanges(deps: Readonly<{
         ...(adoption === undefined ? {} : { adoptedRuntimeVersion: { dashboard: adoption.dashboard, workflow: adoption.workflow } }),
       });
       if (report.content.runtimeVersion === undefined) throw new Error("runtime-version-capture-unattributed");
-      return { runId: RunIdSchema.parse(member.runId), reportJson: canonicalJsonStringify(report) };
+      return { runId: RunIdSchema.parse(member.runId), reportJson: canonicalJsonStringify(report),
+        parentId: snapshot.run.envelope.parent?.runId };
     });
-    return deps.database.writeRuntimeVersionChange({ ...row, state: "applying",
+    const byId = new Map(captures.map(capture => [capture.runId, capture]));
+    const depth = (runId: string, seen = new Set<string>()): number => {
+      if (seen.has(runId)) throw new Error("runtime-version-run-parent-cycle");
+      const parentId = byId.get(runId)?.parentId;
+      if (parentId === undefined || !byId.has(parentId)) return 0;
+      seen.add(runId);
+      return 1 + depth(parentId, seen);
+    };
+    const pendingCaptures = captures
+      .sort((left, right) => depth(right.runId) - depth(left.runId) || left.runId.localeCompare(right.runId))
+      .map(({ runId, reportJson }) => ({ runId, reportJson }));
+    return deps.database.writeRuntimeVersionChange({ ...row, state: "applying", applicationCommandId: commandId,
+      applicationRequestFingerprint: FingerprintSchema.parse(requestFingerprint),
       claimedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), pendingCaptures });
   });
 
-  const apply = (changeId: string) => {
-    let row = claim(changeId);
+  const apply = (changeId: string, commandId = changeId,
+    requestFingerprint = sha256Hex(canonicalJsonStringify({ changeId, commandId }))) => {
+    let row = claim(changeId, commandId, requestFingerprint);
     if (row.state === "applied") return row;
     if (deps.database.readRuntimeVersionAuthority().claim?.changeId !== changeId) throw new Error("runtime-version-claim-mismatch");
     for (const capture of row.pendingCaptures ?? []) {

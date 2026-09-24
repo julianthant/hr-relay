@@ -1,5 +1,6 @@
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { createRuntimeVersionChanges } from "../../../src/core/archive-runtime-version-changes.js";
 /**
  * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
  *
@@ -122,7 +123,7 @@ const EXPECTED_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   // D308: the Archive's delete door.
-  "version-archive": ["plan-version-bump", "apply-version-bump", "delete-archived-run"],
+  "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -176,6 +177,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
+    runtimeVersionChanges: createRuntimeVersionChanges({ database, clock, ids: sequentialIdFactory("r"), archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS }),
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -332,7 +334,7 @@ describe("control-command-single-path", () => {
       const request = CommandRequestSchema.parse(fixture);
       const target: Record<string, unknown> = request.target;
       const carries = "expectedVersion" in target || "expectedRevision" in target
-        || "archiveFingerprint" in target || "scope" in target;
+        || "archiveFingerprint" in target || "reviewFingerprint" in target || "scope" in target;
       if (!carries) versionless.push(`${request.family}/${request.type}`);
     }
     assert.deepEqual(versionless, []);
