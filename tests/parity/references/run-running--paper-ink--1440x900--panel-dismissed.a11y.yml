@@ -1,7 +1,7 @@
 # run-running--paper-ink--1440x900--panel-dismissed
 # adapter: fixture
 # fixture: run-running
-# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: panel-dismissed
 # capturedAt: 2026-08-03
@@ -261,7 +261,7 @@
       - 'listitem "9:53 AM: info note: 2 candidates returned from person search"': 9:53 AM 2 candidates returned from person search
       - 'listitem "9:54 AM: info note: Selecting the exact name match"': 9:54 AM Selecting the exact name match
     - searchbox "Search logs"
-    - text: a14b8216
+    - text: a77fa29f
     - button "Run provenance"
     - text: live
   - complementary "Run data":
@@ -273,8 +273,14 @@
       - button "Widen the data surface"
       - text: Selection
       - paragraph: exact-match
-      - text: Active status
+      - text: Attempt 1 · crm-dates / startsOn.value Active status
       - paragraph: pending
+      - text: Attempt 1 · crm-dates / invitedOn.value
+    - separator
+    - region "Attempts":
+      - text: Attempts
+      - link "Attempt 1":
+        - /url: "?day=2026-08-03&run=00000000-0002-4000-8000-000000000002"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

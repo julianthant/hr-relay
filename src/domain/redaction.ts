@@ -18,40 +18,47 @@ export const ClassifiedDiagnosticValueSchema = z.strictObject({
   value: JsonValueSchema,
 }).superRefine(refineEvidenceTransformPair);
 
+const RawValueField = { rawValue: JsonValueSchema.optional() } as const;
 const RedactedDropArm = z.strictObject({
   state: z.literal("redacted"),
   classification: DataClassificationSchema,
   transform: z.literal("drop"),
+  ...RawValueField,
 });
 const RedactedDigestArm = z.strictObject({
   state: z.literal("transformed"),
   classification: DataClassificationSchema,
   transform: z.literal("digest"),
   value: FingerprintSchema,
+  ...RawValueField,
 });
 const RedactedLast4Arm = z.strictObject({
   state: z.literal("transformed"),
   classification: DataClassificationSchema,
   transform: z.literal("last4"),
   value: z.string().max(4, "must contain at most four characters"),
+  ...RawValueField,
 });
 const RedactedBasenameArm = z.strictObject({
   state: z.literal("transformed"),
   classification: DataClassificationSchema,
   transform: z.literal("basename"),
   value: z.string(),
+  ...RawValueField,
 });
 const RedactedCountArm = z.strictObject({
   state: z.literal("transformed"),
   classification: DataClassificationSchema,
   transform: z.literal("count"),
   value: z.number().int().nonnegative(),
+  ...RawValueField,
 });
 const RedactedAllowedArm = z.strictObject({
   state: z.literal("allowed"),
   classification: DataClassificationSchema,
   transform: z.literal("allow"),
   value: JsonValueSchema,
+  ...RawValueField,
 });
 
 /**
@@ -180,17 +187,17 @@ export function redactValue(
 }
 
 function redact(field: z.infer<typeof ClassifiedDiagnosticValueSchema>): z.infer<typeof RedactedFieldSchema> {
-  return { key: field.key, ...redactValue(field.classification, field.transform, field.value) };
+  return { key: field.key, ...redactValue(field.classification, field.transform, field.value), rawValue: field.value };
 }
 
 export function redactDiagnosticFields(input: unknown): z.infer<typeof RedactionResultSchema> {
-  if (!Array.isArray(input)) return { fields: [], warnings: ["unclassified diagnostic payload dropped"] };
+  if (!Array.isArray(input)) return { fields: [], warnings: [`unclassified diagnostic payload: ${JSON.stringify(input)}`] };
   const fields: Array<z.infer<typeof RedactedFieldSchema>> = [];
   const warnings: string[] = [];
   for (const [index, candidate] of input.entries()) {
     const parsed = ClassifiedDiagnosticValueSchema.safeParse(candidate);
     if (!parsed.success) {
-      warnings.push(`unclassified diagnostic field at index ${String(index)} dropped`);
+      warnings.push(`unclassified diagnostic field at index ${String(index)}: ${JSON.stringify(candidate)}`);
       continue;
     }
     fields.push(redact(parsed.data));

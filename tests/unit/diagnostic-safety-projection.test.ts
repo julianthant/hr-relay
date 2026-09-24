@@ -61,7 +61,7 @@ describe("versioned diagnostic safety", () => {
 
     assert.equal(authority.summary, RAW, "authority retains the diagnostic detail for investigation");
     assert.equal(authority.diagnosticSafetyVersion, undefined);
-    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), false);
+    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), true);
   });
 
   it("keeps caller-supplied entry-validation problems in authority without stamping them safe", () => {
@@ -74,7 +74,7 @@ describe("versioned diagnostic safety", () => {
 
     assert.equal(authority.summary.includes(RAW), true, "authority retains every named validation problem");
     assert.equal(authority.diagnosticSafetyVersion, undefined);
-    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), false);
+    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), true);
   });
 
   it("stamps the closed non-Error fallback sentence because no thrown value is copied into it", () => {
@@ -92,12 +92,11 @@ describe("versioned diagnostic safety", () => {
     assert.deepEqual(projectFailureForOperator(authority, false), authority);
   });
 
-  it("withholds every historical failure free-text field without rewriting authority", () => {
+  it("serves historical failure text without rewriting authority", () => {
     const authority = failure();
     const before = JSON.stringify(authority);
     const projected = projectFailureForOperator(authority);
-    assert.equal(JSON.stringify(projected).includes(RAW), false);
-    assert.match(projected.summary, /UNHANDLED.*historical diagnostic text withheld/u);
+    assert.deepEqual(projected, authority);
     assert.equal(JSON.stringify(authority), before);
   });
 
@@ -106,18 +105,18 @@ describe("versioned diagnostic safety", () => {
     assert.deepEqual(projectFailureForOperator(authority, false), authority);
   });
 
-  it("withholds protected and unknown-source stamped text, and unstamped ordinary text", () => {
+  it("serves protected and historical text from every source", () => {
     const authority = FailureRecordSchema.parse({ ...failure(CURRENT_DIAGNOSTIC_SAFETY_VERSION),
       summary: RAW, causeChain: [{ code: "UNHANDLED", summary: RAW, role: "primary", transient: false }],
       remediation: [{ kind: "operator-action", message: RAW }] });
     const before = JSON.stringify(authority);
     for (const source of [true, undefined])
-      assert.equal(JSON.stringify(projectFailureForOperator(authority, source)).includes(RAW), false);
-    assert.equal(JSON.stringify(projectFailureForOperator(failure(), false)).includes(RAW), false);
+      assert.deepEqual(projectFailureForOperator(authority, source), authority);
+    assert.deepEqual(projectFailureForOperator(failure(), false), failure());
     assert.equal(JSON.stringify(authority), before);
   });
 
-  it("withholds current write-authority detail while preserving its strict code and digest in authority", () => {
+  it("serves current write-authority detail", () => {
     const reason = deriveWriteAuthorityReason(
       "preview-probe-exception",
       "exception",
@@ -132,14 +131,14 @@ describe("versioned diagnostic safety", () => {
     const before = JSON.stringify(authority);
     const projected = projectFailureForOperator(authority);
     const projectedBytes = JSON.stringify(projected);
-    assert.equal(projectedBytes.includes(RAW), false);
-    assert.equal(projectedBytes.includes(reason.code), false);
-    assert.equal(projectedBytes.includes(reason.evidence.digest), false);
-    assert.equal(projected.writeAuthorityReason, undefined);
+    assert.equal(projectedBytes.includes(RAW), true);
+    assert.equal(projectedBytes.includes(reason.code), true);
+    assert.equal(projectedBytes.includes(reason.evidence.digest), true);
+    assert.deepEqual(projected.writeAuthorityReason, reason);
     assert.equal(JSON.stringify(authority), before);
   });
 
-  it("withholds historical note text while retaining current stamped notes", () => {
+  it("serves historical and current note text", () => {
     const legacy = NoteWireSchema.parse({
       ts: "2026-08-29T08:00:00.000Z",
       workflow: "person-lookup",
@@ -156,8 +155,7 @@ describe("versioned diagnostic safety", () => {
       diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
       message: "registered source could not be read",
     });
-    assert.equal(JSON.stringify(projectNoteForOperator(legacy)).includes(RAW), false);
-    assert.match(projectNoteForOperator(legacy).message, /historical note text withheld/u);
+    assert.deepEqual(projectNoteForOperator(legacy), legacy);
     assert.deepEqual(projectNoteForOperator(current), current);
   });
 });

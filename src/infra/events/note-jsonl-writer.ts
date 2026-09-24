@@ -3,23 +3,21 @@
  * §1.1). Notes are evidence, not control state: log lines and structured
  * fields addressed to their exact task attempt or worker/browser lifetime.
  *
- * Redaction is schema-owned (ref clock-config-secrets): a caller submits CLASSIFIED fields —
- * `{key, classification, transform, value}` — and the writer runs them through
- * `redactDiagnosticFields` before anything touches disk. An unclassified field
- * is DROPPED, never passed through, and the drop is visible: the emitted note
- * carries a `redactionWarnings` count so a disappearing field reads as a
- * redaction event rather than as data that never existed.
+ * Classified diagnostic fields and task logger fields retain their original
+ * values for the local operator; invalid diagnostic fields remain counted.
  */
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { localDatePart } from "../../domain/clock.js";
-import { redactDiagnosticFields } from "../../domain/redaction.js";
-import { NoteLevelSchema, NoteWireSchema, type NoteFieldWire, type NoteWire } from "../../events/types.js";
+import { ClassifiedDiagnosticValueSchema } from "../../domain/redaction.js";
+import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../events/types.js";
+import type { BrowserAction } from "../browser/action-notes.js";
 import { assertNoteWithinRunScope } from "../../domain/run/note-scope.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../domain/run/task-note.js";
 import { appendEventStreamLine } from "./jsonl-streams.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../domain/trust/failure.js";
+import type { TaskLogger } from "../../base/task.js";
 
 const RunNoteAddressSchema = z.strictObject({
   runId: z.string().min(1),
@@ -39,7 +37,7 @@ export const NoteIngressSchema = z.strictObject({
   address: z.union([RunNoteAddressSchema, WorkerNoteAddressSchema]),
   level: NoteLevelSchema,
   message: z.string().min(1),
-  /** Classified diagnostic values; the writer redacts, callers never pre-redact. */
+  /** Classified diagnostic values; the writer retains their original values. */
   fields: z.array(z.unknown()).optional(),
 });
 export type NoteIngress = z.input<typeof NoteIngressSchema>;
@@ -52,29 +50,29 @@ export interface NoteJsonlWriterDeps {
 
 export interface NoteJsonlWriter {
   emitNote(input: unknown): NoteWire;
+  emitRunLog(input: Readonly<{
+    workflow: string;
+    address: z.input<typeof RunNoteAddressSchema>;
+    level: "step" | "debug" | "warn";
+    message: string;
+    fields?: Parameters<TaskLogger["info"]>[1];
+  }>, authority: RunRecord): NoteWire;
   emitRunNote(input: Readonly<{
     workflow: string;
     address: z.input<typeof RunNoteAddressSchema>;
     kind: TaskRunNoteKind;
   }>, authority: RunRecord): NoteWire;
-}
-
-function toWireField(field: ReturnType<typeof redactDiagnosticFields>["fields"][number]): NoteFieldWire | undefined {
-  if (field.state === "redacted") return undefined;
-  if (field.state === "allowed") {
-    return { key: field.key, kind: "text", value: typeof field.value === "string" ? field.value : JSON.stringify(field.value) };
-  }
-  switch (field.transform) {
-    case "digest": return { key: field.key, kind: "digest", value: z.string().parse(field.value) };
-    case "last4": return { key: field.key, kind: "last4", value: z.string().parse(field.value) };
-    case "basename": return { key: field.key, kind: "basename", value: z.string().parse(field.value) };
-    case "count": return { key: field.key, kind: "count", value: z.number().parse(field.value) };
-  }
+  emitRunAction(input: Readonly<{
+    workflow: string;
+    address: z.input<typeof RunNoteAddressSchema>;
+    action: BrowserAction;
+  }>, authority: RunRecord): NoteWire;
 }
 
 export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWriter {
   const pid = z.number().int().positive().parse(deps.pid ?? process.pid);
-  const write = (input: unknown, authority?: RunRecord): NoteWire => {
+  const write = (input: unknown, authority?: RunRecord, occurredAt?: string, action?: BrowserAction,
+    taskFields?: Parameters<TaskLogger["info"]>[1]): NoteWire => {
     const ingress = NoteIngressSchema.parse(input);
     const at = deps.clock.now();
     if (authority !== undefined) {
@@ -89,23 +87,30 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       }
       assertNoteWithinRunScope(authority, { runId, workflow: ingress.workflow, at });
     }
-    const redaction = redactDiagnosticFields(ingress.fields ?? []);
     const fields: NoteFieldWire[] = [];
-    for (const field of redaction.fields) {
-      const wire = toWireField(field);
-      if (wire !== undefined) fields.push(wire);
+    let invalidFieldCount = 0;
+    for (const candidate of ingress.fields ?? []) {
+      const field = ClassifiedDiagnosticValueSchema.safeParse(candidate);
+      if (!field.success) { invalidFieldCount += 1; continue; }
+      fields.push({ key: field.data.key, kind: "text",
+        value: typeof field.data.value === "string" ? field.data.value : JSON.stringify(field.data.value) });
     }
-    if (redaction.warnings.length > 0) {
-      fields.push({ key: "redactionWarnings", kind: "count", value: redaction.warnings.length });
+    for (const [key, value] of Object.entries(taskFields ?? {})) {
+      fields.push({ key, kind: "text", value: String(value) });
+    }
+    if (invalidFieldCount > 0) {
+      fields.push({ key: "invalidFields", kind: "count", value: invalidFieldCount });
     }
     const note = NoteWireSchema.parse({
       diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
       ...ingress.address,
-      ts: at.toISOString(),
+      ts: occurredAt ?? at.toISOString(),
       workflow: ingress.workflow,
       pid,
       level: ingress.level,
       message: ingress.message,
+      ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
+        ...(action.value === undefined ? {} : { value: action.value }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
     appendEventStreamLine(deps.stateRoot, "notes", note.workflow, localDatePart(at), JSON.stringify(note));
@@ -124,8 +129,33 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       message: taskRunNoteMessage(ingress.kind),
     }, authority);
   };
+  const emitRunLog: NoteJsonlWriter["emitRunLog"] = (input, authority) => write({
+    workflow: input.workflow,
+    address: input.address,
+    level: input.level,
+    message: input.message,
+  }, authority, undefined, undefined, input.fields);
+  const emitRunAction: NoteJsonlWriter["emitRunAction"] = (input, authority) => {
+    const action = z.strictObject({
+      kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
+      targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
+      at: z.iso.datetime({ offset: true }),
+      value: z.union([z.string(), z.boolean()]).optional(),
+    }).parse(input.action);
+    if (Date.parse(action.at) > deps.clock.now().getTime()) {
+      throw new Error("browser action occurred after note append time");
+    }
+    return write({
+      workflow: input.workflow,
+      address: input.address,
+      level: "step",
+      message: browserActionMessage(action),
+    }, authority, action.at, action);
+  };
   return Object.freeze({
     emitNote: (input: unknown): NoteWire => write(input),
+    emitRunLog,
     emitRunNote,
+    emitRunAction,
   });
 }

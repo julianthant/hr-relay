@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright";
+import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import { z } from "zod";
 import {
   CrmReadOnboardingDates,
@@ -169,6 +170,7 @@ export async function searchCrmOnboardingRows(
     waitUntil: "domcontentloaded",
     timeout: NAVIGATION_TIMEOUT_MS,
   });
+  recordBrowserAction("opened", "crm.onboarding.search");
   await waitForSearchReady(page, query);
 
   const rows = searchRowsLocator(page);
@@ -270,6 +272,7 @@ async function openAndReadCrmRecord(
     waitUntil: "domcontentloaded",
     timeout: NAVIGATION_TIMEOUT_MS,
   });
+  recordBrowserAction("opened", "crm.onboarding.record");
   assertExactCrmLocation(page.url(), CRM_RECORD_PATH, row.recordId);
   const observedEid = EidSchema.parse(await readRecordField(page, "UCPath Employee ID", "reject"));
   return ExactRecordSchema.parse({
@@ -407,6 +410,7 @@ async function readHistoryTransitions(
     waitUntil: "domcontentloaded",
     timeout: NAVIGATION_TIMEOUT_MS,
   });
+  recordBrowserAction("opened", "crm.onboarding.history");
   assertExactCrmLocation(page.url(), CRM_HISTORY_PATH, record.recordId);
   const rows = historyRowsLocator(page);
   await rows.first().waitFor({ state: "visible", timeout: STATE_TIMEOUT_MS });

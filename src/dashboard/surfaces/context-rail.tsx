@@ -36,6 +36,8 @@ import {
 
 import { fmtClock, plural } from "./format.js";
 import { SystemChip } from "./system-chip.js";
+import { logLedgerOf } from "./run-detail/logs-model.js";
+import type { LogLedgerFact } from "./run-detail/logs-model.js";
 import { actionsAt, type ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { ITEM_ATTEMPT_HISTORY_MAX_LIMIT,
   type ItemAttemptHistoryResponse, type ItemAttemptHistoryRun } from "../../domain/dashboard/item-attempt-history.js";
@@ -289,6 +291,23 @@ function LedgerRow({
   );
 }
 
+function ObservedFactValue({ fact }: { fact: LogLedgerFact }) {
+  if (fact.items === undefined) {
+    return <span title={fact.value} className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>{fact.value}</span>;
+  }
+  return <details className="min-w-0" title={fact.value}>
+    <summary className={cn(dsText.body, dsText.nums, "min-w-0 cursor-pointer text-[color:var(--ds-fg)]")}>
+      {fact.items.length} {fact.items.length === 1 ? "value" : "values"}
+      <span className="ml-[var(--ds-space-tight)] inline-block max-w-full truncate align-bottom text-[color:var(--ds-fg-muted)]">
+        {fact.items.slice(0, 2).join(" · ")}
+      </span>
+    </summary>
+    <ul className="m-0 list-none p-0 pt-[var(--ds-space-tight)]">
+      {fact.items.map((item, index) => <li key={`${String(index)}:${item}`} className={cn(dsText.body, dsText.nums, "break-all")}>{item}</li>)}
+    </ul>
+  </details>;
+}
+
 function ContextSection({
   label,
   payload,
@@ -423,25 +442,60 @@ function DataSection({
   target?: ActionTarget;
   onAction?: DashboardActionHandler;
 }) {
+  const observations = payload.observations ?? [];
   return (
     <section aria-label={DATA_SECTION_LABEL} className="flex shrink-0 flex-col gap-[var(--ds-space-snug)]">
       <DataSectionHead expanded={expanded} onExpandedChange={onExpandedChange} />
       {payload.state === "archived" && (
         <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Archived checkpoint values are read-only.</p>
       )}
+      {payload.state !== "deleted" && observations.length > 0 && (
+        <div aria-label="Observed fields" className="flex flex-col gap-[var(--ds-space-base)]">
+          {observations.map((row) => (
+            <Well key={row.logId} className="overflow-hidden p-0">
+              <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
+                <SectionLabel className="min-w-0 truncate">{row.producer.step}</SectionLabel>
+                {row.producer.system !== undefined && <SystemChip system={row.producer.system} className="mr-0 shrink-0" />}
+              </div>
+              <div className="border-t border-[color:var(--ds-recess-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
+                <p className={cn(dsText.micro, dsText.nums, "m-0 mb-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+                  {fmtClock(row.at)} · attempt {row.attempt} · {row.producer.taskId}
+                </p>
+                {logLedgerOf(row).map((section, sectionIndex) => (
+                  <div key={`${section.direction}:${String(sectionIndex)}`} className="flex flex-col gap-[var(--ds-space-hair)]">
+                    <span className={cn(dsText.caps, section.direction === "read"
+                      ? "text-[color:var(--ds-read-fg)]" : "text-[color:var(--ds-write-fg)]")}>
+                      {section.direction}
+                    </span>
+                    {section.fields.map((field, fieldIndex) => <div key={`${field.field}:${String(fieldIndex)}`}>
+                      {field.nested && <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>{field.field}</span>}
+                      {field.facts.map((fact, factIndex) => (
+                        <LedgerRow key={`${fact.label}:${String(factIndex)}`} label={fact.key} dir={section.direction}>
+                          <ObservedFactValue fact={fact} />
+                        </LedgerRow>
+                      ))}
+                    </div>)}
+                  </div>
+                ))}
+              </div>
+            </Well>
+          ))}
+        </div>
+      )}
       {payload.state === "deleted" ? (
         <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>This run was deleted; its recorded values are no longer available.</p>
       ) : payload.state === "unavailable" ? (
         <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{payload.reason === undefined
-          ? "Run data is unavailable because its source could not be verified."
-          : "Run data is unavailable because its " + payload.reason.replaceAll("-", " ") + "."}</p>
-      ) : payload.entries.length === 0 ? (
+          ? "Checkpoint fields are unavailable because their source could not be verified."
+          : "Checkpoint fields are unavailable because their " + payload.reason.replaceAll("-", " ") + "."}</p>
+      ) : payload.entries.length === 0 ? (observations.length === 0 ? (
         <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
           {payload.state === "archived"
             ? "No retained checkpoint values are available for this run."
             : "No run data recorded — this run has not extracted or written any fields yet."}
         </p>
-      ) : <div className="flex flex-col gap-[var(--ds-space-base)]">
+      ) : null) : <div className="flex flex-col gap-[var(--ds-space-base)]">
+        {observations.length > 0 && <SectionLabel>Checkpoint fields</SectionLabel>}
         {groupEntriesByStep(payload.entries).map((group) => {
           const rows = group.rows.map(({ entry, index }, position) => (
             <div key={`${entry.label}:${String(index)}`} className={cn(

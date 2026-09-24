@@ -1,7 +1,7 @@
 # run-receipt-populated--paper-ink--1440x900
 # adapter: seeded
 # fixture: seeded-done-run
-# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -93,7 +93,7 @@
     - button "EID 10873698 — failed":
       - text: EID 10873698
       - button "What is this row? — Run Panel"
-      - text: "Failed CRM_UNAVAILABLE: historical diagnostic text withheld (predates diagnostic safety v1) 10:00 AM #1 pl-090404-0004 0s"
+      - text: "Failed CRM onboarding dates were unavailable 10:00 AM #1 pl-090404-0004 0s"
       - button "Rerun"
       - button "Delete run"
       - text: Right-click or press m for every command on EID 10873698
@@ -131,14 +131,14 @@
       - tab "Receipt" [selected]
     - text: Done confidence unknown — nothing was read back receipt 26d4aa68-ab6e-5cc3-affa-338722744ebegenerated 10:00 AMattempt 1run 00000000-0003-4000-8000-000000000003completed 10:00 AM
     - region "Input":
-      - text: Input emplId 3698 includeCrmDates false keepNonHdh false input hash 2e2bc2cd
+      - text: Input emplId 10873698 includeCrmDates false keepNonHdh false input hash 2e2bc2cd
       - button "Show full input hash 2e2bc2cd"
     - region "Observations": Observations hdh unresolved — node "active-status" stored no provenance row for output field "hdh", so the instant this value was observed is not recoverable from authority reason unresolved — node "active-status" stored no provenance row for output field "reason", so the instant this value was observed is not recoverable from authority state activederived · from 2 entries
     - region "Decisions": "Decisions branch — not-taken node \"crm-dates\" did not run: its declared `when` condition was false for this run's input"
     - region "Actions": Actions workflow:person-lookup/read-active-status local-projection This run wrote nothing — no write was attempted.10:00 AM
     - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
     - region "Output": Output hdh truederived · from 2 entries reason UCPath reports an active HDH appointment and CRM onboarding is completederived · from 2 entries state activederived · from 2 entries state not-requestedderived · from 2 entries
-    - text: result partial trace pl-090303-0003 descriptor f1af8dbd config bbbbbbbb
+    - text: result partial trace pl-090303-0003 descriptor ba973a2b config bbbbbbbb
     - region "Run captures": Captures No captures this composition wires no diagnostic capture authority
   - complementary "Run data":
     - text: Run data

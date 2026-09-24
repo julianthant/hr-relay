@@ -273,15 +273,10 @@ export const RunEvidenceReceiptSchema = z.strictObject({
 
 export type RunEvidenceReceipt = z.infer<typeof RunEvidenceReceiptSchema>;
 
-const DiagnosticSafeRunEvidenceReceiptSchema = z.intersection(
-  RunEvidenceReceiptSchema,
-  z.strictObject({ composition: z.union([z.literal(3), z.literal(4)]) }),
-);
-
 export const OperatorReceiptProjectionSchema = z.union([
   z.strictObject({
     state: z.literal("available"),
-    value: DiagnosticSafeRunEvidenceReceiptSchema,
+    value: RunEvidenceReceiptSchema,
   }),
   z.strictObject({
     state: z.literal("withheld"),
@@ -291,26 +286,11 @@ export const OperatorReceiptProjectionSchema = z.union([
 ]);
 export type OperatorReceiptProjection = z.infer<typeof OperatorReceiptProjectionSchema>;
 
-/**
- * Immutable receipt rows predate the diagnostic-safety boundary. They remain
- * valid authority evidence and continue to re-derive under their own
- * composition, but their free-text decisions/warnings must never be replayed
- * onto an operator surface. Composition 3 is the explicit admission stamp.
- */
+/** Serve retained receipts of every composition to the local operator. */
 export function projectReceiptForOperator(receiptInput: unknown): OperatorReceiptProjection {
   const receipt = RunEvidenceReceiptSchema.parse(receiptInput);
-  const protectedWorkflow = receipt.workflowId === "separations" || receipt.workflowId === "separations-kuali-finalization" || receipt.workflowId === "person-lookup";
-  if (receipt.composition === 4 || (receipt.composition === 3 && !protectedWorkflow)) {
-    return Object.freeze(OperatorReceiptProjectionSchema.parse({
-      state: "available",
-      value: receipt,
-    }));
-  }
-  const composition = receipt.composition ?? 1;
   return Object.freeze(OperatorReceiptProjectionSchema.parse({
-    state: "withheld",
-    composition,
-    reason: `immutable receipt composition ${String(composition)} predates the required protected-value projection; `
-      + "its free-text projection is withheld and the authority row is unchanged",
+    state: "available",
+    value: receipt,
   }));
 }

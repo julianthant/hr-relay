@@ -1,4 +1,3 @@
-import { protectedTaskLogger } from "./observed-data.js";
 import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../domain/protected-input.js";
 import { isFreshOccurrenceProof } from "./repeat-proof.js";
 /**
@@ -275,7 +274,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     /* the probe runs FIRST — before any startAt/resume logic (ref write-safety §4) */
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await executeIdempotencyProbe({ ...probeDeps, log: protectedTaskLogger(probeDeps.log, run) }, {
+      verdict = await executeIdempotencyProbe(probeDeps, {
         commitContract,
         commitInput,
         instance: instanceSelection,

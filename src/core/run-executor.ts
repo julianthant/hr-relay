@@ -60,8 +60,8 @@ import type { Clock } from "../domain/clock.js";
 import type { AnyReadTaskContract } from "../domain/contracts/base.js";
 import type { GateResultRecord } from "../domain/gates.js";
 import type { IdFactory } from "../domain/identifiers.js";
-import type { TaskRunNoteKind } from "../domain/run/task-note.js";
 import type { NoteJsonlWriter } from "../infra/events/note-jsonl-writer.js";
+import { withBrowserActionNotes, type BrowserAction } from "../infra/browser/action-notes.js";
 import {
   GateIdSchema,
   IsoInstantSchema,
@@ -134,7 +134,7 @@ import {
   taskSpanPath,
   type SpanEmitter,
 } from "./span-emitter.js";
-import { protectedTaskLogger, redactObservedDataPoints } from "./observed-data.js";
+import { redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
@@ -289,11 +289,6 @@ function admittedClientFor(
   }
 }
 
-const TASK_LOG_NOTE_KIND_BY_MESSAGE: ReadonlyMap<string, TaskRunNoteKind> = new Map([
-  ["contact advisory withheld fields whose classification forbids provider use", "contact-advice-withheld"],
-  ["roster match completed", "roster-match-completed"],
-]);
-
 export interface RunExecutorDependencies {
   readonly lifecycle: WorkerRunLifecyclePort;
   readonly descriptor: AnyWorkflowDescriptor;
@@ -307,8 +302,8 @@ export interface RunExecutorDependencies {
   /** Immutable per-invocation task bound (ref execution-and-sessions §5.5); no default, no opt-out. */
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
-  /** Optional production sink for the executor's allowlisted ordinary task notes. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote">;
+  /** Optional production sink for task messages and browser actions. */
+  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
@@ -494,8 +489,6 @@ export async function executeClaimedRun(
   );
   const runs = deps.authority.authority.runs;
   const instant = () => IsoInstantSchema.parse(clock.now().toISOString());
-  let taskNoteCount = 0;
-  let taskNoteLimitReported = false;
 
   const getRun = (): RunRecord => {
     const current = runs.get(runId);
@@ -536,6 +529,24 @@ export async function executeClaimedRun(
     traceId: envelope.traceId,
     spanPath: runSpanPath(envelope.traceId),
   } as const;
+
+  const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[]): void => {
+    const sink = deps.taskNotes;
+    if (sink === undefined) return;
+    const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
+    for (const action of actions) {
+      try {
+        sink.emitRunAction({
+          workflow: descriptor.id,
+          address,
+          action,
+        }, getRun());
+      } catch {
+        // Diagnostic I/O must not change a settled external write into a failed or UNKNOWN result.
+        deps.log.warn("browser action note could not be recorded");
+      }
+    }
+  };
 
   const emit = (event: Readonly<Record<string, unknown>>): void => {
     deps.emitter.emit(ExecutorSpanEventSchema.parse({
@@ -1126,41 +1137,36 @@ export async function executeClaimedRun(
             nodeId: String(node.id),
             taskId: contract.id,
             observedAt: recordedAt,
-            points: redactObservedDataPoints(contract.id, points, retainedRunProtectedBindings(initial).map(({ inputPath }) => inputPath)),
+            points: redactObservedDataPoints(contract.id, points),
           });
         },
       });
 
-      const taskLog = (message: string): void => {
+      const taskLog = (level: "step" | "debug" | "warn", message: string,
+        fields?: Parameters<TaskLogger["info"]>[1]): void => {
         const sink = deps.taskNotes;
         if (sink === undefined) return;
-        const kind = TASK_LOG_NOTE_KIND_BY_MESSAGE.get(message);
-        if (kind === undefined) return;
         const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
-        if (taskNoteCount >= 256) {
-          if (!taskNoteLimitReported) {
-            taskNoteLimitReported = true;
-            sink.emitRunNote({ workflow: descriptor.id, address, kind: "task-log-limit-reached" }, getRun());
-          }
-          return;
-        }
-        taskNoteCount += 1;
-        sink.emitRunNote({
+        sink.emitRunLog({
           workflow: descriptor.id,
           address,
-          kind,
+          level,
+          message,
+          fields,
         }, getRun());
       };
       const taskLogger: TaskLogger = {
         debug: (message, fields) => {
           deps.log.debug(message, fields);
+          taskLog("debug", message, fields);
         },
         info: (message, fields) => {
           deps.log.info(message, fields);
-          taskLog(message);
+          taskLog("step", message, fields);
         },
         warn: (message, fields) => {
           deps.log.warn(message, fields);
+          taskLog("warn", message, fields);
         },
       };
 
@@ -1184,7 +1190,7 @@ export async function executeClaimedRun(
       const run = RunnableTaskSchema.parse(task.impl.run);
       const ctxCommon = {
         signal: controller.signal,
-        log: protectedTaskLogger(taskLogger, initial),
+        log: taskLogger,
         fail: (code: string, message: string, options?: Readonly<{
           subject?: string; transient?: boolean; cause?: unknown;
         }>): never => {
@@ -1250,12 +1256,12 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          raw = await raceAbortable(
+          raw = await withBrowserActionNotes(clock, () => raceAbortable(
             deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) =>
               run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } })),
             controller.signal,
             contract.id,
-          );
+          ), (actions) => drainBrowserActions(spanPath, actions));
         }
       } finally {
         deadline.cancel();
@@ -1768,12 +1774,12 @@ export async function executeClaimedRun(
           if (envelope.dryRun) {
             let preview: TransactionDryRunPreview;
             try {
-              preview = TransactionDryRunPreviewSchema.parse(await deps.writeSequencer.executeDryRun({
+              preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
                 descriptor, node, run: getRun(), claim,
                 scope: scopeFor(node.dependsOn),
                 dryRun: true,
                 signal: input.signal,
-              }));
+              }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions)));
             } catch (error) {
               if (error instanceof RunAbandonedError) throw error;
               return await failNode(node, node.commit.uses.id, error);
@@ -1792,12 +1798,12 @@ export async function executeClaimedRun(
             return settlePreview(node, preview);
           }
           try {
-            const raw = await deps.writeSequencer.executeTransaction({
+            const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
               descriptor, node, run: getRun(), claim,
               scope: scopeFor(node.dependsOn),
               dryRun: envelope.dryRun,
               signal: input.signal,
-            });
+            }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions));
             const OutcomeSchema = z.strictObject({
               disposition: z.enum(["committed", "already-present"]),
               proofSource: z.enum([

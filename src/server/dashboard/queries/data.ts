@@ -1,6 +1,5 @@
 import { localDatePart } from "../../../domain/clock.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
-import { valueFreeProtectedData, retainedRunProtectedBindings } from "../../../domain/protected-input.js";
 import type { JsonValue } from "../../../domain/canonical-json.js";
 import {
   ContextDataSectionSchema,
@@ -13,6 +12,7 @@ import type { RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
+import { runDataObservationsForRun } from "./run-logs.js";
 import { TargetNotFoundError, SectionUnavailableError } from "../../failures.js";
 import type { z } from "zod";
 
@@ -43,21 +43,17 @@ function isJsonRecord(value: JsonValue): value is { readonly [key: string]: Json
 type ScalarLookup =
   | { kind: "scalar"; value: string | number | boolean }
   | { kind: "absent" }
-  | { kind: "protected" }
   | { kind: "not-scalar" };
-
-function isProtectedMarker(value: JsonValue): boolean {
-  if (!isJsonRecord(value)) return false;
-  return value.kind === "protected-store" || value.kind === "test-data-local"
-    || value.kind === "legacy-protected-input" || value.state === "withheld-protected-input";
-}
 
 function scalarAtPath(output: JsonValue, fieldPath: string): ScalarLookup {
   let current: JsonValue = output;
   for (const part of fieldPath.split(".")) {
     if (!isJsonRecord(current) || !Object.hasOwn(current, part)) return { kind: "absent" };
     current = current[part]!;
-    if (isProtectedMarker(current)) return { kind: "protected" };
+  }
+  if (isJsonRecord(current) && (current.kind === "protected-store" || current.kind === "test-data-local"
+    || current.kind === "legacy-protected-input" || current.state === "withheld-protected-input")) {
+    return { kind: "scalar", value: JSON.stringify(current) };
   }
   return typeof current === "string" || typeof current === "number" || typeof current === "boolean"
     ? { kind: "scalar", value: current }
@@ -187,8 +183,7 @@ function entryOf(
     return malformedEntry(field.label, field.nodeId, field.fieldPath, "output-schema-mismatch");
   }
 
-  const safeOutput = valueFreeProtectedData(stored.output.value, retainedRunProtectedBindings(run));
-  const lookup = scalarAtPath(safeOutput, field.fieldPath);
+  const lookup = scalarAtPath(stored.output.value, field.fieldPath);
   const checkpoint = {
     state: "present" as const,
     runId: stored.runId,
@@ -201,14 +196,6 @@ function entryOf(
   };
   const attribution = originOf(descriptor, field.nodeId, field.fieldPath);
   const provenance = provenanceFor(stored, field.fieldPath);
-  if (lookup.kind === "protected") {
-    return {
-      label: field.label,
-      coordinate,
-      checkpoint, valueState: "redacted", valueRedacted: "Protected value withheld",
-      ...attribution, ...provenance,
-    };
-  }
   if (lookup.kind === "absent") {
     return {
       label: field.label,
@@ -237,16 +224,17 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
   const run = existence.run;
 
   const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+  const observations = runDataObservationsForRun(deps, run, runId);
   const exactDescriptor = deps.canonical?.descriptors.resolve(run.envelope.workflow);
   if (descriptor === undefined || exactDescriptor === undefined) {
     return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "descriptor-unavailable", entries: [],
+      runId, state: "unavailable", reason: "descriptor-unavailable", entries: [], observations,
     });
   }
   if (exactDescriptor.version !== run.envelope.descriptorVersion
     || exactDescriptor.contractFingerprint !== run.envelope.contractFingerprint) {
     return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "descriptor-mismatch", entries: [],
+      runId, state: "unavailable", reason: "descriptor-mismatch", entries: [], observations,
     });
   }
   const fields = typeof descriptor.capabilities?.editData === "object"
@@ -255,7 +243,7 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
   const database = deps.canonical?.database;
   if (database === undefined) {
     return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "checkpoint-reader-unavailable", entries: [],
+      runId, state: "unavailable", reason: "checkpoint-reader-unavailable", entries: [], observations,
     });
   }
   const entries = database.withAuthorityReadSnapshot(() => {
@@ -274,7 +262,7 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
     ));
   });
   return ContextDataSectionSchema.parse({
-    runId, state: existence.disposition === "archived" ? "archived" : "available", entries,
+    runId, state: existence.disposition === "archived" ? "archived" : "available", entries, observations,
   });
 }
 

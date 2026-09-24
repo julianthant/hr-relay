@@ -10,7 +10,6 @@ import type { RunRecordService } from "../../../core/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "./canonical-runs.js";
 import { requireCanonicalRun } from "./run-read.js";
 import { deriveRunStatus } from "../run-status.js";
-import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 import { archivedRunReferenceFingerprint, authenticArchivedRunContent } from "../../../domain/archive/model.js";
 /**
  * The Archive read model and the version-bump state (D179; ref dashboard-surfaces §10.2, doc
@@ -71,7 +70,6 @@ import {
   type ArchivedRunAttempt,
 } from "../../../domain/archive/sections.js";
 import {
-  FailureDetailWireSchema,
   NotePageSchema,
   PeoplePageSchema,
   type ContextDataSectionWire,
@@ -121,37 +119,12 @@ function archivedWorkflowCode(
   };
 }
 
-function legacyDiagnosticWithheldReason(archiveSchemaGeneration: number): string {
-  return `archive schema generation ${String(archiveSchemaGeneration)} predates diagnostic safety v1; historical free text is withheld`;
-}
-
-function archivedWarningsForOperator(
-  warnings: QueueSurfaceWire["warnings"],
-  archiveSchemaGeneration: number,
-  protectedInput = false,
-): QueueSurfaceWire["warnings"] {
-  if (protectedInput && archiveSchemaGeneration >= 6 && warnings.state === "present")
-    return { state: "absent", reason: "protected archived detail withheld; private authority is unchanged" };
-  return archiveSchemaGeneration >= 6
-    ? warnings
-    : { state: "absent", reason: legacyDiagnosticWithheldReason(archiveSchemaGeneration) };
-}
-
 function archivedQueueRow(
   row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
-  archiveSchemaGeneration: number,
 ): QueueSurfaceWire {
-  const parsed = QueueSurfaceWireSchema.parse(row.session === undefined
+  return QueueSurfaceWireSchema.parse(row.session === undefined
     ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
     : row);
-  if (archiveSchemaGeneration >= 6) return parsed;
-  const reason = legacyDiagnosticWithheldReason(archiveSchemaGeneration);
-  return QueueSurfaceWireSchema.parse({
-    ...parsed,
-    facts: { state: "absent", reason },
-    liveMessage: { state: "absent", reason },
-    warnings: archivedWarningsForOperator(parsed.warnings, archiveSchemaGeneration),
-  });
 }
 
 function archivedReceiptForOperator(
@@ -164,47 +137,34 @@ function archivedReceiptForOperator(
     : { state: "absent", reason: projected.reason };
 }
 
-function archivedFailureForOperator(
-  failure: z.infer<typeof FailureDetailWireSchema>,
-  archiveSchemaGeneration: number,
-): z.infer<typeof FailureDetailWireSchema> {
-  if (archiveSchemaGeneration >= 6) return failure;
-  const page = failure.page === undefined
-    ? undefined
-    : {
-      ...(failure.page.screen === undefined ? {} : { screen: failure.page.screen }),
-      ...(failure.page.state === undefined ? {} : { state: failure.page.state }),
-    };
-  return FailureDetailWireSchema.parse({
-    ...failure,
-    summary: `${failure.code}: historical diagnostic text withheld (predates diagnostic safety v1)`,
-    causeChain: failure.causeChain.map((cause) => ({
-      ...cause,
-      summary: `${cause.code}: historical ${cause.role} diagnostic text withheld`,
-    })),
-    remediation: failure.remediation.map((remediation) => ({
-      ...remediation,
-      message: `historical ${remediation.kind} text withheld; use the typed failure code and archived run state`,
-    })),
-    ...(page === undefined || Object.keys(page).length === 0 ? { page: undefined } : { page }),
-  });
-}
-
-function archivedSectionsForOperator(
+export function archivedSectionsForOperator(
   sections: ArchivedRunSections,
-  archiveSchemaGeneration: number,
+  _archiveSchemaGeneration: number,
 ): ArchivedRunSections {
-  if (archiveSchemaGeneration >= 6 || sections.logs.state === "absent") return sections;
-  const message = "historical note text withheld (predates diagnostic safety v1)";
+  if (sections.logs.state === "absent") return sections;
   const page = sections.logs.value;
-  const rows = page.rows?.map((row) => row.kind === "note"
-    ? { ...row, note: { ...row.note, message } }
-    : row);
+  const observed = page.rows?.filter((row) => row.kind === "observed") ?? [];
+  if (observed.length === 0) return sections;
+  const rows = page.rows?.filter((row) => row.kind !== "observed");
   const notes = rows === undefined
-    ? page.notes.map((note) => ({ ...note, message }))
+    ? page.notes
     : rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
+  const priorData = sections.data.state === "present"
+    ? sections.data.value
+    : { runId: page.runId, state: "archived" as const, entries: [] };
+  const mergedObservations = [...(priorData.observations ?? [])];
+  const seen = new Set(mergedObservations.map((row) => row.logId));
+  for (const row of observed) {
+    if (seen.has(row.logId)) continue;
+    mergedObservations.push(row);
+    seen.add(row.logId);
+  }
   return ArchivedRunSectionsSchema.parse({
     ...sections,
+    ...(observed.length === 0 ? {} : { data: {
+      state: "present",
+      value: { ...priorData, observations: mergedObservations },
+    } }),
     logs: {
       state: "present",
       value: NotePageSchema.parse({
@@ -470,8 +430,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
           ? record.workflowLabel.value
           : record.workflowId,
         workflowCode: archivedWorkflowCode(record),
-        title: hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input })
-          ? "Protected test subject" : record.row.title,
+        title: record.row.title,
         status: deriveRunStatus(run),
         archivedIdentity: record.archivedIdentity,
         appVersion: record.appVersion,
@@ -488,8 +447,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // the index adds no authority read and cannot diverge from the run's
         // own page.
         dryRun: record.row.dryRun,
-        warnings: archivedWarningsForOperator(record.row.warnings, record.archiveSchemaGeneration,
-          hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input })),
+        warnings: record.row.warnings,
         archiveFingerprint: archivedRunReferenceFingerprint(record),
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({
@@ -564,9 +522,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
      * page renders comes out of `record`.
      */
     const current = registered.find((entry) => entry.id === record.workflowId);
-    const protectedArchive = hasProtectedTransactionInput({ envelope: { workflow: record.workflowId }, input: record.input });
-    const protectedAbsence = { state: "absent" as const, reason: "protected archived detail withheld; private authority is unchanged" };
-    const projectedRow = archivedQueueRow(record.row, record.archiveSchemaGeneration);
+    const projectedRow = archivedQueueRow(record.row);
 
     return ArchivedRunDetailWireSchema.parse({
       wireVersion: 1,
@@ -584,16 +540,10 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       archivedAt: record.archivedAt,
       archivedBy: record.archivedBy,
       archiveFingerprint: archivedRunReferenceFingerprint(record),
-      row: protectedArchive ? { ...projectedRow, title: "Protected test subject", subtitle: protectedAbsence,
-        facts: protectedAbsence, liveMessage: protectedAbsence, warnings: projectedRow.warnings.state === "absent" ? projectedRow.warnings : protectedAbsence } : projectedRow,
-      detail: protectedArchive ? { ...record.detail, header: { ...record.detail.header, title: "Protected test subject" } } : record.detail,
+      row: projectedRow,
+      detail: record.detail,
       receipt: archivedReceiptForOperator(record.receipt),
-      failure: protectedArchive ? protectedAbsence : record.failure.state === "absent"
-        ? record.failure
-        : {
-          state: "present",
-          value: archivedFailureForOperator(record.failure.value, record.archiveSchemaGeneration),
-        },
+      failure: record.failure,
       evidence: record.evidence,
       /*
        * The frozen sections, verbatim. A record written before generation 2
@@ -609,7 +559,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
             + "which predates D223's frozen section payloads; its log lines, data points, member rows, "
             + "capture descriptions and attempt history were never captured and are not reconstructible",
         }
-        : protectedArchive ? protectedAbsence : {
+        : {
           state: "present",
           value: archivedSectionsForOperator(record.sections, record.archiveSchemaGeneration),
         },

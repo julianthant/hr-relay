@@ -11,10 +11,10 @@ import { at,CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf } from "./fixture-ide
 
 const FIXTURE_DIAGNOSTIC_REDACTION = {
   fields: [
-    { key: "employeeName", state: "transformed", classification: "sensitive-hr", transform: "digest", value: "a".repeat(64) },
-    { key: "ucpathPassword", state: "redacted", classification: "secret", transform: "drop" },
+    { key: "employeeName", state: "transformed", classification: "sensitive-hr", transform: "digest", value: "a".repeat(64), rawValue: "Synthetic Employee" },
+    { key: "ucpathPassword", state: "redacted", classification: "secret", transform: "drop", rawValue: "synthetic-visible-password" },
   ],
-  warnings: ["unclassified diagnostic field at index 3 dropped"],
+  warnings: ["unclassified diagnostic field at index 3: {\"value\":\"synthetic-unclassified\"}"],
 } as const;
 
 

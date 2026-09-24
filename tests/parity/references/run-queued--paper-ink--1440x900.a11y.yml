@@ -1,7 +1,7 @@
 # run-queued--paper-ink--1440x900
 # adapter: fixture
 # fixture: run-queued
-# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -255,7 +255,7 @@
     - list "Run log lines":
       - 'listitem "9:55 AM: info note: Run queued at interactive priority"': 9:55 AM Run queued at interactive priority
     - searchbox "Search logs"
-    - text: 67c72bc1
+    - text: a77fa29f
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

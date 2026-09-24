@@ -45,7 +45,6 @@
  */
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
-import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 import {
   RunDetailWireSchema,
   type RunDetailWire,
@@ -489,7 +488,7 @@ export function buildRunDetail(
           { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },
           deps.authority,
         )
-        ?? (hasProtectedTransactionInput(authority) ? "Protected test subject" : (row?.queued.title ?? authority.envelope.runId)),
+        ?? row?.queued.title ?? authority.envelope.runId,
       status,
       attempt: authority.envelope.attempt,
     },

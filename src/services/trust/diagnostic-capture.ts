@@ -7,17 +7,15 @@
  * must already carry. Neither row can be written second on its own, so the
  * only honest ordering is
  *
- *   1. `prepare` — redact, write every attachment to the content-addressed
+ *   1. `prepare` — classify fields, write every attachment to the content-addressed
  *      store, and mint the bundle id. Asynchronous, and nothing durable in
  *      authority has moved yet. A crash here leaves at most an unreferenced
  *      artifact, which the content-addressed writer already tolerates.
  *   2. inside ONE authority transaction: terminalize the failure with the
  *      prepared `bundleId`, then `persist` the bundle naming that failure.
  *
- * Redaction happens HERE, at capture, and is schema-owned: unclassified fields
- * are DROPPED by `redactDiagnosticFields` with a warning, never passed through
- * for the UI to hide later. `assertDiagnosticExportSafe` then refuses a bundle
- * that somehow still allows a never-exportable key.
+ * Classified fields retain their original values beside their transforms.
+ * Unclassified values remain visible in the capture warning.
  */
 import { z } from "zod";
 import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
@@ -75,7 +73,7 @@ export interface DiagnosticCaptureRequest {
   readonly descriptorFingerprint: string;
   /**
    * Classified diagnostic fields. Anything this array cannot classify is
-   * dropped with a warning — an unclassified field never reaches the bundle.
+   * retained in a warning when no classification applies.
    */
   readonly fields: unknown;
   readonly attachments: readonly DiagnosticAttachmentSource[];
@@ -133,8 +131,7 @@ export function createDiagnosticCaptureService(
       ...(request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy }),
     });
     const capturedAt = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-    // Schema-owned redaction, at capture. Unclassified fields are already gone
-    // by the time anything is written; the export assertion is the second lock.
+    // Keep the capture's original classified values with its provenance.
     const redaction = assertDiagnosticExportSafe(redactDiagnosticFields(request.fields));
 
     const attachments: z.infer<typeof DiagnosticAttachmentSchema>[] = [];

@@ -13,7 +13,7 @@ import { ObservedDataPointSchema } from "../../../src/core/span-emitter.js";
 import { localDatePart, manualClock, type Clock } from "../../../src/domain/clock.js";
 import { RedactedFieldSchema } from "../../../src/domain/redaction.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { NoteWireSchema, SpanEventWireSchema } from "../../../src/events/types.js";
+import { NoteWireSchema, SpanEventWireSchema, projectNoteForOperator } from "../../../src/events/types.js";
 import {
   appendEventStreamLine,
   listEventStreamFiles,
@@ -325,8 +325,8 @@ describe("span JSONL writer", () => {
   });
 });
 
-describe("note JSONL writer and schema-owned redaction", () => {
-  it("redacts classified fields, DROPS unclassified ones visibly, and never writes the raw value", () => {
+describe("note JSONL writer and classified fields", () => {
+  it("retains classified values and counts invalid fields", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
@@ -345,12 +345,15 @@ describe("note JSONL writer and schema-owned redaction", () => {
       ],
     });
     const fields = note.fields ?? [];
-    assert.deepEqual(fields.map(({ key }) => key), ["password", "ssn", "resultCount", "redactionWarnings"]);
-    assert.deepEqual(fields.at(-1), { key: "redactionWarnings", kind: "count", value: 1 });
+    assert.deepEqual(fields, [
+      { key: "password", kind: "text", value: canaryPassword },
+      { key: "ssn", kind: "text", value: canarySsn },
+      { key: "resultCount", kind: "text", value: "3" },
+      { key: "invalidFields", kind: "count", value: 1 },
+    ]);
     const bytes = readFileSync(readEventStreamLines(root, "notes")[0].file.path, "utf8");
-    assert.equal(bytes.includes(canaryPassword), false);
-    assert.equal(bytes.includes(canarySsn), false);
-    assert.equal(bytes.includes("6789"), true); // last4 survives, nothing more
+    assert.equal(bytes.includes(canaryPassword), true);
+    assert.equal(bytes.includes(canarySsn), true);
   });
 
   it("keeps generic note ingress append-at-now without authority scoping", () => {
@@ -410,6 +413,28 @@ describe("note JSONL writer and schema-owned redaction", () => {
     assert.equal(note.ts, noteAt.toISOString());
     assert.equal(stored.ts, noteAt.toISOString());
     assert.equal(stored.message, "roster match completed");
+  });
+
+  it("records typed values with action verbs and targets in protected-run Logs", () => {
+    const root = stateRoot();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const clock = manualClock(new Date(run.updatedAt));
+    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const note = writer.emitRunAction({
+      workflow: run.envelope.workflow,
+      address: {
+        runId: run.envelope.runId,
+        attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId,
+        spanPath: run.envelope.traceId,
+      },
+      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "951-57-1700", at: clock.now().toISOString() },
+    }, run);
+    assert.equal(note.message, 'Typed "951-57-1700" into ucpath person org eid input');
+    assert.equal(projectNoteForOperator(note, true).message, note.message);
+    const bytes = readFileSync(readEventStreamLines(root, "notes")[0].file.path, "utf8");
+    assert.equal(bytes.includes("951-57-1700"), true);
+    assert.equal(bytes.includes("ucpath.person-org.eid-input"), true);
   });
 
   it("refuses arbitrary run-task note text at the writer boundary", () => {

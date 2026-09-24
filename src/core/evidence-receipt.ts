@@ -1,4 +1,4 @@
-import { retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest, valueFreeProtectedEvidence } from "../domain/protected-input.js";
+import { retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest } from "../domain/protected-input.js";
 import { valueFreeProtectedInput } from "../domain/protected-input.js";
 /**
  * The `RunEvidenceReceipt` builder (ref operator-trust §2.3, D140/D141).
@@ -1171,9 +1171,7 @@ export function deriveRunEvidenceReceipt(
     confidence,
     result: receiptResult,
   };
-  const receipt = RunEvidenceReceiptSchema.parse(composition >= 4
-    ? valueFreeProtectedEvidence(receiptData, run.input.parsed.protectedBindings?.map(({ inputPath }) => inputPath)
-      ?? (run.envelope.workflow === "person-lookup" ? ["emplId"] : hasProtectedTransactionInput(run) ? ["timekeeperName", "documentNumber"] : [])) : receiptData);
+  const receipt = RunEvidenceReceiptSchema.parse(receiptData);
   assertEvidenceRefsResolve(receipt);
   return Object.freeze({ receipt, checks: binding.checks });
 }

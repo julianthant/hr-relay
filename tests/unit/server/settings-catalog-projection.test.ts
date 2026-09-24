@@ -38,12 +38,12 @@ describe("complete Settings catalog projection", () => {
     assert.equal(JSON.stringify(document).includes("synthetic-secret"), false);
     assert.throws(() => buildSettingsEditor({ ...deps, settings: { read: () => ({ ...snapshot, record: { ...snapshot.record, settings: { actor: { label: "changed without identity" } } } }) } }), /snapshot-mismatch/u);
   });
-  it("projects only provider counts, missing or unknown, never values or cell names", () => {
+  it("projects provider values with their counts, missing or unknown", () => {
     const { deps } = fixture();
     const document = buildSettingsEditor({ ...deps, environment: { ...deps.environment, GEMINI_API_KEY: "provider-sentinel-one", GEMINI_API_KEY2: "provider-sentinel-two" } });
-    assert.deepEqual(document.providers.geminiApiKeys, { state: "present", count: 2 });
+    assert.deepEqual(document.providers.geminiApiKeys, { state: "present", count: 2, values: ["provider-sentinel-one", "provider-sentinel-two"] });
     assert.deepEqual(document.providers.groqApiKeys, { state: "missing" });
-    assert.doesNotMatch(JSON.stringify(document), /provider-sentinel|GEMINI_API_KEY/u);
+    assert.match(JSON.stringify(document), /provider-sentinel-one|provider-sentinel-two/u);
     const env = new Proxy(deps.environment, { get: (target, key) => { if (key === "GEMINI_API_KEY") throw new Error("provider-sentinel"); return Reflect.get(target, key) as unknown; } });
     assert.deepEqual(buildSettingsEditor({ ...deps, environment: env }).providers.geminiApiKeys, { state: "unknown" });
   });

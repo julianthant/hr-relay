@@ -26,6 +26,7 @@
  * to end, of which the Duo step was under 8s.
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
+import { recordBrowserAction } from "../../infra/browser/action-notes.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -142,6 +143,7 @@ export const kualiLoginRecipe = defineVerifiedLoginRecipe({
         "navigate-login-entry",
         context,
       );
+      recordBrowserAction("opened", "kuali.login-entry");
     } catch (error) {
       if (error instanceof BrowserLoginError) throw error;
       throw new BrowserLoginError(

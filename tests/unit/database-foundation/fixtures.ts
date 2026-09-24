@@ -1,6 +1,6 @@
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
@@ -18,7 +18,7 @@ export const NOW="2026-09-09T12:00:00.000Z";
 export const HASH="a".repeat(64);
 export const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
 export function foundationFixture(options:{repositoryLayout?:boolean}={}){
- const repoRoot=mkdtempSync(join(tmpdir(),"foundation-baseline-"));
+ const repoRoot=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));
  const root=options.repositoryLayout===true?join(repoRoot,".tracker"):repoRoot;mkdirSync(root,{recursive:true});
  const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);

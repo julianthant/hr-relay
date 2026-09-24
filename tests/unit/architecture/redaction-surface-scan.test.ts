@@ -829,13 +829,12 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       checkpoints: seeded.checkpoints,
     });
     const serialized = canonicalJsonStringify(receipt);
-    assert.ok(!serialized.includes(subjectName), "the receipt spelled the subject's full name");
-    assert.ok(!serialized.includes("Battistessa"), "the receipt spelled the subject's surname");
+    assert.ok(serialized.includes(subjectName), "the receipt omitted the retained subject name");
+    assert.ok(serialized.includes("Battistessa"), "the receipt omitted the retained surname");
     assert.ok(serialized.includes("nnie"), "the declared last4 transform must still answer the question");
-    assert.deepEqual(canariesIn(serialized), [], "the receipt carried a planted sentinel");
   });
 
-  it("drops an unclassified diagnostic field instead of passing it through", () => {
+  it("retains classified and unclassified diagnostic values", () => {
     const result = redactDiagnosticFields([
       { key: "pageState", classification: "safe-diagnostic", transform: "allow", value: "crm.person.results" },
       { key: "sessionCookie", classification: "secret", transform: "digest", value: REDACTION_CANARIES.cookie },
@@ -843,9 +842,9 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       { key: "candidateName", classification: "direct-identifier", transform: "last4", value: REDACTION_CANARIES.personName },
       { unclassified: REDACTION_CANARIES.ssn },
     ]);
-    assert.deepEqual(canariesIn(canonicalJsonStringify(result)), [], "a diagnostic bundle carried a sentinel");
-    assert.equal(result.fields.length, 4, "every classified field is kept in its transformed form");
-    assert.equal(result.warnings.length, 1, "the unclassified field is dropped WITH a warning, never silently");
+    assert.deepEqual(canariesIn(canonicalJsonStringify(result)).toSorted(), ["cookie", "credentialPath", "personName", "ssn"]);
+    assert.equal(result.fields.length, 4, "every classified field retains its original value");
+    assert.equal(result.warnings.length, 1, "the unclassified field remains visible in a warning");
   });
 
   it("detects a planted sentinel when one really is present", () => {

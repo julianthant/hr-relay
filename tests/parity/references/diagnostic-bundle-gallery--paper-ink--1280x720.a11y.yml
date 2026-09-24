@@ -1,7 +1,7 @@
 # diagnostic-bundle-gallery--paper-ink--1280x720
 # adapter: fixture
 # fixture: diagnostic-bundle-gallery
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -20,7 +20,7 @@
     - button "Open Diagnostic screenshot 1 of 1":
       - img "Diagnostic screenshot 1 of 1"
       - text: Diagnostic screenshot 1 of 1
-  - status: "Capture-time redaction record employeeName · sensitive-hr · digest · ucpathPassword · secret · drop · warning: unclassified diagnostic field at index 3 dropped. The dashboard never rewrites stored attachment bytes."
+  - status: "Captured diagnostic values employeeName: Synthetic Employee · ucpathPassword: synthetic-visible-password · warning: unclassified diagnostic field at index 3: {\"value\":\"synthetic-unclassified\"}. The dashboard never rewrites stored attachment bytes."
   - contentinfo:
     - button "Close"
     - link "Download the manifest":

@@ -1,10 +1,10 @@
-/** Complete Settings projection; auxiliary authorities remain independent and value-free. */
+/** Complete Settings projection; auxiliary authorities remain independent. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { SETTINGS_CATALOG } from "../config/catalog.js";
 import { SettingsPatchSchema, SettingsRuntimeStatusSchema } from "../config/settings.js";
 import { HostConfigFactsSchema } from "../config/host-display.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsNameSchema, ProtectedSettingsReadbackSchema } from "../config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsNameSchema, ProtectedSettingsReadbackSchema, ProtectedStoreEntriesSchema } from "../config/protected-settings.js";
 import { FingerprintSchema, PositiveIntSchema } from "../ids.js";
 import { EditableSettingsSectionIdSchema, SettingsCatalogWireSchema, SettingsControlSchema, deploymentLeafSchema, catalogKeyForEditorPath, settingsControlFor, settingsSectionFor } from "./settings-catalog.js";
 export { EditableSettingsPathSchema, EditableSettingsSectionIdSchema } from "./settings-catalog.js";
@@ -61,14 +61,29 @@ const ProtectedRowsSchema = z.array(ProtectedRowSchema).length(ProtectedSettings
   if (new Set(rows.map(row => row.name)).size !== ProtectedSettingsNameSchema.options.length) context.addIssue({ code: "custom", message: "protected catalog membership mismatch" });
 });
 export const SettingsProtectedWireSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("available"), rows: ProtectedRowsSchema, protectedSchemaHash: z.literal(PROTECTED_SETTINGS_SCHEMA_HASH), readback: ProtectedSettingsReadbackSchema }),
+  z.strictObject({ state: z.literal("available"), rows: ProtectedRowsSchema, protectedSchemaHash: z.literal(PROTECTED_SETTINGS_SCHEMA_HASH), readback: ProtectedSettingsReadbackSchema, entries: ProtectedStoreEntriesSchema }),
   z.strictObject({ state: z.literal("unknown"), rows: ProtectedRowsSchema, reason: z.literal("credential-store-unavailable") }),
-]);
+]).superRefine((authority, context) => {
+  if (authority.state !== "available") return;
+  for (const name of ProtectedSettingsNameSchema.options) {
+    const entry = authority.entries[name];
+    const presence = authority.readback.entries[name];
+    if ((entry === undefined) !== !presence.present
+      || (entry !== undefined && presence.present
+        && (entry.valueId !== presence.valueId || entry.updatedAt !== presence.updatedAt))) {
+      context.addIssue({ code: "custom", path: ["entries", name], message: "credential value disagrees with readback" });
+    }
+  }
+});
 export const SettingsProviderWireSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("present"), count: PositiveIntSchema }),
+  z.strictObject({ state: z.literal("present"), count: PositiveIntSchema, values: z.array(z.string().min(1)).min(1) }),
   z.strictObject({ state: z.literal("missing") }),
   z.strictObject({ state: z.literal("unknown") }),
-]);
+]).superRefine((entry, context) => {
+  if (entry.state === "present" && entry.count !== entry.values.length) {
+    context.addIssue({ code: "custom", path: ["count"], message: "provider key count disagrees with visible values" });
+  }
+});
 const ProviderKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClass === "provider-env").map(row => row.key));
 const DeploymentKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => row.key));
 export const EditableSettingsWireSchema = z.strictObject({

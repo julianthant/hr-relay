@@ -122,8 +122,8 @@ export interface WorkerLoopDependencies {
   readonly heartbeatIntervalMs: number;
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
-  /** Allowlisted run notes from ordinary tasks; transaction callbacks stay outside this sink. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote">;
+  /** Run messages and browser actions; transaction callbacks stay outside this sink. */
+  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
   /**

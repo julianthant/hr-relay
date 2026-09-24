@@ -58,7 +58,8 @@ export async function sessionRuntime() {
     rmSync(root, { recursive: true, force: true });
   }
   try {
-    for (const name of ["package.json", "package-lock.json", "tsconfig.json", "vite.dashboard.config.ts"]) copyFileSync(name, join(root, name));
+    for (const name of ["package.json", "package-lock.json", "tsconfig.json", "vite.dashboard.config.ts"])
+      copyFileSync(name, join(root, name));
     cpSync("src", join(root, "src"), { recursive: true });
     mkdirSync(join(root, "dist")); cpSync(PARITY_DIST_DIR, join(root, "dist/dashboard"), { recursive: true });
     writeFileSync(join(root, "release-drivers"), "released\n");

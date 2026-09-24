@@ -21,9 +21,10 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
           {authority.rows.map(row => {
             const operation = credentials.draft[row.name];
             const presence = authority.state === "available" ? authority.readback.entries[row.name] : undefined;
+            const stored = authority.state === "available" ? authority.entries[row.name] : undefined;
             return <div key={row.name} data-protected-name={row.name} className="flex flex-col gap-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-cozy)]">
               <Field label={row.label} description={row.purpose} error={credentials.errors[row.name]} disabled={credentials.locked || authority.state !== "available" || operation?.kind === "clear"}>
-                <Input type="password" autoComplete="new-password" spellCheck={false} value={operation?.kind === "set" ? operation.raw : ""}
+                <Input type="text" spellCheck={false} value={operation?.kind === "set" ? operation.raw : ""}
                   onChange={event => credentials.update(row.name, event.target.value)} />
               </Field>
               <div className={cn(dsText.meta, "flex flex-wrap items-center gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>
@@ -36,6 +37,7 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
               {presence?.present === true && <dl className={cn(dsText.meta, "flex flex-wrap gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>
                 <div><dt>Write identity</dt><dd className="m-0 break-all">{presence.valueId}</dd></div><div><dt>Updated</dt><dd className="m-0">{presence.updatedAt}</dd></div>
               </dl>}
+              {stored !== undefined && <dl className={cn(dsText.body, "min-w-0")}><dt>Current value</dt><dd className="m-0 break-all [overflow-wrap:anywhere]">{formatSetting(stored.value)}</dd></dl>}
             </div>;
           })}
           <div className="sticky bottom-0 flex flex-wrap items-center gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] py-[var(--ds-space-base)]">
@@ -51,7 +53,7 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
   if (sectionId === "provider-env") return <Panel className="min-h-0 flex-1"><PanelHeader title="Provider availability" headingLevel={2} subtitle=".env.providers · Read-only · Process startup" icon={<ShieldCheck aria-hidden className={dsIcon.lg} />} />
     <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
       <p className={cn(dsText.ui, "text-[color:var(--ds-fg-muted)]")}>Edit .env.providers and restart to change provider keys.</p>
-      {Object.entries(document.providers).map(([name, availability]) => <div key={name} className="flex items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-base)]"><span className={dsText.ui}>{name}</span><Badge tone={availability.state === "unknown" ? "warning" : "neutral"}>{availability.state === "present" ? `${String(availability.count)} populated keys` : availability.state === "missing" ? "Missing" : "Unknown"}</Badge></div>)}
+      {Object.entries(document.providers).map(([name, availability]) => <div key={name} className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-base)]"><div className="flex items-center gap-[var(--ds-space-base)]"><span className={dsText.ui}>{name}</span><Badge tone={availability.state === "unknown" ? "warning" : "neutral"}>{availability.state === "present" ? `${String(availability.count)} populated keys` : availability.state === "missing" ? "Missing" : "Unknown"}</Badge></div>{availability.state === "present" && <ul className={cn(dsText.body, "m-0 list-none p-0")}>{availability.values.map((value, index) => <li key={String(index)} className="break-all [overflow-wrap:anywhere]">Key {String(index + 1)}: {value}</li>)}</ul>}</div>)}
     </PanelBody></Panel>;
   if (sectionId === "derived-host") {
     const display = document.host.primaryDisplay;

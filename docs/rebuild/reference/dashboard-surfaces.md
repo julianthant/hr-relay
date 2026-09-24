@@ -132,10 +132,36 @@ What is **good** and must be kept (charter: port, don't rewrite):
 - [x] the span wire union, its two identity tuples and the emit-time write-once rule (`src/events/types.ts`, `src/infra/events/span-jsonl-writer.ts`; 1g-spine)
 - [x] D214 — the task span path carries the claim generation, so two executions of one node inside one attempt are distinguishable (`taskSpanPath`, `src/core/span-emitter.ts`)
 - [x] D215 — `transaction.previewed` carries `not-observed`, and the wire leaf and the kernel port were re-pinned against each other after the first settled preview killed a worker (separations §9.15)
-- [ ] the NOTES stream has no production emitter: `emitNote` is composed and never called, and `.tracker-rebuild/notes/` has never existed (`{#observed-logs}`)
+- [x] D345 — the NOTES stream has a production action emitter; the executor appends completed browser gestures after task/transaction settlement (`{#observed-logs}`)
 - [ ] `span.ended` carries no `verdict`, so the descriptor's `verdicts` vocabulary has nothing to key off (§1.3, §3.2)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/events/types.ts, src/core/span-emitter.ts, src/core/run-executor.ts, src/infra/events/{span-jsonl-writer,note-jsonl-writer,jsonl-streams}.ts and the real state root; left: the notes producer and the verdict channel, both named below
 <!-- /roadmap-status -->
+
+### D345 — Run data and action Logs · 2026-09-24
+
+`data.observed` is recorded run data. The live `context-data` section serves every
+indexed observation for the exact run, with its producer, attempt, time, direction
+and classified values, even when no editable checkpoint field exists. Logs serves
+the run's action notes, ordinary notes and transaction fences. The dashboard
+renders each completed browser gesture as a short, time-ordered line. A gesture
+names its static semantic control and, under D346, its entered value. The executor buffers gestures through task and transaction
+settlement, then appends notes outside the fenced external-write window. Every
+completed gesture is retained for the operation.
+Older frozen archives are projected into the same split on read: observed rows
+move to Run data while the stored archive remains unchanged.
+
+### D346 — Full local operator values · 2026-09-24
+
+Logs records the value entered or selected with each browser action. Classified
+note and diagnostic capture fields, historical note text, failures and receipts appear from their
+retained bytes. Run data presents original observed values, including
+identifiers, alongside their producer and time. Capture images appear inline
+in Logs. Live queue rows and archived runs show retained titles, names and
+sections. Settings shows stored credential values and active provider keys.
+The existing classification fields remain in durable evidence for provenance;
+they do not replace a retained original on the operator surface. A value
+already discarded from an older record cannot be reconstructed by its read
+projection. Provider prompts and OS notifications have separate egress rules.
 
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
@@ -309,12 +335,12 @@ with no residue. An empty v21 database upgrades normally; the migration never gu
 
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
-- [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)
+- [x] D345 — the worker composes the notes writer; allowlisted task messages and completed browser gestures append to run-scoped notes
 - [x] D270 — `data.observed`: every point captured at record time and redacted by declaration; probe/prepare/verify emit synchronously, commit flushes after callback settlement; the queue projection ignores the arm by name
 - [x] BE transaction probe/prepare/commit/verify roles emit their declared observations, with the durable fence carried by strict `transaction.fenced`; commit delivery waits for callback settlement so no fallible span write occupies fence→click
-- [x] BE L3 — the lazy Logs query joins bounded-scope notes with append-time indexed `data.observed`/`transaction.fenced` rows in one immutable-snapshot page walk, validates run workflow/trace/attempt authority, and resolves one producer through root-composed `(nodeId,taskId)` data origins (zero or multiple origins refuse; one origin may honestly declare no browser system)
-- [x] FE the run-detail Logs section folds the strict combined `LogRowWire` page: notes remain prose; observed rows show direction, redacted facts and the exact producer system when declared; an absent system stays absent, and an authority fence draws no invented observation detail; cursor pages append in sequence order
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified at D254's own bar — `.tracker-rebuild/` holds `spans/` and no `notes/` directory at all; the three doc sections that describe the stream (§1.1, §1.2, §2.1) now say so
+- [x] D345 — the lazy Logs query joins bounded-scope notes with indexed `transaction.fenced` rows in one immutable page walk; the Run data query validates and serves indexed `data.observed` for the exact run
+- [x] D345/D346 — Logs shows action/task notes, entered values, captures and fences; the Context rail shows original observed facts with producer, system, time and attempt
+> 2026-09-24 | D345 | action notes and the Logs/Run data split replace the D254 as-built gap
 <!-- /roadmap-status -->
 
 ### 1.1 Primitives
@@ -408,7 +434,7 @@ inside the JSONL writer and killed a live worker one emit short of its terminal 
 §9.15). The pinning cases are `tests/unit/events/span-events.test.ts`, and the lesson they now
 carry is to enumerate the VALUES a producer can emit rather than sampling the shapes.
 
-**`data.observed` is the OBSERVED LOG, and it is an emission rather than a scrape (D270).** Every
+**`data.observed` is the recorded Run data, and it is an emission rather than a scrape (D270/D345).** Every
 point a task records through `ctx.recordData` — the D115 collector — is what the run actually READ
 or WROTE in the system's own words, and until D270 those points validated the output and were then
 discarded. They now ride this arm, on the producing task's own span path, one event per
@@ -430,10 +456,9 @@ Four properties are worth stating where a reader meets the arm.
   (`ref operator-trust` §2.3) the D82 receipt uses, never a second implementation. An UNDECLARED
   leaf fails the recording task by name; on commit, that post-callback refusal parks the fenced
   write. Dropping it would make a log look complete while hiding what the run read.
-- **`direction` is carried natively, `system` is NOT.** `DataPoint` has always carried read/write,
-  which the Context rail has to DERIVE from the producing node's declared task-contract `effect`
-  because the checkpoint row has no such field (D252) — so an observed log is strictly better placed
-  than the rail to say what the run did to the world and must not re-derive what it holds. The
+- **`direction` is carried natively, `system` is NOT.** `DataPoint` has always carried read/write.
+  Run data displays that recorded direction directly; checkpoint-only fields still derive their
+  direction from the producing node's declared task-contract `effect` (D252). The
   system is declared by the STORE implementing the task and reaches the wire through
   `RunDetailDescriptorView.dataOrigins`, composed at the root because a descriptor may not reach a
   store (D106); a `system` field here would be a second authority over a fact the declaration
@@ -532,8 +557,8 @@ degrades the projection and schedules the guarded rebuild (D218). That is the co
 costs nothing, because no such line exists: the retirement was verified against the real state root,
 not merely against the source tree.
 
-**The notes stream — declared, composed, and written by nothing.** Notes are the high-volume half
-of D10: log lines, screenshots, per-action records, data points. They carry the same `SpanRef`
+**The notes stream.** Notes are the high-volume half of D10: action lines and
+ordinary task messages. They carry the same `SpanRef`
 addressing as spans, so a note attributes to its exact task attempt or worker lifetime:
 
 ```ts
@@ -542,43 +567,24 @@ addressing as spans, so a note attributes to its exact task attempt or worker li
   level: "step" | "success" | "error" | "waiting" | "warn" | "debug",
   message: string,
   fields?: readonly NoteFieldWire[],   // closed kind union: text | count | digest | last4 | basename
+  action?: { kind, targetId, value? }, // completed browser gesture and entered value
 }
 ```
 
-`fields` is a closed key/value union whose kinds mirror the redaction transforms (`ref
-clock-config-secrets`): a value that reached this wire either passed `allow` as text or was
-transformed, and a dropped field does not appear at all. Notes are evidence, not control state — a
+`fields` is a closed key/value union. Task logger fields retain their original
+values as text; classified diagnostic fields also retain their originals. Notes
+are evidence, not control state — a
 new structured field is a schema extension, high-cardinality exploratory metadata belongs in a
 schema-versioned diagnostic attachment, and no projector, command handler, retry policy or workflow
 bind may branch on note prose or an untyped attachment payload.
 
-**Nothing writes it.** `emitNote` exists and is the only entry
-(`src/infra/events/note-jsonl-writer.ts`); the writer is constructed in the dashboard composition
-and exposed on its handle (`src/server/dashboard/compose.ts`) — and **no caller in `src/` ever
-invokes it.** The only callers are test and fixture files. The worker, which is where a run's log
-lines would come from, writes structured JSON to stdout instead (`lineTaskLogger`,
-`src/server/worker/compose.ts`). At D254's own evidentiary bar — verified against the real state
-root, not merely against the source tree — **`.tracker-rebuild/notes/` does not exist**: the state
-root holds a `spans/` directory with a file per workflow-day and no notes directory at all.
-
-Three consequences are worth stating where a reader meets them, because each reads as a rendering
-quirk from the surface side. The run-detail **Logs** section re-reads that stream per request
-(`noteLinesForRun`, `src/server/dashboard/queries/run-detail.ts`) and therefore serves an empty
-page. `defaultTabFor` opens a **failed** run on Logs (`log-panel-model.ts`), so the default tab for
-the one run an operator most needs to read is the empty one. And the `notes/` line in the §2.1
-layout, the "second grep" rationale there, and §1.2's *timeline ← notes* row all describe a stream
-with no producer.
-
-This is `span.patched`'s shape one stream over — machinery whose consumers are complete and whose
-producer was never written — with two differences that decide the disposition. The channel is
-REACHABLE (a call to `emitNote` writes a line and the Logs section reads it back), and it has a
-named owner: `{#observed-logs}` in the tree, whose whole premise is that the log carries the facts
-each task recorded. So this is a to-build, not a retirement.
-
-The declared attribution fields the 1g draft named on the note — `action` (task + semantic UI id +
-page-state transition) and `attachment` (screenshot / data point / diagnostic) — are not on
-`NoteWireSchema` either, and are recorded as the driver-instrumentation slice's, at
-`src/events/types.ts:30`.
+The worker composes `NoteJsonlWriter`. The executor emits every task logger
+message and completed browser gesture. Driver calls record the verb, semantic
+control id and entered value in memory; the executor writes those notes after
+the task or transaction settles. `projectNoteForOperator` serves retained text
+and action values, including on protected-input runs. The Logs query reads bounded note partitions for the
+exact run and joins them with indexed transaction fences; `data.observed` goes
+to Run data (D345).
 
 **Volume, the reason for the split.** The legacy per-page OCR pipeline emits zero tracker rows —
 its state rides ~8–12 deduped, 250 ms-debounced row snapshots per run. A naive per-action SPAN
@@ -600,7 +606,8 @@ every tick, and it holds today because the span half is real.
 | Status badge | status + sentinel step + `statusExtensions` | the run's state machine: `queued` → `queued`, claimed → `running`, an open gate → `awaiting-approval`, ended → the outcome verbatim | `QueueStatusSchema`'s eight values; no sentinel decoding anywhere |
 | Step pipeline | registered steps + a `step` string + reconstructed durations | the descriptor's nodes ⊕ task spans — a task span IS the duration | `pipeline: PipelineStepWireSchema[]` |
 | Run-detail timeline | rows + logs + filtered session events (pid heuristics) | the run's own span fold — task spans, gate open/resolve, and D259's `replayed` arm for a node whose checkpoint another run wrote | `timelineEvents` in `queries/run-detail.ts`; **spans, not notes** |
-| Logs | log lines per run | one immutable-snapshot page of bounded-scope notes plus append-time indexed span `data.observed` / `transaction.fenced` rows | `logLinesForRun` + `RunQueueProjection.runLogSnapshot`; notes still have no production emitter, while recorded observations use the span stream (§1.1) |
+| Logs | log lines per run | one immutable-snapshot page of bounded-scope action/task notes plus indexed `transaction.fenced` rows | `logLinesForRun` + `RunQueueProjection.runLogSnapshot`; browser actions are buffered and written to `notes/` after their task or transaction settles (D345) |
+| Run data | extracted fields | exact-run indexed `data.observed` plus editable checkpoint fields | `buildContextDataPayload` serves the observation ledger even when no checkpoint field was declared (D345) |
 | Worker card | `rebuildSessionState` over instance-keyed events | the worker span and its browser child spans, keyed by `workerId` recorded at `run.claimed` — the instance-name/pid/time-window attribution class of bugs is structurally dead | `workerCards` in `buildDashboardDayWire` |
 | Counts (`wfCounts`) | `countSidebarRowsFromTrackerHistory` | the SAME `surfaces` array the queue renders, folded once, server-side (D81) | `workflowCounts`/`statusCounts`/`monthCounts`, all from one loop |
 | Row-lifecycle debug | replay + cause *guessing* | free: `run.requeued.cause` and `nextAttempt` are recorded, not derived | `RunRequeuedSchema` |
@@ -675,10 +682,9 @@ atomicity, deletion and current/historical compatibility proof. No source is sil
 treated as a fallback authority after conversion. These requirements amend the affected D218/D236/
 D301/D308 storage paths only upon the corresponding successor unit's accepted implementation.
 
-The timeline folds SPANS — that is what makes it derivable at all, since spans are bounded per run
-(§1.1) — and the notes half is a separate lazy section that reads a stream nothing writes. A reader
-who took the old sentence literally would look for the timeline's bug in the fold; the gap is one
-layer earlier, at the producer.
+The timeline folds SPANS, which are bounded per run (§1.1). Logs reads the
+separate notes stream lazily; browser gesture notes have a production producer
+under D345 and remain outside the timeline fold.
 
 ### 1.3 Decision: archetypes survive as vocabulary, die as per-row stamps
 
@@ -843,19 +849,17 @@ neither runtime reads or writes the other's root.
                                        read projections alone are rebuildable
 ```
 
-**Which of these the runtime actually writes.** `spans/`, `artifacts/`, `backups/`, `locks/` (D181)
-and `state.db` are created and written today. Three are not, each for its own reason and each
-verified against the real state root rather than against the source tree:
+**Which of these the runtime actually writes.** `spans/`, `notes/`, `artifacts/`,
+`backups/`, `locks/` (D181) and `state.db` have production writers. Two
+listed paths still have no producer:
 
-- **`notes/`** — nothing calls `emitNote`, so the directory has never existed (§1.1).
 - **`ledger/`** — the projector is written and unit-proven (`src/infra/ledger/ledger-projector.ts`,
   D134's five ordered durable facts, guarded by `ledger-projector`) and **`createLedgerProjector` has no production caller**: its
   only callers are tests. Beat ⑦ does write the durable ledger OUTBOX row inside its authority
   transaction (`ref write-safety` §5), which is the fact the audit floor depends on — nothing
   drains it to a file. The READ half is composed and live (`createLedgerReadThrough`, shared by the
   archive's line pointers and D236's Activity block), so both read a corpus that is currently
-  empty. This is §1.1's notes gap a second time: a complete mechanism whose producer was never
-  wired. It is not a retirement candidate — a real HR write's immutable receipt is the audit floor
+  empty. It is not a retirement candidate — a real HR write's immutable receipt is the audit floor
   D21 exists for, and the outbox rows that feed it are already durable.
 - **`evidence/<runId>/`** — the receipt moved into authority. D82's `RunEvidenceReceipt` is DERIVED
   from authority and stored as a durable row (`src/core/evidence-receipt.ts`, D141), not as a file,
@@ -869,10 +873,8 @@ Rationale against alternatives:
   `grep sp-080639 .tracker-rebuild/spans/*.jsonl` answers *what happened* (state transitions,
   outcomes, gates), and `grep sp-080639 .tracker-rebuild/notes/*.jsonl` was to answer *what it did*
   (log lines, per-action records, screenshots) — one trace id returning the whole operation tree
-  across workflows in both. **Only the first grep answers anything today**, and the cost is not the
-  one this bullet used to record: the `spans/` grep does not contain log-line text (that is the real
-  D10 split cost, as documented) AND the second grep has no file to read. `{#observed-logs}` owns
-  closing it.
+  across workflows in both. D345 gives the second grep action notes from
+  completed browser gestures, with no typed input values.
 - **Why split spans/notes?** Queue and timeline projections read spans only (§1.1's volume note);
   notes load lazily per selected run. Mirrors the legacy rows/logs split, which was proven.
 - **Why a separate `ledger/` (D21 — owner = this doc)?** Ref write-safety's write-safety layer files one
@@ -903,7 +905,7 @@ Rationale against alternatives:
   construction: a note the assertion admits is a note the reader opens the partition for. The
   margin is asymmetric — none below (a note cannot predate its run's enqueue) and ONE day above (the
   midnight a worker's last note can fall the other side of from the transition that closed the run).
-  `{#observed-logs}`, the first production note producer, inherits this rule: a note filed outside
+  The action-note producer follows this rule: a note filed outside
   the scope is a line on disk that the run's own logs tab can never serve, which is a silent drop.
 - **Local artifacts are not hidden task writes (D45).** A read task may create only immutable,
   content-addressed bytes under `artifacts/` through ref task-contract's writer; the returned `{id,sha256,bytes,

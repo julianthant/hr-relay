@@ -49,7 +49,7 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
-import { ObservedDataPointWireSchema } from "../../events/types.js";
+import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../../events/types.js";
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
@@ -425,6 +425,7 @@ export const NoteWireSchema = z.strictObject({
   at: IsoInstantSchema,
   level: z.enum(["info", "warning", "error"]),
   message: z.string().min(1),
+  fields: z.array(NoteFieldWireSchema).optional(),
 });
 
 /**
@@ -451,6 +452,15 @@ const LogSpanIdentityWireSchema = z.strictObject({
   spanPath: z.string().min(1),
 });
 
+export const ObservedLogRowWireSchema = z.strictObject({
+  kind: z.literal("observed"),
+  ...LogRowBase,
+  at: IsoInstantSchema,
+  ...LogSpanIdentityWireSchema.shape,
+  producer: LogProducerWireSchema,
+  points: z.array(ObservedDataPointWireSchema).min(1),
+});
+
 export const LogRowWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("note"),
@@ -464,14 +474,7 @@ export const LogRowWireSchema = z.discriminatedUnion("kind", [
       context.addIssue({ code: "custom", path: ["sequence"], message: "a note row and its existing note must carry one sequence" });
     }
   }),
-  z.strictObject({
-    kind: z.literal("observed"),
-    ...LogRowBase,
-    at: IsoInstantSchema,
-    ...LogSpanIdentityWireSchema.shape,
-    producer: LogProducerWireSchema,
-    points: z.array(ObservedDataPointWireSchema).min(1),
-  }),
+  ObservedLogRowWireSchema,
   z.strictObject({
     kind: z.literal("transaction-fenced"),
     ...LogRowBase,
@@ -657,9 +660,14 @@ export const ContextDataSectionSchema = z.strictObject({
     origin: ContextDataOriginSchema.optional(),
     freshness: ContextDataFreshnessSchema.optional(),
   })),
+  /** The run's recorded read/write facts, including fields without a checkpoint or edit declaration. */
+  observations: z.array(ObservedLogRowWireSchema).optional(),
 }).superRefine((payload, context) => {
   if ((payload.state === "deleted" || payload.state === "unavailable") && payload.entries.length > 0) {
     context.addIssue({ code: "custom", path: ["entries"], message: "deleted or unavailable context data cannot claim checkpoint values" });
+  }
+  if (payload.state === "deleted" && (payload.observations?.length ?? 0) > 0) {
+    context.addIssue({ code: "custom", path: ["observations"], message: "deleted context data cannot claim retained observations" });
   }
   if (payload.state === "unavailable" && payload.reason === undefined) {
     context.addIssue({ code: "custom", path: ["reason"], message: "unavailable context data names why it cannot be read" });

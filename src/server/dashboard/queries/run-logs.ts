@@ -1,5 +1,4 @@
 import { RedactedFieldSchema } from "../../../domain/redaction.js";
-import { valueFreeProtectedEvidence, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 import { z } from "zod";
 import {
   runNotePartitionScope as sharedNotePartitionScope,
@@ -8,6 +7,7 @@ import {
 } from "../../../domain/run/note-scope.js";
 import {
   LogPageCursorSchema,
+  ObservedLogRowWireSchema,
   LogRowWireSchema,
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
@@ -38,6 +38,7 @@ type RunAtRestNote = Readonly<{
   ts: string;
   level: "error" | "warn" | "waiting" | "step" | "success" | "debug";
   message: string;
+  fields?: z.infer<typeof NoteAtRestSchema>["fields"];
 }>;
 
 type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
@@ -47,7 +48,7 @@ export type RunLogScanEntry =
   | Readonly<{ kind: "observed"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "data.observed" }>; producer: RunLogProducer }>
   | Readonly<{ kind: "transaction-fenced"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "transaction.fenced" }>; producer: RunLogProducer }>;
 
-/** @deprecated The cache now holds the combined notes + span-observation log. */
+/** @deprecated Kept for callers of the combined notes + fence snapshot cache. */
 export type RunNoteScanEntry = RunLogScanEntry;
 
 /**
@@ -93,9 +94,8 @@ export function runNotePartitionScope(
  * ONE immutable combined-log snapshot, for a caller that pages the same run to the end.
  *
  * The archive's version-bump freeze walks `buildRunSection(run, "logs")` page by
- * page (`FROZEN_LOG_PAGE_LIMIT` of them), and each call re-read and re-parsed
- * the same partitions to slice a different 200 lines out of the same list. The
- * The archive cache lives for exactly one freeze and is handed in explicitly.
+ * page (`FROZEN_LOG_PAGE_LIMIT` of them). The cache avoids re-reading the same
+ * partitions for every 200-line slice. The archive cache lives for exactly one freeze.
  * Live request deps retain at most 128 snapshots; a missing/evicted cursor
  * refuses by name and a fresh first page observes the new corpus.
  */
@@ -275,7 +275,7 @@ function logLinesForRun(
       }
       if ("runId" in note && note.runId === runId) {
         assertRunLogIdentity("note", note, line, runId, row, authority);
-        const projected = projectNoteForOperator(note, hasProtectedTransactionInput(authority));
+        const projected = projectNoteForOperator(note);
         if (!("runId" in projected)) {
           throw new Error(`notes line ${line.file.path}:${String(line.lineNumber)} changed identity during projection`);
         }
@@ -287,23 +287,17 @@ function logLinesForRun(
             ts: projected.ts,
             level: projected.level,
             message: projected.message,
+            fields: projected.fields,
           },
         });
       }
     }
     const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
     for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
+      if (event.t !== "transaction.fenced") continue;
       assertScopedSpanWorkflow(event, line);
       assertRunLogIdentity("span", event, line, runId, row, authority);
-      if (event.t === "data.observed") {
-        const protectedPoints = event.points.map((point) => ({ ...point,
-          values: point.values.map((value) => RedactedFieldSchema.parse(valueFreeProtectedEvidence(value,
-            retainedRunProtectedBindings(authority).map(({ inputPath }) => inputPath)))) }));
-        matches.push({ kind: "observed", line, event: { ...event, points: protectedPoints }, producer: producerOf(descriptor, event, line) });
-      }
-      if (event.t === "transaction.fenced") {
-        matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
-      }
+      matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
     }
     return matches.sort((left, right) =>
       logInstantOf(left).localeCompare(logInstantOf(right))
@@ -314,6 +308,30 @@ function logLinesForRun(
           || left.line.lineNumber - right.line.lineNumber));
   };
   return scan();
+}
+
+/** The durable observations are Run data. Logs reads only action notes and fence beats. */
+export function runDataObservationsForRun(
+  deps: RunDetailQueryDeps,
+  authority: RunRecord,
+  runId: string,
+): readonly z.infer<typeof ObservedLogRowWireSchema>[] {
+  const row = deps.projection.runFold(runId);
+  const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
+  const observed: RunLogScanEntry[] = [];
+  for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
+    if (event.t !== "data.observed") continue;
+    assertScopedSpanWorkflow(event, line);
+    assertRunLogIdentity("span", event, line, runId, row, authority);
+    const points = event.points.map((point) => ({ ...point,
+      values: point.values.map((value) => RedactedFieldSchema.parse(value)),
+    }));
+    observed.push({ kind: "observed", line, event: { ...event, points }, producer: producerOf(descriptor, event, line) });
+  }
+  // The projection already holds SQLite ingestion order. Stable sort keeps that
+  // order for equal observation clocks, including across different day files.
+  observed.sort((left, right) => logInstantOf(left).localeCompare(logInstantOf(right)));
+  return observed.map((entry, sequence) => ObservedLogRowWireSchema.parse(logRowOf(entry, sequence)));
 }
 
 function logInstantOf(entry: RunLogScanEntry): string {
@@ -342,6 +360,7 @@ function logRowOf(
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
         message: entry.note.message,
+        fields: entry.note.fields,
       },
     };
   }

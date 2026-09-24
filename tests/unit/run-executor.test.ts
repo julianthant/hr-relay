@@ -30,6 +30,7 @@ import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
+import { recordBrowserAction } from "../../src/infra/browser/action-notes.js";
 import { NoteWireSchema } from "../../src/events/types.js";
 import { ucpathStore } from "../../src/stores/ucpath/index.js";
 import { ucpathDriver } from "../../src/stores/ucpath/driver-declaration.js";
@@ -123,7 +124,38 @@ function enqueueAndClaim(
 const SIGNAL = new AbortController().signal;
 
 describe("person-lookup full walk", () => {
-  it("writes bounded, protected ordinary task logs through the run query cursor", async () => {
+  it("records every completed browser gesture on the task span", async () => {
+    const sessions = sessionFactoryHarness({
+      ucpath: () => {
+        const driver = healthyUcpathDriver();
+        return Object.freeze({ ...driver,
+          async searchPersonOrg(...args: Parameters<typeof driver.searchPersonOrg>) {
+            const result = await driver.searchPersonOrg(...args);
+            for (let index = 0; index < 258; index += 1) {
+              recordBrowserAction("clicked", "ucpath.person-org.search-button");
+            }
+            return result;
+          },
+        });
+      },
+      crm: () => healthyCrmDriver(),
+    });
+    const harness = executorHarness({ sessions });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+    const notes = readEventStreamLines(stateRoot, "notes")
+      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+    const actions = notes.filter((note) => note.action !== undefined);
+    assert.equal(actions.length, 258);
+    assert.equal(actions.every((note) => note.message === "Clicked ucpath person org search button"), true);
+    assert.equal(actions.every((note) => note.spanPath.includes("searching")), true);
+    assert.equal(notes.some((note) => note.message === "Further browser actions were omitted after the 256-action operation limit."), false);
+  });
+
+  it("writes every ordinary task log and its fields through the run query cursor", async () => {
     let searchCalls = 0;
     const sessions = sessionFactoryHarness({
       ucpath: () => {
@@ -192,17 +224,17 @@ describe("person-lookup full walk", () => {
     assert.equal(searchCalls, 2, "a transient task failure retries once");
     assert.equal(stdout.entries().length, 262, "all task log lines still reach stdout");
     assert.match(stdout.entries()[0] ?? "", /UNCLASSIFIED_MESSAGE_CANARY/u);
-    assert.equal(stdout.entries()[0]?.includes("10873698"), false, "protected EID remains redacted in stdout");
+    assert.equal(stdout.entries()[0]?.includes("10873698"), true);
 
     const noteLines = readEventStreamLines(stateRoot, "notes");
-    assert.equal(noteLines.length, 257, "256 task messages plus one explicit run-limit note");
-    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_MESSAGE_CANARY")), false);
-    assert.equal(noteLines.some(({ text }) => text.includes("10873698")), false);
-    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_NOTE_CANARY")), false);
+    assert.equal(noteLines.length, 262, "all task messages persist");
+    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_MESSAGE_CANARY")), true);
+    assert.equal(noteLines.some(({ text }) => text.includes("10873698")), true);
+    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_NOTE_CANARY")), true);
     const firstLine = noteLines[0];
     assert.ok(firstLine);
     const firstNote = NoteWireSchema.parse(JSON.parse(firstLine.text));
-    assert.equal(firstNote.message, "roster match completed");
+    assert.match(firstNote.message, /UNCLASSIFIED_MESSAGE_CANARY protected EID 10873698/u);
     assert.ok("runId" in firstNote);
     assert.equal(firstNote.runId, RUN_ID);
     assert.equal(firstNote.attempt, 1);
@@ -213,7 +245,7 @@ describe("person-lookup full walk", () => {
       1,
       claimed.claim.claimGeneration,
     ));
-    const retriedNote = NoteWireSchema.parse(JSON.parse(noteLines[1]?.text ?? "{}"));
+    const retriedNote = NoteWireSchema.parse(JSON.parse(noteLines[2]?.text ?? "{}"));
     assert.ok("runId" in retriedNote);
     assert.equal(retriedNote.runId, RUN_ID);
     assert.equal(retriedNote.attempt, 1);
@@ -224,9 +256,12 @@ describe("person-lookup full walk", () => {
       2,
       claimed.claim.claimGeneration,
     ));
-    assert.equal(firstNote.fields, undefined, "unclassified TaskLogger fields are not copied into notes");
+    assert.deepEqual(firstNote.fields, [
+      { key: "unclassifiedEid", kind: "text", value: "10873698" },
+      { key: "unclassifiedSecret", kind: "text", value: "UNCLASSIFIED_NOTE_CANARY" },
+    ]);
     const lastNote = NoteWireSchema.parse(JSON.parse(noteLines.at(-1)?.text ?? "{}"));
-    assert.equal(lastNote.message, "Further task log messages were omitted after the 256-message run limit.");
+    assert.equal(lastNote.message, "roster match completed");
 
     const terminal = database.authority.runs.get(RUN_ID);
     assert.ok(terminal);
@@ -249,7 +284,7 @@ describe("person-lookup full walk", () => {
     });
     const oldContinuation = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal, firstPage.payload.nextCursor.value);
     if (oldContinuation.section !== "logs") throw new Error("expected old snapshot continuation");
-    assert.equal(oldContinuation.payload.rows?.length, 57);
+    assert.equal(oldContinuation.payload.rows?.length, 62);
     assert.equal(oldContinuation.payload.rows?.some((row) => row.kind === "note" && row.note.message === "arrived after page one"), false);
 
     const freshFirst = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal);
@@ -259,8 +294,8 @@ describe("person-lookup full walk", () => {
     assert.notEqual(freshFirst.payload.nextCursor.value, firstPage.payload.nextCursor.value);
     const freshContinuation = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal, freshFirst.payload.nextCursor.value);
     if (freshContinuation.section !== "logs") throw new Error("expected refreshed continuation");
-    assert.equal(freshContinuation.payload.rows?.length, 58);
-    assert.equal(freshContinuation.payload.rows?.at(-1)?.sequence, 257);
+    assert.equal(freshContinuation.payload.rows?.length, 63);
+    assert.equal(freshContinuation.payload.rows?.at(-1)?.sequence, 262);
   });
 
   it("walks all four nodes to sealed terminal success, skipping crm-dates by condition", async () => {
@@ -633,7 +668,7 @@ describe("failure, retry, and resume", () => {
     assert.match(failure.summary, /missing context "cross-verify"/);
   });
 
-  it("emits every recorded point on the task's own span, redacted by declaration (D270)", async () => {
+  it("emits every recorded point on the task's own span with original values (D346)", async () => {
     const harness = executorHarness({ sessions: happySessionHarness() });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
@@ -657,8 +692,7 @@ describe("failure, retry, and resume", () => {
     assert.deepEqual(event.points.map((point) => point.field), ["results", "selection"]);
     assert.deepEqual([...new Set(event.points.map((point) => point.direction))], ["read"]);
 
-    // Redaction is the DECLARED one, per leaf — a population is a count, a
-    // person identifier is a last4, and a status is allowed through whole.
+    // Classification stays declared per leaf; the original is retained for the operator.
     const values = new Map(event.points.flatMap((point) => point.values.map((value) => [value.key, value])));
     assert.equal(values.get("results")?.transform, "count");
     assert.equal(values.get("selection.status")?.state, "allowed");
@@ -672,15 +706,16 @@ describe("failure, retry, and resume", () => {
     assert.ok((selection?.values.length ?? 0) > 1);
     assert.equal(selection?.values.every((value) => value.key.startsWith("selection.")), true);
 
-    // The whole identifier never reached the stream.
+    // The whole identifier is retained alongside the classified projection.
     const checkpoint = database.authority.runCheckpoints.latest(WORKFLOW_ID, run.envelope.itemId, "searching");
     const recorded = JSON.stringify(checkpoint?.output.value ?? {});
     const wholeEid = /"emplId":"(\d+)"/.exec(recorded)?.[1];
     assert.ok(wholeEid !== undefined && wholeEid.length > 4);
-    assert.equal(JSON.stringify(event).includes(wholeEid), false);
+    assert.equal(emplId?.rawValue, wholeEid);
+    assert.equal(JSON.stringify(event).includes(wholeEid), true);
   });
 
-  it("drops a protected canary EID before real executor observed-data emission", async () => {
+  it("retains a protected canary EID in real executor observed-data emission", async () => {
     const harness = executorHarness({ sessions: happySessionHarness() });
     const { database, clock } = harness.authority;
     const binding = { kind: "test-data-local" as const, inputPath: "emplId" as const,
@@ -691,7 +726,8 @@ describe("failure, retry, and resume", () => {
     const points = harness.emitter.events().flatMap((event) => event.t === "data.observed" ? event.points : []);
     const identifiers = points.flatMap((point) => point.values).filter(({ key }) => key.endsWith("emplId"));
     assert.ok(identifiers.length > 0);
-    assert.ok(identifiers.every(({ transform }) => transform === "drop"));
+    assert.ok(identifiers.every(({ rawValue }) => rawValue !== undefined));
+    assert.ok(identifiers.some(({ rawValue }) => rawValue === "10873698"));
     assert.deepEqual(database.authority.runs.get(RUN_ID)?.input.parsed.protectedBindings, [binding]);
   });
 

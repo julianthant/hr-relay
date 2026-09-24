@@ -1,7 +1,7 @@
 # setup-preflight--graphite-warm--1440x900--optional-warning-doctor
 # adapter: production-preflight-services
 # fixture: optional-warning
-# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: optional-warning-doctor
 # capturedAt: 2026-08-03
@@ -82,7 +82,7 @@
       - button "Rerun preflight"
       - text: "Scope: dashboard.serve Checked"
       - time: 2026-08-03T17:05:00.000Z
-      - text: "pass runtime.compatibility Node 26.1.0 and package-lock v3 are compatible pass config.valid the retained runtime config passes the strict ConfigSchema pass filesystem.health .tracker and artifacts are readable, writable, and have available blocks pass authority.health authority schema 53, backup missing, and 0 span run(s) are reconciled (0 archived, 0 deleted); ucpathUserId=absent, ucpathPassword=absent, timekeeperName=absent, sharepointOnboardingRosterUrl=absent, activityPersonPseudonym=absent; authority upgrade phase baseline pass ports.available reserved dashboard ports are bindable or owned by this dashboard pair warning process.orphans 1 live worker lease(s) point at missing processes; 0 unreleased dead process owner record(s) require review Remedy: review and explicitly clear stale rebuild processes or leases"
+      - text: "pass runtime.compatibility Node 26.1.0 and package-lock v3 are compatible pass config.valid the retained runtime config passes the strict ConfigSchema pass filesystem.health .tracker and artifacts are readable, writable, and have available blocks pass authority.health authority schema 54, backup missing, and 0 span run(s) are reconciled (0 archived, 0 deleted); ucpathUserId=absent, ucpathPassword=absent, timekeeperName=absent, sharepointOnboardingRosterUrl=absent, activityPersonPseudonym=absent; authority upgrade phase baseline pass ports.available reserved dashboard ports are bindable or owned by this dashboard pair warning process.orphans 1 live worker lease(s) point at missing processes; 0 unreleased dead process owner record(s) require review Remedy: review and explicitly clear stale rebuild processes or leases"
       - button "Open Sessions"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
@@ -101,5 +101,5 @@
   - button "Rerun preflight"
   - text: "Scope: dashboard.serve Checked"
   - time: 2026-08-03T17:05:00.000Z
-  - text: "pass runtime.compatibility Node 26.1.0 and package-lock v3 are compatible pass config.valid the retained runtime config passes the strict ConfigSchema pass filesystem.health .tracker and artifacts are readable, writable, and have available blocks pass authority.health authority schema 53, backup missing, and 0 span run(s) are reconciled (0 archived, 0 deleted); ucpathUserId=absent, ucpathPassword=absent, timekeeperName=absent, sharepointOnboardingRosterUrl=absent, activityPersonPseudonym=absent; authority upgrade phase baseline pass ports.available reserved dashboard ports are bindable or owned by this dashboard pair warning process.orphans 1 live worker lease(s) point at missing processes; 0 unreleased dead process owner record(s) require review Remedy: review and explicitly clear stale rebuild processes or leases"
+  - text: "pass runtime.compatibility Node 26.1.0 and package-lock v3 are compatible pass config.valid the retained runtime config passes the strict ConfigSchema pass filesystem.health .tracker and artifacts are readable, writable, and have available blocks pass authority.health authority schema 54, backup missing, and 0 span run(s) are reconciled (0 archived, 0 deleted); ucpathUserId=absent, ucpathPassword=absent, timekeeperName=absent, sharepointOnboardingRosterUrl=absent, activityPersonPseudonym=absent; authority upgrade phase baseline pass ports.available reserved dashboard ports are bindable or owned by this dashboard pair warning process.orphans 1 live worker lease(s) point at missing processes; 0 unreleased dead process owner record(s) require review Remedy: review and explicitly clear stale rebuild processes or leases"
   - button "Open Sessions"

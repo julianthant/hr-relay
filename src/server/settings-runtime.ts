@@ -11,7 +11,7 @@ import {
   initialSettingsFileRecord, settingsRuntimeIdentity,
   type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus,
 } from "../domain/config/settings.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback } from "../domain/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../domain/config/protected-settings.js";
 import type { CommandAuthority } from "../core/command-kernel.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 
@@ -62,13 +62,18 @@ export function createCredentialSecretSource(store: Pick<CredentialStore, "read"
 export interface ProtectedSettingsRuntimeSnapshot {
   readonly protectedSchemaHash: string;
   readonly readback: ProtectedSettingsReadback;
+  readonly record: ProtectedStoreRecord;
 }
 
 export function createProtectedSettingsRuntimeReader(store: Pick<CredentialStore, "read">): Readonly<{ read(): ProtectedSettingsRuntimeSnapshot }> {
-  return Object.freeze({ read: () => Object.freeze({
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    readback: protectedSettingsReadback(store.read()),
-  }) });
+  return Object.freeze({ read: () => {
+    const record = store.read();
+    return Object.freeze({
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+      readback: protectedSettingsReadback(record),
+      record,
+    });
+  } });
 }
 
 export interface SettingsRuntimeSnapshot {

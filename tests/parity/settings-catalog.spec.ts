@@ -30,6 +30,9 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
   let document = fixtureSettingsDocument({ providers: { gemini: { models: ["model-second", "model-first"] } }, annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } } }, 2);
   if (document.protectedSettings.state !== "available") throw new Error("fixture-credential-store-unavailable");
   document = EditableSettingsWireSchema.parse({ ...document, protectedSettings: { ...document.protectedSettings,
+    entries: { ...document.protectedSettings.entries, ucpathPassword: {
+      valueId: "00000000-0000-4000-8000-000000000092", value: "synthetic-visible-credential", updatedAt: "2026-09-09T12:00:00.000Z",
+    } },
     readback: { revision: 2, entries: { ...document.protectedSettings.readback.entries,
       ucpathPassword: { present: true, valueId: "00000000-0000-4000-8000-000000000092", updatedAt: "2026-09-09T12:00:00.000Z" } } } } });
   await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: document }));
@@ -42,10 +45,11 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
     await expect(page.locator('[data-settings-path="providers.gemini.models"] textarea')).toHaveValue("model-second\nmodel-first");
     expect(await page.locator('input[type="number"]').count()).toBeGreaterThan(5);
   } else if (scene.id === "credentials") {
-    await expect(page.locator('input[type="password"]')).toHaveCount(5);
-    for (const input of await page.locator('input[type="password"]').all()) await expect(input).toHaveValue("");
+    await expect(page.locator('[data-protected-name] input[type="text"]')).toHaveCount(5);
+    for (const input of await page.locator('[data-protected-name] input[type="text"]').all()) await expect(input).toHaveValue("");
     await expect(page.getByText("Present", { exact: true })).toHaveCount(1);
     await expect(page.getByText("Missing", { exact: true })).toHaveCount(4);
+    await expect(page.getByText("synthetic-visible-credential", { exact: true })).toBeVisible();
   } else if (scene.id === "readonly") {
     await expect(page.locator("input,textarea,select")).toHaveCount(0);
     await expect(page.getByText("paths.stateRoot", { exact: true })).toBeVisible();
@@ -84,7 +88,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await page.getByRole("textbox", { name: "Operator label" }).fill("Retained ordinary draft");
     await page.getByRole("link", { name: "Credentials", exact: true }).click();
     const password = page.getByLabel("UCPath password", { exact: true });
-    await expect(password).toHaveAttribute("type", "password"); await expect(password).toHaveValue("");
+    await expect(password).toHaveAttribute("type", "text"); await expect(password).toHaveValue("");
     await password.fill(secret);
     const attempts: unknown[] = [];
     await page.route("**/api/v1/commands", async route => {
@@ -98,12 +102,14 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     const afterLost = await client.editableSettings(); expect(afterLost.revision).toBe(1);
     if (afterLost.protectedSettings.state !== "available") throw new Error("protected-readback-unavailable");
     expect(afterLost.protectedSettings.readback.revision).toBe(2);
+    expect(afterLost.protectedSettings.entries.ucpathPassword?.value).toBe(secret);
     await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
     await expect(page.getByText("Credentials already applied", { exact: true })).toBeVisible();
     expect(JSON.stringify(attempts[1]) === JSON.stringify(attempts[0])).toBe(true);
     const original = ProtectedSettingsCommandRequestSchema.parse(attempts[0]);
     expect(ProtectedSettingsCommandRequestSchema.parse(attempts[1]).payload.writeId).toBe(original.payload.writeId);
     await expect(password).toHaveValue("");
+    await expect(page.getByText(secret, { exact: true })).toBeVisible();
     await page.getByRole("link", { name: "General", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Operator label" })).toHaveValue("Retained ordinary draft");
     const patch = { "actor.label": { set: "Competing ordinary writer" } } as const;
@@ -137,9 +143,9 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     expect(JSON.stringify(attempts.at(-1)) === beforeRetry).toBe(true);
     await expect(password).toHaveValue("");
     const readback = await client.editableSettings();
-    expect(JSON.stringify(readback).includes(secret)).toBe(false);
-    expect((await page.content()).includes(secret)).toBe(false);
-    expect((await page.locator("body").ariaSnapshot()).includes(secret)).toBe(false);
+    expect(JSON.stringify(readback).includes(secret)).toBe(true);
+    expect((await page.content()).includes(secret)).toBe(true);
+    expect((await page.locator("body").ariaSnapshot()).includes(secret)).toBe(true);
     expect(logs.join("\n").includes(secret)).toBe(false);
     const files = readdirSync(join(server.root, ".tracker"), { recursive: true, withFileTypes: true }).filter(file => file.isFile() && /\.(?:sqlite|db)(?:-wal|-shm)?$/u.test(file.name));
     expect(files.length).toBeGreaterThan(0);

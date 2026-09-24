@@ -83,7 +83,8 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   let protectedSettings: unknown;
   try {
     const read = deps.protectedSettings.read();
-    protectedSettings = { state: "available", rows: protectedRows, ...read };
+    protectedSettings = { state: "available", rows: protectedRows,
+      protectedSchemaHash: read.protectedSchemaHash, readback: read.readback, entries: read.record.entries };
   } catch {
     // Independent credential failure is an explicit unknown, never an empty store or leaked diagnostic.
     protectedSettings = { state: "unknown", rows: protectedRows, reason: "credential-store-unavailable" };
@@ -91,8 +92,8 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   const providers = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "provider-env").map(row => {
     const name = SecretFamilyNameSchema.parse(row.key); // Registry defects must throw, outside availability handling.
     try {
-      const count = optionalSecretFamily(name, deps.environment).length;
-      return [row.key, count === 0 ? { state: "missing" } : { state: "present", count }];
+      const values = optionalSecretFamily(name, deps.environment);
+      return [row.key, values.length === 0 ? { state: "missing" } : { state: "present", count: values.length, values }];
     } catch { return [row.key, { state: "unknown" }]; }
   }));
   const deployment = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => {
