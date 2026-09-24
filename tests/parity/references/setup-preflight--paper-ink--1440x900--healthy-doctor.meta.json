@@ -4,7 +4,7 @@
   "theme": "paper-ink",
   "adapter": "production-preflight-services",
   "fixtureId": "healthy",
-  "descriptorHash": "a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328",
+  "descriptorHash": "a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411",
   "appVersion": "0.1.0",
   "capturedAt": "2026-08-03",
   "variant": "healthy-doctor"
