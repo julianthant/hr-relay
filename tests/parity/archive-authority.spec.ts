@@ -263,7 +263,7 @@ test("real bounded pages retain exact history selection outside the filtered pag
     delayedList.release(); await listResponse;
     await expect(page.getByRole("button", { name: other.title, exact: true })).toBeVisible();
     await expect(page.getByText("No saved reports match this query.", { exact: true })).toHaveCount(0);
-    await page.getByText("Back", { exact: true }).click();
+    await page.getByRole("button", { name: "Dashboard", exact: true }).click();
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
     await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue("");
     expect(errors).toEqual([]);

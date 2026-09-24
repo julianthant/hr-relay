@@ -34,7 +34,7 @@ async function mount(versions:SavedVersionIndexWire[]= [BEFORE,AFTER]) {
     executeCommand:async(request:unknown)=>{commands.push(request);return CommandResultSchema.parse({state:"applied",commandId:CommandRequestSchema.parse(request).commandId,affectedTargets:[{family:"version-archive",versionPlanId:PLAN_ID}]});},
   };
   const strictClient=new Proxy(client,{get(target,key){if(!(key in target))throw new Error(`Unexpected client call ${String(key)}`);return Reflect.get(target,key) as unknown;}}) as unknown as DashboardClient;
-  function Route(){const [view,setView]=useState<"runs"|"versions">("runs"),[selection,setSelection]=useState("");return createElement(DashboardClientProvider,{client:strictClient,children:createElement(ArchiveWorkspace,{view,selection,actorId:"local-operator",onView:setView,onSelection:setSelection,onClose:()=>undefined})});}
+  function Route(){const [view,setView]=useState<"runs"|"versions">("runs"),[selection,setSelection]=useState("");return createElement(DashboardClientProvider,{client:strictClient,children:createElement(ArchiveWorkspace,{view,selection,actorId:"local-operator",onView:setView,onSelection:setSelection})});}
   const host=document.createElement("div");document.body.append(host);const root=createRoot(host);dispose=async()=>{await act(async()=>root.unmount());};
   await act(async()=>root.render(createElement(Route)));
   return {commands,queries,reads:()=>reads,holdNextRead:()=>{hold=true;},release:async()=>{assert.ok(release);await act(async()=>release?.());}};

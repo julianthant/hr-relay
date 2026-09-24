@@ -102,7 +102,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               actorId={boot.actor.id}
               onSelection={(next) => setRoute({ ...route, archive: next })}
               onView={(next) => setRoute({ ...route, archiveView: next })}
-              onClose={() => setRoute(routeWithoutTakeovers(route))}
             />
           ) : takeover === "activity" ? (
             /*
@@ -151,6 +150,5 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 catalog: undefined,
                 catalogView: undefined,
               })}
-              onClose={() => setRoute(routeWithoutTakeovers(route))}
             />
           ) : children);}

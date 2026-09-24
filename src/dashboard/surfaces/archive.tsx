@@ -87,7 +87,6 @@ import { observeAsyncResource } from "../state/async-resource.js";
  */
 import {
 Archive as ArchiveIcon,
-ArrowLeft,
 BadgeCheck,
 Camera,
 ChevronDown,
@@ -97,7 +96,6 @@ Download,
 FileClock,
 FlaskConical,
 Info,
-Lock,
 ShieldAlert,
 Trash2,
 TriangleAlert,
@@ -3575,7 +3573,6 @@ export function LegacyArchiveWorkspace({
   actorId,
   onSelection,
   onView,
-  onClose,
 }: {
   /** `""` is the ledger; anything else is an archived run id. */
   selection: string;
@@ -3584,7 +3581,6 @@ export function LegacyArchiveWorkspace({
   actorId: string;
   onSelection: (next: string) => void;
   onView: (next: ArchiveView) => void;
-  onClose: () => void;
 }) {
   const client = useDashboardClient();
   const [index, setIndex] = useState<AsyncResource<ArchiveIndexWire>>(LOADING);
@@ -3826,49 +3822,31 @@ export function LegacyArchiveWorkspace({
       <PageHeader
         title="Archive"
         icon={<ArchiveIcon aria-hidden className={dsIcon.md} />}
-        badge={
-          <Badge tone="neutral">
-            <Lock aria-hidden className={dsIcon.sm} />
-            read-only
-          </Badge>
-        }
-        back={
-          <Button
-            size="toolbar"
-            variant="secondary"
-            icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
-            onClick={() => (selection === ARCHIVE_INDEX ? onClose() : onSelection(ARCHIVE_INDEX))}
-          >
-            {/* AR4, D275 item 7 — one label. The detail is a PANE beside the
-                list, not a page over it, so the button never went anywhere else. */}
-            Back to the dashboard
-          </Button>
-        }
-        actions={
-          <span
-            role="group"
-            aria-label="Archive view"
-            className="inline-flex items-center gap-[var(--ds-space-hair)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] p-[var(--ds-space-hair)]"
-          >
-            <Button
-              size="sm"
-              variant={view === "runs" ? "secondary" : "ghost"}
-              aria-pressed={view === "runs"}
-              onClick={() => onView("runs")}
-            >
-              Archived runs
-            </Button>
-            <Button
-              size="sm"
-              variant={view === "versions" ? "secondary" : "ghost"}
-              aria-pressed={view === "versions"}
-              onClick={() => onView("versions")}
-            >
-              Versions & bumps
-            </Button>
-          </span>
-        }
       />
+      <div className="px-[var(--ds-space-cozy)] pt-[var(--ds-space-cozy)]">
+        <span
+          role="group"
+          aria-label="Archive view"
+          className="inline-flex items-center gap-[var(--ds-space-hair)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] p-[var(--ds-space-hair)]"
+        >
+          <Button
+            size="sm"
+            variant={view === "runs" ? "secondary" : "ghost"}
+            aria-pressed={view === "runs"}
+            onClick={() => onView("runs")}
+          >
+            Archived runs
+          </Button>
+          <Button
+            size="sm"
+            variant={view === "versions" ? "secondary" : "ghost"}
+            aria-pressed={view === "versions"}
+            onClick={() => onView("versions")}
+          >
+            Versions & bumps
+          </Button>
+        </span>
+      </div>
       {body()}
       <DeleteConfirmDialog
         detail={confirming === "delete" ? loadedDetail : undefined}

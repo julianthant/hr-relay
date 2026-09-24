@@ -353,7 +353,7 @@ describe("DCC5 Explorer edit dialog", () => {
         },
       });
       await render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, {
-        workflowId: String(first.id), onWorkflow: () => undefined, onVersionRegistry: () => undefined, onClose: () => undefined,
+        workflowId: String(first.id), onWorkflow: () => undefined, onVersionRegistry: () => undefined,
       }) }));
       await settle();
       const door = button(`Edit ${field.replace("-", " ")}`);
@@ -464,7 +464,6 @@ describe("DCC5 Explorer edit dialog", () => {
         workflowId: String(first.id),
         onWorkflow: () => undefined,
         onVersionRegistry: () => undefined,
-        onClose: () => undefined,
       }),
     }));
     await settle();

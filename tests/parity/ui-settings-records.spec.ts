@@ -393,7 +393,7 @@ for (const theme of PARITY_THEMES) {
       const activity = page.getByRole("region", { name: "Activity report" });
       await expect(activity).toBeVisible();
       await expect(activity.getByRole("heading", { name: "Activity results", exact: true })).toBeVisible();
-      await expect(activity.getByRole("group", { name: "Activity report range" }).locator(".ds-date-picker")).toHaveCount(2);
+      await expect(activity.getByRole("button", { name: /^Select report dates:/u })).toHaveCount(1);
       await expect(activity.getByRole("group", { name: "Export activity report" })).toBeVisible();
       await expect(page.getByRole("button", { name: /Export CSV/u })).toBeVisible();
       await expect(page.getByRole("button", { name: /XLSX/u })).toBeVisible();
@@ -466,7 +466,7 @@ for (const theme of PARITY_THEMES) {
           } else if (surface === "activity") {
             const activity = page.getByRole("region", { name: "Activity report" });
             await expect(activity.getByRole("heading", { name: "Activity results", exact: true })).toBeVisible();
-            await expect(activity.getByRole("group", { name: "Activity report range" })).toBeVisible();
+            await expect(activity.getByRole("button", { name: /^Select report dates:/u })).toBeVisible();
             await expect(activity.getByRole("group", { name: "Export activity report" })).toBeVisible();
           } else {
             const versions = page.getByRole("region", { name: "Versions and saved changes" });
@@ -546,15 +546,11 @@ for (const theme of PARITY_THEMES) {
               await expect(applyBlocked).toBeDisabled();
             } else {
               const activity = page.getByRole("region", { name: "Activity report" });
-              const range = activity.getByRole("group", { name: "Activity report range" });
-              const labeledRangeFields = range.locator('[data-slot="date-picker-trigger"]');
-              await expect(labeledRangeFields).toHaveCount(2);
-              for (const rangeField of await labeledRangeFields.all()) {
-                await rangeField.scrollIntoViewIfNeeded();
-                await expect(rangeField).toBeInViewport();
-                await rangeField.focus();
-                await expect(rangeField).toBeFocused();
-              }
+              const dateControl = activity.getByRole("button", { name: /^Select report dates:/u });
+              await dateControl.scrollIntoViewIfNeeded();
+              await expect(dateControl).toBeInViewport();
+              await dateControl.focus();
+              await expect(dateControl).toBeFocused();
               const exportActions = activity.getByRole("group", { name: "Export activity report" });
               for (const action of await exportActions.getByRole("button").all()) {
                 await action.scrollIntoViewIfNeeded();

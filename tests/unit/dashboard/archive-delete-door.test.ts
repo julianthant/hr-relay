@@ -174,7 +174,6 @@ function ArchiveRoute({ client }: { client: DashboardClient }): ReactElement {
         actorId: ACTOR_ID,
         onSelection: setSelection,
         onView: setView,
-        onClose: () => undefined,
       }),
     }),
   });

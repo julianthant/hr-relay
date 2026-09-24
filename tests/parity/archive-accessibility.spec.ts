@@ -109,7 +109,7 @@ test("Explorer's Version registry door restores the route-owned view through lin
   await expectVersionRegistry(page, registrySearch);
 });
 
-test("Explorer's Version registry action keeps toolbar geometry and a clear desktop hit target", async ({ page }) => {
+test("Explorer's Version registry action keeps a clear 28px desktop hit target", async ({ page }) => {
   await page.setViewportSize(NARROW_DESKTOP_VIEWPORT);
   await gotoAppState(page, server.baseUrl, {
     day: FIXTURE_DAY,

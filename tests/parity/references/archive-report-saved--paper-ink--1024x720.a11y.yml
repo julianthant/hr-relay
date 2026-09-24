@@ -23,10 +23,10 @@
   - button "Switch to Graphite Warm"
   - button "Settings"
 - main:
-  - button "Back"
   - text: Archive
-  - button "Saved reports" [pressed]
-  - button "Versions & bumps"
+  - group "Archive view":
+    - button "Saved reports" [pressed]
+    - button "Versions & bumps"
   - button "Refresh"
   - region "Saved reports":
     - heading "Saved reports" [level=2]

@@ -24,12 +24,12 @@
   - button "Settings"
 - main:
   - region "Workflow explorer":
-    - button "Back to the dashboard"
-    - text: Explorer graph read-only
-    - button "Version registry"
+    - text: Explorer
     - region "Registered workflows":
       - heading "Workflows" [level=2]
-      - text: 2 Separations
+      - text: "2"
+      - button "Version registry"
+      - text: Separations
       - list:
         - listitem:
           - button "Separations 21"

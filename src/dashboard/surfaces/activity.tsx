@@ -65,7 +65,9 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * and a sampled run those rows do not cover announces itself by id rather than
  * by a name this surface would have to invent.
  */
-import { ChartNoAxesColumn,Download,Info,TriangleAlert } from "lucide-react";
+import { CalendarDays,ChartNoAxesColumn,ChevronDown,Download,Info,TriangleAlert } from "lucide-react";
+import { RangeCalendar as HeroRangeCalendar } from "@heroui/react";
+import { parseDate,type CalendarDate } from "@internationalized/date";
 import { useCallback,useEffect,useMemo,useState,useRef,type ReactNode } from "react";
 import {
 activityErrorRatePercent,
@@ -82,7 +84,6 @@ CardBase,
 CardBody,
 dsIcon,
 dsText,
-DateInput,
 IconButton,
 MetaLine,
 PageHeader,
@@ -123,6 +124,52 @@ import { fmtClock,plural } from "./format.js";
 import { dsStatusOf,statusText,type QueueStatus } from "./status-model.js";
 
 /* the range vocabulary lives in `activity-model.ts` — see the note there */
+
+function calendarDate(value: string): CalendarDate | null {
+  try { return parseDate(value); } catch { return null; }
+}
+
+function dateControlLabel(from: string, to: string): string {
+  const start = new Date(`${from}T12:00:00Z`);
+  const end = new Date(`${to}T12:00:00Z`);
+  const short = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const full = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  if (from === to) return full(start);
+  if (from.slice(0, 4) !== to.slice(0, 4)) return `${full(start)} – ${full(end)}`;
+  if (from.slice(0, 7) === to.slice(0, 7)) return `${short(start)} – ${to.slice(8)}, ${to.slice(0, 4)}`;
+  return `${short(start)} – ${full(end)}`;
+}
+
+function ActivityDateControl({ from, to, invalid, onRange }: {
+  from: string;
+  to: string;
+  invalid: boolean;
+  onRange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const start = calendarDate(from);
+  const end = calendarDate(to);
+  const selected = !invalid && start !== null && end !== null;
+  const label = selected ? dateControlLabel(from, to) : "Choose dates";
+  const choose = (first: string, last: string) => {
+    onRange(activityRangeValue({ from: first, to: last }));
+    setOpen(false);
+  };
+  return <Popover open={open} onOpenChange={setOpen}>
+    <PopoverTrigger asChild>
+      <Button size="toolbar" variant="secondary" aria-label={`Select report dates: ${label}`} aria-invalid={invalid || undefined} icon={<CalendarDays aria-hidden className={dsIcon.sm} />}>
+        <span className="tabular-nums">{label}</span><ChevronDown aria-hidden className={dsIcon.sm} />
+      </Button>
+    </PopoverTrigger>
+    <PopoverContent title="Select report dates" description="Choose a start and end date. Select the same date twice for one day." align="end" width="md" className="ds-date-popover">
+      <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar" value={selected ? { start, end } : null} onChange={dates => { if (dates !== null) choose(dates.start.toString(), dates.end.toString()); }}>
+        <HeroRangeCalendar.Header><HeroRangeCalendar.NavButton slot="previous" /><HeroRangeCalendar.YearPickerTrigger><HeroRangeCalendar.YearPickerTriggerHeading /><HeroRangeCalendar.YearPickerTriggerIndicator /></HeroRangeCalendar.YearPickerTrigger><HeroRangeCalendar.NavButton slot="next" /></HeroRangeCalendar.Header>
+        <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
+        <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>
+      </HeroRangeCalendar>
+    </PopoverContent>
+  </Popover>;
+}
 
 function ms(value: number): string {
   if (value < 1000) return `${String(value)}ms`;
@@ -1059,35 +1106,10 @@ export function ActivityReport({
        `DemoActivityReportPage`, a bare `flex min-h-0 flex-1 flex-col` div at
        `DemoActivityReport.tsx:79`. */
     <TakeoverFrame label="Activity report">
-      {/* NO `back` BUTTON, deliberately — ported from the demo's own rule.
-          Operator, of this surface: *"no need to have this back to dashboard in
-          activity."* It was a duplicate door: the product switcher sits above
-          this header on every view, it holds the Activity entry that got you
-          here, and the ← / → history pair returns you to the exact place you
-          left. Archive and Explorer KEEP theirs — the rule is not arbitrary,
-          those are opened FROM somewhere; this one is a destination in the nav. */}
       <PageHeader
         title="Activity report"
         icon={<ChartNoAxesColumn aria-hidden className={dsIcon.md} />}
-        actions={
-          /* THE SPAN CONTROL LIVES ON THE PAGE'S OWN BAR, above the sentence
-             that reports it. The demo offers two fixture spans as chips; the
-             served wire requires both bounds by name (D180) and defaults
-             nothing, so the two bounds themselves are the control.
-
-             AC10/AC11 (D276 item 4): the demo's chip group NAMES itself to
-             assistive tech, and two separate fields did not — a group of controls
-             with no name is a group a screen reader reads as loose inputs. The
-             `items-center`/`gap-tight` pair is the demo's, and it is not a
-             coin-flip: this span and the panel's actions row below had each
-             other's gap (AC19), which is a transposition rather than two
-             independent calls. Both fields are one height, so centring and
-             end-aligning paint the same pixels. */
-          <span role="group" aria-label="Activity report range" className="flex items-center gap-[var(--ds-space-tight)]">
-            <DateInput inline label="From" value={resolved.from} max={resolved.to} onChange={from => onRange(activityRangeValue({ ...resolved, from }))} />
-            <DateInput inline label="To" value={resolved.to} min={resolved.from} onChange={to => onRange(activityRangeValue({ ...resolved, to }))} />
-          </span>
-        }
+        actions={<ActivityDateControl from={resolved.from} to={resolved.to} invalid={resolved.refusal !== undefined} onRange={onRange} />}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-[var(--ds-space-cozy)]">

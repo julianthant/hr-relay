@@ -813,7 +813,7 @@ it("keeps generic loading, empty, deleted and failed responses distinct, and dis
     return new Promise<Response>(resolve => pending.set(path, resolve));
   } });
   const render = async (selection: string) => { await act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(SavedArchiveWorkspace, { selection, view: "runs", actorId: "local-operator", onSelection: noop, onView: noop, onClose: noop }),
+    children: createElement(SavedArchiveWorkspace, { selection, view: "runs", actorId: "local-operator", onSelection: noop, onView: noop }),
   }))); };
   const first = FIXTURE_SAVED_REPORT.runId, second = "00000000-0000-4000-8000-000000008899";
   await render(first);

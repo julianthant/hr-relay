@@ -23,10 +23,10 @@
   - button "Switch to Paper Ink"
   - button "Settings"
 - main:
-  - button "Back"
   - text: Archive
-  - button "Saved reports"
-  - button "Versions & bumps" [pressed]
+  - group "Archive view":
+    - button "Saved reports"
+    - button "Versions & bumps" [pressed]
   - button "Refresh"
   - region "Versions and saved changes":
     - heading "Versions and saved changes" [level=2]

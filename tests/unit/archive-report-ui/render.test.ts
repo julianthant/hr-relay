@@ -13,7 +13,7 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 async function mount(overrides: Record<string, unknown> = {}, selection: string = H_REPORT.runId, view: "runs" | "versions" = "runs") {
   const calls = { savedArchiveIndex: vi.fn(async () => ({ items: [H_REPORT], next: null })), savedArchiveReport: vi.fn(async () => H_REPORT), savedArchiveFile: vi.fn(async () => ({ runId: H_REPORT.runId, digest: H_REPORT.files[0].digest, resource: { state: "missing", reason: "Missing bytes" } })), executeCommand: vi.fn(), ...overrides };
   const client = new Proxy(calls, { get(target, key) { if (!(key in target)) throw new Error(`Forbidden live read ${String(key)}`); return Reflect.get(target, key) as unknown; } }) as unknown as DashboardClient;
-  function Harness() { const [selected, select] = useState(selection); return createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveWorkspace, { selection: selected, view, actorId: "synthetic", onSelection: select, onView: () => undefined, onClose: () => undefined }) }); }
+  function Harness() { const [selected, select] = useState(selection); return createElement(DashboardClientProvider, { client, children: createElement(SavedArchiveWorkspace, { selection: selected, view, actorId: "synthetic", onSelection: select, onView: () => undefined }) }); }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   dispose = async () => { await act(async () => root.unmount()); };
   await act(async () => root.render(createElement(Harness)));

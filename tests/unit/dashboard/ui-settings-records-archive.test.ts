@@ -90,7 +90,6 @@ function ArchiveRoute({ client }: { client: DashboardClient }): ReactElement {
         actorId: "local-operator",
         onSelection: setSelection,
         onView: () => undefined,
-        onClose: () => undefined,
       }),
     }),
   });

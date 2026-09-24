@@ -51,12 +51,10 @@ import { observeAsyncResource } from "../state/async-resource.js";
  */
 import {
 ArrowDownToLine,
-ArrowLeft,
 ArrowUpFromLine,
 Eye,
 FileCode2,
 Info,
-Lock,
 Pencil,
 ScanEye,
 ShieldAlert,
@@ -392,10 +390,12 @@ function WorkflowListPanel({
   workflows,
   selected,
   onSelect,
+  onVersionRegistry,
 }: {
   workflows: readonly ExplorerWorkflowWire[];
   selected: string;
   onSelect: (id: string) => void;
+  onVersionRegistry: () => void;
 }) {
   const groups = useMemo(
     () =>
@@ -475,6 +475,9 @@ function WorkflowListPanel({
   return (
     <Panel className="min-h-0" aria-label="Registered workflows">
       <PanelHeader title="Workflows" headingLevel={2} meta={String(workflows.length)} />
+      <div className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]">
+        <Button size="toolbar" variant="secondary" icon={<Eye aria-hidden className={dsIcon.sm} />} onClick={onVersionRegistry}>Version registry</Button>
+      </div>
       <PanelBody>
         {groups.map((group) => (
           <div key={group.label} className="border-b border-[color:var(--ds-border-subtle)] last:border-b-0">
@@ -2147,13 +2150,11 @@ export function WorkflowExplorer({
   workflowId,
   onWorkflow,
   onVersionRegistry,
-  onClose,
 }: {
   workflowId: string;
   onWorkflow: (next: string) => void;
   /** Opens Archive's real Versions & bumps view through the dashboard route. */
   onVersionRegistry: () => void;
-  onClose: () => void;
 }) {
   const client = useDashboardClient();
   const bootstrap = useBootstrap();
@@ -2207,32 +2208,6 @@ export function WorkflowExplorer({
       <PageHeader
         title="Explorer"
         icon={<Workflow aria-hidden className={dsIcon.md} />}
-        badge={
-          <Badge tone="neutral">
-            <Lock aria-hidden className={dsIcon.sm} />
-            graph read-only
-          </Badge>
-        }
-        back={
-          <Button
-            variant="secondary"
-            size="toolbar"
-            icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
-            onClick={onClose}
-          >
-            Back to the dashboard
-          </Button>
-        }
-        actions={
-          <Button
-            variant="secondary"
-            size="toolbar"
-            icon={<Eye aria-hidden className={dsIcon.md} />}
-            onClick={onVersionRegistry}
-          >
-            Version registry
-          </Button>
-        }
       />
 
       {/* D340 keeps the workflow list beside the graph at the desktop floor.
@@ -2264,6 +2239,7 @@ export function WorkflowExplorer({
             <WorkflowListPanel
               workflows={wire.workflows}
               selected={workflowId}
+              onVersionRegistry={onVersionRegistry}
               onSelect={(id) => {
                 onWorkflow(id);
                 // A new workflow is a new shape: the open node belonged to the

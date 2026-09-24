@@ -1,4 +1,4 @@
-import { Archive,ArrowLeft,Download,RefreshCw,ZoomIn } from "lucide-react";
+import { Archive,Download,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { settleCommandResult } from "../app/command-result.js";
@@ -155,8 +155,8 @@ function SavedVersionForm({ wire, actorId, busy, onCommand }: { wire: SavedVersi
     <Button type="submit" disabled={busy || workflow === ""}>Create review</Button>
   </form>;
 }
-export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, onView, onClose }: {
-  selection: string; view: "runs" | "versions"; actorId: string; onSelection: (id: string) => void; onView: (view: "runs" | "versions") => void; onClose: () => void;
+export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, onView }: {
+  selection: string; view: "runs" | "versions"; actorId: string; onSelection: (id: string) => void; onView: (view: "runs" | "versions") => void;
 }) {
   const client = useDashboardClient(); const [nonce, setNonce] = useState(0);
   const [query, setQuery] = useState<SavedArchiveQuery>({ limit: 50 });
@@ -169,7 +169,14 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
   const detailRead = useCallback(() => selection === "" ? Promise.resolve(null) : client.savedArchiveReport(selection), [client, selection]);
   const detail = useSavedResource(detailRead, nonce);
   return <div className="flex min-h-0 flex-1 flex-col">
-    <PageHeader title="Archive" icon={<Archive className={dsIcon.md} />} back={<Button size="toolbar" icon={<ArrowLeft className={dsIcon.md} />} onClick={onClose}>Back</Button>} actions={<><Button size="toolbar" aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button><Button size="toolbar" aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button><Button size="toolbar" icon={<RefreshCw className={dsIcon.md} />} onClick={refresh}>Refresh</Button></>} />
+    <PageHeader title="Archive" icon={<Archive className={dsIcon.md} />} />
+    <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-snug)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)]">
+      <span role="group" aria-label="Archive view" className="inline-flex items-center gap-[var(--ds-space-hair)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] p-[var(--ds-space-hair)]">
+        <Button size="sm" variant={view === "runs" ? "secondary" : "ghost"} aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button>
+        <Button size="sm" variant={view === "versions" ? "secondary" : "ghost"} aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button>
+      </span>
+      <Button size="sm" variant="secondary" icon={<RefreshCw className={dsIcon.sm} />} onClick={refresh}>Refresh</Button>
+    </div>
     {view === "versions" ? <SavedVersions actorId={actorId} nonce={nonce} onChanged={refresh} onArchive={() => {setQuery({limit:50});onSelection("");onView("runs");}} />
       : <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-[var(--ds-space-base)] overflow-auto p-[var(--ds-space-base)]">
         <Panel aria-label="Saved reports"><PanelHeader title="Saved reports" headingLevel={2} meta={index.state === "loaded" ? `${String(index.value.items.length)} shown` : undefined} /><PanelBody className={`${dsText.body} min-w-0 space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]`}>
