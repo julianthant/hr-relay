@@ -13,6 +13,7 @@ import type { WorkerBrowserSessionFactory } from "../../base/session.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import type { GraphNodeKind } from "../../domain/workflow/graph.js";
 import { DESCRIPTORS } from "../../control/workflow-registry.js";
+import { separationsKualiFinalizationModule } from "../../control/step-proof-modules.js";
 import {
   createCommandKernel,
   type CommandKernel,
@@ -72,8 +73,13 @@ function unavailable(capability: string): never {
 }
 
 function descriptorFor(workflow: string) {
-  return DESCRIPTORS.find(({ id }) => id === workflow);
+  return DESCRIPTORS.find(({ id }) => id === workflow)
+    ?? (workflow === separationsKualiFinalizationModule.descriptor.id
+      ? separationsKualiFinalizationModule.descriptor
+      : undefined);
 }
+
+const SCENARIO_DESCRIPTORS = Object.freeze([...DESCRIPTORS, separationsKualiFinalizationModule.descriptor]);
 
 function createScenarioKernel(input: Readonly<{
   publishQueued: RunRecordServiceDependencies["publishQueued"];
@@ -240,6 +246,9 @@ export function createProductionDryRunScenarioRuntime(
 
   const drain = input.drainWorker ?? (async (workflow: string): Promise<void> => {
     await composeWorkerRuntime({
+      ...(workflow === separationsKualiFinalizationModule.descriptor.id
+        ? { scenarioStepProofModule: separationsKualiFinalizationModule }
+        : {}),
       ...(input.preflightRunnerFactory === undefined ? {} : { preflightRunnerFactory: input.preflightRunnerFactory }),
       isolation: input.isolation,
       // The scenario runner owns one explicit ephemeral worker identity. It
@@ -554,7 +563,7 @@ export function createProductionDryRunScenarioRuntime(
             resolvedBy: gate.resolvedBy,
           };
         });
-        const receipt = createReceiptService({ database, descriptors: DESCRIPTORS, runReader }).ensureReceipt(runId);
+        const receipt = createReceiptService({ database, descriptors: SCENARIO_DESCRIPTORS, runReader }).ensureReceipt(runId);
         const failure = run.lifecycle.failureId === undefined
           ? undefined
           : database.authority.failures.get(run.lifecycle.failureId);

@@ -174,13 +174,9 @@ describe("settings facts — workflow capabilities (SE41)", () => {
       state: "unsupported",
       reason: "no-transaction-node",
     });
-    assert.deepEqual(postures.get("separations-ucpath-termination"), {
+    assert.deepEqual(postures.get("separations"), {
       state: "supported",
       stopsAt: "clear-pending",
-    });
-    assert.deepEqual(postures.get("separations-kuali-finalization"), {
-      state: "supported",
-      stopsAt: "finalize-kuali",
     });
   });
 
@@ -201,7 +197,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
       facts().workflowCapabilities.map(({ workflowId, editData: posture }) => [String(workflowId), posture]),
     );
     assert.deepEqual(editData.get("person-lookup"), { state: "declared", editableFields: 3 });
-    assert.deepEqual(editData.get("separations-kuali-read"), { state: "read-only" });
+    assert.deepEqual(editData.get("separations"), { state: "read-only" });
     // `editData: true` is a DECLARATION that keeps the Data section visible with
     // no correctable path — not the same statement as never declaring one.
     const [declared] = buildSettingsFacts({
@@ -231,8 +227,8 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     const gates = new Map(
       facts().workflowCapabilities.map(({ workflowId, operatorGates }) => [String(workflowId), operatorGates]),
     );
-    assert.deepEqual(gates.get("separations-identity-check"), ["identity-approval"]);
-    assert.deepEqual(gates.get("separations-kronos-timecard"), []);
+    assert.deepEqual(gates.get("separations"), ["identity-approval"]);
+    assert.deepEqual(gates.get("person-lookup"), []);
     // The fixture's only gate is `resolvedBy: "external"` — another system's
     // clock, not operator work, so it is absent rather than listed as something
     // to go and press.
@@ -267,7 +263,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
       facts().workflowCapabilities.map(({ workflowId, typedStart }) => [String(workflowId), typedStart]),
     );
     assert.equal(typed.get("person-lookup"), true);
-    assert.equal(typed.get("separations-kuali-read"), false);
+    assert.equal(typed.get("separations"), true);
   });
 });
 

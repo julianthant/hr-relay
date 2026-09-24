@@ -55,6 +55,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskLogger } from "../../base/task.js";
 import { workflowProjections } from "../../base/workflow.js";
+import type { WorkflowModule } from "../../base/workflow-definition.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
 import type {
@@ -158,7 +159,7 @@ export interface WorkerCliArguments {
 }
 
 /** `worker <workflow-id> --pool-index <positive-int> [--drain]` — anything else refuses by name. */
-export function parseWorkerArguments(args: readonly string[]): WorkerCliArguments {
+export function parseWorkerArguments(args: readonly string[], scenarioStepProofId?: WorkflowId): WorkerCliArguments {
   const [first, ...rest] = args;
   if (first === undefined) {
     throw new Error(
@@ -166,7 +167,7 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
     );
   }
   const workflowId = WorkflowIdSchema.parse(first);
-  if (SERVER_REGISTRY[workflowId] === undefined) {
+  if (SERVER_REGISTRY[workflowId] === undefined && workflowId !== scenarioStepProofId) {
     throw new Error(
       `workflow ${workflowId} is not registered; registered: ${DESCRIPTORS.map(({ id }) => id).join(", ")}`,
     );
@@ -210,6 +211,8 @@ export interface WorkerComposeInput {
   readonly isolation: RuntimeIsolation;
   /** Raw CLI args after `worker` — see `parseWorkerArguments`. */
   readonly args: readonly string[];
+  /** Isolated dry-run-scenario proof; ordinary workers resolve only the active registry. */
+  readonly scenarioStepProofModule?: WorkflowModule;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
   readonly ids?: IdFactory;
@@ -395,7 +398,9 @@ function startWorkerMaintenance(input: Readonly<{
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
-  const { workflowId, poolIndex, drain } = parseWorkerArguments(input.args);
+  const { workflowId, poolIndex, drain } = parseWorkerArguments(
+    input.args, input.scenarioStepProofModule?.descriptor.id,
+  );
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
@@ -407,9 +412,16 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const sweepIntervalMs = input.sweepIntervalMs ?? WORKER_SWEEP_INTERVAL_MS;
   const claimStaleAfterMs = input.claimStaleAfterMs ?? WORKER_CLAIM_STALE_AFTER_MS;
 
-  const module = SERVER_REGISTRY[workflowId];
+  const scenarioModule = input.scenarioStepProofModule;
+  if (scenarioModule !== undefined && (scenarioModule.role.kind !== "chunk-harness" || !drain)) {
+    throw new Error("scenario step proof requires a chunk harness and a draining worker");
+  }
+  const module = SERVER_REGISTRY[workflowId]
+    ?? (scenarioModule?.descriptor.id === workflowId ? scenarioModule : undefined);
   if (module === undefined) throw new Error(`workflow ${workflowId} is not registered`);
   const descriptor = module.descriptor;
+  const resolveDescriptor = (id: string) => SERVER_REGISTRY[id]?.descriptor
+    ?? (scenarioModule?.descriptor.id === id ? scenarioModule.descriptor : undefined);
   const workerId = poolWorkerId(workflowId, poolIndex);
 
   // D324: the production environment carries the host's primary display as the `display` default.
@@ -467,12 +479,12 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const gateSources = createGateSourceRuntime({
     database,
     lifecycle: runRecordService,
-    descriptors: { resolve: id => SERVER_REGISTRY[id]?.descriptor },
+    descriptors: { resolve: resolveDescriptor },
     ports: input.gateSourcePorts ?? [],
     clock,
   });
   const runtimePreflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: input.isolation,
-    descriptors: { resolve: id => SERVER_REGISTRY[id]?.descriptor }, descriptorSetHash: descriptor.contractFingerprint,
+    descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;

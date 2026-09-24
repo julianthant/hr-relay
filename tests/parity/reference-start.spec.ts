@@ -41,14 +41,8 @@ const SPREADSHEET_HANDOFF_VIEWPORTS = PARITY_VIEWPORTS.filter(
 /**
  * The ordinary Start Run fixture stays intentionally small: it proves the
  * Person Lookup input/plan flow. This profile proves the OTHER thing the
- * picker owns — the served registry's composition and its unavailable harness
- * steps — with the real seven modules, including the timekeeping-category
- * Kronos harness. Separations has its typed-input door, while the harnesses
- * honestly disclose below it: none has enough independent input for this
- * dialog to invent a box. Their parent is therefore absent from that filtered
- * list and every row keeps the explicit raw composition id rather than
- * fabricating a label the filtered list does not supply (the grouping rule's
- * orphan arm).
+ * picker owns: the active registry's two operator workflows. The step proofs
+ * belong to Separations and do not appear as separate picker entries.
  */
 test.describe("start-run picker hierarchy", () => {
   for (const viewport of PARITY_VIEWPORTS) {
@@ -63,32 +57,9 @@ test.describe("start-run picker hierarchy", () => {
 
         const picker = page.getByRole("navigation", { name: "Workflow" });
         await expect(picker.getByRole("button", { name: "Separations sp" })).toBeVisible();
-        const unavailable = page.getByRole("button", { name: "5 not startable" });
-        await expect(unavailable).toHaveAttribute("aria-expanded", "false");
-        await unavailable.click();
-        await expect(unavailable).toHaveAttribute("aria-expanded", "true");
-
-        for (const label of [
-          "Separation Timecard",
-          "Separation Document",
-          "Identity Check",
-          "UCPath Termination",
-          "Kuali Finalization",
-        ]) {
-          await expect(page.getByText(label, { exact: true })).toBeVisible();
-        }
-        await expect(
-          page.getByTitle("A proving harness of separations — a step of that workflow, not a workflow of its own"),
-        ).toHaveCount(5);
-        // The parent is startable while its harnesses are not, so the blocked
-        // list is an honest orphan view. Kronos retains its own HR category
-        // instead of pretending a missing blocked-list parent exists.
-        await expect(page.getByText("Timekeeping", { exact: true })).toBeVisible();
-        // The blocked disclosure has a deliberate fixed height. Keep the
-        // semantic reference over every harness above, then photograph its
-        // lower edge too: this puts the cross-category Kronos step in pixels,
-        // rather than leaving the most important row only in the a11y tree.
-        await page.getByText("Separation Timecard", { exact: true }).scrollIntoViewIfNeeded();
+        await expect(picker.getByRole("button", { name: "Person Lookup pl" })).toBeVisible();
+        await expect(page.getByRole("button", { name: /not startable/u })).toHaveCount(0);
+        await expect(page.getByTitle("A proving harness of separations — a step of that workflow, not a workflow of its own")).toHaveCount(0);
 
         await assertShellGeometry(page, `start-run-separations @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations picker").toEqual([]);
@@ -104,6 +75,12 @@ test.describe("start-run picker hierarchy", () => {
           capturedAt: FIXTURE_DAY,
           variant: "default",
         });
+
+        await page.getByRole("dialog", { name: "Start a run" }).getByRole("button", { name: "Close" }).click();
+        await page.getByRole("button", { name: "Add workers" }).click();
+        const workerWorkflow = page.getByRole("dialog", { name: "Add workers" })
+          .getByRole("combobox", { name: "Workflow" });
+        expect(await workerWorkflow.locator("option").allTextContents()).toEqual(["Person Lookup", "Separations"]);
       });
     }
   }

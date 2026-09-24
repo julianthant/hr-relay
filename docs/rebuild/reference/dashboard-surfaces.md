@@ -6818,41 +6818,26 @@ the descriptor's, an unlisted category appends, and an empty category drops.
 Three dated rulings narrowed it, and they read as one rule because they land in one module
 (`dashboard/surfaces/workflow-category.ts`):
 
-- **D219 — a chunk harness is a step of its composition, never a peer workflow.** *"kuali
-  finalization is a step in the separation workflow, not another workflow itself."* An entry whose
-  served `role` is `chunk-harness` renders nested and visually subordinate under its composition's
-  entry, marked as a proving harness. The WIRE serves the raw fact and display stays the frontend's:
-  the bootstrap workflow primitive gains a REQUIRED closed `role` (`standalone` / `composition` /
-  `chunk-harness` + `of` + `step`), and the registry refuses an `of` that does not name a served
-  composition or a `step` that composition did not declare.
-  **Counts do not roll up** — a badge beside an entry counts exactly the rows that entry's panel
-  shows, and folding harness runs into the composition's badge would make the badge disagree with its
-  own queue panel, which is D81's divergence class manufactured deliberately. Run rows keep the
-  harness's own label everywhere, and archived rows' frozen labels are untouched. **Startability does
-  not move**: chunks stay registered and independently runnable, and each still owes or holds its own
-  §3.2 controlled-commit proof.
+- **D345 supersedes D219's harness presentation and startability.** The served workflow registry
+  contains only Person Lookup and Separations. Workflow listings, the Run Modal picker, Explorer and
+  worker controls show those two workflows. Separations owns the six groups in its timeline. The
+  five earlier step proof ids remain available only to read existing runs and to run isolated tests;
+  they are not start-plan or worker targets. Existing run identities and archived labels stay intact.
 - **D265 (2026-08-21) — the rail is a READ of the top level of `src/workflows/`.** One top-level
   folder per rail workflow and one sub-folder per timeline step; D266 withdrew the draft
   `proving/` arm. The
-  `workflow-layout` guard pins the served role and the path to each other, so this filter and the
-  folder view can never disagree (`ref workflow-model` §1.2.2, the owner). Grouping nests a harness
-  by `role.of` BEFORE category partitioning, so the Kronos harness truthfully keeps its
-  `timekeeping` HR category while rendering under the Separations composition with the other four
-  step harnesses.
+  `workflow-layout` guards the source tree and the declared timeline groups (`ref workflow-model`
+  §1.2.2). The former proof definitions remain in their step folders; workflow listings do not
+  project them as entries.
 - **D266 (2026-08-21) — `Test equipment` is gone.** `kuali-timekeeper-annotation` is dismantled into
   the testing framework (ref guards-and-tests §10, ref workflow-model §1.2.1), so the `proving` arm
   has no member and leaves the union; the D241 group drops by the grouping rule's own empty-group
   rule and the arm is removed from `groupWorkflowsByCategory` in the same code unit. The only other
-  intended hierarchy delta is the D265 correction above: all five harnesses now sit under
-  Separations in the picker and Explorer.
-- **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
-  needed at all — only the main workflows should be there."* The rail drops every `chunk-harness`,
-  and a category whose entries all dropped goes with them rather than rendering an empty heading.
-  D219's one-rule claim narrows to the surfaces that still list harnesses — the Run Modal picker
-  (both lists) and the Explorer — so step harnesses stay startable and documented. The
-  always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish)
-  is answered at the rail's level instead: attention reaches the operator through the cross-panel
-  `Needs you` total and the notification inbox, neither of which is rail-scoped.
+  intended hierarchy delta was the D265 correction above; D345 later removed the five proof
+  entries from the active picker and Explorer.
+- **D220, the same day — the RAIL lists main workflows only.** This now follows directly from the
+  two-workflow registry. The cross-panel `Needs you` total and notification inbox still carry
+  attention from historical runs.
 - **D241 — RETIRED by D266.** D241 once moved the proving workflow out of its plausible-but-wrong
   HR category. D266 removed that workflow, its role and its special group entirely; no current
   grouping or auto-pick rule has a proving arm. Decision ownership remains recorded here because

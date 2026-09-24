@@ -96,6 +96,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 
 import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../../src/control/step-proof-modules.js";
 import { workflowSourceFolder, workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -608,8 +609,8 @@ const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
   },
 ] as const;
 
-function registeredWorkflowSources(): readonly RegisteredWorkflowSource[] {
-  return WORKFLOW_MODULES.map((module) => {
+function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
+  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => {
     const id = String(module.descriptor.id);
     return {
       id,
@@ -621,7 +622,7 @@ function registeredWorkflowSources(): readonly RegisteredWorkflowSource[] {
 
 function repositoryInputs(tree: WorkflowAuthoringBudgetTree): WorkflowAuthoringBudgetInputs {
   return {
-    workflows: registeredWorkflowSources(),
+    workflows: auditedWorkflowSources(),
     tree,
     genericIdAllowlist: GENERIC_WORKFLOW_ID_ALLOWLIST,
     preCanonicalScenarios: PRE_CANONICAL_SCENARIOS,
@@ -1014,10 +1015,11 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
     // scanner actually reached those exact literals, files and folders.
     assert.ok(tree.sources.size > 500, `source scan resolved only ${tree.sources.size} files`);
     assert.ok(tree.artifactFiles.length > 10, `artifact scan resolved only ${tree.artifactFiles.length} files`);
-    const registered = registeredWorkflowSources();
-    assert.ok(registered.length >= 7, "the registered workflows must stay in the scan");
+    const registered = auditedWorkflowSources();
+    assert.equal(registered.length, WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
+      "operator workflows and retained step proofs must stay in the scan");
     // Arm (b)'s own negative control: the authored workflow files it reads are
-    // EXACTLY the registered ones. A scan that entered no `workflow.ts` — a
+    // EXACTLY the active workflows and retained proofs. A scan that entered no `workflow.ts` — a
     // moved root, a lister that stopped listing `src/workflows/` — would report
     // this arm green over nothing at all.
     const scannedWorkflowFiles = [...tree.sources.keys()]
@@ -1043,7 +1045,7 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
   });
 
   it("arm (d): a harness's own files are never counted against the composition that owns its folder", () => {
-    const workflows = registeredWorkflowSources();
+    const workflows = auditedWorkflowSources();
     assert.equal(
       attributeWorkflowArtifact("tests/scenario/separations-kuali-read.scenario.test.ts", workflows),
       "separations-kuali-read",

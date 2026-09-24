@@ -30,15 +30,15 @@
  *       audit structure that exists for exactly one reason — to hold the
  *       chunk harness that proves the step (§1.2.2 rule 3). So every
  *       sub-folder of a workflow that DECLARED a timeline must be one of its
- *       declared group keys AND the address of a registered `chunk-harness`;
+ *       declared group keys AND the address of a retained `chunk-harness` proof;
  *       a declared group with no harness (`job-summary`) has no folder. A
  *       workflow that declared none (D225's honest per-node default:
  *       `person-lookup`) has no sub-folders at all.
  *   (c) the registry audit is WIRED. `auditWorkflowModuleRoles` is the one
  *       implementation of the role rules, and it now also refuses two harnesses
  *       claiming one `(of, step)` — that pair is an ADDRESS, so a collision is
- *       two modules claiming two files. The arm runs it over the real registry
- *       and asserts silence, then proves the refusal fires.
+ *       two modules claiming two files. The arm runs it over the active
+ *       workflows and retained proofs, then proves the refusal fires.
  *   (d) one rule for path-from-role. `descriptor-coverage` and
  *       `workflow-editor-compile-integrity` both DERIVE a descriptor's path
  *       from `src/domain/workflow/source-layout.ts`; a second copy of the rule,
@@ -63,6 +63,7 @@ import { dirname, join } from "node:path";
 import { describe, it } from "vitest";
 
 import { WORKFLOW_MODULES, auditWorkflowModuleRoles } from "../../../src/control/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../../src/control/step-proof-modules.js";
 import type { WorkflowRoleView } from "../../../src/control/workflow-registry.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../src/domain/workflow/module-role.js";
 import { workflowSourceFolder, workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
@@ -248,7 +249,7 @@ export function auditWorkflowLayout(
       const harness = addressed.get(`${folder}/${name}`);
       if (harness === undefined) {
         violations.push(
-          `${folder}/${name}/ holds no registered chunk-harness; a step folder exists only to hold the harness `
+          `${folder}/${name}/ holds no retained chunk-harness; a step folder exists only to hold the harness `
           + "that proves the step (D312, §1.2.2 rule 3)",
         );
       }
@@ -461,7 +462,7 @@ const FIXTURES: readonly LayoutFixture[] = [
     arm: "b",
     files: withFiles((files) => { files["src/workflows/combo/step-two/nodes.ts"] = "export const NODES = [];\n"; }),
     modules: cleanFixtureModules(),
-    expected: /src\/workflows\/combo\/step-two\/ holds no registered chunk-harness; a step folder exists only to hold the harness that proves the step/,
+    expected: /src\/workflows\/combo\/step-two\/ holds no retained chunk-harness; a step folder exists only to hold the harness that proves the step/,
   },
   {
     name: "undeclared-timeline-with-a-step-folder",
@@ -483,7 +484,7 @@ function writeFixtureTree(files: Record<string, string>): string {
 }
 
 function registeredLayoutModules(): readonly WorkflowLayoutModule[] {
-  return WORKFLOW_MODULES.map((module) => ({
+  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => ({
     id: String(module.descriptor.id),
     role: module.role,
     timelineDeclared: module.descriptor.timelineDeclared,
@@ -559,13 +560,13 @@ describe("workflow-layout — the src/workflows/ tree IS the rail and the timeli
   }
 
   it("arm (c): the registry's role audit is wired over the real modules and refuses a shared step", () => {
-    assert.deepEqual(auditWorkflowModuleRoles(WORKFLOW_MODULES), []);
+    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
 
     const composition = WORKFLOW_MODULES.find(({ role }) => role.kind === "composition");
-    const harnesses = WORKFLOW_MODULES.filter(({ role }) => role.kind === "chunk-harness");
+    const harnesses = STEP_PROOF_MODULES.filter(({ role }) => role.kind === "chunk-harness");
     assert.ok(composition !== undefined, "a composition must stay registered");
     const [first, second] = harnesses;
-    assert.ok(first !== undefined && second !== undefined, "two harnesses must stay registered");
+    assert.ok(first !== undefined && second !== undefined, "two step proofs must remain available");
     assert.ok(first.role.kind === "chunk-harness", "the first harness must carry its role");
 
     const collided: WorkflowRoleView[] = [

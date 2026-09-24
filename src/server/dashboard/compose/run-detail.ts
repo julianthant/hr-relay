@@ -1,6 +1,7 @@
 import {
   WORKFLOW_MODULES,
 } from "../../../control/workflow-registry.js";
+import { historicalStepProofModuleOf } from "../../../control/step-proof-modules.js";
 
 import {
   AuthorityDatabase,
@@ -44,7 +45,8 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
         // the store's, and `src/workflows/<id>/descriptor.ts` may not reach a
         // store (D106). The tuple is the same one every other registry derives
         // from, so there is no second list to keep in step.
-        const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId);
+        const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId)
+          ?? historicalStepProofModuleOf(workflowId);
         if (module === undefined) return undefined;
         const { descriptor } = module;
         return {

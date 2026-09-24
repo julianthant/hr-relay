@@ -1,4 +1,4 @@
-# `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
+# `reference/decisions.md` — the decision ledger (D1–D345, 2026-07-17 → 2026-09-24)
 
 **2026-09-19 D334 Rerun default-selection clarification (operator-approved 1 A):** failed/interrupted
 sources select failed/unfinished steps plus descriptor-required completed steps, explaining the
@@ -82,6 +82,13 @@ ratified until its normative text lands there in the same commit that records it
 `docs/rebuild/` (`00`…`03.1`/`03.2`/`03.3`/`03.4`…`06`), `roadmap` for `docs/roadmap/roadmap.md`.
 **`D131` is a retired gap — never reuse it** (the record of the 2026-08-04 numbering race; see
 §Known gap below).
+
+**D345 (2026-09-24):** Only `person-lookup` and `separations` are active workflows. Separations
+owns its timeline steps. The five earlier step proofs are removed from workflow registration,
+start plans, Explorer and worker controls; retained descriptors support historical run reads and
+isolated tests. This supersedes D219's harness startability and presentation. Owners:
+[workflow model §1.2.1](workflow-model.md#121-the-modules-role-declaration-d219-2026-08-14) and
+[dashboard surfaces §9.9](dashboard-surfaces.md).
 
 **The owner cells are swept when the docs move, and the sweep is dated.** A cell names a section,
 so a rewrite that renumbers one breaks the pointer without breaking anything a gate can see. Swept
