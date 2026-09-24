@@ -17,6 +17,7 @@ import { z } from "zod";
 import { afterEach, describe, it } from "vitest";
 import { CreateRunRequestSchema, RunRecordService, lifecycleCommandId, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied, type CreateRunRequest } from "../../../src/core/run-record-service.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { planRuntimeVersionTransition } from "../../../src/domain/archive/runtime-version.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../src/domain/protected-input.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
@@ -422,6 +423,55 @@ function raceConnection(data: unknown) {
 }
 
 describe("canonical run-record service", () => {
+  it("stamps new runs and fences only workflows in a claimed version change", () => {
+    const { service, request, database, published } = fixture();
+    const baseline = database.registerRuntimeVersionWorkflows([WORKFLOW_ID, "other-workflow"]);
+    const first = created(service, request);
+    assert.deepEqual(first.runtimeVersion, {
+      dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 0 },
+    });
+    const planned = planRuntimeVersionTransition(baseline.state, {
+      kind: "workflows", workflowIds: [WORKFLOW_ID],
+    });
+    const blockedReview = database.reviewRuntimeVersionTransition({ kind: "workflows", workflowIds: [WORKFLOW_ID] });
+    assert.deepEqual(blockedReview.review.blockers.map(row => row.runId), [first.envelope.runId]);
+    assert.throws(() => database.claimRuntimeVersionTransition({
+      changeId: "10000000-0000-4000-8000-000000000099",
+      expectedRevision: baseline.revision,
+      workflowIds: planned.affectedWorkflowIds,
+      after: planned.after,
+      expectedMembershipDigest: blockedReview.review.membershipDigest,
+    }), /active-blockers/u);
+    const terminal = service.transition({ commandId: UUID_5, runId: first.envelope.runId,
+      expectedVersion: first.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    assert.equal(terminal.state, "applied");
+    const review = database.reviewRuntimeVersionTransition({ kind: "workflows", workflowIds: [WORKFLOW_ID] });
+    assert.deepEqual(review.review.candidates.map(row => row.runId), [first.envelope.runId]);
+    assert.throws(() => database.claimRuntimeVersionTransition({
+      changeId: "10000000-0000-4000-8000-000000000099",
+      expectedRevision: baseline.revision,
+      workflowIds: planned.affectedWorkflowIds,
+      after: planned.after,
+      expectedMembershipDigest: blockedReview.review.membershipDigest,
+    }), /review-stale/u);
+    database.claimRuntimeVersionTransition({
+      changeId: "10000000-0000-4000-8000-000000000099",
+      expectedRevision: baseline.revision,
+      workflowIds: planned.affectedWorkflowIds,
+      after: planned.after,
+      expectedMembershipDigest: review.review.membershipDigest,
+    });
+    const before = database.getMeta().authorityGeneration;
+    assert.deepEqual(service.create({ ...request, commandId: "10000000-0000-4000-8000-000000000098" }),
+      { state: "refused", refusal: { reason: "policy-refused" } });
+    assert.equal(database.getMeta().authorityGeneration, before);
+    assert.equal(published.length, 1);
+    const other = created(service, { ...request, commandId: UUID_6, workflow: "other-workflow" });
+    assert.deepEqual(other.runtimeVersion, first.runtimeVersion);
+    assert.equal(published.length, 2);
+    assert.equal(service.read(first.envelope.runId).state, "present");
+  });
+
   it("#1 reserves distinct monotonically increasing item and workflow ordinals", () => {
     const { service, request, database, published } = fixture();
     const before = database.getMeta().authorityGeneration;

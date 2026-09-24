@@ -6,6 +6,7 @@ import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport } fro
 import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
+import { RunRuntimeVersionStampSchema } from "../../domain/archive/runtime-version.js";
 
 type Section = ArchiveReport["content"]["sections"][number];
 type Cell = string | number | boolean | null;
@@ -26,11 +27,14 @@ export function genericArchiveSection(title: string, value: JsonValue): Section 
 /** Source bytes and their digest stay private; display data is projected before sealing. */
 export function captureArchiveReport(input: Readonly<{
   versionChange?: ArchiveReport["content"]["versionChange"];
+  adoptedRuntimeVersion?: z.input<typeof RunRuntimeVersionStampSchema>;
   snapshot: LifecycleSourceSnapshot; transferId: string; capturedAt: string;
   sections: ArchiveReport["content"]["sections"]; files: ArchiveReport["content"]["files"];
 }>): ArchiveReport {
   const snapshot = LifecycleSourceSnapshotSchema.parse(input.snapshot);
   const { run } = snapshot;
+  if (run.runtimeVersion !== undefined && input.adoptedRuntimeVersion !== undefined) throw new Error("archive-runtime-version-attribution-conflict");
+  const runtimeVersion = run.runtimeVersion ?? input.adoptedRuntimeVersion;
   if (run.lifecycle.state !== "terminal") throw new Error("archive-source-not-terminal");
   if (new Set(snapshot.records.map(group => group.table)).size !== snapshot.records.length) throw new Error("archive-source-group-duplicate");
   const json = canonicalJsonStringify(snapshot);
@@ -100,11 +104,12 @@ export function captureArchiveReport(input: Readonly<{
       : genericArchiveSection(group.table, safe.records[index]));
   }
   sections.push(...safe.sections);
-  return sealArchiveReport({ schemaVersion: 1, runId: run.envelope.runId, transferId: input.transferId,
+  return sealArchiveReport({ schemaVersion: runtimeVersion === undefined ? 1 : 2, runId: run.envelope.runId, transferId: input.transferId,
     workflow: run.envelope.workflow, itemId: run.envelope.itemId, attempt: run.envelope.attempt, runNumber: run.runNumber ?? null,
     title: z.string().parse(scrub(run.displayName ?? run.envelope.workflow)), descriptorVersion: String(run.envelope.descriptorVersion),
     outcome: run.lifecycle.outcome, completedAt: run.lifecycle.endedAt, capturedAt: input.capturedAt,
     sourceDigest: lifecycleSourceDigest(snapshot), sources: [{ kind: "authority-snapshot", json, digest: sha256Hex(json) }],
     sections, files, ...(input.versionChange === undefined ? {} : { versionChange: input.versionChange }),
+    ...(runtimeVersion === undefined ? {} : { runtimeVersion: { state: run.runtimeVersion === undefined ? "adopted" : "stamped", ...RunRuntimeVersionStampSchema.parse(runtimeVersion) } }),
   });
 }

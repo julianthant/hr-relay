@@ -133,6 +133,8 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "database_upgrades",
   "timeline_events",
   "timeline_operation_sources",
+  "runtime_versions",
+  "runtime_version_adoptions",
 ] as const);
 
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());

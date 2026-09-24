@@ -1,4 +1,14 @@
 import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
+import {
+  RuntimeVersionAdoptionSchema,
+  readRuntimeVersionAuthority as readStoredRuntimeVersionAuthority,
+  registerRuntimeVersionWorkflows as registerStoredRuntimeVersionWorkflows,
+  claimRuntimeVersionTransition as claimStoredRuntimeVersionTransition,
+  publishRuntimeVersionTransition as publishStoredRuntimeVersionTransition,
+  type RuntimeVersionAuthority,
+} from "./runtime-versions.js";
+import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVersionState } from "../../domain/archive/runtime-version.js";
+import { reviewRuntimeVersionTransition } from "../../domain/archive/runtime-version-review.js";
 import { createRunSearchIndex } from "./run-search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../domain/run/worker.js";
@@ -943,6 +953,7 @@ export type AuthorityRepositories = Readonly<{
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   settingsCurrent: SettingsCurrentRepository;
   runtimeConfig: RuntimeConfigRepository;
+  runtimeVersions: Readonly<{ get(): RuntimeVersionAuthority }>;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
@@ -1064,6 +1075,8 @@ const INVARIANT_QUERIES = Object.freeze([
     OR workflow IS NOT json_extract(record_json,'$.workflow') OR local_day IS NOT json_extract(record_json,'$.localDay')
     OR state IS NOT json_extract(record_json,'$.lifecycle.state') OR parent_run_id IS NOT json_extract(record_json,'$.parentRunId')`},
   {name:"version-change-key-match",sql:"SELECT count(*) AS count FROM version_changes WHERE record_key IS NOT json_extract(record_json,'$.changeId')"},
+  {name:"runtime-version-singleton",sql:"SELECT count(*) AS count FROM runtime_versions WHERE record_key IS NOT 'current' OR json_extract(record_json,'$.revision') < 1"},
+  {name:"runtime-version-adoption-key-match",sql:"SELECT count(*) AS count FROM runtime_version_adoptions WHERE record_key IS NOT json_extract(record_json,'$.runId')"},
   {
     name: "run-completion-revisions",
     sql: `SELECT count(*) AS count FROM workflow_runs AS run
@@ -3247,6 +3260,54 @@ export class AuthorityDatabase implements Disposable {
     return row;
   }
 
+  readRuntimeVersionAuthority(): RuntimeVersionAuthority {
+    return this.withAuthorityReadSnapshot(() => readStoredRuntimeVersionAuthority(this.#database));
+  }
+
+  readRuntimeVersionAdoption(runId: string) {
+    return this.withAuthorityReadSnapshot(() => this.#readRecord("runtime_version_adoptions", RunIdSchema.parse(runId), RuntimeVersionAdoptionSchema));
+  }
+
+  reviewRuntimeVersionTransition(scope: z.input<typeof RuntimeVersionScopeSchema>) {
+    return this.withAuthorityReadSnapshot(() => {
+      const authority = readStoredRuntimeVersionAuthority(this.#database);
+      if (authority.claim !== undefined) throw new Error("runtime-version-claim-active");
+      const transition = planRuntimeVersionTransition(authority.state, scope);
+      const runs = transition.affectedWorkflowIds.flatMap(workflowId => this.authority.runs.listByWorkflow(workflowId));
+      const review = reviewRuntimeVersionTransition({ transition, runs,
+        adoption: runId => this.#readRecord("runtime_version_adoptions", RunIdSchema.parse(runId), RuntimeVersionAdoptionSchema),
+      });
+      return Object.freeze({ revision: authority.revision, transition, review });
+    });
+  }
+
+  registerRuntimeVersionWorkflows(workflowIds: readonly string[]): RuntimeVersionAuthority {
+    return this.#authorityWrite("runtime_versions", () => {
+      const before = readStoredRuntimeVersionAuthority(this.#database);
+      const result = registerStoredRuntimeVersionWorkflows(this.#database, workflowIds, this.#now());
+      return { result, changes: result.revision === before.revision ? 0 : 1 };
+    });
+  }
+
+  claimRuntimeVersionTransition(input: { changeId: string; expectedRevision: number; workflowIds: readonly string[]; after: RuntimeVersionState; expectedMembershipDigest: string }): RuntimeVersionAuthority {
+    return this.#authorityWrite("runtime_versions", () => {
+      const review = this.reviewRuntimeVersionTransition(input.workflowIds.length === this.authority.runtimeVersions.get().state.workflows.length
+        ? { kind: "dashboard" }
+        : { kind: "workflows", workflowIds: [...input.workflowIds] });
+      if (review.revision !== input.expectedRevision || review.review.membershipDigest !== input.expectedMembershipDigest) {
+        throw new Error("runtime-version-review-stale");
+      }
+      if (review.review.blockers.length > 0) throw new Error("runtime-version-active-blockers");
+      return { result: claimStoredRuntimeVersionTransition(this.#database, { ...input, now: this.#now() }), changes: 1 };
+    });
+  }
+
+  publishRuntimeVersionTransition(input: { changeId: string; expectedRevision: number; next: RuntimeVersionState }): RuntimeVersionAuthority {
+    return this.#authorityWrite("runtime_versions", () => ({
+      result: publishStoredRuntimeVersionTransition(this.#database, { ...input, now: this.#now() }), changes: 1,
+    }));
+  }
+
   writeVersionChange(input: VersionChange) {
     const change = VersionChangeSchema.parse(input);
     return this.#authorityWrite("version_changes", () => {
@@ -5267,6 +5328,7 @@ export class AuthorityDatabase implements Disposable {
       }),
       settingsCurrent: settings.settingsCurrent,
       runtimeConfig: settings.runtimeConfig,
+      runtimeVersions: Object.freeze({ get: () => readStoredRuntimeVersionAuthority(this.#database) }),
       versionPlans: Object.freeze({
         insert: (input: unknown) => {
           const record = VersionPlanStorageRecordSchema.parse(input);

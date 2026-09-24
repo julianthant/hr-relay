@@ -10,7 +10,8 @@ import type { RunRecordService } from "./run-record-service.js";
 import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
 import type { TargetReference, VersionChange as RunVersionChange } from "./run-fan-out.js";
 interface ArchiveCommandDependencies {
-  authority: { withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result };
+  authority: { withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
+    readRuntimeVersionAdoption?(runId: string): { dashboard: { major: number; minor: number }; workflow: { major: number; minor: number } } | undefined };
   lifecycle: Pick<RunRecordService, "lifecycleStorage">;
   clock: Clock;
   ids: IdFactory;
@@ -145,7 +146,7 @@ function prepareApply(deps: ArchiveCommandDependencies, request: Apply): Command
         appVersion: deps.appVersion, targets: row.targets, requestFingerprint } });
     const displays = deps.archiveSnapshots.snapshotBatch(row.members.map(member => member.runId));
     const pendingCaptures = row.members.map(member => {
-      const report = captureMember(storage, claimed, member, displays.get(member.runId));
+      const report = captureMember(storage, claimed, member, displays.get(member.runId), deps.authority.readRuntimeVersionAdoption?.(member.runId));
       return { runId: member.runId, reportJson: canonicalJsonStringify(report) };
     });
     storage.claimVersionChange({ changeId: row.changeId, reviewFingerprint: row.reviewFingerprint,
@@ -154,7 +155,8 @@ function prepareApply(deps: ArchiveCommandDependencies, request: Apply): Command
   });
 }
 
-function captureMember(storage: Storage, row: VersionChange, member: VersionChange["members"][number], display: unknown) {
+function captureMember(storage: Storage, row: VersionChange, member: VersionChange["members"][number], display: unknown,
+  adoptedRuntimeVersion?: { dashboard: { major: number; minor: number }; workflow: { major: number; minor: number } }) {
       const snapshot = storage.capture(member.runId);
       if (lifecycleSourceDigest(snapshot) !== member.sourceDigest || snapshot.run.version !== member.version) throw new Error("archive-claim-source-unprovable");
       if (display === undefined) throw new Error("archive-display-capture-missing");
@@ -167,6 +169,7 @@ function captureMember(storage: Storage, row: VersionChange, member: VersionChan
       for (const file of unique) storage.retainFile(file, storage.readSourceFile(file));
       const report = captureArchiveReport({ snapshot, transferId: deriveStableUuid("archive-transfer", `${row.changeId}:${member.runId}`), capturedAt: row.application!.startedAt,
         versionChange: archiveVersionChange(row), files: unique,
+        ...(adoptedRuntimeVersion === undefined ? {} : { adoptedRuntimeVersion }),
         sections: [genericArchiveSection("Displayed run", JsonValueSchema.parse(display))] });
       return report;
 }
@@ -189,7 +192,7 @@ function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
         return saved.report;
       }
       const report = frozen === undefined
-        ? captureMember(storage, row, member, displays.get(member.runId))
+        ? captureMember(storage, row, member, displays.get(member.runId), deps.authority.readRuntimeVersionAdoption?.(member.runId))
         : parsePendingCapture(row, frozen);
       storage.saveReport(report); storage.verifyReport(member.runId, report.digest);
       return report;

@@ -1,5 +1,5 @@
 import { ArchiveDeleteCommandRequestSchema, VersionArchiveCommandRequestSchema } from "../commands.js";
-import { ArchiveReportSectionSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema } from "../archive/report.js";
+import { ArchiveReportSectionSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, ArchiveRuntimeVersionAttributionSchema } from "../archive/report.js";
 import { VersionChangeReviewSchema } from "../archive/change-record.js";
 import { DeletedRunRecordSchema } from "../run/deleted-run.js";
 /**
@@ -383,6 +383,7 @@ export const SavedArchiveReportWireSchema = z.strictObject({
   outcome: z.enum(["done", "failed", "cancelled", "discarded", "interrupted", "superseded"]),
   completedAt: IsoInstantSchema, capturedAt: IsoInstantSchema,
   sections: z.array(ArchiveReportSectionSchema), files: z.array(ArchiveFileReferenceSchema),
+  runtimeVersion: ArchiveRuntimeVersionAttributionSchema.optional(),
   archiveFingerprint: FingerprintSchema,
   versionChange: z.strictObject({ changeId: z.string().uuid(), change: VersionBumpChangeRecordSchema,
     scope: VersionChangeReviewSchema.shape.scope, targetVersion: z.string(), reviewedAt: IsoInstantSchema,

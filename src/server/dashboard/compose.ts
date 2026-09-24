@@ -546,6 +546,7 @@ async function composeDashboardRuntimeStartup(
     database.close();
     databaseClosed = true;
   });
+  database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
   const protectedSettingsAuthority = createCredentialStore({ stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {

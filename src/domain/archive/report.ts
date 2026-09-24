@@ -3,6 +3,11 @@ import { z } from "zod";
 import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../ids.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { sha256Hex } from "../sha256.js";
+import { RunRuntimeVersionStampSchema } from "./runtime-version.js";
+
+export const ArchiveRuntimeVersionAttributionSchema = RunRuntimeVersionStampSchema.extend({
+  state: z.enum(["stamped", "adopted"]),
+});
 
 const CellSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
 export const ArchiveReportSectionSchema = z.discriminatedUnion("kind", [
@@ -18,16 +23,21 @@ export const ArchiveFileReferenceSchema = z.strictObject({
 });
 /** Generic display content has no dependency on a current workflow or source parser. */
 export const ArchiveReportContentSchema = z.strictObject({
-  schemaVersion: z.literal(1), runId: RunIdSchema, transferId: z.string().uuid(),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]), runId: RunIdSchema, transferId: z.string().uuid(),
   workflow: z.string().min(1), itemId: z.string().min(1), attempt: z.number().int().positive(),
   runNumber: z.number().int().positive().nullable(), title: z.string().min(1), descriptorVersion: z.string().min(1),
   outcome: z.enum(["done", "failed", "cancelled", "discarded", "interrupted", "superseded"]),
   completedAt: IsoInstantSchema, capturedAt: IsoInstantSchema,
   sourceDigest: FingerprintSchema,
+  runtimeVersion: ArchiveRuntimeVersionAttributionSchema.optional(),
   versionChange: ArchiveVersionChangeSchema.optional(),
   sources: z.array(z.strictObject({ kind: z.string().min(1), digest: FingerprintSchema, json: z.string().min(1) })),
   sections: z.array(ArchiveReportSectionSchema), files: z.array(ArchiveFileReferenceSchema),
 }).superRefine((report, context) => {
+  if ((report.schemaVersion === 1 && report.runtimeVersion !== undefined)
+    || (report.schemaVersion === 2 && report.runtimeVersion === undefined)) {
+    context.addIssue({ code: "custom", message: "archive-runtime-version-generation-mismatch" });
+  }
   for (const source of report.sources) {
     if (sha256Hex(source.json) !== source.digest) context.addIssue({ code: "custom", message: "archive-source-digest-mismatch" });
     try { JSON.parse(source.json); } catch { context.addIssue({ code: "custom", message: "archive-source-json-invalid" }); }

@@ -1,4 +1,5 @@
 import { TransactionSelectionRecordSchema } from "../../domain/transaction-selection.js";
+import { RuntimeVersionAdoptionSchema, RuntimeVersionAuthoritySchema } from "./runtime-versions.js";
 import { RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../domain/dashboard/search-index.js";
 import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../domain/worker-control.js";
 import { NotificationPublicationSchema, NotificationHealthSchema } from "./notification-publications.js";
@@ -204,6 +205,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   explorer_overrides: ExplorerWorkflowOverrideSchema,
   archive_transfers: ArchiveTransferIdentitySchema,
   version_changes: RetainedVersionChangeSchema,
+  runtime_versions: RuntimeVersionAuthoritySchema,
+  runtime_version_adoptions: RuntimeVersionAdoptionSchema,
   transaction_selection: TransactionSelectionRecordSchema,
   run_search_index: RunSearchIndexRecordSchema, run_search_grams: RunSearchGramSchema, run_search_publication: RunSearchPublicationSchema, run_search_declarations: RunSearchDeclarationSchema, run_search_actors: RunSearchActorLinkSchema,
   run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,

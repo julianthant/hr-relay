@@ -20,6 +20,7 @@ export function projectArchiveReport(input: ArchiveReport | undefined) {
   const { runId, title, workflow, descriptorVersion, outcome, completedAt, capturedAt, sections, files } = report.content;
   const change = report.content.versionChange;
   const value = { state: "available" as const, runId, title, workflow, descriptorVersion, outcome, completedAt, capturedAt, sections, files,
+    ...(report.content.runtimeVersion === undefined ? {} : { runtimeVersion: report.content.runtimeVersion }),
     ...(change === undefined ? {} : { versionChange: { changeId: change.review.changeId, change: change.review.change,
       scope: change.review.scope, targetVersion: change.review.targetVersion, reviewedAt: change.review.reviewedAt,
       appliedBy: change.application.actorId, startedAt: change.application.startedAt } }) };
