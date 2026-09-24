@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { BrowserSessionIdSchema } from "../../../src/domain/ids.js";
-import type { WorkerCardWire } from "../../../src/dashboard/surfaces/session-panel-model.js";
+import { workerTimelineView, type WorkerCardWire } from "../../../src/dashboard/surfaces/session-panel-model.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -39,6 +39,10 @@ it("real controls retain exact identity across transport loss, clock ticks, hear
     nowIso: now, connection: { state: "live" }, appVersion: "0.1.0", workerCommands: dispatch,
   })));
   await render(); await press("Sessions");
+  assert.equal(buttons().some((entry) => entry.getAttribute("aria-label") === "Refresh UCPATH"), false);
+  assert.equal(button("Reopen UCPATH").disabled, false);
+  await press("Show UCPATH browser details and controls");
+  assert.match(document.body.textContent ?? "", /Session ID/);
   await press("Refresh UCPATH"); assert.equal(requests.length, 1);
   assert.match(document.body.textContent ?? "", /Response unavailable/);
   assert.equal(button("Reopen UCPATH").disabled, true);
@@ -48,7 +52,7 @@ it("real controls retain exact identity across transport loss, clock ticks, hear
   await render("2026-08-03T20:00:00.000Z"); lose = false;
   await press("Check outcome"); assert.deepEqual(requests[1], requests[0]);
   assert.match(document.body.textContent ?? "", /worker-control-basis-mismatch/);
-  const reopen = button("Reopen UCPATH"); reopen.focus();
+  const reopen = button("Reopen UCPATH"); await act(async () => reopen.focus());
   const replacement = "eeeeeeee-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   current = { ...current, browsers: current.browsers.map((browser) => ({ ...browser, sessionId: BrowserSessionIdSchema.parse(replacement) })) };
   await render(); assert.equal(document.activeElement, reopen, "replacement readback must preserve control focus");
@@ -57,10 +61,11 @@ it("real controls retain exact identity across transport loss, clock ticks, hear
   current = { ...current, state: "paused", directive: "pause" }; await render();
   await press("Resume"); assert.equal(requests.at(-1)?.type, "resume-worker");
   await press("Stop"); assert.equal(requests.at(-1)?.type, "stop-worker");
+  await press("Show UCPATH browser details and controls");
 });
 it("missing, busy, foreign and retained uncertain evidence never becomes availability or health", () => {
   const owned = card(); const { controls: _controls, ...historical } = owned;
-  assert.match(workerControlRefusal(historical) ?? "", /unavailable/);
+  assert.match(workerControlRefusal(historical) ?? "", /cannot verify control/);
   assert.equal(browserHealthLabel(owned.browsers[0]), "Not checked");
   assert.match(workerControlRefusal({ ...owned, state: "working" }, true) ?? "", /active/);
   assert.equal(workerControlRefusal({ ...owned, controls: { ...owned.controls!, ownership: { state: "unavailable", reason: "foreign process" } } }), "foreign process");
@@ -70,4 +75,15 @@ it("missing, busy, foreign and retained uncertain evidence never becomes availab
     assert.match(retainedControlMessage(pending) ?? "", state === "uncertain" ? /uncertain/ : state === "refused" ? /Refused/ : /pending/);
     if (state !== "refused") assert.match(workerControlRefusal(pending) ?? "", /unresolved/);
   }
+});
+
+it("the worker timeline uses only the claimed run's served queue steps", () => {
+  const working = FIXTURE_DAY_WIRE.workerCards.find((entry) => entry.currentRun.state === "present");
+  assert.ok(working && working.currentRun.state === "present");
+  const currentRun = working.currentRun;
+  const row = FIXTURE_DAY_WIRE.queueSurfaces.find((entry) => entry.runId === currentRun.runId);
+  assert.ok(row?.pipeline.length);
+  assert.deepEqual(workerTimelineView(working, FIXTURE_DAY_WIRE.queueSurfaces), { state: "present", steps: row.pipeline });
+  assert.deepEqual(workerTimelineView(working, []), { state: "absent", reason: "Run timeline is not served on this day" });
+  assert.equal(workerTimelineView(card(), FIXTURE_DAY_WIRE.queueSurfaces).state, "absent");
 });

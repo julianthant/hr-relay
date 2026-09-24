@@ -270,7 +270,7 @@ describe("the worker id is reachable without a mouse", () => {
       bar.click();
     });
     const route = panel.buttons().find(
-      (button) => button.getAttribute("aria-label") === "Show full worker identity and run IDs for Person Lookup",
+      (button) => button.getAttribute("aria-label") === "Show worker details for Person Lookup",
     );
     assert.ok(route, "the worker card offers no named route to its worker id");
     assert.doesNotMatch(document.body.textContent ?? "", /person-lookup-worker-1/u);

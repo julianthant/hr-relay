@@ -18,8 +18,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-demo-theme", theme);
       await page.getByRole("button", { name: /^Sessions/ }).click();
       const strip = page.locator("[data-session-strip]"); await expect(strip).toBeVisible();
-      const refresh = page.getByRole("button", { name: "Refresh UCPATH", exact: true });
-      await expect(refresh).toBeEnabled();
+      await page.getByTitle(`Worker ${runtime.workerId}`, { exact: true }).screenshot({ path: info.outputPath(`sessions-rest-${theme}.png`) });
+      await expect(page.getByRole("button", { name: "Refresh UCPATH", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Reopen UCPATH", exact: true })).toBeEnabled();
       const original = runtime.db.authority.workerControls.browsers(runtime.workerId).find((b) => b.system === "ucpath" && b.health !== "closed"); expect(original).toBeDefined();
       async function press(name: string) {
         const response = page.waitForResponse((response) => response.url().endsWith("/api/v1/commands") && response.request().method() === "POST");
@@ -33,9 +34,13 @@ for (const theme of ["light", "dark"] as const) {
       await press("Pause");
       await expect.poll(() => runtime.db.authority.workerLeases.get(runtime.workerId)?.lifecycle.state).toBe("paused");
       await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Show UCPATH browser details and controls" }).click();
+      const refresh = page.getByRole("button", { name: "Refresh UCPATH", exact: true });
+      await expect(refresh).toBeEnabled();
       const refreshed = await press("Refresh UCPATH");
       expect("browserSessionId" in refreshed.target && refreshed.target.browserSessionId).toBe(original?.sessionId);
       await expect(refresh).toBeEnabled();
+      await page.getByRole("dialog", { name: "UCPATH browser session" }).getByRole("button", { name: "Close" }).click();
       await press("Reopen UCPATH");
       const replacement = runtime.db.authority.workerControls.browsers(runtime.workerId).find((b) => b.system === "ucpath" && b.health === "authenticated");
       expect(replacement?.sessionId).not.toBe(original?.sessionId); expect(replacement?.profileDirectory).toBe(original?.profileDirectory);
@@ -46,7 +51,7 @@ for (const theme of ["light", "dark"] as const) {
         return wire.workerCards.find((card) => card.workerId === runtime.workerId)?.browsers.find((b) => b.system === "ucpath")?.sessionId;
       }).toBe(replacement?.sessionId);
       for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }, { width: 1024, height: 720 }]) {
-        await page.setViewportSize(viewport); await expect(refresh).toBeInViewport();
+        await page.setViewportSize(viewport); await expect(page.getByRole("button", { name: "Reopen UCPATH" })).toBeInViewport();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         await page.screenshot({ path: info.outputPath(`sessions-${theme}-${String(viewport.width)}.png`), fullPage: true });
       }
