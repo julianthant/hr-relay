@@ -15,6 +15,26 @@ async function selectMonth(page: Page, month: string) {
   await expect(page.locator(`[data-demo-day="${month}-15"]`)).toBeVisible();
 }
 for (const theme of PARITY_THEMES) {
+  test(`day arrows include empty dates and stop at today @ ${theme.name}`, async ({ page }) => {
+    await installTheme(page, theme);
+    await gotoAppState(page, server.baseUrl, { day: server.day });
+    await expect(picker(page)).not.toContainText("today");
+    await expect(picker(page)).not.toHaveAccessibleName(/today/i);
+    await expect(page.getByRole("button", { name: /^Previous day/ })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "No later day" })).toBeDisabled();
+    await page.getByRole("button", { name: /^Previous day/ }).click();
+    await expect(page).toHaveURL(/day=2026-08-02$/);
+    await expect(picker(page)).toHaveAccessibleName(/0 rows/);
+    await page.getByRole("button", { name: /^Next day/ }).click();
+    await expect(page).toHaveURL(/day=2026-08-03$/);
+    await expect(page.getByRole("button", { name: "No later day" })).toBeDisabled();
+    await gotoAppState(page, server.baseUrl, { day: "2026-08-01" });
+    await page.getByRole("button", { name: /^Previous day/ }).click();
+    await expect(page).toHaveURL(/day=2026-07-31$/);
+    await expect(picker(page)).toHaveAccessibleName(/0 rows/);
+    await page.getByRole("button", { name: /^Next day/ }).click();
+    await expect(page).toHaveURL(/day=2026-08-01$/);
+  });
   test(`dashboard calendar keeps the year grid idle and has no footer @ ${theme.name}`, async ({ page }) => {
     await installTheme(page, theme);
     await gotoAppState(page, server.baseUrl, { day: "2026-07-30" });
@@ -60,15 +80,16 @@ for (const theme of PARITY_THEMES) {
     expect(daySnapshot.statusCounts.reduce((sum, row) => sum + row.count, 0)).toBe(1);
     expect(calendar.previousDay).toBe("2026-07-01"); expect(calendar.nextDay).toBe(server.day);
     await page.getByRole("button", { name: /^Previous day/ }).click();
-    await expect(page).toHaveURL(/day=2026-07-01$/); await expect(page.locator(`[data-demo-row-id="${dateRunId(3)}"]`)).toBeVisible();
+    await expect(page).toHaveURL(/day=2026-07-29$/); await expect(picker(page)).toHaveAccessibleName(/0 rows/);
     await page.goBack(); await expect(page).toHaveURL(/day=2026-07-30/);
-    await page.goForward(); await expect(page).toHaveURL(/day=2026-07-01/);
-    await page.reload(); await expect(picker(page)).toHaveAccessibleName(/1 row/);
+    await page.goForward(); await expect(page).toHaveURL(/day=2026-07-29/);
+    await page.reload(); await expect(picker(page)).toHaveAccessibleName(/0 rows/);
     await page.getByRole("button", { name: /^Previous day/ }).click();
-    await expect(page).toHaveURL(/day=2026-06-15$/);
-    await page.getByRole("button", { name: "Back", exact: true }).click(); await expect(page).toHaveURL(/day=2026-07-01/);
-    await page.getByRole("button", { name: "Forward", exact: true }).click(); await expect(page).toHaveURL(/day=2026-06-15/);
+    await expect(page).toHaveURL(/day=2026-07-28$/);
+    await page.getByRole("button", { name: "Back", exact: true }).click(); await expect(page).toHaveURL(/day=2026-07-29/);
+    await page.getByRole("button", { name: "Forward", exact: true }).click(); await expect(page).toHaveURL(/day=2026-07-28/);
     await picker(page).click(); await page.getByRole("button", { name: /^Previous month/ }).click();
+    await page.getByRole("button", { name: /^Previous month/ }).click();
     await selectMonth(page, "2026-05");
     await expect(page.locator('[data-demo-day="2026-05-15"]')).toBeEnabled();
     await page.locator('[data-demo-day="2026-05-15"]').press("Enter");
@@ -152,6 +173,8 @@ for (const theme of PARITY_THEMES) test(`late month responses and explicit calen
   await page.route(pattern, route => route.fulfill({ status: 503, json: { state: "error", code: "CALENDAR_UNAVAILABLE", message: "Calendar read failed", retryable: true } }));
   await page.getByRole("button", { name: /^Previous month/ }).click();
   await expect(page.getByRole("alert")).toContainText("Calendar read failed");
+  await expect(page.getByRole("button", { name: /^Previous day/ })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /^Next day/ })).toBeEnabled();
   await expect(picker(page)).toHaveAccessibleName(/1 row/);
   await page.unroute(pattern);
   await page.getByRole("button", { name: "Retry calendar", exact: true }).click();

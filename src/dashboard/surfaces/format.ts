@@ -144,11 +144,6 @@ export function fmtInstantDay(iso: string): string {
   return new Date(ms).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-/** `Thu, Aug 13` → `Thu, Aug 13 · today` on the live partition. */
-export function dayLabelWithToday(day: string, today: string): string {
-  return day === today ? `${dayLabel(day)} · today` : dayLabel(day);
-}
-
 /**
  * The NOUN alone, agreeing with a count printed elsewhere in the sentence —
  * `3 bound ${pluralize(3, "column")}`, where the adjective sits between the two
