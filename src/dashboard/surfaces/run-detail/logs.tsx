@@ -228,7 +228,10 @@ function logIconOf(row: LogRow): { readonly Icon: typeof Info; readonly tone: st
 }
 
 function logRowLabel(row: LogRow): string {
-  if (row.kind === "note") return `${fmtClock(row.note.at)}: ${row.note.level} note: ${row.note.message}`;
+  if (row.kind === "note") {
+    const fields = (row.note.fields ?? []).map((field) => `${field.key}: ${String(field.value)}`).join("; ");
+    return `${fmtClock(row.note.at)}: ${row.note.level} note: ${row.note.message}${fields ? `. ${fields}` : ""}`;
+  }
   if (row.kind === "transaction-fenced") {
     return `${fmtClock(row.at)}: authority transaction fence at ${row.producer.step}, attempt ${String(row.attempt)}`;
   }
@@ -279,7 +282,12 @@ function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean })
         <Icon aria-hidden className={cn(dsIcon.sm, tone)} />
       </span>
       <span className={cn(dsText.body, "min-w-0 break-words", note !== undefined && NOTE_TONE[note.level], hit && cn(dsRadius.xs, "bg-[var(--ds-info-bg)]"))}>
-        {note !== undefined && note.message}
+        {note !== undefined && <>
+          {note.message}
+          {(note.fields ?? []).length > 0 && <span className={cn(dsText.meta, "mt-[var(--ds-space-hair)] block text-[color:var(--ds-fg-muted)]")}>
+            {note.fields?.map((field) => `${field.key}: ${String(field.value)}`).join(" · ")}
+          </span>}
+        </>}
         {row.kind === "transaction-fenced" && (
           <>
             <span className="text-[color:var(--ds-fg-secondary)]">Authority fence</span>

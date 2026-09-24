@@ -31,7 +31,7 @@ export default defineConfig({
   outputDir: "tests/parity/.output",
   globalSetup: "./tests/parity/helpers/global-setup.ts",
   fullyParallel: true,
-  workers: 5,
+  workers: 2,
   retries: 0,
   timeout: 120_000,
   // "none": a missing baseline is a failure, never a silently minted one.

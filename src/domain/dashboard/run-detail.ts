@@ -49,7 +49,7 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
-import { ObservedDataPointWireSchema } from "../../events/types.js";
+import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../../events/types.js";
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
@@ -425,6 +425,7 @@ export const NoteWireSchema = z.strictObject({
   at: IsoInstantSchema,
   level: z.enum(["info", "warning", "error"]),
   message: z.string().min(1),
+  fields: z.array(NoteFieldWireSchema).optional(),
 });
 
 /**

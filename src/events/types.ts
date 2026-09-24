@@ -34,10 +34,7 @@
  * would duplicate that identity today).
  */
 import { z } from "zod";
-import {
-  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-  DiagnosticSafetyVersionSchema,
-} from "../domain/trust/failure.js";
+import { DiagnosticSafetyVersionSchema } from "../domain/trust/failure.js";
 import { DataClassificationSchema, refineEvidenceTransformPair } from "../domain/redaction-policy.js";
 import { RunRecoveryModeSchema } from "../domain/run/envelope.js";
 
@@ -256,6 +253,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     state: z.literal("redacted"),
     classification: SpanDataClassificationSchema,
     transform: z.literal("drop"),
+    rawValue: JsonValueWireSchema.optional(),
   }),
   z.strictObject({
     key: z.string(),
@@ -263,6 +261,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     classification: SpanDataClassificationSchema,
     transform: z.literal("last4"),
     value: z.string().max(4, "must contain at most four characters"),
+    rawValue: JsonValueWireSchema.optional(),
   }),
   z.strictObject({
     key: z.string(),
@@ -270,6 +269,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     classification: SpanDataClassificationSchema,
     transform: z.literal("digest"),
     value: Hex64Schema,
+    rawValue: JsonValueWireSchema.optional(),
   }),
   z.strictObject({
     key: z.string(),
@@ -277,6 +277,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     classification: SpanDataClassificationSchema,
     transform: z.literal("basename"),
     value: z.string(),
+    rawValue: JsonValueWireSchema.optional(),
   }),
   z.strictObject({
     key: z.string(),
@@ -284,6 +285,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     classification: SpanDataClassificationSchema,
     transform: z.literal("count"),
     value: z.number().int().nonnegative(),
+    rawValue: JsonValueWireSchema.optional(),
   }),
   z.strictObject({
     key: z.string(),
@@ -291,6 +293,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     classification: SpanDataClassificationSchema,
     transform: z.literal("allow"),
     value: JsonValueWireSchema,
+    rawValue: JsonValueWireSchema.optional(),
   }),
 ]).superRefine(refineEvidenceTransformPair);
 
@@ -401,12 +404,7 @@ export type RunQueuedWire = z.infer<typeof RunQueuedSchema>;
 
 export const NoteLevelSchema = z.enum(["step", "success", "error", "waiting", "warn", "debug"]);
 
-/**
- * A closed key/value union — never a decision-bearing open map. The kinds
- * mirror the redaction transforms (ref clock-config-secrets): a value that reached this wire
- * either passed `allow` as text, or was transformed. Dropped fields do not
- * appear at all.
- */
+/** Closed key/value union for note fields. New notes keep original values as text. */
 export const NoteFieldWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({ key: z.string().min(1), kind: z.literal("text"), value: z.string() }),
   z.strictObject({ key: z.string().min(1), kind: z.literal("count"), value: z.number().int().nonnegative() }),
@@ -425,6 +423,7 @@ const NoteBodyFields = {
   action: z.strictObject({
     kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
     targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
+    value: z.union([z.string(), z.boolean()]).optional(),
   }).optional(),
 } as const;
 
@@ -435,26 +434,24 @@ export const NoteWireSchema = z.union([
 ]);
 export type NoteWire = z.infer<typeof NoteWireSchema>;
 
-/** Historical note messages and text fields predate the diagnostic-safe stamp. */
-export function projectNoteForOperator(noteInput: unknown, protectedInput = false): NoteWire {
-  const note = NoteWireSchema.parse(noteInput);
-  if (note.action !== undefined && note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) {
-    const { fields: _fields, ...safe } = note;
-    return NoteWireSchema.parse({ ...safe, message: browserActionMessage(note.action) });
-  }
-  if (!protectedInput && note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return note;
-  const { fields: _historicalFields, ...identity } = note;
-  return NoteWireSchema.parse({
-    ...identity,
-    message: protectedInput ? "protected run note text withheld" : "historical note text withheld (predates diagnostic safety v1)",
-  });
+/** Serve retained note text, including older notes with no safety stamp. */
+export function projectNoteForOperator(noteInput: unknown, _protectedInput?: boolean): NoteWire {
+  return NoteWireSchema.parse(noteInput);
 }
 
-export function browserActionMessage(action: { readonly kind: string; readonly targetId: string }): string {
+export function browserActionMessage(action: { readonly kind: string; readonly targetId: string; readonly value?: string | boolean }): string {
   const target = action.targetId.replaceAll(/[._/-]+/gu, " ").replaceAll(/\s+/gu, " ").trim();
-  const verb = action.kind === "typed" ? "Typed into" : action.kind === "selected" ? "Selected in"
+  const verb = action.kind === "typed" ? "Typed" : action.kind === "selected" ? "Selected"
     : action.kind === "checked" ? "Checked" : action.kind === "set" ? "Set" : action.kind === "cleared" ? "Cleared"
       : action.kind === "pressed" ? "Pressed key in"
       : action.kind === "opened" ? "Opened" : "Clicked";
-  return `${verb} ${target}`;
+  if (action.value === undefined) {
+    if (action.kind === "typed") return `Typed into ${target}`;
+    if (action.kind === "selected") return `Selected in ${target}`;
+    return `${verb} ${target}`;
+  }
+  if (action.kind === "typed") return `Typed ${JSON.stringify(action.value)} into ${target}`;
+  if (action.kind === "selected") return `Selected ${JSON.stringify(action.value)} in ${target}`;
+  if (action.kind === "set") return `Set ${target} to ${JSON.stringify(action.value)}`;
+  return `${verb} ${target}: ${JSON.stringify(action.value)}`;
 }

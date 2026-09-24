@@ -141,15 +141,27 @@ What is **good** and must be kept (charter: port, don't rewrite):
 
 `data.observed` is recorded run data. The live `context-data` section serves every
 indexed observation for the exact run, with its producer, attempt, time, direction
-and redacted values, even when no editable checkpoint field exists. Logs serves
+and classified values, even when no editable checkpoint field exists. Logs serves
 the run's action notes, ordinary notes and transaction fences. The dashboard
 renders each completed browser gesture as a short, time-ordered line. A gesture
-names its static semantic control; typed values, selectors and URLs stay out of
-action notes. The executor buffers gestures through task and transaction
-settlement, then appends notes outside the fenced external-write window. Each
-operation records at most 256 gestures and adds a visible limit note if more occur.
+names its static semantic control and, under D346, its entered value. The executor buffers gestures through task and transaction
+settlement, then appends notes outside the fenced external-write window. Every
+completed gesture is retained for the operation.
 Older frozen archives are projected into the same split on read: observed rows
 move to Run data while the stored archive remains unchanged.
+
+### D346 — Full local operator values · 2026-09-24
+
+Logs records the value entered or selected with each browser action. Classified
+note and diagnostic capture fields, historical note text, failures and receipts appear from their
+retained bytes. Run data presents original observed values, including
+identifiers, alongside their producer and time. Capture images appear inline
+in Logs. Live queue rows and archived runs show retained titles, names and
+sections. Settings shows stored credential values and active provider keys.
+The existing classification fields remain in durable evidence for provenance;
+they do not replace a retained original on the operator surface. A value
+already discarded from an older record cannot be reconstructed by its read
+projection. Provider prompts and OS notifications have separate egress rules.
 
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
@@ -327,7 +339,7 @@ with no residue. An empty v21 database upgrades normally; the migration never gu
 - [x] D270 — `data.observed`: every point captured at record time and redacted by declaration; probe/prepare/verify emit synchronously, commit flushes after callback settlement; the queue projection ignores the arm by name
 - [x] BE transaction probe/prepare/commit/verify roles emit their declared observations, with the durable fence carried by strict `transaction.fenced`; commit delivery waits for callback settlement so no fallible span write occupies fence→click
 - [x] D345 — the lazy Logs query joins bounded-scope notes with indexed `transaction.fenced` rows in one immutable page walk; the Run data query validates and serves indexed `data.observed` for the exact run
-- [x] D345 — Logs shows concise action/task notes and fences; the Context rail shows redacted observed facts with producer, system, time and attempt
+- [x] D345/D346 — Logs shows action/task notes, entered values, captures and fences; the Context rail shows original observed facts with producer, system, time and attempt
 > 2026-09-24 | D345 | action notes and the Logs/Run data split replace the D254 as-built gap
 <!-- /roadmap-status -->
 

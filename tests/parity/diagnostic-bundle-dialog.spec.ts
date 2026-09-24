@@ -353,7 +353,9 @@ async function openFixtureBundle(page: Page, baseUrl = server.baseUrl): Promise<
   await openDiagnosticRecord(page);
   await page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` }).click();
   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
-  await expect(dialog.getByText("Capture-time redaction record", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Captured diagnostic values", { exact: true })).toBeVisible();
+  await expect(dialog).toContainText("synthetic-visible-password");
+  await expect(dialog).toContainText("Synthetic Employee");
   return dialog;
 }
 
@@ -426,7 +428,7 @@ test(
 
   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Capture-time redaction record", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Captured diagnostic values", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Accessibility excerpt")).toBeVisible();
   const screenshot = FIXTURE_DIAGNOSTIC_BUNDLE.contents.find((content) => content.kind === "screenshot");
   if (screenshot === undefined) throw new Error("the fixture diagnostic bundle must carry a screenshot");

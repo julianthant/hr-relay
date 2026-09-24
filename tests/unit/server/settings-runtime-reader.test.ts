@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -32,7 +32,7 @@ function activate(database: AuthorityDatabase, record: SettingsFileRecord, clock
   return settingsRuntimeIdentity(record, resolved.fingerprint);
 }
 function fixture(probe: () => void = () => {}) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-settings-reader-")); cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-settings-reader-")); cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
   const databasePath = join(root, "state.db");
   const database = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock); cleanups.push(() => database.close());
@@ -101,12 +101,12 @@ describe("SQLite Settings reader snapshot", () => {
 });
 
 describe("independent protected Settings reader", () => {
-  it("P12 serves only schema identity, revision, and presence/write identity", () => {
+  it("serves the stored credential value with the authenticated readback", () => {
     const f = fixture(); f.execute(f.protectedCommand("synthetic-protected-readback"));
     const snapshot = f.protectedReader.read(); assert.equal(snapshot.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
     ProtectedSettingsReadbackSchema.parse(snapshot.readback); assert.equal(snapshot.readback.revision, 2);
-    assert.equal(JSON.stringify(snapshot).includes("synthetic-protected-readback"), false);
-    assert.equal(JSON.stringify(snapshot).includes('"value"'), false);
+    assert.equal(snapshot.record.entries.ucpathPassword?.value, "synthetic-protected-readback");
+    assert.equal(JSON.stringify(snapshot).includes("synthetic-protected-readback"), true);
   });
   it("P21 verifies exact retry and refuses value-divergent reuse", () => {
     const f = fixture(); const command = f.protectedCommand("synthetic-first-value"); f.execute(command);

@@ -94,6 +94,7 @@ type BundleDialogState =
 /* ── shared little pieces ────────────────────────────────────────────────── */
 
 function redactedText(value: FactValue): string {
+  if (value.rawValue !== undefined) return typeof value.rawValue === "string" ? value.rawValue : JSON.stringify(value.rawValue);
   if (value.state === "redacted") return `redacted — ${value.classification}`;
   if (value.transform === "count") return `${String(value.value)} (count)`;
   return typeof value.value === "string" ? value.value : JSON.stringify(value.value);
@@ -663,10 +664,12 @@ function byteSizeLabel(byteSize: number): string {
 }
 
 function redactionList(bundle: DiagnosticBundleWire): string {
-  const facts = bundle.redaction.fields.map((field) => `${field.key} · ${field.classification} · ${field.transform}`);
+  const facts = bundle.redaction.fields.map((field) => `${field.key}: ${field.rawValue === undefined
+    ? field.state === "redacted" ? "unavailable" : typeof field.value === "string" ? field.value : JSON.stringify(field.value)
+    : typeof field.rawValue === "string" ? field.rawValue : JSON.stringify(field.rawValue)}`);
   const warnings = bundle.redaction.warnings.map((warning) => `warning: ${warning}`);
   const list = [...facts, ...warnings];
-  return list.length === 0 ? "No classified fields required a redaction transform" : list.join(" · ");
+  return list.length === 0 ? "No diagnostic fields recorded" : list.join(" · ");
 }
 
 function DiagnosticBundleDialog({
@@ -731,7 +734,7 @@ function DiagnosticBundleDialog({
               {attachmentUrl !== undefined && readBundle !== undefined && (
                 <DiagnosticScreenshotGallery bundle={state.bundle} attachmentUrl={attachmentUrl} readBundle={readBundle} />
               )}
-              <Banner tone="info" title="Capture-time redaction record">
+              <Banner tone="info" title="Captured diagnostic values">
                 {redactionList(state.bundle)}. The dashboard never rewrites stored attachment bytes.
               </Banner>
               {state.bundle.contents.some((content) => content.kind === "screenshot" && content.sensitivity === "restricted") && (

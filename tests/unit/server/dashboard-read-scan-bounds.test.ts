@@ -296,11 +296,11 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
     ));
     assert.equal(counted.value.totalRuns, 4);
     assert.equal(counted.value.terminalRuns, 4);
-    assert.deepEqual(counted.value.completion, { readBack: 1, warnings: 1, warningsUnknown: 2 });
+    assert.deepEqual(counted.value.completion, { readBack: 2, warnings: 1, warningsUnknown: 1 });
     assert.deepEqual(counted.value.workflows[0]?.completion, {
-      readBack: 1,
+      readBack: 2,
       warnings: 1,
-      warningsUnknown: 2,
+      warningsUnknown: 1,
     });
     assert.equal(counted.getReceipt, 4);
 
@@ -321,8 +321,7 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
     });
     assert.deepEqual(rowOf(4)?.warnings, {
       state: "absent",
-      reason: "immutable receipt composition 1 predates the required protected-value projection; "
-        + "its free-text projection is withheld and the authority row is unchanged",
+      reason: "this run's evidence receipt records no warning",
     });
   });
 });
@@ -829,6 +828,22 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["note"]);
     assert.equal(section.payload.notes[0]?.message, "Clicked ucpath person org search button");
+  });
+
+  it("serves classified note values in Logs", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    notes.emitNote({
+      workflow: "person-lookup",
+      address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
+      level: "step",
+      message: "Entered person details",
+      fields: [{ key: "ssn", classification: "direct-identifier", transform: "last4", value: "951-57-1700" }],
+    });
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    assert.deepEqual(section.payload.notes[0]?.fields, [{ key: "ssn", kind: "text", value: "951-57-1700" }]);
   });
 
   it("refuses a same-run observation whose trace is not the run authority trace", () => {

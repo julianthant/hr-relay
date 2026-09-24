@@ -13,7 +13,7 @@ import type { ProtectedInputBinding } from "../../src/domain/protected-input.js"
  * pins production composition, not a parallel reimplementation.
  */
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserDriver, TaskLogger } from "../../src/base/task.js";
@@ -74,7 +74,7 @@ export interface AuthorityHarness {
 
 export function openAuthorityHarness(): AuthorityHarness {
   const clock = manualClock(new Date(EXECUTOR_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-1f-executor-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-1f-executor-"));
   const path = join(root, "authority.sqlite");
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },

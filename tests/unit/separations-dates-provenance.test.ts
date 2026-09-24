@@ -114,6 +114,7 @@ describe("separations dates task provenance", () => {
         transform: "allow",
         state: "allowed",
         value: "kronos-timesheet",
+        rawValue: "kronos-timesheet",
       }],
     }]);
   });

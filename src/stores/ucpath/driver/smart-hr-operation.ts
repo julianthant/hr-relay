@@ -498,9 +498,9 @@ export async function scanTerminationTransactionsOnPage(
     recordBrowserAction("opened", "ucpath.smart-hr.search");
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
-    recordBrowserAction("typed", UCPATH_SS_SMART_HR_SEARCH_EID_INPUT);
+    recordBrowserAction("typed", UCPATH_SS_SMART_HR_SEARCH_EID_INPUT, input.emplId);
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
-    recordBrowserAction("selected", "ucpath.smart-hr.search-operator");
+    recordBrowserAction("selected", "ucpath.smart-hr.search-operator", EQUALS_OPERATOR);
     const autoDrilledReceipt = resolveUcpathElement(
       page,
       UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
@@ -693,15 +693,15 @@ export async function stageTerminationOnPage(
   recordBrowserAction("opened", "ucpath.smart-hr.wizard");
   await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
   await resolveUcpathElement(page, UCPATH_SMART_HR_TEMPLATE_INPUT).fill(input.template);
-  recordBrowserAction("typed", UCPATH_SMART_HR_TEMPLATE_INPUT);
+  recordBrowserAction("typed", UCPATH_SMART_HR_TEMPLATE_INPUT, input.template);
   await resolveUcpathElement(page, UCPATH_SMART_HR_TRANSACTION_DATE_INPUT).fill(input.effectiveDate);
-  recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_DATE_INPUT);
+  recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_DATE_INPUT, input.effectiveDate);
   await resolveUcpathElement(page, UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON).click();
   recordBrowserAction("clicked", UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON);
   await waitForUcpathState(page, UCPATH_SMART_HR_DETAILS_READY);
 
   await resolveUcpathElement(page, UCPATH_SMART_HR_DETAILS_EID_INPUT).fill(input.emplId);
-  recordBrowserAction("typed", UCPATH_SMART_HR_DETAILS_EID_INPUT);
+  recordBrowserAction("typed", UCPATH_SMART_HR_DETAILS_EID_INPUT, input.emplId);
   await page.keyboard.press("Tab");
   recordBrowserAction("pressed", "ucpath.smart-hr.details-eid-tab");
   const nameDisplay = page.locator(DRIVER_ANCHOR.wizardPersonName);
@@ -745,7 +745,7 @@ export async function stageTerminationOnPage(
   const reason = resolveReasonOption(options, input.reasonCode);
   await resolveUcpathElement(page, UCPATH_SMART_HR_REASON_CODE_SELECT)
     .selectOption({ value: reason.value });
-  recordBrowserAction("selected", UCPATH_SMART_HR_REASON_CODE_SELECT);
+  recordBrowserAction("selected", UCPATH_SMART_HR_REASON_CODE_SELECT, reason.value);
   await resolveUcpathElement(page, UCPATH_SMART_HR_CONTINUE_BUTTON).click();
   recordBrowserAction("clicked", UCPATH_SMART_HR_CONTINUE_BUTTON);
   await waitForUcpathState(page, UCPATH_SMART_HR_INFORMATION_READY);
@@ -761,14 +761,14 @@ export async function stageTerminationOnPage(
   }
   const ldw = resolveUcpathElement(page, UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT);
   await ldw.fill(input.lastDateWorked);
-  recordBrowserAction("typed", UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT);
+  recordBrowserAction("typed", UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT, input.lastDateWorked);
   await ldw.blur();
   await resolveUcpathElement(page, UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD)
     .fill(input.initiatorComments);
-  recordBrowserAction("typed", UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD);
+  recordBrowserAction("typed", UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD, input.initiatorComments);
   await resolveUcpathElement(page, UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD)
     .fill(input.initiatorComments);
-  recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD);
+  recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD, input.initiatorComments);
   await waitForUcpathState(page, UCPATH_SMART_HR_TERMINATION_STAGED);
 
   const transactionIdDisplay = await textOf(page.locator(DRIVER_ANCHOR.wizardTransactionIdDisplay));

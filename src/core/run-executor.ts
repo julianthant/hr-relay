@@ -135,7 +135,7 @@ import {
   taskSpanPath,
   type SpanEmitter,
 } from "./span-emitter.js";
-import { protectedTaskLogger, redactObservedDataPoints } from "./observed-data.js";
+import { redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
@@ -538,7 +538,7 @@ export async function executeClaimedRun(
     spanPath: runSpanPath(envelope.traceId),
   } as const;
 
-  const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[], truncated: boolean): void => {
+  const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[]): void => {
     const sink = deps.taskNotes;
     if (sink === undefined) return;
     const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
@@ -552,13 +552,6 @@ export async function executeClaimedRun(
       } catch {
         // Diagnostic I/O must not change a settled external write into a failed or UNKNOWN result.
         deps.log.warn("browser action note could not be recorded");
-      }
-    }
-    if (truncated) {
-      try {
-        sink.emitRunNote({ workflow: descriptor.id, address, kind: "browser-action-limit-reached" }, getRun());
-      } catch {
-        deps.log.warn("browser action limit note could not be recorded");
       }
     }
   };
@@ -1152,7 +1145,7 @@ export async function executeClaimedRun(
             nodeId: String(node.id),
             taskId: contract.id,
             observedAt: recordedAt,
-            points: redactObservedDataPoints(contract.id, points, retainedRunProtectedBindings(initial).map(({ inputPath }) => inputPath)),
+            points: redactObservedDataPoints(contract.id, points),
           });
         },
       });
@@ -1210,7 +1203,7 @@ export async function executeClaimedRun(
       const run = RunnableTaskSchema.parse(task.impl.run);
       const ctxCommon = {
         signal: controller.signal,
-        log: protectedTaskLogger(taskLogger, initial),
+        log: taskLogger,
         fail: (code: string, message: string, options?: Readonly<{
           subject?: string; transient?: boolean; cause?: unknown;
         }>): never => {
@@ -1281,7 +1274,7 @@ export async function executeClaimedRun(
               run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } })),
             controller.signal,
             contract.id,
-          ), (actions, truncated) => drainBrowserActions(spanPath, actions, truncated));
+          ), (actions) => drainBrowserActions(spanPath, actions));
         }
       } finally {
         deadline.cancel();
@@ -1799,7 +1792,7 @@ export async function executeClaimedRun(
                 scope: scopeFor(node.dependsOn),
                 dryRun: true,
                 signal: input.signal,
-              }), (actions, truncated) => drainBrowserActions(runSpanIdentity.spanPath, actions, truncated)));
+              }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions)));
             } catch (error) {
               if (error instanceof RunAbandonedError) throw error;
               return await failNode(node, node.commit.uses.id, error);
@@ -1823,7 +1816,7 @@ export async function executeClaimedRun(
               scope: scopeFor(node.dependsOn),
               dryRun: envelope.dryRun,
               signal: input.signal,
-            }), (actions, truncated) => drainBrowserActions(runSpanIdentity.spanPath, actions, truncated));
+            }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions));
             const OutcomeSchema = z.strictObject({
               disposition: z.enum(["committed", "already-present"]),
               proofSource: z.enum([

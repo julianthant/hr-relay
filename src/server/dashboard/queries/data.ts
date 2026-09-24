@@ -1,6 +1,5 @@
 import { localDatePart } from "../../../domain/clock.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
-import { valueFreeProtectedData, retainedRunProtectedBindings } from "../../../domain/protected-input.js";
 import type { JsonValue } from "../../../domain/canonical-json.js";
 import {
   ContextDataSectionSchema,
@@ -44,21 +43,17 @@ function isJsonRecord(value: JsonValue): value is { readonly [key: string]: Json
 type ScalarLookup =
   | { kind: "scalar"; value: string | number | boolean }
   | { kind: "absent" }
-  | { kind: "protected" }
   | { kind: "not-scalar" };
-
-function isProtectedMarker(value: JsonValue): boolean {
-  if (!isJsonRecord(value)) return false;
-  return value.kind === "protected-store" || value.kind === "test-data-local"
-    || value.kind === "legacy-protected-input" || value.state === "withheld-protected-input";
-}
 
 function scalarAtPath(output: JsonValue, fieldPath: string): ScalarLookup {
   let current: JsonValue = output;
   for (const part of fieldPath.split(".")) {
     if (!isJsonRecord(current) || !Object.hasOwn(current, part)) return { kind: "absent" };
     current = current[part]!;
-    if (isProtectedMarker(current)) return { kind: "protected" };
+  }
+  if (isJsonRecord(current) && (current.kind === "protected-store" || current.kind === "test-data-local"
+    || current.kind === "legacy-protected-input" || current.state === "withheld-protected-input")) {
+    return { kind: "scalar", value: JSON.stringify(current) };
   }
   return typeof current === "string" || typeof current === "number" || typeof current === "boolean"
     ? { kind: "scalar", value: current }
@@ -188,8 +183,7 @@ function entryOf(
     return malformedEntry(field.label, field.nodeId, field.fieldPath, "output-schema-mismatch");
   }
 
-  const safeOutput = valueFreeProtectedData(stored.output.value, retainedRunProtectedBindings(run));
-  const lookup = scalarAtPath(safeOutput, field.fieldPath);
+  const lookup = scalarAtPath(stored.output.value, field.fieldPath);
   const checkpoint = {
     state: "present" as const,
     runId: stored.runId,
@@ -202,14 +196,6 @@ function entryOf(
   };
   const attribution = originOf(descriptor, field.nodeId, field.fieldPath);
   const provenance = provenanceFor(stored, field.fieldPath);
-  if (lookup.kind === "protected") {
-    return {
-      label: field.label,
-      coordinate,
-      checkpoint, valueState: "redacted", valueRedacted: "Protected value withheld",
-      ...attribution, ...provenance,
-    };
-  }
   if (lookup.kind === "absent") {
     return {
       label: field.label,

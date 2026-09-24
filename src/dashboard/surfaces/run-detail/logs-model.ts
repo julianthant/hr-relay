@@ -52,6 +52,7 @@ export function logRowsOf(page: NotePage | undefined, requestedCursor: string): 
 }
 
 function renderedRedactedValue(value: Extract<LogRowWire, { kind: "observed" }> ["points"][number]["values"][number]): string {
+  if (value.rawValue !== undefined) return typeof value.rawValue === "string" ? value.rawValue : JSON.stringify(value.rawValue);
   if (value.state === "redacted") return "redacted";
   if (typeof value.value === "string") return value.value;
   if (typeof value.value === "number") return String(value.value);
@@ -116,8 +117,9 @@ export function logLedgerOf(row: LogRowWire): readonly LogLedgerSection[] {
     const facts = point.values.map((value): LogLedgerFact => {
       const prefix = `${point.field}.`;
       const key = value.key.startsWith(prefix) ? value.key.slice(prefix.length) : value.key;
-      const items = value.state === "allowed" && Array.isArray(value.value)
-        ? value.value.map(renderedListItem)
+      const itemValue = value.rawValue !== undefined ? value.rawValue : (value.state === "allowed" ? value.value : undefined);
+      const items = Array.isArray(itemValue)
+        ? itemValue.map(renderedListItem)
         : undefined;
       return { key, label: `${point.field} · ${value.key}`, value: renderedRedactedValue(value), items };
     });
@@ -137,7 +139,8 @@ export function logLedgerOf(row: LogRowWire): readonly LogLedgerSection[] {
 export function rowMatchesLogQuery(row: LogRowWire, query: string): boolean {
   const normalized = query.trim().toLocaleLowerCase();
   if (normalized.length === 0) return false;
-  if (row.kind === "note") return row.note.message.toLocaleLowerCase().includes(normalized);
+  if (row.kind === "note") return [row.note.message, ...(row.note.fields ?? []).map((field) => `${field.key} ${String(field.value)}`)]
+    .some((value) => value.toLocaleLowerCase().includes(normalized));
   return logPillsOf(row).some((pill) => `${pill.label} ${pill.value}`.toLocaleLowerCase().includes(normalized));
 }
 

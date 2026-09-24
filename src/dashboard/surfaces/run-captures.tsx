@@ -32,6 +32,7 @@ export function RunCaptures({ captures, compact = false }: { captures: RunCaptur
           )}
         >
           <RunCaptureFacts capture={item.capture} />
+          {compact && item.capture.artifact.mediaKind === "image" && <RunCaptureImagePreview item={item} />}
           <div className={cn(
             "flex flex-wrap gap-[var(--ds-space-base)]",
             compact ? "pt-[var(--ds-space-snug)]" : "pt-[var(--ds-space-base)]",

@@ -858,13 +858,13 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
       recordBrowserAction("cleared", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
       if (query.kind === "by-eid") {
         await eidInput.fill(query.eid);
-        recordBrowserAction("typed", UCPATH_PERSON_ORG_EID_INPUT);
+        recordBrowserAction("typed", UCPATH_PERSON_ORG_EID_INPUT, query.eid);
       }
       else {
         await lastNameInput.fill(query.lastName);
-        recordBrowserAction("typed", UCPATH_PERSON_ORG_LAST_NAME_INPUT);
+        recordBrowserAction("typed", UCPATH_PERSON_ORG_LAST_NAME_INPUT, query.lastName);
         await givenNameInput.fill(query.givenName);
-        recordBrowserAction("typed", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
+        recordBrowserAction("typed", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT, query.givenName);
       }
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_SEARCH_BUTTON).click();
       recordBrowserAction("clicked", UCPATH_PERSON_ORG_SEARCH_BUTTON);

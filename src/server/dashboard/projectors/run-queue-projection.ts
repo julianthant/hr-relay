@@ -2,7 +2,6 @@ import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../dom
 import type { RunRecordService } from "../../../core/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
-import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 /**
  * THE run/queue projection — the single server-side read model every surface
  * renders (ref dashboard-surfaces §2.2/§2.3, D81 §10.1).
@@ -1374,8 +1373,8 @@ export class RunQueueProjection {
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
     if (members.length === 0) return { state: "absent", reason: "this group has fanned out to no members yet" };
     const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) =>
-      hasProtectedTransactionInput(member) ? "Protected test subject" : (this.#subjectTitle(member.envelope.workflow, member)
-        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId));
+      this.#subjectTitle(member.envelope.workflow, member)
+        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId);
     const remaining = members.length - shown.length;
     return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
   }
@@ -1418,23 +1417,16 @@ export class RunQueueProjection {
       return { state: "absent", reason: "this run's evidence receipt records no output fact" };
     }
     const chips: { label: string; value: string }[] = [];
-    let withheld = 0;
     for (const fact of receipt.value.output) {
-      if (fact.state !== "satisfied" || fact.value.state !== "allowed") {
-        withheld += 1;
-        continue;
-      }
-      const { value } = fact.value;
-      if (typeof value === "string") chips.push({ label: fact.field, value });
-      else if (typeof value === "number" || typeof value === "boolean") {
-        chips.push({ label: fact.field, value: String(value) });
-      } else withheld += 1;
+      if (fact.state !== "satisfied") continue;
+      const value = fact.value.rawValue !== undefined ? fact.value.rawValue : (fact.value.state === "redacted" ? undefined : fact.value.value);
+      if (value !== undefined) chips.push({ label: fact.field,
+        value: typeof value === "string" ? value : JSON.stringify(value) });
     }
     if (chips.length === 0) {
       return {
         state: "absent",
-        reason: `all ${String(withheld)} of this run's output facts are redacted or structured, `
-          + "and neither is a value the queue may print",
+        reason: "this run's receipt retains no output values",
       };
     }
     return { state: "present", value: chips };
@@ -1527,11 +1519,11 @@ export class RunQueueProjection {
        * `displayName` beside this, so a renamed row can still state the subject
        * it was renamed away from.
        */
-      title: hasProtectedTransactionInput(authority) ? "Protected test subject" : (this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId),
-      displayName: hasProtectedTransactionInput(authority) ? { state: "absent", reason: "Protected run display name withheld." } : authority.displayName === undefined
+      title: this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
+      displayName: authority.displayName === undefined
         ? { state: "absent", reason: "the operator has not renamed this run" }
         : { state: "present", value: authority.displayName },
-      subtitle: hasProtectedTransactionInput(authority) || row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+      subtitle: row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }

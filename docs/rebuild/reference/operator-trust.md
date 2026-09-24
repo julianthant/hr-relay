@@ -1234,6 +1234,16 @@ one OCR task. They are listed rather than guessed at because no run can reach th
 | `extraction/extract-spreadsheet` · `extraction/extract-pdf-pages` · `normalization/read-contact-advice` · `roster/match-spreadsheet` | wired into no descriptor, so no run can reach them; declaring a shape nothing has executed would be a guess. |
 | `ocr/extract-form-page` — its OWN output leaves | same, plus a real finding: the task records `pageFingerprint` and `hasRecord`, and `AdmittedExtractionSchema` carries neither, so `finalizeRead` would refuse it (`task provenance path … does not exist in the output`) the first time a descriptor composed it. Declaring `AdmittedExtraction`'s leaves would hide that; it is recorded here instead, unowned, for whoever wires the OCR route. |
 
+#### 2.3.10 D346 — retained original values for the local operator (2026-09-24)
+
+New observed points and evidence receipt facts retain the original JSON leaf
+alongside the classified transform. The local dashboard displays the original
+when present and the retained transform for older records without one. Failure,
+note, diagnostic bundle and receipt read projections serve retained text and
+values, including older archives. This changes local presentation and persistence; the
+classification table still names each leaf and provider prompts retain their
+separate redaction rule. A dropped historical value is not recoverable.
+
 #### 2.3.x — D307: an asserted node is present, never verified (2026-09-01)
 
 When the operator omitted a step at start, the receipt says so in three closed places and never lets a

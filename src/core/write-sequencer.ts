@@ -114,7 +114,7 @@ import type { SessionNeed } from "../domain/session.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { SpanEmitter } from "./span-emitter.js";
 import { ExecutorSpanEventSchema } from "./span-emitter.js";
-import { protectedTaskLogger, redactObservedDataPoints } from "./observed-data.js";
+import { redactObservedDataPoints } from "./observed-data.js";
 import { WriteParkedError } from "./run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
@@ -903,8 +903,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     taskId: TaskId,
     signal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
-    run: RunRecord,
-  ) => taskCtx(taskId, signal, recordData, protectedTaskLogger(deps.log, run));
+  ) => taskCtx(taskId, signal, recordData, deps.log);
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
     return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
@@ -928,7 +927,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     } as const;
     const points: readonly RecordedDataPoint[] = Object.freeze(batch.points.map((point) =>
       RecordedDataPointSchema.parse({ ...point, execution, recordedAt: batch.recordedAt })));
-    const redacted = redactObservedDataPoints(taskId, points, retainedRunProtectedBindings(context.run).map(({ inputPath }) => inputPath));
+    const redacted = redactObservedDataPoints(taskId, points);
     deps.emitter.emit(ExecutorSpanEventSchema.parse({
       t: "data.observed",
       ts: batch.recordedAt,
@@ -1155,7 +1154,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
     emitTaskSpan(context, "probe", "span.started");
     try {
-      const verdict = await executeIdempotencyProbe({ ...deps, log: protectedTaskLogger(deps.log, context.run) }, {
+      const verdict = await executeIdempotencyProbe(deps, {
         commitContract,
         commitInput,
         instance,
@@ -1519,7 +1518,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
           return run({
             input: verifyInput,
-            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context.run), driver: input.driver },
+            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData), driver: input.driver },
           });
         },
       );
@@ -2011,7 +2010,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
               return runImpl({
                 input: prepareInput,
-                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context.run), driver },
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
               });
             },
           );
@@ -2162,7 +2161,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
             return runImpl({
               input: commitInput,
-              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context.run), driver, mutation: capability },
+              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
             });
           },
           (batch) => bufferedCommitObservations.push(batch),
@@ -2559,7 +2558,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
             return runImpl({
               input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context.run), driver },
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
             });
           },
         );

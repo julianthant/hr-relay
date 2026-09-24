@@ -130,7 +130,7 @@ export function createUcpathPersonOrgDriver(
       if (element.effect !== "prepare") throw new Error(`${id} is not a prepare-class field`);
       await waitForUcpathElementStates(page, element);
       await resolveUcpathElement(page, id).fill(eid);
-      recordBrowserAction("typed", id);
+      recordBrowserAction("typed", id, eid);
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {

@@ -27,17 +27,14 @@ describe("browser action notes", () => {
     assert.equal(drained.length, 2, "a settled scope cannot collect later work");
   });
 
-  it("bounds a busy operation and reports omitted gestures to its note sink", async () => {
+  it("retains every gesture in a busy operation", async () => {
     const clock = manualClock(new Date("2026-09-23T12:00:00.000Z"));
     let recorded = 0;
-    let truncated = false;
     await withBrowserActionNotes(clock, async () => {
       for (let index = 0; index < 258; index += 1) recordBrowserAction("clicked", "ucpath.person-org.result");
-    }, (actions, omitted) => {
+    }, (actions) => {
       recorded = actions.length;
-      truncated = omitted;
     });
-    assert.equal(recorded, 256);
-    assert.equal(truncated, true);
+    assert.equal(recorded, 258);
   });
 });

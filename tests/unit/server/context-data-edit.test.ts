@@ -365,7 +365,7 @@ describe("read-only Context Data projection", () => {
     assert.deepEqual(payload.entries, []);
   });
 
-  it("withholds protected checkpoint values before serializing the BFF response", () => {
+  it("serves retained protected checkpoint values in the BFF response", () => {
     const current = world();
     const secret = "protected-test-value-774411";
     const base = runRecordOf({ seed: 51, claimGeneration: 1, version: 2 });
@@ -393,9 +393,9 @@ describe("read-only Context Data projection", () => {
     });
     const employeeId = payload.entries[0];
     assert.ok(employeeId);
-    assert.equal(employeeId.valueState, "redacted");
-    assert.equal(employeeId.valueRedacted, "Protected value withheld");
-    assert.equal(JSON.stringify(payload).includes(secret), false);
+    assert.equal(employeeId.valueState, "present");
+    assert.equal(employeeId.valueRedacted, secret);
+    assert.equal(JSON.stringify(payload).includes(secret), true);
   });
 
   it("keeps stale descriptor and malformed output hashes out of the value projection", () => {
@@ -428,6 +428,7 @@ describe("read-only Context Data projection", () => {
       state: "unavailable",
       reason: "descriptor-mismatch",
       entries: [],
+      observations: [],
     });
   });
 

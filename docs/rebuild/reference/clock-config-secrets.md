@@ -1766,6 +1766,18 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D346 — Settings values on the local operator surface · 2026-09-24
+
+The independent protected store remains the authority for credentials and
+retains its existing revision, integrity and write behavior. The Settings read
+serves its authenticated current entries so the local operator can see each
+value. The provider availability section likewise serves active provider key
+values. Credential edits remain explicit drafts; displaying a saved value does
+not submit or change it. This supersedes the write-only UI/readback restriction
+in D331.6 for the local dashboard.
+Diagnostic bundle fields also retain original classified values. An
+unclassified JSON value remains visible in its capture warning.
+
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
 <!-- roadmap: p1-base -->

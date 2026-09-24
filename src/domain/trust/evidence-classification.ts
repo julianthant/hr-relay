@@ -935,5 +935,5 @@ export function redactEvidenceLeaf(
       + `as ${declared.classification}/${declared.transform}: ${redaction.warnings.join("; ")}`,
     );
   }
-  return RedactedFieldSchema.parse({ ...field, key: leaf.path });
+  return RedactedFieldSchema.parse({ ...field, key: leaf.path, rawValue: leaf.value });
 }

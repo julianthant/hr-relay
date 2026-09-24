@@ -797,7 +797,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const search = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_INPUT);
     const go = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
     await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
-    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT);
+    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, documentNumber);
     await go.click({ timeout: FIELD_TIMEOUT_MS });
     recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
     // Kuali refetches the filtered list server-side. Waiting for the MATCHED
@@ -1254,13 +1254,13 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     try {
       await stampModelProps(handle, documentNumber, what);
       await field.fill(value, { timeout: FIELD_TIMEOUT_MS });
-      recordBrowserAction("typed", id);
+      recordBrowserAction("typed", id, value);
       let displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
       if (displayed !== value) {
         await field.clear({ timeout: FIELD_TIMEOUT_MS });
         recordBrowserAction("cleared", id);
         await field.pressSequentially(value, { delay: 30, timeout: FIELD_TIMEOUT_MS });
-        recordBrowserAction("typed", id);
+        recordBrowserAction("typed", id, value);
         displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
       }
       if (displayed !== value) return;
@@ -1355,7 +1355,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       departmentControl,
       async () => {
         await departmentControl.selectOption({ label: fields.department }, { timeout: FIELD_TIMEOUT_MS });
-        recordBrowserAction("selected", KUALI_RRSS_DEPARTMENT_FIELD);
+        recordBrowserAction("selected", KUALI_RRSS_DEPARTMENT_FIELD, fields.department);
       },
       "department",
       view.documentNumber,
@@ -1367,7 +1367,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       acknowledged,
       async () => {
         await acknowledged.setChecked(fields.requestAcknowledged, { timeout: FIELD_TIMEOUT_MS });
-        recordBrowserAction("set", KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX);
+        recordBrowserAction("set", KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX, fields.requestAcknowledged);
       },
       "request acknowledged",
       view.documentNumber,
@@ -1405,7 +1405,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       template,
       async () => {
         await template.setChecked(fields.submittedTerminationTemplate, { timeout: FIELD_TIMEOUT_MS });
-        recordBrowserAction("set", KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX);
+        recordBrowserAction("set", KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX, fields.submittedTerminationTemplate);
       },
       "submitted termination template",
       view.documentNumber,
@@ -1416,7 +1416,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       finalPay,
       async () => {
         await finalPay.check({ timeout: FIELD_TIMEOUT_MS });
-        recordBrowserAction("checked", "kuali.rrss.final-pay");
+        recordBrowserAction("checked", "kuali.rrss.final-pay", fields.finalPay);
       },
       "final pay radio",
       view.documentNumber,

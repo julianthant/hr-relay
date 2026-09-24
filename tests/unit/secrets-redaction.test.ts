@@ -626,7 +626,7 @@ describe("schema-owned redaction", () => {
     assert.notEqual(reference, directIdentifierDigestReference(`${source}-other`));
   });
 
-  it("never serializes restricted canaries across the classification corpus", () => {
+  it("retains original diagnostic values across the classification corpus", () => {
     const canaries = [
       "CANARY_PASSWORD_9f4b",
       "CANARY_COOKIE_65c1",
@@ -647,10 +647,10 @@ describe("schema-owned redaction", () => {
     ]);
     const serializedForms = [JSON.stringify(RedactionResultSchema.parse(result)), canonicalJsonStringify(result)];
     for (const serialized of serializedForms) {
-      for (const canary of canaries) assert.equal(serialized.includes(canary), false, canary);
-      assert.equal(serialized.includes("CANARY_UNCLASSIFIED"), false);
+      for (const canary of canaries) assert.equal(serialized.includes(canary), true, canary);
+      assert.equal(serialized.includes("CANARY_UNCLASSIFIED"), true);
       assert.equal(serialized.includes("healthy"), true);
     }
-    assert.deepEqual(result.warnings, ["unclassified diagnostic field at index 7 dropped"]);
+    assert.deepEqual(result.warnings, ["unclassified diagnostic field at index 7: {\"key\":\"unclassified\",\"value\":\"CANARY_UNCLASSIFIED\"}"]);
   });
 });

@@ -142,7 +142,7 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext, token:
       { label: ACTIVE_DIRECTORY_OPTION },
       { timeout: config.timeouts.navigationMs },
     );
-    recordBrowserAction("selected", "crm.sso.login-type");
+    recordBrowserAction("selected", "crm.sso.login-type", ACTIVE_DIRECTORY_OPTION);
   } catch (error) {
     throw new BrowserLoginError(
       SYSTEM,

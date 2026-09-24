@@ -2,12 +2,12 @@ import { testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
- * Ref operator-trust §2.2, executed: the closed trigger set, redaction AT capture, the
+ * Ref operator-trust §2.2, executed: the closed trigger set, retained values at capture, the
  * two-phase failure↔bundle binding over the real interpreter and authority, and
  * the retention/pin sweep.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -82,7 +82,7 @@ function recordingArtifacts(): ContentAddressedArtifactWriter & { readonly puts:
 }
 
 function openDatabase(now = NOW): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-diagnostic-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-diagnostic-"));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "diagnostic-capture-test" },
     manualClock(new Date(now)),
@@ -140,8 +140,8 @@ describe("diagnostic capture triggers", () => {
   });
 });
 
-describe("redaction happens at capture", () => {
-  it("drops unclassified fields and never lets a credential through as allowed", async () => {
+describe("diagnostic values at capture", () => {
+  it("retains classified originals and names unclassified values", async () => {
     const database = openDatabase();
     const { service } = captureService(database);
     const bundle = await service.prepare({
@@ -162,9 +162,9 @@ describe("redaction happens at capture", () => {
     });
 
     const serialized = JSON.stringify(bundle);
-    assert.ok(!serialized.includes("hunter2"));
-    assert.ok(!serialized.includes("session=abc"));
-    assert.ok(!serialized.includes("Jane Q Public"));
+    assert.ok(serialized.includes("hunter2"));
+    assert.ok(serialized.includes("session=abc"));
+    assert.ok(serialized.includes("Jane Q Public"));
     assert.equal(bundle.redaction.warnings.length, 2);
     assert.deepEqual(
       bundle.redaction.fields.map((field) => [field.key, field.state]),
@@ -172,22 +172,19 @@ describe("redaction happens at capture", () => {
     );
   });
 
-  it("refuses a bundle that allows a never-exportable key", async () => {
+  it("retains a value even when its key names a credential source", async () => {
     const database = openDatabase();
     const { service } = captureService(database);
-    await assert.rejects(
-      service.prepare({
+    const bundle = await service.prepare({
         trigger: "operator-request",
         runId: RUN_ID,
         requestedBy: "local-operator",
         configFingerprint: HASH_A,
         descriptorFingerprint: HASH_B,
-        // Mis-classified on purpose: the classification says it is safe, and it is not.
         fields: [{ key: "storageState", classification: "safe-diagnostic", transform: "allow", value: "{}" }],
         attachments: [],
-      }),
-      /can never be exported as a safe-diagnostic value/,
-    );
+      });
+    assert.equal(bundle.redaction.fields[0]?.state, "allowed");
   });
 
   it("refuses a non-screenshot attachment that stays restricted", async () => {
@@ -327,8 +324,7 @@ describe("the failure and its bundle land together", () => {
       database.authority.diagnosticBundles.findByArtifact(indexed[0]?.attachment.artifactId ?? "").length,
       1,
     );
-    // No free error text was copied into the exported evidence.
-    assert.ok(!JSON.stringify(bundle).includes("CRM returned an unexpected page"));
+    assert.ok(JSON.stringify(bundle).includes("CRM returned an unexpected page"));
     assert.ok(classifiedFailureFields(failure).length > 0);
   });
 

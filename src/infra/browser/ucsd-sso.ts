@@ -237,9 +237,9 @@ export async function fillSsoCredentials(
   await requireMatchedField(system, context, passwordField(context.page), "password", SSO_PASSWORD_SELECTOR);
   try {
     await usernameField(context.page).fill(context.credentials.userId, { timeout });
-    recordBrowserAction("typed", "ucsd.sso.username");
+    recordBrowserAction("typed", "ucsd.sso.username", context.credentials.userId);
     await passwordField(context.page).fill(context.credentials.password, { timeout });
-    recordBrowserAction("typed", "ucsd.sso.password");
+    recordBrowserAction("typed", "ucsd.sso.password", context.credentials.password);
   } catch (error) {
     throw new BrowserLoginError(
       system,

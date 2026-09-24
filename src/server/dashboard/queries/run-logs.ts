@@ -1,5 +1,4 @@
 import { RedactedFieldSchema } from "../../../domain/redaction.js";
-import { valueFreeProtectedEvidence, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../domain/protected-input.js";
 import { z } from "zod";
 import {
   runNotePartitionScope as sharedNotePartitionScope,
@@ -39,6 +38,7 @@ type RunAtRestNote = Readonly<{
   ts: string;
   level: "error" | "warn" | "waiting" | "step" | "success" | "debug";
   message: string;
+  fields?: z.infer<typeof NoteAtRestSchema>["fields"];
 }>;
 
 type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
@@ -275,7 +275,7 @@ function logLinesForRun(
       }
       if ("runId" in note && note.runId === runId) {
         assertRunLogIdentity("note", note, line, runId, row, authority);
-        const projected = projectNoteForOperator(note, hasProtectedTransactionInput(authority));
+        const projected = projectNoteForOperator(note);
         if (!("runId" in projected)) {
           throw new Error(`notes line ${line.file.path}:${String(line.lineNumber)} changed identity during projection`);
         }
@@ -287,6 +287,7 @@ function logLinesForRun(
             ts: projected.ts,
             level: projected.level,
             message: projected.message,
+            fields: projected.fields,
           },
         });
       }
@@ -317,14 +318,13 @@ export function runDataObservationsForRun(
 ): readonly z.infer<typeof ObservedLogRowWireSchema>[] {
   const row = deps.projection.runFold(runId);
   const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
-  const protectedPaths = retainedRunProtectedBindings(authority).map(({ inputPath }) => inputPath);
   const observed: RunLogScanEntry[] = [];
   for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
     if (event.t !== "data.observed") continue;
     assertScopedSpanWorkflow(event, line);
     assertRunLogIdentity("span", event, line, runId, row, authority);
     const points = event.points.map((point) => ({ ...point,
-      values: point.values.map((value) => RedactedFieldSchema.parse(valueFreeProtectedEvidence(value, protectedPaths))),
+      values: point.values.map((value) => RedactedFieldSchema.parse(value)),
     }));
     observed.push({ kind: "observed", line, event: { ...event, points }, producer: producerOf(descriptor, event, line) });
   }
@@ -360,6 +360,7 @@ function logRowOf(
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
         message: entry.note.message,
+        fields: entry.note.fields,
       },
     };
   }

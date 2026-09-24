@@ -1375,7 +1375,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     });
   });
 
-  it("withholds pre-composition-3 receipt diagnostics from Queue without mutating authority", () => {
+  it("serves pre-composition-3 receipt diagnostics in Queue without mutating authority", () => {
     const w = world();
     seedWorld(w);
     const raw = "ucpath:termination|10812345|2026-08-29";
@@ -1386,9 +1386,8 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     w.authority.receipts.set(uuidOf(3), legacy);
 
     const row = rowOf(w, 3);
-    assert.equal(JSON.stringify(row).includes(raw), false);
-    assert.equal(row.warnings.state, "absent");
-    assert.match(row.warnings.state === "absent" ? row.warnings.reason : "", /composition 2.*withheld/u);
+    assert.equal(JSON.stringify(row).includes(raw), true);
+    assert.equal(row.warnings.state, "present");
     assert.equal(w.authority.receipts.get(uuidOf(3)), legacy);
   });
 
@@ -1628,9 +1627,8 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
       reason: "this run's evidence receipt records no output fact",
     });
     assert.deepEqual(byRun.get(uuidOf(4)), {
-      state: "absent",
-      reason: "all 2 of this run's output facts are redacted or structured, "
-        + "and neither is a value the queue may print",
+      state: "present",
+      value: [{ label: "grid", value: '{"rows":3}' }],
     });
     assert.deepEqual(byRun.get(uuidOf(5)), {
       state: "present",

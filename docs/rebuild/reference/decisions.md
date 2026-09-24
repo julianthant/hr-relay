@@ -1,9 +1,23 @@
-# `reference/decisions.md` — the decision ledger (D1–D345, 2026-07-17 → 2026-09-24)
+# `reference/decisions.md` — the decision ledger (D1–D346, 2026-07-17 → 2026-09-24)
+
+**D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
+Run data, archived runs and Settings show retained values in full, including
+typed credentials, provider keys, identifiers and capture images. Action notes
+record entered values. New observed fields and receipt facts retain the original
+value beside the existing classification. Diagnostic bundles retain originals.
+Read projections do not mask retained
+historical notes, failures, receipts or archive titles. Bytes discarded before
+this decision cannot be recovered. This amends D345's value-free action notes,
+D331's write-only Settings display and D183's local operator egress posture;
+provider prompts and OS notifications retain their separate contracts. Owners:
+[dashboard-surfaces §1.1](dashboard-surfaces.md#d346--full-local-operator-values--2026-09-24),
+[clock-config-secrets §D346](clock-config-secrets.md#d346--settings-values-on-the-local-operator-surface--2026-09-24),
+[operator-trust §2.3.10](operator-trust.md#2310-d346--retained-original-values-for-the-local-operator-2026-09-24).
 
 **D345 — Run data and action Logs (operator direction, 2026-09-24):** recorded read/write
 fields belong in the Run data Context rail, including fields with no editable checkpoint.
 Logs presents time-ordered browser actions, ordinary task notes and transaction fences.
-Action notes name the semantic control and verb but contain no typed value. Older frozen
+Action notes name the semantic control and verb; D346 adds typed values. Older frozen
 archives project their observed rows into Run data without changing archived bytes.
 Owner: [dashboard-surfaces §1.1](dashboard-surfaces.md#d345-run-data-and-action-logs--2026-09-24).
 

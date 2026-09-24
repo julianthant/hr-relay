@@ -314,18 +314,14 @@ describe("evidence receipt — strictness", () => {
       assert.equal(fact.source.resolvedAt, GATE_RESOLVED_AT);
     }
 
-    // The approved EID is a person, and it reaches the receipt redacted — the
-    // gate scope is not a hole in the declared redaction table.
+    // The gate keeps the classified transform and the approved EID.
     const eid = gateFacts.find((fact) => fact.field === "eid");
     assert.ok(eid !== undefined && eid.state === "satisfied");
     assert.equal(eid.value.state, "transformed");
     const approvedEid = String(
       (evidence.gateResults[0] as { result: { value: { eid: string } } }).result.value.eid,
     );
-    assert.ok(
-      !JSON.stringify(receipt).includes(approvedEid),
-      "the raw approved EID reached the receipt through the gate payload",
-    );
+    assert.equal(eid.value.rawValue, approvedEid);
   });
 
   it("refuses a foreign gate row, an undeclared arm, and a gate that left the graph", () => {
@@ -463,9 +459,9 @@ describe("evidence receipt — redaction", () => {
     }
   });
 
-  it("emits only the declared transform for a secret or identifier leaf", () => {
+  it("emits the original value alongside the declared transform", () => {
     const scope = EvidenceValueScopeSchema.parse({ kind: "workflow-input", workflowId: "person-lookup" });
-    // `emplId` is declared direct-identifier/last4: the raw value never appears.
+    // `emplId` retains its direct-identifier/last4 classification.
     const redacted = redactEvidenceLeaf(scope, { path: "emplId", field: "emplId", value: CANARIES.ssn });
     assert.deepEqual(redacted, {
       state: "transformed",
@@ -473,8 +469,9 @@ describe("evidence receipt — redaction", () => {
       classification: "direct-identifier",
       transform: "last4",
       value: "6789",
+      rawValue: CANARIES.ssn,
     });
-    assert.ok(!JSON.stringify(redacted).includes(CANARIES.ssn));
+    assert.ok(JSON.stringify(redacted).includes(CANARIES.ssn));
   });
 
   it("refuses a transform the classification does not permit", () => {

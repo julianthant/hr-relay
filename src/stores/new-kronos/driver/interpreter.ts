@@ -363,7 +363,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const { root, context } = await resolvePanelRoot(NEW_KRONOS_SEARCH_QUERY_FIELD);
     const queryField = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_QUERY_FIELD);
     await queryField.fill(input.employeeId, { timeout: CONTROL_TIMEOUT_MS });
-    recordBrowserAction("typed", NEW_KRONOS_SEARCH_QUERY_FIELD);
+    recordBrowserAction("typed", NEW_KRONOS_SEARCH_QUERY_FIELD, input.employeeId);
     const submit = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
     await submit.click({ timeout: CONTROL_TIMEOUT_MS });
     recordBrowserAction("clicked", NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
@@ -585,7 +585,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     await field.press("ControlOrMeta+a", { timeout: CONTROL_TIMEOUT_MS });
     recordBrowserAction("selected", id);
     await field.pressSequentially(value, { delay: 60, timeout: CONTROL_TIMEOUT_MS });
-    recordBrowserAction("typed", id);
+    recordBrowserAction("typed", id, value);
     const wanted = parseTimecardDate(value, `${label} date`);
     // The last value the poll actually SAW, so the refusal below reports the
     // observation instead of re-reading a field that may already have moved.

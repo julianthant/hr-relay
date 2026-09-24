@@ -14,9 +14,8 @@
  *  3. the sweep disposition — a closed union over (retention, now) so
  *     "this bundle is due" is a decision a test can pin without a database.
  *
- * Redaction is NOT re-implemented here: `src/domain/redaction.ts` owns it and
- * drops every unclassified field. This module only refuses to build a bundle
- * whose redaction result still carries something that must never be exported.
+ * `src/domain/redaction.ts` owns the classified capture result and retains
+ * original values for the local operator.
  */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -29,11 +28,6 @@ import {
   RunIdSchema,
 } from "../ids.js";
 import { RedactionResultSchema } from "../redaction.js";
-import {
-  EnvironmentSecretNameSchema,
-  SecretFamilyNameSchema,
-  SecretFileNameSchema,
-} from "../secret-names.js";
 import { sha256Hex } from "../sha256.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "./diagnostic.js";
 
@@ -165,40 +159,9 @@ export function deriveDiagnosticContentDigest(input: Readonly<{
   })}`));
 }
 
-const FORBIDDEN_EXPORT_KEYS: ReadonlySet<string> = new Set<string>([
-  ...EnvironmentSecretNameSchema.options,
-  ...SecretFamilyNameSchema.options,
-  ...SecretFileNameSchema.options,
-  "cookie",
-  "cookies",
-  "storageState",
-  "sessionStorage",
-  "localStorage",
-  "authorization",
-  "password",
-  "secret",
-  "token",
-  "credential",
-  "credentials",
-  "ssn",
-  "socialSecurityNumber",
-]);
-
-/**
- * Redaction is schema-owned and drops what it cannot classify, so this is the
- * belt-and-braces arm ref guards-and-tests §3.10 asks for: a field that survived redaction
- * as an ALLOWED value may not be one of the names that must never leave the
- * machine. It fails the capture loudly rather than exporting the bundle.
- */
+/** Parse the retained capture values before they become durable evidence. */
 export function assertDiagnosticExportSafe(redactionInput: unknown): z.infer<typeof RedactionResultSchema> {
-  const redaction = RedactionResultSchema.parse(redactionInput);
-  for (const field of redaction.fields) {
-    if (field.state !== "allowed") continue;
-    if (FORBIDDEN_EXPORT_KEYS.has(field.key)) {
-      throw new Error(`diagnostic capture refused: "${field.key}" can never be exported as a safe-diagnostic value`);
-    }
-  }
-  return redaction;
+  return RedactionResultSchema.parse(redactionInput);
 }
 
 /* ── retention sweep ─────────────────────────────────────────────────────── */
