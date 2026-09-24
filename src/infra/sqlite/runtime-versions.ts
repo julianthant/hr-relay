@@ -25,6 +25,12 @@ export const RUNTIME_VERSION_ADOPTIONS_DDL = `CREATE TABLE runtime_version_adopt
   created_at TEXT NOT NULL
 ) STRICT`;
 
+export const RUNTIME_VERSION_CHANGES_DDL = `CREATE TABLE runtime_version_changes (
+  record_key TEXT PRIMARY KEY,
+  record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+  created_at TEXT NOT NULL
+) STRICT`;
+
 export const RuntimeVersionAdoptionSchema = z.strictObject({
   runId: RunIdSchema,
   workflowId: WorkflowIdSchema,

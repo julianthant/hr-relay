@@ -56,7 +56,7 @@ export const AuthorityTableNameSchema = z.enum([
   "database_upgrades",
   "timeline_events",
   "timeline_operation_sources",
-  "runtime_versions", "runtime_version_adoptions",
+  "runtime_versions", "runtime_version_adoptions", "runtime_version_changes",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([]);

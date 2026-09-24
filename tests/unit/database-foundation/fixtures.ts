@@ -17,7 +17,7 @@ import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 export const NOW="2026-09-09T12:00:00.000Z";
 export const HASH="a".repeat(64);
 export const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
-export function foundationFixture(options:{repositoryLayout?:boolean}={}){
+export function foundationFixture(options:{repositoryLayout?:boolean;registeredRuntimeVersion?:boolean}={}){
  const repoRoot=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));
  const root=options.repositoryLayout===true?join(repoRoot,".tracker"):repoRoot;mkdirSync(root,{recursive:true});
  const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
@@ -25,9 +25,10 @@ export function foundationFixture(options:{repositoryLayout?:boolean}={}){
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
  db.authority.configSnapshots.insert(snapshot);
+ if(options.registeredRuntimeVersion===true)db.registerRuntimeVersionWorkflows(["person-lookup"]);
  const createRun=(runId:string)=>{
  const workerId=runId===RUN_ID?WORKER_ID:"worker-2";
- db.authority.runs.enqueue({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});
+ db.authority.runs.enqueue({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId},...(options.registeredRuntimeVersion===true?{runtimeVersion:{dashboard:{major:1,minor:0},workflow:{major:1,minor:0}}}:{})});
  const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
  const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
  const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");

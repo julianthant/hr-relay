@@ -1,5 +1,5 @@
 import { TRANSACTION_SELECTION_DDL, TRANSACTION_SELECTION_CONSTRAINTS } from "./transaction-selection.js";
-import { RUNTIME_VERSIONS_DDL, RUNTIME_VERSION_ADOPTIONS_DDL } from "./runtime-versions.js";
+import { RUNTIME_VERSIONS_DDL, RUNTIME_VERSION_ADOPTIONS_DDL, RUNTIME_VERSION_CHANGES_DDL } from "./runtime-versions.js";
 import { RUN_SEARCH_INDEX_DDL, RUN_SEARCH_GRAMS_DDL, RUN_SEARCH_PUBLICATION_DDL, RUN_SEARCH_DECLARATIONS_DDL, RUN_SEARCH_ACTORS_DDL, RUN_SEARCH_INDEX_CONSTRAINTS, RUN_SEARCH_ACTOR_BACKFILL_SQL } from "./run-search-index.js";
 import { WORKER_CONTROL_DDL, WORKER_BROWSER_DDL } from "./worker-control.js";
 import { NOTIFICATION_PUBLICATIONS_DDL, NOTIFICATION_HEALTH_DDL } from "./notification-publications.js";
@@ -94,6 +94,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   version_changes: VERSION_CHANGES_DDL,
   runtime_versions: RUNTIME_VERSIONS_DDL,
   runtime_version_adoptions: RUNTIME_VERSION_ADOPTIONS_DDL,
+  runtime_version_changes: RUNTIME_VERSION_CHANGES_DDL,
   archive_transfers: ARCHIVE_TRANSFER_DDL,
   run_summaries: RUN_SUMMARIES_DDL,
   summary_publication: SUMMARY_PUBLICATION_DDL,
@@ -2160,7 +2161,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ...RUN_SEARCH_INDEX_CONSTRAINTS, ...RUN_SEARCH_ACTOR_BACKFILL_SQL,
     `INSERT INTO run_search_publication SELECT 'current',json_object('state',CASE WHEN EXISTS(SELECT 1 FROM workflow_runs) THEN 'invalid' ELSE 'published' END,'sourceGeneration',authority_generation,'afterRun',NULL,'rowCount',0),updated_at FROM database_state`,
   ] },
-  { version: 55, statements: [RUNTIME_VERSIONS_DDL, RUNTIME_VERSION_ADOPTIONS_DDL,
+  { version: 55, statements: [RUNTIME_VERSIONS_DDL, RUNTIME_VERSION_ADOPTIONS_DDL, RUNTIME_VERSION_CHANGES_DDL,
     `INSERT INTO runtime_versions(record_key,record_json,updated_at) SELECT 'current',json_object('revision',1,'state',json_object('dashboard',json_object('major',1,'minor',0),'workflows',json(COALESCE((SELECT json_group_array(json_object('workflowId',workflow,'version',json_object('major',1,'minor',0))) FROM (SELECT DISTINCT workflow FROM workflow_runs ORDER BY workflow)),'[]')))),updated_at FROM database_state`,
     `INSERT INTO runtime_version_adoptions(record_key,record_json,created_at) SELECT record_key,json_object('runId',record_key,'workflowId',workflow,'dashboard',json_object('major',1,'minor',0),'workflow',json_object('major',1,'minor',0)),created_at FROM workflow_runs`,
     `CREATE TRIGGER workflow_runs_runtime_version_immutable BEFORE UPDATE ON workflow_runs
@@ -2170,6 +2171,9 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       BEGIN SELECT RAISE(ABORT,'runtime version adoption is immutable'); END`,
     `CREATE TRIGGER runtime_version_adoptions_retained BEFORE DELETE ON runtime_version_adoptions
       BEGIN SELECT RAISE(ABORT,'runtime version adoption is retained'); END`,
+    `CREATE TRIGGER runtime_version_changes_review_immutable BEFORE UPDATE ON runtime_version_changes
+      WHEN json_extract(NEW.record_json,'$.reviewFingerprint') IS NOT json_extract(OLD.record_json,'$.reviewFingerprint')
+      BEGIN SELECT RAISE(ABORT,'runtime version review is immutable'); END`,
   ] },
 ] as const);
 
@@ -2195,7 +2199,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
     }
   }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
-  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes", "runtime_versions", "runtime_version_adoptions", "explorer_overrides", "notification_publications", "notification_health", "worker_controls", "worker_browsers", "transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of registeredNames) if (![...TABLE_ORDER.map(renamed), "timeline_operation_sources", "imported_artifacts", "provider_requests", "provider_usage", "app_settings", "generated_artifacts", "run_summaries", "summary_publication", "archive_transfers", "version_changes", "runtime_versions", "runtime_version_adoptions", "runtime_version_changes", "explorer_overrides", "notification_publications", "notification_health", "worker_controls", "worker_browsers", "transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name)) violations.push(`registered table ${name} is absent from migration order`);
   for (const name of retiredNames) {
     if (!TABLE_ORDER.some((migrationName) => migrationName === name || renamed(migrationName) === name)) {
       violations.push(`retired table ${name} is absent from migration history`);
