@@ -65,7 +65,7 @@ import { SessionPanel } from "../surfaces/session-panel.js";
 import {
 DASHBOARD_MAIN_REGION_ID
 } from "../surfaces/settings-model.js";
-import { activeCount,activeStatusWords,parseWorkflows,useWorkflowPanelMode,workflowStatusCounts,type StatusBucket } from "../surfaces/shell-model.js";
+import { activeCount,activeStatusWords,parseWorkflows,useSelectedWorkflow,useWorkflowPanelMode,workflowStatusCounts,type StatusBucket } from "../surfaces/shell-model.js";
 import { StatusFilters,WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
@@ -373,7 +373,7 @@ function LoadedApp({
   );
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const [chosenWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
+  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
   const selectedRow = dayWire?.queueSurfaces.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
@@ -592,7 +592,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     if (next === activeWorkflowId) return;
     setActiveWorkflowId(next);
     setRoute({ ...route, run: undefined, section: undefined });
-  }, [activeWorkflowId, route, setRoute]);
+  }, [activeWorkflowId, route, setRoute, setActiveWorkflowId]);
 
   const selectRun = useCallback(
     (runId: string) => {

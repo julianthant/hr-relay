@@ -39,6 +39,26 @@ export function parseWorkflows(workflows: readonly unknown[]): WorkflowBootstrap
   return z.array(WorkflowBootstrapPrimitiveSchema).parse(workflows);
 }
 
+const SELECTED_WORKFLOW_STORAGE_KEY = "hr-dashboard.selected-workflow";
+
+export function useSelectedWorkflow(workflows: readonly WorkflowBootstrapPrimitive[]): {
+  selectedWorkflowId: string;
+  setSelectedWorkflowId: (workflowId: string) => void;
+} {
+  const [selectedWorkflowId, setSelectedWorkflowIdState] = useState(() =>
+    readEnumPreference(
+      SELECTED_WORKFLOW_STORAGE_KEY,
+      workflows.map((workflow) => String(workflow.id)),
+      String(workflows[0]?.id ?? ""),
+    ),
+  );
+  const setSelectedWorkflowId = useCallback((workflowId: string) => {
+    setSelectedWorkflowIdState(workflowId);
+    void writePreference(SELECTED_WORKFLOW_STORAGE_KEY, workflowId);
+  }, []);
+  return { selectedWorkflowId, setSelectedWorkflowId };
+}
+
 
 /**
  * A count the projection did not serve is ZERO, not unknown.

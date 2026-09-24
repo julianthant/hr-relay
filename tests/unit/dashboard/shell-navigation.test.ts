@@ -33,10 +33,16 @@ function button(name: string): HTMLButtonElement {
   assert.ok(found, `button ${name}`);
   return found;
 }
+function workflowButton(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow Panel"] button')]
+    .find(node => node.textContent?.trim().startsWith(name));
+  assert.ok(found, `workflow ${name}`);
+  return found;
+}
 async function click(node: HTMLElement) { await act(async () => node.click()); await settle(); }
-async function mount(search: string, overrides: Partial<DashboardClient> = {}) {
+async function mount(search: string, overrides: Partial<DashboardClient> = {}, panelMode: "icon" | "sidebar" = "icon") {
   window.history.replaceState(null, "", `/${search}`);
-  localStorage.setItem("hr-dashboard.workflow-panel", "icon");
+  localStorage.setItem("hr-dashboard.workflow-panel", panelMode);
   const { app } = createFixtureBff();
   const client: DashboardClient = {
     ...createDashboardClient({baseUrl:"http://fixture",fetchImpl: async (url, init) => app.request(String(url), init)}),
@@ -51,6 +57,28 @@ function selectedTab() { return document.querySelector('[role="tab"][aria-select
 async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
 
 describe("mounted shell navigation", () => {
+  it("remembers the selected workflow across navigation and remount, then falls back if it is no longer served", async () => {
+    const first = FIXTURE_BOOTSTRAP.workflows[0]; assert.ok(first);
+    const workflows = [first, { ...first, id: "separations", code: "sp", label: "Separations" }];
+    const bootstrap = async () => ({ ...FIXTURE_BOOTSTRAP, workflows });
+    await mount(`?day=${FIXTURE_DAY_WIRE.day}`, { bootstrap }, "sidebar");
+    await click(workflowButton("Separations"));
+    assert.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
+    assert.ok(workflowButton("Separations").querySelector('[aria-label="0 active of 0 in Separations"]'));
+    assert.doesNotMatch(document.querySelector('nav[aria-label="Workflow Panel"]')?.textContent ?? "", /active\s*│\s*all/iu);
+    assert.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "separations");
+    await click(button("Settings"));
+    await click(button("Back to the dashboard"));
+    assert.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
+
+    await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
+    await mount(`?day=${FIXTURE_DAY_WIRE.day}`, { bootstrap }, "sidebar");
+    assert.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
+
+    await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
+    await mount(`?day=${FIXTURE_DAY_WIRE.day}`, {}, "sidebar");
+    assert.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
+  });
   it("makes a clicked tab addressable and restores it through native history", async () => {
     await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.doneRun}&section=receipt`);
     assert.match(selectedTab() ?? "", /Receipt/);

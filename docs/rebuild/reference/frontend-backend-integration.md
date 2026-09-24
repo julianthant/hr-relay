@@ -425,10 +425,10 @@ read. No new DDL or migrations are introduced.
 
 **`WorkflowCountWire` carries its own status dimension** — `{ workflowId, count, statusCounts[] }`,
 the per-status counts summing to `count` by refinement (R2 D5–D12, R4-1). One `count` per workflow
-could not answer the two questions the shell asks of it: the Workflow Panel's `active │ all` column
-needs queued + running for THAT workflow, and the Status Bar's pills are scoped to the workflow the
-queue below them is showing — so a day-wide fold put `Failed 3` above a queue with no failures. Both
-are the same fact at two scopes and both come off this one array, filled in the projector's single
+could not answer the two questions the shell asks of it: the Workflow Panel's `active │ all` count
+pair needs queued + running for that workflow, and the Status Bar's pills are scoped to the workflow
+the queue below them is showing — so a day-wide fold put `Failed 3` above a queue with no failures.
+Both are the same fact at two scopes and both come off this one array, filled in the projector's single
 countable loop beside the day-wide totals it must agree with (D81). A client-side fold over
 `queueSurfaces` is the second count path that rule exists to delete, and remains forbidden.
 
@@ -1036,8 +1036,8 @@ parity proof. The write-safety consequence is owned by ref write-safety §D338.
 | workflow metadata/start methods/system instances | descriptor/config projection | no parallel registries |
 | receipts/failures/captures/provenance | evidence services | fetch by stable id; never synthesize missing proof |
 | reports/month counts/search results | server query over projection family | do not scan browser caches to recreate them |
-| selected page/workflow/row/tab, panel sizes, open dialogs | client URL/UI state | safe to update immediately |
-| theme, Workflow Panel display mode, Context-rail openness | client preference | persist locally unless later promoted to actor settings |
+| selected page/row/tab, panel sizes, open dialogs | client URL/UI state | safe to update immediately |
+| selected workflow, theme, Workflow Panel display mode, Context-rail openness | client preference | persist locally unless later promoted to actor settings |
 | form/mapping/review edits before submit | client draft | retain across section switches; submit atomically with base revision |
 | notification read/snooze | authority, actor-keyed | command-driven even though it feels presentational |
 | elapsed time between server timestamps | client Clock calibrated from bootstrap | display-only; terminal durations remain server facts |
@@ -1133,7 +1133,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner | Built |
 |---|---|---|---|---|---|
 | Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day; preflight bootstrap + strict rerun route are served and DCC3's typed caller consumes the latter; there are no descriptor/config/storage/notification patch topics |
-| Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
+| Workflow Panel + Status Bar | bootstrap workflow catalog and `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection; D347 stores the rail selection locally | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
 | Log Panel + Context rail | `RunDetailWire`, paged action/task notes and fence rows, indexed observations in Run data, context/evidence/attempt summaries, verified capture refs | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — Logs presents compact action lines and fences; the Context rail shows the exact run's read/write observations and checkpoint fields with provenance. D306 adds verified captures in Logs. The live log half refetches on the day row's `rowRevision` (D257); `context-evidence` remains declared-unserved |
 | Gate ceremony + park resolution | the `identity-gate` and `parked-write` sections, with the packet, the server's `approvalShape` and both typed resolutions | the same `rowRevision` follow | `resolve-gate`, `resolve-write-present`, `resolve-write-absent` | `gate_results`, write intents, ref write-safety §14 | yes (D226/D245) — the packet is separations-shaped; a second gated workflow generalises it |

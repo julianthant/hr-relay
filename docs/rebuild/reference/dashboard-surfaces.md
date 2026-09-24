@@ -6885,6 +6885,15 @@ height. The row-and-panel catalog derives its per-kind tab lists from `tabsForPa
 function the panel itself calls, so the catalog can never describe a tab set the panel does not
 render.
 
+#### D347 — Workflow rail selection and heading · 2026-09-24
+
+The Workflow Panel persists the last selected workflow ID as a local browser preference. On load,
+use it only if the current bootstrap serves that ID; otherwise select the first served workflow.
+Selecting another workflow updates the preference, including when the operator leaves and returns to
+the dashboard. The rail shows category headings, workflow labels, the selected marker and each
+workflow's `active │ all` count pair. It has no `active │ all` column heading. The toolbar keeps
+its day-wide active count; the Status Bar and queue still consume the served projection.
+
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)
 
 The drawer under the Sessions bar is ONE horizontal strip of worker cards, one per served worker
