@@ -64,28 +64,21 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Display" [level=2]
-    - text: "Ordinary settings · SQLite Revision 5 Observed host: 2560 × 1440"
+    - text: Revision 5
+    - paragraph: Saved values apply to new runs.
+    - text: "Observed host: 2560 × 1440"
     - button "Clear override" [disabled]
-    - text: Screen width px
-    - spinbutton "Screen width": "2560"
-    - text: Default Valid · Ordinary · Editable · New runs display.screenWidth
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "2560"
-    - term: Default
-    - definition: "2560"
-    - text: Screen height px
-    - spinbutton "Screen height": "1440"
-    - text: Default Valid · Ordinary · Editable · New runs display.screenHeight
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "1440"
-    - term: Default
-    - definition: "1440"
+    - region "Primary display":
+      - heading "Primary display" [level=3]
+      - separator
+      - text: Screen width px
+      - spinbutton "Screen width": "2560"
+      - text: Using default Screen height px
+      - spinbutton "Screen height": "1440"
+      - text: Using default
+      - group: Setting identities
     - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
-    - text: 0 unsaved changes
+    - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]
 - region "Session Panel":

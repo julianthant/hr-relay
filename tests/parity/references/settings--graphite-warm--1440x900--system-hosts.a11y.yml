@@ -1,7 +1,7 @@
 # settings--graphite-warm--1440x900--system-hosts
 # adapter: fixture
 # fixture: settings
-# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: system-hosts
 # capturedAt: 2026-08-03
@@ -64,11 +64,8 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "System hosts" [level=2]
-    - text: Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal. 0 of 9 have a test host
-    - status:
-      - text: Choosing between these is a per-run decision A run envelope carries the instance per system and defaults to production; a start that asks for
-      - strong: test
-      - text: is refused outright unless a distinct test host is configured, never quietly sent to production. This page states the hosts and sets none — a standing override here would redirect every future run with no expiry and nothing on screen to say so.
+    - text: 0 of 9 have a test host
+    - status: Each run selects its host Current deployment. Production is the default. A test request without a distinct test host is refused; it never falls through to production. A standing override here would redirect every future run with no expiry.
     - table "System entry hosts":
       - rowgroup:
         - row "System Production Test":

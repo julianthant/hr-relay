@@ -1,7 +1,7 @@
 # storage-doctor-degraded--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: storage-doctor-degraded
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
   - button "Settings" [pressed]
@@ -63,7 +64,7 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Storage health" [level=2]
-    - text: The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
+    - text: checked 9:00 AM
     - status: Authority summary healthy Backup metadata has not been re-verified by this summary.
     - img "Done"
     - text: Authority healthy
@@ -100,9 +101,12 @@
     - text: "Backup missing — no verified backup is present Backup service: backup service has not run 0 restore candidates"
     - separator
     - region "Preflight":
-      - text: Preflight
+      - text: Preflight Check readiness for
+      - combobox "Check readiness for":
+        - option "Dashboard" [selected]
+        - option "Person Lookup"
       - button "Rerun preflight"
-      - text: No retained preflight report was served.
+      - status: Readiness unavailable This shell fixture does not compose runtime readiness.
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

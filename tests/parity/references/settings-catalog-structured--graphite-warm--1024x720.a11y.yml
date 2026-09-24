@@ -1,7 +1,7 @@
 # settings-catalog-structured--graphite-warm--1024x720
 # adapter: fixture
 # fixture: settings-catalog
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1024x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
   - button "Settings" [pressed]
@@ -63,140 +64,121 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Provider budgets & models" [level=2]
-    - text: Ordinary settings · SQLite Revision 2
-    - group "providers · ocr Extract":
-      - text: providers · ocr Extract timeoutMs (required)
-      - 'spinbutton "providers · ocr Extract: timeoutMs"': "120000"
-      - text: concurrency (required)
-      - 'spinbutton "providers · ocr Extract: concurrency"': "4"
-      - text: requestsPerMinute (required)
-      - 'spinbutton "providers · ocr Extract: requestsPerMinute"': "10"
-      - text: dailyRequestLimit (required)
-      - 'spinbutton "providers · ocr Extract: dailyRequestLimit"': "250"
-      - text: costLimitUsdMicros (required)
-      - 'spinbutton "providers · ocr Extract: costLimitUsdMicros"': "0"
-    - text: Default Valid · Ordinary · Editable · New runs providers.ocrExtract
-    - button "Clear providers · ocr Extract" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "{\"timeoutMs\":120000,\"concurrency\":4,\"requestsPerMinute\":10,\"dailyRequestLimit\":250,\"costLimitUsdMicros\":0}"
-    - term: Default
-    - definition: "{\"timeoutMs\":120000,\"concurrency\":4,\"requestsPerMinute\":10,\"dailyRequestLimit\":250,\"costLimitUsdMicros\":0}"
-    - group "providers · geocode Census":
-      - text: providers · geocode Census timeoutMs (required)
-      - 'spinbutton "providers · geocode Census: timeoutMs"': "15000"
-      - text: concurrency (required)
-      - 'spinbutton "providers · geocode Census: concurrency"': "2"
-      - text: requestsPerMinute (required)
-      - 'spinbutton "providers · geocode Census: requestsPerMinute"': "30"
-      - text: dailyRequestLimit (required)
-      - 'spinbutton "providers · geocode Census: dailyRequestLimit"': "5000"
-      - text: costLimitUsdMicros (required)
-      - 'spinbutton "providers · geocode Census: costLimitUsdMicros"': "0"
-    - text: Default Valid · Ordinary · Editable · New runs providers.geocodeCensus
-    - button "Clear providers · geocode Census" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "{\"timeoutMs\":15000,\"concurrency\":2,\"requestsPerMinute\":30,\"dailyRequestLimit\":5000,\"costLimitUsdMicros\":0}"
-    - term: Default
-    - definition: "{\"timeoutMs\":15000,\"concurrency\":2,\"requestsPerMinute\":30,\"dailyRequestLimit\":5000,\"costLimitUsdMicros\":0}"
-    - group "providers · geocode Nominatim":
-      - text: providers · geocode Nominatim timeoutMs (required)
-      - 'spinbutton "providers · geocode Nominatim: timeoutMs"': "15000"
-      - text: concurrency (required)
-      - 'spinbutton "providers · geocode Nominatim: concurrency"': "1"
-      - text: requestsPerMinute (required)
-      - 'spinbutton "providers · geocode Nominatim: requestsPerMinute"': "1"
-      - text: dailyRequestLimit (required)
-      - 'spinbutton "providers · geocode Nominatim: dailyRequestLimit"': "1000"
-      - text: costLimitUsdMicros (required)
-      - 'spinbutton "providers · geocode Nominatim: costLimitUsdMicros"': "0"
-    - text: Default Valid · Ordinary · Editable · New runs providers.geocodeNominatim
-    - button "Clear providers · geocode Nominatim" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "{\"timeoutMs\":15000,\"concurrency\":1,\"requestsPerMinute\":1,\"dailyRequestLimit\":1000,\"costLimitUsdMicros\":0}"
-    - term: Default
-    - definition: "{\"timeoutMs\":15000,\"concurrency\":1,\"requestsPerMinute\":1,\"dailyRequestLimit\":1000,\"costLimitUsdMicros\":0}"
-    - group "providers · ai Advisory":
-      - text: providers · ai Advisory timeoutMs (required)
-      - 'spinbutton "providers · ai Advisory: timeoutMs"': "90000"
-      - text: concurrency (required)
-      - 'spinbutton "providers · ai Advisory: concurrency"': "2"
-      - text: requestsPerMinute (required)
-      - 'spinbutton "providers · ai Advisory: requestsPerMinute"': "10"
-      - text: dailyRequestLimit (required)
-      - 'spinbutton "providers · ai Advisory: dailyRequestLimit"': "250"
-      - text: costLimitUsdMicros (required)
-      - 'spinbutton "providers · ai Advisory: costLimitUsdMicros"': "0"
-    - text: Default Valid · Ordinary · Editable · New runs providers.aiAdvisory
-    - button "Clear providers · ai Advisory" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "{\"timeoutMs\":90000,\"concurrency\":2,\"requestsPerMinute\":10,\"dailyRequestLimit\":250,\"costLimitUsdMicros\":0}"
-    - term: Default
-    - definition: "{\"timeoutMs\":90000,\"concurrency\":2,\"requestsPerMinute\":10,\"dailyRequestLimit\":250,\"costLimitUsdMicros\":0}"
-    - text: providers · gemini · models
-    - textbox "providers · gemini · models":
-      - /placeholder: One model per line, in order
-      - text: model-second model-first
-    - text: Saved Valid · Ordinary · Editable · New runs providers.gemini.models
-    - button "Clear providers · gemini · models": Clear
-    - term: Saved
-    - definition: "[\"model-second\",\"model-first\"]"
-    - term: Active
-    - definition: "[\"model-second\",\"model-first\"]"
-    - term: Default
-    - definition: not set
-    - text: providers · groq · models
-    - textbox "providers · groq · models":
-      - /placeholder: One model per line, in order
-    - text: Default Unset · Ordinary · Editable · New runs providers.groq.models
-    - button "Clear providers · groq · models" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: not set
-    - term: Default
-    - definition: not set
-    - text: providers · mistral · models
-    - textbox "providers · mistral · models":
-      - /placeholder: One model per line, in order
-    - text: Default Unset · Ordinary · Editable · New runs providers.mistral.models
-    - button "Clear providers · mistral · models" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: not set
-    - term: Default
-    - definition: not set
-    - text: providers · open Router · models
-    - textbox "providers · open Router · models":
-      - /placeholder: One model per line, in order
-    - text: Default Unset · Ordinary · Editable · New runs providers.openRouter.models
-    - button "Clear providers · open Router · models" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: not set
-    - term: Default
-    - definition: not set
-    - text: providers · sambanova · models
-    - textbox "providers · sambanova · models":
-      - /placeholder: One model per line, in order
-    - text: Default Unset · Ordinary · Editable · New runs providers.sambanova.models
-    - button "Clear providers · sambanova · models" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: not set
-    - term: Default
-    - definition: not set
-    - text: 0 unsaved changes
+    - text: Revision 2
+    - paragraph: Saved values apply to new runs.
+    - region "OCR extraction":
+      - heading "OCR extraction" [level=3]
+      - separator
+      - group "Budget and request limits":
+        - text: Budget and request limits Request timeout (required) milliseconds
+        - spinbutton "Request timeout (required)": "120000"
+        - text: Parallel requests (required)
+        - spinbutton "Parallel requests (required)": "4"
+        - text: Requests per minute (required)
+        - spinbutton "Requests per minute (required)": "10"
+        - text: Daily request limit (required)
+        - spinbutton "Daily request limit (required)": "250"
+        - text: Daily cost ceiling (required) USD micro-units
+        - spinbutton "Daily cost ceiling (required)": "0"
+      - text: Using default
+      - button "Clear providers · ocr Extract" [disabled]: Clear
+      - group: Setting identity
+    - region "Census geocoding":
+      - heading "Census geocoding" [level=3]
+      - separator
+      - group "Budget and request limits":
+        - text: Budget and request limits Request timeout (required) milliseconds
+        - spinbutton "Request timeout (required)": "15000"
+        - text: Parallel requests (required)
+        - spinbutton "Parallel requests (required)": "2"
+        - text: Requests per minute (required)
+        - spinbutton "Requests per minute (required)": "30"
+        - text: Daily request limit (required)
+        - spinbutton "Daily request limit (required)": "5000"
+        - text: Daily cost ceiling (required) USD micro-units
+        - spinbutton "Daily cost ceiling (required)": "0"
+      - text: Using default
+      - button "Clear providers · geocode Census" [disabled]: Clear
+      - group: Setting identity
+    - region "Nominatim geocoding":
+      - heading "Nominatim geocoding" [level=3]
+      - separator
+      - group "Budget and request limits":
+        - text: Budget and request limits Request timeout (required) milliseconds
+        - spinbutton "Request timeout (required)": "15000"
+        - text: Parallel requests (required)
+        - spinbutton "Parallel requests (required)": "1"
+        - text: Requests per minute (required)
+        - spinbutton "Requests per minute (required)": "1"
+        - text: Daily request limit (required)
+        - spinbutton "Daily request limit (required)": "1000"
+        - text: Daily cost ceiling (required) USD micro-units
+        - spinbutton "Daily cost ceiling (required)": "0"
+      - text: Using default
+      - button "Clear providers · geocode Nominatim" [disabled]: Clear
+      - group: Setting identity
+    - region "AI advisory":
+      - heading "AI advisory" [level=3]
+      - separator
+      - group "Budget and request limits":
+        - text: Budget and request limits Request timeout (required) milliseconds
+        - spinbutton "Request timeout (required)": "90000"
+        - text: Parallel requests (required)
+        - spinbutton "Parallel requests (required)": "2"
+        - text: Requests per minute (required)
+        - spinbutton "Requests per minute (required)": "10"
+        - text: Daily request limit (required)
+        - spinbutton "Daily request limit (required)": "250"
+        - text: Daily cost ceiling (required) USD micro-units
+        - spinbutton "Daily cost ceiling (required)": "0"
+      - text: Using default
+      - button "Clear providers · ai Advisory" [disabled]: Clear
+      - group: Setting identity
+    - region "Gemini":
+      - heading "Gemini" [level=3]
+      - separator
+      - text: providers · gemini · models One model per line; order is fallback priority.
+      - textbox "providers · gemini · models": model-second model-first
+      - text: Saved
+      - button "Clear providers · gemini · models": Clear
+      - term: Saved and Active
+      - definition: "[\"model-second\",\"model-first\"]"
+      - term: Default
+      - definition: not set
+      - group: Setting identity
+    - region "Groq":
+      - heading "Groq" [level=3]
+      - separator
+      - text: providers · groq · models One model per line; order is fallback priority.
+      - textbox "providers · groq · models"
+      - text: Using default Not set
+      - button "Clear providers · groq · models" [disabled]: Clear
+      - group: Setting identity
+    - region "Mistral":
+      - heading "Mistral" [level=3]
+      - separator
+      - text: providers · mistral · models One model per line; order is fallback priority.
+      - textbox "providers · mistral · models"
+      - text: Using default Not set
+      - button "Clear providers · mistral · models" [disabled]: Clear
+      - group: Setting identity
+    - region "OpenRouter":
+      - heading "OpenRouter" [level=3]
+      - separator
+      - text: providers · open Router · models One model per line; order is fallback priority.
+      - textbox "providers · open Router · models"
+      - text: Using default Not set
+      - button "Clear providers · open Router · models" [disabled]: Clear
+      - group: Setting identity
+    - region "SambaNova":
+      - heading "SambaNova" [level=3]
+      - separator
+      - text: providers · sambanova · models One model per line; order is fallback priority.
+      - textbox "providers · sambanova · models"
+      - text: Using default Not set
+      - button "Clear providers · sambanova · models" [disabled]: Clear
+      - group: Setting identity
+    - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]
 - region "Session Panel":

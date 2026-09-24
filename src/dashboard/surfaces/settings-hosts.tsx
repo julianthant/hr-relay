@@ -25,9 +25,6 @@ export function SystemHostsSection() {
       <PanelHeader
         title="System hosts"
         headingLevel={2}
-        // ported from legacy 1ec1d870
-        // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:164-168
-        subtitle="Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal."
         icon={<Link2 aria-hidden className={dsIcon.lg} />}
         meta={facts.state === "loaded" ? systemHostsMeta(facts.facts.systemHosts) : undefined}
       />
@@ -37,14 +34,11 @@ export function SystemHostsSection() {
             <>
               <Banner
                 tone="info"
-                title="Choosing between these is a per-run decision"
+                title="Each run selects its host"
                 className="m-[var(--ds-space-cozy)]"
               >
-                A run envelope carries the instance per system and defaults to production; a start
-                that asks for <strong>test</strong> is refused outright unless a distinct test host is
-                configured, never quietly sent to production. This page states the hosts and sets
-                none — a standing override here would redirect every future run with no expiry and
-                nothing on screen to say so.
+                Current deployment. Production is the default. A test request without a distinct test host is refused;
+                it never falls through to production. A standing override here would redirect every future run with no expiry.
               </Banner>
               <Table label="System entry hosts">
                 <THead>

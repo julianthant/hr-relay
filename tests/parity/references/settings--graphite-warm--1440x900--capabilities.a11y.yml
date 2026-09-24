@@ -1,7 +1,7 @@
 # settings--graphite-warm--1440x900--capabilities
 # adapter: fixture
 # fixture: settings
-# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: capabilities
 # capturedAt: 2026-08-03
@@ -64,8 +64,7 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Workflow capabilities" [level=2]
-    - text: What each workflow can do — and, where it cannot, whether that is a decision or a gap. 1 workflows · 6 capabilities
-    - status: Read from the descriptors, not from a list somebody kept up to date Every cell is derived from the same descriptor the Run modal and the Explorer read. A workflow that gains a dry run gains it here on the same deploy. These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before.
+    - paragraph: "Source: served workflow descriptors."
     - text: Typed start 1 of 1
     - button "What Typed start means"
     - table "Typed start by workflow":

@@ -18,6 +18,11 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: real
     await expect(width).toHaveValue("2560"); await assertThemeApplied(page, theme);
     await width.focus(); await expect(width).toBeFocused(); await page.keyboard.press("Tab");
     await expect(height).toBeFocused();
+    await page.keyboard.press("Tab");
+    const identities = page.getByText("Setting identities", { exact: true });
+    await expect(identities).toBeFocused(); await page.keyboard.press("Enter");
+    await expect(page.getByText("display.screenWidth", { exact: true })).toBeVisible();
+    await expect(page.getByText("display.screenHeight", { exact: true })).toBeVisible();
     await width.fill("0"); await expect(page.getByText("Enter a whole number of at least 1.")).toBeVisible();
     await expect(page.getByRole("button", { name: /^Save / })).toBeDisabled();
     await width.fill("1980"); await height.fill("1080");

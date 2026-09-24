@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { PreflightActionsProvider } from "../../../src/dashboard/state/preflight-actions.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
 import {
   SettingsSectionPrimitiveSchema,
@@ -85,7 +86,9 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
     root = createRoot(host as HTMLElement);
     root.render(createElement(DashboardClientProvider, {
       client,
-      children: createElement(SettingsPage, {
+      children: createElement(PreflightActionsProvider, {
+        actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings: () => undefined, showSessions: () => undefined },
+        children: createElement(SettingsPage, {
         // D295: the catalog is a Settings section now. No render here opens it,
         // so these carry the section's defaults rather than a fixture nothing reads.
         catalogQuery: "",
@@ -101,7 +104,7 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
         preflight: [],
         onSection: () => undefined,
         onClose: () => undefined,
-      }),
+      })}),
     }));
   });
   const run = [...host.querySelectorAll("button")].find((candidate) => candidate.textContent === "Run storage doctor");

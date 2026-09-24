@@ -41,11 +41,11 @@ export function syntheticSettingsAuthority() {
   const protectedApply = (entries: unknown, revision = credentials.read().revision) => execute({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries } });
   return { root, database, credentials, clock, execute, read, apply, protectedApply, close: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
 }
-export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general") {
+export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
   const ports = {
     response: (): Response | undefined => undefined,
-    read: (): unknown => authority.read(),
+    read: (): unknown => readDocument?.() ?? authority.read(),
     execute: (request: unknown): unknown => authority.execute(request),
   };
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {

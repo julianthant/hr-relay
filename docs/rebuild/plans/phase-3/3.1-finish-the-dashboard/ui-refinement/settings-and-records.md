@@ -176,6 +176,57 @@ deliberate reference attribution; privacy/keyboard/zoom evidence; deferred broad
 blocker. End with a committed candidate ready for finalizer intake. Do not update the shared phase,
 roadmap, generated index or UI-B record, integrate, push or launch another task.
 
+### UI-A Settings checkpoint — 2026-09-23
+
+Status: **Settings implementation and focused proof complete; checkpoint committed for root
+acceptance.** UI-A Records and Sessions/Calendar work remains assigned separately. The exact
+checkpoint revision is reported in the returning task message.
+
+- Plan / input: approved planning commit `fac236fbc2c27192c31fdfbca3e2a5512d870800`; accepted
+  product input `beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a`.
+- Base / worktree: `4eb263c16909d7d866792cdde8ffd02361d6bcf3`; branch
+  `codex/3.1-ui-settings-records`; `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-settings`.
+- Scope: Settings authority, field, editor, host, keyboard, capability and storage presentation;
+  `ui-settings-records-labels.ts`; the Settings unit/parity proof and Settings-owned references.
+  The UI-A-only approval to skip 3.1.23 remains in force; its skipped shared repairs and proof are
+  **not passed** and are not represented by this checkpoint.
+- Explicit fixture authorization: the user authorized the narrow helper repairs in
+  `tests/parity/helpers/fixture-settings-activation.ts` and `tests/parity/helpers/session-runtime.ts`.
+  This checkpoint includes only the Settings-owned activation helper; `session-runtime.ts` stays
+  with the Sessions/Calendar assignment. The changed Archive report file also stays with Records.
+- Render checklist: both themes, at 1440×900, inspected for General, Display, Performance, Paths,
+  Test routes, Annual dates, Provider budgets & models, Credentials, Provider availability,
+  Observed host, Deployment, Storage health, System hosts, Workflow capabilities, Keyboard and UI
+  catalog. Paths, Annual dates, Provider budgets & models, Credentials, Deployment and Storage
+  health also have both-theme captures at 1280×720, 1024×768 and 1024×720. Actual browser zoom was
+  verified at 125% from 1280×720 (CSS 1024×576) and 200% from 1440×900 (CSS 720×450), in both
+  themes.
+- Interaction checklist: grouped fields and accessible identity details; saved/active/default and
+  absent-source facts; coupled Display width→height Tab order; dirty, reset, clear, discard, save,
+  refusal, conflict and unknown outcomes; dirty-exit confirmation; masked credentials and presence
+  details; storage doctor/recovery; preflight states. Settings preflight trigger and
+  `Keep editing` / `Discard changes` remain unchanged. The desktop and real-zoom proof confirms
+  the expanded identity disclosure and final input each scroll fully above the fixed Save/Discard
+  footer.
+- Focused gates: 13 unit files / 133 tests pass via the verified two-worker adapter; the assigned
+  73-case parity assertion passes with `--workers=2`; scoped ESLint passes with `--max-warnings=0`;
+  `git diff --check` passes. The parity gate includes both-theme inventory, source-value and
+  activation interactions, Setup/preflight, storage doctor/recovery and the exact `catalog-search`
+  scene. No broad repository gate or independent review was required here.
+- Reference attribution: deliberate refreshes are limited to owned `settings`, `settings-activation`,
+  `settings-catalog`, `storage-settings`, `storage-doctor-degraded`, `setup-preflight`, and exact
+  `catalog-search` triples. The last one changes only because the existing catalog-search scene now
+  captures the served preflight toolbar trigger; other Explorer scenes remain frozen. Final
+  assertion evidence is in
+  `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-settings-records-2026-09-23/receipts/settings-parity-focused-final-2workers.log`.
+- Before images: `.../screenshots/before/settings-inventory/`. Final images, attached accessibility
+  trees and real-zoom proof (218 files) are in
+  `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-settings-records-2026-09-23/screenshots/after/settings-probe-output-checkpoint/`.
+  Changed copy with stable review IDs is recorded in
+  `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-settings-records-2026-09-23/settings-copy-changes.md`.
+- Retained check receipts: `settings-focused-unit-final.log`, `settings-eslint-final.log`, and
+  `settings-parity-focused-final-2workers.log` under the evidence `receipts/` directory above.
+
 ## Resume prompt
 
 Resume the existing execution under its UI-A-only prerequisite exception. Verify actual current HEAD

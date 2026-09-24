@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect,test } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import {
@@ -35,7 +36,10 @@ test.describe("settings panes", () => {
     { variant: "capabilities", section: "workflow-capabilities", table: "Dry-run posture by workflow" },
   ];
   for (const pane of PANES) {
-    test(`settings ${pane.variant}`, async ({ page }) => {
+    const a11yName = `settings-pane-${pane.variant}.a11y.yml`;
+    test(`settings ${pane.variant}`, {
+      annotation: [{ type: "required-a11y-evidence", description: a11yName }],
+    }, async ({ page }) => {
       const errors = failOnPageErrors(page);
       await page.setViewportSize({ width: 1440, height: 900 });
       await installTheme(page, PARITY_THEMES[0]);
@@ -60,6 +64,12 @@ test.describe("settings panes", () => {
       await expect(page.getByRole("table", { name: pane.table })).toBeVisible();
       await page.waitForTimeout(120);
       expect(errors, `page errors while rendering the ${pane.variant} pane`).toEqual([]);
+      const snapshot = await page.locator("body").ariaSnapshot();
+      test.info().annotations.push({
+        type: `a11y-attachment-sha256:${a11yName}`,
+        description: createHash("sha256").update(snapshot).digest("hex"),
+      });
+      await test.info().attach(a11yName, { body: snapshot, contentType: "text/yaml" });
 
       await captureParityPair(page, REFERENCES, {
         stateId: "settings",
