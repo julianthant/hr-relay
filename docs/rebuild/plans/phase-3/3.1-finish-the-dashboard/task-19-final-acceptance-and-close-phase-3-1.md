@@ -1,6 +1,10 @@
 # Task 3.1.19 · Final repairs, acceptance, and close Phase 3.1
 <!-- roadmap: dash-acceptance -->
 
+**UI refinement input (approved 2026-09-23).** Also require accepted
+[3.1.23.3 Finalization](ui-refinement/README.md#proof-and-finalization), preserving all existing
+inputs. Prove the combined refined surfaces; no UI worker candidate alone releases this task.
+
 **Current assignment: 3.1.19.** Final repair, verification and integration session; consume every
 required completed input in the roadmap. This is the only full repository gate boundary for 3.1.
 Read [the current identity map](README.md#current-task-identities) for naming and operator-controlled integration.
@@ -23,7 +27,7 @@ The frozen execution set is A01–A42 plus D01–D05 in task-8-acceptance-matrix
 
 1. Bind the exact combined base/candidate, dedicated branch/worktree, inherited file ownership,
    evidence paths and integration permission before effects. Consume group releases 3.1.9.8,
-   3.1.11.3 and 3.1.14.6 plus every named standalone prerequisite. Their green records prove
+   3.1.11.3, 3.1.14.6 and 3.1.23.3 plus every named standalone prerequisite. Their green records prove
    focused verification only; inventory all deferred broad checks and fixtures here.
 2. Run `npm run typecheck`, `npm run lint`, `npm run test:coverage` and the applicable architecture,
    generated freshness, `npm run test:parity`, `npm run web:build`, production startup/shutdown,
