@@ -11,7 +11,7 @@ import { CalendarWireSchema } from "../../../src/domain/dashboard/calendar.js";
 import { DayCountWireSchema } from "../../../src/domain/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-it("browses independently, retains a usable tab stop over gaps, recovers from empty months and restores the trigger", async () => {
+it("browses independently and retains a usable tab stop across empty months", async () => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const requests: string[] = [], picks: string[] = [];
   const counts = DayCountWireSchema.array().parse([{ day: "2026-01-02", count: 2 }, { day: "2026-01-05", count: 1 }]);
@@ -38,13 +38,9 @@ it("browses independently, retains a usable tab stop over gaps, recovers from em
     assert.equal(document.querySelectorAll('[role="grid"] [tabindex="0"]').length, 1);
     await click(button("Previous month"));
     assert.equal(document.querySelectorAll('[role="grid"] [tabindex="0"][aria-disabled="true"]').length, 0);
-    assert.equal(button("Today").disabled, false);
+    assert.equal([...document.querySelectorAll("button")].some(button => button.textContent === "Today"), false);
     await draw("2026-01-03");
     assert.ok(requests.includes("2025-11/2026-01-03"));
-    await click(button("Today"));
-    assert.deepEqual(picks, ["live"]);
-    assert.equal(document.querySelector('[role="grid"]'), null);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(document.activeElement, button("Pick a day"));
+    assert.deepEqual(picks, []);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

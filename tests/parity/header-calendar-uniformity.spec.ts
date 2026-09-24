@@ -48,6 +48,12 @@ for (const theme of PARITY_THEMES) {
       await expect(picker).toBeVisible();
       await expect(picker).toHaveCSS('opacity', '1');
       await expect(picker.getByText('Select report dates', { exact: true })).toHaveCount(0);
+      const yearCells = picker.locator('[data-slot="calendar-year-picker-year-cell"]');
+      await expect(yearCells).toHaveCount(0);
+      await picker.getByRole('button', { name: /year selector/ }).click();
+      await expect.poll(() => yearCells.count()).toBeGreaterThan(0);
+      await picker.getByRole('button', { name: /year selector/ }).click();
+      await expect(yearCells).toHaveCount(0);
       const activityOffset = await picker.evaluate(el => {
         const calendar = el.querySelector('.ds-hero-calendar');
         if (calendar === null) throw new Error('activity calendar missing');

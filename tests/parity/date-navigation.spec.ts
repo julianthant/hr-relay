@@ -15,6 +15,25 @@ async function selectMonth(page: Page, month: string) {
   await expect(page.locator(`[data-demo-day="${month}-15"]`)).toBeVisible();
 }
 for (const theme of PARITY_THEMES) {
+  test(`dashboard calendar keeps the year grid idle and has no footer @ ${theme.name}`, async ({ page }) => {
+    await installTheme(page, theme);
+    await gotoAppState(page, server.baseUrl, { day: "2026-07-30" });
+    await picker(page).click();
+    const dialog = page.getByRole("dialog", { name: "Pick a day" });
+    const yearCells = dialog.locator('[data-slot="calendar-year-picker-year-cell"]');
+    await expect(yearCells).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Today", exact: true })).toHaveCount(0);
+    await expect(dialog.getByText(/active days this month/)).toHaveCount(0);
+    await dialog.getByRole("button", { name: /year selector/ }).click();
+    await expect.poll(() => yearCells.count()).toBeGreaterThan(0);
+    await dialog.getByRole("button", { name: /year selector/ }).click();
+    await expect(yearCells).toHaveCount(0);
+    await expect(dialog.locator('[data-demo-day="2026-07-15"]')).toBeEnabled();
+    await dialog.getByRole("button", { name: /year selector/ }).click();
+    await dialog.locator('[data-year="2024"]').click();
+    await expect(yearCells).toHaveCount(0);
+    await expect(dialog.locator('[data-demo-day="2024-07-15"]')).toBeEnabled();
+  });
   test(`dashboard calendar opens a day without workflow rows @ ${theme.name}`, async ({ page }) => {
     await installTheme(page, theme);
     await gotoAppState(page, server.baseUrl, { day: "2026-07-30" });
@@ -55,9 +74,7 @@ for (const theme of PARITY_THEMES) {
     await page.locator('[data-demo-day="2026-05-15"]').press("Enter");
     await expect(page).toHaveURL(/day=2026-05-15$/);
     await expect(picker(page)).toHaveAccessibleName(/0 rows/);
-    await picker(page).click();
-    await page.getByRole("button", { name: "Today", exact: true }).click();
-    await expect(page).not.toHaveURL(/day=/); await expect(picker(page)).toBeFocused();
+    await gotoAppState(page, server.baseUrl, { day: server.day });
     await picker(page).click();
     await expect(page.locator('[data-demo-day="2026-08-04"]')).toBeDisabled();
     await page.keyboard.press("Escape"); await expect(picker(page)).toBeFocused();
@@ -76,7 +93,7 @@ for (const theme of PARITY_THEMES) {
       await picker(page).click();
       await expect(page.getByRole("grid")).toBeVisible();
       await expect(page.getByRole("dialog", { name: "Pick a day", exact: true })).toHaveCSS("opacity", "1");
-      const hit = await page.getByRole("button", { name: "Today", exact: true }).evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); });
+      const hit = await page.getByRole("button", { name: /^Previous month/ }).evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); });
       expect(hit).toBe(true);
       await page.screenshot({ path: info.outputPath(`${theme.name}-${viewport.width}x${viewport.height}-calendar.png`) });
       await info.attach(`a11y-${viewport.width}x${viewport.height}`, { body: await page.locator("body").ariaSnapshot(), contentType: "text/plain" });
@@ -120,7 +137,7 @@ for (const theme of PARITY_THEMES) test(`late month responses and explicit calen
       await completed;
     });
     await page.getByRole("button", { name: /^Previous month/ }).click();
-    await expect(page.getByText("Loading calendar…", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-demo-day="2026-06-15"]')).toBeEnabled();
     await expect.poll(() => release !== undefined).toBe(true);
     await page.getByRole("button", { name: /^Next month/ }).click();
     await expect(page.locator('[data-demo-day="2026-07-30"]')).toBeEnabled();
