@@ -178,6 +178,8 @@ export {
   Dropzone,
 } from "./primitives-form.js";
 
+export { DateInput } from "./primitives-date.js";
+
 export {
   Dialog,
   DialogTrigger,

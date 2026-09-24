@@ -82,9 +82,8 @@ CardBase,
 CardBody,
 dsIcon,
 dsText,
-Field,
+DateInput,
 IconButton,
-Input,
 MetaLine,
 PageHeader,
 Panel,
@@ -1069,7 +1068,7 @@ export function ActivityReport({
           those are opened FROM somewhere; this one is a destination in the nav. */}
       <PageHeader
         title="Activity report"
-        icon={<ChartNoAxesColumn aria-hidden className={dsIcon.lg} />}
+        icon={<ChartNoAxesColumn aria-hidden className={dsIcon.md} />}
         actions={
           /* THE SPAN CONTROL LIVES ON THE PAGE'S OWN BAR, above the sentence
              that reports it. The demo offers two fixture spans as chips; the
@@ -1077,7 +1076,7 @@ export function ActivityReport({
              nothing, so the two bounds themselves are the control.
 
              AC10/AC11 (D276 item 4): the demo's chip group NAMES itself to
-             assistive tech, and two bare `Field`s did not — a group of controls
+             assistive tech, and two separate fields did not — a group of controls
              with no name is a group a screen reader reads as loose inputs. The
              `items-center`/`gap-tight` pair is the demo's, and it is not a
              coin-flip: this span and the panel's actions row below had each
@@ -1085,22 +1084,8 @@ export function ActivityReport({
              independent calls. Both fields are one height, so centring and
              end-aligning paint the same pixels. */
           <span role="group" aria-label="Report span" className="flex items-center gap-[var(--ds-space-tight)]">
-            <Field label="From">
-              <Input
-                type="date"
-                value={resolved.from}
-                max={resolved.to}
-                onChange={(event) => onRange(activityRangeValue({ ...resolved, from: event.target.value }))}
-              />
-            </Field>
-            <Field label="To">
-              <Input
-                type="date"
-                value={resolved.to}
-                min={resolved.from}
-                onChange={(event) => onRange(activityRangeValue({ ...resolved, to: event.target.value }))}
-              />
-            </Field>
+            <DateInput inline label="From" value={resolved.from} max={resolved.to} onChange={from => onRange(activityRangeValue({ ...resolved, from }))} />
+            <DateInput inline label="To" value={resolved.to} min={resolved.from} onChange={to => onRange(activityRangeValue({ ...resolved, to }))} />
           </span>
         }
       />

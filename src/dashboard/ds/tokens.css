@@ -1320,6 +1320,36 @@ body[data-demo-theme="light"] {
   font-family: var(--ds-font-mono);
 }
 
+.ds-hero-calendar {
+  --accent: var(--ds-fg);
+  --accent-foreground: var(--ds-surface-1);
+  --muted: var(--ds-fg-muted);
+  --default: var(--ds-surface-3);
+  --default-foreground: var(--ds-fg);
+  color: var(--ds-fg);
+}
+
+.ds-date-popover {
+  width: var(--ds-w-popover-md);
+  max-width: var(--ds-w-popover-md);
+  background: var(--ds-surface-overlay);
+  border: 1px solid var(--ds-border);
+}
+
+.ds-date-picker--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ds-space-snug);
+}
+
+.ds-date-picker .date-input-group__segment[data-type="literal"] {
+  color: var(--ds-fg-muted);
+}
+
+.ds-date-picker .date-input-group__segment[data-placeholder="true"] {
+  color: var(--ds-fg-faint);
+}
+
 /* ==========================================================================
    REDUCED MOTION
    ==========================================================================

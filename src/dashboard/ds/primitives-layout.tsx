@@ -506,13 +506,14 @@ export function Banner({
 
 /**
  * The header a full-page view wears when it replaces the dashboard: a way back,
- * what you are looking at, and at most one action.
+ * what you are looking at, and its actions.
  *
  * The three takeovers (Archive, Explorer, Activity report) each hand-rolled
  * this, and drifted — two put the back button before the title and one after,
  * the icons were `size-4` in two places and `dsIcon.lg` in the third, and only
  * two of the three marked themselves read-only. Leaving the dashboard should
- * look the same every time you do it.
+ * look the same every time you do it. Its inset card frame matches the
+ * dashboard queue toolbar.
  */
 export function PageHeader({
   title,
@@ -534,15 +535,16 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex shrink-0 flex-wrap items-center gap-[var(--ds-space-base)] border-b px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
-        "border-[color:var(--ds-border)]",
+        "mx-[var(--ds-shell-inset)] mt-[var(--ds-shell-inset)] flex min-h-[calc(var(--ds-h-bar)+var(--ds-space-hair))] shrink-0 flex-wrap items-center gap-[var(--ds-space-base)]",
+        "rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
+        "px-[var(--ds-space-cozy)] py-[var(--ds-space-hair)]",
         className,
       )}
     >
       {back}
       <span className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
         {icon && <span className="shrink-0 text-[color:var(--ds-fg-muted)]">{icon}</span>}
-        <span className={cn(dsText.section, "truncate font-semibold text-[color:var(--ds-fg)]")}>{title}</span>
+        <span className={cn(dsText.ui, dsText.flush, "truncate font-semibold text-[color:var(--ds-fg)]")}>{title}</span>
         {badge}
       </span>
       {actions && <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">{actions}</span>}

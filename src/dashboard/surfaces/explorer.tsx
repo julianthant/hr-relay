@@ -2206,7 +2206,7 @@ export function WorkflowExplorer({
     <TakeoverFrame label="Workflow explorer">
       <PageHeader
         title="Explorer"
-        icon={<Workflow aria-hidden className={dsIcon.lg} />}
+        icon={<Workflow aria-hidden className={dsIcon.md} />}
         badge={
           <Badge tone="neutral">
             <Lock aria-hidden className={dsIcon.sm} />
@@ -2215,8 +2215,8 @@ export function WorkflowExplorer({
         }
         back={
           <Button
-            variant="ghost"
-            size="sm"
+            variant="secondary"
+            size="toolbar"
             icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
             onClick={onClose}
           >
@@ -2225,8 +2225,8 @@ export function WorkflowExplorer({
         }
         actions={
           <Button
-            variant="ghost"
-            size="sm"
+            variant="secondary"
+            size="toolbar"
             icon={<Eye aria-hidden className={dsIcon.md} />}
             onClick={onVersionRegistry}
           >
