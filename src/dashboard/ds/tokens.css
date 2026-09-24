@@ -589,7 +589,7 @@
      row it was opened on, and a menu that changes width per object reads as a
      different menu each time. */
   --ds-w-menu: 216px;
-  --ds-w-session-card: 268px; /* one worker card in the Session Panel drawer */
+  --ds-w-session-card: 290px; /* one worker card in the Session Panel drawer */
   /* One cell of a wrapping CHIP ROW. Chips carry facts of wildly different
      lengths, so a plain `flex-wrap` leaves every line ending somewhere else and
      an orphan on line two — the ragged edge the operator called out. Laying them

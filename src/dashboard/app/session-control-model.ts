@@ -4,7 +4,7 @@ import type { WorkerCardWire } from "../surfaces/session-panel-model.js";
 import type { WorkerCommandDispatch, WorkerControlAction } from "./worker-command-dispatch.js";
 
 export function workerControlRefusal(card: WorkerCardWire, browser = false): string | undefined {
-  if (card.controls === undefined) return "Control evidence unavailable.";
+  if (card.controls === undefined) return "This dashboard cannot verify control of this worker.";
   if (card.controls.ownership.state !== "owned") return card.controls.ownership.reason;
   if (card.controls.basis.state !== "present") return card.controls.basis.reason;
   if (card.controls.operation?.unresolved) return "Previous command is unresolved; check its exact outcome.";
@@ -44,7 +44,11 @@ export function useSessionControl(card: WorkerCardWire, dispatch: WorkerCommandD
     const element = cardElement.current;
     if (element === null) return;
     const document = element.ownerDocument;
-    const target = [...element.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === name);
+    const target = [
+      ...element.querySelectorAll("button"),
+      ...[...document.querySelectorAll<HTMLButtonElement>("button[data-session-worker]")]
+        .filter((button) => button.getAttribute("data-session-worker") === String(card.workerId)),
+    ].find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === name);
     if (document.activeElement !== document.body && document.activeElement !== target) { focusName.current = undefined; return; }
     if ((card.state === "stopped" || card.state === "failed") && document.activeElement === document.body) {
       element.focus(); focusName.current = undefined; return;
@@ -71,7 +75,9 @@ export function useSessionControl(card: WorkerCardWire, dispatch: WorkerCommandD
     invoke:(type:WorkerControlAction,browserSessionId?:string) => {
       if(dispatch===undefined)return;
       const active = cardElement.current?.ownerDocument.activeElement;
-      if (active instanceof HTMLButtonElement && cardElement.current?.contains(active)) focusName.current = active.getAttribute("aria-label") ?? active.textContent?.trim();
+      if (active instanceof HTMLButtonElement && (cardElement.current?.contains(active) || active.getAttribute("data-session-worker") === String(card.workerId))) {
+        focusName.current = active.getAttribute("aria-label") ?? active.textContent?.trim();
+      }
       try {const request=dispatch.prepare(card,type,browserSessionId);void send(request);}
       catch(error){setLocal({state:"refused",message:error instanceof Error?error.message:"Control unavailable."});}
     },

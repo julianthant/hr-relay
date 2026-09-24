@@ -2,13 +2,17 @@ import type { WorkerCommandDispatch, WorkerControlAction } from "../app/worker-c
 import { browserHealthLabel, useSessionControl, workerControlRefusal } from "../app/session-control-model.js";
 import {
 AlertTriangle,
+Check,
 ChevronDown,
 ChevronUp,
 CircleDashed,
 CircleHelp,
 Eye,
 Minus,
-Plus
+Plus,
+RotateCw,
+UsersRound,
+X
 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import type { CommandSettlement } from "../app/command-result.js";
@@ -16,65 +20,112 @@ import { type SubscriptionState } from "../client/subscription.js";
 import { Banner,Button,Dialog,DialogBody,DialogContent,DialogFooter,Field,IconButton,MetaLine,Popover,PopoverContent,PopoverTrigger,Select,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { appVersionTag,elapsedSecondsBetween,fmtAppVersion,fmtElapsed,plural } from "./format.js";
-import { ALWAYS_TALLIED,SESSION_POOL_MAX_WORKERS,WORKER_STATE_ORDER,WORKER_STOP_REASON_LABEL,WORKER_TONE,buildSessionPanelView,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolSlotIsUnmet,sessionPoolGroupFor,workerBrowserView,workerDirectiveNote,workerElapsedSeconds,type PoolPlanIntent,type SessionPoolGroup,type SessionPoolMemberSlot,type WorkerBrowserSlot,type WorkerCardWire,type WorkerPoolWire,type WorkerSessionMembership,type WorkerState } from "./session-panel-model.js";
+import { ALWAYS_TALLIED,SESSION_POOL_MAX_WORKERS,WORKER_STATE_ORDER,WORKER_STOP_REASON_LABEL,WORKER_TONE,WORKER_TIMELINE_TONE,buildSessionPanelView,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolSlotIsUnmet,sessionPoolGroupFor,workerBrowserView,workerDirectiveNote,workerElapsedSeconds,workerTimelineView,type PoolPlanIntent,type SessionPoolGroup,type SessionPoolMemberSlot,type WorkerBrowserSlot,type WorkerCardWire,type WorkerPoolWire,type WorkerSessionMembership,type WorkerState } from "./session-panel-model.js";
 import { statusCount,workflowStatusCounts,type QueueSurfaceWire,type WorkflowBootstrapPrimitive,type WorkflowCountWire } from "./shell-model.js";
 import { SYSTEM_LABEL } from "./system-chip-model.js";
 
 
-/** Exact-session identity and dated owner observation, with controls in the existing tile. */
+/** Compact, observed browser status with an anchored detail and control route. */
 function BrowserTile({
   browser,
-  span,
   nowIso,
   control,
   refusal,
+  workerId,
+  selected,
+  onSelectedChange,
 }: {
+  browser: WorkerCardWire["browsers"][number];
+  nowIso: string;
   control?: (type: WorkerControlAction, sessionId: string) => void;
   refusal?: string;
-  browser: WorkerCardWire["browsers"][number];
-  span: boolean;
-  nowIso: string;
+  workerId: string;
+  selected: boolean;
+  onSelectedChange: (selected: boolean) => void;
 }) {
   const health = browserHealthLabel(browser);
-  const openFor = fmtElapsed(elapsedSecondsBetween(browser.openedAt, nowIso));
+  const authenticated = health === "Authenticated";
+  const failed = health === "Failed";
   return (
     <div
       className={cn(
         "flex w-full min-w-0 flex-col border",
-        "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-base)]",
         dsRadius.md,
-        // The demo's `unknown` tone: no fill, faint ink — a tile that has not
-        // been checked must not look like one that passed.
-        "border-[color:var(--ds-border-subtle)] bg-transparent text-[color:var(--ds-fg-faint)]",
-        span && "col-span-2",
+        authenticated ? "border-[color:var(--ds-success-border)] bg-[var(--ds-success-bg)]" :
+          failed ? "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]" :
+            "border-[color:var(--ds-border-subtle)] bg-transparent",
       )}
     >
-      <span className={cn(dsText.caps, "flex min-w-0 items-center gap-[var(--ds-space-tight)]")}>
-        <CircleHelp aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-        <span className="min-w-0 flex-1 truncate">{SYSTEM_LABEL[browser.system]}</span>
-        <AuthorityDetails
-          label={`Show full ${SYSTEM_LABEL[browser.system]} browser session details`}
-          title={`${SYSTEM_LABEL[browser.system]} browser session`}
-          facts={[
-            { label: "Session ID", value: String(browser.sessionId) },
-            { label: "Browser status", value: health },
-            ...(browser.observation?.state === "present" ? [
-              { label: "Observed at", value: browser.observation.observedAt },
-              { label: "Instance", value: browser.observation.instance ?? "Not recorded" },
-              { label: "Browser mode", value: browser.observation.browserMode },
-              { label: "Configuration", value: browser.observation.configFingerprint },
-            ] : []),
-            { label: "Open for", value: openFor },
-          ]}
-        />
+      <span className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+        {authenticated ? <Check aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-success-fg)]")} /> :
+          failed ? <AlertTriangle aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-danger)]")} /> :
+            <CircleDashed aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />}
+        <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg)]")}>{SYSTEM_LABEL[browser.system]}</span>
+        {control !== undefined && <IconButton
+          size="xs"
+          label={`Reopen ${SYSTEM_LABEL[browser.system]}`}
+          icon={<RotateCw aria-hidden className={dsIcon.sm} />}
+          title={refusal ?? "Close and reopen this exact session"}
+          disabled={refusal !== undefined}
+          onClick={() => control("reopen-browser", browser.sessionId)}
+          className="shrink-0"
+        />}
+        <Popover open={selected} onOpenChange={onSelectedChange}>
+          <PopoverTrigger asChild>
+            <IconButton
+              size="xs"
+              label={`Show ${SYSTEM_LABEL[browser.system]} browser details and controls`}
+              icon={<CircleHelp aria-hidden className={dsIcon.sm} />}
+              className="shrink-0"
+            />
+          </PopoverTrigger>
+          <PopoverContent title={`${SYSTEM_LABEL[browser.system]} browser session`} width="md" align="start">
+            <BrowserDetails browser={browser} nowIso={nowIso} workerId={workerId} {...(control === undefined ? {} : { control, refusal })} />
+          </PopoverContent>
+        </Popover>
       </span>
-      {/* The tone word alone, as the demo's tile prints it (`tone.label`); the
-          session's age is a popover fact, because `Not checked · open 55m 4s`
-          truncated to `Not checked · open 5…` in a two-column tile. */}
-      <span className={cn(dsText.micro, "truncate opacity-80")} title={browser.observation?.state === "present" ? `Observed ${browser.observation.observedAt}` : "No owner observation"}>{health}</span>
-      {control !== undefined && <div className="flex flex-wrap gap-[var(--ds-space-tight)]">
-        <Button size="sm" variant="ghost" aria-label={`Refresh ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Reset this session and verify authentication"} disabled={refusal !== undefined} onClick={() => control("refresh-browser", browser.sessionId)}>Refresh</Button>
-        <Button size="sm" variant="ghost" aria-label={`Reopen ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Close and reopen this exact session"} disabled={refusal !== undefined} onClick={() => control("reopen-browser", browser.sessionId)}>Reopen</Button>
+      <span className={cn(dsText.micro, "truncate font-semibold uppercase", authenticated ? "text-[color:var(--ds-success-fg)]" : failed ? "text-[color:var(--ds-danger)]" : "text-[color:var(--ds-fg-muted)]")}>{health}</span>
+    </div>
+  );
+}
+
+
+/** Exact-session facts and commands in the browser tile's anchored overlay. */
+function BrowserDetails({
+  browser,
+  nowIso,
+  control,
+  refusal,
+  workerId,
+}: {
+  browser: WorkerCardWire["browsers"][number];
+  nowIso: string;
+  control?: (type: WorkerControlAction, sessionId: string) => void;
+  refusal?: string;
+  workerId: string;
+}) {
+  const facts = [
+    { label: "Session ID", value: String(browser.sessionId) },
+    { label: "Browser status", value: browserHealthLabel(browser) },
+    ...(browser.observation?.state === "present" ? [
+      { label: "Observed at", value: browser.observation.observedAt },
+      { label: "Instance", value: browser.observation.instance ?? "Not recorded" },
+      { label: "Browser mode", value: browser.observation.browserMode },
+      { label: "Configuration", value: browser.observation.configFingerprint },
+    ] : []),
+    { label: "Open for", value: fmtElapsed(elapsedSecondsBetween(browser.openedAt, nowIso)) },
+  ];
+  return (
+    <div className="min-w-0">
+      <dl className="grid min-w-0 gap-[var(--ds-space-hair)]">
+        {facts.map(({ label, value }) => <div key={label} className={cn(dsText.micro, "flex min-w-0 gap-[var(--ds-space-base)]")}>
+          <dt className="shrink-0 text-[color:var(--ds-fg-muted)]">{label}</dt>
+          <dd className={cn(dsText.nums, "min-w-0 break-all text-[color:var(--ds-fg)]")}>{value}</dd>
+        </div>)}
+      </dl>
+      {control !== undefined && <div className="mt-[var(--ds-space-tight)] flex flex-wrap gap-[var(--ds-space-tight)]">
+        <Button size="sm" variant="outline" data-session-worker={workerId} aria-label={`Refresh ${SYSTEM_LABEL[browser.system]}`} title={refusal ?? "Reset this session and verify authentication"} disabled={refusal !== undefined} onClick={() => control("refresh-browser", browser.sessionId)}>Refresh</Button>
       </div>}
     </div>
   );
@@ -84,10 +135,8 @@ function BrowserTile({
 /** A descriptor-required browser before this worker has opened its session. */
 function RequiredBrowserTile({
   system,
-  span,
 }: {
   system: Extract<WorkerBrowserSlot, { readonly state: "required" }>["system"];
-  span: boolean;
 }) {
   return (
     <div
@@ -95,17 +144,42 @@ function RequiredBrowserTile({
       aria-label={`${SYSTEM_LABEL[system]} browser requirement, opens when needed`}
       className={cn(
         "flex w-full min-w-0 flex-col border border-dashed",
-        "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-base)]",
         dsRadius.md,
         "border-[color:var(--ds-border-subtle)] bg-transparent text-[color:var(--ds-fg-faint)]",
-        span && "col-span-2",
       )}
     >
-      <span className={cn(dsText.caps, "flex min-w-0 items-center gap-[var(--ds-space-tight)]")}>
+      <span className={cn(dsText.ui, "flex min-w-0 items-center gap-[var(--ds-space-tight)]")}>
         <CircleDashed aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-        <span className="min-w-0 flex-1 truncate">{SYSTEM_LABEL[system]}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{SYSTEM_LABEL[system]}</span>
       </span>
       <span className={cn(dsText.micro, "truncate opacity-80")}>Opens when needed</span>
+    </div>
+  );
+}
+
+
+/** Dots reflect the claimed run's queue pipeline; an unclaimed worker has no steps to draw. */
+function WorkerTimeline({ timeline }: { timeline: ReturnType<typeof workerTimelineView> }) {
+  const steps = timeline.state === "present" ? timeline.steps : [];
+  const current = steps.find((step) => step.state === "active")
+    ?? [...steps].reverse().find((step) => step.state !== "pending");
+  return (
+    <div className="mt-auto flex min-w-0 flex-col gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-base)] border-[color:var(--ds-border-subtle)]">
+      {steps.length > 0 ? (
+        <div role="group" aria-label={`Run timeline: ${steps.map((step) => `${step.label} ${step.state}`).join(", ")}`} className="relative flex items-center justify-between">
+          <span aria-hidden className="absolute inset-x-0 border-t border-[color:var(--ds-border-subtle)]" />
+          {steps.map((step) => <span
+            key={step.id}
+            aria-hidden
+            title={`${step.label} — ${step.state}`}
+            className={cn("relative size-2.5 rounded-full border-2", WORKER_TIMELINE_TONE[step.state])}
+          />)}
+        </div>
+      ) : <span aria-hidden className="border-t border-[color:var(--ds-border-subtle)]" />}
+      <span className={cn(dsText.meta, "min-w-0 truncate text-right text-[color:var(--ds-fg-muted)]")} title={timeline.state === "absent" ? timeline.reason : current?.label}>
+        {timeline.state === "absent" ? timeline.reason : current === undefined ? "Waiting for first step" : `${current.label} · ${current.state}`}
+      </span>
     </div>
   );
 }
@@ -124,6 +198,7 @@ function AuthorityDetails({
   title,
   facts,
   touchAlign = "center",
+  compact = false,
   ownership,
 }: {
   label: string;
@@ -138,6 +213,7 @@ function AuthorityDetails({
    */
   facts: readonly Readonly<{ label: string; value: string; kind?: "id" | "prose" }>[];
   touchAlign?: "center" | "up" | "down";
+  compact?: boolean;
   ownership?: AuthorityDetailsOwnership;
 }) {
   return (
@@ -146,7 +222,7 @@ function AuthorityDetails({
         <IconButton
           size="xs"
           label={label}
-          icon={(
+          icon={compact ? <Eye aria-hidden className={dsIcon.sm} /> : (
             <span
               aria-hidden
               className={cn(
@@ -160,8 +236,8 @@ function AuthorityDetails({
               <Eye className={dsIcon.sm} />
             </span>
           )}
-          data-authority-touch-target="44"
-          className={cn(
+          data-authority-touch-target={compact ? undefined : "44"}
+          className={compact ? "shrink-0" : cn(
             "group relative z-10 size-11 -ml-6 rounded-none hover:bg-transparent active:translate-y-0",
             touchAlign === "up" ? "-mt-6 mb-0" : touchAlign === "down" ? "mt-0 -mb-6" : "-my-3",
           )}
@@ -212,33 +288,14 @@ function workerSessionFacts(
 }
 
 
-/**
- * One worker card — the authority lease, drawn (D248/D249) in the demo's own
- * shape: ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `DemoShell.tsx:1544-1681` (`SessionCard`), and restored to it by D305.
- *
- * The header names the WORKFLOW, because that is what the operator started and
- * what the panel is about — the demo strips even the instance ordinal from the
- * title (`DemoShell.tsx:1586`), so three members of one pool read as three
- * cards of one workflow, and the worker id rides the subline's identity route.
- * The queued chip beside it is the SERVED per-workflow status count (D81's one
- * fold), never a client-side pass over the queue.
- *
- * Two demo elements are still absent, each for a producer that does not exist
- * (`docs/findings/dashboard-projection.md`, "The worker card's step, pipeline
- * and browser health have no producer"). The lease-wait block ("waiting 4m for
- * the ucpath lease, held by …") has nothing to report: every worker opens its
- * OWN browser session per system (ref execution-and-sessions §1), so there is
- * no cross-worker lease and no holder to name. The micro-pipeline stays
- * reserved and EMPTY: the wire serves no `steps[]`, and dots drawn from nothing
- * would be the worst kind of lie on a panel about what a worker is doing.
- */
+/** One served worker lease. Identity stays available; unserved steps stay empty. */
 function WorkerCard({
   card,
   workflowLabel,
   queued,
   nowIso,
   membership,
+  timeline,
   onStop,
   workerCommands,
 }: {
@@ -248,15 +305,18 @@ function WorkerCard({
   queued: number;
   nowIso: string;
   membership: WorkerSessionMembership;
+  timeline: ReturnType<typeof workerTimelineView>;
   onStop?: (card: WorkerCardWire) => void;
 }) {
   const control = useSessionControl(card, workerCommands);
   const refusal = control.busy ? "Command unresolved." : workerControlRefusal(card);
   const browserRefusal = control.busy ? "Command unresolved." : workerControlRefusal(card, true);
+  const controlReason = browserRefusal ?? refusal;
   const tone = WORKER_TONE[card.state];
   const directive = workerDirectiveNote(card);
   const elapsed = workerElapsedSeconds(card, nowIso);
   const browserView = workerBrowserView(card);
+  const [selectedBrowserSystem, setSelectedBrowserSystem] = useState<WorkerCardWire["browsers"][number]["system"]>();
 
   /*
    * A daemon that DIED is a different object: no tiles, no clock, nothing to
@@ -305,184 +365,98 @@ function WorkerCard({
       tabIndex={-1}
       title={`Worker ${String(card.workerId)}`}
       className={cn(
-        // No explicit height: `align-items: stretch` only stretches an item
-        // whose cross size computes to `auto`, so an `h-full` here would opt
-        // every card straight back out of the uniform row.
-        "flex shrink-0 flex-col border",
-        "w-[var(--ds-w-session-card)] gap-[var(--ds-space-snug)] p-[var(--ds-space-base)]",
-        dsRadius.lg,
+        "flex shrink-0 flex-col border-2",
+        "w-[var(--ds-w-session-card)] gap-[var(--ds-space-base)] p-[var(--ds-space-base)]",
+        dsRadius.xl,
         dsSurface.card,
-        dsBorder.base,
+        dsBorder.loud,
       )}
     >
-      <div className="flex items-center gap-[var(--ds-space-snug)]">
-        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
-        <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-          {workflowLabel}
-        </span>
-        {queued > 0 && (
-          <span
-            className={cn(
-              "inline-flex shrink-0 items-center border px-[var(--ds-space-tight)]",
-              "h-[var(--ds-h-xs)] gap-[var(--ds-space-hair)]",
-              dsRadius.sm,
-              dsText.micro,
-              "border-[color:var(--ds-status-queued-border)] text-[color:var(--ds-status-queued-fg)]",
-            )}
-          >
-            <span className={dsText.nums}>{queued}</span> queued
-          </span>
-        )}
-        <span className={cn(dsText.caps, "ml-auto shrink-0", tone.text)}>{tone.label}</span>
-      </div>
-
-      {/* The demo's subline. `currentRun` is a served union, so a worker with no
-          run says WHY in the server's own words rather than going blank. */}
-      <span className="-mt-[var(--ds-space-tight)] flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-        <span
-          className={cn(
-            dsText.meta,
-            "min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]",
-            card.currentRun.state === "present" && dsText.nums,
-          )}
-        >
-          {card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}
-        </span>
-        {/*
-          THE CARD'S ONE IDENTITY ROUTE, and it is not conditional on the
-          worker holding a run.
-
-          The header label above is the workflow, so the worker id — the one
-          string that says WHICH of a pool's cards this is — is reachable here
-          rather than on the article's `title` alone (readable by a mouse, by
-          nobody else, which DESIGN.md bans outright). The id rides HERE rather
-          than beside the label because this is the line whose value span is
-          `flex-1 truncate`, which is the geometry `AuthorityDetails` is drawn
-          for — its 44px target hangs on a negative margin over the truncation
-          point, so a control on a content-width label would sit on top of the
-          label's own text.
-        */}
-        <AuthorityDetails
-          label={`Show full worker identity and run IDs for ${workflowLabel}`}
-          title="Worker identity"
-          facts={[
-            { label: "Worker ID", value: String(card.workerId) },
-            { label: "Workflow", value: workflowLabel, kind: "prose" as const },
-            ...(card.currentRun.state === "present"
-              ? [
-                { label: "Run ID", value: String(card.currentRun.runId) },
-                { label: "Trace ID", value: String(card.currentRun.traceId) },
-              ]
-              // The subline this control sits on is `truncate`, so a long
-              // absence reason is clipped there and THIS is its only route.
-              : [{ label: "Current run", value: card.currentRun.reason, kind: "prose" as const }]),
-            // The run's SESSION membership, read from its claimed run's queue
-            // row (P4's join). It was a line of the card; the demo's card has
-            // none, so since D305 the fact rides here, and each arm keeps its
-            // served reason rather than collapsing to "no session".
-            ...workerSessionFacts(membership),
-            { label: "Ownership", value: card.controls?.ownership.state === "owned" ? "Owned by this dashboard" : card.controls?.ownership.reason ?? "Not available" },
-            { label: "Directive", value: card.directive },
-            ...(card.controls?.basis.state === "present" ? [
-              { label: "Worker lifetime", value: String(card.controls.basis.value.leaseGeneration) },
-              { label: "Control revision", value: String(card.controls.basis.value.controlRevision) },
-            ] : []),
-            ...(card.controls?.operation === undefined ? [] : [
-              { label: "Command ID", value: card.controls.operation.commandId },
-              { label: "Command outcome", value: card.controls.operation.state },
-              { label: "Outcome at", value: card.controls.operation.at },
-            ]),
-          ]}
-          touchAlign="up"
-        />
-      </span>
-
-      {/* The operator's standing directive, beside the state and never as it —
-          a worker asked to pause finishes its item first. */}
-      {directive !== undefined && (
-        <span className={cn(dsText.micro, capacityChip(true))}>{directive}</span>
-      )}
-
-      {/* An odd last tile spans both columns: a lone half-width tile beside dead
-          space reads as one that failed to render. */}
-      {browserView.unavailableReason !== undefined && (
-        <MetaLine items={[`Browser requirements unavailable — ${browserView.unavailableReason}`]} />
-      )}
-      {browserView.slots.length > 0 && (
-        <div className="grid grid-cols-2 gap-[var(--ds-space-tight)]">
-          {browserView.slots.map((slot, index) => {
-            const span = browserView.slots.length % 2 === 1 && index === browserView.slots.length - 1;
-            return slot.state === "open" ? (
-              <BrowserTile
-                key={`open:${slot.browser.system}`}
-                browser={slot.browser}
-                nowIso={nowIso}
-                span={span}
-                {...(workerCommands === undefined ? {} : { control: control.invoke, refusal: browserRefusal })}
-              />
-            ) : (
-              <RequiredBrowserTile key={`required:${slot.system}`} system={slot.system} span={span} />
-            );
-          })}
+      <div className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+        <div className="flex min-w-0 items-center justify-between gap-[var(--ds-space-tight)]">
+          <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+            <UsersRound aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
+            <span className={cn(dsText.section, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>{workflowLabel}</span>
+          </div>
+          <div className="flex shrink-0 gap-[var(--ds-space-hair)]">
+            {workerCommands !== undefined && <Button size="sm" variant="ghost" disabled={refusal !== undefined} title={refusal} onClick={() => control.invoke(card.directive === "pause" ? "resume-worker" : "pause-worker")}>{card.directive === "pause" ? "Resume" : "Pause"}</Button>}
+            <Button
+              size="sm"
+              variant="outline"
+              icon={<X aria-hidden className={dsIcon.sm} />}
+              className="border-[color:var(--ds-danger-border)] text-[color:var(--ds-danger)]"
+              disabled={workerCommands === undefined ? onStop === undefined || !canStopWorker(card) : refusal !== undefined}
+              title={canStopWorker(card)
+                ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
+                : `Worker ${String(card.workerId)} is already ${card.directive === "stop" ? "stopping" : "settled"}`}
+              onClick={() => workerCommands === undefined ? onStop?.(card) : control.invoke("stop-worker")}
+            >
+              Stop
+            </Button>
+          </div>
         </div>
-      )}
-
-      {workerCommands !== undefined && control.message !== undefined && <div role="status" className={cn(dsText.micro, "text-[color:var(--ds-status-waiting-fg)]")}>{control.message}{control.retry !== undefined && <Button size="sm" variant="ghost" onClick={control.retry}>Check outcome</Button>}</div>}
-      {workerCommands !== undefined && browserRefusal !== undefined && <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{browserRefusal}</span>}
-      {/*
-        THE BASE — pipeline then footer, pinned to the bottom as ONE block
-        (ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-        `DemoShell.tsx:1653-1671`; R7-7).
-
-        Everything above this varies by card, so anchoring the whole base rather
-        than the footer alone is what puts every card's pipeline band on ONE
-        baseline instead of wherever its own content happened to end — that is
-        the property that lets a row of cards be read across.
-
-        The pipeline's row is RESERVED at a fixed height on every card, so a
-        worker with no item in flight keeps the same baseline without being
-        given a bar it has not earned. The slack lands above and is left EMPTY
-        on purpose: an idle worker genuinely has less to say than a blocked one.
-      */}
-      <div className="mt-auto flex flex-col gap-[var(--ds-space-snug)]">
-        <div aria-hidden className={cn("flex shrink-0 items-center", dsSize.hMicroPipeline)} />
-        <div
-          className={cn(
-            dsText.meta,
-            "flex items-center border-t text-[color:var(--ds-fg-muted)]",
-            dsBorder.subtle,
-            "gap-[var(--ds-space-snug)] pt-[var(--ds-space-snug)]",
-          )}
-        >
-          {/* THE STEP SLOT — hard left, the demo's answer to "what is this
-              worker doing", and EMPTY exactly as the demo leaves it when no
-              step is known (`s.step ?? ""`). Nothing on this wire names the
-              node a worker is inside; the run it is on is stated on the subline
-              above, which is the nearest true statement available. */}
-          <span className="min-w-0 flex-1 truncate" />
-          {/* The clock is dated by the SERVED instant every other elapsed on
-              screen uses, not by a browser `Date.now()` — the demo ticks its own
-              because it has no server; a second, uncalibrated clock here would
-              let this card and the queue row for the same run disagree. */}
-          <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
+        <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+          <span className={cn(dsText.meta, dsText.nums, "min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]")} title={`${tone.label} — ${card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}`}>
+            <span className={tone.text}>{tone.label.toLowerCase()}</span>
+            {" — "}{card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}
+          </span>
+          <AuthorityDetails
+            label={`Show worker details for ${workflowLabel}`}
+            title="Worker details"
+            facts={[
+              { label: "Worker ID", value: String(card.workerId) },
+              { label: "Workflow", value: workflowLabel, kind: "prose" as const },
+              ...(queued > 0 ? [{ label: "Queued in workflow", value: String(queued) }] : []),
+              ...(card.currentRun.state === "present"
+                ? [
+                  { label: "Run ID", value: String(card.currentRun.runId) },
+                  { label: "Trace ID", value: String(card.currentRun.traceId) },
+                ]
+                : [{ label: "Current run", value: card.currentRun.reason, kind: "prose" as const }]),
+              ...workerSessionFacts(membership),
+              { label: "Ownership", value: card.controls?.ownership.state === "owned" ? "Owned by this dashboard" : card.controls?.ownership.reason ?? "Not available" },
+              { label: "Directive", value: card.directive },
+              ...(card.controls?.basis.state === "present" ? [
+                { label: "Worker lifetime", value: String(card.controls.basis.value.leaseGeneration) },
+                { label: "Control revision", value: String(card.controls.basis.value.controlRevision) },
+              ] : []),
+              ...(card.controls?.operation === undefined ? [] : [
+                { label: "Command ID", value: card.controls.operation.commandId },
+                { label: "Command outcome", value: card.controls.operation.state },
+                { label: "Outcome at", value: card.controls.operation.at },
+              ]),
+            ]}
+            compact
+          />
+          <span className={cn(dsText.meta, dsText.nums, dsSurface.recess, dsRadius.md, "shrink-0 px-[var(--ds-space-base)] py-[var(--ds-space-hair)] text-right text-[color:var(--ds-fg-muted)]")}>
             {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
           </span>
-          {workerCommands !== undefined && <Button size="sm" variant="outline" disabled={refusal !== undefined} title={refusal} onClick={() => control.invoke(card.directive === "pause" ? "resume-worker" : "pause-worker")}>{card.directive === "pause" ? "Resume" : "Pause"}</Button>}
-          {/* The worker card's stop control. */}
-          <Button
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            disabled={workerCommands === undefined ? onStop === undefined || !canStopWorker(card) : refusal !== undefined}
-            title={canStopWorker(card)
-              ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
-              : `Worker ${String(card.workerId)} is already ${card.directive === "stop" ? "stopping" : "settled"}`}
-            onClick={() => workerCommands === undefined ? onStop?.(card) : control.invoke("stop-worker")}
-          >
-            Stop
-          </Button>
         </div>
       </div>
+
+      {directive !== undefined && <span className={cn(dsText.micro, capacityChip(true))}>{directive}</span>}
+      {browserView.unavailableReason !== undefined && <MetaLine items={[`Browser requirements unavailable — ${browserView.unavailableReason}`]} />}
+      {browserView.slots.length > 0 && (
+        <div className="grid grid-cols-2 gap-[var(--ds-space-tight)]">
+          {browserView.slots.map((slot) => slot.state === "open" ? (
+            <BrowserTile
+              key={`open:${slot.browser.system}`}
+              browser={slot.browser}
+              nowIso={nowIso}
+              workerId={String(card.workerId)}
+              selected={selectedBrowserSystem === slot.browser.system}
+              onSelectedChange={(selected) => setSelectedBrowserSystem((current) => {
+                if (selected) return slot.browser.system;
+                return current === slot.browser.system ? undefined : current;
+              })}
+              {...(workerCommands === undefined ? {} : { control: control.invoke, refusal: browserRefusal })}
+            />
+          ) : <RequiredBrowserTile key={`required:${slot.system}`} system={slot.system} />)}
+        </div>
+      )}
+      {workerCommands !== undefined && control.message !== undefined && <div role="status" className={cn(dsText.micro, "text-[color:var(--ds-status-waiting-fg)]")}>{control.message}{control.retry !== undefined && <Button size="sm" variant="ghost" onClick={control.retry}>Check outcome</Button>}</div>}
+      {workerCommands !== undefined && controlReason !== undefined && <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{controlReason}</span>}
+      <WorkerTimeline timeline={timeline} />
     </article>
   );
 }
@@ -1259,6 +1233,7 @@ export function SessionPanel({
               queued={statusCount(workflowStatusCounts(counts, String(card.workflowId)), "queued")}
               nowIso={nowIso}
               membership={membershipOf(card)}
+              timeline={workerTimelineView(card, queueSurfaces)}
               {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
               {...(workerCommands === undefined ? {} : { workerCommands })}
             />
